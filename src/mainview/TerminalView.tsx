@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
-import { init, Terminal, FitAddon } from "ghostty-web";
+import { Terminal, FitAddon } from "ghostty-web";
 
-const PTY_WS_URL = "ws://localhost:7681";
+interface TerminalViewProps {
+	ptyUrl: string;
+	taskId: string;
+}
 
-function TerminalView() {
+function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 
@@ -12,11 +15,8 @@ function TerminalView() {
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
 
-		async function setup() {
+		function setup() {
 			if (!containerRef.current || disposed) return;
-
-			await init();
-			if (disposed) return;
 
 			const term = new Terminal({
 				fontSize: 14,
@@ -53,7 +53,6 @@ function TerminalView() {
 			term.open(containerRef.current);
 			termRef.current = term;
 
-			// Fit after a frame to ensure layout is computed
 			requestAnimationFrame(() => {
 				if (disposed) return;
 				fitAddon!.fit();
@@ -64,7 +63,7 @@ function TerminalView() {
 		}
 
 		function connectPty(term: Terminal, fit: FitAddon) {
-			ws = new WebSocket(PTY_WS_URL);
+			ws = new WebSocket(ptyUrl);
 
 			ws.onopen = () => {
 				const dims = fit.proposeDimensions();
@@ -113,7 +112,7 @@ function TerminalView() {
 				termRef.current = null;
 			}
 		};
-	}, []);
+	}, [ptyUrl, taskId]);
 
 	return (
 		<div

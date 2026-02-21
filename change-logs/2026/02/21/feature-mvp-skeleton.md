@@ -1,0 +1,1 @@
+Implement full MVP skeleton: dashboard with project management, Kanban board with 7-column task workflow, terminal view with persistent PTY sessions and tmux, git worktree lifecycle, project settings, and Electrobun RPC bridge between bun and renderer processes.
