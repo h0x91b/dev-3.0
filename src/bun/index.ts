@@ -1,4 +1,9 @@
-import { BrowserWindow, Updater, Utils } from "electrobun/bun";
+import Electrobun, {
+	ApplicationMenu,
+	BrowserWindow,
+	Updater,
+	Utils,
+} from "electrobun/bun";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -101,7 +106,7 @@ async function getMainViewUrl(): Promise<string> {
 			return DEV_SERVER_URL;
 		} catch {
 			console.log(
-				"Vite dev server not running. Run 'bun run dev:hmr' for HMR support.",
+				"Vite dev server not running. Run 'bun run dev' for HMR support.",
 			);
 		}
 	}
@@ -109,6 +114,58 @@ async function getMainViewUrl(): Promise<string> {
 }
 
 const url = await getMainViewUrl();
+
+// --- Application Menu ---
+
+ApplicationMenu.setApplicationMenu([
+	{
+		label: "ghostty-web terminal",
+		submenu: [
+			{ label: "About ghostty-web terminal", action: "about" },
+			{ type: "separator" },
+			{ role: "hide" },
+			{ role: "hideOthers" },
+			{ role: "showAll" },
+			{ type: "separator" },
+			{ role: "quit" },
+		],
+	},
+	{
+		label: "Edit",
+		submenu: [
+			{ role: "undo" },
+			{ role: "redo" },
+			{ type: "separator" },
+			{ role: "cut" },
+			{ role: "copy" },
+			{ role: "paste" },
+			{ role: "pasteAndMatchStyle" },
+			{ role: "delete" },
+			{ role: "selectAll" },
+		],
+	},
+	{
+		label: "View",
+		submenu: [
+			{ label: "Toggle Developer Tools", action: "toggle-devtools" },
+			{ type: "separator" },
+			{ role: "toggleFullScreen" },
+		],
+	},
+	{
+		label: "Window",
+		submenu: [
+			{ role: "minimize" },
+			{ role: "zoom" },
+			{ type: "separator" },
+			{ role: "bringAllToFront" },
+			{ role: "cycleThroughWindows" },
+			{ role: "close" },
+		],
+	},
+]);
+
+// --- Main Window ---
 
 const mainWindow = new BrowserWindow({
 	title: "ghostty-web terminal",
@@ -125,10 +182,26 @@ mainWindow.on("close", () => {
 	Utils.quit();
 });
 
-// Open DevTools after page loads on dev channel
+// Open DevTools automatically on dev channel
 mainWindow.webview.on("dom-ready", async () => {
 	const channel = await Updater.localInfo.channel();
 	if (channel === "dev") {
+		mainWindow.webview.openDevTools();
+	}
+});
+
+// --- Menu Event Handlers ---
+
+Electrobun.events.on("application-menu-clicked", (e) => {
+	if (e.data.action === "about") {
+		Utils.showMessageBox({
+			type: "info",
+			title: "About",
+			message: "ghostty-web terminal",
+			detail: "Version 0.0.1\nBuilt with Electrobun, React, and Bun.",
+			buttons: ["OK"],
+		});
+	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
 	}
 });

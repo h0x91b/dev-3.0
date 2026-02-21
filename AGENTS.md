@@ -46,11 +46,11 @@ Desktop application built with **Electrobun** (not Electron), React 18, Tailwind
 ## Commands
 
 ```bash
-# Development (build once, then run)
+# Development with HMR (Vite dev server + Electrobun concurrently)
 bun run dev
 
-# Development with hot module replacement (Vite dev server + Electrobun concurrently)
-bun run dev:hmr
+# Development without HMR (build once, then run)
+bun run dev:once
 
 # Build (staging channel)
 bun run build

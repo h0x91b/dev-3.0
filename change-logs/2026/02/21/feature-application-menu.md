@@ -1,0 +1,1 @@
+Add native macOS application menu with App (About, Hide, Quit), Edit (Undo, Redo, Cut, Copy, Paste, Select All), View (Toggle Developer Tools, Toggle Full Screen), and Window (Minimize, Zoom, Close) menus. DevTools is now user-triggered via menu instead of auto-opening on dev channel.
