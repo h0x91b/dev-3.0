@@ -1,0 +1,1 @@
+Move git worktrees from `{project}/.dev3/worktrees/` to `~/.dev3.0/worktrees/{project-slug}/{taskId}`. Keeps project directories clean and centralizes all worktrees under the home directory.

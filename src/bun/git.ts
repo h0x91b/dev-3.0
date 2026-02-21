@@ -63,8 +63,14 @@ function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
+function projectSlug(projectPath: string): string {
+	// /Users/arsenyp/Desktop/my-repo → Users-arsenyp-Desktop-my-repo
+	return projectPath.replace(/^\//, "").replaceAll("/", "-");
+}
+
 function worktreePath(project: Project, task: Task): string {
-	return `${project.path}/.dev3/worktrees/${shortId(task.id)}`;
+	const home = process.env.HOME || "/tmp";
+	return `${home}/.dev3.0/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
 }
 
 function branchName(task: Task): string {
@@ -82,7 +88,9 @@ export async function createWorktree(
 	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id });
 
 	// Create the worktree directory parent
-	const mkdirProc = Bun.spawn(["mkdir", "-p", `${project.path}/.dev3/worktrees`]);
+	const home = process.env.HOME || "/tmp";
+	const parentDir = `${home}/.dev3.0/worktrees/${projectSlug(project.path)}`;
+	const mkdirProc = Bun.spawn(["mkdir", "-p", parentDir]);
 	await mkdirProc.exited;
 
 	const result = await run(
