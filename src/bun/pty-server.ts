@@ -153,9 +153,26 @@ Bun.serve({
 			const cols = 80;
 			const rows = 24;
 
-			// If no proc yet, spawn one. If proc exists, just reconnect.
+			// If no proc yet, spawn one. If proc exists, just reconnect
+			// and send current screen content for immediate rendering.
 			if (!session.proc) {
 				spawnPty(session, cols, rows);
+			} else {
+				// Capture current tmux pane content (with ANSI colors) so the
+				// client sees the screen immediately instead of a blank terminal
+				// while waiting for the app to redraw after resize.
+				const tmuxSessionName = `dev3-${shortId(sessionId)}`;
+				try {
+					const result = Bun.spawnSync(
+						["tmux", "capture-pane", "-p", "-e", "-t", tmuxSessionName],
+					);
+					if (result.exitCode === 0 && result.stdout.length > 0) {
+						const content = new TextDecoder().decode(result.stdout);
+						(ws as any).sendText("\x1b[H" + content);
+					}
+				} catch {
+					// Non-critical: client will get content after resize
+				}
 			}
 		},
 		message(ws, message) {

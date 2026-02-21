@@ -1,0 +1,1 @@
+Fix terminal garbling, lost colors, and blank screen on reconnect. Use ResizeObserver instead of requestAnimationFrame for reliable container dimension detection. Add resize dance (cols-1 then cols) to force SIGWINCH even when PTY dimensions haven't changed. Send tmux capture-pane content on WebSocket reconnect for immediate screen rendering with ANSI colors.

@@ -14,6 +14,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		let disposed = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
+		let layoutObserver: ResizeObserver | null = null;
 
 		function setup() {
 			if (!containerRef.current || disposed) return;
@@ -53,13 +54,26 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			term.open(containerRef.current);
 			termRef.current = term;
 
-			requestAnimationFrame(() => {
-				if (disposed) return;
-				fitAddon!.fit();
-				fitAddon!.observeResize();
-				term.focus();
-				connectPty(term, fitAddon!);
+			// Use ResizeObserver to detect when the container gets its final
+			// flex-computed dimensions. Unlike requestAnimationFrame heuristics,
+			// this fires exactly when layout is done — no timing guesses.
+			layoutObserver = new ResizeObserver(() => {
+				const el = containerRef.current;
+				if (!el || disposed) return;
+				if (el.clientWidth > 0 && el.clientHeight > 0) {
+					layoutObserver?.disconnect();
+					layoutObserver = null;
+					// One rAF after observer to ensure paint pass is complete.
+					requestAnimationFrame(() => {
+						if (disposed) return;
+						fitAddon!.fit();
+						fitAddon!.observeResize();
+						term.focus();
+						connectPty(term, fitAddon!);
+					});
+				}
 			});
+			layoutObserver.observe(containerRef.current);
 		}
 
 		function connectPty(term: Terminal, fit: FitAddon) {
@@ -68,7 +82,21 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			ws.onopen = () => {
 				const dims = fit.proposeDimensions();
 				if (dims) {
-					ws?.send(`\x1b]resize;${dims.cols};${dims.rows}\x07`);
+					// Resize dance: send slightly different dimensions first,
+					// then correct ones after a short delay. This forces two
+					// SIGWINCHes even if the PTY already has the same size
+					// (reconnection case). The kernel skips SIGWINCH for
+					// same-size resizes, so the nudge guarantees the app
+					// receives SIGWINCH and does a full screen redraw.
+					const nudgeCols = Math.max(2, dims.cols - 1);
+					ws?.send(`\x1b]resize;${nudgeCols};${dims.rows}\x07`);
+					setTimeout(() => {
+						if (ws?.readyState === WebSocket.OPEN) {
+							ws.send(
+								`\x1b]resize;${dims.cols};${dims.rows}\x07`,
+							);
+						}
+					}, 50);
 				}
 			};
 
@@ -105,6 +133,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 		return () => {
 			disposed = true;
+			layoutObserver?.disconnect();
 			ws?.close();
 			fitAddon?.dispose();
 			if (termRef.current) {
