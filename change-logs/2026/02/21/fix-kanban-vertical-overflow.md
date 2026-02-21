@@ -1,0 +1,1 @@
+Fix Kanban columns overflowing viewport height. Add h-full to KanbanColumn so it stays within the board's constrained height, and add min-h-0 + overflow-y-hidden to KanbanBoard to prevent implicit vertical scroll. The "Add Task" button now stays visible without scrolling.

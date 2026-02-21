@@ -41,7 +41,7 @@ function KanbanColumn({
 	}
 
 	return (
-		<div className="flex flex-col min-w-[180px] w-[180px] bg-[#16161e] rounded-lg border border-[#292e42]">
+		<div className="flex flex-col min-w-[180px] w-[180px] h-full bg-[#16161e] rounded-lg border border-[#292e42]">
 			{/* Column header */}
 			<div className="flex items-center justify-between px-3 py-2 border-b border-[#292e42]">
 				<span className="text-[#a9b1d6] text-xs font-semibold uppercase tracking-wider">
