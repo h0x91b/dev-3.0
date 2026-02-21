@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
 	"scripts": {
-		"dev": "concurrently \"bun run hmr\" \"bun run dev:once\"",
+		"dev": "concurrently --kill-others \"bun run hmr\" \"bun run dev:once\"",
 		"dev:once": "bun run build && electrobun dev",
 		"hmr": "vite --port 5173",
 		"build": "vite build && electrobun build",
