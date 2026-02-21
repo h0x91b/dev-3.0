@@ -12,6 +12,7 @@
 	},
 	"dependencies": {
 		"electrobun": "1.12.1-beta.2",
+		"ghostty-web": "^0.4.0",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1"
 	},

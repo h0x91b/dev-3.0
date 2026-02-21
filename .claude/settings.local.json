@@ -54,7 +54,8 @@
       "Bash(git rev-parse:*)",
       "Bash(git cherry-pick:*)",
       "Bash(npx:*)",
-      "WebFetch(domain:blackboard.sh)"
+      "WebFetch(domain:blackboard.sh)",
+      "WebSearch"
     ]
   }
 }

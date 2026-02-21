@@ -20,11 +20,10 @@ async function getMainViewUrl(): Promise<string> {
 	return "views://mainview/index.html";
 }
 
-// Create the main application window
 const url = await getMainViewUrl();
 
 const mainWindow = new BrowserWindow({
-	title: "React + Tailwind + Vite",
+	title: "ghostty-web terminal",
 	url,
 	frame: {
 		width: 900,
@@ -34,9 +33,8 @@ const mainWindow = new BrowserWindow({
 	},
 });
 
-// Quit the app when the main window is closed
 mainWindow.on("close", () => {
 	Utils.quit();
 });
 
-console.log("React Tailwind Vite app started!");
+console.log("ghostty-web terminal app started!");
