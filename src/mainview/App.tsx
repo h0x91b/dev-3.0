@@ -39,7 +39,7 @@ function App() {
 
 	if (state.loading) {
 		return (
-			<div className="h-screen w-screen flex items-center justify-center bg-[#1a1b26]">
+			<div className="h-full w-full flex items-center justify-center bg-[#1a1b26]">
 				<span className="text-[#565f89] text-sm">Loading...</span>
 			</div>
 		);

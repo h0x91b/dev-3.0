@@ -1,0 +1,1 @@
+Fix Kanban columns being cut off at the bottom. Replace h-screen/w-screen (100vh lies due to native title bar) with h-full/w-full chain. Set html/body/#root to height:100% + overflow:hidden in CSS so the layout fills exactly the available webview area.

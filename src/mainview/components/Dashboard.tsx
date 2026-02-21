@@ -39,7 +39,7 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 	}
 
 	return (
-		<div className="h-screen w-screen flex flex-col bg-[#1a1b26]">
+		<div className="h-full w-full flex flex-col bg-[#1a1b26]">
 			{/* Header */}
 			<div className="flex items-center justify-between px-6 py-4 bg-[#16161e] border-b border-[#292e42]">
 				<span className="text-[#c0caf5] font-bold text-lg tracking-wide">

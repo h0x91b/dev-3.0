@@ -34,14 +34,14 @@ function ProjectView({
 
 	if (!project) {
 		return (
-			<div className="h-screen w-screen flex items-center justify-center bg-[#1a1b26]">
+			<div className="h-full w-full flex items-center justify-center bg-[#1a1b26]">
 				<span className="text-[#f7768e]">Project not found</span>
 			</div>
 		);
 	}
 
 	return (
-		<div className="h-screen w-screen flex flex-col bg-[#1a1b26]">
+		<div className="h-full w-full flex flex-col bg-[#1a1b26]">
 			{/* Header */}
 			<div className="flex items-center justify-between px-6 py-3 bg-[#16161e] border-b border-[#292e42]">
 				<div className="flex items-center gap-4">

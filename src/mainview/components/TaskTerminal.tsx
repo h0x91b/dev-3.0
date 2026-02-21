@@ -27,7 +27,7 @@ function TaskTerminal({ projectId, taskId, tasks, navigate }: TaskTerminalProps)
 	}, [taskId]);
 
 	return (
-		<div className="h-screen w-screen flex flex-col bg-[#1a1b26]">
+		<div className="h-full w-full flex flex-col bg-[#1a1b26]">
 			{/* Header */}
 			<div className="flex items-center gap-4 px-4 py-2 bg-[#16161e] border-b border-[#292e42]">
 				<button
