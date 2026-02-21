@@ -8,7 +8,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 Multiple AI agents may work on this project in parallel. Each agent MUST:
 
-- **Commit immediately after making changes.** Do not wait for the user to ask — commit as soon as a logical unit of work is done. This prevents conflicts between parallel agents.
+- **Commit and push immediately after making changes.** Do not wait for the user to ask — commit and `git push` as soon as a logical unit of work is done. This prevents conflicts between parallel agents. This project is a solo workspace with no CI workers triggered by pushes, so pushing is always safe.
 - **Only commit its own changes.** Never stage or commit files modified by another agent.
 - **Always commit `.claude/` directory changes.** The `.claude/` directory (e.g., `settings.local.json`) is modified automatically during agent sessions via UI interactions. These changes are part of your session — always include them in your commits.
 - **Ignore unrelated changes.** If `git status` shows modifications you didn't make (outside of `.claude/`), leave them alone. You may inform the user: "I see other uncommitted changes, but they aren't mine."
