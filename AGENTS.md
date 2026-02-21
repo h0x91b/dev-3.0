@@ -14,6 +14,31 @@ Multiple AI agents may work on this project in parallel. Each agent MUST:
 - **Ignore unrelated changes.** If `git status` shows modifications you didn't make (outside of `.claude/`), leave them alone. You may inform the user: "I see other uncommitted changes, but they aren't mine."
 - **Never revert or discard other agents' work.** Do not run `git checkout`, `git restore`, or `git clean` on files you didn't touch. This rule has no exceptions.
 
+## Git worktree
+
+Agents in this project typically run inside a **git worktree**, not the main working tree. The main project lives at:
+
+```
+/Users/arsenyp/Desktop/src-shared/dev-3.0
+```
+
+If you are in a worktree, your working directory will be different (e.g., a temp path). You can always check with `git worktree list`. When you need to reference the original project (e.g., to read a secret, copy a config, or inspect the main branch state), use the path above. Never write to the main working tree from a worktree — only read.
+
+## Changelog policy
+
+**For every code change, create a changelog entry file.** This avoids merge conflicts when multiple agents work in parallel.
+
+**Path:** `change-logs/YYYY/MM/DD/<type>-<short-slug>.md`
+
+**Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
+
+**Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers.
+
+**Rules:**
+- Include the changelog file in the same commit as the code change.
+- The slug must be unique and descriptive enough to avoid collisions between parallel agents.
+- See `change-logs/README.md` for the full format specification.
+
 ## What is this
 
 Desktop application built with **Electrobun** (not Electron), React 18, Tailwind CSS, and Vite. Runtime is Bun.

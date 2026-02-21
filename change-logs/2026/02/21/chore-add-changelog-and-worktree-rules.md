@@ -1,0 +1,1 @@
+Add changelog policy and git worktree awareness to AGENTS.md. Created change-logs/ directory with README.md format spec.
