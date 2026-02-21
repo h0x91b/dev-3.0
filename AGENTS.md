@@ -76,6 +76,18 @@ The main process checks if the Vite dev server is running on `localhost:5173`. I
 
 Vite builds `src/mainview/` → `dist/`. Electrobun copies `dist/` contents into `views/mainview/` for packaging. Config in `electrobun.config.ts`.
 
+## Documentation
+
+Local documentation for key dependencies lives in `docs/`:
+
+| Directory | What's inside | How to use |
+|---|---|---|
+| `docs/electrobun/` | Local markdown docs (APIs, guides) | Read files directly |
+| `docs/ghostty-web/` | Local markdown docs (API, guides) | Read files directly |
+| `docs/bun/` | Pointer to Bun's `llms.txt` | Fetch `https://bun.com/docs/llms-full.txt` for full docs in one request, or see `docs/bun/README.md` for all links |
+
+**Before writing code that touches a dependency, check `docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
+
 ## Key config files
 
 - `electrobun.config.ts` — Electrobun app config (name, identifier, build copy rules)
