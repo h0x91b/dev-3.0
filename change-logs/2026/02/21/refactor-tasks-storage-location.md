@@ -1,0 +1,1 @@
+Move tasks.json from project directory ({project}/.dev3/tasks.json) to home directory (~/.dev3.0/data/{project-slug}/tasks.json). Project directories are now completely clean — dev-3.0 stores nothing inside them.

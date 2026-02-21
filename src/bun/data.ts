@@ -6,8 +6,14 @@ const log = createLogger("data");
 
 const PROJECTS_FILE = `${Utils.paths.userData}/projects.json`;
 
+function projectSlug(projectPath: string): string {
+	return projectPath.replace(/^\//, "").replaceAll("/", "-");
+}
+
+const HOME = process.env.HOME || "/tmp";
+
 function tasksFile(project: Project): string {
-	return `${project.path}/.dev3/tasks.json`;
+	return `${HOME}/.dev3.0/data/${projectSlug(project.path)}/tasks.json`;
 }
 
 async function ensureDir(filePath: string): Promise<void> {
