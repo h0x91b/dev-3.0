@@ -24,6 +24,10 @@ Agents in this project typically run inside a **git worktree**, not the main wor
 
 If you are in a worktree, your working directory will be different (e.g., a temp path). You can always check with `git worktree list`. When you need to reference the original project (e.g., to read a secret, copy a config, or inspect the main branch state), use the path above. Never write to the main working tree from a worktree — only read.
 
+### Branch naming
+
+Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the user is actually working on, **ask them** if they'd like to rename the branch to something descriptive (e.g., `dev3/fix-login-race-condition`). Do not rename silently — always confirm first. Example prompt: "Хочешь, переименую ветку в `dev3/<suggested-name>`? Сейчас она называется `dev3/task-...`, не очень информативно." If the user agrees, run `git branch -m <old> <new>` (and update the remote if already pushed).
+
 ## Changelog policy
 
 **For every code change, create a changelog entry file.** This avoids merge conflicts when multiple agents work in parallel.
