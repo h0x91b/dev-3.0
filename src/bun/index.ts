@@ -9,12 +9,13 @@ import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage } from "./rpc-handlers";
 import { setOnPtyDied } from "./pty-server";
 import { createLogger, getLogPath } from "./logger";
+import { DEV3_HOME } from "./paths";
 
 const log = createLogger("main");
 
 log.info("=== dev-3.0 starting ===");
+log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
-log.info("User data", { dir: Utils.paths.userData });
 
 // Side-effect: starts the PTY WebSocket server
 import "./pty-server";

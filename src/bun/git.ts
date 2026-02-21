@@ -1,5 +1,6 @@
 import type { Project, Task } from "../shared/types";
 import { createLogger } from "./logger";
+import { DEV3_HOME } from "./paths";
 
 const log = createLogger("git");
 
@@ -69,8 +70,7 @@ function projectSlug(projectPath: string): string {
 }
 
 function worktreePath(project: Project, task: Task): string {
-	const home = process.env.HOME || "/tmp";
-	return `${home}/.dev3.0/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
+	return `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
 }
 
 function branchName(task: Task): string {
@@ -88,8 +88,7 @@ export async function createWorktree(
 	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id });
 
 	// Create the worktree directory parent
-	const home = process.env.HOME || "/tmp";
-	const parentDir = `${home}/.dev3.0/worktrees/${projectSlug(project.path)}`;
+	const parentDir = `${DEV3_HOME}/worktrees/${projectSlug(project.path)}`;
 	const mkdirProc = Bun.spawn(["mkdir", "-p", parentDir]);
 	await mkdirProc.exited;
 

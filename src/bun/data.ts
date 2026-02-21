@@ -1,19 +1,17 @@
-import { Utils } from "electrobun/bun";
 import type { Project, Task } from "../shared/types";
 import { createLogger } from "./logger";
+import { DEV3_HOME } from "./paths";
 
 const log = createLogger("data");
 
-const PROJECTS_FILE = `${Utils.paths.userData}/projects.json`;
+const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
 
 function projectSlug(projectPath: string): string {
 	return projectPath.replace(/^\//, "").replaceAll("/", "-");
 }
 
-const HOME = process.env.HOME || "/tmp";
-
 function tasksFile(project: Project): string {
-	return `${HOME}/.dev3.0/data/${projectSlug(project.path)}/tasks.json`;
+	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
 }
 
 async function ensureDir(filePath: string): Promise<void> {

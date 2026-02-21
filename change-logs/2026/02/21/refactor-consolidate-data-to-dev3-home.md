@@ -1,0 +1,1 @@
+Consolidate all app data under ~/.dev3.0/. Projects.json, task data, worktrees, and logs all live under one directory now. Introduced src/bun/paths.ts with a single DEV3_HOME constant. Removed dependency on Utils.paths.userData for data storage.

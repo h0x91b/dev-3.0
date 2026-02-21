@@ -1,4 +1,4 @@
-import { Utils } from "electrobun/bun";
+import { DEV3_HOME } from "./paths";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -27,7 +27,7 @@ let writeQueue: Promise<void> = Promise.resolve();
 
 function getLogDir(): string {
 	if (!logDir) {
-		logDir = `${Utils.paths.userData}/logs`;
+		logDir = `${DEV3_HOME}/logs`;
 	}
 	return logDir;
 }
