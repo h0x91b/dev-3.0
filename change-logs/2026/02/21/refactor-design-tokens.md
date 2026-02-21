@@ -1,0 +1,1 @@
+Extracted all hardcoded hex colors into CSS custom properties (design tokens) with Tailwind integration. Defined two themes: dark (midnight indigo, default) and light. All components now use semantic token classes (bg-base, text-fg, border-edge, etc.) instead of arbitrary color values. Theme switching is prepared via data-theme attribute on root element.

@@ -94,16 +94,16 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 
 	return (
 		<div
-			className={`group p-3.5 bg-[#262940] rounded-xl transition-all border-l-[3px] ${
+			className={`group p-3.5 bg-elevated rounded-xl transition-all border-l-[3px] ${
 				isActive
-					? "cursor-pointer hover:bg-[#2e3250] hover:shadow-lg hover:shadow-black/15"
+					? "cursor-pointer hover:bg-elevated-hover hover:shadow-lg hover:shadow-black/15"
 					: "opacity-60"
 			} ${moving ? "opacity-50 pointer-events-none" : ""}`}
 			style={{ borderLeftColor: color }}
 			onClick={handleClick}
 		>
 			{/* Title */}
-			<div className="text-[#eceef8] text-sm leading-relaxed break-words font-medium pr-5">
+			<div className="text-fg text-sm leading-relaxed break-words font-medium pr-5">
 				{task.title}
 			</div>
 
@@ -112,14 +112,14 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 				<button
 					ref={triggerRef}
 					onClick={toggleMenu}
-					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
+					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors"
 					disabled={moving}
 				>
 					<div
 						className="w-2 h-2 rounded-full flex-shrink-0"
 						style={{ background: color }}
 					/>
-					<span className="text-xs text-[#a4a8c4]">
+					<span className="text-xs text-fg-2">
 						{STATUS_LABELS[task.status]}
 					</span>
 				</button>
@@ -130,7 +130,7 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 						e.stopPropagation();
 						handleDelete();
 					}}
-					className="opacity-0 group-hover:opacity-100 text-[#4e5380] hover:text-[#fc8181] transition-all p-1 rounded-lg hover:bg-[#fc8181]/10"
+					className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all p-1 rounded-lg hover:bg-danger/10"
 					title="Delete"
 				>
 					<svg
@@ -153,18 +153,18 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 			{menuOpen && (
 				<div
 					ref={menuRef}
-					className="fixed z-50 bg-[#262940] rounded-xl shadow-2xl shadow-black/40 border border-[#3d4268] py-1.5 min-w-[180px]"
+					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[180px]"
 					style={{ top: menuPos.top, left: menuPos.left }}
 					onClick={(e) => e.stopPropagation()}
 				>
-					<div className="px-3 py-2 text-xs text-[#6b7094] uppercase tracking-wider font-semibold">
+					<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
 						Move to
 					</div>
 					{ALL_STATUSES.filter((s) => s !== task.status).map((s) => (
 						<button
 							key={s}
 							onClick={() => handleMove(s)}
-							className="w-full text-left px-3 py-2 text-sm text-[#a4a8c4] hover:bg-[#2e3250] hover:text-[#eceef8] flex items-center gap-2.5 transition-colors"
+							className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 						>
 							<div
 								className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -173,10 +173,10 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 							{STATUS_LABELS[s]}
 						</button>
 					))}
-					<div className="border-t border-[#3d4268] mt-1.5 pt-1.5">
+					<div className="border-t border-edge-active mt-1.5 pt-1.5">
 						<button
 							onClick={handleDelete}
-							className="w-full text-left px-3 py-2 text-sm text-[#fc8181] hover:bg-[#fc8181]/10 flex items-center gap-2.5 transition-colors"
+							className="w-full text-left px-3 py-2 text-sm text-danger hover:bg-danger/10 flex items-center gap-2.5 transition-colors"
 						>
 							<svg
 								className="w-4 h-4 flex-shrink-0"

@@ -2,6 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---- Theme tokens (space-separated RGB for Tailwind alpha support) ---- */
+:root,
+[data-theme="dark"] {
+	--surface-base: 23 25 36;
+	--surface-raised: 30 33 51;
+	--surface-raised-hover: 37 40 69;
+	--surface-elevated: 38 41 64;
+	--surface-elevated-hover: 46 50 80;
+	--surface-overlay: 38 41 64;
+	--text-primary: 236 238 248;
+	--text-secondary: 164 168 196;
+	--text-tertiary: 107 112 148;
+	--text-muted: 78 83 128;
+	--border-default: 42 46 72;
+	--border-active: 61 66 104;
+	--accent: 94 158 255;
+	--accent-hover: 77 139 255;
+	--danger: 252 129 129;
+}
+
+[data-theme="light"] {
+	--surface-base: 245 246 250;
+	--surface-raised: 255 255 255;
+	--surface-raised-hover: 238 239 245;
+	--surface-elevated: 237 238 244;
+	--surface-elevated-hover: 226 228 236;
+	--surface-overlay: 255 255 255;
+	--text-primary: 26 29 46;
+	--text-secondary: 80 85 110;
+	--text-tertiary: 120 126 158;
+	--text-muted: 160 164 190;
+	--border-default: 218 220 232;
+	--border-active: 195 198 214;
+	--accent: 94 158 255;
+	--accent-hover: 70 135 245;
+	--danger: 224 82 82;
+}
+
 html, body, #root {
 	height: 100%;
 	margin: 0;
@@ -20,12 +58,12 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: #3d4268;
+	background: rgb(var(--border-active));
 	border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #4e5380;
+	background: rgb(var(--text-muted));
 }
 
 /* Font smoothing */

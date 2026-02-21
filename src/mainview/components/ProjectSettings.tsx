@@ -29,8 +29,8 @@ function ProjectSettings({
 
 	if (!project) {
 		return (
-			<div className="h-full w-full flex items-center justify-center bg-[#171924]">
-				<span className="text-[#fc8181] text-base">Project not found</span>
+			<div className="h-full w-full flex items-center justify-center bg-base">
+				<span className="text-danger text-base">Project not found</span>
 			</div>
 		);
 	}
@@ -53,12 +53,12 @@ function ProjectSettings({
 	}
 
 	return (
-		<div className="h-full w-full flex flex-col bg-[#171924]">
+		<div className="h-full w-full flex flex-col bg-base">
 			{/* Header */}
-			<div className="flex items-center gap-4 px-6 py-4 border-b border-[#2a2e48]">
+			<div className="flex items-center gap-4 px-6 py-4 border-b border-edge">
 				<button
 					onClick={() => navigate({ screen: "project", projectId })}
-					className="text-[#6b7094] hover:text-[#eceef8] transition-colors p-1.5 rounded-lg hover:bg-[#262940]"
+					className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
 				>
 					<svg
 						className="w-5 h-5"
@@ -74,10 +74,10 @@ function ProjectSettings({
 						/>
 					</svg>
 				</button>
-				<span className="text-[#eceef8] font-bold text-lg">
+				<span className="text-fg font-bold text-lg">
 					Settings
 				</span>
-				<span className="text-[#6b7094] text-sm">{project.name}</span>
+				<span className="text-fg-3 text-sm">{project.name}</span>
 			</div>
 
 			{/* Form */}
@@ -85,10 +85,10 @@ function ProjectSettings({
 				<div className="max-w-xl space-y-7">
 					{/* Setup Script */}
 					<div>
-						<label className="block text-[#eceef8] text-sm font-semibold mb-2">
+						<label className="block text-fg text-sm font-semibold mb-2">
 							Setup Script
 						</label>
-						<p className="text-[#6b7094] text-sm mb-3">
+						<p className="text-fg-3 text-sm mb-3">
 							Runs in the worktree directory after creation
 						</p>
 						<textarea
@@ -96,16 +96,16 @@ function ProjectSettings({
 							onChange={(e) => setSetupScript(e.target.value)}
 							rows={4}
 							placeholder="bun install"
-							className="w-full px-4 py-3 bg-[#1e2133] border border-[#2a2e48] rounded-xl text-[#eceef8] text-sm font-mono placeholder-[#4e5380] outline-none focus:border-[#5e9eff]/40 transition-colors resize-y"
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 						/>
 					</div>
 
 					{/* Default Tmux Command */}
 					<div>
-						<label className="block text-[#eceef8] text-sm font-semibold mb-2">
+						<label className="block text-fg text-sm font-semibold mb-2">
 							Default Command
 						</label>
-						<p className="text-[#6b7094] text-sm mb-3">
+						<p className="text-fg-3 text-sm mb-3">
 							Command to run inside tmux for new tasks
 						</p>
 						<input
@@ -113,16 +113,16 @@ function ProjectSettings({
 							value={defaultTmuxCommand}
 							onChange={(e) => setDefaultTmuxCommand(e.target.value)}
 							placeholder="claude"
-							className="w-full px-4 py-3 bg-[#1e2133] border border-[#2a2e48] rounded-xl text-[#eceef8] text-sm placeholder-[#4e5380] outline-none focus:border-[#5e9eff]/40 transition-colors"
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
 						/>
 					</div>
 
 					{/* Default Base Branch */}
 					<div>
-						<label className="block text-[#eceef8] text-sm font-semibold mb-2">
+						<label className="block text-fg text-sm font-semibold mb-2">
 							Base Branch
 						</label>
-						<p className="text-[#6b7094] text-sm mb-3">
+						<p className="text-fg-3 text-sm mb-3">
 							Branch to create worktrees from
 						</p>
 						<input
@@ -130,7 +130,7 @@ function ProjectSettings({
 							value={defaultBaseBranch}
 							onChange={(e) => setDefaultBaseBranch(e.target.value)}
 							placeholder="main"
-							className="w-full px-4 py-3 bg-[#1e2133] border border-[#2a2e48] rounded-xl text-[#eceef8] text-sm placeholder-[#4e5380] outline-none focus:border-[#5e9eff]/40 transition-colors"
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
 						/>
 					</div>
 
@@ -138,7 +138,7 @@ function ProjectSettings({
 					<button
 						onClick={handleSave}
 						disabled={saving}
-						className="px-6 py-2.5 bg-[#5e9eff] text-white text-sm font-semibold rounded-xl hover:bg-[#4d8bff] disabled:opacity-50 shadow-lg shadow-[#5e9eff]/20 transition-all active:scale-95"
+						className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
 					>
 						{saving ? "Saving..." : "Save Settings"}
 					</button>

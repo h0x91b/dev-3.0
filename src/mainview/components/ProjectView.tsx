@@ -34,20 +34,20 @@ function ProjectView({
 
 	if (!project) {
 		return (
-			<div className="h-full w-full flex items-center justify-center bg-[#171924]">
-				<span className="text-[#fc8181] text-base">Project not found</span>
+			<div className="h-full w-full flex items-center justify-center bg-base">
+				<span className="text-danger text-base">Project not found</span>
 			</div>
 		);
 	}
 
 	return (
-		<div className="h-full w-full flex flex-col bg-[#171924]">
+		<div className="h-full w-full flex flex-col bg-base">
 			{/* Header */}
-			<div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2e48]">
+			<div className="flex items-center justify-between px-6 py-4 border-b border-edge">
 				<div className="flex items-center gap-4">
 					<button
 						onClick={() => navigate({ screen: "dashboard" })}
-						className="text-[#6b7094] hover:text-[#eceef8] transition-colors p-1.5 rounded-lg hover:bg-[#262940]"
+						className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
 					>
 						<svg
 							className="w-5 h-5"
@@ -63,7 +63,7 @@ function ProjectView({
 							/>
 						</svg>
 					</button>
-					<span className="text-[#eceef8] font-bold text-lg">
+					<span className="text-fg font-bold text-lg">
 						{project.name}
 					</span>
 				</div>
@@ -71,7 +71,7 @@ function ProjectView({
 					onClick={() =>
 						navigate({ screen: "project-settings", projectId })
 					}
-					className="text-[#6b7094] hover:text-[#eceef8] transition-colors p-2 rounded-lg hover:bg-[#262940]"
+					className="text-fg-3 hover:text-fg transition-colors p-2 rounded-lg hover:bg-elevated"
 					title="Settings"
 				>
 					<svg

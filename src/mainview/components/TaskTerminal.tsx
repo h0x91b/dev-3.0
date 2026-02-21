@@ -27,12 +27,12 @@ function TaskTerminal({ projectId, taskId, tasks, navigate }: TaskTerminalProps)
 	}, [taskId]);
 
 	return (
-		<div className="h-full w-full flex flex-col bg-[#171924]">
+		<div className="h-full w-full flex flex-col bg-base">
 			{/* Header */}
-			<div className="flex items-center gap-4 px-5 py-3 border-b border-[#2a2e48]">
+			<div className="flex items-center gap-4 px-5 py-3 border-b border-edge">
 				<button
 					onClick={() => navigate({ screen: "project", projectId })}
-					className="text-[#6b7094] hover:text-[#eceef8] transition-colors p-1.5 rounded-lg hover:bg-[#262940]"
+					className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
 				>
 					<svg
 						className="w-5 h-5"
@@ -49,7 +49,7 @@ function TaskTerminal({ projectId, taskId, tasks, navigate }: TaskTerminalProps)
 					</svg>
 				</button>
 				{task && (
-					<span className="text-[#eceef8] text-sm font-semibold truncate">
+					<span className="text-fg text-sm font-semibold truncate">
 						{task.title}
 					</span>
 				)}
@@ -62,8 +62,8 @@ function TaskTerminal({ projectId, taskId, tasks, navigate }: TaskTerminalProps)
 				) : (
 					<div className="flex items-center justify-center h-full">
 						<div className="flex items-center gap-3">
-							<div className="w-2 h-2 rounded-full bg-[#5e9eff] animate-pulse" />
-							<span className="text-[#6b7094] text-sm">
+							<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+							<span className="text-fg-3 text-sm">
 								Connecting...
 							</span>
 						</div>

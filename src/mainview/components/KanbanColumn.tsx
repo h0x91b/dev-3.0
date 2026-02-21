@@ -43,7 +43,7 @@ function KanbanColumn({
 	}
 
 	return (
-		<div className="flex flex-col flex-shrink-0 w-[240px] h-full bg-[#1e2133] rounded-2xl overflow-hidden border border-[#2a2e48]">
+		<div className="flex flex-col flex-shrink-0 w-[240px] h-full bg-raised rounded-2xl overflow-hidden border border-edge">
 			{/* Column header */}
 			<div
 				className="px-4 py-3.5 flex-shrink-0"
@@ -55,7 +55,7 @@ function KanbanColumn({
 							className="w-3 h-3 rounded-full flex-shrink-0"
 							style={{ background: color }}
 						/>
-						<span className="text-[#eceef8] text-sm font-semibold">
+						<span className="text-fg text-sm font-semibold">
 							{label}
 						</span>
 					</div>
@@ -86,7 +86,7 @@ function KanbanColumn({
 				))}
 
 				{tasks.length === 0 && !adding && (
-					<div className="text-[#4e5380] text-sm text-center py-8">
+					<div className="text-fg-muted text-sm text-center py-8">
 						No tasks
 					</div>
 				)}
@@ -107,18 +107,18 @@ function KanbanColumn({
 								}}
 								placeholder="Task title..."
 								autoFocus
-								className="w-full px-3 py-2.5 bg-[#262940] border border-[#3d4268] rounded-xl text-[#eceef8] text-sm placeholder-[#4e5380] outline-none focus:border-[#5e9eff]/50 transition-colors"
+								className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
 							/>
 							<div className="flex gap-2">
 								<button
 									onClick={handleCreate}
-									className="flex-1 px-3 py-2 bg-[#5e9eff] text-white text-sm font-semibold rounded-xl hover:bg-[#4d8bff] transition-colors"
+									className="flex-1 px-3 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors"
 								>
 									Add
 								</button>
 								<button
 									onClick={() => setAdding(false)}
-									className="px-3 py-2 text-[#6b7094] text-sm hover:text-[#eceef8] transition-colors"
+									className="px-3 py-2 text-fg-3 text-sm hover:text-fg transition-colors"
 								>
 									Cancel
 								</button>
@@ -127,7 +127,7 @@ function KanbanColumn({
 					) : (
 						<button
 							onClick={() => setAdding(true)}
-							className="w-full text-[#6b7094] hover:text-[#5e9eff] text-sm font-medium text-center py-2.5 rounded-xl hover:bg-[#5e9eff]/8 border border-dashed border-[#2a2e48] hover:border-[#5e9eff]/30 transition-all"
+							className="w-full text-fg-3 hover:text-accent text-sm font-medium text-center py-2.5 rounded-xl hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 transition-all"
 						>
 							+ New Task
 						</button>
