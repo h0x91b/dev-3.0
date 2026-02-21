@@ -4,6 +4,9 @@ import { ACTIVE_STATUSES } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
+import { createLogger } from "./logger";
+
+const log = createLogger("rpc");
 
 // Will be set by index.ts after window creation
 let pushMessage: ((name: string, payload: any) => void) | null = null;
@@ -18,41 +21,63 @@ function isActive(status: TaskStatus): boolean {
 
 export const handlers = {
 	async getProjects(): Promise<Project[]> {
-		return data.loadProjects();
+		log.info("→ getProjects");
+		const projects = await data.loadProjects();
+		log.info(`← getProjects: ${projects.length} project(s)`);
+		return projects;
 	},
 
 	async pickFolder(): Promise<string | null> {
-		const paths = await Utils.openFileDialog({
-			canChooseFiles: false,
-			canChooseDirectory: true,
-			allowsMultipleSelection: false,
-		});
-		if (!paths || paths.length === 0) return null;
-		return paths[0];
+		log.info("→ pickFolder (opening native dialog)");
+		try {
+			const paths = await Utils.openFileDialog({
+				canChooseFiles: false,
+				canChooseDirectory: true,
+				allowsMultipleSelection: false,
+			});
+			log.info("← pickFolder", { paths });
+			if (!paths || paths.length === 0) return null;
+			return paths[0];
+		} catch (err) {
+			log.error("pickFolder failed", { error: String(err) });
+			throw err;
+		}
 	},
 
 	async addProject(params: {
 		path: string;
 		name: string;
 	}): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
-		const isRepo = await git.isGitRepo(params.path);
-		if (!isRepo) {
-			return { ok: false, error: "Selected folder is not a git repository" };
-		}
-		const project = await data.addProject(params.path, params.name);
-		// Try to detect default branch
+		log.info("→ addProject", params);
 		try {
-			const defaultBranch = await git.getDefaultBranch(params.path);
-			await data.updateProject(project.id, { defaultBaseBranch: defaultBranch });
-			project.defaultBaseBranch = defaultBranch;
-		} catch {
-			// Keep "main" as default
+			const isRepo = await git.isGitRepo(params.path);
+			if (!isRepo) {
+				log.warn("Not a git repo", { path: params.path });
+				return { ok: false, error: "Selected folder is not a git repository" };
+			}
+			const project = await data.addProject(params.path, params.name);
+			// Try to detect default branch
+			try {
+				const defaultBranch = await git.getDefaultBranch(params.path);
+				await data.updateProject(project.id, { defaultBaseBranch: defaultBranch });
+				project.defaultBaseBranch = defaultBranch;
+			} catch (err) {
+				log.warn("Could not detect default branch, keeping 'main'", {
+					error: String(err),
+				});
+			}
+			log.info("← addProject OK", { projectId: project.id, name: project.name });
+			return { ok: true, project };
+		} catch (err) {
+			log.error("addProject failed", { error: String(err), params });
+			return { ok: false, error: String(err) };
 		}
-		return { ok: true, project };
 	},
 
 	async removeProject(params: { projectId: string }): Promise<void> {
+		log.info("→ removeProject", params);
 		await data.removeProject(params.projectId);
+		log.info("← removeProject done");
 	},
 
 	async updateProjectSettings(params: {
@@ -61,21 +86,30 @@ export const handlers = {
 		defaultTmuxCommand: string;
 		defaultBaseBranch: string;
 	}): Promise<Project> {
-		return data.updateProject(params.projectId, {
+		log.info("→ updateProjectSettings", { projectId: params.projectId });
+		const project = await data.updateProject(params.projectId, {
 			setupScript: params.setupScript,
 			defaultTmuxCommand: params.defaultTmuxCommand,
 			defaultBaseBranch: params.defaultBaseBranch,
 		});
+		log.info("← updateProjectSettings done");
+		return project;
 	},
 
 	async getTasks(params: { projectId: string }): Promise<Task[]> {
+		log.info("→ getTasks", params);
 		const project = await data.getProject(params.projectId);
-		return data.loadTasks(project);
+		const tasks = await data.loadTasks(project);
+		log.info(`← getTasks: ${tasks.length} task(s)`);
+		return tasks;
 	},
 
 	async createTask(params: { projectId: string; title: string }): Promise<Task> {
+		log.info("→ createTask", params);
 		const project = await data.getProject(params.projectId);
-		return data.addTask(project, params.title);
+		const task = await data.addTask(project, params.title);
+		log.info("← createTask", { taskId: task.id });
+		return task;
 	},
 
 	async moveTask(params: {
@@ -83,13 +117,17 @@ export const handlers = {
 		projectId: string;
 		newStatus: TaskStatus;
 	}): Promise<Task> {
+		log.info("→ moveTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 		const oldStatus = task.status;
 		const newStatus = params.newStatus;
 
+		log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id });
+
 		// todo → active: create worktree + PTY session
 		if (!isActive(oldStatus) && isActive(newStatus)) {
+			log.info("Transition: inactive → active, creating worktree + PTY");
 			const wt = await git.createWorktree(project, task);
 			const tmuxCmd = project.defaultTmuxCommand || "bash";
 			pty.createSession(task.id, wt.worktreePath, tmuxCmd);
@@ -100,6 +138,7 @@ export const handlers = {
 				branchName: wt.branchName,
 			});
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("← moveTask done (worktree created)", { taskId: task.id });
 			return updated;
 		}
 
@@ -108,6 +147,7 @@ export const handlers = {
 			isActive(oldStatus) &&
 			(newStatus === "completed" || newStatus === "cancelled")
 		) {
+			log.info("Transition: active → terminal, destroying PTY + worktree");
 			pty.destroySession(task.id);
 			await git.removeWorktree(project, task);
 
@@ -117,6 +157,7 @@ export const handlers = {
 				branchName: null,
 			});
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("← moveTask done (worktree destroyed)", { taskId: task.id });
 			return updated;
 		}
 
@@ -125,23 +166,29 @@ export const handlers = {
 			status: newStatus,
 		});
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		log.info("← moveTask done (status only)", { taskId: task.id });
 		return updated;
 	},
 
 	async deleteTask(params: { taskId: string; projectId: string }): Promise<void> {
+		log.info("→ deleteTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 
 		// Cleanup if active
 		if (isActive(task.status)) {
+			log.info("Task is active, cleaning up PTY + worktree");
 			pty.destroySession(task.id);
 			await git.removeWorktree(project, task);
 		}
 
 		await data.deleteTask(project, task.id);
+		log.info("← deleteTask done");
 	},
 
 	async getPtyUrl(params: { taskId: string }): Promise<string> {
-		return `ws://localhost:7681?session=${params.taskId}`;
+		const url = `ws://localhost:7681?session=${params.taskId}`;
+		log.info("→ getPtyUrl", { taskId: params.taskId, url });
+		return url;
 	},
 };

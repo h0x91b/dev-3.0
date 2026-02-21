@@ -2,6 +2,7 @@ import { Electroview } from "electrobun/view";
 import type { AppRPCSchema } from "../shared/types";
 
 const rpc = Electroview.defineRPC<AppRPCSchema>({
+	maxRequestTime: 120_000, // 2 min — covers native dialogs and git operations
 	handlers: {
 		requests: {},
 		messages: {

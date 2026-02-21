@@ -1,3 +1,7 @@
+import { createLogger } from "./logger";
+
+const log = createLogger("pty");
+
 const PTY_WS_PORT = 7681;
 
 interface PtySession {
@@ -20,6 +24,7 @@ export function createSession(
 	cwd: string,
 	tmuxCommand: string,
 ): void {
+	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand });
 	sessions.set(taskId, {
 		taskId,
 		cwd,
@@ -31,7 +36,12 @@ export function createSession(
 
 export function destroySession(taskId: string): void {
 	const session = sessions.get(taskId);
-	if (!session) return;
+	if (!session) {
+		log.warn("destroySession: session not found", { taskId: taskId.slice(0, 8) });
+		return;
+	}
+
+	log.info("Destroying PTY session", { taskId: taskId.slice(0, 8), hasPid: !!session.proc });
 
 	if (session.proc) {
 		session.proc.terminal?.close();
@@ -55,9 +65,17 @@ function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
-function spawnPty(session: PtySession, _ws: any, cols: number, rows: number): void {
+function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = `dev3-${shortId(session.taskId)}`;
 	const tmuxCmd = session.tmuxCommand || "bash";
+
+	log.info("Spawning PTY process", {
+		tmuxSession: tmuxSessionName,
+		command: tmuxCmd,
+		cwd: session.cwd,
+		cols,
+		rows,
+	});
 
 	const proc = Bun.spawn(
 		["tmux", "new-session", "-s", tmuxSessionName, tmuxCmd],
@@ -71,7 +89,6 @@ function spawnPty(session: PtySession, _ws: any, cols: number, rows: number): vo
 							typeof data === "string"
 								? data
 								: new TextDecoder().decode(data);
-						// Send to the current ws reference (may have been reconnected)
 						if (session.ws) {
 							session.ws.sendText(str);
 						}
@@ -91,14 +108,13 @@ function spawnPty(session: PtySession, _ws: any, cols: number, rows: number): vo
 
 	session.proc = proc;
 
-	proc.exited.then(() => {
+	proc.exited.then((code) => {
+		log.info("PTY process exited", { taskId: shortId(session.taskId), exitCode: code });
 		session.proc = null;
 		onPtyDiedCallback?.(session.taskId);
 	});
 
-	console.log(
-		`PTY session started for task ${shortId(session.taskId)} (pid: ${proc.pid})`,
-	);
+	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
 }
 
 Bun.serve({
@@ -111,16 +127,24 @@ Bun.serve({
 		open(ws) {
 			const url = (ws.data as any)?.url as URL | undefined;
 			const sessionId = url?.searchParams.get("session");
+
 			if (!sessionId) {
+				log.warn("WS connection without session param");
 				ws.close(4000, "Missing session parameter");
 				return;
 			}
 
 			const session = sessions.get(sessionId);
 			if (!session) {
+				log.warn("WS connection to unknown session", { sessionId: sessionId.slice(0, 8) });
 				ws.close(4001, "Unknown session");
 				return;
 			}
+
+			log.info("WS connected", {
+				taskId: shortId(sessionId),
+				hasExistingProc: !!session.proc,
+			});
 
 			// Update the ws reference for this session
 			session.ws = ws as any;
@@ -131,7 +155,7 @@ Bun.serve({
 
 			// If no proc yet, spawn one. If proc exists, just reconnect.
 			if (!session.proc) {
-				spawnPty(session, ws, cols, rows);
+				spawnPty(session, cols, rows);
 			}
 		},
 		message(ws, message) {
@@ -162,6 +186,9 @@ Bun.serve({
 		close(ws) {
 			const sessionId = (ws as any).sessionId as string | undefined;
 			if (!sessionId) return;
+
+			log.info("WS disconnected", { taskId: shortId(sessionId) });
+
 			const session = sessions.get(sessionId);
 			if (session && session.ws === (ws as any)) {
 				// Don't kill the PTY — just detach the WS
@@ -171,4 +198,4 @@ Bun.serve({
 	},
 });
 
-console.log(`PTY WebSocket server running on ws://localhost:${PTY_WS_PORT}`);
+log.info(`PTY WebSocket server running on ws://localhost:${PTY_WS_PORT}`);

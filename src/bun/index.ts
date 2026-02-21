@@ -8,6 +8,13 @@ import Electrobun, {
 import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage } from "./rpc-handlers";
 import { setOnPtyDied } from "./pty-server";
+import { createLogger, getLogPath } from "./logger";
+
+const log = createLogger("main");
+
+log.info("=== dev-3.0 starting ===");
+log.info("Log files", { dir: getLogPath() });
+log.info("User data", { dir: Utils.paths.userData });
 
 // Side-effect: starts the PTY WebSocket server
 import "./pty-server";
@@ -19,31 +26,33 @@ const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
 async function getMainViewUrl(): Promise<string> {
 	const channel = await Updater.localInfo.channel();
+	log.info("App channel", { channel });
 	if (channel === "dev") {
 		try {
 			await fetch(DEV_SERVER_URL, { method: "HEAD" });
-			console.log(`HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
+			log.info(`HMR enabled: Vite dev server at ${DEV_SERVER_URL}`);
 			return DEV_SERVER_URL;
 		} catch {
-			console.log(
-				"Vite dev server not running. Run 'bun run dev' for HMR support.",
-			);
+			log.warn("Vite dev server not running, falling back to bundled assets");
 		}
 	}
 	return "views://mainview/index.html";
 }
 
 const url = await getMainViewUrl();
+log.info("Loading URL", { url });
 
 // --- RPC ---
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
-	maxRequestTime: 30000,
+	maxRequestTime: 120_000,
 	handlers: {
 		requests: handlers,
 		messages: {},
 	},
 });
+
+log.info("RPC handlers registered");
 
 // --- Application Menu ---
 
@@ -109,17 +118,22 @@ const mainWindow = new BrowserWindow({
 	},
 });
 
+log.info("Main window created");
+
 // Wire push messages to renderer
 setPushMessage((name, payload) => {
+	log.debug("Push to renderer", { name });
 	(mainWindow.webview.rpc as any).send[name]?.(payload);
 });
 
 // Wire PTY death notifications
 setOnPtyDied((taskId) => {
+	log.info("PTY died, notifying renderer", { taskId: taskId.slice(0, 8) });
 	(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId });
 });
 
 mainWindow.on("close", () => {
+	log.info("Main window closing, quitting app");
 	Utils.quit();
 });
 
@@ -129,6 +143,7 @@ mainWindow.webview.on("dom-ready", async () => {
 	if (channel === "dev") {
 		mainWindow.webview.openDevTools();
 	}
+	log.info("DOM ready");
 });
 
 // --- Menu Event Handlers ---
@@ -147,4 +162,4 @@ Electrobun.events.on("application-menu-clicked", (e) => {
 	}
 });
 
-console.log("dev-3.0 app started!");
+log.info("=== dev-3.0 ready ===");
