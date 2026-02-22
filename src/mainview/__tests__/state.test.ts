@@ -17,6 +17,7 @@ const mockTask: Task = {
 	id: "t1",
 	projectId: "p1",
 	title: "Test Task",
+	description: "Test Task",
 	status: "todo",
 	baseBranch: "main",
 	worktreePath: null,

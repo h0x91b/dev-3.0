@@ -1,0 +1,1 @@
+Added `description` field to the Task model. The user now enters a description (the prompt for AI) in a textarea, and the title is auto-generated from the first ~80 characters. CreateTaskModal updated with textarea input, Cmd+Enter shortcut, and live title preview. Backward compatible with existing tasks via read-time migration.

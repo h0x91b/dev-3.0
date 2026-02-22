@@ -38,7 +38,6 @@ const en = {
 
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",
-	"kanban.taskPlaceholder": "Task title...",
 	"kanban.add": "Add",
 	"kanban.cancel": "Cancel",
 	"kanban.newTask": "+ New Task",
@@ -46,10 +45,13 @@ const en = {
 
 	// CreateTaskModal
 	"createTask.title": "New Task",
-	"createTask.nameLabel": "Title",
+	"createTask.descriptionLabel": "Description",
+	"createTask.descriptionPlaceholder": "Describe what needs to be done...",
+	"createTask.generatedTitle": "Title:",
 	"createTask.statusLabel": "Status",
 	"createTask.create": "Create",
 	"createTask.creating": "Creating...",
+	"createTask.submitHint": "\u2318Enter to create",
 
 	// TaskCard
 	"task.moveTo": "Move to",

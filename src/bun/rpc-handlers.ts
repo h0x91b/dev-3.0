@@ -122,13 +122,13 @@ export const handlers = {
 
 	async createTask(params: {
 		projectId: string;
-		title: string;
+		description: string;
 		status?: TaskStatus;
 	}): Promise<Task> {
 		log.info("→ createTask", params);
 		const project = await data.getProject(params.projectId);
 		const status = params.status || "todo";
-		const task = await data.addTask(project, params.title, status);
+		const task = await data.addTask(project, params.description, status);
 
 		// If created directly into an active status, set up worktree + PTY
 		if (isActive(status)) {
@@ -136,8 +136,8 @@ export const handlers = {
 				taskId: task.id,
 			});
 			const wt = await git.createWorktree(project, task);
-			const { command: tmuxCmd } = await agents.resolveCommandForProject(project, params.title);
-			const extraEnv = agents.buildTaskEnv(project, params.title, task.id, wt.worktreePath);
+			const { command: tmuxCmd } = await agents.resolveCommandForProject(project, task.title);
+			const extraEnv = agents.buildTaskEnv(project, task.title, task.id, wt.worktreePath);
 			pty.createSession(task.id, wt.worktreePath, tmuxCmd, extraEnv);
 
 			const updated = await data.updateTask(project, task.id, {

@@ -1,4 +1,5 @@
 import type { Project, Task, TaskStatus } from "../shared/types";
+import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 
@@ -106,7 +107,13 @@ export async function loadTasks(project: Project): Promise<Task[]> {
 			log.info("No tasks file yet", { projectId: project.id });
 			return [];
 		}
-		const tasks = await f.json();
+		const tasks: Task[] = await f.json();
+		// Backfill description for tasks created before this field existed
+		for (const task of tasks) {
+			if ((task as any).description === undefined) {
+				task.description = task.title;
+			}
+		}
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
 		return tasks;
 	} catch (err) {
@@ -128,9 +135,10 @@ export async function saveTasks(
 
 export async function addTask(
 	project: Project,
-	title: string,
+	description: string,
 	status: TaskStatus = "todo",
 ): Promise<Task> {
+	const title = titleFromDescription(description);
 	log.info("Creating task", { projectId: project.id, title, status });
 	const tasks = await loadTasks(project);
 	const now = new Date().toISOString();
@@ -138,6 +146,7 @@ export async function addTask(
 		id: crypto.randomUUID(),
 		projectId: project.id,
 		title,
+		description,
 		status,
 		baseBranch: project.defaultBaseBranch,
 		worktreePath: null,

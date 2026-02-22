@@ -80,12 +80,28 @@ export interface Task {
 	id: string;
 	projectId: string;
 	title: string;
+	description: string;
 	status: TaskStatus;
 	baseBranch: string;
 	worktreePath: string | null;
 	branchName: string | null;
 	createdAt: string;
 	updatedAt: string;
+}
+
+/** Generate a short title from a description (first ~maxLen chars, word-boundary truncated). */
+export function titleFromDescription(
+	description: string,
+	maxLen = 80,
+): string {
+	const text = description.replace(/\n/g, " ").trim();
+	if (text.length <= maxLen) return text;
+	const truncated = text.slice(0, maxLen);
+	const lastSpace = truncated.lastIndexOf(" ");
+	if (lastSpace > maxLen * 0.4) {
+		return truncated.slice(0, lastSpace) + "\u2026";
+	}
+	return truncated + "\u2026";
 }
 
 // ---- RPC schema ----
@@ -132,7 +148,7 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			createTask: {
-				params: { projectId: string; title: string; status?: TaskStatus };
+				params: { projectId: string; description: string; status?: TaskStatus };
 				response: Task;
 			};
 			moveTask: {

@@ -40,7 +40,6 @@ const es: TranslationRecord & Record<string, string> = {
 
 	// KanbanColumn
 	"kanban.noTasks": "Sin tareas",
-	"kanban.taskPlaceholder": "Título de la tarea...",
 	"kanban.add": "Agregar",
 	"kanban.cancel": "Cancelar",
 	"kanban.newTask": "+ Nueva tarea",
@@ -48,10 +47,13 @@ const es: TranslationRecord & Record<string, string> = {
 
 	// CreateTaskModal
 	"createTask.title": "Nueva tarea",
-	"createTask.nameLabel": "Título",
+	"createTask.descriptionLabel": "Descripción",
+	"createTask.descriptionPlaceholder": "Describe lo que hay que hacer...",
+	"createTask.generatedTitle": "Título:",
 	"createTask.statusLabel": "Estado",
 	"createTask.create": "Crear",
 	"createTask.creating": "Creando...",
+	"createTask.submitHint": "\u2318Enter para crear",
 
 	// TaskCard
 	"task.moveTo": "Mover a",
