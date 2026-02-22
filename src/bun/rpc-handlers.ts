@@ -1,9 +1,10 @@
 import { Utils } from "electrobun/bun";
-import type { Project, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, Project, Task, TaskStatus } from "../shared/types";
 import { ACTIVE_STATUSES } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
+import * as agents from "./agents";
 import { createLogger } from "./logger";
 
 const log = createLogger("rpc");
@@ -84,16 +85,31 @@ export const handlers = {
 		projectId: string;
 		setupScript: string;
 		defaultTmuxCommand: string;
+		defaultAgentId: string | null;
 		defaultBaseBranch: string;
 	}): Promise<Project> {
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
 		const project = await data.updateProject(params.projectId, {
 			setupScript: params.setupScript,
 			defaultTmuxCommand: params.defaultTmuxCommand,
+			defaultAgentId: params.defaultAgentId,
 			defaultBaseBranch: params.defaultBaseBranch,
 		});
 		log.info("← updateProjectSettings done");
 		return project;
+	},
+
+	async getAgents(): Promise<CodingAgent[]> {
+		log.info("→ getAgents");
+		const all = await agents.getAllAgents();
+		log.info(`← getAgents: ${all.length} agent(s)`);
+		return all;
+	},
+
+	async saveAgents(params: { agents: CodingAgent[] }): Promise<void> {
+		log.info("→ saveAgents", { count: params.agents.length });
+		await agents.saveAllAgents(params.agents);
+		log.info("← saveAgents done");
 	},
 
 	async getTasks(params: { projectId: string }): Promise<Task[]> {
@@ -120,8 +136,9 @@ export const handlers = {
 				taskId: task.id,
 			});
 			const wt = await git.createWorktree(project, task);
-			const tmuxCmd = project.defaultTmuxCommand || "bash";
-			pty.createSession(task.id, wt.worktreePath, tmuxCmd);
+			const { command: tmuxCmd } = await agents.resolveCommandForProject(project, params.title);
+			const extraEnv = agents.buildTaskEnv(project, params.title, task.id, wt.worktreePath);
+			pty.createSession(task.id, wt.worktreePath, tmuxCmd, extraEnv);
 
 			const updated = await data.updateTask(project, task.id, {
 				worktreePath: wt.worktreePath,
@@ -153,8 +170,9 @@ export const handlers = {
 		if (!isActive(oldStatus) && isActive(newStatus)) {
 			log.info("Transition: inactive → active, creating worktree + PTY");
 			const wt = await git.createWorktree(project, task);
-			const tmuxCmd = project.defaultTmuxCommand || "bash";
-			pty.createSession(task.id, wt.worktreePath, tmuxCmd);
+			const { command: tmuxCmd } = await agents.resolveCommandForProject(project, task.title);
+			const extraEnv = agents.buildTaskEnv(project, task.title, task.id, wt.worktreePath);
+			pty.createSession(task.id, wt.worktreePath, tmuxCmd, extraEnv);
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,
@@ -235,13 +253,14 @@ export const handlers = {
 			}
 
 			if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
-				const tmuxCmd = foundProject.defaultTmuxCommand || "bash";
+				const { command: tmuxCmd } = await agents.resolveCommandForProject(foundProject, foundTask.title);
+				const extraEnv = agents.buildTaskEnv(foundProject, foundTask.title, foundTask.id, foundTask.worktreePath);
 				log.info("Restoring PTY session for active task", {
 					taskId: params.taskId.slice(0, 8),
 					worktreePath: foundTask.worktreePath,
 					tmuxCmd,
 				});
-				pty.createSession(params.taskId, foundTask.worktreePath, tmuxCmd);
+				pty.createSession(params.taskId, foundTask.worktreePath, tmuxCmd, extraEnv);
 			} else {
 				log.warn("Cannot restore PTY session: task not active or no worktree", {
 					taskId: params.taskId.slice(0, 8),

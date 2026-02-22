@@ -25,6 +25,16 @@ const en = {
 	"settings.themeLight": "Light",
 	"settings.themeLightDesc": "Clean & bright",
 	"settings.language": "Language",
+	"settings.agents": "Coding Agents",
+	"settings.builtinAgents": "Built-in Agents",
+	"settings.customAgents": "Custom Agents",
+	"settings.noCustomAgents": "No custom agents yet",
+	"settings.addCustomAgent": "Add Custom Agent",
+	"settings.customAgentName": "Name",
+	"settings.customAgentCommand": "Command",
+	"settings.customAgentCommandHint": "Shell command. Use $DEV3_TASK_TITLE, $DEV3_TASK_ID, $DEV3_PROJECT_NAME, $DEV3_PROJECT_PATH, $DEV3_WORKTREE_PATH env vars.",
+	"settings.deleteAgent": "Delete",
+	"settings.builtinBadge": "Built-in",
 
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",
@@ -52,6 +62,9 @@ const en = {
 	"projectSettings.setupScript": "Setup Script",
 	"projectSettings.setupScriptDesc":
 		"Runs in the worktree directory after creation",
+	"projectSettings.agent": "Coding Agent",
+	"projectSettings.agentDesc": "Agent to launch in tmux for new tasks",
+	"projectSettings.customCommand": "Custom Command",
 	"projectSettings.defaultCommand": "Default Command",
 	"projectSettings.defaultCommandDesc":
 		"Command to run inside tmux for new tasks",

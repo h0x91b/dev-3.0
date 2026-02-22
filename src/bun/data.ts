@@ -58,6 +58,7 @@ export async function addProject(
 		path,
 		setupScript: "",
 		defaultTmuxCommand: "claude",
+		defaultAgentId: "builtin-claude",
 		defaultBaseBranch: "main",
 		createdAt: new Date().toISOString(),
 	};
@@ -76,7 +77,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "defaultTmuxCommand" | "defaultBaseBranch">>,
+	updates: Partial<Pick<Project, "setupScript" | "defaultTmuxCommand" | "defaultAgentId" | "defaultBaseBranch">>,
 ): Promise<Project> {
 	log.info("Updating project", { projectId, updates });
 	const projects = await loadProjects();

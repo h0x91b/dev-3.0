@@ -27,6 +27,16 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.themeLight": "Claro",
 	"settings.themeLightDesc": "Limpio y brillante",
 	"settings.language": "Idioma",
+	"settings.agents": "Agentes de código",
+	"settings.builtinAgents": "Agentes integrados",
+	"settings.customAgents": "Agentes personalizados",
+	"settings.noCustomAgents": "Aún no hay agentes personalizados",
+	"settings.addCustomAgent": "Agregar agente",
+	"settings.customAgentName": "Nombre",
+	"settings.customAgentCommand": "Comando",
+	"settings.customAgentCommandHint": "Comando shell. Variables disponibles: $DEV3_TASK_TITLE, $DEV3_TASK_ID, $DEV3_PROJECT_NAME, $DEV3_PROJECT_PATH, $DEV3_WORKTREE_PATH.",
+	"settings.deleteAgent": "Eliminar",
+	"settings.builtinBadge": "Integrado",
 
 	// KanbanColumn
 	"kanban.noTasks": "Sin tareas",
@@ -54,6 +64,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Script de configuración",
 	"projectSettings.setupScriptDesc":
 		"Se ejecuta en el directorio worktree después de la creación",
+	"projectSettings.agent": "Agente de código",
+	"projectSettings.agentDesc": "Agente para ejecutar en tmux para nuevas tareas",
+	"projectSettings.customCommand": "Comando personalizado",
 	"projectSettings.defaultCommand": "Comando predeterminado",
 	"projectSettings.defaultCommandDesc":
 		"Comando para ejecutar en tmux para nuevas tareas",

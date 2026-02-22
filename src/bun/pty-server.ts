@@ -8,6 +8,7 @@ interface PtySession {
 	taskId: string;
 	cwd: string;
 	tmuxCommand: string;
+	env: Record<string, string>;
 	proc: ReturnType<typeof Bun.spawn> | null;
 	ws: any;
 }
@@ -23,12 +24,14 @@ export function createSession(
 	taskId: string,
 	cwd: string,
 	tmuxCommand: string,
+	extraEnv: Record<string, string> = {},
 ): void {
 	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand });
 	sessions.set(taskId, {
 		taskId,
 		cwd,
 		tmuxCommand,
+		env: extraEnv,
 		proc: null,
 		ws: null,
 	});
@@ -101,6 +104,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				...process.env,
 				TERM: "xterm-256color",
 				HOME: process.env.HOME || "/",
+				...session.env,
 			},
 			cwd: session.cwd,
 		},

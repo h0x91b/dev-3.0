@@ -48,12 +48,30 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	cancelled: "#fc8181",
 };
 
+// ---- Coding Agents ----
+
+export type BuiltinAgentKind = "claude" | "codex" | "gemini";
+
+export interface CodingAgent {
+	id: string;
+	kind: BuiltinAgentKind | "custom";
+	name: string;
+	command?: string; // only for kind:"custom" — shell command template
+}
+
+export const BUILTIN_AGENTS: CodingAgent[] = [
+	{ id: "builtin-claude", kind: "claude", name: "Claude" },
+	{ id: "builtin-codex", kind: "codex", name: "Codex" },
+	{ id: "builtin-gemini", kind: "gemini", name: "Gemini" },
+];
+
 export interface Project {
 	id: string;
 	name: string;
 	path: string;
 	setupScript: string;
 	defaultTmuxCommand: string;
+	defaultAgentId: string | null;
 	defaultBaseBranch: string;
 	createdAt: string;
 }
@@ -96,9 +114,18 @@ export type AppRPCSchema = {
 					projectId: string;
 					setupScript: string;
 					defaultTmuxCommand: string;
+					defaultAgentId: string | null;
 					defaultBaseBranch: string;
 				};
 				response: Project;
+			};
+			getAgents: {
+				params: void;
+				response: CodingAgent[];
+			};
+			saveAgents: {
+				params: { agents: CodingAgent[] };
+				response: void;
 			};
 			getTasks: {
 				params: { projectId: string };

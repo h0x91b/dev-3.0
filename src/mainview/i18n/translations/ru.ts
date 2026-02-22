@@ -29,6 +29,16 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.themeLight": "Светлая",
 	"settings.themeLightDesc": "Чистая и яркая",
 	"settings.language": "Язык",
+	"settings.agents": "Кодинг-агенты",
+	"settings.builtinAgents": "Встроенные агенты",
+	"settings.customAgents": "Пользовательские агенты",
+	"settings.noCustomAgents": "Пользовательских агентов пока нет",
+	"settings.addCustomAgent": "Добавить агента",
+	"settings.customAgentName": "Название",
+	"settings.customAgentCommand": "Команда",
+	"settings.customAgentCommandHint": "Shell-команда. Доступны переменные: $DEV3_TASK_TITLE, $DEV3_TASK_ID, $DEV3_PROJECT_NAME, $DEV3_PROJECT_PATH, $DEV3_WORKTREE_PATH.",
+	"settings.deleteAgent": "Удалить",
+	"settings.builtinBadge": "Встроенный",
 
 	// KanbanColumn
 	"kanban.noTasks": "Нет задач",
@@ -56,6 +66,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Скрипт настройки",
 	"projectSettings.setupScriptDesc":
 		"Запускается в директории worktree после создания",
+	"projectSettings.agent": "Кодинг-агент",
+	"projectSettings.agentDesc": "Агент для запуска в tmux для новых задач",
+	"projectSettings.customCommand": "Произвольная команда",
 	"projectSettings.defaultCommand": "Команда по умолчанию",
 	"projectSettings.defaultCommandDesc":
 		"Команда для запуска в tmux для новых задач",
