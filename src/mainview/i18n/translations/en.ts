@@ -34,6 +34,13 @@ const en = {
 	"kanban.newTask": "+ New Task",
 	"kanban.failedCreate": "Failed to create task: {error}",
 
+	// CreateTaskModal
+	"createTask.title": "New Task",
+	"createTask.nameLabel": "Title",
+	"createTask.statusLabel": "Status",
+	"createTask.create": "Create",
+	"createTask.creating": "Creating...",
+
 	// TaskCard
 	"task.moveTo": "Move to",
 	"task.delete": "Delete",

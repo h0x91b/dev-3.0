@@ -36,6 +36,13 @@ const es: TranslationRecord & Record<string, string> = {
 	"kanban.newTask": "+ Nueva tarea",
 	"kanban.failedCreate": "Error al crear tarea: {error}",
 
+	// CreateTaskModal
+	"createTask.title": "Nueva tarea",
+	"createTask.nameLabel": "Título",
+	"createTask.statusLabel": "Estado",
+	"createTask.create": "Crear",
+	"createTask.creating": "Creando...",
+
 	// TaskCard
 	"task.moveTo": "Mover a",
 	"task.delete": "Eliminar",

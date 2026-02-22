@@ -104,10 +104,34 @@ export const handlers = {
 		return tasks;
 	},
 
-	async createTask(params: { projectId: string; title: string }): Promise<Task> {
+	async createTask(params: {
+		projectId: string;
+		title: string;
+		status?: TaskStatus;
+	}): Promise<Task> {
 		log.info("→ createTask", params);
 		const project = await data.getProject(params.projectId);
-		const task = await data.addTask(project, params.title);
+		const status = params.status || "todo";
+		const task = await data.addTask(project, params.title, status);
+
+		// If created directly into an active status, set up worktree + PTY
+		if (isActive(status)) {
+			log.info("Created into active status, creating worktree + PTY", {
+				taskId: task.id,
+			});
+			const wt = await git.createWorktree(project, task);
+			const tmuxCmd = project.defaultTmuxCommand || "bash";
+			pty.createSession(task.id, wt.worktreePath, tmuxCmd);
+
+			const updated = await data.updateTask(project, task.id, {
+				worktreePath: wt.worktreePath,
+				branchName: wt.branchName,
+			});
+			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("← createTask (with worktree)", { taskId: task.id });
+			return updated;
+		}
+
 		log.info("← createTask", { taskId: task.id });
 		return task;
 	},

@@ -38,6 +38,13 @@ const ru: TranslationRecord & Record<string, string> = {
 	"kanban.newTask": "+ Новая задача",
 	"kanban.failedCreate": "Не удалось создать задачу: {error}",
 
+	// CreateTaskModal
+	"createTask.title": "Новая задача",
+	"createTask.nameLabel": "Название",
+	"createTask.statusLabel": "Статус",
+	"createTask.create": "Создать",
+	"createTask.creating": "Создаётся...",
+
 	// TaskCard
 	"task.moveTo": "Переместить в",
 	"task.delete": "Удалить",

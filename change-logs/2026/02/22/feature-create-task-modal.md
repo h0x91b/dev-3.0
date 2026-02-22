@@ -1,0 +1,1 @@
+Replaced inline task creation form in the To Do column with a centered modal popup. The modal lets users enter a title and pick any status (To Do, In Progress, etc.) when creating a task. Backend updated to accept an optional status parameter, with automatic worktree + PTY setup for active statuses.

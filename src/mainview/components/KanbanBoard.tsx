@@ -1,9 +1,10 @@
-import type { Dispatch } from "react";
+import { useState, type Dispatch } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
 import KanbanColumn from "./KanbanColumn";
+import CreateTaskModal from "./CreateTaskModal";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -14,6 +15,7 @@ interface KanbanBoardProps {
 
 function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 	const t = useT();
+	const [showCreateModal, setShowCreateModal] = useState(false);
 
 	const tasksByStatus = new Map<TaskStatus, Task[]>();
 	for (const status of ALL_STATUSES) {
@@ -24,19 +26,30 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 	}
 
 	return (
-		<div className="flex gap-3 p-5 h-full min-h-0 overflow-x-auto overflow-y-hidden">
-			{ALL_STATUSES.map((status) => (
-				<KanbanColumn
-					key={status}
-					status={status}
-					label={t(statusKey(status))}
-					tasks={tasksByStatus.get(status) || []}
+		<>
+			<div className="flex gap-3 p-5 h-full min-h-0 overflow-x-auto overflow-y-hidden">
+				{ALL_STATUSES.map((status) => (
+					<KanbanColumn
+						key={status}
+						status={status}
+						label={t(statusKey(status))}
+						tasks={tasksByStatus.get(status) || []}
+						project={project}
+						dispatch={dispatch}
+						navigate={navigate}
+						onAddTask={() => setShowCreateModal(true)}
+					/>
+				))}
+			</div>
+
+			{showCreateModal && (
+				<CreateTaskModal
 					project={project}
 					dispatch={dispatch}
-					navigate={navigate}
+					onClose={() => setShowCreateModal(false)}
 				/>
-			))}
-		</div>
+			)}
+		</>
 	);
 }
 

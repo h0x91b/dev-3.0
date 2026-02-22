@@ -1,4 +1,4 @@
-import type { Project, Task } from "../shared/types";
+import type { Project, Task, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 
@@ -128,15 +128,16 @@ export async function saveTasks(
 export async function addTask(
 	project: Project,
 	title: string,
+	status: TaskStatus = "todo",
 ): Promise<Task> {
-	log.info("Creating task", { projectId: project.id, title });
+	log.info("Creating task", { projectId: project.id, title, status });
 	const tasks = await loadTasks(project);
 	const now = new Date().toISOString();
 	const task: Task = {
 		id: crypto.randomUUID(),
 		projectId: project.id,
 		title,
-		status: "todo",
+		status,
 		baseBranch: project.defaultBaseBranch,
 		worktreePath: null,
 		branchName: null,
