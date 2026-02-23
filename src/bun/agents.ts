@@ -9,7 +9,8 @@ const AGENTS_FILE = `${DEV3_HOME}/agents.json`;
 
 // ---- Storage ----
 
-/** Merge stored agents with defaults. Missing defaults are added; stored versions win. */
+/** Merge stored agents with defaults. Missing defaults are added; stored versions win.
+ *  For default agents, new predefined configurations are appended if not already present. */
 function mergeWithDefaults(stored: CodingAgent[]): CodingAgent[] {
 	const byId = new Map(stored.map((a) => [a.id, a]));
 	const result: CodingAgent[] = [];
@@ -18,8 +19,15 @@ function mergeWithDefaults(stored: CodingAgent[]): CodingAgent[] {
 	for (const def of DEFAULT_AGENTS) {
 		const existing = byId.get(def.id);
 		if (existing) {
-			// Stored version wins, but keep isDefault flag
-			result.push({ ...existing, isDefault: true });
+			// Stored version wins, but merge in any new default configurations
+			const existingConfigIds = new Set(existing.configurations.map((c) => c.id));
+			const newConfigs = def.configurations.filter((c) => !existingConfigIds.has(c.id));
+			const merged = {
+				...existing,
+				isDefault: true,
+				configurations: [...existing.configurations, ...newConfigs],
+			};
+			result.push(merged);
 			byId.delete(def.id);
 		} else {
 			result.push({ ...def });
