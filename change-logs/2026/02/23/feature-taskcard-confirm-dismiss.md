@@ -1,0 +1,1 @@
+Redesigned TaskCard: X button on TODO confirms before cancelling, X on cancelled confirms before deleting. Restored status dropdown on TODO cards alongside the solid green Run button. Improved button styling with proper backgrounds and shadows.

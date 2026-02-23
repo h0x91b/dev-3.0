@@ -84,6 +84,7 @@ const en = {
 	"task.failedDelete": "Failed to delete task: {error}",
 	"task.run": "Run",
 	"task.cancel": "Cancel",
+	"task.confirmCancel": "Cancel task \"{title}\"?",
 	"task.variant": "#{n}",
 
 	// LaunchVariantsModal

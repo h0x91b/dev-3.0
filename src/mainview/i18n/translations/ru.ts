@@ -88,6 +88,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.failedDelete": "Не удалось удалить задачу: {error}",
 	"task.run": "Запустить",
 	"task.cancel": "Отменить",
+	"task.confirmCancel": "Отменить задачу «{title}»?",
 	"task.variant": "#{n}",
 
 	// LaunchVariantsModal

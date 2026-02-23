@@ -23,6 +23,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
+	const isTodo = task.status === "todo";
+	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const color = STATUS_COLORS[task.status];
 
@@ -89,6 +91,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		}
 	}
 
+	/** X button handler: cancel (from todo) or delete (from cancelled), with confirmation */
+	function handleDismiss(e: React.MouseEvent) {
+		e.stopPropagation();
+		if (isTodo) {
+			if (!confirm(t("task.confirmCancel", { title: task.title }))) return;
+			handleMove("cancelled");
+		} else if (isCancelled) {
+			handleDelete();
+		}
+	}
+
 	function handleClick() {
 		if (isActive && !menuOpen) {
 			navigate({
@@ -105,60 +118,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		onDragStartProp(task.id);
 	}
 
-	if (task.status === "todo") {
-		return (
-			<div
-				draggable={!moving}
-				onDragStart={handleDragStart}
-				className={`group relative p-3.5 bg-elevated rounded-xl transition-all border-l-[3px] cursor-grab active:cursor-grabbing ${
-					moving ? "opacity-50 pointer-events-none" : ""
-				}`}
-				style={{ borderLeftColor: color }}
-			>
-				{/* Cancel button — top-right, subtle */}
-				<button
-					onClick={(e) => {
-						e.stopPropagation();
-						handleMove("cancelled");
-					}}
-					className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-md text-fg-muted hover:text-danger hover:bg-danger/10 transition-all"
-					title={t("task.cancel")}
-					disabled={moving}
-				>
-					<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-
-				{/* Title */}
-				<div className="text-fg text-sm leading-relaxed break-words font-medium pr-5">
-					{task.title}
-				</div>
-
-				{/* Run button — full width */}
-				<button
-					onClick={(e) => {
-						e.stopPropagation();
-						onLaunchVariants(task, "in-progress");
-					}}
-					className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-1.5 rounded-lg bg-green-600/15 text-green-400 hover:bg-green-600/25 hover:text-green-300 transition-colors"
-					title={t("task.run")}
-					disabled={moving}
-				>
-					<svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-						<path d="M8 5v14l11-7z" />
-					</svg>
-					{t("task.run")}
-				</button>
-			</div>
-		);
-	}
+	const showDismissButton = isTodo || isCancelled;
 
 	return (
 		<div
 			draggable={!moving}
 			onDragStart={handleDragStart}
-			className={`group p-3.5 bg-elevated rounded-xl transition-all border-l-[3px] ${
+			className={`group relative p-3.5 bg-elevated rounded-xl transition-all border-l-[3px] ${
 				isActive
 					? "cursor-pointer hover:bg-elevated-hover hover:shadow-lg hover:shadow-black/15"
 					: "cursor-grab active:cursor-grabbing"
@@ -166,6 +132,20 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			style={{ borderLeftColor: color }}
 			onClick={handleClick}
 		>
+			{/* Dismiss button — top-right, visible on hover */}
+			{showDismissButton && (
+				<button
+					onClick={handleDismiss}
+					className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-all"
+					title={isCancelled ? t("task.delete") : t("task.cancel")}
+					disabled={moving}
+				>
+					<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			)}
+
 			{/* Variant badge */}
 			{task.variantIndex !== null && (() => {
 				const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
@@ -173,7 +153,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					? agent.configurations.find((c) => c.id === task.configId)
 					: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
 
-				// Build label: #N · AgentName (ConfigName)
 				let label = `#${task.variantIndex}`;
 				if (agent) {
 					label += ` · ${agent.name}`;
@@ -195,12 +174,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{task.title}
 			</div>
 
-			{/* Bottom row: status badge + delete */}
-			<div className="flex items-center justify-between mt-3">
+			{/* Bottom row */}
+			<div className="flex items-center justify-between mt-3 gap-2">
+				{/* Status dropdown trigger */}
 				<button
 					ref={triggerRef}
 					onClick={toggleMenu}
-					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors"
+					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors flex-shrink-0"
 					disabled={moving}
 				>
 					<div
@@ -212,29 +192,38 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</span>
 				</button>
 
-				{/* Delete button — visible on hover */}
-				<button
-					onClick={(e) => {
-						e.stopPropagation();
-						handleDelete();
-					}}
-					className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all p-1 rounded-lg hover:bg-danger/10"
-					title={t("task.delete")}
-				>
-					<svg
-						className="w-4 h-4"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
+				{/* Right side actions */}
+				{isTodo ? (
+					/* Run button for TODO cards */
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							onLaunchVariants(task, "in-progress");
+						}}
+						className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white shadow-sm shadow-green-900/30 transition-colors"
+						title={t("task.run")}
+						disabled={moving}
 					>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={2}
-							d="M6 18L18 6M6 6l12 12"
-						/>
-					</svg>
-				</button>
+						<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+							<path d="M8 5v14l11-7z" />
+						</svg>
+						{t("task.run")}
+					</button>
+				) : !showDismissButton && (
+					/* Delete button for non-todo/non-cancelled cards (visible on hover) */
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							handleDelete();
+						}}
+						className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all p-1 rounded-lg hover:bg-danger/10"
+						title={t("task.delete")}
+					>
+						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				)}
 			</div>
 
 			{/* Status dropdown menu */}

@@ -101,6 +101,8 @@ function renderCard(
 describe("TaskCard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// happy-dom doesn't define window.confirm by default
+		window.confirm = window.confirm ?? (() => false);
 	});
 
 	describe("variant badge", () => {
@@ -149,19 +151,13 @@ describe("TaskCard", () => {
 		});
 	});
 
-	describe("todo card action buttons", () => {
-		it("shows Run and X buttons for todo tasks", () => {
+	describe("todo card", () => {
+		it("shows Run button and status dropdown", () => {
 			renderCard(makeTask({ status: "todo" }));
 
 			expect(screen.getByTitle("Run")).toBeInTheDocument();
-			expect(screen.getByTitle("Cancel")).toBeInTheDocument();
-		});
-
-		it("does not show status label text for todo tasks", () => {
-			renderCard(makeTask({ status: "todo" }));
-
-			// No "To Do" text — card is already in the TODO column
-			expect(screen.queryByText("To Do")).not.toBeInTheDocument();
+			expect(screen.getByText("Run")).toBeInTheDocument();
+			expect(screen.getByText("To Do")).toBeInTheDocument();
 		});
 
 		it("Run button triggers onLaunchVariants with in-progress", async () => {
@@ -176,26 +172,90 @@ describe("TaskCard", () => {
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
-		it("X button moves task to cancelled", async () => {
+		it("X button asks for confirmation before cancelling", async () => {
 			const user = userEvent.setup();
-			const dispatch = vi.fn();
-			const onLaunchVariants = vi.fn();
 			const task = makeTask({ status: "todo" });
+			const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
-			mockedApi.request.moveTask.mockResolvedValue({
-				...task,
-				status: "cancelled",
-			});
-
-			renderCard(task, { dispatch, onLaunchVariants });
+			renderCard(task);
 
 			await user.click(screen.getByTitle("Cancel"));
 
-			expect(onLaunchVariants).not.toHaveBeenCalled();
+			expect(confirmSpy).toHaveBeenCalled();
+			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
+			confirmSpy.mockRestore();
+		});
+
+		it("X button moves to cancelled when confirmed", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const task = makeTask({ status: "todo" });
+			vi.spyOn(window, "confirm").mockReturnValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "cancelled" });
+
+			renderCard(task, { dispatch });
+
+			await user.click(screen.getByTitle("Cancel"));
+
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "cancelled",
+			});
+		});
+
+		it("status dropdown opens with In Progress and Cancelled", async () => {
+			const user = userEvent.setup();
+			renderCard(makeTask({ status: "todo" }));
+
+			await user.click(screen.getByText("To Do"));
+
+			expect(screen.getByText("In Progress")).toBeInTheDocument();
+			expect(screen.getByText("Cancelled")).toBeInTheDocument();
+		});
+
+		it("In Progress in dropdown triggers onLaunchVariants", async () => {
+			const user = userEvent.setup();
+			const onLaunchVariants = vi.fn();
+			const task = makeTask({ status: "todo" });
+			renderCard(task, { onLaunchVariants });
+
+			await user.click(screen.getByText("To Do"));
+			await user.click(screen.getByText("In Progress"));
+
+			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
+		});
+	});
+
+	describe("cancelled card", () => {
+		it("X button asks for confirmation before deleting", async () => {
+			const user = userEvent.setup();
+			const task = makeTask({ status: "cancelled" });
+			const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+			renderCard(task);
+
+			await user.click(screen.getByTitle("Delete"));
+
+			expect(confirmSpy).toHaveBeenCalled();
+			expect(mockedApi.request.deleteTask).not.toHaveBeenCalled();
+			confirmSpy.mockRestore();
+		});
+
+		it("X button deletes task when confirmed", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const task = makeTask({ status: "cancelled" });
+			vi.spyOn(window, "confirm").mockReturnValue(true);
+			mockedApi.request.deleteTask.mockResolvedValue(undefined);
+
+			renderCard(task, { dispatch });
+
+			await user.click(screen.getByTitle("Delete"));
+
+			expect(mockedApi.request.deleteTask).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
 			});
 		});
 	});
@@ -213,11 +273,10 @@ describe("TaskCard", () => {
 			expect(screen.getByText("User Questions")).toBeInTheDocument();
 		});
 
-		it("in-progress task does not show Run/Cancel buttons", () => {
+		it("in-progress task does not show Run button", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
 			expect(screen.queryByTitle("Run")).not.toBeInTheDocument();
-			expect(screen.queryByTitle("Cancel")).not.toBeInTheDocument();
 		});
 	});
 });
