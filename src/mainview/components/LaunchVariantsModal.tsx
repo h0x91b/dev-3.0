@@ -115,10 +115,11 @@ function LaunchVariantsModal({
 
 								{/* Agent select */}
 								<div className="flex-1 min-w-0">
-									<label className="text-xs text-fg-3 block mb-1">
+									<label htmlFor={`variant-agent-${index}`} className="text-xs text-fg-3 block mb-1">
 										{t("launch.agent")}
 									</label>
 									<select
+										id={`variant-agent-${index}`}
 										value={variant.agentId ?? ""}
 										onChange={(e) =>
 											handleAgentChange(
@@ -138,10 +139,11 @@ function LaunchVariantsModal({
 
 								{/* Config select */}
 								<div className="flex-1 min-w-0">
-									<label className="text-xs text-fg-3 block mb-1">
+									<label htmlFor={`variant-config-${index}`} className="text-xs text-fg-3 block mb-1">
 										{t("launch.config")}
 									</label>
 									<select
+										id={`variant-config-${index}`}
 										value={variant.configId ?? ""}
 										onChange={(e) =>
 											updateVariant(index, {
