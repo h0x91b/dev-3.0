@@ -93,6 +93,19 @@ function scheduleRestart(reason: string) {
 	}, DEBOUNCE_MS);
 }
 
+// --- Stdin: catch Ctrl+C (0x03) piped from concurrently --handle-input ---
+// Electrobun puts the terminal in raw mode for its PTY server, which
+// disables SIGINT generation. concurrently reads the raw byte and pipes
+// it to us, so we catch it here and exit.
+process.stdin.resume();
+process.stdin.on("data", (data: Buffer) => {
+	if (data[0] === 0x03) {
+		log("Ctrl+C received, shutting down...");
+		if (electrobunProc) try { electrobunProc.kill(); } catch {}
+		process.exit(0);
+	}
+});
+
 // --- File watchers ---
 
 for (const dir of WATCH_DIRS) {
