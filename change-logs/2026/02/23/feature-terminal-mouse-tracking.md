@@ -1,0 +1,1 @@
+Add mouse tracking support for the embedded terminal. When a terminal app enables mouse mode (e.g. tmux with `set -g mouse on`), mouse events (click, drag, scroll) are now forwarded to the PTY as SGR extended mouse sequences (mode 1006). When mouse tracking is off, text selection via SelectionManager works as before.

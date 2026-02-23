@@ -60,7 +60,8 @@
       "Bash(lsof -ti :7681 | xargs kill -9 2>/dev/null; sleep 1 && bun run dev 2>&1)",
       "WebFetch(domain:electrobun.dev)",
       "WebFetch(domain:ghostty.org)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(xxd:*)"
     ]
   }
 }

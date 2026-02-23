@@ -15,6 +15,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
 		let layoutObserver: ResizeObserver | null = null;
+		let mouseCleanup: (() => void) | undefined;
 
 		function setup() {
 			if (!containerRef.current || disposed) return;
@@ -69,11 +70,104 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 						fitAddon!.fit();
 						fitAddon!.observeResize();
 						term.focus();
+						mouseCleanup = setupMouseTracking(term);
 						connectPty(term, fitAddon!);
 					});
 				}
 			});
 			layoutObserver.observe(containerRef.current);
+		}
+
+		function setupMouseTracking(term: Terminal): () => void {
+			const canvas = term.renderer!.getCanvas();
+			let trackedButton = -1;
+
+			function cellCoords(e: MouseEvent): [number, number] {
+				const rect = canvas.getBoundingClientRect();
+				const col = Math.max(
+					1,
+					Math.min(
+						Math.floor(
+							(e.clientX - rect.left) /
+								term.renderer!.charWidth,
+						) + 1,
+						term.cols,
+					),
+				);
+				const row = Math.max(
+					1,
+					Math.min(
+						Math.floor(
+							(e.clientY - rect.top) /
+								term.renderer!.charHeight,
+						) + 1,
+						term.rows,
+					),
+				);
+				return [col, row];
+			}
+
+			function sgrMouse(
+				btn: number,
+				col: number,
+				row: number,
+				press: boolean,
+			) {
+				term.input(
+					`\x1b[<${btn};${col};${row}${press ? "M" : "m"}`,
+					true,
+				);
+			}
+
+			function onMouseDown(e: MouseEvent) {
+				if (!term.hasMouseTracking() || e.button > 2) return;
+				trackedButton = e.button;
+				const [col, row] = cellCoords(e);
+				sgrMouse(e.button, col, row, true);
+				e.preventDefault();
+				e.stopPropagation();
+			}
+
+			function onMouseUp(e: MouseEvent) {
+				if (trackedButton < 0) return;
+				const btn = trackedButton;
+				trackedButton = -1;
+				if (!term.hasMouseTracking()) return;
+				const [col, row] = cellCoords(e);
+				sgrMouse(btn, col, row, false);
+			}
+
+			function onMouseMove(e: MouseEvent) {
+				if (!term.hasMouseTracking() || trackedButton < 0) return;
+				const [col, row] = cellCoords(e);
+				sgrMouse(trackedButton + 32, col, row, true);
+				e.stopPropagation();
+			}
+
+			canvas.addEventListener("mousedown", onMouseDown, {
+				capture: true,
+			});
+			canvas.addEventListener("mousemove", onMouseMove, {
+				capture: true,
+			});
+			document.addEventListener("mouseup", onMouseUp);
+
+			term.attachCustomWheelEventHandler((e: WheelEvent) => {
+				if (!term.hasMouseTracking()) return false;
+				const [col, row] = cellCoords(e);
+				sgrMouse(e.deltaY < 0 ? 64 : 65, col, row, true);
+				return true;
+			});
+
+			return () => {
+				canvas.removeEventListener("mousedown", onMouseDown, {
+					capture: true,
+				});
+				canvas.removeEventListener("mousemove", onMouseMove, {
+					capture: true,
+				});
+				document.removeEventListener("mouseup", onMouseUp);
+			};
 		}
 
 		function connectPty(term: Terminal, fit: FitAddon) {
@@ -134,6 +228,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		return () => {
 			disposed = true;
 			layoutObserver?.disconnect();
+			mouseCleanup?.();
 			ws?.close();
 			fitAddon?.dispose();
 			if (termRef.current) {
