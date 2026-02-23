@@ -109,6 +109,13 @@ function scheduleRestart(reason: string) {
 	}, DEBOUNCE_MS);
 }
 
+// --- Ctrl+C: kill everything and exit immediately ---
+process.on("SIGINT", () => {
+	if (electrobunProc) try { electrobunProc.kill(); } catch {}
+	if (viteProc) try { viteProc.kill(); } catch {}
+	process.exit(0);
+});
+
 // --- File watchers ---
 
 for (const dir of WATCH_DIRS) {
