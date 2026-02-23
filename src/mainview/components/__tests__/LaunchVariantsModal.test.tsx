@@ -2,13 +2,17 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LaunchVariantsModal from "../LaunchVariantsModal";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../../shared/types";
+import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			spawnVariants: vi.fn(),
+			getGlobalSettings: vi.fn().mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+			}),
 		},
 	},
 }));
@@ -74,11 +78,19 @@ function makeProject(overrides?: Partial<Project>): Project {
 		name: "Test Project",
 		path: "/tmp/test",
 		setupScript: "",
-		defaultTmuxCommand: "claude",
-		defaultAgentId: "builtin-claude",
+		defaultTmuxCommand: "",
+		defaultAgentId: null,
 		defaultConfigId: null,
 		defaultBaseBranch: "main",
 		createdAt: "2025-01-01T00:00:00Z",
+		...overrides,
+	};
+}
+
+function makeGlobalSettings(overrides?: Partial<GlobalSettings>): GlobalSettings {
+	return {
+		defaultAgentId: "builtin-claude",
+		defaultConfigId: "claude-default",
 		...overrides,
 	};
 }
@@ -89,6 +101,7 @@ function renderModal(
 		dispatch?: React.Dispatch<AppAction>;
 		onClose?: () => void;
 		targetStatus?: TaskStatus;
+		globalSettings?: GlobalSettings;
 	},
 ) {
 	return render(
@@ -98,6 +111,7 @@ function renderModal(
 				project={project}
 				targetStatus={opts?.targetStatus ?? "in-progress"}
 				agents={agents}
+				globalSettings={opts?.globalSettings ?? makeGlobalSettings()}
 				dispatch={opts?.dispatch ?? vi.fn()}
 				onClose={opts?.onClose ?? vi.fn()}
 			/>
@@ -122,18 +136,19 @@ describe("LaunchVariantsModal", () => {
 	});
 
 	describe("initial config resolution", () => {
-		it("uses agent.defaultConfigId when project.defaultConfigId is null", () => {
-			const project = makeProject({ defaultConfigId: null, defaultAgentId: "builtin-claude" });
-			renderModal(project);
+		it("uses agent.defaultConfigId when globalSettings.defaultConfigId is not matching", () => {
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default" });
+			renderModal(project, { globalSettings: gs });
 
 			const configSelect = getConfigSelects()[0];
-			// Should be resolved to claude-default via agent.defaultConfigId
 			expect(configSelect.value).toBe("claude-default");
 		});
 
-		it("uses project.defaultConfigId when set", () => {
-			const project = makeProject({ defaultConfigId: "claude-plan", defaultAgentId: "builtin-claude" });
-			renderModal(project);
+		it("uses globalSettings.defaultConfigId when set", () => {
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-plan" });
+			renderModal(project, { globalSettings: gs });
 
 			const configSelect = getConfigSelects()[0];
 			expect(configSelect.value).toBe("claude-plan");
@@ -150,7 +165,8 @@ describe("LaunchVariantsModal", () => {
 				],
 				// No defaultConfigId
 			};
-			const project = makeProject({ defaultAgentId: "custom", defaultConfigId: null });
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "custom", defaultConfigId: "nonexistent" });
 
 			render(
 				<I18nProvider>
@@ -159,6 +175,7 @@ describe("LaunchVariantsModal", () => {
 						project={project}
 						targetStatus="in-progress"
 						agents={[...agents, customAgent]}
+						globalSettings={gs}
 						dispatch={vi.fn()}
 						onClose={vi.fn()}
 					/>
@@ -172,8 +189,9 @@ describe("LaunchVariantsModal", () => {
 
 	describe("config dropdown population", () => {
 		it("shows all configurations for Claude (multi-config agent)", () => {
-			const project = makeProject({ defaultAgentId: "builtin-claude", defaultConfigId: null });
-			renderModal(project);
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
+			renderModal(project, { globalSettings: gs });
 
 			const configSelect = getConfigSelects()[0];
 			const options = within(configSelect).getAllByRole("option");
@@ -185,8 +203,9 @@ describe("LaunchVariantsModal", () => {
 		});
 
 		it("shows single configuration for Codex", () => {
-			const project = makeProject({ defaultAgentId: "builtin-codex", defaultConfigId: null });
-			renderModal(project);
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "codex-default" });
+			renderModal(project, { globalSettings: gs });
 
 			const configSelect = getConfigSelects()[0];
 			const options = within(configSelect).getAllByRole("option");
@@ -212,8 +231,9 @@ describe("LaunchVariantsModal", () => {
 	describe("agent switching", () => {
 		it("resets config to agent default when switching agents", async () => {
 			const user = userEvent.setup();
-			const project = makeProject({ defaultAgentId: "builtin-claude", defaultConfigId: null });
-			renderModal(project);
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
+			renderModal(project, { globalSettings: gs });
 
 			const agentSelect = getAgentSelects()[0];
 			const configSelect = getConfigSelects()[0];
@@ -236,8 +256,9 @@ describe("LaunchVariantsModal", () => {
 
 		it("switching back to Claude restores all Claude configs", async () => {
 			const user = userEvent.setup();
-			const project = makeProject({ defaultAgentId: "builtin-claude", defaultConfigId: null });
-			renderModal(project);
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
+			renderModal(project, { globalSettings: gs });
 
 			const agentSelect = getAgentSelects()[0];
 
@@ -256,7 +277,7 @@ describe("LaunchVariantsModal", () => {
 	describe("add/remove variants", () => {
 		it("adds a variant row with defaults", async () => {
 			const user = userEvent.setup();
-			const project = makeProject({ defaultAgentId: "builtin-claude", defaultConfigId: null });
+			const project = makeProject();
 			renderModal(project);
 
 			// Initially 1 variant row
@@ -312,7 +333,7 @@ describe("LaunchVariantsModal", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const onClose = vi.fn();
-			const project = makeProject({ defaultAgentId: "builtin-claude", defaultConfigId: null });
+			const project = makeProject();
 
 			const resultTasks: Task[] = [
 				{ ...baseTask, id: "v1", status: "in-progress", groupId: "g1", variantIndex: 1, agentId: "builtin-claude", configId: "claude-default" },
@@ -344,7 +365,7 @@ describe("LaunchVariantsModal", () => {
 
 		it("shows error when spawnVariants fails", async () => {
 			const user = userEvent.setup();
-			const project = makeProject({ defaultAgentId: "builtin-claude", defaultConfigId: null });
+			const project = makeProject();
 
 			mockedApi.request.spawnVariants.mockRejectedValue(new Error("boom"));
 
@@ -358,29 +379,30 @@ describe("LaunchVariantsModal", () => {
 		});
 	});
 
-	describe("fallback when defaultAgentId is missing", () => {
-		it("populates config dropdown when project.defaultAgentId is null", () => {
-			const project = makeProject({ defaultAgentId: null, defaultConfigId: null });
+	describe("fallback when globalSettings agent is missing", () => {
+		it("populates config dropdown when globalSettings agent is valid", () => {
+			const project = makeProject();
 			renderModal(project);
 
 			const configSelect = getConfigSelects()[0];
 			const options = within(configSelect).getAllByRole("option");
 
-			// Should fall back to first agent (Claude) and show its configs
+			// Should show Claude configs from globalSettings default
 			expect(options.length).toBeGreaterThan(0);
 		});
 
-		it("selects first agent when project.defaultAgentId is null", () => {
-			const project = makeProject({ defaultAgentId: null, defaultConfigId: null });
+		it("selects global default agent", () => {
+			const project = makeProject();
 			renderModal(project);
 
 			const agentSelect = getAgentSelects()[0];
 			expect(agentSelect.value).toBe("builtin-claude");
 		});
 
-		it("populates config dropdown when defaultAgentId points to nonexistent agent", () => {
-			const project = makeProject({ defaultAgentId: "deleted-agent", defaultConfigId: null });
-			renderModal(project);
+		it("falls back to first agent when globalSettings agent is nonexistent", () => {
+			const project = makeProject();
+			const gs = makeGlobalSettings({ defaultAgentId: "deleted-agent" });
+			renderModal(project, { globalSettings: gs });
 
 			const configSelect = getConfigSelects()[0];
 			const options = within(configSelect).getAllByRole("option");
@@ -388,11 +410,11 @@ describe("LaunchVariantsModal", () => {
 			expect(options.length).toBeGreaterThan(0);
 		});
 
-		it("sends correct agentId in spawnVariants when falling back to first agent", async () => {
+		it("sends correct agentId in spawnVariants using global default", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const onClose = vi.fn();
-			const project = makeProject({ defaultAgentId: null, defaultConfigId: null });
+			const project = makeProject();
 
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(project, { dispatch, onClose });

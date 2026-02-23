@@ -117,13 +117,21 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 	},
 ];
 
+export interface GlobalSettings {
+	defaultAgentId: string;
+	defaultConfigId: string;
+}
+
 export interface Project {
 	id: string;
 	name: string;
 	path: string;
 	setupScript: string;
+	/** @deprecated Use GlobalSettings.defaultAgentId instead */
 	defaultTmuxCommand: string;
+	/** @deprecated Use GlobalSettings.defaultAgentId instead */
 	defaultAgentId: string | null;
+	/** @deprecated Use GlobalSettings.defaultConfigId instead */
 	defaultConfigId: string | null;
 	defaultBaseBranch: string;
 	createdAt: string;
@@ -186,12 +194,17 @@ export type AppRPCSchema = {
 				params: {
 					projectId: string;
 					setupScript: string;
-					defaultTmuxCommand: string;
-					defaultAgentId: string | null;
-					defaultConfigId: string | null;
 					defaultBaseBranch: string;
 				};
 				response: Project;
+			};
+			getGlobalSettings: {
+				params: void;
+				response: GlobalSettings;
+			};
+			saveGlobalSettings: {
+				params: GlobalSettings;
+				response: void;
 			};
 			getAgents: {
 				params: void;
@@ -242,6 +255,8 @@ export type AppRPCSchema = {
 	}>;
 	webview: RPCSchema<{
 		requests: Record<string, never>;
-		messages: Record<string, never>;
+		messages: {
+			navigateToSettings: {};
+		};
 	}>;
 };

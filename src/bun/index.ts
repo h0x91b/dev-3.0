@@ -63,6 +63,8 @@ ApplicationMenu.setApplicationMenu([
 		submenu: [
 			{ label: "About dev-3.0", action: "about" },
 			{ type: "separator" },
+			{ label: "Settings...", action: "open-settings", accelerator: "," },
+			{ type: "separator" },
 			{ role: "hide" },
 			{ role: "hideOthers" },
 			{ role: "showAll" },
@@ -158,6 +160,8 @@ Electrobun.events.on("application-menu-clicked", (e) => {
 			detail: "Terminal-centric project manager\nBuilt with Electrobun, React, and Bun.",
 			buttons: ["OK"],
 		});
+	} else if (e.data.action === "open-settings") {
+		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
 	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
 	}

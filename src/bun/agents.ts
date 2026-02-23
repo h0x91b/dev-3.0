@@ -4,6 +4,7 @@ import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { loadSettings } from "./settings";
 
 const log = createLogger("agents");
 
@@ -214,24 +215,24 @@ export async function resolveCommandForProject(
 		worktreePath,
 	};
 
-	if (project.defaultAgentId) {
-		const agents = await getAllAgents();
-		const agent = agents.find((a) => a.id === project.defaultAgentId);
-		if (agent) {
-			const resolvedConfigId = configId ?? project.defaultConfigId;
-			const config = findConfig(agent, resolvedConfigId);
-			const command = resolveAgentCommand(agent, config, ctx);
-			const extraEnv = buildTaskEnv(project, taskTitle, "", worktreePath, config);
-			return { command, agent, config, extraEnv };
-		}
-		log.warn("Agent not found, falling back to defaultTmuxCommand", {
-			agentId: project.defaultAgentId,
-		});
+	const settings = await loadSettings();
+	const agents = await getAllAgents();
+	const agent = agents.find((a) => a.id === settings.defaultAgentId);
+
+	if (agent) {
+		const resolvedConfigId = configId ?? settings.defaultConfigId;
+		const config = findConfig(agent, resolvedConfigId);
+		const command = resolveAgentCommand(agent, config, ctx);
+		const extraEnv = buildTaskEnv(project, taskTitle, "", worktreePath, config);
+		return { command, agent, config, extraEnv };
 	}
 
-	// Backward compat: use raw defaultTmuxCommand
+	log.warn("Default agent not found, falling back to bash", {
+		agentId: settings.defaultAgentId,
+	});
+
 	return {
-		command: project.defaultTmuxCommand || "bash",
+		command: "bash",
 		agent: null,
 		config: undefined,
 		extraEnv: buildTaskEnv(project, taskTitle, "", worktreePath),

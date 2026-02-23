@@ -58,6 +58,10 @@ const en = {
 	"settings.configMaxBudget": "Max Budget (USD)",
 	"settings.configMaxBudgetHint": "Maximum dollar amount for API calls per session",
 	"settings.cantDeleteDefault": "Default agents cannot be deleted",
+	"settings.defaultAgent": "Default Agent",
+	"settings.defaultAgentDesc": "Agent used for new tasks",
+	"settings.defaultConfig": "Default Configuration",
+	"settings.defaultConfigDesc": "Configuration applied when launching tasks",
 
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",
@@ -101,14 +105,6 @@ const en = {
 	"projectSettings.setupScript": "Setup Script",
 	"projectSettings.setupScriptDesc":
 		"Runs in the worktree directory after creation",
-	"projectSettings.agent": "Coding Agent",
-	"projectSettings.agentDesc": "Agent to launch in tmux for new tasks",
-	"projectSettings.configuration": "Configuration",
-	"projectSettings.configurationDesc": "Agent configuration to use for new tasks",
-	"projectSettings.customCommand": "Custom Command",
-	"projectSettings.defaultCommand": "Default Command",
-	"projectSettings.defaultCommandDesc":
-		"Command to run inside tmux for new tasks",
 	"projectSettings.baseBranch": "Base Branch",
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.save": "Save Settings",

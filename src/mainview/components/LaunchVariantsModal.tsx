@@ -1,5 +1,5 @@
 import { useState, type Dispatch } from "react";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -14,6 +14,7 @@ interface LaunchVariantsModalProps {
 	project: Project;
 	targetStatus: TaskStatus;
 	agents: CodingAgent[];
+	globalSettings: GlobalSettings;
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
 }
@@ -23,14 +24,15 @@ function LaunchVariantsModal({
 	project,
 	targetStatus,
 	agents,
+	globalSettings,
 	dispatch,
 	onClose,
 }: LaunchVariantsModalProps) {
 	const t = useT();
 
 	function makeDefaultVariant(): VariantRow {
-		// Try project default agent, fall back to first available
-		let agentId = project.defaultAgentId ?? null;
+		// Try global default agent, fall back to first available
+		let agentId: string | null = globalSettings.defaultAgentId ?? null;
 		let agent = agentId ? agents.find((a) => a.id === agentId) : null;
 
 		// If agent not found (null, undefined, or removed), use first available
@@ -40,7 +42,7 @@ function LaunchVariantsModal({
 		}
 
 		const configId =
-			project.defaultConfigId ??
+			globalSettings.defaultConfigId ??
 			agent?.defaultConfigId ??
 			agent?.configurations[0]?.id ??
 			null;

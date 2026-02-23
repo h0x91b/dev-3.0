@@ -1,10 +1,11 @@
 import { Utils } from "electrobun/bun";
-import type { CodingAgent, Project, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../shared/types";
 import { ACTIVE_STATUSES } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
 import * as agents from "./agents";
+import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 
 const log = createLogger("rpc");
@@ -136,21 +137,28 @@ export const handlers = {
 	async updateProjectSettings(params: {
 		projectId: string;
 		setupScript: string;
-		defaultTmuxCommand: string;
-		defaultAgentId: string | null;
-		defaultConfigId: string | null;
 		defaultBaseBranch: string;
 	}): Promise<Project> {
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
 		const project = await data.updateProject(params.projectId, {
 			setupScript: params.setupScript,
-			defaultTmuxCommand: params.defaultTmuxCommand,
-			defaultAgentId: params.defaultAgentId,
-			defaultConfigId: params.defaultConfigId,
 			defaultBaseBranch: params.defaultBaseBranch,
 		});
 		log.info("← updateProjectSettings done");
 		return project;
+	},
+
+	async getGlobalSettings(): Promise<GlobalSettings> {
+		log.info("→ getGlobalSettings");
+		const settings = await loadSettings();
+		log.info("← getGlobalSettings", { settings });
+		return settings;
+	},
+
+	async saveGlobalSettings(params: GlobalSettings): Promise<void> {
+		log.info("→ saveGlobalSettings", { params });
+		await saveSettings(params);
+		log.info("← saveGlobalSettings done");
 	},
 
 	async getAgents(): Promise<CodingAgent[]> {

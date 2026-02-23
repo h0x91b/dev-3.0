@@ -1,0 +1,1 @@
+Separated agent configuration from project settings into global settings. Default agent and configuration are now stored in `~/.dev3.0/settings.json` and managed in GlobalSettings (Cmd+, to open). Project settings now only contain setup script and base branch. Added navigateToSettings push message so Cmd+, menu item opens settings from any screen.

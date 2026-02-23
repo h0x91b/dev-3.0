@@ -62,6 +62,10 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.configMaxBudget": "Лимит бюджета (USD)",
 	"settings.configMaxBudgetHint": "Максимальная сумма на API-вызовы за сессию",
 	"settings.cantDeleteDefault": "Встроенные агенты нельзя удалить",
+	"settings.defaultAgent": "Агент по умолчанию",
+	"settings.defaultAgentDesc": "Агент для запуска новых задач",
+	"settings.defaultConfig": "Конфигурация по умолчанию",
+	"settings.defaultConfigDesc": "Конфигурация при запуске задач",
 
 	// KanbanColumn
 	"kanban.noTasks": "Нет задач",
@@ -105,14 +109,6 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Скрипт настройки",
 	"projectSettings.setupScriptDesc":
 		"Запускается в директории worktree после создания",
-	"projectSettings.agent": "Кодинг-агент",
-	"projectSettings.agentDesc": "Агент для запуска в tmux для новых задач",
-	"projectSettings.configuration": "Конфигурация",
-	"projectSettings.configurationDesc": "Конфигурация агента для новых задач",
-	"projectSettings.customCommand": "Произвольная команда",
-	"projectSettings.defaultCommand": "Команда по умолчанию",
-	"projectSettings.defaultCommandDesc":
-		"Команда для запуска в tmux для новых задач",
 	"projectSettings.baseBranch": "Базовая ветка",
 	"projectSettings.baseBranchDesc": "Ветка, от которой создаются worktree",
 	"projectSettings.save": "Сохранить настройки",

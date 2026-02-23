@@ -60,6 +60,10 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.configMaxBudget": "Presupuesto máximo (USD)",
 	"settings.configMaxBudgetHint": "Monto máximo para llamadas API por sesión",
 	"settings.cantDeleteDefault": "Los agentes predeterminados no se pueden eliminar",
+	"settings.defaultAgent": "Agente predeterminado",
+	"settings.defaultAgentDesc": "Agente utilizado para nuevas tareas",
+	"settings.defaultConfig": "Configuración predeterminada",
+	"settings.defaultConfigDesc": "Configuración aplicada al lanzar tareas",
 
 	// KanbanColumn
 	"kanban.noTasks": "Sin tareas",
@@ -103,14 +107,6 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Script de configuración",
 	"projectSettings.setupScriptDesc":
 		"Se ejecuta en el directorio worktree después de la creación",
-	"projectSettings.agent": "Agente de código",
-	"projectSettings.agentDesc": "Agente para ejecutar en tmux para nuevas tareas",
-	"projectSettings.configuration": "Configuración",
-	"projectSettings.configurationDesc": "Configuración del agente para nuevas tareas",
-	"projectSettings.customCommand": "Comando personalizado",
-	"projectSettings.defaultCommand": "Comando predeterminado",
-	"projectSettings.defaultCommandDesc":
-		"Comando para ejecutar en tmux para nuevas tareas",
 	"projectSettings.baseBranch": "Rama base",
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",

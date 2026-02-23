@@ -41,6 +41,15 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	// Listen for Cmd+, (Settings menu item)
+	useEffect(() => {
+		function onNavigateToSettings() {
+			navigate({ screen: "settings" });
+		}
+		window.addEventListener("rpc:navigateToSettings", onNavigateToSettings);
+		return () => window.removeEventListener("rpc:navigateToSettings", onNavigateToSettings);
+	}, [navigate]);
+
 	if (state.loading) {
 		return (
 			<div className="h-full w-full flex items-center justify-center bg-base">

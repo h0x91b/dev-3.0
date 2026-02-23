@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
-import type { CodingAgent, AgentConfiguration, PermissionMode, EffortLevel } from "../../shared/types";
+import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel } from "../../shared/types";
 import { api } from "../rpc";
 
 type Theme = "dark" | "light";
@@ -18,14 +18,37 @@ function GlobalSettings() {
 	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
 	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
 
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
+		defaultAgentId: "builtin-claude",
+		defaultConfigId: "claude-default",
+	});
+
 	useEffect(() => {
 		api.request.getAgents().then(setAgents);
+		api.request.getGlobalSettings().then(setGlobalSettings);
 	}, []);
+
+	const selectedDefaultAgent = agents.find((a) => a.id === globalSettings.defaultAgentId);
+	const defaultAgentConfigs: AgentConfiguration[] = selectedDefaultAgent?.configurations || [];
 
 	function applyTheme(th: Theme) {
 		setTheme(th);
 		document.documentElement.dataset.theme = th;
 		localStorage.setItem("dev3-theme", th);
+	}
+
+	function handleDefaultAgentChange(agentId: string) {
+		const agent = agents.find((a) => a.id === agentId);
+		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
+		const updated = { defaultAgentId: agentId, defaultConfigId: configId };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated);
+	}
+
+	function handleDefaultConfigChange(configId: string) {
+		const updated = { ...globalSettings, defaultConfigId: configId };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated);
 	}
 
 	async function persistAgents(updated: CodingAgent[]) {
@@ -144,6 +167,50 @@ function GlobalSettings() {
 								}}
 							/>
 						</div>
+					</div>
+
+					{/* Default Agent */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.defaultAgent")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.defaultAgentDesc")}
+						</p>
+						<select
+							value={globalSettings.defaultAgentId}
+							onChange={(e) => handleDefaultAgentChange(e.target.value)}
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+						>
+							{agents.map((agent) => (
+								<option key={agent.id} value={agent.id}>
+									{agent.name}
+								</option>
+							))}
+						</select>
+
+						{defaultAgentConfigs.length > 0 && (
+							<div className="mt-4">
+								<label className="block text-fg text-sm font-semibold mb-2">
+									{t("settings.defaultConfig")}
+								</label>
+								<p className="text-fg-3 text-sm mb-3">
+									{t("settings.defaultConfigDesc")}
+								</p>
+								<select
+									value={globalSettings.defaultConfigId}
+									onChange={(e) => handleDefaultConfigChange(e.target.value)}
+									className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+								>
+									{defaultAgentConfigs.map((config) => (
+										<option key={config.id} value={config.id}>
+											{config.name}
+											{config.model ? ` (${config.model})` : ""}
+										</option>
+									))}
+								</select>
+							</div>
+						)}
 					</div>
 
 					{/* Coding Agents */}

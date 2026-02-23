@@ -1,5 +1,5 @@
 import { useState, useEffect, type Dispatch } from "react";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
@@ -39,11 +39,16 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 	const t = useT();
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
+		defaultAgentId: "builtin-claude",
+		defaultConfigId: "claude-default",
+	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
 
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
+		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
 	}, []);
 
 	// Global dragend listener to clear drag state
@@ -138,6 +143,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 					project={project}
 					targetStatus={launchModal.targetStatus}
 					agents={agents}
+					globalSettings={globalSettings}
 					dispatch={dispatch}
 					onClose={() => setLaunchModal(null)}
 				/>

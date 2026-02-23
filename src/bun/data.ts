@@ -32,15 +32,6 @@ export async function loadProjects(): Promise<Project[]> {
 			return [];
 		}
 		const projects: Project[] = await file.json();
-		// Backfill fields for projects created before they existed
-		for (const p of projects) {
-			if ((p as any).defaultAgentId === undefined) {
-				p.defaultAgentId = "builtin-claude";
-			}
-			if ((p as any).defaultConfigId === undefined) {
-				p.defaultConfigId = null;
-			}
-		}
 		log.info(`Loaded ${projects.length} project(s)`);
 		return projects;
 	} catch (err) {
@@ -67,9 +58,9 @@ export async function addProject(
 		name,
 		path,
 		setupScript: "",
-		defaultTmuxCommand: "claude",
-		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-default",
+		defaultTmuxCommand: "",
+		defaultAgentId: null,
+		defaultConfigId: null,
 		defaultBaseBranch: "main",
 		createdAt: new Date().toISOString(),
 	};
@@ -88,7 +79,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "defaultTmuxCommand" | "defaultAgentId" | "defaultConfigId" | "defaultBaseBranch">>,
+	updates: Partial<Pick<Project, "setupScript" | "defaultBaseBranch">>,
 ): Promise<Project> {
 	log.info("Updating project", { projectId, updates });
 	const projects = await loadProjects();
