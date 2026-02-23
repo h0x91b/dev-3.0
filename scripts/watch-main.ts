@@ -4,6 +4,7 @@ const WATCH_DIRS = ["src/bun", "src/shared"];
 const DEBOUNCE_MS = 2000;
 const ELECTROBUN_CMD = ["bunx", "electrobun", "dev"];
 const VITE_CMD = ["bunx", "vite", "--port", "5173"];
+const VITE_PORT = 5173;
 const ELECTROBUN_PORT = 7681;
 const PORT_WAIT_TIMEOUT = 10_000;
 const PORT_POLL_INTERVAL = 200;
@@ -38,6 +39,30 @@ async function waitForPortFree(port: number): Promise<boolean> {
 		}
 	}
 	return false;
+}
+
+function killPortOwner(port: number) {
+	// Find and kill any process listening on this port (leftover zombies)
+	try {
+		const result = Bun.spawnSync(
+			["lsof", "-ti", `tcp:${port}`],
+			{ cwd: projectRoot },
+		);
+		const pids = result.stdout.toString().trim();
+		if (pids) {
+			for (const pid of pids.split("\n")) {
+				log(`Killing leftover process ${pid} on port ${port}`);
+				try {
+					process.kill(Number(pid), "SIGKILL");
+				} catch {}
+			}
+		}
+	} catch {}
+}
+
+async function freePort(port: number) {
+	killPortOwner(port);
+	await waitForPortFree(port);
 }
 
 async function killProcessTree(proc: ReturnType<typeof Bun.spawn>) {
@@ -86,11 +111,7 @@ async function restartElectrobun() {
 		electrobunProc = null;
 	}
 
-	log(`Waiting for port ${ELECTROBUN_PORT} to be free...`);
-	const free = await waitForPortFree(ELECTROBUN_PORT);
-	if (!free) {
-		warn(`Port ${ELECTROBUN_PORT} still busy after ${PORT_WAIT_TIMEOUT / 1000}s — starting anyway`);
-	}
+	await freePort(ELECTROBUN_PORT);
 
 	startElectrobun();
 	restarting = false;
@@ -168,6 +189,10 @@ process.stdin.on("data", (data: Buffer) => {
 });
 
 // --- Start ---
+
+// Kill leftover processes from previous runs
+killPortOwner(VITE_PORT);
+killPortOwner(ELECTROBUN_PORT);
 
 startVite();
 startElectrobun();
