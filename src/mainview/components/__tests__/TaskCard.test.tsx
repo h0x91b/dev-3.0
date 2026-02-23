@@ -140,51 +140,35 @@ describe("TaskCard", () => {
 		});
 	});
 
-	describe("status menu transitions", () => {
-		it("todo task menu shows only In Progress and Cancelled", async () => {
-			const user = userEvent.setup();
+	describe("todo card action buttons", () => {
+		it("shows Run and X buttons for todo tasks", () => {
 			renderCard(makeTask({ status: "todo" }));
 
-			// Open status menu
-			await user.click(screen.getByText("To Do"));
-
-			// Should have In Progress and Cancelled
-			expect(screen.getByText("In Progress")).toBeInTheDocument();
-			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-
-			// Should NOT have other statuses
-			expect(screen.queryByText("User Questions")).not.toBeInTheDocument();
-			expect(screen.queryByText("Review by AI")).not.toBeInTheDocument();
-			expect(screen.queryByText("Review by User")).not.toBeInTheDocument();
-			expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+			expect(screen.getByTitle("Run")).toBeInTheDocument();
+			expect(screen.getByTitle("Cancel")).toBeInTheDocument();
 		});
 
-		it("in-progress task menu shows all statuses except itself", async () => {
-			const user = userEvent.setup();
-			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
+		it("does not show status menu for todo tasks", () => {
+			renderCard(makeTask({ status: "todo" }));
 
-			await user.click(screen.getByText("In Progress"));
-
-			expect(screen.getByText("To Do")).toBeInTheDocument();
-			expect(screen.getByText("Completed")).toBeInTheDocument();
-			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("User Questions")).toBeInTheDocument();
+			// "To Do" text is present as a static badge, not a button
+			const todoText = screen.getByText("To Do");
+			expect(todoText.tagName).not.toBe("BUTTON");
 		});
 
-		it("todo → In Progress triggers onLaunchVariants instead of moveTask", async () => {
+		it("Run button triggers onLaunchVariants with in-progress", async () => {
 			const user = userEvent.setup();
 			const onLaunchVariants = vi.fn();
 			const task = makeTask({ status: "todo" });
 			renderCard(task, { onLaunchVariants });
 
-			await user.click(screen.getByText("To Do"));
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByTitle("Run"));
 
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
-		it("todo → Cancelled calls moveTask directly", async () => {
+		it("X button moves task to cancelled", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const onLaunchVariants = vi.fn();
@@ -197,8 +181,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch, onLaunchVariants });
 
-			await user.click(screen.getByText("To Do"));
-			await user.click(screen.getByText("Cancelled"));
+			await user.click(screen.getByTitle("Cancel"));
 
 			expect(onLaunchVariants).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -206,6 +189,27 @@ describe("TaskCard", () => {
 				projectId: "p1",
 				newStatus: "cancelled",
 			});
+		});
+	});
+
+	describe("non-todo status menu", () => {
+		it("in-progress task has clickable status that opens menu", async () => {
+			const user = userEvent.setup();
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
+
+			await user.click(screen.getByText("In Progress"));
+
+			expect(screen.getByText("To Do")).toBeInTheDocument();
+			expect(screen.getByText("Completed")).toBeInTheDocument();
+			expect(screen.getByText("Cancelled")).toBeInTheDocument();
+			expect(screen.getByText("User Questions")).toBeInTheDocument();
+		});
+
+		it("in-progress task does not show Run/Cancel buttons", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
+
+			expect(screen.queryByTitle("Run")).not.toBeInTheDocument();
+			expect(screen.queryByTitle("Cancel")).not.toBeInTheDocument();
 		});
 	});
 });

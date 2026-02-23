@@ -84,6 +84,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"task.confirmDelete": "¿Eliminar tarea \"{title}\"?",
 	"task.failedMove": "Error al mover tarea: {error}",
 	"task.failedDelete": "Error al eliminar tarea: {error}",
+	"task.run": "Ejecutar",
+	"task.cancel": "Cancelar",
 	"task.variant": "#{n}",
 
 	// LaunchVariantsModal
