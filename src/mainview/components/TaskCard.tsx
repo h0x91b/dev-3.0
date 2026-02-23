@@ -105,6 +105,55 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		onDragStartProp(task.id);
 	}
 
+	if (task.status === "todo") {
+		return (
+			<div
+				draggable={!moving}
+				onDragStart={handleDragStart}
+				className={`group relative p-3.5 bg-elevated rounded-xl transition-all border-l-[3px] cursor-grab active:cursor-grabbing ${
+					moving ? "opacity-50 pointer-events-none" : ""
+				}`}
+				style={{ borderLeftColor: color }}
+			>
+				{/* Cancel button — top-right, subtle */}
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						handleMove("cancelled");
+					}}
+					className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-md text-fg-muted hover:text-danger hover:bg-danger/10 transition-all"
+					title={t("task.cancel")}
+					disabled={moving}
+				>
+					<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+
+				{/* Title */}
+				<div className="text-fg text-sm leading-relaxed break-words font-medium pr-5">
+					{task.title}
+				</div>
+
+				{/* Run button — full width */}
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						onLaunchVariants(task, "in-progress");
+					}}
+					className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-1.5 rounded-lg bg-green-600/15 text-green-400 hover:bg-green-600/25 hover:text-green-300 transition-colors"
+					title={t("task.run")}
+					disabled={moving}
+				>
+					<svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+						<path d="M8 5v14l11-7z" />
+					</svg>
+					{t("task.run")}
+				</button>
+			</div>
+		);
+	}
+
 	return (
 		<div
 			draggable={!moving}
@@ -146,94 +195,46 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{task.title}
 			</div>
 
-			{/* Bottom row: status badge + actions */}
+			{/* Bottom row: status badge + delete */}
 			<div className="flex items-center justify-between mt-3">
-				{task.status === "todo" ? (
-					<>
-						{/* Static status badge for TODO */}
-						<div className="flex items-center gap-2 px-2 py-1">
-							<div
-								className="w-2 h-2 rounded-full flex-shrink-0"
-								style={{ background: color }}
-							/>
-							<span className="text-xs text-fg-2">
-								{t(statusKey(task.status))}
-							</span>
-						</div>
+				<button
+					ref={triggerRef}
+					onClick={toggleMenu}
+					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors"
+					disabled={moving}
+				>
+					<div
+						className="w-2 h-2 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+					<span className="text-xs text-fg-2">
+						{t(statusKey(task.status))}
+					</span>
+				</button>
 
-						{/* Run + Cancel buttons */}
-						<div className="flex items-center gap-1.5">
-							<button
-								onClick={(e) => {
-									e.stopPropagation();
-									onLaunchVariants(task, "in-progress");
-								}}
-								className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg bg-green-600/15 text-green-400 hover:bg-green-600/25 hover:text-green-300 transition-colors"
-								title={t("task.run")}
-								disabled={moving}
-							>
-								<svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-									<path d="M8 5v14l11-7z" />
-								</svg>
-								{t("task.run")}
-							</button>
-							<button
-								onClick={(e) => {
-									e.stopPropagation();
-									handleMove("cancelled");
-								}}
-								className="flex items-center p-1.5 rounded-lg text-fg-muted hover:text-danger hover:bg-danger/10 transition-colors"
-								title={t("task.cancel")}
-								disabled={moving}
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-								</svg>
-							</button>
-						</div>
-					</>
-				) : (
-					<>
-						<button
-							ref={triggerRef}
-							onClick={toggleMenu}
-							className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors"
-							disabled={moving}
-						>
-							<div
-								className="w-2 h-2 rounded-full flex-shrink-0"
-								style={{ background: color }}
-							/>
-							<span className="text-xs text-fg-2">
-								{t(statusKey(task.status))}
-							</span>
-						</button>
-
-						{/* Delete button — visible on hover */}
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								handleDelete();
-							}}
-							className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all p-1 rounded-lg hover:bg-danger/10"
-							title={t("task.delete")}
-						>
-							<svg
-								className="w-4 h-4"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									strokeWidth={2}
-									d="M6 18L18 6M6 6l12 12"
-								/>
-							</svg>
-						</button>
-					</>
-				)}
+				{/* Delete button — visible on hover */}
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						handleDelete();
+					}}
+					className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-all p-1 rounded-lg hover:bg-danger/10"
+					title={t("task.delete")}
+				>
+					<svg
+						className="w-4 h-4"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							strokeWidth={2}
+							d="M6 18L18 6M6 6l12 12"
+						/>
+					</svg>
+				</button>
 			</div>
 
 			{/* Status dropdown menu */}

@@ -111,6 +111,9 @@ describe("TaskCard", () => {
 
 		it("shows badge with agent name and config for variant task", () => {
 			renderCard(makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
 				variantIndex: 1,
 				agentId: "builtin-claude",
 				configId: "claude-default",
@@ -121,6 +124,9 @@ describe("TaskCard", () => {
 
 		it("shows badge with config name without model", () => {
 			renderCard(makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
 				variantIndex: 2,
 				agentId: "builtin-codex",
 				configId: "codex-default",
@@ -131,6 +137,9 @@ describe("TaskCard", () => {
 
 		it("shows only variant number when agent not found", () => {
 			renderCard(makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
 				variantIndex: 3,
 				agentId: "nonexistent",
 				configId: "whatever",
@@ -148,12 +157,11 @@ describe("TaskCard", () => {
 			expect(screen.getByTitle("Cancel")).toBeInTheDocument();
 		});
 
-		it("does not show status menu for todo tasks", () => {
+		it("does not show status label text for todo tasks", () => {
 			renderCard(makeTask({ status: "todo" }));
 
-			// "To Do" text is present as a static badge, not a button
-			const todoText = screen.getByText("To Do");
-			expect(todoText.tagName).not.toBe("BUTTON");
+			// No "To Do" text — card is already in the TODO column
+			expect(screen.queryByText("To Do")).not.toBeInTheDocument();
 		});
 
 		it("Run button triggers onLaunchVariants with in-progress", async () => {
