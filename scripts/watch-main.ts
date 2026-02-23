@@ -145,10 +145,10 @@ async function shutdown() {
 
 let shuttingDown = false;
 
-process.on("SIGTERM", () => {
-	if (!restarting) shutdown();
-});
 process.on("SIGINT", () => {
+	shutdown();
+});
+process.on("SIGTERM", () => {
 	if (!restarting) shutdown();
 });
 process.on("SIGHUP", () => {
@@ -170,17 +170,6 @@ for (const dir of WATCH_DIRS) {
 
 log(`Watching ${WATCH_DIRS.join(", ")} for changes...`);
 
-// --- Manual restart via Ctrl+Z (SIGTSTP) or SIGUSR1 ---
-process.on("SIGTSTP", () => {
-	if (debounceTimer) clearTimeout(debounceTimer);
-	log("Manual restart triggered (Ctrl+Z)");
-	restartElectrobun();
-});
-process.on("SIGUSR1", () => {
-	if (debounceTimer) clearTimeout(debounceTimer);
-	log("Manual restart triggered (SIGUSR1)");
-	restartElectrobun();
-});
 
 // --- Start ---
 
@@ -190,4 +179,4 @@ killPortOwner(ELECTROBUN_PORT);
 
 startVite();
 startElectrobun();
-log("Restart: \x1b[1mCtrl+Z\x1b[0m | Quit: \x1b[1mCtrl+C\x1b[0m");
+log("Quit: \x1b[1mCtrl+C\x1b[0m");
