@@ -36,6 +36,11 @@ async function waitForPortFree(port: number): Promise<boolean> {
 	return false;
 }
 
+function restoreTerminal() {
+	// electrobun's PTY server may leave the terminal in raw mode after kill
+	try { Bun.spawnSync(["stty", "sane"], { cwd: projectRoot }); } catch {}
+}
+
 function killPortOwner(port: number) {
 	try {
 		const result = Bun.spawnSync(["lsof", "-ti", `tcp:${port}`], {
@@ -78,6 +83,7 @@ async function restart() {
 		child = null;
 	}
 
+	restoreTerminal();
 	killPortOwner(ELECTROBUN_PORT);
 	await waitForPortFree(ELECTROBUN_PORT);
 
@@ -111,5 +117,6 @@ log(`Watching ${WATCH_DIRS.join(", ")} for changes...`);
 
 // --- Start ---
 
+restoreTerminal();
 killPortOwner(ELECTROBUN_PORT);
 start();
