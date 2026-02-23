@@ -65,7 +65,7 @@ function startVite() {
 function startElectrobun() {
 	log("Starting electrobun dev...");
 	electrobunProc = Bun.spawn(ELECTROBUN_CMD, {
-		stdio: ["ignore", "inherit", "inherit"],
+		stdio: ["inherit", "inherit", "inherit"],
 		cwd: projectRoot,
 	});
 
