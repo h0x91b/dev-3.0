@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
-import type { Project, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, STATUS_COLORS, titleFromDescription } from "../../shared/types";
+import type { Project } from "../../shared/types";
+import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
 
 interface CreateTaskModalProps {
 	project: Project;
@@ -14,7 +14,6 @@ interface CreateTaskModalProps {
 function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 	const t = useT();
 	const [description, setDescription] = useState("");
-	const [status, setStatus] = useState<TaskStatus>("todo");
 	const [creating, setCreating] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,7 +41,6 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 			const task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
-				status,
 			});
 			dispatch({ type: "addTask", task });
 			onClose();
@@ -88,36 +86,6 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 							<span className="text-fg-2 font-medium">{generatedTitle}</span>
 						</div>
 					)}
-				</div>
-
-				{/* Status picker */}
-				<div className="space-y-1.5">
-					<label className="text-fg-2 text-sm font-medium">
-						{t("createTask.statusLabel")}
-					</label>
-					<div className="grid grid-cols-2 gap-2">
-						{ALL_STATUSES.map((s) => {
-							const color = STATUS_COLORS[s];
-							const selected = s === status;
-							return (
-								<button
-									key={s}
-									onClick={() => setStatus(s)}
-									className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-left transition-all border ${
-										selected
-											? "border-accent/50 bg-accent/10 text-fg font-medium"
-											: "border-edge bg-elevated hover:bg-elevated-hover text-fg-2"
-									}`}
-								>
-									<div
-										className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-										style={{ background: color }}
-									/>
-									{t(statusKey(s))}
-								</button>
-							);
-						})}
-					</div>
 				</div>
 
 				{/* Actions */}
