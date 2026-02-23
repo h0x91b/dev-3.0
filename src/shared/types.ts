@@ -137,12 +137,6 @@ export interface Project {
 	setupScript: string;
 	devScript: string;
 	cleanupScript: string;
-	/** @deprecated Use GlobalSettings.defaultAgentId instead */
-	defaultTmuxCommand: string;
-	/** @deprecated Use GlobalSettings.defaultAgentId instead */
-	defaultAgentId: string | null;
-	/** @deprecated Use GlobalSettings.defaultConfigId instead */
-	defaultConfigId: string | null;
 	defaultBaseBranch: string;
 	createdAt: string;
 }

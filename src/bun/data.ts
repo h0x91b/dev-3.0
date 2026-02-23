@@ -60,9 +60,6 @@ export async function addProject(
 		setupScript: "",
 		devScript: "",
 		cleanupScript: "",
-		defaultTmuxCommand: "",
-		defaultAgentId: null,
-		defaultConfigId: null,
 		defaultBaseBranch: "main",
 		createdAt: new Date().toISOString(),
 	};

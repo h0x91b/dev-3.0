@@ -1,0 +1,1 @@
+Removed three deprecated fields from the Project interface: `defaultTmuxCommand`, `defaultAgentId`, and `defaultConfigId`. These fields were superseded by `GlobalSettings.defaultAgentId` and `GlobalSettings.defaultConfigId`. Cleaned up all usages in data.ts and five test fixture files.

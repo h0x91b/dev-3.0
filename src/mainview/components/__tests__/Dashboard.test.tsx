@@ -40,9 +40,6 @@ const mockProject: Project = {
 	name: "My Project",
 	path: "/home/user/my-project",
 	setupScript: "",
-	defaultTmuxCommand: "claude",
-	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-default",
 	defaultBaseBranch: "main",
 	createdAt: "2025-01-01T00:00:00Z",
 };
