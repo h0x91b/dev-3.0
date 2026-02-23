@@ -137,11 +137,15 @@ export const handlers = {
 	async updateProjectSettings(params: {
 		projectId: string;
 		setupScript: string;
+		devScript: string;
+		cleanupScript: string;
 		defaultBaseBranch: string;
 	}): Promise<Project> {
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
 		const project = await data.updateProject(params.projectId, {
 			setupScript: params.setupScript,
+			devScript: params.devScript,
+			cleanupScript: params.cleanupScript,
 			defaultBaseBranch: params.defaultBaseBranch,
 		});
 		log.info("← updateProjectSettings done");

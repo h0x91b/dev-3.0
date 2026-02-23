@@ -112,6 +112,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Скрипт настройки",
 	"projectSettings.setupScriptDesc":
 		"Запускается в директории worktree после создания",
+	"projectSettings.devScript": "Dev-скрипт",
+	"projectSettings.devScriptDesc":
+		"Запускается при старте dev-сервера для этого проекта",
+	"projectSettings.cleanupScript": "Скрипт очистки",
+	"projectSettings.cleanupScriptDesc":
+		"Запускается при переводе таски в статус Cancelled (или Archived в будущем)",
 	"projectSettings.baseBranch": "Базовая ветка",
 	"projectSettings.baseBranchDesc": "Ветка, от которой создаются worktree",
 	"projectSettings.save": "Сохранить настройки",

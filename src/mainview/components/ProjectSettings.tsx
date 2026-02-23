@@ -21,6 +21,8 @@ function ProjectSettings({
 	const project = projects.find((p) => p.id === projectId);
 
 	const [setupScript, setSetupScript] = useState(project?.setupScript || "");
+	const [devScript, setDevScript] = useState(project?.devScript || "");
+	const [cleanupScript, setCleanupScript] = useState(project?.cleanupScript || "");
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
 		project?.defaultBaseBranch || "main",
 	);
@@ -40,6 +42,8 @@ function ProjectSettings({
 			const updated = await api.request.updateProjectSettings({
 				projectId,
 				setupScript,
+				devScript,
+				cleanupScript,
 				defaultBaseBranch,
 			});
 			dispatch({ type: "updateProject", project: updated });
@@ -71,7 +75,41 @@ function ProjectSettings({
 						/>
 					</div>
 
-					{/* Default Base Branch */}
+					{/* Dev Script */}
+				<div>
+					<label className="block text-fg text-sm font-semibold mb-2">
+						{t("projectSettings.devScript")}
+					</label>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("projectSettings.devScriptDesc")}
+					</p>
+					<textarea
+						value={devScript}
+						onChange={(e) => setDevScript(e.target.value)}
+						rows={4}
+						placeholder="bun run dev"
+						className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+					/>
+				</div>
+
+				{/* Cleanup Script */}
+				<div>
+					<label className="block text-fg text-sm font-semibold mb-2">
+						{t("projectSettings.cleanupScript")}
+					</label>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("projectSettings.cleanupScriptDesc")}
+					</p>
+					<textarea
+						value={cleanupScript}
+						onChange={(e) => setCleanupScript(e.target.value)}
+						rows={4}
+						placeholder="git worktree remove ."
+						className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+					/>
+				</div>
+
+				{/* Default Base Branch */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("projectSettings.baseBranch")}

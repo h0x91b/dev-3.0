@@ -108,6 +108,12 @@ const en = {
 	"projectSettings.setupScript": "Setup Script",
 	"projectSettings.setupScriptDesc":
 		"Runs in the worktree directory after creation",
+	"projectSettings.devScript": "Dev Script",
+	"projectSettings.devScriptDesc":
+		"Runs when starting the dev server for this project",
+	"projectSettings.cleanupScript": "Cleanup Script",
+	"projectSettings.cleanupScriptDesc":
+		"Runs when a task is moved to Cancelled (or Archived in the future)",
 	"projectSettings.baseBranch": "Base Branch",
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.save": "Save Settings",

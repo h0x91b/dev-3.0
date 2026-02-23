@@ -135,6 +135,8 @@ export interface Project {
 	name: string;
 	path: string;
 	setupScript: string;
+	devScript: string;
+	cleanupScript: string;
 	/** @deprecated Use GlobalSettings.defaultAgentId instead */
 	defaultTmuxCommand: string;
 	/** @deprecated Use GlobalSettings.defaultAgentId instead */
@@ -202,6 +204,8 @@ export type AppRPCSchema = {
 				params: {
 					projectId: string;
 					setupScript: string;
+					devScript: string;
+					cleanupScript: string;
 					defaultBaseBranch: string;
 				};
 				response: Project;

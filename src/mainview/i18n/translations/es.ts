@@ -110,6 +110,12 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Script de configuración",
 	"projectSettings.setupScriptDesc":
 		"Se ejecuta en el directorio worktree después de la creación",
+	"projectSettings.devScript": "Script de desarrollo",
+	"projectSettings.devScriptDesc":
+		"Se ejecuta al iniciar el servidor de desarrollo de este proyecto",
+	"projectSettings.cleanupScript": "Script de limpieza",
+	"projectSettings.cleanupScriptDesc":
+		"Se ejecuta cuando una tarea se mueve a Cancelled (o Archived en el futuro)",
 	"projectSettings.baseBranch": "Rama base",
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",

@@ -77,6 +77,18 @@ Key idea: each project is a git repo, each task gets its own **git worktree** + 
 
 **Full product concept, design details, and implementation status tracker:** see [`concept.md`](concept.md).
 
+## Project scripts
+
+Each project has three lifecycle scripts, configurable in Project Settings (`src/mainview/components/ProjectSettings.tsx`). They are stored in `projects.json` as fields on the `Project` type (`src/shared/types.ts`).
+
+| Field | When it runs |
+|---|---|
+| `setupScript` | After a new worktree is created for a task |
+| `devScript` | When starting the dev server for the project (not yet wired up — reserved for future use) |
+| `cleanupScript` | When a task is moved to `cancelled` status (and `archived` once that status is added) |
+
+All three are free-form shell scripts. They are saved via the `updateProjectSettings` RPC handler in `src/bun/rpc-handlers.ts`.
+
 ## Commands
 
 ```bash
