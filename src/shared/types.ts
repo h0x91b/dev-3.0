@@ -117,6 +117,10 @@ export interface Task {
 	baseBranch: string;
 	worktreePath: string | null;
 	branchName: string | null;
+	groupId: string | null;
+	variantIndex: number | null;
+	agentId: string | null;
+	configId: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -191,6 +195,15 @@ export type AppRPCSchema = {
 			deleteTask: {
 				params: { taskId: string; projectId: string };
 				response: void;
+			};
+			spawnVariants: {
+				params: {
+					taskId: string;
+					projectId: string;
+					targetStatus: TaskStatus;
+					variants: Array<{ agentId: string | null; configId: string | null }>;
+				};
+				response: Task[];
 			};
 			getPtyUrl: {
 				params: { taskId: string };

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES, STATUS_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -10,9 +10,11 @@ interface TaskCardProps {
 	project: Project;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
+	agents: CodingAgent[];
+	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -50,6 +52,13 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 	}
 
 	async function handleMove(newStatus: TaskStatus) {
+		// Intercept: todo → active status opens the LaunchVariantsModal
+		if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
+			setMenuOpen(false);
+			onLaunchVariants(task, newStatus);
+			return;
+		}
+
 		setMoving(true);
 		setMenuOpen(false);
 		try {
@@ -99,6 +108,22 @@ function TaskCard({ task, project, dispatch, navigate }: TaskCardProps) {
 			style={{ borderLeftColor: color }}
 			onClick={handleClick}
 		>
+			{/* Variant badge */}
+			{task.variantIndex !== null && (() => {
+				const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
+				const config = agent && task.configId
+					? agent.configurations.find((c) => c.id === task.configId)
+					: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
+				const label = agent
+					? `#${task.variantIndex} · ${agent.name}${config ? ` (${config.name})` : ""}`
+					: `#${task.variantIndex}`;
+				return (
+					<div className="text-xs text-accent font-semibold mb-1.5 flex items-center gap-1.5">
+						<span className="bg-accent/15 px-2 py-0.5 rounded-md">{label}</span>
+					</div>
+				);
+			})()}
+
 			{/* Title */}
 			<div className="text-fg text-sm leading-relaxed break-words font-medium pr-5">
 				{task.title}

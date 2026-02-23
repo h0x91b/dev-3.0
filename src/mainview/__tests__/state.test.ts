@@ -23,6 +23,10 @@ const mockTask: Task = {
 	baseBranch: "main",
 	worktreePath: null,
 	branchName: null,
+	groupId: null,
+	variantIndex: null,
+	agentId: null,
+	configId: null,
 	createdAt: "2025-01-01T00:00:00Z",
 	updatedAt: "2025-01-01T00:00:00Z",
 };
@@ -135,6 +139,63 @@ describe("reducer", () => {
 			project: updated,
 		});
 		expect(next.projects[0].name).toBe("Renamed");
+	});
+
+	it("spawnVariants: removes source task and adds variants", () => {
+		const state: AppState = {
+			...initialState,
+			currentProjectTasks: [mockTask],
+		};
+		const variant1: Task = {
+			...mockTask,
+			id: "v1",
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 1,
+			agentId: "builtin-claude",
+			configId: "claude-default",
+		};
+		const variant2: Task = {
+			...mockTask,
+			id: "v2",
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 2,
+			agentId: "builtin-gemini",
+			configId: "gemini-default",
+		};
+		const next = reducer(state, {
+			type: "spawnVariants",
+			sourceTaskId: "t1",
+			variants: [variant1, variant2],
+		});
+		expect(next.currentProjectTasks).toHaveLength(2);
+		expect(next.currentProjectTasks.find((t) => t.id === "t1")).toBeUndefined();
+		expect(next.currentProjectTasks[0].id).toBe("v1");
+		expect(next.currentProjectTasks[1].id).toBe("v2");
+	});
+
+	it("spawnVariants: preserves other tasks", () => {
+		const otherTask: Task = { ...mockTask, id: "t2", title: "Other" };
+		const state: AppState = {
+			...initialState,
+			currentProjectTasks: [mockTask, otherTask],
+		};
+		const variant1: Task = {
+			...mockTask,
+			id: "v1",
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 1,
+		};
+		const next = reducer(state, {
+			type: "spawnVariants",
+			sourceTaskId: "t1",
+			variants: [variant1],
+		});
+		expect(next.currentProjectTasks).toHaveLength(2);
+		expect(next.currentProjectTasks.find((t) => t.id === "t2")).toBeDefined();
+		expect(next.currentProjectTasks.find((t) => t.id === "v1")).toBeDefined();
 	});
 
 	it("setLoading: updates loading flag", () => {

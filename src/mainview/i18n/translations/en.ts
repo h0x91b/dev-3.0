@@ -69,6 +69,17 @@ const en = {
 	"task.confirmDelete": "Delete task \"{title}\"?",
 	"task.failedMove": "Failed to move task: {error}",
 	"task.failedDelete": "Failed to delete task: {error}",
+	"task.variant": "#{n}",
+
+	// LaunchVariantsModal
+	"launch.title": "Launch Task",
+	"launch.agent": "Agent",
+	"launch.config": "Configuration",
+	"launch.addVariant": "+ Add Variant",
+	"launch.removeVariant": "Remove",
+	"launch.launch": "Launch",
+	"launch.launching": "Launching...",
+	"launch.failedLaunch": "Failed to launch: {error}",
 
 	// ProjectSettings
 	"projectSettings.setupScript": "Setup Script",

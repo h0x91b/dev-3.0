@@ -24,13 +24,35 @@ async function launchTaskPty(
 	project: Project,
 	task: Task,
 	worktreePath: string,
+	agentId?: string | null,
+	configId?: string | null,
 ): Promise<void> {
-	const { command: tmuxCmd, extraEnv } = await agents.resolveCommandForProject(
-		project,
-		task.title,
-		task.description,
+	const ctx: agents.TemplateContext = {
+		taskTitle: task.title,
+		taskDescription: task.description,
+		projectName: project.name,
+		projectPath: project.path,
 		worktreePath,
-	);
+	};
+
+	let tmuxCmd: string;
+	let extraEnv: Record<string, string>;
+
+	if (agentId) {
+		const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx);
+		tmuxCmd = resolved.command;
+		extraEnv = resolved.extraEnv;
+	} else {
+		const resolved = await agents.resolveCommandForProject(
+			project,
+			task.title,
+			task.description,
+			worktreePath,
+		);
+		tmuxCmd = resolved.command;
+		extraEnv = resolved.extraEnv;
+	}
+
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
 	pty.createSession(task.id, worktreePath, tmuxCmd, env);
 }
@@ -239,6 +261,60 @@ export const handlers = {
 
 		await data.deleteTask(project, task.id);
 		log.info("← deleteTask done");
+	},
+
+	async spawnVariants(params: {
+		taskId: string;
+		projectId: string;
+		targetStatus: TaskStatus;
+		variants: Array<{ agentId: string | null; configId: string | null }>;
+	}): Promise<Task[]> {
+		log.info("→ spawnVariants", { taskId: params.taskId, count: params.variants.length });
+		const project = await data.getProject(params.projectId);
+		const sourceTask = await data.getTask(project, params.taskId);
+
+		if (sourceTask.status !== "todo") {
+			throw new Error(`Task must be in todo status to spawn variants (got ${sourceTask.status})`);
+		}
+
+		const groupId = crypto.randomUUID();
+		const resultTasks: Task[] = [];
+
+		for (let i = 0; i < params.variants.length; i++) {
+			const variant = params.variants[i];
+
+			const task = await data.addTask(
+				project,
+				sourceTask.description,
+				params.targetStatus,
+				{
+					groupId,
+					variantIndex: i + 1,
+					agentId: variant.agentId,
+					configId: variant.configId,
+				},
+			);
+
+			if (isActive(params.targetStatus)) {
+				const wt = await git.createWorktree(project, task);
+				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId);
+
+				const updated = await data.updateTask(project, task.id, {
+					worktreePath: wt.worktreePath,
+					branchName: wt.branchName,
+				});
+				pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+				resultTasks.push(updated);
+			} else {
+				resultTasks.push(task);
+			}
+		}
+
+		// Delete the original TODO task
+		await data.deleteTask(project, params.taskId);
+
+		log.info("← spawnVariants done", { count: resultTasks.length, groupId });
+		return resultTasks;
 	},
 
 	async getPtyUrl(params: { taskId: string }): Promise<string> {

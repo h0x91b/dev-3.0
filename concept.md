@@ -37,6 +37,16 @@ Legend: `[x]` done, `[-]` in progress, `[ ]` not started
 - [ ] Drag-and-drop between columns
 - [ ] Custom columns (v2 — planned, not started)
 
+### Multi-variant tasks (attempts)
+
+- [x] Task data model: `groupId`, `variantIndex`, `agentId`, `configId` fields
+- [x] `spawnVariants` RPC endpoint: splits a TODO task into N variant tasks
+- [x] LaunchVariantsModal: UI for configuring agent+config per variant before launch
+- [x] Variant badge on task cards: `#N · AgentName (ConfigName)`
+- [x] Intercept TODO → active status transitions to show the launch modal
+- [x] Variant sorting: tasks with same `groupId` sort together by `variantIndex`
+- [ ] Variant comparison view (side-by-side terminals)
+
 ### Git worktree management
 
 - [ ] Create worktree when task moves to an active status

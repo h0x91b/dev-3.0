@@ -71,6 +71,17 @@ const es: TranslationRecord & Record<string, string> = {
 	"task.confirmDelete": "¿Eliminar tarea \"{title}\"?",
 	"task.failedMove": "Error al mover tarea: {error}",
 	"task.failedDelete": "Error al eliminar tarea: {error}",
+	"task.variant": "#{n}",
+
+	// LaunchVariantsModal
+	"launch.title": "Lanzar tarea",
+	"launch.agent": "Agente",
+	"launch.config": "Configuración",
+	"launch.addVariant": "+ Agregar variante",
+	"launch.removeVariant": "Eliminar",
+	"launch.launch": "Lanzar",
+	"launch.launching": "Lanzando...",
+	"launch.failedLaunch": "Error al lanzar: {error}",
 
 	// ProjectSettings
 	"projectSettings.setupScript": "Script de configuración",

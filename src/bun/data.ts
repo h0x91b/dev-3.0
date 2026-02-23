@@ -115,11 +115,15 @@ export async function loadTasks(project: Project): Promise<Task[]> {
 			return [];
 		}
 		const tasks: Task[] = await f.json();
-		// Backfill description for tasks created before this field existed
+		// Backfill fields for tasks created before they existed
 		for (const task of tasks) {
 			if ((task as any).description === undefined) {
 				task.description = task.title;
 			}
+			if ((task as any).groupId === undefined) task.groupId = null;
+			if ((task as any).variantIndex === undefined) task.variantIndex = null;
+			if ((task as any).agentId === undefined) task.agentId = null;
+			if ((task as any).configId === undefined) task.configId = null;
 		}
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
 		return tasks;
@@ -144,6 +148,7 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
+	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null },
 ): Promise<Task> {
 	const title = titleFromDescription(description);
 	log.info("Creating task", { projectId: project.id, title, status });
@@ -158,6 +163,10 @@ export async function addTask(
 		baseBranch: project.defaultBaseBranch,
 		worktreePath: null,
 		branchName: null,
+		groupId: extras?.groupId ?? null,
+		variantIndex: extras?.variantIndex ?? null,
+		agentId: extras?.agentId ?? null,
+		configId: extras?.configId ?? null,
 		createdAt: now,
 		updatedAt: now,
 	};

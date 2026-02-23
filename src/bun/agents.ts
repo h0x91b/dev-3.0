@@ -158,6 +158,25 @@ function findConfig(
 	);
 }
 
+export async function resolveCommandForAgent(
+	agentId: string,
+	configId: string | null,
+	ctx: TemplateContext,
+): Promise<{ command: string; agent: CodingAgent; config: AgentConfiguration | undefined; extraEnv: Record<string, string> }> {
+	const allAgents = await getAllAgents();
+	const agent = allAgents.find((a) => a.id === agentId);
+	if (!agent) {
+		throw new Error(`Agent not found: ${agentId}`);
+	}
+	const config = findConfig(agent, configId);
+	const command = resolveAgentCommand(agent, config, ctx);
+	const extraEnv: Record<string, string> = {};
+	if (config?.envVars) {
+		Object.assign(extraEnv, config.envVars);
+	}
+	return { command, agent, config, extraEnv };
+}
+
 export async function resolveCommandForProject(
 	project: Project,
 	taskTitle: string,

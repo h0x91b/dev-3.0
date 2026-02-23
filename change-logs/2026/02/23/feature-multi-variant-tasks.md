@@ -1,0 +1,1 @@
+Add multi-variant task spawning. When moving a TODO task to an active status, a LaunchVariantsModal opens allowing the user to configure multiple agent+config combinations. Each variant gets its own worktree, branch, and PTY session. Variant cards display a badge with variant number and agent name.

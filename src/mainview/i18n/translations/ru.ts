@@ -73,6 +73,17 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.confirmDelete": "Удалить задачу «{title}»?",
 	"task.failedMove": "Не удалось переместить задачу: {error}",
 	"task.failedDelete": "Не удалось удалить задачу: {error}",
+	"task.variant": "#{n}",
+
+	// LaunchVariantsModal
+	"launch.title": "Запуск задачи",
+	"launch.agent": "Агент",
+	"launch.config": "Конфигурация",
+	"launch.addVariant": "+ Добавить вариант",
+	"launch.removeVariant": "Удалить",
+	"launch.launch": "Запустить",
+	"launch.launching": "Запускается...",
+	"launch.failedLaunch": "Не удалось запустить: {error}",
 
 	// ProjectSettings
 	"projectSettings.setupScript": "Скрипт настройки",
