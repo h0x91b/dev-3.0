@@ -57,7 +57,7 @@ function ProjectSettings({
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-xl space-y-7">
+				<div className="max-w-2xl mx-auto space-y-7">
 					{/* Setup Script */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
