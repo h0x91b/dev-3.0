@@ -67,7 +67,28 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 								/
 							</span>
 						)}
-						{seg.onClick ? (
+						{i === 0 ? (
+							seg.onClick ? (
+								<button
+									onClick={seg.onClick}
+									className="flex items-center gap-1.5 text-accent hover:text-accent-hover transition-colors flex-shrink-0"
+								>
+									<svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3" />
+										<rect x="3" y="3" width="18" height="18" rx="3" strokeWidth={1.5} />
+									</svg>
+									<span className="font-mono font-semibold text-xs tracking-wide">{seg.label}</span>
+								</button>
+							) : (
+								<span className="flex items-center gap-1.5 text-accent flex-shrink-0">
+									<svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3" />
+										<rect x="3" y="3" width="18" height="18" rx="3" strokeWidth={1.5} />
+									</svg>
+									<span className="font-mono font-semibold text-xs tracking-wide">{seg.label}</span>
+								</span>
+							)
+						) : seg.onClick ? (
 							<button
 								onClick={seg.onClick}
 								className="text-fg-3 hover:text-fg transition-colors truncate"
