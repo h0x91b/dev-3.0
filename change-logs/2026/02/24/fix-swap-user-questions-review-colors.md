@@ -1,0 +1,1 @@
+Swapped colors for user-questions and review-by-user: user-questions is now orange (#f97316) to signal urgency/blocking, review-by-user is now yellow (#fbbf24) as a softer "ready for review" indicator.
