@@ -112,6 +112,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Скрипт настройки",
 	"projectSettings.setupScriptDesc":
 		"Запускается в директории worktree после создания",
+	"projectSettings.setupScriptBackground": "Запускать в фоне (не ждать завершения)",
 	"projectSettings.devScript": "Dev-скрипт",
 	"projectSettings.devScriptDesc":
 		"Запускается при старте dev-сервера для этого проекта",

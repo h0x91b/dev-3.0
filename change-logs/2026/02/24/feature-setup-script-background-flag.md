@@ -1,0 +1,1 @@
+Added "Run in background (don't wait)" checkbox to Project Settings next to the setup script field. The flag is stored as `setupScriptBackground` on the Project type and persisted via the existing `updateProjectSettings` RPC. No execution logic is wired up yet — storage only.

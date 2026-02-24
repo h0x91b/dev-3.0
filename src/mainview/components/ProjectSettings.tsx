@@ -21,6 +21,9 @@ function ProjectSettings({
 	const project = projects.find((p) => p.id === projectId);
 
 	const [setupScript, setSetupScript] = useState(project?.setupScript || "");
+	const [setupScriptBackground, setSetupScriptBackground] = useState(
+		project?.setupScriptBackground ?? false,
+	);
 	const [devScript, setDevScript] = useState(project?.devScript || "");
 	const [cleanupScript, setCleanupScript] = useState(project?.cleanupScript || "");
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
@@ -42,6 +45,7 @@ function ProjectSettings({
 			const updated = await api.request.updateProjectSettings({
 				projectId,
 				setupScript,
+				setupScriptBackground,
 				devScript,
 				cleanupScript,
 				defaultBaseBranch,
@@ -73,6 +77,17 @@ function ProjectSettings({
 							placeholder="bun install"
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 						/>
+						<label className="flex items-center gap-2 mt-2 cursor-pointer select-none w-fit">
+							<input
+								type="checkbox"
+								checked={setupScriptBackground}
+								onChange={(e) => setSetupScriptBackground(e.target.checked)}
+								className="w-4 h-4 accent-[var(--color-accent)] cursor-pointer"
+							/>
+							<span className="text-fg-3 text-sm">
+								{t("projectSettings.setupScriptBackground")}
+							</span>
+						</label>
 					</div>
 
 					{/* Dev Script */}

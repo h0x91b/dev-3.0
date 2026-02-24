@@ -110,6 +110,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.setupScript": "Script de configuración",
 	"projectSettings.setupScriptDesc":
 		"Se ejecuta en el directorio worktree después de la creación",
+	"projectSettings.setupScriptBackground": "Ejecutar en segundo plano (no esperar)",
 	"projectSettings.devScript": "Script de desarrollo",
 	"projectSettings.devScriptDesc":
 		"Se ejecuta al iniciar el servidor de desarrollo de este proyecto",
