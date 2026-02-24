@@ -27,6 +27,7 @@ async function launchTaskPty(
 	worktreePath: string,
 	agentId?: string | null,
 	configId?: string | null,
+	runSetup = false,
 ): Promise<void> {
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
@@ -56,6 +57,35 @@ async function launchTaskPty(
 
 	// Pre-register worktree as trusted so claude skips the trust dialog
 	await agents.ensureClaudeTrust(worktreePath);
+
+	if (runSetup && project.setupScript.trim()) {
+		const isBackground = project.setupScriptBackground ?? false;
+		const scriptPath = `/tmp/dev3-startup-${task.id}.sh`;
+
+		extraEnv.DEV3_SETUP_SCRIPT = project.setupScript;
+		extraEnv.DEV3_CLAUDE_CMD = tmuxCmd;
+		extraEnv.DEV3_WORKTREE_PATH = worktreePath;
+
+		const startupScript = isBackground
+			? [
+					"#!/bin/bash",
+					'tmux split-window -v -c "$DEV3_WORKTREE_PATH" "$DEV3_CLAUDE_CMD"',
+					'bash -x -c "$DEV3_SETUP_SCRIPT"',
+					"S=$?; [ $S -ne 0 ] && printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\" || printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
+					"exec bash",
+				].join("\n")
+			: [
+					"#!/bin/bash",
+					'bash -x -c "$DEV3_SETUP_SCRIPT"',
+					"S=$?",
+					"[ $S -ne 0 ] && printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\" || printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
+					'tmux split-window -v -c "$DEV3_WORKTREE_PATH" "$DEV3_CLAUDE_CMD"',
+					"exec bash",
+				].join("\n");
+
+		await Bun.write(scriptPath, startupScript + "\n");
+		tmuxCmd = `bash "${scriptPath}"`;
+	}
 
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
 	pty.createSession(task.id, worktreePath, tmuxCmd, env);
@@ -206,7 +236,7 @@ export const handlers = {
 				taskId: task.id,
 			});
 			const wt = await git.createWorktree(project, task);
-			await launchTaskPty(project, task, wt.worktreePath);
+			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
 
 			const updated = await data.updateTask(project, task.id, {
 				worktreePath: wt.worktreePath,
@@ -238,7 +268,7 @@ export const handlers = {
 		if (!isActive(oldStatus) && isActive(newStatus)) {
 			log.info("Transition: inactive → active, creating worktree + PTY");
 			const wt = await git.createWorktree(project, task);
-			await launchTaskPty(project, task, wt.worktreePath);
+			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,
@@ -328,7 +358,7 @@ export const handlers = {
 
 			if (isActive(params.targetStatus)) {
 				const wt = await git.createWorktree(project, task);
-				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId);
+				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 				const updated = await data.updateTask(project, task.id, {
 					worktreePath: wt.worktreePath,

@@ -104,20 +104,6 @@ export async function createWorktree(
 
 	log.info("Worktree created", { wtPath, branch });
 
-	// Run setup script if configured
-	if (project.setupScript.trim()) {
-		log.info("Running setup script", { wtPath });
-		const setupProc = Bun.spawn(["bash", "-c", project.setupScript], {
-			cwd: wtPath,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		const setupCode = await setupProc.exited;
-		if (setupCode !== 0) {
-			log.warn("Setup script exited with non-zero", { code: setupCode });
-		}
-	}
-
 	return { worktreePath: wtPath, branchName: branch };
 }
 
