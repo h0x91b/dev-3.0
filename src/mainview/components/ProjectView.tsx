@@ -43,7 +43,7 @@ function ProjectView({
 	}
 
 	return (
-		<div className="h-full w-full overflow-hidden">
+		<div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
 			<KanbanBoard
 				project={project}
 				tasks={tasks}

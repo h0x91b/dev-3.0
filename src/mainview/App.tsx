@@ -71,7 +71,7 @@ function App() {
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
 			/>
-			<div className="flex-1 min-h-0">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
 		</div>
 	);
 

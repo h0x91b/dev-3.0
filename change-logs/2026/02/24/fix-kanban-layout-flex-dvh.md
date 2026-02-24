@@ -1,0 +1,1 @@
+Fixed kanban board layout: switched html root to 100dvh, applied flex-1/min-h-0 pattern through App → ProjectView → KanbanBoard → KanbanColumn so the board fills available height correctly and scrolls horizontally without overflow issues.

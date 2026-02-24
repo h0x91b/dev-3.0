@@ -62,7 +62,8 @@
       "WebFetch(domain:ghostty.org)",
       "Bash(git:*)",
       "Bash(xxd:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(open:*)"
     ]
   }
 }
