@@ -3,6 +3,7 @@ import { watch, type WatchEventType } from "node:fs";
 const WATCH_DIRS = ["src/bun", "src/shared"];
 const DEBOUNCE_MS = 2000;
 const CMD = ["bunx", "electrobun", "dev"];
+const BUILD_CMD = ["bunx", "electrobun", "build", "--env=dev"];
 const ELECTROBUN_PORT = 7681;
 const PORT_WAIT_TIMEOUT = 10_000;
 const PORT_POLL_INTERVAL = 200;
@@ -56,6 +57,19 @@ function killPortOwner(port: number) {
 	} catch {}
 }
 
+async function buildBun(): Promise<void> {
+	log("Building bun process...");
+	const result = Bun.spawnSync(BUILD_CMD, {
+		stdio: ["inherit", "inherit", "inherit"],
+		cwd: projectRoot,
+	});
+	if (result.exitCode !== 0) {
+		warn(`Build failed (exit code ${result.exitCode}), starting anyway...`);
+	} else {
+		log("Build done.");
+	}
+}
+
 function start() {
 	log("Starting electrobun dev...");
 	child = Bun.spawn(CMD, {
@@ -87,6 +101,7 @@ async function restart() {
 	killPortOwner(ELECTROBUN_PORT);
 	await waitForPortFree(ELECTROBUN_PORT);
 
+	await buildBun();
 	start();
 	restarting = false;
 }
@@ -119,4 +134,5 @@ log(`Watching ${WATCH_DIRS.join(", ")} for changes...`);
 
 restoreTerminal();
 killPortOwner(ELECTROBUN_PORT);
+await buildBun();
 start();
