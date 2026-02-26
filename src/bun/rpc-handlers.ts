@@ -509,6 +509,41 @@ export const handlers = {
 		}
 	},
 
+	async getBranchStatus(params: { taskId: string; projectId: string }) {
+		log.info("→ getBranchStatus", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) {
+			return { ahead: 0, behind: 0, canRebase: false };
+		}
+
+		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		await git.fetchOrigin(project.path);
+		const status = await git.getBranchStatus(task.worktreePath, baseBranch);
+		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, baseBranch) : false;
+
+		log.info("← getBranchStatus", { ...status, canRebase });
+		return { ...status, canRebase };
+	},
+
+	async rebaseTask(params: { taskId: string; projectId: string }) {
+		log.info("→ rebaseTask", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) {
+			return { ok: false, error: "Task has no worktree" };
+		}
+
+		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		await git.fetchOrigin(project.path);
+		const result = await git.rebaseOnBase(task.worktreePath, baseBranch);
+
+		log.info("← rebaseTask", result);
+		return result;
+	},
+
 	async getPtyUrl(params: { taskId: string }): Promise<string> {
 		log.info("→ getPtyUrl", { taskId: params.taskId });
 

@@ -144,6 +144,12 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.updated": "Actualizado",
 	"infoPanel.collapse": "Contraer panel",
 	"infoPanel.expand": "Expandir panel",
+	"infoPanel.ahead": "Commits por delante de la base",
+	"infoPanel.behind": "Commits por detrás de la base",
+	"infoPanel.rebase": "Rebase",
+	"infoPanel.rebasing": "Rebasing...",
+	"infoPanel.rebaseFailed": "Rebase falló: {error}",
+	"infoPanel.rebaseConflicts": "No se puede hacer rebase — conflictos detectados",
 
 	// Status labels
 	"status.todo": "Por hacer",

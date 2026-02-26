@@ -107,6 +107,58 @@ export async function createWorktree(
 	return { worktreePath: wtPath, branchName: branch };
 }
 
+export async function fetchOrigin(projectPath: string): Promise<void> {
+	log.debug("Fetching origin", { projectPath });
+	await run(["git", "fetch", "origin", "--quiet"], projectPath);
+}
+
+export async function getBranchStatus(
+	worktreePath: string,
+	baseBranch: string,
+): Promise<{ ahead: number; behind: number }> {
+	const result = await run(
+		["git", "rev-list", "--count", "--left-right", `origin/${baseBranch}...HEAD`],
+		worktreePath,
+	);
+	if (!result.ok) {
+		log.warn("getBranchStatus failed", { stderr: result.stderr });
+		return { ahead: 0, behind: 0 };
+	}
+	// Output is "behind\tahead" (left = remote, right = local)
+	const parts = result.stdout.split("\t");
+	return {
+		behind: parseInt(parts[0], 10) || 0,
+		ahead: parseInt(parts[1], 10) || 0,
+	};
+}
+
+export async function canRebaseCleanly(
+	worktreePath: string,
+	baseBranch: string,
+): Promise<boolean> {
+	const result = await run(
+		["git", "merge-tree", "--write-tree", `origin/${baseBranch}`, "HEAD"],
+		worktreePath,
+	);
+	return result.ok;
+}
+
+export async function rebaseOnBase(
+	worktreePath: string,
+	baseBranch: string,
+): Promise<{ ok: boolean; error?: string }> {
+	const result = await run(
+		["git", "rebase", `origin/${baseBranch}`],
+		worktreePath,
+	);
+	if (result.ok) {
+		return { ok: true };
+	}
+	// Abort the failed rebase to restore clean worktree
+	await run(["git", "rebase", "--abort"], worktreePath);
+	return { ok: false, error: result.stderr };
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,

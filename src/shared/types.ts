@@ -173,6 +173,12 @@ export function titleFromDescription(
 	return truncated + "\u2026";
 }
 
+export interface BranchStatus {
+	ahead: number;
+	behind: number;
+	canRebase: boolean;
+}
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
@@ -264,6 +270,14 @@ export type AppRPCSchema = {
 			runDevServer: {
 				params: { taskId: string; projectId: string };
 				response: void;
+			};
+			getBranchStatus: {
+				params: { taskId: string; projectId: string };
+				response: BranchStatus;
+			};
+			rebaseTask: {
+				params: { taskId: string; projectId: string };
+				response: { ok: boolean; error?: string };
 			};
 		};
 		messages: {

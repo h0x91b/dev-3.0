@@ -145,6 +145,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	"infoPanel.updated": "Обновлено",
 	"infoPanel.collapse": "Свернуть панель",
 	"infoPanel.expand": "Развернуть панель",
+	"infoPanel.ahead": "Коммитов впереди базовой ветки",
+	"infoPanel.behind": "Коммитов позади базовой ветки",
+	"infoPanel.rebase": "Rebase",
+	"infoPanel.rebasing": "Rebasing...",
+	"infoPanel.rebaseFailed": "Rebase не удался: {error}",
+	"infoPanel.rebaseConflicts": "Rebase невозможен — обнаружены конфликты",
 
 	// Status labels
 	"status.todo": "К выполнению",

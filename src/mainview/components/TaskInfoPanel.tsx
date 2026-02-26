@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus } from "../../shared/types";
+import type { Task, Project, TaskStatus, BranchStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -150,6 +150,59 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 		}
 	}
 
+	// ---- Branch status polling ----
+	const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
+	const [rebasing, setRebasing] = useState(false);
+
+	useEffect(() => {
+		if (!isTaskActive || !task.worktreePath) return;
+
+		let cancelled = false;
+
+		async function fetchStatus() {
+			try {
+				const status = await api.request.getBranchStatus({
+					taskId: task.id,
+					projectId: project.id,
+				});
+				if (!cancelled) setBranchStatus(status);
+			} catch (err) {
+				// Silently ignore — polling will retry
+			}
+		}
+
+		fetchStatus();
+		const interval = setInterval(fetchStatus, 30_000);
+		return () => {
+			cancelled = true;
+			clearInterval(interval);
+		};
+	}, [task.id, project.id, isTaskActive, task.worktreePath]);
+
+	async function handleRebase() {
+		if (rebasing) return;
+		setRebasing(true);
+		try {
+			const result = await api.request.rebaseTask({
+				taskId: task.id,
+				projectId: project.id,
+			});
+			if (result.ok) {
+				// Refresh status after successful rebase
+				const status = await api.request.getBranchStatus({
+					taskId: task.id,
+					projectId: project.id,
+				});
+				setBranchStatus(status);
+			} else {
+				alert(t("infoPanel.rebaseFailed", { error: result.error || "unknown" }));
+			}
+		} catch (err) {
+			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
+		}
+		setRebasing(false);
+	}
+
 	// ---- Panel collapse / drag ----
 
 	// Persist collapsed
@@ -264,6 +317,35 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 		document.body,
 	);
 
+	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
+		<span className="flex items-center gap-1.5 text-[11px] font-mono flex-shrink-0">
+			{branchStatus.ahead > 0 && (
+				<span className="text-fg-2" title={t("infoPanel.ahead")}>
+					↑{branchStatus.ahead}
+				</span>
+			)}
+			{branchStatus.behind > 0 && (
+				<span className="text-fg-2" title={t("infoPanel.behind")}>
+					↓{branchStatus.behind}
+				</span>
+			)}
+			{branchStatus.behind > 0 && (
+				<button
+					onClick={handleRebase}
+					disabled={!branchStatus.canRebase || rebasing}
+					className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+						!branchStatus.canRebase || rebasing
+							? "text-fg-muted cursor-not-allowed bg-raised"
+							: "text-accent hover:bg-accent/20 bg-accent/10"
+					}`}
+					title={!branchStatus.canRebase ? t("infoPanel.rebaseConflicts") : t("infoPanel.rebase")}
+				>
+					{rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase")}
+				</button>
+			)}
+		</span>
+	) : null;
+
 	const devServerButton = (
 		<button
 			onClick={handleDevServer}
@@ -302,6 +384,12 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 							</span>
 						</>
 					)}
+					{branchStatusBadge && (
+						<>
+							<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+							{branchStatusBadge}
+						</>
+					)}
 					<div className="flex-1" />
 					{devServerButton}
 					<button
@@ -327,6 +415,12 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 								<span className="text-fg-3 text-xs font-mono truncate max-w-[200px] flex-shrink-0">
 									{task.branchName}
 								</span>
+							</>
+						)}
+						{branchStatusBadge && (
+							<>
+								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+								{branchStatusBadge}
 							</>
 						)}
 						<div className="flex-1" />

@@ -141,6 +141,12 @@ const en = {
 	"infoPanel.updated": "Updated",
 	"infoPanel.collapse": "Collapse panel",
 	"infoPanel.expand": "Expand panel",
+	"infoPanel.ahead": "Commits ahead of base",
+	"infoPanel.behind": "Commits behind base",
+	"infoPanel.rebase": "Rebase",
+	"infoPanel.rebasing": "Rebasing...",
+	"infoPanel.rebaseFailed": "Rebase failed: {error}",
+	"infoPanel.rebaseConflicts": "Cannot rebase — conflicts detected",
 
 	// Status labels
 	"status.todo": "To Do",
