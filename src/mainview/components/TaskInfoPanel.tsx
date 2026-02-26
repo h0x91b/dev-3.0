@@ -340,16 +340,32 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 		document.body,
 	);
 
+	const branchStatusLoading = isTaskActive && task.worktreePath && !branchStatus ? (
+		<span className="flex items-center gap-1 text-[11px] text-fg-muted flex-shrink-0">
+			<svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+				<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+				<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+			</svg>
+		</span>
+	) : null;
+
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-[11px] flex-shrink-0">
-			<span className="text-[#fbbf24] font-medium">
-				{branchStatus.behind > 0 && branchStatus.ahead > 0
-					? t("infoPanel.commitsAheadBehind", { ahead: String(branchStatus.ahead), behind: String(branchStatus.behind) })
-					: branchStatus.behind > 0
-						? t("infoPanel.commitsBehind", { count: String(branchStatus.behind) })
-						: t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })
-				}
-			</span>
+			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
+				<span className="font-medium">
+					<span className="text-[#34d399]">{branchStatus.ahead} ahead</span>
+					<span className="text-fg-muted"> · </span>
+					<span className="text-[#fbbf24]">{branchStatus.behind} behind</span>
+				</span>
+			) : branchStatus.behind > 0 ? (
+				<span className="text-[#fbbf24] font-medium">
+					{t("infoPanel.commitsBehind", { count: String(branchStatus.behind) })}
+				</span>
+			) : (
+				<span className="text-[#34d399] font-medium">
+					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
+				</span>
+			)}
 			{branchStatus.behind > 0 && (
 				<button
 					onClick={handleRebase}
@@ -419,10 +435,10 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 							</span>
 						</>
 					)}
-					{branchStatusBadge && (
+					{(branchStatusBadge || branchStatusLoading) && (
 						<>
 							<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-							{branchStatusBadge}
+							{branchStatusBadge || branchStatusLoading}
 						</>
 					)}
 					<div className="flex-1" />
