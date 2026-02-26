@@ -8,7 +8,7 @@ import Dashboard from "./components/Dashboard";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
-import BottomPanel from "./components/BottomPanel";
+import TopPanel from "./components/TopPanel";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -79,13 +79,13 @@ function App() {
 				dispatch={dispatch}
 			/>
 			<div className="flex-1 min-h-0 flex flex-col">
-				<div className="flex-1 min-h-0">{renderScreen()}</div>
 				{route.screen === "task" && (
-					<BottomPanel
+					<TopPanel
 						tasks={state.currentProjectTasks}
 						project={currentProject}
 					/>
 				)}
+				<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
 			</div>
 		</div>
 	);

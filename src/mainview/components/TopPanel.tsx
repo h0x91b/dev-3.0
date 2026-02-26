@@ -3,7 +3,7 @@ import { useT } from "../i18n";
 import type { Task, Project } from "../../shared/types";
 import { STATUS_COLORS } from "../../shared/types";
 
-interface BottomPanelProps {
+interface TopPanelProps {
 	tasks: Task[];
 	project: Project | null;
 }
@@ -64,14 +64,14 @@ const MOCK_ACTIVITY = [
 
 const DRAG_HANDLE_H = 5;
 const TABBAR_H = 32;
-const COLLAPSED_H = DRAG_HANDLE_H + TABBAR_H;
+const COLLAPSED_H = TABBAR_H + DRAG_HANDLE_H;
 const MIN_EXPANDED_H = 100;
 
 function getDefaultExpandedH() {
 	return Math.round(window.innerHeight * 0.33);
 }
 
-function BottomPanel({ tasks, project }: BottomPanelProps) {
+function TopPanel({ tasks, project }: TopPanelProps) {
 	const t = useT();
 	const [expanded, setExpanded] = useState(false);
 	const [panelHeight, setPanelHeight] = useState(getDefaultExpandedH);
@@ -97,7 +97,8 @@ function BottomPanel({ tasks, project }: BottomPanelProps) {
 		const maxH = Math.round(window.innerHeight * 0.65);
 
 		function onMouseMove(e: MouseEvent) {
-			const delta = dragStartY.current - e.clientY;
+			// Drag down = increase height (panel grows downward)
+			const delta = e.clientY - dragStartY.current;
 			const newH = dragStartH.current + delta;
 
 			if (newH < COLLAPSED_H + 10) {
@@ -127,37 +128,20 @@ function BottomPanel({ tasks, project }: BottomPanelProps) {
 	}
 
 	const currentH = expanded ? panelHeight : COLLAPSED_H;
-	const contentH = panelHeight - DRAG_HANDLE_H - TABBAR_H;
+	const contentH = panelHeight - TABBAR_H - DRAG_HANDLE_H;
 
 	return (
 		<div
-			className="flex-shrink-0 border-t border-edge flex flex-col glass-header"
+			className="flex-shrink-0 border-b border-edge flex flex-col glass-header"
 			style={{
 				height: currentH,
 				transition: isDragging ? "none" : "height 0.18s ease",
 				userSelect: isDragging ? "none" : undefined,
 			}}
 		>
-			{/* Drag handle */}
+			{/* Tab bar — always visible at top */}
 			<div
-				className="flex-shrink-0 flex items-center justify-center group"
-				style={{ height: DRAG_HANDLE_H, cursor: "row-resize" }}
-				onMouseDown={handleDragStart}
-				onDoubleClick={() => setExpanded((v) => !v)}
-			>
-				<div
-					className={`w-8 rounded-full transition-colors duration-150 ${
-						isDragging
-							? "bg-accent"
-							: "bg-edge-active group-hover:bg-accent/60"
-					}`}
-					style={{ height: 2 }}
-				/>
-			</div>
-
-			{/* Tab bar */}
-			<div
-				className="flex-shrink-0 flex items-center px-2 border-b border-edge gap-0.5"
+				className="flex-shrink-0 flex items-center px-2 gap-0.5"
 				style={{ height: TABBAR_H }}
 			>
 				{(["tasks", "activity", "notes"] as PanelTab[]).map((tab) => {
@@ -236,14 +220,14 @@ function BottomPanel({ tasks, project }: BottomPanelProps) {
 					</span>
 				)}
 
-				{/* Toggle button */}
+				{/* Toggle button — arrow points down when collapsed (expand), up when expanded (collapse) */}
 				<button
 					onClick={() => setExpanded((v) => !v)}
 					className="p-1 rounded text-fg-muted hover:text-fg-3 hover:bg-elevated/60 transition-colors"
 					title={expanded ? t("panel.collapse") : t("panel.expand")}
 				>
 					<svg
-						className={`w-3 h-3 transition-transform duration-150 ${expanded ? "" : "rotate-180"}`}
+						className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
@@ -258,19 +242,34 @@ function BottomPanel({ tasks, project }: BottomPanelProps) {
 				</button>
 			</div>
 
-			{/* Content */}
+			{/* Content area */}
 			{expanded && (
 				<div
-					className="overflow-y-auto overflow-x-hidden"
+					className="overflow-y-auto overflow-x-hidden flex-1 min-h-0"
 					style={{ height: contentH }}
 				>
-					{activeTab === "tasks" && (
-						<TasksTab tasks={tasks} />
-					)}
+					{activeTab === "tasks" && <TasksTab tasks={tasks} />}
 					{activeTab === "activity" && <ActivityTab />}
 					{activeTab === "notes" && <NotesTab />}
 				</div>
 			)}
+
+			{/* Drag handle — always at the bottom, acts as resize grip */}
+			<div
+				className="flex-shrink-0 flex items-center justify-center group"
+				style={{ height: DRAG_HANDLE_H, cursor: "row-resize" }}
+				onMouseDown={handleDragStart}
+				onDoubleClick={() => setExpanded((v) => !v)}
+			>
+				<div
+					className={`w-8 rounded-full transition-colors duration-150 ${
+						isDragging
+							? "bg-accent"
+							: "bg-edge-active group-hover:bg-accent/60"
+					}`}
+					style={{ height: 2 }}
+				/>
+			</div>
 		</div>
 	);
 }
@@ -369,4 +368,4 @@ function NotesTab() {
 	);
 }
 
-export default BottomPanel;
+export default TopPanel;

@@ -1,0 +1,1 @@
+Moved the collapsible panel from bottom to top (below global header, above terminal). Renamed BottomPanel to TopPanel and inverted drag direction — drag down to expand, drag up to collapse. Fixed kanban column scroll regression: the new wrapper div lacked flex-col, breaking the flex chain that allows KanbanColumn scroll areas to overflow correctly.
