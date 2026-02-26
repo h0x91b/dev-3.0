@@ -9,6 +9,7 @@ interface TerminalViewProps {
 function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
+	const wsRef = useRef<WebSocket | null>(null);
 
 	useEffect(() => {
 		let disposed = false;
@@ -176,6 +177,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 		function connectPty(term: Terminal, fit: FitAddon) {
 			ws = new WebSocket(ptyUrl);
+			wsRef.current = ws;
 
 			ws.onopen = () => {
 				const dims = fit.proposeDimensions();
@@ -235,6 +237,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
 			ws?.close();
+			wsRef.current = null;
 			fitAddon?.dispose();
 			if (termRef.current) {
 				termRef.current.dispose();
@@ -243,12 +246,38 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		};
 	}, [ptyUrl, taskId]);
 
+	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+		e.preventDefault();
+		e.stopPropagation();
+	}
+
+	function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const files = Array.from(e.dataTransfer.files);
+		if (files.length === 0) return;
+
+		// Electrobun/Electron exposes the native filesystem path on File objects.
+		const paths = files
+			.map((f) => (f as File & { path?: string }).path ?? f.name)
+			.map((p) => p.replace(/ /g, "\\ "))
+			.join(" ");
+
+		if (wsRef.current?.readyState === WebSocket.OPEN) {
+			wsRef.current.send(paths);
+		}
+		termRef.current?.focus();
+	}
+
 	return (
 		<div
 			ref={containerRef}
 			className="w-full h-full min-h-0"
 			style={{ padding: "4px" }}
 			onClick={() => termRef.current?.focus()}
+			onDragOver={handleDragOver}
+			onDrop={handleDrop}
 		/>
 	);
 }

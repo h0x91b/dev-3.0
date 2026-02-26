@@ -1,0 +1,1 @@
+When files are dragged and dropped onto the terminal window, their full filesystem paths are now inserted into the terminal's stdin (space-separated, with spaces in paths escaped as `\ `). Mirrors the standard behavior of iTerm2 and Terminal.app.
