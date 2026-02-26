@@ -1,0 +1,1 @@
+Added `SecondaryPanel` component — a collapsible sub-panel that sits between the global header and the terminal viewport on the task screen. Clicking a tab (Environment, Logs, Files) expands the panel to a configurable height; dragging the bottom handle resizes it; double-clicking the handle resets to default height. Currently populated with mock data.

@@ -136,6 +136,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
 
+	// SecondaryPanel
+	"panel.environment": "Окружение",
+	"panel.logs": "Логи",
+	"panel.files": "Файлы",
+	"panel.collapse": "Свернуть",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

@@ -8,6 +8,7 @@ import Dashboard from "./components/Dashboard";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
+import SecondaryPanel from "./components/SecondaryPanel";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -72,7 +73,18 @@ function App() {
 				navigate={navigate}
 				dispatch={dispatch}
 			/>
-			<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col">
+				{route.screen === "task" ? (
+					<>
+						<SecondaryPanel />
+						<div className="flex-1 min-h-0">
+							{renderScreen()}
+						</div>
+					</>
+				) : (
+					renderScreen()
+				)}
+			</div>
 		</div>
 	);
 

@@ -132,6 +132,12 @@ const en = {
 	// TaskTerminal
 	"terminal.connecting": "Connecting...",
 
+	// SecondaryPanel
+	"panel.environment": "Environment",
+	"panel.logs": "Logs",
+	"panel.files": "Files",
+	"panel.collapse": "Collapse",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

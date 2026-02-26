@@ -135,6 +135,12 @@ const es: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
 
+	// SecondaryPanel
+	"panel.environment": "Entorno",
+	"panel.logs": "Registros",
+	"panel.files": "Archivos",
+	"panel.collapse": "Colapsar",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",
