@@ -13,7 +13,7 @@ import { DEV3_HOME } from "./paths";
 
 const log = createLogger("main");
 
-log.info("=== dev-3.0 starting ===");
+log.info("=== dev-3.0 starting (build 2026-02-26T1) ===");
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
