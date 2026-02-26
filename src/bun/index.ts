@@ -13,7 +13,12 @@ import { DEV3_HOME } from "./paths";
 
 const log = createLogger("main");
 
-log.info(`=== dev-3.0 starting (built ${new Date().toISOString()}) ===`);
+const formatTime = (d: Date) =>
+	d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+let lastBuildTime = formatTime(new Date());
+
+log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
@@ -111,7 +116,7 @@ ApplicationMenu.setApplicationMenu([
 // --- Main Window ---
 
 const mainWindow = new BrowserWindow({
-	title: "dev-3.0",
+	title: `dev-3.0 [${lastBuildTime}]`,
 	url,
 	rpc,
 	frame: {
@@ -147,7 +152,7 @@ mainWindow.webview.on("dom-ready", async () => {
 	if (channel === "dev") {
 		mainWindow.webview.openDevTools();
 	}
-	log.info("DOM ready");
+	log.info(`DOM ready [${lastBuildTime}]`);
 });
 
 // --- Menu Event Handlers ---
@@ -171,7 +176,9 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			stderr: "inherit",
 		});
 		await proc.exited;
-		log.info("Rebuild done, reloading window");
+		lastBuildTime = formatTime(new Date());
+		log.info(`Rebuild done, reloading [${lastBuildTime}]`);
+		mainWindow.setTitle(`dev-3.0 [${lastBuildTime}]`);
 		mainWindow.webview.loadURL(url);
 	} else if (e.data.action === "about") {
 		Utils.showMessageBox({
