@@ -135,6 +135,20 @@ const es: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
 
+	// SubPanel
+	"subPanel.title": "Info de tarea",
+	"subPanel.worktree": "Worktree",
+	"subPanel.branch": "Rama",
+	"subPanel.baseBranch": "Rama base",
+	"subPanel.created": "Creada",
+	"subPanel.lastCommit": "Último commit",
+	"subPanel.openEditor": "Abrir en editor",
+	"subPanel.copyBranch": "Copiar rama",
+	"subPanel.viewDiff": "Ver Diff",
+	"subPanel.taskSection": "Tarea",
+	"subPanel.gitSection": "Git",
+	"subPanel.actionsSection": "Acciones",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

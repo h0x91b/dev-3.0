@@ -132,6 +132,20 @@ const en = {
 	// TaskTerminal
 	"terminal.connecting": "Connecting...",
 
+	// SubPanel
+	"subPanel.title": "Task Info",
+	"subPanel.worktree": "Worktree",
+	"subPanel.branch": "Branch",
+	"subPanel.baseBranch": "Base Branch",
+	"subPanel.created": "Created",
+	"subPanel.lastCommit": "Last Commit",
+	"subPanel.openEditor": "Open in Editor",
+	"subPanel.copyBranch": "Copy Branch",
+	"subPanel.viewDiff": "View Diff",
+	"subPanel.taskSection": "Task",
+	"subPanel.gitSection": "Git",
+	"subPanel.actionsSection": "Actions",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

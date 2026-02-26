@@ -7,6 +7,7 @@ import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
+import SubPanel from "./components/SubPanel";
 import ProjectSettings from "./components/ProjectSettings";
 
 function App() {
@@ -72,6 +73,11 @@ function App() {
 				navigate={navigate}
 				dispatch={dispatch}
 			/>
+			{route.screen === "task" && (() => {
+				const task = state.currentProjectTasks.find((t) => t.id === route.taskId);
+				const project = state.projects.find((p) => p.id === route.projectId);
+				return task && project ? <SubPanel task={task} project={project} /> : null;
+			})()}
 			<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
 		</div>
 	);

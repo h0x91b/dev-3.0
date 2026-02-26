@@ -1,0 +1,1 @@
+Added collapsible sub-panel between the global header and terminal on the task screen. The panel shows task info, git details, and action buttons. It supports drag-to-resize (30px collapsed to 40% viewport), double-click toggle, and persists height in localStorage.

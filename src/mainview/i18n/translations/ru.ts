@@ -136,6 +136,20 @@ const ru: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
 
+	// SubPanel
+	"subPanel.title": "Информация о задаче",
+	"subPanel.worktree": "Worktree",
+	"subPanel.branch": "Ветка",
+	"subPanel.baseBranch": "Базовая ветка",
+	"subPanel.created": "Создана",
+	"subPanel.lastCommit": "Последний коммит",
+	"subPanel.openEditor": "Открыть в редакторе",
+	"subPanel.copyBranch": "Скопировать ветку",
+	"subPanel.viewDiff": "Показать Diff",
+	"subPanel.taskSection": "Задача",
+	"subPanel.gitSection": "Git",
+	"subPanel.actionsSection": "Действия",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",
