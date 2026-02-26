@@ -52,9 +52,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
 		case "updateTask":
 			return {
 				...state,
-				currentProjectTasks: state.currentProjectTasks.map((t) =>
-					t.id === action.task.id ? action.task : t,
-				),
+				currentProjectTasks: state.currentProjectTasks.map((t) => {
+					if (t.id !== action.task.id) return t;
+					// Preserve frontend-set movedAt if backend didn't return it
+					const movedAt = action.task.movedAt ?? t.movedAt;
+					return movedAt ? { ...action.task, movedAt } : action.task;
+				}),
 			};
 		case "addTask":
 			return {
