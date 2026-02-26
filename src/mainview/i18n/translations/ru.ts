@@ -136,6 +136,16 @@ const ru: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
 
+	// TaskInfoPanel
+	"infoPanel.status": "Статус",
+	"infoPanel.branch": "Ветка",
+	"infoPanel.description": "Описание",
+	"infoPanel.worktree": "Worktree",
+	"infoPanel.created": "Создано",
+	"infoPanel.updated": "Обновлено",
+	"infoPanel.collapse": "Свернуть панель",
+	"infoPanel.expand": "Развернуть панель",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

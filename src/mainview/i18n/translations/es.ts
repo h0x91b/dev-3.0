@@ -135,6 +135,16 @@ const es: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
 
+	// TaskInfoPanel
+	"infoPanel.status": "Estado",
+	"infoPanel.branch": "Rama",
+	"infoPanel.description": "Descripción",
+	"infoPanel.worktree": "Worktree",
+	"infoPanel.created": "Creado",
+	"infoPanel.updated": "Actualizado",
+	"infoPanel.collapse": "Contraer panel",
+	"infoPanel.expand": "Expandir panel",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

@@ -132,6 +132,16 @@ const en = {
 	// TaskTerminal
 	"terminal.connecting": "Connecting...",
 
+	// TaskInfoPanel
+	"infoPanel.status": "Status",
+	"infoPanel.branch": "Branch",
+	"infoPanel.description": "Description",
+	"infoPanel.worktree": "Worktree",
+	"infoPanel.created": "Created",
+	"infoPanel.updated": "Updated",
+	"infoPanel.collapse": "Collapse panel",
+	"infoPanel.expand": "Expand panel",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

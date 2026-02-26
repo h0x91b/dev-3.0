@@ -1,0 +1,1 @@
+Added expandable sub-panel between the header and terminal on the task screen. In collapsed state it shows a compact row with task status, title, and branch. Expands to reveal full metadata (description, worktree path, timestamps) with a drag handle for resizing. Panel state (collapsed/height) persists in localStorage.

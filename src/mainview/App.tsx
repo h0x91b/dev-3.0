@@ -102,6 +102,7 @@ function App() {
 						projectId={route.projectId}
 						taskId={route.taskId}
 						tasks={state.currentProjectTasks}
+						projects={state.projects}
 						navigate={navigate}
 					/>
 				);
