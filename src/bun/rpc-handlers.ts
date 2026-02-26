@@ -520,4 +520,18 @@ export const handlers = {
 		log.info("← getPtyUrl", { url });
 		return url;
 	},
+
+	async resolveFilename(params: { filename: string }): Promise<string | null> {
+		// WKWebView doesn't expose native file paths via drag-and-drop.
+		// Use Spotlight (mdfind) to find the full path by filename.
+		const proc = Bun.spawnSync([
+			"mdfind",
+			"-onlyin", "/",
+			`kMDItemFSName == "${params.filename}"`,
+		]);
+		const output = proc.stdout.toString().trim();
+		if (!output) return null;
+		// Return the first match (unique for timestamped filenames like screenshots)
+		return output.split("\n")[0];
+	},
 };

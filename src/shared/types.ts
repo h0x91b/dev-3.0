@@ -257,6 +257,10 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: string;
 			};
+			resolveFilename: {
+				params: { filename: string };
+				response: string | null;
+			};
 			runDevServer: {
 				params: { taskId: string; projectId: string };
 				response: void;
