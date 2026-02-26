@@ -21,6 +21,12 @@ function sortTasksForColumn(
 	moveOrderMap: Map<string, number>,
 ): Task[] {
 	return [...tasks].sort((a, b) => {
+		// Move order takes top priority when dropPosition is "top"
+		if (dropPosition === "top") {
+			const aOrder = moveOrderMap.get(a.id) ?? 0;
+			const bOrder = moveOrderMap.get(b.id) ?? 0;
+			if (aOrder !== bOrder) return bOrder - aOrder;
+		}
 		// Group by groupId: tasks with same groupId stay together
 		const aGroup = a.groupId ?? "";
 		const bGroup = b.groupId ?? "";
@@ -35,18 +41,12 @@ function sortTasksForColumn(
 		}
 		// Ungrouped: sort by position preference
 		if (dropPosition === "top") {
-			// Primary: in-session move order (most recently moved = highest counter = first)
-			const aOrder = moveOrderMap.get(a.id) ?? 0;
-			const bOrder = moveOrderMap.get(b.id) ?? 0;
-			if (aOrder !== bOrder) return bOrder - aOrder;
-			// Secondary fallback: movedAt from task (persisted across reloads)
+			// Fallback: movedAt from task (persisted across reloads)
 			if (a.movedAt && b.movedAt) return b.movedAt > a.movedAt ? 1 : -1;
 			if (a.movedAt) return -1;
 			if (b.movedAt) return 1;
-			// Final fallback: original creation order
-			return a.createdAt < b.createdAt ? -1 : 1;
 		}
-		return a.createdAt < b.createdAt ? -1 : 1; // ASC: oldest first
+		return a.createdAt < b.createdAt ? -1 : 1;
 	});
 }
 
