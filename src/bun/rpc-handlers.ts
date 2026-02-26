@@ -71,7 +71,7 @@ async function launchTaskPty(
 		// to avoid tmux env var propagation issues (tmux server doesn't
 		// inherit custom env vars from the client process)
 		await Bun.write(setupPath, project.setupScript + "\n");
-		await Bun.write(claudePath, `#!/bin/bash\nexec ${tmuxCmd}\n`);
+		await Bun.write(claudePath, `#!/bin/bash\necho "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && exec ${tmuxCmd}\n`);
 
 		const splitCmd = `tmux split-window -v -c "${worktreePath}" "bash '${claudePath}'"`;
 		const setupFail = [
@@ -101,7 +101,8 @@ async function launchTaskPty(
 	}
 
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
-	pty.createSession(task.id, worktreePath, tmuxCmd, env);
+	const echoAndRun = `echo "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && ${tmuxCmd}`;
+	pty.createSession(task.id, worktreePath, echoAndRun, env);
 }
 
 export const handlers = {
