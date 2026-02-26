@@ -413,7 +413,17 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
 
-		await Bun.write(devScriptPath, project.devScript + "\n");
+		const wrappedScript = [
+			`#!/bin/bash`,
+			project.devScript,
+			`EXIT_CODE=$?`,
+			`if [ $EXIT_CODE -ne 0 ]; then`,
+			`  echo ""`,
+			`  echo "Process exited with code $EXIT_CODE. Press any key to close."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(devScriptPath, wrappedScript);
 
 		const proc = Bun.spawn([
 			"tmux", "split-window", "-h",
