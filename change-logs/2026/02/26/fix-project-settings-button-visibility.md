@@ -1,0 +1,1 @@
+Project settings button now visible on all project sub-screens (task view, project-settings, etc.), not just the kanban board. Previously the button only appeared when `route.screen === "project"`, which hid it inside task terminals.

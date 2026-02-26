@@ -139,8 +139,8 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 					);
 				})()}
 
-				{/* Project settings — only on project kanban screen */}
-				{"projectId" in route && route.screen === "project" && (
+				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
+				{"projectId" in route && route.screen !== "project-settings" && (
 					<button
 						onClick={() =>
 							navigate({
