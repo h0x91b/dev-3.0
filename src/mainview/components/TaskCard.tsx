@@ -107,7 +107,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				projectId: project.id,
 				newStatus,
 			});
-			dispatch({ type: "updateTask", task: updated });
+			const taskWithMovedAt = updated.movedAt ? updated : { ...updated, movedAt: new Date().toISOString() };
+			dispatch({ type: "updateTask", task: taskWithMovedAt });
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}

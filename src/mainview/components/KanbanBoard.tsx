@@ -32,9 +32,14 @@ function sortTasksForColumn(tasks: Task[], dropPosition: "top" | "bottom"): Task
 		}
 		// Ungrouped: sort by position preference
 		if (dropPosition === "top") {
-			const aKey = a.movedAt ?? a.createdAt;
-			const bKey = b.movedAt ?? b.createdAt;
-			return bKey < aKey ? -1 : 1; // DESC: most recently moved/created first
+			// Tasks with movedAt go to the top (most recently moved first)
+			// Tasks without movedAt stay in original order at the bottom
+			if (a.movedAt && b.movedAt) {
+				return b.movedAt > a.movedAt ? 1 : -1; // DESC by movedAt
+			}
+			if (a.movedAt) return -1; // a has movedAt → a goes first
+			if (b.movedAt) return 1;  // b has movedAt → b goes first
+			return a.createdAt < b.createdAt ? -1 : 1; // neither moved: original order
 		}
 		return a.createdAt < b.createdAt ? -1 : 1; // ASC: oldest first
 	});
@@ -89,7 +94,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 				projectId: project.id,
 				newStatus: targetStatus,
 			});
-			dispatch({ type: "updateTask", task: updated });
+			// Ensure movedAt is set on the frontend even if backend didn't return it
+			const taskWithMovedAt = updated.movedAt ? updated : { ...updated, movedAt: new Date().toISOString() };
+			dispatch({ type: "updateTask", task: taskWithMovedAt });
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}
