@@ -27,14 +27,17 @@ export function createSession(
 	extraEnv: Record<string, string> = {},
 ): void {
 	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand });
-	sessions.set(taskId, {
+	const session: PtySession = {
 		taskId,
 		cwd,
 		tmuxCommand,
 		env: extraEnv,
 		proc: null,
 		ws: null,
-	});
+	};
+	sessions.set(taskId, session);
+	// Spawn immediately in the background — don't wait for WS connection
+	spawnPty(session, 220, 50);
 }
 
 export function destroySession(taskId: string): void {

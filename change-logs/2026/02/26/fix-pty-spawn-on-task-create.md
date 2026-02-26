@@ -1,0 +1,1 @@
+Spawn tmux process immediately when task moves to In Progress, without waiting for the user to open the task terminal. Previously the PTY was only started on WebSocket connection (when the user clicked into the task).
