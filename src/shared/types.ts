@@ -236,6 +236,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
+			editTask: {
+				params: { taskId: string; projectId: string; description: string };
+				response: Task;
+			};
 			spawnVariants: {
 				params: {
 					taskId: string;

@@ -1,6 +1,6 @@
 import { Utils } from "electrobun/bun";
 import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../shared/types";
-import { ACTIVE_STATUSES } from "../shared/types";
+import { ACTIVE_STATUSES, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -384,6 +384,22 @@ export const handlers = {
 
 		log.info("← spawnVariants done", { count: resultTasks.length, groupId });
 		return resultTasks;
+	},
+
+	async editTask(params: { taskId: string; projectId: string; description: string }): Promise<Task> {
+		log.info("→ editTask", { taskId: params.taskId });
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		if (task.status !== "todo") {
+			throw new Error(`Can only edit tasks in todo status (got ${task.status})`);
+		}
+		const title = titleFromDescription(params.description);
+		const updated = await data.updateTask(project, task.id, {
+			description: params.description,
+			title,
+		});
+		log.info("← editTask done", { taskId: task.id });
+		return updated;
 	},
 
 	async getPtyUrl(params: { taskId: string }): Promise<string> {

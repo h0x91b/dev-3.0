@@ -95,6 +95,10 @@ const es: TranslationRecord & Record<string, string> = {
 	"task.cancel": "Cancelar",
 	"task.confirmCancel": "¿Cancelar tarea \"{title}\"?",
 	"task.variant": "#{n}",
+	"task.editSave": "Guardar",
+	"task.editCancel": "Cancelar",
+	"task.failedEdit": "Error al actualizar tarea: {error}",
+	"task.editHint": "⌘Enter para guardar",
 
 	// LaunchVariantsModal
 	"launch.title": "Lanzar tarea",

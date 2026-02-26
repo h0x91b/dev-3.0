@@ -20,8 +20,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+	const [isEditing, setIsEditing] = useState(false);
+	const [editValue, setEditValue] = useState("");
+	const [saving, setSaving] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
@@ -126,11 +130,55 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		onDragStartProp(task.id);
 	}
 
+	function handleTitleClick(e: React.MouseEvent) {
+		if (!isTodo || isEditing) return;
+		e.stopPropagation();
+		setEditValue(task.description);
+		setIsEditing(true);
+		// autofocus after state update
+		setTimeout(() => textareaRef.current?.focus(), 0);
+	}
+
+	async function handleEditSave() {
+		const trimmed = editValue.trim();
+		if (!trimmed || trimmed === task.description) {
+			setIsEditing(false);
+			return;
+		}
+		setSaving(true);
+		try {
+			const updated = await api.request.editTask({
+				taskId: task.id,
+				projectId: project.id,
+				description: trimmed,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			setIsEditing(false);
+		} catch (err) {
+			alert(t("task.failedEdit", { error: String(err) }));
+		}
+		setSaving(false);
+	}
+
+	function handleEditCancel() {
+		setIsEditing(false);
+	}
+
+	function handleEditKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+		if (e.key === "Escape") {
+			e.preventDefault();
+			handleEditCancel();
+		} else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+			e.preventDefault();
+			handleEditSave();
+		}
+	}
+
 	const showDismissButton = isTodo || isCancelled;
 
 	return (
 		<div
-			draggable={!moving}
+			draggable={!moving && !isEditing}
 			onDragStart={handleDragStart}
 			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-transparent border-l-[3px] ${
 				isActive
@@ -177,10 +225,47 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				);
 			})()}
 
-			{/* Title */}
-			<div className="text-fg text-sm leading-relaxed break-words font-medium pr-5">
-				{task.title}
-			</div>
+			{/* Title / inline editor */}
+			{isEditing ? (
+				<div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
+					<textarea
+						ref={textareaRef}
+						value={editValue}
+						onChange={(e) => setEditValue(e.target.value)}
+						onKeyDown={handleEditKeyDown}
+						rows={3}
+						className="w-full bg-elevated border border-edge-active rounded-lg px-2.5 py-2 text-sm text-fg leading-relaxed resize-none outline-none focus:border-accent/60 transition-colors"
+						disabled={saving}
+					/>
+					<div className="flex items-center justify-between mt-1.5">
+						<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
+						<div className="flex gap-1.5">
+							<button
+								onClick={handleEditCancel}
+								className="text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
+								disabled={saving}
+							>
+								{t("task.editCancel")}
+							</button>
+							<button
+								onClick={handleEditSave}
+								className="text-xs px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover font-semibold transition-colors disabled:opacity-50"
+								disabled={saving || !editValue.trim()}
+							>
+								{t("task.editSave")}
+							</button>
+						</div>
+					</div>
+				</div>
+			) : (
+				<div
+					className={`text-fg text-sm leading-relaxed break-words font-medium pr-5 ${isTodo ? "cursor-text hover:text-fg-2" : ""}`}
+					onClick={handleTitleClick}
+					title={isTodo ? task.description : undefined}
+				>
+					{task.title}
+				</div>
+			)}
 
 			{/* Bottom row */}
 			<div className="flex items-center justify-between mt-3 gap-2">

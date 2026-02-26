@@ -97,6 +97,10 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.cancel": "Отменить",
 	"task.confirmCancel": "Отменить задачу «{title}»?",
 	"task.variant": "#{n}",
+	"task.editSave": "Сохранить",
+	"task.editCancel": "Отмена",
+	"task.failedEdit": "Не удалось обновить задачу: {error}",
+	"task.editHint": "⌘Enter для сохранения",
 
 	// LaunchVariantsModal
 	"launch.title": "Запуск задачи",

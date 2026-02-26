@@ -1,0 +1,1 @@
+Added inline editing for TODO tasks. Clicking the task title on a todo card opens a textarea with the full description; Cmd+Enter saves, Escape cancels. The title is regenerated from the updated description via the new `editTask` RPC handler.

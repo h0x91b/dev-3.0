@@ -93,6 +93,10 @@ const en = {
 	"task.cancel": "Cancel",
 	"task.confirmCancel": "Cancel task \"{title}\"?",
 	"task.variant": "#{n}",
+	"task.editSave": "Save",
+	"task.editCancel": "Cancel",
+	"task.failedEdit": "Failed to update task: {error}",
+	"task.editHint": "⌘Enter to save",
 
 	// LaunchVariantsModal
 	"launch.title": "Launch Task",
