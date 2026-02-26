@@ -1,0 +1,1 @@
+Added a status dropdown to the GlobalHeader when viewing a task terminal. Reuses the same portal-based dropdown pattern from TaskCard, allowing users to change task status (e.g., move to user-questions, review, completed) directly from the terminal screen without going back to the Kanban board.
