@@ -13,6 +13,9 @@ const log = createLogger("rpc");
 // Will be set by index.ts after window creation
 let pushMessage: ((name: string, payload: any) => void) | null = null;
 
+// Track dev server tmux pane IDs per task
+const devPaneIds = new Map<string, string>();
+
 export function setPushMessage(fn: (name: string, payload: any) => void): void {
 	pushMessage = fn;
 }
@@ -413,6 +416,15 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
 
+		// Kill existing dev pane for this task if it's still alive
+		const existingPane = devPaneIds.get(task.id);
+		if (existingPane) {
+			const kill = Bun.spawn(["tmux", "kill-pane", "-t", existingPane]);
+			await kill.exited;
+			devPaneIds.delete(task.id);
+			log.info("Killed existing dev pane", { taskId: task.id.slice(0, 8), paneId: existingPane });
+		}
+
 		const wrappedScript = [
 			`#!/bin/bash`,
 			project.devScript,
@@ -425,14 +437,24 @@ export const handlers = {
 		].join("\n") + "\n";
 		await Bun.write(devScriptPath, wrappedScript);
 
+		// Create pane and capture its ID with -P -F
 		const proc = Bun.spawn([
 			"tmux", "split-window", "-h",
 			"-t", tmuxSession,
 			"-c", task.worktreePath,
+			"-P", "-F", "#{pane_id}",
 			`bash "${devScriptPath}"`,
-		]);
+		], { stdout: "pipe" });
+		const output = await new Response(proc.stdout).text();
 		await proc.exited;
-		log.info("← runDevServer done");
+
+		const paneId = output.trim();
+		if (paneId) {
+			devPaneIds.set(task.id, paneId);
+			log.info("← runDevServer done", { paneId });
+		} else {
+			log.info("← runDevServer done (no pane id captured)");
+		}
 	},
 
 	async getPtyUrl(params: { taskId: string }): Promise<string> {
