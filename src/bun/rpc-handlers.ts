@@ -24,6 +24,32 @@ function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
 }
 
+async function runCleanupScript(task: Task, project: Project): Promise<void> {
+	if (!task.worktreePath || !project.cleanupScript?.trim()) return;
+
+	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
+	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
+
+	await Bun.write(scriptPath, `#!/bin/bash\n${project.cleanupScript}\n`);
+
+	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
+
+	// Run attached (no -d) so proc.exited fires when the script finishes
+	// and tmux destroys the session automatically when the shell exits.
+	const proc = Bun.spawn(
+		["tmux", "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`],
+		{
+			terminal: { cols: 220, rows: 50, data: () => {} },
+			env: { ...process.env, TERM: "xterm-256color", HOME: process.env.HOME || "/" },
+			cwd: task.worktreePath,
+		},
+	);
+
+	await proc.exited;
+
+	log.info("Cleanup session finished", { session: sessionName });
+}
+
 async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -292,13 +318,19 @@ export const handlers = {
 			return updated;
 		}
 
-		// active → completed/cancelled: destroy PTY + worktree
+		// active → completed/cancelled: destroy PTY, run cleanup if configured, then remove worktree
 		if (
 			isActive(oldStatus) &&
 			(newStatus === "completed" || newStatus === "cancelled")
 		) {
-			log.info("Transition: active → terminal, destroying PTY + worktree");
+			log.info("Transition: active → terminal, destroying PTY");
 			pty.destroySession(task.id);
+
+			if (project.cleanupScript?.trim()) {
+				log.info("Running cleanup script before removing worktree", { taskId: task.id });
+				await runCleanupScript(task, project);
+			}
+
 			await git.removeWorktree(project, task);
 
 			const updated = await data.updateTask(project, task.id, {

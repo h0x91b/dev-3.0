@@ -1,0 +1,1 @@
+When a task moves to `completed` or `cancelled`, if the project has a `cleanupScript` configured, it now runs in a new dedicated tmux session before the worktree is removed. The cleanup session is automatically destroyed once the script finishes.

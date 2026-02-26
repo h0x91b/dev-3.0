@@ -49,6 +49,11 @@ export function destroySession(taskId: string): void {
 
 	log.info("Destroying PTY session", { taskId: taskId.slice(0, 8), hasPid: !!session.proc });
 
+	// Kill the tmux session explicitly — proc.kill() only disconnects the
+	// attached client, the session itself keeps running on the tmux server.
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	Bun.spawn(["tmux", "kill-session", "-t", tmuxSessionName]);
+
 	if (session.proc) {
 		session.proc.terminal?.close();
 		session.proc.kill();
