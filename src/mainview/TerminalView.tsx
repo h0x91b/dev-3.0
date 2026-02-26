@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
+import { api } from "./rpc";
 
 interface TerminalViewProps {
 	ptyUrl: string;
@@ -251,26 +252,27 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		e.stopPropagation();
 	}
 
-	function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+	async function handleDrop(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();
 		e.stopPropagation();
 
 		const files = Array.from(e.dataTransfer.files);
-		const types = Array.from(e.dataTransfer.types);
-		const debugLines: string[] = [
-			`\r\n[drag-debug] types: ${JSON.stringify(types)}`,
-			`[drag-debug] files.length: ${files.length}`,
-		];
-		for (const t of types) {
-			const val = e.dataTransfer.getData(t);
-			debugLines.push(`[drag-debug] getData("${t}"): ${JSON.stringify(val)}`);
+		if (files.length === 0) return;
+
+		// WKWebView doesn't expose native file paths — resolve via Spotlight in main process.
+		const paths = await Promise.all(
+			files.map(async (f) => {
+				const resolved = await api.request.resolveFilename({ filename: f.name });
+				const p = resolved ?? f.name;
+				return p.replace(/ /g, "\\ ");
+			}),
+		);
+		const text = paths.join(" ");
+
+		if (wsRef.current?.readyState === WebSocket.OPEN) {
+			wsRef.current.send(text);
 		}
-		if (files.length > 0) {
-			const f0 = files[0] as File & { path?: string };
-			debugLines.push(`[drag-debug] file[0].name: ${f0.name}`);
-			debugLines.push(`[drag-debug] file[0].path: ${f0.path}`);
-		}
-		termRef.current?.writeln(debugLines.join("\r\n"));
+		termRef.current?.focus();
 	}
 
 	return (
