@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
+import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -305,8 +306,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				) : null}
 			</div>
 
-			{/* Status dropdown menu */}
-			{menuOpen && (
+			{/* Status dropdown menu — rendered via portal to escape backdrop-filter containing block */}
+			{menuOpen && createPortal(
 				<div
 					ref={menuRef}
 					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[180px]"
@@ -352,7 +353,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							</button>
 						</div>
 					)}
-				</div>
+				</div>,
+				document.body
 			)}
 		</div>
 	);

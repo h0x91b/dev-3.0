@@ -1,0 +1,1 @@
+Fixed status dropdown menu in TaskCard flying off-screen due to `backdrop-filter` on `.glass-column` creating a new CSS containing block for `fixed`-positioned elements. Wrapped the dropdown in `createPortal(..., document.body)` so it renders outside the glass column and `fixed` positioning works correctly relative to the viewport.
