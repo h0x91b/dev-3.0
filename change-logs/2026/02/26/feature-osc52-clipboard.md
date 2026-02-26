@@ -1,0 +1,1 @@
+Auto-copy terminal selection to system clipboard via OSC 52. When text is selected with mouse in tmux and released, tmux emits an OSC 52 escape sequence which is intercepted and decoded on the client side, writing the text to navigator.clipboard. tmux is now configured with `set -s set-clipboard on` at session start.
