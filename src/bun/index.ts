@@ -89,6 +89,7 @@ ApplicationMenu.setApplicationMenu([
 	{
 		label: "View",
 		submenu: [
+			{ label: "Rebuild", action: "rebuild", accelerator: "r" },
 			{ label: "Toggle Developer Tools", action: "toggle-devtools" },
 			{ type: "separator" },
 			{ role: "toggleFullScreen" },
@@ -151,8 +152,18 @@ mainWindow.webview.on("dom-ready", async () => {
 
 // --- Menu Event Handlers ---
 
-Electrobun.events.on("application-menu-clicked", (e) => {
-	if (e.data.action === "about") {
+Electrobun.events.on("application-menu-clicked", async (e) => {
+	if (e.data.action === "rebuild") {
+		log.info("Rebuilding frontend...");
+		const proc = Bun.spawn(["bunx", "vite", "build"], {
+			cwd: import.meta.dir + "/../..",
+			stdout: "inherit",
+			stderr: "inherit",
+		});
+		await proc.exited;
+		log.info("Rebuild done, reloading window");
+		mainWindow.webview.loadURL(url);
+	} else if (e.data.action === "about") {
 		Utils.showMessageBox({
 			type: "info",
 			title: "About",
