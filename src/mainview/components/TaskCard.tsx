@@ -14,9 +14,10 @@ interface TaskCardProps {
 	agents: CodingAgent[];
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 	onDragStart: (taskId: string) => void;
+	onTaskMoved: (taskId: string) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -107,8 +108,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				projectId: project.id,
 				newStatus,
 			});
-			const taskWithMovedAt = updated.movedAt ? updated : { ...updated, movedAt: new Date().toISOString() };
-			dispatch({ type: "updateTask", task: taskWithMovedAt });
+			dispatch({ type: "updateTask", task: updated });
+			onTaskMoved(task.id);
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}

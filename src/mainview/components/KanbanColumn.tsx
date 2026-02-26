@@ -18,6 +18,7 @@ interface KanbanColumnProps {
 	onTaskDrop: (taskId: string, targetStatus: TaskStatus) => void;
 	dragFromStatus: TaskStatus | null;
 	onDragStart: (taskId: string) => void;
+	onTaskMoved: (taskId: string) => void;
 }
 
 function KanbanColumn({
@@ -33,6 +34,7 @@ function KanbanColumn({
 	onTaskDrop,
 	dragFromStatus,
 	onDragStart,
+	onTaskMoved,
 }: KanbanColumnProps) {
 	const t = useT();
 	const color = STATUS_COLORS[status];
@@ -130,6 +132,7 @@ function KanbanColumn({
 						agents={agents}
 						onLaunchVariants={onLaunchVariants}
 						onDragStart={onDragStart}
+					onTaskMoved={onTaskMoved}
 					/>
 				))}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, type Dispatch } from "react";
+import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -15,13 +15,16 @@ interface KanbanBoardProps {
 	navigate: (route: Route) => void;
 }
 
-function sortTasksForColumn(tasks: Task[], dropPosition: "top" | "bottom"): Task[] {
+function sortTasksForColumn(
+	tasks: Task[],
+	dropPosition: "top" | "bottom",
+	moveOrderMap: Map<string, number>,
+): Task[] {
 	return [...tasks].sort((a, b) => {
 		// Group by groupId: tasks with same groupId stay together
 		const aGroup = a.groupId ?? "";
 		const bGroup = b.groupId ?? "";
 		if (aGroup !== bGroup) {
-			// Ungrouped tasks sort by createdAt
 			if (!aGroup) return 1;
 			if (!bGroup) return -1;
 			return aGroup < bGroup ? -1 : 1;
@@ -32,14 +35,16 @@ function sortTasksForColumn(tasks: Task[], dropPosition: "top" | "bottom"): Task
 		}
 		// Ungrouped: sort by position preference
 		if (dropPosition === "top") {
-			// Tasks with movedAt go to the top (most recently moved first)
-			// Tasks without movedAt stay in original order at the bottom
-			if (a.movedAt && b.movedAt) {
-				return b.movedAt > a.movedAt ? 1 : -1; // DESC by movedAt
-			}
-			if (a.movedAt) return -1; // a has movedAt → a goes first
-			if (b.movedAt) return 1;  // b has movedAt → b goes first
-			return a.createdAt < b.createdAt ? -1 : 1; // neither moved: original order
+			// Primary: in-session move order (most recently moved = highest counter = first)
+			const aOrder = moveOrderMap.get(a.id) ?? 0;
+			const bOrder = moveOrderMap.get(b.id) ?? 0;
+			if (aOrder !== bOrder) return bOrder - aOrder;
+			// Secondary fallback: movedAt from task (persisted across reloads)
+			if (a.movedAt && b.movedAt) return b.movedAt > a.movedAt ? 1 : -1;
+			if (a.movedAt) return -1;
+			if (b.movedAt) return 1;
+			// Final fallback: original creation order
+			return a.createdAt < b.createdAt ? -1 : 1;
 		}
 		return a.createdAt < b.createdAt ? -1 : 1; // ASC: oldest first
 	});
@@ -56,6 +61,13 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
+	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
+	const moveCounterRef = useRef(0);
+
+	function recordMove(taskId: string) {
+		moveCounterRef.current += 1;
+		setMoveOrderMap((prev) => new Map(prev).set(taskId, moveCounterRef.current));
+	}
 
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
@@ -94,9 +106,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 				projectId: project.id,
 				newStatus: targetStatus,
 			});
-			// Ensure movedAt is set on the frontend even if backend didn't return it
-			const taskWithMovedAt = updated.movedAt ? updated : { ...updated, movedAt: new Date().toISOString() };
-			dispatch({ type: "updateTask", task: taskWithMovedAt });
+			dispatch({ type: "updateTask", task: updated });
+			recordMove(task.id);
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}
@@ -114,7 +125,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 	for (const status of ALL_STATUSES) {
 		const columnTasks = tasksByStatus.get(status);
 		if (columnTasks && columnTasks.length > 1) {
-			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskDropPosition));
+			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskDropPosition, moveOrderMap));
 		}
 	}
 
@@ -138,6 +149,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate }: KanbanBoardProps) {
 						onTaskDrop={handleTaskDrop}
 						dragFromStatus={dragFromStatus}
 						onDragStart={handleDragStart}
+					onTaskMoved={recordMove}
 					/>
 				))}
 			</div>
