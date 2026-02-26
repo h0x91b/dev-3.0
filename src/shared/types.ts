@@ -135,7 +135,6 @@ export interface Project {
 	name: string;
 	path: string;
 	setupScript: string;
-	setupScriptBackground: boolean;
 	devScript: string;
 	cleanupScript: string;
 	defaultBaseBranch: string;

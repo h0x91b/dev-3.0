@@ -59,7 +59,6 @@ async function launchTaskPty(
 	await agents.ensureClaudeTrust(worktreePath);
 
 	if (runSetup && project.setupScript.trim()) {
-		const isBackground = project.setupScriptBackground ?? false;
 		const prefix = `/tmp/dev3-${task.id}`;
 		const setupPath = `${prefix}-setup.sh`;
 		const claudePath = `${prefix}-cmd.sh`;
@@ -83,27 +82,16 @@ async function launchTaskPty(
 			"exit",
 		].join("\n");
 
-		const startupScript = isBackground
-			? [
-					"#!/bin/bash",
-					splitCmd,
-					`bash -x "${setupPath}"`,
-					"S=$?",
-					`if [ $S -ne 0 ]; then`,
-					setupFail,
-					"fi",
-					setupOkClose,
-				].join("\n")
-			: [
-					"#!/bin/bash",
-					`bash -x "${setupPath}"`,
-					"S=$?",
-					`if [ $S -ne 0 ]; then`,
-					setupFail,
-					"fi",
-					splitCmd,
-					setupOkClose,
-				].join("\n");
+		const startupScript = [
+			"#!/bin/bash",
+			splitCmd,
+			`bash -x "${setupPath}"`,
+			"S=$?",
+			`if [ $S -ne 0 ]; then`,
+			setupFail,
+			"fi",
+			setupOkClose,
+		].join("\n");
 
 		await Bun.write(startupPath, startupScript + "\n");
 		tmuxCmd = `bash "${startupPath}"`;
@@ -189,7 +177,6 @@ export const handlers = {
 	async updateProjectSettings(params: {
 		projectId: string;
 		setupScript: string;
-		setupScriptBackground: boolean;
 		devScript: string;
 		cleanupScript: string;
 		defaultBaseBranch: string;
@@ -198,7 +185,6 @@ export const handlers = {
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
 		const project = await data.updateProject(params.projectId, {
 			setupScript: params.setupScript,
-			setupScriptBackground: params.setupScriptBackground,
 			devScript: params.devScript,
 			cleanupScript: params.cleanupScript,
 			defaultBaseBranch: params.defaultBaseBranch,

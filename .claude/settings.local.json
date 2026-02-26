@@ -63,7 +63,9 @@
       "Bash(git:*)",
       "Bash(xxd:*)",
       "Bash(pkill:*)",
-      "Bash(open:*)"
+      "Bash(open:*)",
+      "Bash(grep dev3:*)",
+      "Bash(grep DEV3_:*)"
     ]
   }
 }

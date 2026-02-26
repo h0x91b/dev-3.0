@@ -108,7 +108,6 @@ const en = {
 	"projectSettings.setupScript": "Setup Script",
 	"projectSettings.setupScriptDesc":
 		"Runs in the worktree directory after creation",
-	"projectSettings.setupScriptBackground": "Run in background (don't wait)",
 	"projectSettings.devScript": "Dev Script",
 	"projectSettings.devScriptDesc":
 		"Runs when starting the dev server for this project",
