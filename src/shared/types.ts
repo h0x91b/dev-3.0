@@ -279,6 +279,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: { ok: boolean; error?: string };
 			};
+			mergeTask: {
+				params: { taskId: string; projectId: string };
+				response: { ok: boolean; error?: string };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

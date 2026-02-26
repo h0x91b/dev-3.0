@@ -153,6 +153,7 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 	// ---- Branch status polling ----
 	const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
 	const [rebasing, setRebasing] = useState(false);
+	const [merging, setMerging] = useState(false);
 
 	useEffect(() => {
 		if (!isTaskActive || !task.worktreePath) return;
@@ -188,7 +189,6 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 				projectId: project.id,
 			});
 			if (result.ok) {
-				// Refresh status after successful rebase
 				const status = await api.request.getBranchStatus({
 					taskId: task.id,
 					projectId: project.id,
@@ -201,6 +201,29 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
 		}
 		setRebasing(false);
+	}
+
+	async function handleMerge() {
+		if (merging) return;
+		setMerging(true);
+		try {
+			const result = await api.request.mergeTask({
+				taskId: task.id,
+				projectId: project.id,
+			});
+			if (result.ok) {
+				const status = await api.request.getBranchStatus({
+					taskId: task.id,
+					projectId: project.id,
+				});
+				setBranchStatus(status);
+			} else {
+				alert(t("infoPanel.mergeFailed", { error: result.error || "unknown" }));
+			}
+		} catch (err) {
+			alert(t("infoPanel.mergeFailed", { error: String(err) }));
+		}
+		setMerging(false);
 	}
 
 	// ---- Panel collapse / drag ----
@@ -318,17 +341,15 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 	);
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
-		<span className="flex items-center gap-1.5 text-[11px] font-mono flex-shrink-0">
-			{branchStatus.ahead > 0 && (
-				<span className="text-fg-2" title={t("infoPanel.ahead")}>
-					↑{branchStatus.ahead}
-				</span>
-			)}
-			{branchStatus.behind > 0 && (
-				<span className="text-fg-2" title={t("infoPanel.behind")}>
-					↓{branchStatus.behind}
-				</span>
-			)}
+		<span className="flex items-center gap-1.5 text-[11px] flex-shrink-0">
+			<span className="text-[#fbbf24] font-medium">
+				{branchStatus.behind > 0 && branchStatus.ahead > 0
+					? t("infoPanel.commitsAheadBehind", { ahead: String(branchStatus.ahead), behind: String(branchStatus.behind) })
+					: branchStatus.behind > 0
+						? t("infoPanel.commitsBehind", { count: String(branchStatus.behind) })
+						: t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })
+				}
+			</span>
 			{branchStatus.behind > 0 && (
 				<button
 					onClick={handleRebase}
@@ -341,6 +362,20 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 					title={!branchStatus.canRebase ? t("infoPanel.rebaseConflicts") : t("infoPanel.rebase")}
 				>
 					{rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase")}
+				</button>
+			)}
+			{branchStatus.behind === 0 && branchStatus.ahead > 0 && (
+				<button
+					onClick={handleMerge}
+					disabled={merging}
+					className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+						merging
+							? "text-fg-muted cursor-not-allowed bg-raised"
+							: "text-accent hover:bg-accent/20 bg-accent/10"
+					}`}
+					title={t("infoPanel.merge")}
+				>
+					{merging ? t("infoPanel.merging") : t("infoPanel.merge")}
 				</button>
 			)}
 		</span>

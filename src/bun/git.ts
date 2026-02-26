@@ -159,6 +159,21 @@ export async function rebaseOnBase(
 	return { ok: false, error: result.stderr };
 }
 
+export async function mergeBranch(
+	projectPath: string,
+	branchName: string,
+): Promise<{ ok: boolean; error?: string }> {
+	log.info("Merging branch into main working tree", { projectPath, branchName });
+	const result = await run(
+		["git", "merge", branchName],
+		projectPath,
+	);
+	if (result.ok) {
+		return { ok: true };
+	}
+	return { ok: false, error: result.stderr };
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,
