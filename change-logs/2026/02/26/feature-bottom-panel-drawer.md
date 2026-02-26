@@ -1,0 +1,1 @@
+Added a collapsible bottom panel (drawer) to the task terminal screen. The panel sits below the terminal, starts as a single tab bar row, and can be dragged upward to reveal up to ~33% of the screen. Includes three tabs: Tasks (real data), Activity (mock log), and Notes (placeholder). All strings are localized in EN/RU/ES.

@@ -133,6 +133,15 @@ const ru: TranslationRecord & Record<string, string> = {
 	// ProjectView
 	"project.notFound": "Проект не найден",
 
+	// BottomPanel
+	"panel.tasks": "Задачи",
+	"panel.activity": "Активность",
+	"panel.notes": "Заметки",
+	"panel.noTasks": "Задач нет",
+	"panel.notesEmpty": "Пока пусто",
+	"panel.expand": "Развернуть",
+	"panel.collapse": "Свернуть",
+
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
 

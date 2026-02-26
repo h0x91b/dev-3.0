@@ -8,6 +8,7 @@ import Dashboard from "./components/Dashboard";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
+import BottomPanel from "./components/BottomPanel";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -63,6 +64,11 @@ function App() {
 
 	const { route } = state;
 
+	const currentProject =
+		"projectId" in route
+			? state.projects.find((p) => p.id === route.projectId) ?? null
+			: null;
+
 	return (
 		<div className="h-full w-full flex flex-col">
 			<GlobalHeader
@@ -72,7 +78,15 @@ function App() {
 				navigate={navigate}
 				dispatch={dispatch}
 			/>
-			<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col">
+				<div className="flex-1 min-h-0">{renderScreen()}</div>
+				{route.screen === "task" && (
+					<BottomPanel
+						tasks={state.currentProjectTasks}
+						project={currentProject}
+					/>
+				)}
+			</div>
 		</div>
 	);
 

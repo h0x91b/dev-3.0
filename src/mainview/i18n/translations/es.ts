@@ -132,6 +132,15 @@ const es: TranslationRecord & Record<string, string> = {
 	// ProjectView
 	"project.notFound": "Proyecto no encontrado",
 
+	// BottomPanel
+	"panel.tasks": "Tareas",
+	"panel.activity": "Actividad",
+	"panel.notes": "Notas",
+	"panel.noTasks": "No hay tareas en este proyecto",
+	"panel.notesEmpty": "Nada aquí todavía",
+	"panel.expand": "Expandir",
+	"panel.collapse": "Colapsar",
+
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
 

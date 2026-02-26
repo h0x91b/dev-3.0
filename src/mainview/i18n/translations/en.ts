@@ -129,6 +129,15 @@ const en = {
 	// ProjectView
 	"project.notFound": "Project not found",
 
+	// BottomPanel
+	"panel.tasks": "Tasks",
+	"panel.activity": "Activity",
+	"panel.notes": "Notes",
+	"panel.noTasks": "No tasks in this project",
+	"panel.notesEmpty": "Nothing here yet",
+	"panel.expand": "Expand",
+	"panel.collapse": "Collapse",
+
 	// TaskTerminal
 	"terminal.connecting": "Connecting...",
 
