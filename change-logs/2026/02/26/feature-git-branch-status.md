@@ -1,0 +1,1 @@
+Added git branch status (ahead/behind) display and one-click rebase to the TaskInfoPanel. The panel now shows how many commits the task branch is ahead/behind the base branch, with a Rebase button that checks for conflicts before attempting. Data refreshes on mount and every 30 seconds via git fetch.

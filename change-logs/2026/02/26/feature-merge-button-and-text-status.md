@@ -1,0 +1,1 @@
+Replaced cryptic ↑N ↓N branch status arrows with human-readable yellow text ("N commits behind", "N commits ahead", "N ahead · N behind"). Added a Merge button that performs `git merge` in the main project directory when the branch is rebased (behind === 0, ahead > 0). Added `mergeBranch` git helper, `mergeTask` RPC endpoint, and full i18n support for the new UI strings.

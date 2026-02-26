@@ -135,6 +135,27 @@ const es: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
 
+	// TaskInfoPanel
+	"infoPanel.status": "Estado",
+	"infoPanel.branch": "Rama",
+	"infoPanel.description": "Descripción",
+	"infoPanel.worktree": "Worktree",
+	"infoPanel.created": "Creado",
+	"infoPanel.updated": "Actualizado",
+	"infoPanel.collapse": "Contraer panel",
+	"infoPanel.expand": "Expandir panel",
+	"infoPanel.commitsBehind": "{count} commits atrás",
+	"infoPanel.commitsAhead": "{count} commits adelante",
+	"infoPanel.commitsAheadBehind": "{ahead} adelante · {behind} atrás",
+	"infoPanel.rebase": "Rebase",
+	"infoPanel.rebasing": "Rebasing...",
+	"infoPanel.rebaseFailed": "Rebase falló: {error}",
+	"infoPanel.rebaseConflicts": "No se puede hacer rebase — conflictos detectados",
+	"infoPanel.merge": "Merge",
+	"infoPanel.merging": "Merging...",
+	"infoPanel.mergeFailed": "Merge falló: {error}",
+	"infoPanel.mergeNotRebased": "Primero haga rebase",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

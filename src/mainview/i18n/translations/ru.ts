@@ -136,6 +136,27 @@ const ru: TranslationRecord & Record<string, string> = {
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
 
+	// TaskInfoPanel
+	"infoPanel.status": "Статус",
+	"infoPanel.branch": "Ветка",
+	"infoPanel.description": "Описание",
+	"infoPanel.worktree": "Worktree",
+	"infoPanel.created": "Создано",
+	"infoPanel.updated": "Обновлено",
+	"infoPanel.collapse": "Свернуть панель",
+	"infoPanel.expand": "Развернуть панель",
+	"infoPanel.commitsBehind": "{count} коммитов позади",
+	"infoPanel.commitsAhead": "{count} коммитов впереди",
+	"infoPanel.commitsAheadBehind": "{ahead} впереди · {behind} позади",
+	"infoPanel.rebase": "Rebase",
+	"infoPanel.rebasing": "Rebasing...",
+	"infoPanel.rebaseFailed": "Rebase не удался: {error}",
+	"infoPanel.rebaseConflicts": "Rebase невозможен — обнаружены конфликты",
+	"infoPanel.merge": "Merge",
+	"infoPanel.merging": "Merging...",
+	"infoPanel.mergeFailed": "Merge не удался: {error}",
+	"infoPanel.mergeNotRebased": "Сначала сделайте rebase",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

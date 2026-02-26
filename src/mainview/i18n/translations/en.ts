@@ -132,6 +132,27 @@ const en = {
 	// TaskTerminal
 	"terminal.connecting": "Connecting...",
 
+	// TaskInfoPanel
+	"infoPanel.status": "Status",
+	"infoPanel.branch": "Branch",
+	"infoPanel.description": "Description",
+	"infoPanel.worktree": "Worktree",
+	"infoPanel.created": "Created",
+	"infoPanel.updated": "Updated",
+	"infoPanel.collapse": "Collapse panel",
+	"infoPanel.expand": "Expand panel",
+	"infoPanel.commitsBehind": "{count} commits behind",
+	"infoPanel.commitsAhead": "{count} commits ahead",
+	"infoPanel.commitsAheadBehind": "{ahead} ahead · {behind} behind",
+	"infoPanel.rebase": "Rebase",
+	"infoPanel.rebasing": "Rebasing...",
+	"infoPanel.rebaseFailed": "Rebase failed: {error}",
+	"infoPanel.rebaseConflicts": "Cannot rebase — conflicts detected",
+	"infoPanel.merge": "Merge",
+	"infoPanel.merging": "Merging...",
+	"infoPanel.mergeFailed": "Merge failed: {error}",
+	"infoPanel.mergeNotRebased": "Rebase first before merging",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",
