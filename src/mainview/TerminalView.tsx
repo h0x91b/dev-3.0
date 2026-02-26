@@ -258,11 +258,34 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		const files = Array.from(e.dataTransfer.files);
 		if (files.length === 0) return;
 
-		// Electrobun/Electron exposes the native filesystem path on File objects.
-		const paths = files
-			.map((f) => (f as File & { path?: string }).path ?? f.name)
-			.map((p) => p.replace(/ /g, "\\ "))
-			.join(" ");
+		// WebKit (Electrobun) provides full file:// URIs in text/uri-list.
+		// Prefer that over File.path (Electron-only) or File.name (just filename).
+		const uriList = e.dataTransfer.getData("text/uri-list");
+		let paths: string;
+
+		if (uriList) {
+			paths = uriList
+				.split("\n")
+				.map((s) => s.trim())
+				.filter((s) => s && !s.startsWith("#") && s.startsWith("file://"))
+				.map((uri) => {
+					try {
+						return decodeURIComponent(new URL(uri).pathname);
+					} catch {
+						return uri;
+					}
+				})
+				.map((p) => p.replace(/ /g, "\\ "))
+				.join(" ");
+		} else {
+			// Fallback for Electron (has .path) or bare filename
+			paths = files
+				.map((f) => (f as File & { path?: string }).path ?? f.name)
+				.map((p) => p.replace(/ /g, "\\ "))
+				.join(" ");
+		}
+
+		if (!paths) return;
 
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
 			wsRef.current.send(paths);
