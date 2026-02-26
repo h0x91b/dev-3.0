@@ -68,6 +68,37 @@ function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
+const OSC52_RE = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/g;
+
+function handleOsc52(data: string): string {
+	return data.replace(OSC52_RE, (_match, b64: string) => {
+		if (b64 && b64 !== "?") {
+			try {
+				const text = Buffer.from(b64, "base64").toString("utf-8");
+				const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
+				proc.stdin.write(text);
+				proc.stdin.end();
+				log.info("OSC 52: copied to clipboard", { len: text.length });
+			} catch {
+				// ignore
+			}
+		}
+		return "";
+	});
+}
+
+function configureTmuxClipboard(): void {
+	Bun.spawnSync(["tmux", "set", "-s", "set-clipboard", "on"]);
+	for (const table of ["copy-mode", "copy-mode-vi"]) {
+		Bun.spawnSync([
+			"tmux", "bind", "-T", table,
+			"MouseDragEnd1Pane",
+			"send-keys", "-X", "copy-pipe-and-cancel", "pbcopy",
+		]);
+	}
+	log.info("tmux clipboard configured (set-clipboard on + pbcopy bindings)");
+}
+
 function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = `dev3-${shortId(session.taskId)}`;
 	const tmuxCmd = session.tmuxCommand || "bash";
@@ -81,11 +112,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	});
 
 	const proc = Bun.spawn(
-		[
-			"tmux",
-			"set", "-s", "set-clipboard", "on", ";",
-			"new-session", "-A", "-s", tmuxSessionName, tmuxCmd,
-		],
+		["tmux", "new-session", "-A", "-s", tmuxSessionName, tmuxCmd],
 		{
 			terminal: {
 				cols,
@@ -96,8 +123,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 							typeof data === "string"
 								? data
 								: new TextDecoder().decode(data);
-						if (session.ws) {
-							session.ws.sendText(str);
+						const cleaned = handleOsc52(str);
+						if (cleaned && session.ws) {
+							session.ws.sendText(cleaned);
 						}
 					} catch {
 						// WebSocket already closed
@@ -123,6 +151,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	});
 
 	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
+
+	// Configure tmux clipboard after server is running
+	setTimeout(() => configureTmuxClipboard(), 200);
 }
 
 Bun.serve({

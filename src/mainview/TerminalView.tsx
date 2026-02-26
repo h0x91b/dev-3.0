@@ -170,25 +170,9 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			};
 		}
 
+		// Strip any remaining OSC 52 sequences (already handled server-side)
 		const OSC52_RE =
-			/\x1b\]52;[^;]*;([A-Za-z0-9+/=]*?)(?:\x07|\x1b\\)/g;
-
-		function handleOsc52(data: string): string {
-			return data.replace(OSC52_RE, (_match, b64: string) => {
-				if (b64 && b64 !== "?") {
-					try {
-						const bytes = Uint8Array.from(atob(b64), (c) =>
-							c.charCodeAt(0),
-						);
-						const text = new TextDecoder().decode(bytes);
-						navigator.clipboard.writeText(text);
-					} catch {
-						// invalid base64, ignore
-					}
-				}
-				return "";
-			});
-		}
+			/\x1b\]52;[^;]*;[A-Za-z0-9+/=]*(?:\x07|\x1b\\)/g;
 
 		function connectPty(term: Terminal, fit: FitAddon) {
 			ws = new WebSocket(ptyUrl);
@@ -216,7 +200,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 			ws.onmessage = (event) => {
 				if (typeof event.data === "string") {
-					const cleaned = handleOsc52(event.data);
+					const cleaned = event.data.replace(OSC52_RE, "");
 					if (cleaned) term.write(cleaned);
 				} else {
 					term.write(new Uint8Array(event.data));
