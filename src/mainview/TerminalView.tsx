@@ -121,19 +121,6 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 			function onMouseDown(e: MouseEvent) {
 				if (!term.hasMouseTracking() || e.button > 2) return;
-
-				// Right-click without Option: copy selection to clipboard
-				// Right-click with Option: forward to tmux as normal right-click
-				if (e.button === 2 && !e.altKey) {
-					if (term.hasSelection()) {
-						navigator.clipboard.writeText(term.getSelection());
-						term.clearSelection();
-					}
-					e.preventDefault();
-					e.stopPropagation();
-					return;
-				}
-
 				trackedButton = e.button;
 				const [col, row] = cellCoords(e);
 				sgrMouse(e.button, col, row, true);
@@ -157,17 +144,12 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				e.stopPropagation();
 			}
 
-			function onContextMenu(e: Event) {
-				e.preventDefault();
-			}
-
 			canvas.addEventListener("mousedown", onMouseDown, {
 				capture: true,
 			});
 			canvas.addEventListener("mousemove", onMouseMove, {
 				capture: true,
 			});
-			canvas.addEventListener("contextmenu", onContextMenu);
 			document.addEventListener("mouseup", onMouseUp);
 
 			term.attachCustomWheelEventHandler((e: WheelEvent) => {
@@ -184,7 +166,6 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				canvas.removeEventListener("mousemove", onMouseMove, {
 					capture: true,
 				});
-				canvas.removeEventListener("contextmenu", onContextMenu);
 				document.removeEventListener("mouseup", onMouseUp);
 			};
 		}

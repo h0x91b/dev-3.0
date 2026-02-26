@@ -1,1 +1,0 @@
-Right-click in the terminal now copies the current selection to the system clipboard instead of forwarding the event to tmux. Option+right-click still forwards to tmux as a regular right-click. Browser context menu is suppressed on the terminal canvas.
