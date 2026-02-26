@@ -417,18 +417,37 @@ export const handlers = {
 		const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
 
 		// Kill existing dev pane for this task if it's still alive
+		// Check both in-memory map and tmux directly (map lost on restart)
 		const existingPane = devPaneIds.get(task.id);
 		if (existingPane) {
 			const kill = Bun.spawn(["tmux", "kill-pane", "-t", existingPane]);
 			await kill.exited;
 			devPaneIds.delete(task.id);
-			log.info("Killed existing dev pane", { taskId: task.id.slice(0, 8), paneId: existingPane });
+			log.info("Killed existing dev pane (from map)", { taskId: task.id.slice(0, 8), paneId: existingPane });
+		} else {
+			// Fallback: find panes running the dev script file for this task
+			const listProc = Bun.spawn([
+				"tmux", "list-panes", "-t", tmuxSession,
+				"-F", "#{pane_id} #{pane_start_command}",
+			], { stdout: "pipe", stderr: "pipe" });
+			const listOutput = await new Response(listProc.stdout).text();
+			await listProc.exited;
+			for (const line of listOutput.trim().split("\n")) {
+				if (line.includes(devScriptPath)) {
+					const paneId = line.split(" ")[0];
+					const kill = Bun.spawn(["tmux", "kill-pane", "-t", paneId]);
+					await kill.exited;
+					log.info("Killed existing dev pane (from tmux scan)", { taskId: task.id.slice(0, 8), paneId });
+				}
+			}
 		}
 
 		const wrappedScript = [
 			`#!/bin/bash`,
+			`set -x`,
 			project.devScript,
 			`EXIT_CODE=$?`,
+			`set +x`,
 			`if [ $EXIT_CODE -ne 0 ]; then`,
 			`  echo ""`,
 			`  echo "Process exited with code $EXIT_CODE. Press any key to close."`,
