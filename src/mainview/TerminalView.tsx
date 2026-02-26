@@ -256,41 +256,21 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		e.stopPropagation();
 
 		const files = Array.from(e.dataTransfer.files);
-		if (files.length === 0) return;
-
-		// WebKit (Electrobun) provides full file:// URIs in text/uri-list.
-		// Prefer that over File.path (Electron-only) or File.name (just filename).
-		const uriList = e.dataTransfer.getData("text/uri-list");
-		let paths: string;
-
-		if (uriList) {
-			paths = uriList
-				.split("\n")
-				.map((s) => s.trim())
-				.filter((s) => s && !s.startsWith("#") && s.startsWith("file://"))
-				.map((uri) => {
-					try {
-						return decodeURIComponent(new URL(uri).pathname);
-					} catch {
-						return uri;
-					}
-				})
-				.map((p) => p.replace(/ /g, "\\ "))
-				.join(" ");
-		} else {
-			// Fallback for Electron (has .path) or bare filename
-			paths = files
-				.map((f) => (f as File & { path?: string }).path ?? f.name)
-				.map((p) => p.replace(/ /g, "\\ "))
-				.join(" ");
+		const types = Array.from(e.dataTransfer.types);
+		const debugLines: string[] = [
+			`\r\n[drag-debug] types: ${JSON.stringify(types)}`,
+			`[drag-debug] files.length: ${files.length}`,
+		];
+		for (const t of types) {
+			const val = e.dataTransfer.getData(t);
+			debugLines.push(`[drag-debug] getData("${t}"): ${JSON.stringify(val)}`);
 		}
-
-		if (!paths) return;
-
-		if (wsRef.current?.readyState === WebSocket.OPEN) {
-			wsRef.current.send(paths);
+		if (files.length > 0) {
+			const f0 = files[0] as File & { path?: string };
+			debugLines.push(`[drag-debug] file[0].name: ${f0.name}`);
+			debugLines.push(`[drag-debug] file[0].path: ${f0.path}`);
 		}
-		termRef.current?.focus();
+		termRef.current?.writeln(debugLines.join("\r\n"));
 	}
 
 	return (
