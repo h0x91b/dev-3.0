@@ -1,0 +1,1 @@
+Replace native `<select>` elements in LaunchVariantsModal with a custom styled Select component. The new component renders a themed button + portal-based dropdown that respects the app's design tokens and avoids OS-native styling.
