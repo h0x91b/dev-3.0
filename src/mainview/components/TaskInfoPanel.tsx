@@ -315,12 +315,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					message: t("infoPanel.mergeCompleteMessage"),
 				});
 				if (shouldComplete) {
-					const updated = await api.request.moveTask({
-						taskId: task.id,
-						projectId: project.id,
-						newStatus: "completed",
-					});
-					dispatch({ type: "updateTask", task: updated });
+					try {
+						const updated = await api.request.moveTask({
+							taskId: task.id,
+							projectId: project.id,
+							newStatus: "completed",
+						});
+						dispatch({ type: "updateTask", task: updated });
+					} catch {
+						const updated = await api.request.moveTask({
+							taskId: task.id,
+							projectId: project.id,
+							newStatus: "completed",
+							force: true,
+						});
+						dispatch({ type: "updateTask", task: updated });
+					}
+					navigate({ screen: "project", projectId: project.id });
 				} else {
 					const status = await api.request.getBranchStatus({
 						taskId: task.id,
