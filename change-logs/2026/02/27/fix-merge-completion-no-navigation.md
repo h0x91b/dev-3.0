@@ -1,0 +1,1 @@
+Fixed bug where completing a task after merge didn't navigate back to Kanban board. The app would show "Task environment error — Worktree not found" instead because TaskTerminal remained mounted and tried to reconnect the PTY after the worktree was already cleaned up. Added missing navigate() call and auto-retry with force:true (matching handleStatusMove pattern).
