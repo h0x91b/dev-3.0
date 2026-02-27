@@ -1,0 +1,1 @@
+Added terminal preview on hover for active task cards. Hovering over an in-progress task on the kanban board shows a miniature "screenshot" of the terminal content rendered as ANSI→HTML. Uses tmux capture-pane under the hood, with a new ANSI-to-HTML converter supporting SGR codes, 256-color, and true color.

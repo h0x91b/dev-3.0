@@ -290,6 +290,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: { ok: boolean; error?: string };
 			};
+			getTerminalPreview: {
+				params: { taskId: string };
+				response: string | null;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

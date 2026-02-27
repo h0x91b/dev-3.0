@@ -88,6 +88,21 @@ export function hasSession(taskId: string): boolean {
 	return sessions.has(taskId);
 }
 
+export function capturePane(taskId: string): string | null {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		const result = Bun.spawnSync(
+			["tmux", "capture-pane", "-p", "-e", "-t", tmuxSessionName],
+		);
+		if (result.exitCode === 0 && result.stdout.length > 0) {
+			return new TextDecoder().decode(result.stdout);
+		}
+	} catch {
+		// Non-critical
+	}
+	return null;
+}
+
 export function getSessionProjectId(taskId: string): string | null {
 	return sessions.get(taskId)?.projectId ?? null;
 }
@@ -259,17 +274,9 @@ const ptyServer = Bun.serve({
 				// Capture current tmux pane content (with ANSI colors) so the
 				// client sees the screen immediately instead of a blank terminal
 				// while waiting for the app to redraw after resize.
-				const tmuxSessionName = `dev3-${shortId(sessionId)}`;
-				try {
-					const result = Bun.spawnSync(
-						["tmux", "capture-pane", "-p", "-e", "-t", tmuxSessionName],
-					);
-					if (result.exitCode === 0 && result.stdout.length > 0) {
-						const content = new TextDecoder().decode(result.stdout);
-						(ws as any).sendText("\x1b[H" + content);
-					}
-				} catch {
-					// Non-critical: client will get content after resize
+				const content = capturePane(sessionId);
+				if (content) {
+					(ws as any).sendText("\x1b[H" + content);
 				}
 			}
 		},

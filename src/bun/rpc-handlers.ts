@@ -641,6 +641,10 @@ export const handlers = {
 		return result;
 	},
 
+	async getTerminalPreview(params: { taskId: string }): Promise<string | null> {
+		return pty.capturePane(params.taskId);
+	},
+
 	async getPtyUrl(params: { taskId: string }): Promise<string> {
 		log.info("→ getPtyUrl", { taskId: params.taskId });
 
