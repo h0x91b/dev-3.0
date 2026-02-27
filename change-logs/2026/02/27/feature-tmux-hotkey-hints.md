@@ -1,0 +1,1 @@
+Added tmux hotkey hints to the TaskInfoPanel header. Three essential shortcuts (h-split, v-split, zoom) are shown as compact inline badges, with an info button that reveals a full tmux reference popover on hover. Fully localized in English, Russian, and Spanish.

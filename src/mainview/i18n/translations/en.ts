@@ -167,6 +167,24 @@ const en = {
 	"infoPanel.mergeComplete": "Merge Complete",
 	"infoPanel.mergeCompleteMessage": "Branch merged successfully. Mark the task as completed?",
 
+	// Tmux hotkey hints
+	"tmux.hSplit": "h-split",
+	"tmux.vSplit": "v-split",
+	"tmux.zoom": "zoom",
+	"tmux.title": "tmux Shortcuts",
+	"tmux.panes": "Panes",
+	"tmux.splitHDesc": "Split horizontally",
+	"tmux.splitVDesc": "Split vertically",
+	"tmux.zoomDesc": "Zoom pane (toggle)",
+	"tmux.closePaneDesc": "Close pane",
+	"tmux.navigateDesc": "Navigate panes",
+	"tmux.scroll": "Scroll",
+	"tmux.scrollDesc": "Enter scroll mode",
+	"tmux.scrollExitDesc": "Exit scroll mode",
+	"tmux.windows": "Windows",
+	"tmux.newWindowDesc": "New window",
+	"tmux.switchWindowDesc": "Next / previous window",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

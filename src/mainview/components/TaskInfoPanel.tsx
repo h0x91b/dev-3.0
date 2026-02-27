@@ -157,6 +157,85 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		setMovingStatus(false);
 	}
 
+	// ---- Tmux hints popover state ----
+	const [hintsOpen, setHintsOpen] = useState(false);
+	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
+	const [hintsVisible, setHintsVisible] = useState(false);
+	const hintsTriggerRef = useRef<HTMLDivElement>(null);
+	const hintsPopoverRef = useRef<HTMLDivElement>(null);
+	const hintsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	function clearHintsTimeout() {
+		if (hintsTimeoutRef.current) {
+			clearTimeout(hintsTimeoutRef.current);
+			hintsTimeoutRef.current = null;
+		}
+	}
+
+	function showHints() {
+		clearHintsTimeout();
+		if (!hintsOpen) {
+			if (hintsTriggerRef.current) {
+				const rect = hintsTriggerRef.current.getBoundingClientRect();
+				setHintsPos({ top: rect.bottom + 6, left: rect.right });
+				setHintsVisible(false);
+			}
+			setHintsOpen(true);
+		}
+	}
+
+	function hideHints() {
+		clearHintsTimeout();
+		hintsTimeoutRef.current = setTimeout(() => {
+			setHintsOpen(false);
+			setHintsVisible(false);
+		}, 200);
+	}
+
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => clearHintsTimeout();
+	}, []);
+
+	// Escape key closes hints
+	useEffect(() => {
+		if (!hintsOpen) return;
+		function handleKey(e: KeyboardEvent) {
+			if (e.key === "Escape") {
+				setHintsOpen(false);
+				setHintsVisible(false);
+			}
+		}
+		document.addEventListener("keydown", handleKey);
+		return () => document.removeEventListener("keydown", handleKey);
+	}, [hintsOpen]);
+
+	// Viewport clamping for hints popover
+	useLayoutEffect(() => {
+		if (!hintsOpen || !hintsPopoverRef.current || !hintsTriggerRef.current) return;
+
+		const menu = hintsPopoverRef.current.getBoundingClientRect();
+		const trigger = hintsTriggerRef.current.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const pad = 8;
+
+		let top = trigger.bottom + 6;
+		let left = trigger.right - menu.width;
+
+		if (top + menu.height > vh - pad) {
+			top = trigger.top - menu.height - 6;
+		}
+		if (left + menu.width > vw - pad) {
+			left = vw - menu.width - pad;
+		}
+		if (left < pad) left = pad;
+		if (top < pad) top = pad;
+
+		setHintsPos({ top, left });
+		setHintsVisible(true);
+	}, [hintsOpen]);
+
 	// ---- Dev server ----
 	const hasDevScript = !!(project.devScript?.trim());
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
@@ -447,6 +526,83 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</button>
 	);
 
+	const tmuxKbd = "px-1 py-0.5 rounded bg-base border border-edge/50 font-mono text-[10px] text-fg-3";
+
+	const tmuxHintsInline = (
+		<div
+			ref={hintsTriggerRef}
+			className="flex items-center gap-1.5 flex-shrink-0"
+			onMouseEnter={showHints}
+			onMouseLeave={hideHints}
+		>
+			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
+				<kbd className={tmuxKbd}>⌃B -</kbd>{t("tmux.hSplit")}
+			</span>
+			<span className="text-fg-muted/30">·</span>
+			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
+				<kbd className={tmuxKbd}>⌃B |</kbd>{t("tmux.vSplit")}
+			</span>
+			<span className="text-fg-muted/30">·</span>
+			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
+				<kbd className={tmuxKbd}>⌃B z</kbd>{t("tmux.zoom")}
+			</span>
+			<button
+				className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
+				onClick={(e) => { e.stopPropagation(); setHintsOpen((o) => !o); }}
+				title={t("tmux.title")}
+			>
+				<svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+					<path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5a5.5 5.5 0 110-11 5.5 5.5 0 010 11zM7.25 5a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM7.25 7.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z" />
+				</svg>
+			</button>
+		</div>
+	);
+
+	const popoverKbd = "font-mono text-xs text-fg-2 min-w-[56px]";
+	const popoverDesc = "text-xs text-fg-3";
+	const popoverSection = "text-[10px] text-fg-muted uppercase tracking-wider font-semibold mb-1.5";
+
+	const tmuxHintsPopover = hintsOpen && createPortal(
+		<div
+			ref={hintsPopoverRef}
+			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-4 min-w-[300px]"
+			style={{
+				top: hintsPos.top,
+				left: hintsPos.left,
+				visibility: hintsVisible ? "visible" : "hidden",
+			}}
+			onMouseEnter={showHints}
+			onMouseLeave={hideHints}
+		>
+			<div className="text-xs font-semibold text-fg mb-3">{t("tmux.title")}</div>
+
+			{/* Panes */}
+			<div className={popoverSection}>{t("tmux.panes")}</div>
+			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mb-3">
+				<kbd className={popoverKbd}>⌃B -</kbd><span className={popoverDesc}>{t("tmux.splitHDesc")}</span>
+				<kbd className={popoverKbd}>⌃B |</kbd><span className={popoverDesc}>{t("tmux.splitVDesc")}</span>
+				<kbd className={popoverKbd}>⌃B z</kbd><span className={popoverDesc}>{t("tmux.zoomDesc")}</span>
+				<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
+				<kbd className={popoverKbd}>⌃B ←→↑↓</kbd><span className={popoverDesc}>{t("tmux.navigateDesc")}</span>
+			</div>
+
+			{/* Scroll */}
+			<div className={popoverSection}>{t("tmux.scroll")}</div>
+			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mb-3">
+				<kbd className={popoverKbd}>⌃B [</kbd><span className={popoverDesc}>{t("tmux.scrollDesc")}</span>
+				<kbd className={popoverKbd}>q</kbd><span className={popoverDesc}>{t("tmux.scrollExitDesc")}</span>
+			</div>
+
+			{/* Windows */}
+			<div className={popoverSection}>{t("tmux.windows")}</div>
+			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+				<kbd className={popoverKbd}>⌃B c</kbd><span className={popoverDesc}>{t("tmux.newWindowDesc")}</span>
+				<kbd className={popoverKbd}>⌃B n/p</kbd><span className={popoverDesc}>{t("tmux.switchWindowDesc")}</span>
+			</div>
+		</div>,
+		document.body,
+	);
+
 	return (
 		<div
 			ref={panelRef}
@@ -473,6 +629,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						</>
 					)}
 					<div className="flex-1" />
+					{tmuxHintsInline}
+					{tmuxHintsPopover}
 					{devServerButton}
 					<button
 						onClick={toggleCollapsed}
@@ -506,6 +664,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							</>
 						)}
 						<div className="flex-1" />
+						{tmuxHintsInline}
+						{tmuxHintsPopover}
 						{devServerButton}
 						<button
 							onClick={toggleCollapsed}

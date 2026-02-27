@@ -171,6 +171,24 @@ const ru: TranslationRecord & Record<string, string> = {
 	"infoPanel.mergeComplete": "Merge выполнен",
 	"infoPanel.mergeCompleteMessage": "Ветка успешно смержена. Перевести задачу в «Завершено»?",
 
+	// Tmux hotkey hints
+	"tmux.hSplit": "гориз.",
+	"tmux.vSplit": "верт.",
+	"tmux.zoom": "зум",
+	"tmux.title": "Горячие клавиши tmux",
+	"tmux.panes": "Панели",
+	"tmux.splitHDesc": "Разделить горизонтально",
+	"tmux.splitVDesc": "Разделить вертикально",
+	"tmux.zoomDesc": "Увеличить панель (переключение)",
+	"tmux.closePaneDesc": "Закрыть панель",
+	"tmux.navigateDesc": "Навигация по панелям",
+	"tmux.scroll": "Прокрутка",
+	"tmux.scrollDesc": "Войти в режим прокрутки",
+	"tmux.scrollExitDesc": "Выйти из режима прокрутки",
+	"tmux.windows": "Окна",
+	"tmux.newWindowDesc": "Новое окно",
+	"tmux.switchWindowDesc": "Следующее / предыдущее окно",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",
