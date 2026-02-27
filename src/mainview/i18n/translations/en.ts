@@ -166,6 +166,9 @@ const en = {
 	"infoPanel.mergeNotRebased": "Rebase first before merging",
 	"infoPanel.mergeComplete": "Merge Complete",
 	"infoPanel.mergeCompleteMessage": "Branch merged successfully. Mark the task as completed?",
+	"infoPanel.push": "Push",
+	"infoPanel.pushing": "Pushing...",
+	"infoPanel.pushFailed": "Push failed: {error}",
 
 	// Status labels
 	"status.todo": "To Do",

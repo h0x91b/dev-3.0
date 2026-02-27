@@ -625,6 +625,20 @@ export const handlers = {
 		return result;
 	},
 
+	async pushTask(params: { taskId: string; projectId: string }) {
+		log.info("→ pushTask", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) {
+			return { ok: false, error: "Task has no worktree" };
+		}
+
+		const result = await git.pushBranch(task.worktreePath);
+		log.info("← pushTask", result);
+		return result;
+	},
+
 	async getPtyUrl(params: { taskId: string }): Promise<string> {
 		log.info("→ getPtyUrl", { taskId: params.taskId });
 

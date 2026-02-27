@@ -169,6 +169,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.mergeNotRebased": "Primero haga rebase",
 	"infoPanel.mergeComplete": "Merge completado",
 	"infoPanel.mergeCompleteMessage": "Rama fusionada exitosamente. ¿Marcar la tarea como completada?",
+	"infoPanel.push": "Push",
+	"infoPanel.pushing": "Push...",
+	"infoPanel.pushFailed": "Push falló: {error}",
 
 	// Status labels
 	"status.todo": "Por hacer",

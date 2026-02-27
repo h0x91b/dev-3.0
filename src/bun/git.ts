@@ -185,6 +185,17 @@ export async function mergeBranch(
 	return { ok: true };
 }
 
+export async function pushBranch(
+	worktreePath: string,
+): Promise<{ ok: boolean; error?: string }> {
+	log.info("Pushing current branch", { worktreePath });
+	const result = await run(["git", "push", "origin", "HEAD"], worktreePath);
+	if (result.ok) {
+		return { ok: true };
+	}
+	return { ok: false, error: result.stderr };
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,

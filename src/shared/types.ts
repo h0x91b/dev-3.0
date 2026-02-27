@@ -285,6 +285,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: { ok: boolean; error?: string };
 			};
+			pushTask: {
+				params: { taskId: string; projectId: string };
+				response: { ok: boolean; error?: string };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
