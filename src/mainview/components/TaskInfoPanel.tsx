@@ -380,6 +380,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</span>
 	) : null;
 
+	const comparisonBranch = task.baseBranch || project.defaultBaseBranch || "main";
+
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-[11px] flex-shrink-0">
 			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
@@ -397,6 +399,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
 				</span>
 			)}
+			<span className="text-fg-muted font-normal">vs origin/{comparisonBranch}</span>
 			{branchStatus.behind > 0 && (
 				<button
 					onClick={handleRebase}
