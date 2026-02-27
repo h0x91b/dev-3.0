@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LaunchVariantsModal from "../LaunchVariantsModal";
 import { I18nProvider } from "../../i18n";
@@ -58,6 +58,7 @@ const agents = [claudeAgent, codexAgent, geminiAgent];
 
 const baseTask: Task = {
 	id: "t1",
+	seq: 1,
 	projectId: "p1",
 	title: "Test task title",
 	description: "Test task description",
@@ -118,13 +119,55 @@ function renderModal(
 	);
 }
 
-/** Get all <select> elements labelled "Agent" or "Configuration" */
-function getAgentSelects(): HTMLSelectElement[] {
-	return screen.getAllByLabelText("Agent") as HTMLSelectElement[];
+/**
+ * Custom Select helpers.
+ * The Select component renders a <button> with id="variant-agent-N" / "variant-config-N".
+ * The button text is the selected option's label.
+ */
+function getAgentButtons(): HTMLButtonElement[] {
+	const buttons: HTMLButtonElement[] = [];
+	for (let i = 0; ; i++) {
+		const el = document.getElementById(`variant-agent-${i}`);
+		if (!el) break;
+		buttons.push(el as HTMLButtonElement);
+	}
+	return buttons;
 }
 
-function getConfigSelects(): HTMLSelectElement[] {
-	return screen.getAllByLabelText("Configuration") as HTMLSelectElement[];
+function getConfigButtons(): HTMLButtonElement[] {
+	const buttons: HTMLButtonElement[] = [];
+	for (let i = 0; ; i++) {
+		const el = document.getElementById(`variant-config-${i}`);
+		if (!el) break;
+		buttons.push(el as HTMLButtonElement);
+	}
+	return buttons;
+}
+
+function getSelectedText(button: HTMLButtonElement): string {
+	return button.textContent?.trim() ?? "";
+}
+
+/** Click a custom Select trigger to open it, then click the option with the given label */
+async function selectOption(user: ReturnType<typeof userEvent.setup>, button: HTMLButtonElement, optionLabel: string) {
+	await user.click(button);
+	// The dropdown is rendered via portal — find the option button by text
+	const option = screen.getByText(optionLabel, { selector: "button" });
+	await user.click(option);
+}
+
+/** Open a custom Select and return all option labels */
+async function getDropdownOptions(user: ReturnType<typeof userEvent.setup>, button: HTMLButtonElement): Promise<string[]> {
+	await user.click(button);
+	// Dropdown is a portal with buttons as options
+	// Find the dropdown container — it's the last .bg-overlay in the DOM (portaled)
+	const overlays = document.querySelectorAll(".bg-overlay.border");
+	const dropdown = overlays[overlays.length - 1];
+	const optionButtons = dropdown?.querySelectorAll("button") ?? [];
+	const labels = Array.from(optionButtons).map((b) => b.textContent?.trim() ?? "");
+	// Close by clicking outside
+	await user.click(button);
+	return labels;
 }
 
 // ---- Tests ----
@@ -140,8 +183,8 @@ describe("LaunchVariantsModal", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default" });
 			renderModal(project, { globalSettings: gs });
 
-			const configSelect = getConfigSelects()[0];
-			expect(configSelect.value).toBe("claude-default");
+			const configBtn = getConfigButtons()[0];
+			expect(getSelectedText(configBtn)).toBe("Default");
 		});
 
 		it("uses globalSettings.defaultConfigId when set", () => {
@@ -149,11 +192,11 @@ describe("LaunchVariantsModal", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-plan" });
 			renderModal(project, { globalSettings: gs });
 
-			const configSelect = getConfigSelects()[0];
-			expect(configSelect.value).toBe("claude-plan");
+			const configBtn = getConfigButtons()[0];
+			expect(getSelectedText(configBtn)).toBe("Plan (Opus)");
 		});
 
-		it("falls back to first config when agent has no defaultConfigId", () => {
+		it("falls back to first config when agent has no defaultConfigId and global config is null", () => {
 			const customAgent: CodingAgent = {
 				id: "custom",
 				name: "Custom",
@@ -165,7 +208,8 @@ describe("LaunchVariantsModal", () => {
 				// No defaultConfigId
 			};
 			const project = makeProject();
-			const gs = makeGlobalSettings({ defaultAgentId: "custom", defaultConfigId: "nonexistent" });
+			// globalSettings.defaultConfigId must be null/undefined to trigger fallback
+			const gs = { defaultAgentId: "custom", taskDropPosition: "top" as const } as GlobalSettings;
 
 			render(
 				<I18nProvider>
@@ -181,49 +225,46 @@ describe("LaunchVariantsModal", () => {
 				</I18nProvider>,
 			);
 
-			const configSelect = getConfigSelects()[0];
-			expect(configSelect.value).toBe("cfg-a");
+			const configBtn = getConfigButtons()[0];
+			expect(getSelectedText(configBtn)).toBe("Alpha");
 		});
 	});
 
 	describe("config dropdown population", () => {
-		it("shows all configurations for Claude (multi-config agent)", () => {
+		it("shows all configurations for Claude (multi-config agent)", async () => {
+			const user = userEvent.setup();
 			const project = makeProject();
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
 			renderModal(project, { globalSettings: gs });
 
-			const configSelect = getConfigSelects()[0];
-			const options = within(configSelect).getAllByRole("option");
-
+			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options).toHaveLength(3);
-			expect(options[0]).toHaveTextContent("Default");
-			expect(options[1]).toHaveTextContent("Plan (Opus)");
-			expect(options[2]).toHaveTextContent("Bypass (Opus)");
+			expect(options[0]).toBe("Default");
+			expect(options[1]).toBe("Plan (Opus)");
+			expect(options[2]).toBe("Bypass (Opus)");
 		});
 
-		it("shows single configuration for Codex", () => {
+		it("shows single configuration for Codex", async () => {
+			const user = userEvent.setup();
 			const project = makeProject();
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "codex-default" });
 			renderModal(project, { globalSettings: gs });
 
-			const configSelect = getConfigSelects()[0];
-			const options = within(configSelect).getAllByRole("option");
-
+			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options).toHaveLength(1);
-			expect(options[0]).toHaveTextContent("Default");
+			expect(options[0]).toBe("Default");
 		});
 
-		it("agent dropdown shows all agents", () => {
+		it("agent dropdown shows all agents", async () => {
+			const user = userEvent.setup();
 			const project = makeProject();
 			renderModal(project);
 
-			const agentSelect = getAgentSelects()[0];
-			const options = within(agentSelect).getAllByRole("option");
-
+			const options = await getDropdownOptions(user, getAgentButtons()[0]);
 			expect(options).toHaveLength(3);
-			expect(options[0]).toHaveTextContent("Claude");
-			expect(options[1]).toHaveTextContent("Codex");
-			expect(options[2]).toHaveTextContent("Gemini");
+			expect(options[0]).toBe("Claude");
+			expect(options[1]).toBe("Codex");
+			expect(options[2]).toBe("Gemini");
 		});
 	});
 
@@ -234,23 +275,23 @@ describe("LaunchVariantsModal", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
 			renderModal(project, { globalSettings: gs });
 
-			const agentSelect = getAgentSelects()[0];
-			const configSelect = getConfigSelects()[0];
+			const agentBtn = getAgentButtons()[0];
+			const configBtn = getConfigButtons()[0];
 
-			// Initially Claude with claude-default
-			expect(agentSelect.value).toBe("builtin-claude");
-			expect(configSelect.value).toBe("claude-default");
+			// Initially Claude with Default
+			expect(getSelectedText(agentBtn)).toBe("Claude");
+			expect(getSelectedText(configBtn)).toBe("Default");
 
 			// Switch to Codex
-			await user.selectOptions(agentSelect, "builtin-codex");
+			await selectOption(user, agentBtn, "Codex");
 
-			const configSelectAfter = getConfigSelects()[0];
-			expect(configSelectAfter.value).toBe("codex-default");
+			const configBtnAfter = getConfigButtons()[0];
+			expect(getSelectedText(configBtnAfter)).toBe("Default");
 
-			// Config dropdown should show Codex configs
-			const options = within(configSelectAfter).getAllByRole("option");
+			// Config dropdown should show Codex configs (only 1)
+			const options = await getDropdownOptions(user, configBtnAfter);
 			expect(options).toHaveLength(1);
-			expect(options[0]).toHaveTextContent("Default");
+			expect(options[0]).toBe("Default");
 		});
 
 		it("switching back to Claude restores all Claude configs", async () => {
@@ -259,16 +300,16 @@ describe("LaunchVariantsModal", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
 			renderModal(project, { globalSettings: gs });
 
-			const agentSelect = getAgentSelects()[0];
+			const agentBtn = getAgentButtons()[0];
 
 			// Switch to Codex, then back to Claude
-			await user.selectOptions(agentSelect, "builtin-codex");
-			await user.selectOptions(agentSelect, "builtin-claude");
+			await selectOption(user, agentBtn, "Codex");
+			await selectOption(user, agentBtn, "Claude");
 
-			const configSelect = getConfigSelects()[0];
-			expect(configSelect.value).toBe("claude-default");
+			const configBtn = getConfigButtons()[0];
+			expect(getSelectedText(configBtn)).toBe("Default");
 
-			const options = within(configSelect).getAllByRole("option");
+			const options = await getDropdownOptions(user, configBtn);
 			expect(options).toHaveLength(3);
 		});
 	});
@@ -280,19 +321,19 @@ describe("LaunchVariantsModal", () => {
 			renderModal(project);
 
 			// Initially 1 variant row
-			expect(getAgentSelects()).toHaveLength(1);
+			expect(getAgentButtons()).toHaveLength(1);
 
 			// Click "+ Add Variant"
 			await user.click(screen.getByText("+ Add Variant"));
 
 			// Now 2 variant rows
-			expect(getAgentSelects()).toHaveLength(2);
+			expect(getAgentButtons()).toHaveLength(2);
 
-			// Second row should also have Claude + claude-default
-			const agentSelects = getAgentSelects();
-			const configSelects = getConfigSelects();
-			expect(agentSelects[1].value).toBe("builtin-claude");
-			expect(configSelects[1].value).toBe("claude-default");
+			// Second row should also have Claude + Default
+			const agentBtns = getAgentButtons();
+			const configBtns = getConfigButtons();
+			expect(getSelectedText(agentBtns[1])).toBe("Claude");
+			expect(getSelectedText(configBtns[1])).toBe("Default");
 		});
 
 		it("remove button appears only when multiple variants exist", async () => {
@@ -317,13 +358,13 @@ describe("LaunchVariantsModal", () => {
 			renderModal(project);
 
 			await user.click(screen.getByText("+ Add Variant"));
-			expect(getAgentSelects()).toHaveLength(2);
+			expect(getAgentButtons()).toHaveLength(2);
 
 			// Remove first variant
 			const removeButtons = screen.getAllByTitle("Remove");
 			await user.click(removeButtons[0]);
 
-			expect(getAgentSelects()).toHaveLength(1);
+			expect(getAgentButtons()).toHaveLength(1);
 		});
 	});
 
@@ -379,14 +420,12 @@ describe("LaunchVariantsModal", () => {
 	});
 
 	describe("fallback when globalSettings agent is missing", () => {
-		it("populates config dropdown when globalSettings agent is valid", () => {
+		it("populates config dropdown when globalSettings agent is valid", async () => {
+			const user = userEvent.setup();
 			const project = makeProject();
 			renderModal(project);
 
-			const configSelect = getConfigSelects()[0];
-			const options = within(configSelect).getAllByRole("option");
-
-			// Should show Claude configs from globalSettings default
+			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options.length).toBeGreaterThan(0);
 		});
 
@@ -394,18 +433,17 @@ describe("LaunchVariantsModal", () => {
 			const project = makeProject();
 			renderModal(project);
 
-			const agentSelect = getAgentSelects()[0];
-			expect(agentSelect.value).toBe("builtin-claude");
+			const agentBtn = getAgentButtons()[0];
+			expect(getSelectedText(agentBtn)).toBe("Claude");
 		});
 
-		it("falls back to first agent when globalSettings agent is nonexistent", () => {
+		it("falls back to first agent when globalSettings agent is nonexistent", async () => {
+			const user = userEvent.setup();
 			const project = makeProject();
 			const gs = makeGlobalSettings({ defaultAgentId: "deleted-agent" });
 			renderModal(project, { globalSettings: gs });
 
-			const configSelect = getConfigSelects()[0];
-			const options = within(configSelect).getAllByRole("option");
-
+			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options.length).toBeGreaterThan(0);
 		});
 

@@ -4,6 +4,7 @@ import type { Task } from "../../../shared/types";
 
 function makeTask(overrides: Partial<Task> & { id: string }): Task {
 	return {
+		seq: 1,
 		projectId: "p1",
 		title: "Task",
 		description: "desc",

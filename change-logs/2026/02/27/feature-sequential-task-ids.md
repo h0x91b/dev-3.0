@@ -1,0 +1,1 @@
+Added sequential task IDs (`seq`) — each task now gets a unique per-project number (#1, #2, #3...) displayed on Kanban cards, breadcrumbs, and the info panel. Variant tasks sharing a `groupId` inherit the same seq. Existing tasks without seq are backfilled automatically on first load.

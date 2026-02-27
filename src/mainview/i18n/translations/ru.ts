@@ -105,6 +105,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.cancel": "Отменить",
 	"task.confirmCancel": "Отменить задачу «{title}»?",
 	"task.variant": "#{n}",
+	"task.attempt": "Попытка {n}",
 	"task.editSave": "Сохранить",
 	"task.editCancel": "Отмена",
 	"task.failedEdit": "Не удалось обновить задачу: {error}",
@@ -149,6 +150,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"terminal.cancelTask": "Отменить задачу",
 
 	// TaskInfoPanel
+	"infoPanel.taskNumber": "Задача #",
 	"infoPanel.status": "Статус",
 	"infoPanel.branch": "Ветка",
 	"infoPanel.description": "Описание",

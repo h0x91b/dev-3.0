@@ -87,6 +87,7 @@ function makeProject(overrides?: Partial<Project>): Project {
 function makeTask(overrides?: Partial<Task>): Task {
 	return {
 		id: "task-1",
+		seq: 1,
 		projectId: "proj-1",
 		title: "Test task",
 		description: "Test task description",

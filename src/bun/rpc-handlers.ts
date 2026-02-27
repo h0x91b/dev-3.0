@@ -442,6 +442,7 @@ export const handlers = {
 		}
 
 		const groupId = crypto.randomUUID();
+		const sharedSeq = sourceTask.seq;
 		const resultTasks: Task[] = [];
 
 		for (let i = 0; i < params.variants.length; i++) {
@@ -456,6 +457,7 @@ export const handlers = {
 					variantIndex: i + 1,
 					agentId: variant.agentId,
 					configId: variant.configId,
+					seq: sharedSeq,
 				},
 			);
 

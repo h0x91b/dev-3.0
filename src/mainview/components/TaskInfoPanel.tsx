@@ -709,6 +709,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{/* Metadata grid */}
 					<div className="flex-1 overflow-auto px-4 pb-2">
 						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+							<span className="text-fg-3">{t("infoPanel.taskNumber")}</span>
+							<span className="text-fg-2 font-mono font-semibold">#{task.seq}</span>
+
 							{task.branchName && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.branch")}</span>

@@ -144,6 +144,7 @@ export interface Project {
 
 export interface Task {
 	id: string;
+	seq: number;
 	projectId: string;
 	title: string;
 	description: string;

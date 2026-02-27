@@ -49,7 +49,8 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 	// Last segment — screen-specific
 	if (route.screen === "task") {
 		const task = tasks.find((t) => t.id === route.taskId);
-		segments.push({ label: task?.title || t("header.task") });
+		const taskLabel = task ? `#${task.seq} ${task.title}` : t("header.task");
+		segments.push({ label: taskLabel });
 	} else if (route.screen === "project-settings") {
 		segments.push({ label: t("header.settings") });
 	} else if (route.screen === "settings") {

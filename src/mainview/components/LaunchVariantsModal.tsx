@@ -54,8 +54,9 @@ function Select({
 	}, [open]);
 
 	return (
-		<div className="relative w-full" id={id}>
+		<div className="relative w-full">
 			<button
+				id={id}
 				ref={buttonRef}
 				type="button"
 				onClick={handleOpen}
@@ -229,7 +230,7 @@ function LaunchVariantsModal({
 
 								{/* Agent select */}
 								<div className="flex-1 min-w-0">
-									<label className="text-xs text-fg-3 block mb-1">
+									<label htmlFor={`variant-agent-${index}`} className="text-xs text-fg-3 block mb-1">
 										{t("launch.agent")}
 									</label>
 									<Select
@@ -242,7 +243,7 @@ function LaunchVariantsModal({
 
 								{/* Config select */}
 								<div className="flex-1 min-w-0">
-									<label className="text-xs text-fg-3 block mb-1">
+									<label htmlFor={`variant-config-${index}`} className="text-xs text-fg-3 block mb-1">
 										{t("launch.config")}
 									</label>
 									<Select

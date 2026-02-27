@@ -13,6 +13,7 @@ const mockProject: Project = {
 
 const mockTask: Task = {
 	id: "t1",
+	seq: 1,
 	projectId: "p1",
 	title: "Test Task",
 	description: "Test Task",
@@ -35,6 +36,7 @@ describe("initialState", () => {
 			projects: [],
 			currentProjectTasks: [],
 			loading: true,
+			bellCounts: new Map(),
 		});
 	});
 });

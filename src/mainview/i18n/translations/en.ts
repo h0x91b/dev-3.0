@@ -101,6 +101,7 @@ const en = {
 	"task.cancel": "Cancel",
 	"task.confirmCancel": "Cancel task \"{title}\"?",
 	"task.variant": "#{n}",
+	"task.attempt": "Attempt {n}",
 	"task.editSave": "Save",
 	"task.editCancel": "Cancel",
 	"task.failedEdit": "Failed to update task: {error}",
@@ -145,6 +146,7 @@ const en = {
 	"terminal.cancelTask": "Cancel Task",
 
 	// TaskInfoPanel
+	"infoPanel.taskNumber": "Task #",
 	"infoPanel.status": "Status",
 	"infoPanel.branch": "Branch",
 	"infoPanel.description": "Description",

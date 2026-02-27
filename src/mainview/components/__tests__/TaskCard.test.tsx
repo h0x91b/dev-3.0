@@ -55,6 +55,7 @@ const project: Project = {
 function makeTask(overrides?: Partial<Task>): Task {
 	return {
 		id: "t1",
+		seq: 1,
 		projectId: "p1",
 		title: "My task",
 		description: "My task",
@@ -104,13 +105,14 @@ describe("TaskCard", () => {
 	});
 
 	describe("variant badge", () => {
-		it("does not show badge for non-variant tasks", () => {
-			renderCard(makeTask());
-			expect(screen.queryByText(/#\d/)).not.toBeInTheDocument();
+		it("shows seq badge for non-variant tasks", () => {
+			renderCard(makeTask({ seq: 7 }));
+			expect(screen.getByText("#7")).toBeInTheDocument();
 		});
 
-		it("shows badge with agent name and config for variant task", () => {
+		it("shows badge with seq, attempt, agent name and config for variant task", () => {
 			renderCard(makeTask({
+				seq: 5,
 				status: "in-progress",
 				worktreePath: "/tmp/wt",
 				branchName: "dev3/test",
@@ -119,11 +121,12 @@ describe("TaskCard", () => {
 				configId: "claude-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#1 · Claude (Default · sonnet)")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Attempt 1 · Claude (Default · sonnet)")).toBeInTheDocument();
 		});
 
 		it("shows badge with config name without model", () => {
 			renderCard(makeTask({
+				seq: 5,
 				status: "in-progress",
 				worktreePath: "/tmp/wt",
 				branchName: "dev3/test",
@@ -132,11 +135,12 @@ describe("TaskCard", () => {
 				configId: "codex-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#2 · Codex (Default)")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Attempt 2 · Codex (Default)")).toBeInTheDocument();
 		});
 
-		it("shows only variant number when agent not found", () => {
+		it("shows seq and attempt when agent not found", () => {
 			renderCard(makeTask({
+				seq: 5,
 				status: "in-progress",
 				worktreePath: "/tmp/wt",
 				branchName: "dev3/test",
@@ -145,7 +149,7 @@ describe("TaskCard", () => {
 				configId: "whatever",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#3")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Attempt 3")).toBeInTheDocument();
 		});
 	});
 

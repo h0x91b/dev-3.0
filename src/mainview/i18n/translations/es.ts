@@ -103,6 +103,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"task.cancel": "Cancelar",
 	"task.confirmCancel": "¿Cancelar tarea \"{title}\"?",
 	"task.variant": "#{n}",
+	"task.attempt": "Intento {n}",
 	"task.editSave": "Guardar",
 	"task.editCancel": "Cancelar",
 	"task.failedEdit": "Error al actualizar tarea: {error}",
@@ -148,6 +149,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"terminal.cancelTask": "Cancelar tarea",
 
 	// TaskInfoPanel
+	"infoPanel.taskNumber": "Tarea #",
 	"infoPanel.status": "Estado",
 	"infoPanel.branch": "Rama",
 	"infoPanel.description": "Descripción",

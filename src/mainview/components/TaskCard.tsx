@@ -262,14 +262,14 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				</div>
 			)}
 
-			{/* Variant badge */}
-			{task.variantIndex !== null && (() => {
+			{/* Seq + variant badge */}
+			{task.variantIndex !== null ? (() => {
 				const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
 				const config = agent && task.configId
 					? agent.configurations.find((c) => c.id === task.configId)
 					: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
 
-				let label = `#${task.variantIndex}`;
+				let label = `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`;
 				if (agent) {
 					label += ` · ${agent.name}`;
 					if (config) {
@@ -283,7 +283,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<span className="bg-accent/15 px-2 py-0.5 rounded-md">{label}</span>
 					</div>
 				);
-			})()}
+			})() : (
+				<div className="text-[10px] text-fg-muted font-mono mb-1">#{task.seq}</div>
+			)}
 
 			{/* Title / inline editor */}
 			{isEditing ? (

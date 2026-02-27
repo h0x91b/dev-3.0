@@ -100,6 +100,15 @@ export async function getProject(projectId: string): Promise<Project> {
 
 // ---- Tasks ----
 
+function nextSeq(tasks: Task[]): number {
+	if (tasks.length === 0) return 1;
+	let max = 0;
+	for (const t of tasks) {
+		if (t.seq > max) max = t.seq;
+	}
+	return max + 1;
+}
+
 export async function loadTasks(project: Project): Promise<Task[]> {
 	const file = tasksFile(project);
 	log.debug("Loading tasks", { projectId: project.id, file });
@@ -120,6 +129,35 @@ export async function loadTasks(project: Project): Promise<Task[]> {
 			if ((task as any).agentId === undefined) task.agentId = null;
 			if ((task as any).configId === undefined) task.configId = null;
 		}
+
+		// Backfill seq for tasks created before seq existed
+		const needsSeq = tasks.some((t) => (t as any).seq === undefined);
+		if (needsSeq) {
+			// Build a map of groupId → seq for tasks that already have seq within a group
+			const groupSeqMap = new Map<string, number>();
+			for (const t of tasks) {
+				if ((t as any).seq !== undefined && t.groupId) {
+					groupSeqMap.set(t.groupId, t.seq);
+				}
+			}
+
+			let current = nextSeq(tasks.filter((t) => (t as any).seq !== undefined));
+			for (const t of tasks) {
+				if ((t as any).seq !== undefined) continue;
+				// Variants sharing a groupId get the same seq
+				if (t.groupId && groupSeqMap.has(t.groupId)) {
+					t.seq = groupSeqMap.get(t.groupId)!;
+				} else {
+					t.seq = current;
+					if (t.groupId) groupSeqMap.set(t.groupId, current);
+					current++;
+				}
+			}
+
+			log.info("Backfilled seq for tasks", { projectId: project.id });
+			await saveTasks(project, tasks);
+		}
+
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
 		return tasks;
 	} catch (err) {
@@ -143,7 +181,7 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
-	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null },
+	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number },
 ): Promise<Task> {
 	const title = titleFromDescription(description);
 	log.info("Creating task", { projectId: project.id, title, status });
@@ -151,6 +189,7 @@ export async function addTask(
 	const now = new Date().toISOString();
 	const task: Task = {
 		id: crypto.randomUUID(),
+		seq: extras?.seq ?? nextSeq(tasks),
 		projectId: project.id,
 		title,
 		description,
@@ -167,7 +206,7 @@ export async function addTask(
 	};
 	tasks.push(task);
 	await saveTasks(project, tasks);
-	log.info("Task created", { taskId: task.id, title });
+	log.info("Task created", { taskId: task.id, seq: task.seq, title });
 	return task;
 }
 
