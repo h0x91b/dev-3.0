@@ -237,7 +237,7 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			moveTask: {
-				params: { taskId: string; projectId: string; newStatus: TaskStatus };
+				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean };
 				response: Task;
 			};
 			deleteTask: {

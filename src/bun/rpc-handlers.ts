@@ -302,6 +302,7 @@ export const handlers = {
 		taskId: string;
 		projectId: string;
 		newStatus: TaskStatus;
+		force?: boolean;
 	}): Promise<Task> {
 		log.info("→ moveTask", params);
 		const project = await data.getProject(params.projectId);
@@ -309,7 +310,7 @@ export const handlers = {
 		const oldStatus = task.status;
 		const newStatus = params.newStatus;
 
-		log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id });
+		log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
 
 		// todo → active: create worktree + PTY session
 		if (!isActive(oldStatus) && isActive(newStatus)) {
@@ -332,28 +333,41 @@ export const handlers = {
 			isActive(oldStatus) &&
 			(newStatus === "completed" || newStatus === "cancelled")
 		) {
-			log.info("Transition: active → terminal, destroying PTY");
-			pty.destroySession(task.id);
-
-			try {
-				if (project.cleanupScript?.trim()) {
-					log.info("Running cleanup script before removing worktree", { taskId: task.id });
-					await runCleanupScript(task, project);
+			if (params.force) {
+				// Force mode: skip PTY destruction, cleanup script, and worktree removal.
+				// The environment is already broken — just update the status.
+				log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
+			} else {
+				log.info("Transition: active → terminal, destroying PTY");
+				try {
+					pty.destroySession(task.id);
+				} catch (err) {
+					log.error("destroySession failed, continuing with task move", {
+						taskId: task.id,
+						error: String(err),
+					});
 				}
-			} catch (err) {
-				log.error("Cleanup script failed, continuing with task move", {
-					taskId: task.id,
-					error: String(err),
-				});
-			}
 
-			try {
-				await git.removeWorktree(project, task);
-			} catch (err) {
-				log.error("removeWorktree failed, continuing with task move", {
-					taskId: task.id,
-					error: String(err),
-				});
+				try {
+					if (project.cleanupScript?.trim()) {
+						log.info("Running cleanup script before removing worktree", { taskId: task.id });
+						await runCleanupScript(task, project);
+					}
+				} catch (err) {
+					log.error("Cleanup script failed, continuing with task move", {
+						taskId: task.id,
+						error: String(err),
+					});
+				}
+
+				try {
+					await git.removeWorktree(project, task);
+				} catch (err) {
+					log.error("removeWorktree failed, continuing with task move", {
+						taskId: task.id,
+						error: String(err),
+					});
+				}
 			}
 
 			const updated = await data.updateTask(project, task.id, {

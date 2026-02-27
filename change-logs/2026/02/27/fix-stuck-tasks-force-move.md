@@ -1,0 +1,1 @@
+Fixed stuck tasks when cleanup/PTY operations fail. Added `force` parameter to `moveTask` that skips PTY destruction, cleanup script, and worktree removal — used automatically when the error dialog fires or when a normal move fails. Also made `pty.destroySession` resilient by wrapping tmux kill in try/catch.

@@ -66,7 +66,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch }
 	async function handleMove(newStatus: "completed" | "cancelled") {
 		setMoving(true);
 		try {
-			const updated = await api.request.moveTask({ taskId, projectId, newStatus });
+			const updated = await api.request.moveTask({ taskId, projectId, newStatus, force: true });
 			dispatch({ type: "updateTask", task: updated });
 			navigate({ screen: "project", projectId });
 		} catch (err) {
