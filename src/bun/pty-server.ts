@@ -15,9 +15,14 @@ interface PtySession {
 
 const sessions = new Map<string, PtySession>();
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
+let onBellCallback: ((taskId: string) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
 	onPtyDiedCallback = fn;
+}
+
+export function setOnBell(fn: (taskId: string) => void): void {
+	onBellCallback = fn;
 }
 
 export function createSession(
@@ -81,6 +86,9 @@ function shortId(taskId: string): string {
 }
 
 const OSC52_RE = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/g;
+// Matches any OSC sequence terminated by BEL or ST — used to strip them
+// before checking for standalone BEL (\x07)
+const OSC_ANY_RE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
 function handleOsc52(data: string): string {
 	return data.replace(OSC52_RE, (_match, b64: string) => {
@@ -99,7 +107,17 @@ function handleOsc52(data: string): string {
 	});
 }
 
-function configureTmuxClipboard(): void {
+function checkForBell(data: string, taskId: string): void {
+	// Strip all OSC sequences (they use \x07 as terminator, not as bell)
+	const withoutOsc = data.replace(OSC_ANY_RE, "");
+	if (withoutOsc.includes("\x07")) {
+		log.info("BEL detected in PTY data stream", { taskId: taskId.slice(0, 8) });
+		onBellCallback?.(taskId);
+	}
+}
+
+function configureTmux(tmuxSessionName: string): void {
+	// Clipboard
 	Bun.spawnSync(["tmux", "set", "-s", "set-clipboard", "on"]);
 	for (const table of ["copy-mode", "copy-mode-vi"]) {
 		Bun.spawnSync([
@@ -108,7 +126,11 @@ function configureTmuxClipboard(): void {
 			"send-keys", "-X", "copy-pipe-and-cancel", "pbcopy",
 		]);
 	}
-	log.info("tmux clipboard configured (set-clipboard on + pbcopy bindings)");
+	// Bell: ensure tmux passes BEL through to the parent terminal
+	Bun.spawnSync(["tmux", "set", "-t", tmuxSessionName, "visual-bell", "off"]);
+	Bun.spawnSync(["tmux", "set", "-t", tmuxSessionName, "bell-action", "any"]);
+	Bun.spawnSync(["tmux", "set", "-t", tmuxSessionName, "monitor-bell", "on"]);
+	log.info("tmux configured (clipboard + bell pass-through)", { tmuxSession: tmuxSessionName });
 }
 
 function spawnPty(session: PtySession, cols: number, rows: number): void {
@@ -135,6 +157,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 							typeof data === "string"
 								? data
 								: new TextDecoder().decode(data);
+						checkForBell(str, session.taskId);
 						const cleaned = handleOsc52(str);
 						if (cleaned && session.ws) {
 							session.ws.sendText(cleaned);
@@ -164,8 +187,8 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 
 	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
 
-	// Configure tmux clipboard after server is running
-	setTimeout(() => configureTmuxClipboard(), 200);
+	// Configure tmux (clipboard + bell pass-through) after session is ready
+	setTimeout(() => configureTmux(tmuxSessionName), 200);
 }
 
 const ptyServer = Bun.serve({

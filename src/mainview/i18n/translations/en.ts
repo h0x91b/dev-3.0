@@ -105,6 +105,7 @@ const en = {
 	"task.editCancel": "Cancel",
 	"task.failedEdit": "Failed to update task: {error}",
 	"task.editHint": "⌘Enter to save",
+	"task.bellTooltip": "Needs attention",
 
 	// LaunchVariantsModal
 	"launch.title": "Launch Task",

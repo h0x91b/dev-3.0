@@ -1,0 +1,1 @@
+Added terminal Bell signal detection and task attention indicator. When a PTY session emits a standalone BEL character (\x07), a pulsing orange bell icon appears on the task card in the Kanban board. The indicator is automatically cleared when the user opens the task's terminal view.

@@ -7,7 +7,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage } from "./rpc-handlers";
-import { setOnPtyDied } from "./pty-server";
+import { setOnPtyDied, setOnBell } from "./pty-server";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 
@@ -139,6 +139,12 @@ setPushMessage((name, payload) => {
 setOnPtyDied((taskId) => {
 	log.info("PTY died, notifying renderer", { taskId: taskId.slice(0, 8) });
 	(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId });
+});
+
+// Wire terminal bell notifications
+setOnBell((taskId) => {
+	log.debug("Terminal bell, notifying renderer", { taskId: taskId.slice(0, 8) });
+	(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
 });
 
 mainWindow.on("close", () => {

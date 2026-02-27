@@ -19,6 +19,7 @@ interface KanbanColumnProps {
 	dragFromStatus: TaskStatus | null;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
+	bellCounts: Map<string, number>;
 }
 
 function KanbanColumn({
@@ -35,6 +36,7 @@ function KanbanColumn({
 	dragFromStatus,
 	onDragStart,
 	onTaskMoved,
+	bellCounts,
 }: KanbanColumnProps) {
 	const t = useT();
 	const color = STATUS_COLORS[status];
@@ -133,6 +135,7 @@ function KanbanColumn({
 						onLaunchVariants={onLaunchVariants}
 						onDragStart={onDragStart}
 					onTaskMoved={onTaskMoved}
+						bellCount={bellCounts.get(task.id) ?? 0}
 					/>
 				))}
 

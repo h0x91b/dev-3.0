@@ -15,9 +15,10 @@ interface TaskCardProps {
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
+	bellCount?: number;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0 }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -235,6 +236,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
 					</svg>
 				</button>
+			)}
+
+			{/* Bell badge — macOS Dock style, peeking outside the card */}
+			{bellCount > 0 && (
+				<div
+					className="absolute -top-1.5 -right-1.5 z-10 min-w-[20px] h-5 flex items-center justify-center px-1.5 rounded-full bg-red-500 shadow-lg shadow-red-500/40"
+					title={t("task.bellTooltip")}
+				>
+					<span className="text-[11px] font-bold text-white leading-none">
+						{bellCount > 9 ? "9+" : bellCount}
+					</span>
+				</div>
 			)}
 
 			{/* Variant badge */}

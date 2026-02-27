@@ -109,6 +109,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.editCancel": "Отмена",
 	"task.failedEdit": "Не удалось обновить задачу: {error}",
 	"task.editHint": "⌘Enter для сохранения",
+	"task.bellTooltip": "Требует внимания",
 
 	// LaunchVariantsModal
 	"launch.title": "Запуск задачи",

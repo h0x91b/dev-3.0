@@ -17,6 +17,7 @@ export interface AppState {
 	projects: Project[];
 	currentProjectTasks: Task[];
 	loading: boolean;
+	bellCounts: Map<string, number>;
 }
 
 export const initialState: AppState = {
@@ -24,6 +25,7 @@ export const initialState: AppState = {
 	projects: [],
 	currentProjectTasks: [],
 	loading: true,
+	bellCounts: new Map(),
 };
 
 // ---- Actions ----
@@ -39,12 +41,21 @@ export type AppAction =
 	| { type: "addProject"; project: Project }
 	| { type: "removeProject"; projectId: string }
 	| { type: "updateProject"; project: Project }
-	| { type: "setLoading"; loading: boolean };
+	| { type: "setLoading"; loading: boolean }
+	| { type: "addBell"; taskId: string }
+	| { type: "clearBell"; taskId: string };
 
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
-		case "navigate":
-			return { ...state, route: action.route };
+		case "navigate": {
+			// Auto-clear bell when user opens the task terminal
+			let bellCounts = state.bellCounts;
+			if (action.route.screen === "task" && bellCounts.has(action.route.taskId)) {
+				bellCounts = new Map(bellCounts);
+				bellCounts.delete(action.route.taskId);
+			}
+			return { ...state, route: action.route, bellCounts };
+		}
 		case "setProjects":
 			return { ...state, projects: action.projects };
 		case "setTasks":
@@ -94,6 +105,24 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			};
 		case "setLoading":
 			return { ...state, loading: action.loading };
+		case "addBell": {
+			// Don't add bell if user is already viewing this task's terminal
+			if (
+				state.route.screen === "task" &&
+				state.route.taskId === action.taskId
+			) {
+				return state;
+			}
+			const bellCounts = new Map(state.bellCounts);
+			bellCounts.set(action.taskId, (bellCounts.get(action.taskId) ?? 0) + 1);
+			return { ...state, bellCounts };
+		}
+		case "clearBell": {
+			if (!state.bellCounts.has(action.taskId)) return state;
+			const bellCounts = new Map(state.bellCounts);
+			bellCounts.delete(action.taskId);
+			return { ...state, bellCounts };
+		}
 		default:
 			return state;
 	}

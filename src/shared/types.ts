@@ -289,6 +289,7 @@ export type AppRPCSchema = {
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
 			ptyDied: { taskId: string };
+			terminalBell: { taskId: string };
 		};
 	}>;
 	webview: RPCSchema<{

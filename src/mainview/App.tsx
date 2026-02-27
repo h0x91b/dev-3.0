@@ -41,6 +41,15 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	useEffect(() => {
+		function onTerminalBell(e: Event) {
+			const { taskId } = (e as CustomEvent).detail;
+			dispatch({ type: "addBell", taskId });
+		}
+		window.addEventListener("rpc:terminalBell", onTerminalBell);
+		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
+	}, [dispatch]);
+
 	// Listen for Cmd+, (Settings menu item)
 	useEffect(() => {
 		function onNavigateToSettings() {
@@ -94,6 +103,7 @@ function App() {
 						tasks={state.currentProjectTasks}
 						dispatch={dispatch}
 						navigate={navigate}
+						bellCounts={state.bellCounts}
 					/>
 				);
 			case "task":

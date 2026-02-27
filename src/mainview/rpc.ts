@@ -16,6 +16,11 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:ptyDied", { detail: payload }),
 				);
 			},
+			terminalBell: (payload) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:terminalBell", { detail: payload }),
+				);
+			},
 			navigateToSettings: () => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:navigateToSettings"),
