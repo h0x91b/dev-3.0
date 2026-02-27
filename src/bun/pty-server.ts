@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createLogger } from "./logger";
 
 const log = createLogger("pty");
@@ -136,6 +137,15 @@ function configureTmux(tmuxSessionName: string): void {
 function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = `dev3-${shortId(session.taskId)}`;
 	const tmuxCmd = session.tmuxCommand || "bash";
+
+	if (!existsSync(session.cwd)) {
+		log.error("Cannot spawn PTY — cwd does not exist", {
+			taskId: shortId(session.taskId),
+			cwd: session.cwd,
+		});
+		onPtyDiedCallback?.(session.taskId);
+		return;
+	}
 
 	log.info("Spawning PTY process", {
 		tmuxSession: tmuxSessionName,

@@ -142,6 +142,11 @@ const ru: TranslationRecord & Record<string, string> = {
 
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
+	"terminal.envError": "Ошибка окружения задачи",
+	"terminal.worktreeNotFound": "Рабочая директория задачи больше не существует. Это может произойти, если worktree был удалён извне.",
+	"terminal.errorPath": "Worktree не найден:",
+	"terminal.complete": "Завершить",
+	"terminal.cancelTask": "Отменить задачу",
 
 	// TaskInfoPanel
 	"infoPanel.status": "Статус",

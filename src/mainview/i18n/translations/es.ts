@@ -141,6 +141,11 @@ const es: TranslationRecord & Record<string, string> = {
 
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
+	"terminal.envError": "Error del entorno de la tarea",
+	"terminal.worktreeNotFound": "El directorio de trabajo de la tarea ya no existe. Esto puede ocurrir cuando el worktree se elimina externamente.",
+	"terminal.errorPath": "Worktree no encontrado:",
+	"terminal.complete": "Completar",
+	"terminal.cancelTask": "Cancelar tarea",
 
 	// TaskInfoPanel
 	"infoPanel.status": "Estado",

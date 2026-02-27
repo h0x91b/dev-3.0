@@ -138,6 +138,11 @@ const en = {
 
 	// TaskTerminal
 	"terminal.connecting": "Connecting...",
+	"terminal.envError": "Task environment error",
+	"terminal.worktreeNotFound": "The task's working directory no longer exists. This can happen when the worktree is removed externally.",
+	"terminal.errorPath": "Worktree not found:",
+	"terminal.complete": "Complete",
+	"terminal.cancelTask": "Cancel Task",
 
 	// TaskInfoPanel
 	"infoPanel.status": "Status",

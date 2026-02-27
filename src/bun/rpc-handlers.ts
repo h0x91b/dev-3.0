@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
 import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../shared/types";
 import { ACTIVE_STATUSES, titleFromDescription } from "../shared/types";
@@ -26,6 +27,14 @@ function isActive(status: TaskStatus): boolean {
 
 async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath || !project.cleanupScript?.trim()) return;
+
+	if (!existsSync(task.worktreePath)) {
+		log.warn("Skipping cleanup script — worktree directory missing", {
+			worktreePath: task.worktreePath,
+			taskId: task.id,
+		});
+		return;
+	}
 
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
@@ -326,12 +335,26 @@ export const handlers = {
 			log.info("Transition: active → terminal, destroying PTY");
 			pty.destroySession(task.id);
 
-			if (project.cleanupScript?.trim()) {
-				log.info("Running cleanup script before removing worktree", { taskId: task.id });
-				await runCleanupScript(task, project);
+			try {
+				if (project.cleanupScript?.trim()) {
+					log.info("Running cleanup script before removing worktree", { taskId: task.id });
+					await runCleanupScript(task, project);
+				}
+			} catch (err) {
+				log.error("Cleanup script failed, continuing with task move", {
+					taskId: task.id,
+					error: String(err),
+				});
 			}
 
-			await git.removeWorktree(project, task);
+			try {
+				await git.removeWorktree(project, task);
+			} catch (err) {
+				log.error("removeWorktree failed, continuing with task move", {
+					taskId: task.id,
+					error: String(err),
+				});
+			}
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,
@@ -591,11 +614,18 @@ export const handlers = {
 			}
 
 			if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
-				await launchTaskPty(foundProject, foundTask, foundTask.worktreePath);
-				log.info("Restored PTY session for active task", {
-					taskId: params.taskId.slice(0, 8),
-					worktreePath: foundTask.worktreePath,
-				});
+				try {
+					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath);
+					log.info("Restored PTY session for active task", {
+						taskId: params.taskId.slice(0, 8),
+						worktreePath: foundTask.worktreePath,
+					});
+				} catch (err) {
+					log.error("Failed to restore PTY session", {
+						taskId: params.taskId.slice(0, 8),
+						error: String(err),
+					});
+				}
 			} else {
 				log.warn("Cannot restore PTY session: task not active or no worktree", {
 					taskId: params.taskId.slice(0, 8),

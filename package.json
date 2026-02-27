@@ -10,6 +10,7 @@
 		"build:prod": "vite build && electrobun build --channel prod",
 		"start": "electrobun build && electrobun dev",
 		"test": "vitest run",
+		"test:bun": "vitest run --config vitest.config.bun.ts",
 		"test:watch": "vitest"
 	},
 	"dependencies": {
