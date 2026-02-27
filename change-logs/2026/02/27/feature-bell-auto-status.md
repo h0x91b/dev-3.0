@@ -1,0 +1,1 @@
+Auto-move task status on terminal bell: when a bell is detected (agent asking a question), the task automatically transitions from "in-progress" to "user-questions". When the user opens the task terminal, it transitions back to "in-progress".

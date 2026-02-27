@@ -6,7 +6,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage } from "./rpc-handlers";
+import { handlers, setPushMessage, handleBellAutoStatus } from "./rpc-handlers";
 import { setOnPtyDied, setOnBell } from "./pty-server";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -145,6 +145,8 @@ setOnPtyDied((taskId) => {
 setOnBell((taskId) => {
 	log.debug("Terminal bell, notifying renderer", { taskId: taskId.slice(0, 8) });
 	(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
+	// Auto-move task to "user-questions" on first bell
+	handleBellAutoStatus(taskId);
 });
 
 mainWindow.on("close", () => {

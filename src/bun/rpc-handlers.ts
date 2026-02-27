@@ -25,6 +25,28 @@ function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
 }
 
+/**
+ * Auto-move a task to "user-questions" when a terminal bell is detected.
+ * Only transitions from "in-progress" — other statuses are left untouched.
+ */
+export async function handleBellAutoStatus(taskId: string): Promise<void> {
+	const projectId = pty.getSessionProjectId(taskId);
+	if (!projectId) return;
+
+	try {
+		const project = await data.getProject(projectId);
+		const task = await data.getTask(project, taskId);
+
+		if (task.status !== "in-progress") return;
+
+		log.info("Bell auto-status: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
+		const updated = await data.updateTask(project, task.id, { status: "user-questions" });
+		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+	} catch (err) {
+		log.error("Bell auto-status failed", { taskId: taskId.slice(0, 8), error: String(err) });
+	}
+}
+
 async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath || !project.cleanupScript?.trim()) return;
 
@@ -137,7 +159,7 @@ async function launchTaskPty(
 
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
 	const echoAndRun = `echo "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && ${tmuxCmd}`;
-	pty.createSession(task.id, worktreePath, echoAndRun, env);
+	pty.createSession(task.id, project.id, worktreePath, echoAndRun, env);
 }
 
 export const handlers = {

@@ -7,6 +7,7 @@ let ptyWsPort = 0;
 
 interface PtySession {
 	taskId: string;
+	projectId: string;
 	cwd: string;
 	tmuxCommand: string;
 	env: Record<string, string>;
@@ -28,6 +29,7 @@ export function setOnBell(fn: (taskId: string) => void): void {
 
 export function createSession(
 	taskId: string,
+	projectId: string,
 	cwd: string,
 	tmuxCommand: string,
 	extraEnv: Record<string, string> = {},
@@ -35,6 +37,7 @@ export function createSession(
 	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand });
 	const session: PtySession = {
 		taskId,
+		projectId,
 		cwd,
 		tmuxCommand,
 		env: extraEnv,
@@ -76,6 +79,10 @@ export function destroySession(taskId: string): void {
 
 export function hasSession(taskId: string): boolean {
 	return sessions.has(taskId);
+}
+
+export function getSessionProjectId(taskId: string): string | null {
+	return sessions.get(taskId)?.projectId ?? null;
 }
 
 export function getPtyPort(): number {

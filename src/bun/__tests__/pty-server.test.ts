@@ -33,7 +33,7 @@ describe("pty-server — createSession with missing cwd", () => {
 		});
 
 		expect(() => {
-			createSession("test-task-missing-cwd", "/tmp/nonexistent-path-xyz", "bash", {});
+			createSession("test-task-missing-cwd", "proj-1", "/tmp/nonexistent-path-xyz", "bash", {});
 		}).not.toThrow();
 
 		// onPtyDied should be called since spawnPty bails out
@@ -44,7 +44,7 @@ describe("pty-server — createSession with missing cwd", () => {
 		vi.mocked(existsSync).mockReturnValue(true);
 
 		expect(() => {
-			createSession("test-task-normal", "/tmp/existing-path", "bash", {});
+			createSession("test-task-normal", "proj-1", "/tmp/existing-path", "bash", {});
 		}).not.toThrow();
 	});
 });

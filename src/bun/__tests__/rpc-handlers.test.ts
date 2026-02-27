@@ -32,6 +32,7 @@ vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 	hasSession: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
+	getSessionProjectId: vi.fn(() => null),
 }));
 
 vi.mock("../agents", () => ({
