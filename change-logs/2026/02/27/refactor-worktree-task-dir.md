@@ -1,0 +1,1 @@
+Worktree directory restructured: each task now gets a container directory (`{shortId}/`) with `worktree/` (git worktree) and `logs/` subdirectories. On cleanup, only `worktree/` is removed — `logs/` persists for history.
