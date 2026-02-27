@@ -1,0 +1,1 @@
+Fix: completing a task from the terminal view (TaskInfoPanel) now navigates back to the project Kanban board. Previously the cleanup script ran but the UI stayed on the dead terminal screen and the task appeared unchanged in the board.

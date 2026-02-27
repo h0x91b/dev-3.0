@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatc
 import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, BranchStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
-import type { AppAction } from "../state";
+import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 
@@ -10,6 +10,7 @@ interface TaskInfoPanelProps {
 	task: Task;
 	project: Project;
 	dispatch: Dispatch<AppAction>;
+	navigate: (route: Route) => void;
 }
 
 const COLLAPSED_HEIGHT = 36;
@@ -54,7 +55,7 @@ function formatDate(iso: string): string {
 	}
 }
 
-function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -133,6 +134,9 @@ function TaskInfoPanel({ task, project, dispatch }: TaskInfoPanelProps) {
 				newStatus,
 			});
 			dispatch({ type: "updateTask", task: updated });
+			if (!ACTIVE_STATUSES.includes(newStatus)) {
+				navigate({ screen: "project", projectId: project.id });
+			}
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}
