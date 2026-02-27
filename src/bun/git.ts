@@ -69,8 +69,12 @@ function projectSlug(projectPath: string): string {
 	return projectPath.replace(/^\//, "").replaceAll("/", "-");
 }
 
-function worktreePath(project: Project, task: Task): string {
+function taskDir(project: Project, task: Task): string {
 	return `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
+}
+
+function worktreePath(project: Project, task: Task): string {
+	return `${taskDir(project, task)}/worktree`;
 }
 
 function branchName(task: Task): string {
@@ -85,11 +89,12 @@ export async function createWorktree(
 	const branch = branchName(task);
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 
-	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id });
+	const tDir = taskDir(project, task);
 
-	// Create the worktree directory parent
-	const parentDir = `${DEV3_HOME}/worktrees/${projectSlug(project.path)}`;
-	const mkdirProc = Bun.spawn(["mkdir", "-p", parentDir]);
+	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id, taskDir: tDir });
+
+	// Create the task container directory (with logs/ subfolder)
+	const mkdirProc = Bun.spawn(["mkdir", "-p", `${tDir}/logs`]);
 	await mkdirProc.exited;
 
 	const result = await run(
