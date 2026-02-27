@@ -1,0 +1,1 @@
+Fixed agent/configuration dropdown in LaunchVariantsModal not responding to selection. The portal-rendered dropdown was being closed by the outside-click handler before the click event could register, because the handler only checked the button ref but not the dropdown ref.

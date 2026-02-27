@@ -24,6 +24,7 @@ function Select({
 	const [open, setOpen] = useState(false);
 	const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
 	const buttonRef = useRef<HTMLButtonElement>(null);
+	const dropdownRef = useRef<HTMLDivElement>(null);
 	const selected = options.find((o) => o.value === value);
 
 	function handleOpen() {
@@ -41,7 +42,10 @@ function Select({
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {
 			const target = e.target as Node;
-			if (buttonRef.current && !buttonRef.current.contains(target)) {
+			if (
+				buttonRef.current && !buttonRef.current.contains(target) &&
+				(!dropdownRef.current || !dropdownRef.current.contains(target))
+			) {
 				setOpen(false);
 			}
 		}
@@ -75,6 +79,7 @@ function Select({
 
 			{open && createPortal(
 				<div
+					ref={dropdownRef}
 					style={{ position: "fixed", top: dropdownStyle.top, left: dropdownStyle.left, width: dropdownStyle.width, zIndex: 9999 }}
 					className="bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/50 overflow-hidden"
 				>
