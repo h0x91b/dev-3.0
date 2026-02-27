@@ -162,16 +162,27 @@ export async function rebaseOnBase(
 export async function mergeBranch(
 	projectPath: string,
 	branchName: string,
+	commitMessage: string,
 ): Promise<{ ok: boolean; error?: string }> {
-	log.info("Merging branch into main working tree", { projectPath, branchName });
-	const result = await run(
-		["git", "merge", branchName],
+	log.info("Squash-merging branch into main working tree", { projectPath, branchName });
+
+	const squash = await run(
+		["git", "merge", "--squash", branchName],
 		projectPath,
 	);
-	if (result.ok) {
-		return { ok: true };
+	if (!squash.ok) {
+		return { ok: false, error: squash.stderr };
 	}
-	return { ok: false, error: result.stderr };
+
+	const commit = await run(
+		["git", "commit", "-m", commitMessage],
+		projectPath,
+	);
+	if (!commit.ok) {
+		return { ok: false, error: commit.stderr };
+	}
+
+	return { ok: true };
 }
 
 export async function removeWorktree(

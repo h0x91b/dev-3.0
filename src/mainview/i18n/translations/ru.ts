@@ -168,6 +168,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"infoPanel.merging": "Merging...",
 	"infoPanel.mergeFailed": "Merge не удался: {error}",
 	"infoPanel.mergeNotRebased": "Сначала сделайте rebase",
+	"infoPanel.mergeComplete": "Merge выполнен",
+	"infoPanel.mergeCompleteMessage": "Ветка успешно смержена. Перевести задачу в «Завершено»?",
 
 	// Status labels
 	"status.todo": "К выполнению",

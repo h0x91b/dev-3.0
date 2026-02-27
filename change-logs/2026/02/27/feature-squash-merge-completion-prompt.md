@@ -1,0 +1,1 @@
+Merge button now performs a squash merge (git merge --squash + commit) using the task title as the commit message. After a successful merge, a native dialog asks whether to mark the task as completed — if confirmed, the terminal is destroyed, cleanup runs, and the worktree is removed.
