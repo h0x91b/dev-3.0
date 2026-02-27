@@ -177,13 +177,8 @@ const en = {
 	"tmux.splitVDesc": "Split vertically",
 	"tmux.zoomDesc": "Zoom pane (toggle)",
 	"tmux.closePaneDesc": "Close pane",
-	"tmux.navigateDesc": "Navigate panes",
-	"tmux.scroll": "Scroll",
-	"tmux.scrollDesc": "Enter scroll mode",
-	"tmux.scrollExitDesc": "Exit scroll mode",
-	"tmux.windows": "Windows",
-	"tmux.newWindowDesc": "New window",
-	"tmux.switchWindowDesc": "Next / previous window",
+	"tmux.selectPaneDesc": "Click on a pane to select it",
+	"tmux.resizePaneDesc": "Drag pane border to resize",
 
 	// Status labels
 	"status.todo": "To Do",

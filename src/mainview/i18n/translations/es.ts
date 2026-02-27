@@ -180,13 +180,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"tmux.splitVDesc": "Dividir verticalmente",
 	"tmux.zoomDesc": "Zoom del panel (alternar)",
 	"tmux.closePaneDesc": "Cerrar panel",
-	"tmux.navigateDesc": "Navegar paneles",
-	"tmux.scroll": "Desplazamiento",
-	"tmux.scrollDesc": "Entrar en modo desplazamiento",
-	"tmux.scrollExitDesc": "Salir del modo desplazamiento",
-	"tmux.windows": "Ventanas",
-	"tmux.newWindowDesc": "Nueva ventana",
-	"tmux.switchWindowDesc": "Ventana siguiente / anterior",
+	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
+	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",
 
 	// Status labels
 	"status.todo": "Por hacer",

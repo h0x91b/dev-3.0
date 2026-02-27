@@ -578,26 +578,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 
 			{/* Panes */}
 			<div className={popoverSection}>{t("tmux.panes")}</div>
-			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mb-3">
+			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
 				<kbd className={popoverKbd}>⌃B -</kbd><span className={popoverDesc}>{t("tmux.splitHDesc")}</span>
 				<kbd className={popoverKbd}>⌃B |</kbd><span className={popoverDesc}>{t("tmux.splitVDesc")}</span>
 				<kbd className={popoverKbd}>⌃B z</kbd><span className={popoverDesc}>{t("tmux.zoomDesc")}</span>
 				<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
-				<kbd className={popoverKbd}>⌃B ←→↑↓</kbd><span className={popoverDesc}>{t("tmux.navigateDesc")}</span>
-			</div>
-
-			{/* Scroll */}
-			<div className={popoverSection}>{t("tmux.scroll")}</div>
-			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mb-3">
-				<kbd className={popoverKbd}>⌃B [</kbd><span className={popoverDesc}>{t("tmux.scrollDesc")}</span>
-				<kbd className={popoverKbd}>q</kbd><span className={popoverDesc}>{t("tmux.scrollExitDesc")}</span>
-			</div>
-
-			{/* Windows */}
-			<div className={popoverSection}>{t("tmux.windows")}</div>
-			<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-				<kbd className={popoverKbd}>⌃B c</kbd><span className={popoverDesc}>{t("tmux.newWindowDesc")}</span>
-				<kbd className={popoverKbd}>⌃B n/p</kbd><span className={popoverDesc}>{t("tmux.switchWindowDesc")}</span>
+				<span className={popoverDesc + " col-span-2 mt-1.5 text-fg-muted"}>{t("tmux.selectPaneDesc")}</span>
+				<span className={popoverDesc + " col-span-2 text-fg-muted"}>{t("tmux.resizePaneDesc")}</span>
 			</div>
 		</div>,
 		document.body,

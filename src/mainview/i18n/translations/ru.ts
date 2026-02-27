@@ -181,13 +181,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"tmux.splitVDesc": "Разделить вертикально",
 	"tmux.zoomDesc": "Увеличить панель (переключение)",
 	"tmux.closePaneDesc": "Закрыть панель",
-	"tmux.navigateDesc": "Навигация по панелям",
-	"tmux.scroll": "Прокрутка",
-	"tmux.scrollDesc": "Войти в режим прокрутки",
-	"tmux.scrollExitDesc": "Выйти из режима прокрутки",
-	"tmux.windows": "Окна",
-	"tmux.newWindowDesc": "Новое окно",
-	"tmux.switchWindowDesc": "Следующее / предыдущее окно",
+	"tmux.selectPaneDesc": "Кликните на панель для выбора",
+	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
 
 	// Status labels
 	"status.todo": "К выполнению",
