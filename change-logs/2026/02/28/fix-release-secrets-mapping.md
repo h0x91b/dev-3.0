@@ -1,0 +1,1 @@
+Fixed release workflow secret names to match actual GitHub repo secrets (ELECTROBUN_TEAMID, ELECTROBUN_APPLEID, ELECTROBUN_APPLEIDPASS instead of APPLE_TEAM_ID, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD).
