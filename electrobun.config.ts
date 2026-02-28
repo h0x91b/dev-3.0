@@ -8,9 +8,6 @@ export default {
 	},
 	release: {
 		baseUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0",
-	},
-	release: {
-		baseUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0",
 		generatePatch: false,
 	},
 	build: {
