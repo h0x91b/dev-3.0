@@ -188,6 +188,15 @@ const en = {
 	"tmux.selectPaneDesc": "Click on a pane to select it",
 	"tmux.resizePaneDesc": "Drag pane border to resize",
 
+	// Update
+	"update.checkingTitle": "Checking for Updates",
+	"update.upToDate": "You're up to date!",
+	"update.availableTitle": "Update Available",
+	"update.availableMessage": "Version {version} is available. Would you like to download it?",
+	"update.downloadBtn": "Download",
+	"update.laterBtn": "Later",
+	"update.errorTitle": "Update Check Failed",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

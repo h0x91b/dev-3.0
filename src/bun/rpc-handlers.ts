@@ -6,6 +6,7 @@ import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
 import * as agents from "./agents";
+import * as updater from "./updater";
 import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 
@@ -744,5 +745,44 @@ export const handlers = {
 
 		// Fallback: first size match, or first mdfind result
 		return sizeMatches[0] ?? candidates[0];
+	},
+
+	async checkForUpdate(): Promise<{ updateAvailable: boolean; version: string; error?: string }> {
+		log.info("-> checkForUpdate");
+		const settings = await loadSettings();
+		const result = await updater.checkForUpdateWithChannel(settings.updateChannel);
+		log.info("<- checkForUpdate", result);
+		return result;
+	},
+
+	async downloadUpdate(): Promise<{ ok: boolean; error?: string }> {
+		log.info("-> downloadUpdate");
+		const settings = await loadSettings();
+		const result = await updater.downloadUpdateForChannel(
+			settings.updateChannel,
+			(status, progress) => {
+				pushMessage?.("updateDownloadProgress", { status, progress });
+			},
+		);
+		log.info("<- downloadUpdate", result);
+		return result;
+	},
+
+	async applyUpdate(): Promise<void> {
+		log.info("-> applyUpdate");
+		await updater.applyUpdate();
+	},
+
+	async getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string }> {
+		log.info("-> getAppVersion");
+		const local = await updater.getLocalVersion();
+		const settings = await loadSettings();
+		const result = {
+			version: local.version,
+			channel: settings.updateChannel,
+			buildChannel: local.channel,
+		};
+		log.info("<- getAppVersion", result);
+		return result;
 	},
 };

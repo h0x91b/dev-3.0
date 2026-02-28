@@ -1,0 +1,1 @@
+Added auto-update mechanism using Electrobun's built-in Updater. The app checks for updates on startup and every 3 hours, with support for stable/canary channels configured in Global Settings. "Check for Updates..." menu item added under the app menu. Release workflow now uploads flat artifacts to S3 for the updater to consume.

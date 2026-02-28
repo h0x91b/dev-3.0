@@ -67,12 +67,19 @@ jobs:
           find ./build -name '._*' -delete 2>/dev/null || true
           dot_clean ./build 2>/dev/null || true
 
-      - name: Upload to S3
+      - name: Upload tagged artifacts to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: eu-west-1
         run: aws s3 sync ./artifacts/ s3://h0x91b-releases/dev-3.0/${{ github.ref_name }}/
+
+      - name: Upload latest artifacts for auto-updater
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: aws s3 sync ./artifacts/ s3://h0x91b-releases/dev-3.0/ --exclude "*.dmg"
 
       - name: Create GitHub Release
         env:

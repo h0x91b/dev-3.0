@@ -297,11 +297,29 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: string | null;
 			};
+			checkForUpdate: {
+				params: void;
+				response: { updateAvailable: boolean; version: string; error?: string };
+			};
+			downloadUpdate: {
+				params: void;
+				response: { ok: boolean; error?: string };
+			};
+			applyUpdate: {
+				params: void;
+				response: void;
+			};
+			getAppVersion: {
+				params: void;
+				response: { version: string; channel: string; buildChannel: string };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
 			ptyDied: { taskId: string };
 			terminalBell: { taskId: string };
+			updateAvailable: { version: string };
+			updateDownloadProgress: { status: string; progress?: number };
 		};
 	}>;
 	webview: RPCSchema<{

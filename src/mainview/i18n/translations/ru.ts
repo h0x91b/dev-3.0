@@ -192,6 +192,15 @@ const ru: TranslationRecord & Record<string, string> = {
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
 
+	// Update
+	"update.checkingTitle": "Проверка обновлений",
+	"update.upToDate": "У вас последняя версия!",
+	"update.availableTitle": "Доступно обновление",
+	"update.availableMessage": "Доступна версия {version}. Хотите скачать?",
+	"update.downloadBtn": "Скачать",
+	"update.laterBtn": "Позже",
+	"update.errorTitle": "Ошибка проверки обновлений",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

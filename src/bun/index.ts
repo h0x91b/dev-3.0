@@ -8,6 +8,8 @@ import Electrobun, {
 import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage, handleBellAutoStatus } from "./rpc-handlers";
 import { setOnPtyDied, setOnBell } from "./pty-server";
+import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion } from "./updater";
+import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 
@@ -67,6 +69,7 @@ ApplicationMenu.setApplicationMenu([
 		label: "dev-3.0",
 		submenu: [
 			{ label: "About dev-3.0", action: "about" },
+			{ label: "Check for Updates...", action: "check-for-updates" },
 			{ type: "separator" },
 			{ label: "Settings...", action: "open-settings", accelerator: "," },
 			{ type: "separator" },
@@ -209,9 +212,64 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		});
 	} else if (e.data.action === "open-settings") {
 		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
+	} else if (e.data.action === "check-for-updates") {
+		try {
+			const settings = await loadSettings();
+			const result = await checkForUpdateWithChannel(settings.updateChannel);
+
+			if (result.error) {
+				Utils.showMessageBox({
+					type: "warning",
+					title: "Update Check Failed",
+					message: "Could not check for updates",
+					detail: result.error,
+					buttons: ["OK"],
+				});
+			} else if (result.updateAvailable) {
+				const { response } = await Utils.showMessageBox({
+					type: "info",
+					title: "Update Available",
+					message: `Version ${result.version} is available`,
+					detail: "Would you like to download the update?",
+					buttons: ["Download", "Later"],
+					defaultId: 0,
+					cancelId: 1,
+				});
+				if (response === 0) {
+					(mainWindow.webview.rpc as any).send.updateAvailable?.({ version: result.version });
+				}
+			} else {
+				Utils.showMessageBox({
+					type: "info",
+					title: "No Updates",
+					message: "You're up to date!",
+					detail: `Current version: ${(await getLocalVersion()).version}`,
+					buttons: ["OK"],
+				});
+			}
+		} catch (err) {
+			log.error("Menu check-for-updates failed", { error: String(err) });
+			Utils.showMessageBox({
+				type: "warning",
+				title: "Update Check Failed",
+				message: "Could not check for updates",
+				detail: String(err),
+				buttons: ["OK"],
+			});
+		}
 	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
 	}
 });
+
+// --- Auto-Update Check ---
+
+startAutoCheck(
+	() => loadSettings().then((s) => s.updateChannel),
+	(version) => {
+		log.info("Auto-check found update, notifying renderer", { version });
+		(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
+	},
+);
 
 log.info("=== dev-3.0 ready ===");

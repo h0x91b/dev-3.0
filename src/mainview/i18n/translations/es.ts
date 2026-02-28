@@ -191,6 +191,15 @@ const es: TranslationRecord & Record<string, string> = {
 	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
 	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",
 
+	// Update
+	"update.checkingTitle": "Buscando actualizaciones",
+	"update.upToDate": "Tienes la ultima version!",
+	"update.availableTitle": "Actualizacion disponible",
+	"update.availableMessage": "La version {version} esta disponible. Deseas descargarla?",
+	"update.downloadBtn": "Descargar",
+	"update.laterBtn": "Despues",
+	"update.errorTitle": "Error al buscar actualizaciones",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

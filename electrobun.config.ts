@@ -6,6 +6,9 @@ export default {
 		identifier: "dev3.electrobun.dev",
 		version: "0.1.0",
 	},
+	release: {
+		baseUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0",
+	},
 	build: {
 		// Vite builds to dist/, we copy from there
 		copy: {
