@@ -122,6 +122,12 @@ The main process checks if the Vite dev server is running on `localhost:5173`. I
 
 Vite builds `src/mainview/` → `dist/`. Electrobun copies `dist/` contents into `views/mainview/` for packaging. Config in `electrobun.config.ts`.
 
+### Drag-and-drop file paths (heuristic)
+
+WKWebView (used by Electrobun) does **not** expose native file paths in drag-and-drop events. The renderer only gets `file.name`, `file.size`, and `file.lastModified` from the browser File API — no real path.
+
+To work around this, `resolveFilename` in `src/bun/rpc-handlers.ts` uses **macOS Spotlight (`mdfind`)** to search for the file by name, then verifies candidates by size and lastModified. This is a **best-effort heuristic**, not a guaranteed resolution. See [decision 005](decisions/005-dnd-file-path-heuristic.md) for details.
+
 ## Styling & design tokens
 
 All colors in the UI are defined as **CSS custom properties** (design tokens) in `src/mainview/index.css` and mapped to Tailwind via `tailwind.config.js`. Two themes exist: `dark` (default) and `light` (via `[data-theme="light"]` on `<html>`).
