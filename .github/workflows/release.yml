@@ -59,7 +59,13 @@ jobs:
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
           ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
           ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
-        run: bunx vite build && bunx electrobun build --env=stable
+          COPYFILE_DISABLE: "1"
+          COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
+        run: |
+          bunx vite build && bunx electrobun build --env=stable
+          # Clean AppleDouble ._ files that break code signatures
+          find ./build -name '._*' -delete 2>/dev/null || true
+          dot_clean ./build 2>/dev/null || true
 
       - name: Upload to S3
         env:
