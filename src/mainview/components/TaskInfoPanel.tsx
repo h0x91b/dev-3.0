@@ -521,7 +521,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
 				</span>
 			)}
-			<span className="text-fg-muted font-normal">vs origin/{comparisonBranch}</span>
+			<span className="text-fg-muted font-normal">vs {comparisonBranch}</span>
 			{branchStatus.behind > 0 && (
 				<button
 					onClick={handleRebase}

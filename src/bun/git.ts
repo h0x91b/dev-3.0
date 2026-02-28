@@ -122,7 +122,7 @@ export async function getBranchStatus(
 	baseBranch: string,
 ): Promise<{ ahead: number; behind: number }> {
 	const result = await run(
-		["git", "rev-list", "--count", "--left-right", `origin/${baseBranch}...HEAD`],
+		["git", "rev-list", "--count", "--left-right", `${baseBranch}...HEAD`],
 		worktreePath,
 	);
 	if (!result.ok) {
@@ -185,7 +185,7 @@ export async function canRebaseCleanly(
 	baseBranch: string,
 ): Promise<boolean> {
 	const result = await run(
-		["git", "merge-tree", "--write-tree", `origin/${baseBranch}`, "HEAD"],
+		["git", "merge-tree", "--write-tree", `${baseBranch}`, "HEAD"],
 		worktreePath,
 	);
 	return result.ok;
@@ -196,7 +196,7 @@ export async function rebaseOnBase(
 	baseBranch: string,
 ): Promise<{ ok: boolean; error?: string }> {
 	const result = await run(
-		["git", "rebase", `origin/${baseBranch}`],
+		["git", "rebase", `${baseBranch}`],
 		worktreePath,
 	);
 	if (result.ok) {
