@@ -1,0 +1,1 @@
+Window title now shows the app version, full date with day of week, and ISO week number alongside the build time. About dialog also displays the version. Format: `dev-3.0 v0.1.0 [Sat, 28 Feb 2026 · W09 · 14:30:15]`.

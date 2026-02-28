@@ -12,13 +12,37 @@ import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion } from "./up
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
+import electrobunConfig from "../../electrobun.config";
 
 const log = createLogger("main");
 
-const formatTime = (d: Date) =>
-	d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const APP_VERSION = electrobunConfig.app.version;
 
-let lastBuildTime = formatTime(new Date());
+const getISOWeek = (d: Date): number => {
+	const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+	date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+	const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+	return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+};
+
+const formatDateTime = (d: Date) => {
+	const date = d.toLocaleDateString("en-GB", {
+		weekday: "short",
+		day: "numeric",
+		month: "short",
+		year: "numeric",
+	});
+	const time = d.toLocaleTimeString("en-GB", {
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	});
+	return `${date} · W${String(getISOWeek(d)).padStart(2, "0")} · ${time}`;
+};
+
+const makeTitle = (dt: string) => `dev-3.0 v${APP_VERSION} [${dt}]`;
+
+let lastBuildTime = formatDateTime(new Date());
 
 log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
@@ -119,7 +143,7 @@ ApplicationMenu.setApplicationMenu([
 // --- Main Window ---
 
 const mainWindow = new BrowserWindow({
-	title: `dev-3.0 [${lastBuildTime}]`,
+	title: makeTitle(lastBuildTime),
 	url,
 	rpc,
 	frame: {
@@ -198,15 +222,15 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		rmSync(join(viewsDir, "assets"), { recursive: true, force: true });
 		cpSync(join(distDir, "assets"), join(viewsDir, "assets"), { recursive: true });
 
-		lastBuildTime = formatTime(new Date());
+		lastBuildTime = formatDateTime(new Date());
 		log.info(`Rebuild done, reloading [${lastBuildTime}]`);
-		mainWindow.setTitle(`dev-3.0 [${lastBuildTime}]`);
+		mainWindow.setTitle(makeTitle(lastBuildTime));
 		mainWindow.webview.loadURL(url);
 	} else if (e.data.action === "about") {
 		Utils.showMessageBox({
 			type: "info",
 			title: "About",
-			message: "dev-3.0",
+			message: `dev-3.0 v${APP_VERSION}`,
 			detail: "Terminal-centric project manager\nBuilt with Electrobun, React, and Bun.",
 			buttons: ["OK"],
 		});
