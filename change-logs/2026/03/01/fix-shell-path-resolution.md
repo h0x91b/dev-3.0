@@ -1,0 +1,1 @@
+Resolve the user's full shell PATH at app startup by spawning a login shell. macOS .app bundles launch with a minimal PATH that doesn't include /opt/homebrew/bin, so tmux, git, and other tools were not found. The resolved PATH is patched into process.env.PATH before the PTY server starts.

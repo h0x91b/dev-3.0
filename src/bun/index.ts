@@ -7,11 +7,11 @@ import Electrobun, {
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage, handleBellAutoStatus } from "./rpc-handlers";
-import { setOnPtyDied, setOnBell } from "./pty-server";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { resolveShellPath } from "./shell-env";
 import electrobunConfig from "../../electrobun.config";
 
 const log = createLogger("main");
@@ -70,8 +70,23 @@ log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
-// Side-effect: starts the PTY WebSocket server
-import "./pty-server";
+// ── Resolve user's shell PATH ──
+// macOS .app bundles inherit a minimal PATH. Resolve the full PATH from the
+// user's login shell BEFORE starting the PTY server or spawning any processes.
+const originalPath = process.env.PATH;
+const resolvedPath = await resolveShellPath();
+if (resolvedPath) {
+	process.env.PATH = resolvedPath;
+	log.info("Shell PATH resolved", {
+		original: originalPath,
+		resolved: resolvedPath,
+	});
+} else {
+	log.warn("Could not resolve shell PATH, using original", { path: originalPath });
+}
+
+// Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
+const { setOnPtyDied, setOnBell } = await import("./pty-server");
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
