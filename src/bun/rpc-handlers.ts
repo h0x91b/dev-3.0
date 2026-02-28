@@ -48,8 +48,10 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	}
 }
 
+const DEFAULT_CLEANUP_SCRIPT = 'say "task finished"';
+
 async function runCleanupScript(task: Task, project: Project): Promise<void> {
-	if (!task.worktreePath || !project.cleanupScript?.trim()) return;
+	if (!task.worktreePath) return;
 
 	if (!existsSync(task.worktreePath)) {
 		log.warn("Skipping cleanup script — worktree directory missing", {
@@ -59,10 +61,11 @@ async function runCleanupScript(task: Task, project: Project): Promise<void> {
 		return;
 	}
 
+	const script = project.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
 
-	await Bun.write(scriptPath, `#!/bin/bash\n${project.cleanupScript}\n`);
+	await Bun.write(scriptPath, `#!/bin/bash\n${script}\n`);
 
 	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
 
@@ -418,10 +421,8 @@ export const handlers = {
 				}
 
 				try {
-					if (project.cleanupScript?.trim()) {
-						log.info("Running cleanup script before removing worktree", { taskId: task.id });
-						await runCleanupScript(task, project);
-					}
+					log.info("Running cleanup script before removing worktree", { taskId: task.id });
+					await runCleanupScript(task, project);
 				} catch (err) {
 					log.error("Cleanup script failed, continuing with task move", {
 						taskId: task.id,
