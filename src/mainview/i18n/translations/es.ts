@@ -75,6 +75,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.dropToTopDesc": "Las tareas movidas aparecen arriba",
 	"settings.dropToBottom": "Abajo",
 	"settings.dropToBottomDesc": "Las tareas movidas aparecen abajo",
+	"settings.updateChannel": "Canal de actualización",
+	"settings.updateChannelDesc": "Canal de lanzamiento para actualizaciones automáticas",
 
 	// KanbanColumn
 	"kanban.noTasks": "Sin tareas",

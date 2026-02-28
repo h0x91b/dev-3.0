@@ -77,6 +77,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.dropToTopDesc": "Перемещённые таски появляются сверху",
 	"settings.dropToBottom": "Вниз",
 	"settings.dropToBottomDesc": "Перемещённые таски появляются снизу",
+	"settings.updateChannel": "Канал обновлений",
+	"settings.updateChannelDesc": "Канал релизов для автообновления приложения",
 
 	// KanbanColumn
 	"kanban.noTasks": "Нет задач",

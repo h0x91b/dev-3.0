@@ -129,6 +129,7 @@ export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
+	updateChannel: "stable" | "canary";
 }
 
 export interface Project {

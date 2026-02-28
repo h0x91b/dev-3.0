@@ -1,0 +1,1 @@
+Added GitHub Actions CI workflow for self-hosted macOS runner. The workflow runs on pushes and PRs to main: installs dependencies with frozen lockfile, runs tests, builds the app via Electrobun, and uploads build artifacts with 7-day retention.

@@ -22,6 +22,7 @@ function GlobalSettings() {
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-default",
 		taskDropPosition: "top",
+		updateChannel: "stable",
 	});
 
 	useEffect(() => {
@@ -40,6 +41,12 @@ function GlobalSettings() {
 
 	function handleDropPositionChange(pos: "top" | "bottom") {
 		const updated = { ...globalSettings, taskDropPosition: pos };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated);
+	}
+
+	function handleUpdateChannelChange(channel: "stable" | "canary") {
+		const updated = { ...globalSettings, updateChannel: channel };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated);
 	}
@@ -200,6 +207,24 @@ function GlobalSettings() {
 								icon="↓"
 							/>
 						</div>
+					</div>
+
+				{/* Update Channel */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.updateChannel")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.updateChannelDesc")}
+						</p>
+						<select
+							value={globalSettings.updateChannel}
+							onChange={(e) => handleUpdateChannelChange(e.target.value as "stable" | "canary")}
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+						>
+							<option value="stable">Stable</option>
+							<option value="canary">Canary</option>
+						</select>
 					</div>
 
 				{/* Default Agent */}

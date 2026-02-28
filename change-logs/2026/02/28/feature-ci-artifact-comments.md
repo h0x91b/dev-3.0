@@ -1,0 +1,1 @@
+CI workflows now post artifact links after builds. PR builds get a comment with S3 download links and self-signing instructions (unsigned builds). Release workflow creates a GitHub Release with the DMG link.

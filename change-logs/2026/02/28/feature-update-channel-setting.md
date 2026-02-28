@@ -1,0 +1,1 @@
+Added "Update Channel" dropdown (stable/canary) to Global Settings. The value is persisted in settings.json but has no functional effect yet — will be used later for app auto-update channel selection.

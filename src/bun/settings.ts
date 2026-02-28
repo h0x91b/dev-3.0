@@ -9,12 +9,14 @@ export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
+	updateChannel: "stable" | "canary";
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-default",
 	taskDropPosition: "top",
+	updateChannel: "stable",
 };
 
 export async function loadSettings(): Promise<GlobalSettings> {
@@ -28,6 +30,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
 			defaultConfigId: data.defaultConfigId ?? DEFAULT_SETTINGS.defaultConfigId,
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
+			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });

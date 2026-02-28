@@ -73,6 +73,8 @@ const en = {
 	"settings.dropToTopDesc": "Moved tasks appear at the top",
 	"settings.dropToBottom": "Bottom",
 	"settings.dropToBottomDesc": "Moved tasks appear at the bottom",
+	"settings.updateChannel": "Update Channel",
+	"settings.updateChannelDesc": "Release channel for app auto-updates",
 
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",

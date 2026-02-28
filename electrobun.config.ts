@@ -15,6 +15,8 @@ export default {
 		mac: {
 			bundleCEF: false,
 			icons: "icon.iconset",
+			codesign: false,
+			notarize: false,
 		},
 		linux: {
 			bundleCEF: false,
