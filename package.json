@@ -12,7 +12,7 @@
 		"test": "vitest run",
 		"test:bun": "vitest run --config vitest.config.bun.ts",
 		"test:watch": "vitest",
-		"bump": "bun run scripts/bump.ts"
+		"bump": "bun run scripts/bump.ts && git push && git push --tag"
 	},
 	"dependencies": {
 		"electrobun": "1.12.1-beta.2",
