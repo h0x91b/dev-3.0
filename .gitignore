@@ -2,3 +2,4 @@ node_modules/
 bun.lock
 /build/
 /dist/
+.claude/settings.local.json
