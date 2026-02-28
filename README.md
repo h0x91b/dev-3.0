@@ -1,4 +1,4 @@
-# dev-3.0
+# Dev-3.0
 
 Terminal-centric project manager — iTerm2 meets Kanban.
 
