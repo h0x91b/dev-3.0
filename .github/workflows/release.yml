@@ -70,6 +70,45 @@ jobs:
           find ./build -name '._*' -delete 2>/dev/null || true
           dot_clean ./build 2>/dev/null || true
 
+      - name: Create updater artifacts
+        run: |
+          # Electrobun has a bug: it deletes the .app bundle after tarring, then tries
+          # to re-sign it. We skip release.baseUrl in config and create artifacts manually.
+          BUILD_DIR="./build/stable-macos-arm64"
+          APP_NAME="dev-3.0"
+          PLATFORM_PREFIX="stable-macos-arm64"
+
+          mkdir -p ./artifacts
+
+          # Read hash from version.json inside the app bundle
+          VERSION_JSON="${BUILD_DIR}/${APP_NAME}.app/Contents/Resources/version.json"
+          HASH=$(cat "$VERSION_JSON" | bun -e 'const j=await Bun.stdin.json();console.log(j.hash)')
+          VERSION=$(cat "$VERSION_JSON" | bun -e 'const j=await Bun.stdin.json();console.log(j.version)')
+          echo "Bundle hash: $HASH, version: $VERSION"
+
+          # Create tar.zst from the .app bundle
+          TAR_PATH="${BUILD_DIR}/${APP_NAME}.app.tar"
+          tar -cf "$TAR_PATH" -C "$BUILD_DIR" "${APP_NAME}.app"
+          # Compress with zstd (use the one from electrobun core deps)
+          ZSTD="./node_modules/electrobun/dist-macos-arm64/zig-zstd"
+          "$ZSTD" "$TAR_PATH" -o "${TAR_PATH}.zst"
+          cp "${TAR_PATH}.zst" "./artifacts/${PLATFORM_PREFIX}-${APP_NAME}.app.tar.zst"
+
+          # Create update.json
+          echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"macos\",\"arch\":\"arm64\"}" \
+            > "./artifacts/${PLATFORM_PREFIX}-update.json"
+
+          # Create DMG (Electrobun already creates it in artifacts/ if no release.baseUrl)
+          # If DMG wasn't created by electrobun, create one manually
+          if ! ls ./artifacts/${PLATFORM_PREFIX}-*.dmg 2>/dev/null; then
+            DMG_PATH="./artifacts/${PLATFORM_PREFIX}-${APP_NAME}.dmg"
+            hdiutil create -volname "$APP_NAME" -srcfolder "${BUILD_DIR}/${APP_NAME}.app" \
+              -ov -format UDZO "$DMG_PATH"
+          fi
+
+          echo "Artifacts created:"
+          ls -la ./artifacts/
+
       - name: Upload tagged artifacts to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

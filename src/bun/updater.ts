@@ -4,6 +4,7 @@ import { createLogger } from "./logger";
 const log = createLogger("updater");
 
 const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 hours
+const BASE_URL = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
 
 interface UpdateJson {
 	version: string;
@@ -22,14 +23,13 @@ function getPlatformPrefix(): string {
 	return `${platform}-${arch}`;
 }
 
-export async function getLocalVersion(): Promise<{ version: string; hash: string; channel: string; baseUrl: string }> {
-	const [version, hash, channel, baseUrl] = await Promise.all([
+export async function getLocalVersion(): Promise<{ version: string; hash: string; channel: string }> {
+	const [version, hash, channel] = await Promise.all([
 		Updater.localInfo.version(),
 		Updater.localInfo.hash(),
 		Updater.localInfo.channel(),
-		Updater.localInfo.baseUrl(),
 	]);
-	return { version, hash, channel, baseUrl };
+	return { version, hash, channel };
 }
 
 export async function checkForUpdateWithChannel(channel: string): Promise<UpdateCheckResult> {
@@ -37,7 +37,7 @@ export async function checkForUpdateWithChannel(channel: string): Promise<Update
 	const platformPrefix = getPlatformPrefix();
 
 	// Construct URL for the selected channel's update.json
-	const updateUrl = `${local.baseUrl}/${channel}-${platformPrefix}-update.json?_=${Date.now()}`;
+	const updateUrl = `${BASE_URL}/${channel}-${platformPrefix}-update.json?_=${Date.now()}`;
 
 	log.info("Checking for update", { channel, url: updateUrl, localHash: local.hash.slice(0, 12) });
 
@@ -110,7 +110,7 @@ export async function downloadUpdateForChannel(
 		const platformPrefix = getPlatformPrefix();
 		const appName = "dev-3.0".replace(/\s/g, "");
 		const ext = process.platform === "darwin" ? ".app.tar.zst" : ".tar.zst";
-		const tarUrl = `${local.baseUrl}/${channel}-${platformPrefix}-${appName}${ext}?_=${Date.now()}`;
+		const tarUrl = `${BASE_URL}/${channel}-${platformPrefix}-${appName}${ext}?_=${Date.now()}`;
 
 		log.info("Downloading full bundle", { url: tarUrl });
 		onProgress?.("downloading", 10);
