@@ -40,6 +40,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const previewRef = useRef<HTMLDivElement>(null);
 	const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const cardRef = useRef<HTMLDivElement>(null);
 
 	const isTodo = task.status === "todo";
@@ -248,6 +249,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	const closePreview = useCallback(() => {
 		cancelPreviewTimers();
+		if (previewIntervalRef.current) {
+			clearInterval(previewIntervalRef.current);
+			previewIntervalRef.current = null;
+		}
 		setPreviewOpen(false);
 		setPreviewHtml(null);
 		setPreviewLoading(false);
@@ -307,6 +312,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				setPreviewHtml(null);
 			}
 			setPreviewLoading(false);
+
+			// Refresh preview every second while open
+			previewIntervalRef.current = setInterval(async () => {
+				try {
+					const content = await api.request.getTerminalPreview({ taskId: task.id });
+					if (content) {
+						setPreviewHtml(ansiToHtml(content));
+					}
+				} catch {
+					// ignore refresh errors
+				}
+			}, 1000);
 		}, 400);
 	}
 
@@ -322,7 +339,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	// Clean up timers on unmount
 	useEffect(() => {
-		return () => cancelPreviewTimers();
+		return () => {
+			cancelPreviewTimers();
+			if (previewIntervalRef.current) {
+				clearInterval(previewIntervalRef.current);
+				previewIntervalRef.current = null;
+			}
+		};
 	}, [cancelPreviewTimers]);
 
 	const showDismissButton = isTodo || isCancelled;
