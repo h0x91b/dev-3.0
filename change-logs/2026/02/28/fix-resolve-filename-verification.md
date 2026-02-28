@@ -1,0 +1,1 @@
+Improved drag-and-drop file path resolution for files with non-unique names (e.g. README.md). The resolveFilename RPC now receives file size and lastModified from the browser File API and uses them to verify mdfind candidates, picking the correct file instead of a random match.

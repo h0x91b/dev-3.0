@@ -696,7 +696,7 @@ export const handlers = {
 		return url;
 	},
 
-	async resolveFilename(params: { filename: string }): Promise<string | null> {
+	async resolveFilename(params: { filename: string; size: number; lastModified: number }): Promise<string | null> {
 		// WKWebView doesn't expose native file paths via drag-and-drop.
 		// Use Spotlight (mdfind) to find the full path by filename.
 		const proc = Bun.spawnSync([
@@ -706,7 +706,39 @@ export const handlers = {
 		]);
 		const output = proc.stdout.toString().trim();
 		if (!output) return null;
-		// Return the first match (unique for timestamped filenames like screenshots)
-		return output.split("\n")[0];
+
+		const candidates = output.split("\n");
+		if (candidates.length === 1) return candidates[0];
+
+		// Multiple candidates — verify by size and lastModified
+		const sizeMatches: string[] = [];
+		for (const path of candidates) {
+			try {
+				const file = Bun.file(path);
+				if (file.size === params.size) {
+					sizeMatches.push(path);
+				}
+			} catch {
+				// File inaccessible, skip
+			}
+		}
+
+		if (sizeMatches.length === 1) return sizeMatches[0];
+
+		// Multiple size matches — narrow down by lastModified
+		const pool = sizeMatches.length > 0 ? sizeMatches : candidates;
+		for (const path of pool) {
+			try {
+				const file = Bun.file(path);
+				if (file.lastModified === params.lastModified) {
+					return path;
+				}
+			} catch {
+				// File inaccessible, skip
+			}
+		}
+
+		// Fallback: first size match, or first mdfind result
+		return sizeMatches[0] ?? candidates[0];
 	},
 };

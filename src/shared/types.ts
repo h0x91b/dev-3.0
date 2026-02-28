@@ -267,7 +267,7 @@ export type AppRPCSchema = {
 				response: string;
 			};
 			resolveFilename: {
-				params: { filename: string };
+				params: { filename: string; size: number; lastModified: number };
 				response: string | null;
 			};
 			runDevServer: {
