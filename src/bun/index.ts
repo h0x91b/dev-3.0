@@ -7,7 +7,7 @@ import Electrobun, {
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage, handleBellAutoStatus } from "./rpc-handlers";
-import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion } from "./updater";
+import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -313,7 +313,29 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 					cancelId: 1,
 				});
 				if (response === 0) {
-					(mainWindow.webview.rpc as any).send.updateAvailable?.({ version: result.version });
+					const dlResult = await downloadUpdateForChannel(settings.updateChannel);
+					if (dlResult.ok) {
+						const { response: restartResponse } = await Utils.showMessageBox({
+							type: "info",
+							title: "Update Downloaded",
+							message: "Update is ready to install",
+							detail: "The app will restart to apply the update.",
+							buttons: ["Restart Now", "Later"],
+							defaultId: 0,
+							cancelId: 1,
+						});
+						if (restartResponse === 0) {
+							await applyUpdate();
+						}
+					} else {
+						Utils.showMessageBox({
+							type: "warning",
+							title: "Download Failed",
+							message: "Could not download the update",
+							detail: dlResult.error || "Unknown error",
+							buttons: ["OK"],
+						});
+					}
 				}
 			} else {
 				Utils.showMessageBox({
@@ -343,9 +365,27 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 
 startAutoCheck(
 	() => loadSettings().then((s) => s.updateChannel),
-	(version) => {
-		log.info("Auto-check found update, notifying renderer", { version });
-		(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
+	async (version) => {
+		log.info("Auto-check found update, downloading...", { version });
+		const settings = await loadSettings();
+		const dlResult = await downloadUpdateForChannel(settings.updateChannel);
+		if (dlResult.ok) {
+			log.info("Auto-download complete, showing restart dialog");
+			const { response } = await Utils.showMessageBox({
+				type: "info",
+				title: "Update Ready",
+				message: `Version ${version} has been downloaded`,
+				detail: "Restart the app to apply the update.",
+				buttons: ["Restart Now", "Later"],
+				defaultId: 0,
+				cancelId: 1,
+			});
+			if (response === 0) {
+				await applyUpdate();
+			}
+		} else {
+			log.error("Auto-download failed", { error: dlResult.error });
+		}
 	},
 );
 

@@ -1,0 +1,1 @@
+Fix auto-update: actually download and apply updates instead of sending unhandled messages to the renderer. Both the "Check for Updates" menu action and the auto-check callback now call downloadUpdateForChannel() + applyUpdate() with native dialogs, instead of sending updateAvailable to the renderer which was never handled.
