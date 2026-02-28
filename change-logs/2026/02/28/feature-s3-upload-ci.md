@@ -1,0 +1,1 @@
+Added S3 upload step to CI workflow. Build artifacts are now synced to s3://h0x91b-releases/dev-3.0/<sha>/ after a successful build. Replaces GitHub's built-in artifact storage which had quota limits.
