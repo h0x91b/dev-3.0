@@ -1,0 +1,1 @@
+Work around Electrobun codesign bug by removing release.baseUrl from config and creating updater artifacts (tar.zst, update.json, DMG) manually in the CI workflow. Hardcode the S3 base URL in updater.ts.
