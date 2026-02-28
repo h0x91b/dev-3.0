@@ -14,6 +14,16 @@ Multiple AI agents may work on this project in parallel. Each agent MUST:
 - **Ignore unrelated changes.** If `git status` shows modifications you didn't make (outside of `.claude/`), leave them alone. You may inform the user: "I see other uncommitted changes, but they aren't mine."
 - **Never revert or discard other agents' work.** Do not run `git checkout`, `git restore`, or `git clean` on files you didn't touch. This rule has no exceptions.
 
+## GitHub CLI (`gh`)
+
+The repo is owned by the **`h0x91b`** personal account. The developer machine has two `gh` accounts configured (`h0x91b` and `h0x91b-wix`). Before running any `gh` commands that access this repo, **switch to the correct account**:
+
+```bash
+unset GH_TOKEN && gh auth switch --user h0x91b
+```
+
+Always prefix `gh` calls with `unset GH_TOKEN &&` to avoid token conflicts (see global CLAUDE.md).
+
 ## Git worktree
 
 Agents in this project typically run inside a **git worktree**, not the main working tree. The main project lives at:
