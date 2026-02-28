@@ -53,6 +53,9 @@ jobs:
           echo "Patched electrobun.config.ts for signing:"
           grep -E 'codesign|notarize' electrobun.config.ts
 
+      - name: Clean previous build artifacts
+        run: rm -rf ./build ./artifacts
+
       - name: Build stable release (signed + notarized)
         env:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}

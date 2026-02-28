@@ -35,6 +35,9 @@ jobs:
           sed -i '' "s/name: \"dev-3.0\"/name: \"${APP_NAME}\"/" electrobun.config.ts
           echo "Patched app name to: ${APP_NAME}"
 
+      - name: Clean previous build artifacts
+        run: rm -rf ./build ./artifacts
+
       - name: Build application
         run: bunx vite build && bunx electrobun build --env=canary
 
