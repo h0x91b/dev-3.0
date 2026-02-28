@@ -4,6 +4,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: [self-hosted, macOS]
@@ -22,7 +25,39 @@ jobs:
       - name: Run tests
         run: bun run test
 
-      - name: Build stable release
+      - name: Import code signing certificate
+        env:
+          MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          echo "$MAC_CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          security import $RUNNER_TEMP/certificate.p12 -P "$MAC_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          rm $RUNNER_TEMP/certificate.p12
+
+      - name: Enable code signing in config
+        run: |
+          sed -i '' 's/codesign: false/codesign: true/' electrobun.config.ts
+          sed -i '' 's/notarize: false/notarize: true/' electrobun.config.ts
+          echo "Patched electrobun.config.ts for signing:"
+          grep -E 'codesign|notarize' electrobun.config.ts
+
+      - name: Build stable release (signed + notarized)
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+          ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
+          ELECTROBUN_APPLEID: ${{ secrets.APPLE_ID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: bunx vite build && bunx electrobun build --env=stable
 
       - name: Upload to S3
