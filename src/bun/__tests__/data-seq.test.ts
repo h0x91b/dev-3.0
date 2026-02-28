@@ -17,23 +17,7 @@ vi.mock("../paths", () => ({
 // Track what's written to disk
 let mockFileStore: Record<string, string> = {};
 
-vi.mock("bun", () => {
-	return {
-		default: {
-			file: (path: string) => ({
-				exists: async () => path in mockFileStore,
-				json: async () => JSON.parse(mockFileStore[path]),
-			}),
-			write: async (path: string, content: string) => {
-				mockFileStore[path] = content;
-			},
-			spawn: (cmd: string[]) => ({ exited: Promise.resolve(0) }),
-		},
-	};
-}, { virtual: true });
-
 // We need to mock the Bun global, not a module
-const originalBun = globalThis.Bun;
 
 beforeEach(() => {
 	mockFileStore = {};
@@ -46,11 +30,11 @@ beforeEach(() => {
 		write: async (path: string, content: string) => {
 			mockFileStore[path] = content;
 		},
-		spawn: (cmd: string[]) => ({ exited: Promise.resolve(0) }),
+		spawn: (_cmd: string[]) => ({ exited: Promise.resolve(0) }),
 	};
 });
 
-import { loadTasks, saveTasks, addTask } from "../data";
+import { loadTasks, addTask } from "../data";
 
 const testProject: Project = {
 	id: "proj-1",

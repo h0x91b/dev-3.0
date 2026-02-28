@@ -17,7 +17,7 @@ vi.mock("../../rpc", () => ({
 
 import { api } from "../../rpc";
 
-const mockedApi = vi.mocked(api);
+const mockedApi = vi.mocked(api, true);
 
 function renderDashboard(
 	projects: Project[] = [],
@@ -40,6 +40,8 @@ const mockProject: Project = {
 	name: "My Project",
 	path: "/home/user/my-project",
 	setupScript: "",
+	devScript: "",
+	cleanupScript: "",
 	defaultBaseBranch: "main",
 	createdAt: "2025-01-01T00:00:00Z",
 };

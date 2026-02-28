@@ -417,5 +417,5 @@ const ptyServer = Bun.serve({
 	},
 });
 
-ptyWsPort = ptyServer.port;
+ptyWsPort = ptyServer.port ?? 0;
 log.info(`PTY WebSocket server running on ws://localhost:${ptyWsPort}`);

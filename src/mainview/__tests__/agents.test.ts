@@ -55,6 +55,8 @@ function makeProject(overrides?: Partial<Project>): Project {
 		name: "test-project",
 		path: "/home/user/project",
 		setupScript: "",
+		devScript: "",
+		cleanupScript: "",
 		defaultBaseBranch: "main",
 		createdAt: "2026-01-01",
 		...overrides,

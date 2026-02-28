@@ -52,9 +52,10 @@ function App() {
 
 	// Auto-move task back to "in-progress" when user opens its terminal
 	useEffect(() => {
-		if (state.route.screen !== "task") return;
+		const currentRoute = state.route;
+		if (currentRoute.screen !== "task") return;
 		const task = state.currentProjectTasks.find(
-			(t) => t.id === state.route.taskId,
+			(t) => t.id === currentRoute.taskId,
 		);
 		if (task && task.status === "user-questions") {
 			api.request
@@ -99,7 +100,6 @@ function App() {
 				projects={state.projects}
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
-				dispatch={dispatch}
 			/>
 			<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
 		</div>

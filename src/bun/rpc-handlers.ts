@@ -827,7 +827,7 @@ export const handlers = {
 		log.info("-> checkForUpdate");
 		const settings = await loadSettings();
 		const result = await updater.checkForUpdateWithChannel(settings.updateChannel);
-		log.info("<- checkForUpdate", result);
+		log.info("<- checkForUpdate", { ...result });
 		return result;
 	},
 

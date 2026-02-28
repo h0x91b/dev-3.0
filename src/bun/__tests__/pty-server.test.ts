@@ -16,9 +16,6 @@ vi.mock("node:fs", () => ({
 import { existsSync } from "node:fs";
 import { createSession, setOnPtyDied } from "../pty-server";
 
-// Get reference to the Bun.spawn mock set up by test-setup.ts
-const mockSpawn = (globalThis as any).Bun.spawn;
-
 describe("pty-server — createSession with missing cwd", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

@@ -6,17 +6,17 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {},
 		messages: {
-			taskUpdated: (payload) => {
+			taskUpdated: (payload: any) => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:taskUpdated", { detail: payload }),
 				);
 			},
-			ptyDied: (payload) => {
+			ptyDied: (payload: any) => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:ptyDied", { detail: payload }),
 				);
 			},
-			terminalBell: (payload) => {
+			terminalBell: (payload: any) => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:terminalBell", { detail: payload }),
 				);
@@ -26,7 +26,7 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:navigateToSettings"),
 				);
 			},
-		},
+		} as any,
 	},
 });
 

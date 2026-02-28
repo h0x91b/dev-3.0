@@ -1,8 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../../shared/types";
-import type { AppAction, Route } from "../../state";
+import type { CodingAgent, Project, Task } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -32,6 +31,8 @@ const project: Project = {
 	name: "Test",
 	path: "/tmp/test",
 	setupScript: "",
+	devScript: "",
+	cleanupScript: "",
 	defaultBaseBranch: "main",
 	createdAt: "2025-01-01T00:00:00Z",
 };

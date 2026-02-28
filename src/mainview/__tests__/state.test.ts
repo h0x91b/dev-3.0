@@ -7,6 +7,8 @@ const mockProject: Project = {
 	name: "Test Project",
 	path: "/tmp/test",
 	setupScript: "",
+	devScript: "",
+	cleanupScript: "",
 	defaultBaseBranch: "main",
 	createdAt: "2025-01-01T00:00:00Z",
 };

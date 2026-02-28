@@ -19,7 +19,7 @@ vi.mock("../../rpc", () => ({
 }));
 
 import { api } from "../../rpc";
-const mockedApi = vi.mocked(api);
+const mockedApi = vi.mocked(api, true);
 
 // ---- Fixtures ----
 
@@ -80,6 +80,8 @@ function makeProject(overrides?: Partial<Project>): Project {
 		name: "Test Project",
 		path: "/tmp/test",
 		setupScript: "",
+		devScript: "",
+		cleanupScript: "",
 		defaultBaseBranch: "main",
 		createdAt: "2025-01-01T00:00:00Z",
 		...overrides,
@@ -91,6 +93,7 @@ function makeGlobalSettings(overrides?: Partial<GlobalSettings>): GlobalSettings
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-default",
 		taskDropPosition: "top",
+		updateChannel: "stable",
 		...overrides,
 	};
 }

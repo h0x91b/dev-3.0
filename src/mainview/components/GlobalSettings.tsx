@@ -54,7 +54,7 @@ function GlobalSettings() {
 	function handleDefaultAgentChange(agentId: string) {
 		const agent = agents.find((a) => a.id === agentId);
 		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
-		const updated = { defaultAgentId: agentId, defaultConfigId: configId };
+		const updated = { ...globalSettings, defaultAgentId: agentId, defaultConfigId: configId };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated);
 	}
@@ -540,7 +540,7 @@ function ConfigEditor({
 	onToggle: () => void;
 	onChange: (patch: Partial<AgentConfiguration>) => void;
 	onDelete: () => void;
-	t: (key: string, vars?: Record<string, string>) => string;
+	t: (key: any, vars?: Record<string, string>) => string;
 }) {
 	const preview = buildCommandPreview(agentBaseCommand, config);
 

@@ -25,6 +25,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts }: KanbanB
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-default",
 		taskDropPosition: "top",
+		updateChannel: "stable",
 	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
