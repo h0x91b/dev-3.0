@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "dev-3.0",
 		identifier: "dev3.electrobun.dev",
-		version: "0.1.6",
+		version: "0.1.8",
 	},
 	build: {
 		// Vite builds to dist/, we copy from there
