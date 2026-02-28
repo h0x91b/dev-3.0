@@ -1,0 +1,1 @@
+Added stable release workflow triggered by version tags (v*). Builds with `--env=stable` and uploads artifacts to S3 under the tag name. Added `bun run bump [patch|minor|major]` script for version bumping with auto-commit and tag creation.

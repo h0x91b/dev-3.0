@@ -11,7 +11,8 @@
 		"start": "electrobun build && electrobun dev",
 		"test": "vitest run",
 		"test:bun": "vitest run --config vitest.config.bun.ts",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"bump": "bun run scripts/bump.ts"
 	},
 	"dependencies": {
 		"electrobun": "1.12.1-beta.2",
