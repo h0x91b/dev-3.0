@@ -16,6 +16,28 @@ import electrobunConfig from "../../electrobun.config";
 
 const log = createLogger("main");
 
+// ── Global crash handlers ──
+// Catch any unhandled exceptions/rejections BEFORE they kill the process.
+// These are the last line of defense — if we get here, something is very wrong.
+process.on("uncaughtException", (err) => {
+	log.error("UNCAUGHT EXCEPTION — process will crash", {
+		error: String(err),
+		stack: err?.stack ?? "no stack",
+		name: err?.name ?? "unknown",
+	});
+	console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+	const err = reason instanceof Error ? reason : new Error(String(reason));
+	log.error("UNHANDLED REJECTION — promise rejected without .catch()", {
+		error: String(err),
+		stack: err?.stack ?? "no stack",
+		name: err?.name ?? "unknown",
+	});
+	console.error("UNHANDLED REJECTION:", reason);
+});
+
 const APP_VERSION = electrobunConfig.app.version;
 
 const getISOWeek = (d: Date): number => {
@@ -164,16 +186,32 @@ setPushMessage((name, payload) => {
 
 // Wire PTY death notifications
 setOnPtyDied((taskId) => {
-	log.info("PTY died, notifying renderer", { taskId: taskId.slice(0, 8) });
-	(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId });
+	try {
+		log.info("PTY died, notifying renderer", { taskId: taskId.slice(0, 8) });
+		(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId });
+	} catch (err) {
+		log.error("Failed to notify renderer about PTY death", {
+			taskId: taskId.slice(0, 8),
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+	}
 });
 
 // Wire terminal bell notifications
 setOnBell((taskId) => {
-	log.debug("Terminal bell, notifying renderer", { taskId: taskId.slice(0, 8) });
-	(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
-	// Auto-move task to "user-questions" on first bell
-	handleBellAutoStatus(taskId);
+	try {
+		log.debug("Terminal bell, notifying renderer", { taskId: taskId.slice(0, 8) });
+		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
+		// Auto-move task to "user-questions" on first bell
+		handleBellAutoStatus(taskId);
+	} catch (err) {
+		log.error("Failed to handle terminal bell", {
+			taskId: taskId.slice(0, 8),
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+	}
 });
 
 mainWindow.on("close", () => {

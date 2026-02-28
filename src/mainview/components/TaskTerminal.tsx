@@ -29,11 +29,19 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch }
 
 	useEffect(() => {
 		(async () => {
+			console.log("[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
 			try {
 				const url = await api.request.getPtyUrl({ taskId });
+				console.log("[TaskTerminal] Got PTY URL:", url);
 				setPtyUrl(url);
 			} catch (err) {
-				console.error("Failed to get PTY URL:", err);
+				console.error("[TaskTerminal] getPtyUrl FAILED:", err);
+				console.error("[TaskTerminal] Error details:", {
+					message: (err as Error)?.message,
+					stack: (err as Error)?.stack,
+					taskId,
+					worktreePath: task?.worktreePath,
+				});
 				setError(task?.worktreePath ?? taskId);
 			}
 		})();
@@ -43,6 +51,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch }
 	useEffect(() => {
 		function onPtyDied(e: Event) {
 			const detail = (e as CustomEvent).detail;
+			console.warn("[TaskTerminal] ptyDied event received", {
+				eventTaskId: detail?.taskId?.slice(0, 8),
+				myTaskId: taskId.slice(0, 8),
+				matches: detail?.taskId === taskId,
+			});
 			if (detail?.taskId === taskId) {
 				setError(task?.worktreePath ?? taskId);
 			}

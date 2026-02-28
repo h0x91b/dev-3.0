@@ -90,6 +90,15 @@ async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 ): Promise<void> {
+	log.info("launchTaskPty START", {
+		taskId: task.id.slice(0, 8),
+		projectId: project.id.slice(0, 8),
+		worktreePath,
+		agentId: agentId ?? "none",
+		configId: configId ?? "none",
+		runSetup,
+	});
+
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
 		taskDescription: task.description,
@@ -101,23 +110,44 @@ async function launchTaskPty(
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 
-	if (agentId) {
-		const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx);
-		tmuxCmd = resolved.command;
-		extraEnv = resolved.extraEnv;
-	} else {
-		const resolved = await agents.resolveCommandForProject(
-			project,
-			task.title,
-			task.description,
-			worktreePath,
-		);
-		tmuxCmd = resolved.command;
-		extraEnv = resolved.extraEnv;
+	try {
+		if (agentId) {
+			log.info("Resolving command for agent", { agentId, configId });
+			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx);
+			tmuxCmd = resolved.command;
+			extraEnv = resolved.extraEnv;
+		} else {
+			log.info("Resolving command for project", { projectName: project.name });
+			const resolved = await agents.resolveCommandForProject(
+				project,
+				task.title,
+				task.description,
+				worktreePath,
+			);
+			tmuxCmd = resolved.command;
+			extraEnv = resolved.extraEnv;
+		}
+		log.info("Command resolved", { tmuxCmd, envKeys: Object.keys(extraEnv) });
+	} catch (err) {
+		log.error("Failed to resolve command", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+		throw err;
 	}
 
 	// Pre-register worktree as trusted so claude skips the trust dialog
-	await agents.ensureClaudeTrust(worktreePath);
+	try {
+		await agents.ensureClaudeTrust(worktreePath);
+		log.info("Claude trust ensured", { worktreePath });
+	} catch (err) {
+		log.error("ensureClaudeTrust failed (non-fatal)", {
+			worktreePath,
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+	}
 
 	if (runSetup && project.setupScript.trim()) {
 		const prefix = `/tmp/dev3-${task.id}`;
@@ -160,7 +190,23 @@ async function launchTaskPty(
 
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
 	const echoAndRun = `echo "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && ${tmuxCmd}`;
-	pty.createSession(task.id, project.id, worktreePath, echoAndRun, env);
+	log.info("Creating PTY session", {
+		taskId: task.id.slice(0, 8),
+		worktreePath,
+		command: echoAndRun.slice(0, 200),
+		envKeys: Object.keys(env),
+	});
+	try {
+		pty.createSession(task.id, project.id, worktreePath, echoAndRun, env);
+		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
+	} catch (err) {
+		log.error("pty.createSession FAILED", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+		throw err;
+	}
 }
 
 export const handlers = {
@@ -651,7 +697,11 @@ export const handlers = {
 	},
 
 	async getPtyUrl(params: { taskId: string }): Promise<string> {
-		log.info("→ getPtyUrl", { taskId: params.taskId });
+		log.info("→ getPtyUrl", {
+			taskId: params.taskId,
+			hasExistingSession: pty.hasSession(params.taskId),
+			ptyPort: pty.getPtyPort(),
+		});
 
 		// If no PTY session in memory, try to recreate it from persisted task data
 		if (!pty.hasSession(params.taskId)) {
@@ -660,22 +710,42 @@ export const handlers = {
 			});
 
 			// Find the task across all projects
-			const projects = await data.loadProjects();
 			let foundTask: Task | null = null;
 			let foundProject: Project | null = null;
-			for (const project of projects) {
-				try {
-					const task = await data.getTask(project, params.taskId);
-					foundTask = task;
-					foundProject = project;
-					break;
-				} catch {
-					// task not in this project
+			try {
+				const projects = await data.loadProjects();
+				log.info("Loaded projects for task search", { count: projects.length });
+				for (const project of projects) {
+					try {
+						const task = await data.getTask(project, params.taskId);
+						foundTask = task;
+						foundProject = project;
+						log.info("Found task in project", {
+							taskId: params.taskId.slice(0, 8),
+							projectId: project.id.slice(0, 8),
+							taskStatus: task.status,
+							worktreePath: task.worktreePath,
+						});
+						break;
+					} catch {
+						// task not in this project
+					}
 				}
+			} catch (err) {
+				log.error("Failed to load projects during PTY restore", {
+					taskId: params.taskId.slice(0, 8),
+					error: String(err),
+					stack: (err as Error)?.stack ?? "no stack",
+				});
 			}
 
 			if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 				try {
+					log.info("Attempting to restore PTY session", {
+						taskId: params.taskId.slice(0, 8),
+						status: foundTask.status,
+						worktreePath: foundTask.worktreePath,
+					});
 					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
@@ -685,19 +755,25 @@ export const handlers = {
 					log.error("Failed to restore PTY session", {
 						taskId: params.taskId.slice(0, 8),
 						error: String(err),
+						stack: (err as Error)?.stack ?? "no stack",
 					});
 				}
 			} else {
 				log.warn("Cannot restore PTY session: task not active or no worktree", {
 					taskId: params.taskId.slice(0, 8),
-					status: foundTask?.status,
-					worktreePath: foundTask?.worktreePath,
+					found: !!foundTask,
+					status: foundTask?.status ?? "not found",
+					worktreePath: foundTask?.worktreePath ?? "none",
+					isActiveStatus: foundTask ? isActive(foundTask.status) : false,
 				});
 			}
 		}
 
 		const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-		log.info("← getPtyUrl", { url });
+		log.info("← getPtyUrl", {
+			url,
+			sessionExists: pty.hasSession(params.taskId),
+		});
 		return url;
 	},
 

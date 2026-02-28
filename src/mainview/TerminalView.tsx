@@ -19,9 +19,18 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		let layoutObserver: ResizeObserver | null = null;
 		let mouseCleanup: (() => void) | undefined;
 
-		function setup() {
-			if (!containerRef.current || disposed) return;
+		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
+		function setup() {
+			if (!containerRef.current || disposed) {
+				console.warn("[TerminalView] setup() aborted", {
+					hasContainer: !!containerRef.current,
+					disposed,
+				});
+				return;
+			}
+
+			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
 			const term = new Terminal({
 				fontSize: 14,
 				fontFamily:
@@ -52,9 +61,23 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				},
 			});
 
+			console.log("[TerminalView] Terminal created, loading FitAddon...");
 			fitAddon = new FitAddon();
 			term.loadAddon(fitAddon);
-			term.open(containerRef.current);
+
+			console.log("[TerminalView] Opening terminal in DOM...");
+			try {
+				term.open(containerRef.current);
+			} catch (err) {
+				console.error("[TerminalView] term.open() FAILED:", err);
+				console.error("[TerminalView] Container state:", {
+					clientWidth: containerRef.current?.clientWidth,
+					clientHeight: containerRef.current?.clientHeight,
+					isConnected: containerRef.current?.isConnected,
+				});
+				return;
+			}
+			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 
 			// Use ResizeObserver to detect when the container gets its final
@@ -66,14 +89,27 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				if (el.clientWidth > 0 && el.clientHeight > 0) {
 					layoutObserver?.disconnect();
 					layoutObserver = null;
+					console.log("[TerminalView] Container has dimensions, fitting terminal", {
+						width: el.clientWidth,
+						height: el.clientHeight,
+					});
 					// One rAF after observer to ensure paint pass is complete.
 					requestAnimationFrame(() => {
 						if (disposed) return;
-						fitAddon!.fit();
-						fitAddon!.observeResize();
-						term.focus();
-						mouseCleanup = setupMouseTracking(term);
-						connectPty(term, fitAddon!);
+						try {
+							fitAddon!.fit();
+							fitAddon!.observeResize();
+							term.focus();
+							mouseCleanup = setupMouseTracking(term);
+							console.log("[TerminalView] Terminal fitted, connecting PTY...");
+							connectPty(term, fitAddon!);
+						} catch (err) {
+							console.error("[TerminalView] Post-layout setup FAILED:", err);
+							console.error("[TerminalView] Error details:", {
+								message: (err as Error)?.message,
+								stack: (err as Error)?.stack,
+							});
+						}
 					});
 				}
 			});
@@ -177,11 +213,21 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			/\x1b\]52;[^;]*;[A-Za-z0-9+/=]*(?:\x07|\x1b\\)/g;
 
 		function connectPty(term: Terminal, fit: FitAddon) {
-			ws = new WebSocket(ptyUrl);
+			console.log("[TerminalView] Creating WebSocket connection to", ptyUrl);
+			try {
+				ws = new WebSocket(ptyUrl);
+			} catch (err) {
+				console.error("[TerminalView] WebSocket constructor FAILED:", err);
+				console.error("[TerminalView] URL was:", ptyUrl);
+				return;
+			}
 			wsRef.current = ws;
+			console.log("[TerminalView] WebSocket created, readyState:", ws.readyState);
 
 			ws.onopen = () => {
+				console.log("[TerminalView] WebSocket OPEN");
 				const dims = fit.proposeDimensions();
+				console.log("[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
 					// Resize dance: send slightly different dimensions first,
 					// then correct ones after a short delay. This forces two
@@ -210,11 +256,17 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				}
 			};
 
-			ws.onclose = () => {
+			ws.onclose = (event) => {
+				console.warn("[TerminalView] WebSocket CLOSED", {
+					code: event.code,
+					reason: event.reason,
+					wasClean: event.wasClean,
+				});
 				term.writeln("\r\n\x1b[2m[session ended]\x1b[0m");
 			};
 
-			ws.onerror = () => {
+			ws.onerror = (event) => {
+				console.error("[TerminalView] WebSocket ERROR", event);
 				term.writeln("\x1b[31mFailed to connect to PTY server\x1b[0m");
 			};
 
@@ -234,14 +286,27 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		setup();
 
 		return () => {
+			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
 			disposed = true;
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
-			ws?.close();
+			try {
+				ws?.close();
+			} catch (err) {
+				console.error("[TerminalView] ws.close() failed during cleanup:", err);
+			}
 			wsRef.current = null;
-			fitAddon?.dispose();
+			try {
+				fitAddon?.dispose();
+			} catch (err) {
+				console.error("[TerminalView] fitAddon.dispose() failed:", err);
+			}
 			if (termRef.current) {
-				termRef.current.dispose();
+				try {
+					termRef.current.dispose();
+				} catch (err) {
+					console.error("[TerminalView] term.dispose() failed:", err);
+				}
 				termRef.current = null;
 			}
 		};

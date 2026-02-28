@@ -184,37 +184,71 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		rows,
 	});
 
-	const proc = Bun.spawn(
-		["tmux", "new-session", "-A", "-s", tmuxSessionName, tmuxCmd],
-		{
-			terminal: {
-				cols,
-				rows,
-				data(_terminal, data) {
-					try {
-						const str =
-							typeof data === "string"
-								? data
-								: new TextDecoder().decode(data);
-						checkForBell(str, session.taskId);
-						const cleaned = handleOsc52(str);
-						if (cleaned && session.ws) {
-							session.ws.sendText(cleaned);
+	// Check if tmux binary is accessible
+	try {
+		const which = Bun.spawnSync(["which", "tmux"]);
+		const tmuxPath = new TextDecoder().decode(which.stdout).trim();
+		log.info("tmux binary found", {
+			taskId: shortId(session.taskId),
+			path: tmuxPath,
+			exitCode: which.exitCode,
+		});
+	} catch (err) {
+		log.error("tmux binary NOT found — this will crash", {
+			taskId: shortId(session.taskId),
+			error: String(err),
+		});
+	}
+
+	let proc: ReturnType<typeof Bun.spawn>;
+	try {
+		proc = Bun.spawn(
+			["tmux", "new-session", "-A", "-s", tmuxSessionName, tmuxCmd],
+			{
+				terminal: {
+					cols,
+					rows,
+					data(_terminal, data) {
+						try {
+							const str =
+								typeof data === "string"
+									? data
+									: new TextDecoder().decode(data);
+							checkForBell(str, session.taskId);
+							const cleaned = handleOsc52(str);
+							if (cleaned && session.ws) {
+								session.ws.sendText(cleaned);
+							}
+						} catch (err) {
+							log.error("PTY data callback error", {
+								taskId: shortId(session.taskId),
+								error: String(err),
+								stack: (err as Error)?.stack ?? "no stack",
+							});
 						}
-					} catch {
-						// WebSocket already closed
-					}
+					},
 				},
+				env: {
+					...process.env,
+					TERM: "xterm-256color",
+					HOME: process.env.HOME || "/",
+					...session.env,
+				},
+				cwd: session.cwd,
 			},
-			env: {
-				...process.env,
-				TERM: "xterm-256color",
-				HOME: process.env.HOME || "/",
-				...session.env,
-			},
+		);
+	} catch (err) {
+		log.error("Bun.spawn FAILED for tmux", {
+			taskId: shortId(session.taskId),
+			tmuxSession: tmuxSessionName,
+			command: tmuxCmd,
 			cwd: session.cwd,
-		},
-	);
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+		onPtyDiedCallback?.(session.taskId);
+		return;
+	}
 
 	session.proc = proc;
 
@@ -222,99 +256,162 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		log.info("PTY process exited", { taskId: shortId(session.taskId), exitCode: code });
 		session.proc = null;
 		onPtyDiedCallback?.(session.taskId);
+	}).catch((err) => {
+		log.error("PTY process .exited promise rejected", {
+			taskId: shortId(session.taskId),
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+		session.proc = null;
+		onPtyDiedCallback?.(session.taskId);
 	});
 
 	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
 
 	// Configure tmux (clipboard + bell pass-through) after session is ready
-	setTimeout(() => configureTmux(tmuxSessionName), 200);
+	setTimeout(() => {
+		try {
+			configureTmux(tmuxSessionName);
+		} catch (err) {
+			log.error("configureTmux failed", {
+				taskId: shortId(session.taskId),
+				tmuxSession: tmuxSessionName,
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+		}
+	}, 200);
 }
 
 const ptyServer = Bun.serve({
 	port: 0,
 	fetch(req, server) {
-		if (server.upgrade(req, { data: { url: new URL(req.url) } } as any)) return;
-		return new Response("PTY WebSocket server", { status: 200 });
+		try {
+			log.debug("PTY server fetch", { url: req.url });
+			if (server.upgrade(req, { data: { url: new URL(req.url) } } as any)) return;
+			return new Response("PTY WebSocket server", { status: 200 });
+		} catch (err) {
+			log.error("PTY server fetch handler error", {
+				url: req.url,
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+			return new Response("Internal error", { status: 500 });
+		}
 	},
 	websocket: {
 		open(ws) {
-			const url = (ws.data as any)?.url as URL | undefined;
-			const sessionId = url?.searchParams.get("session");
+			try {
+				const url = (ws.data as any)?.url as URL | undefined;
+				const sessionId = url?.searchParams.get("session");
 
-			if (!sessionId) {
-				log.warn("WS connection without session param");
-				ws.close(4000, "Missing session parameter");
-				return;
-			}
+				log.info("WS open handler called", {
+					hasUrl: !!url,
+					sessionId: sessionId?.slice(0, 8) ?? "none",
+					totalSessions: sessions.size,
+				});
 
-			const session = sessions.get(sessionId);
-			if (!session) {
-				log.warn("WS connection to unknown session", { sessionId: sessionId.slice(0, 8) });
-				ws.close(4001, "Unknown session");
-				return;
-			}
-
-			log.info("WS connected", {
-				taskId: shortId(sessionId),
-				hasExistingProc: !!session.proc,
-			});
-
-			// Update the ws reference for this session
-			session.ws = ws as any;
-			(ws as any).sessionId = sessionId;
-
-			const cols = 80;
-			const rows = 24;
-
-			// If no proc yet, spawn one. If proc exists, just reconnect
-			// and send current screen content for immediate rendering.
-			if (!session.proc) {
-				spawnPty(session, cols, rows);
-			} else {
-				// Capture current tmux pane content (with ANSI colors) so the
-				// client sees the screen immediately instead of a blank terminal
-				// while waiting for the app to redraw after resize.
-				const content = capturePane(sessionId);
-				if (content) {
-					(ws as any).sendText("\x1b[H" + content);
+				if (!sessionId) {
+					log.warn("WS connection without session param");
+					ws.close(4000, "Missing session parameter");
+					return;
 				}
+
+				const session = sessions.get(sessionId);
+				if (!session) {
+					log.warn("WS connection to unknown session", {
+						sessionId: sessionId.slice(0, 8),
+						knownSessions: Array.from(sessions.keys()).map((k) => k.slice(0, 8)),
+					});
+					ws.close(4001, "Unknown session");
+					return;
+				}
+
+				log.info("WS connected", {
+					taskId: shortId(sessionId),
+					hasExistingProc: !!session.proc,
+					procPid: session.proc?.pid ?? null,
+					cwd: session.cwd,
+				});
+
+				// Update the ws reference for this session
+				session.ws = ws as any;
+				(ws as any).sessionId = sessionId;
+
+				const cols = 80;
+				const rows = 24;
+
+				// If no proc yet, spawn one. If proc exists, just reconnect
+				// and send current screen content for immediate rendering.
+				if (!session.proc) {
+					log.info("No proc, spawning new PTY", { taskId: shortId(sessionId) });
+					spawnPty(session, cols, rows);
+				} else {
+					// Capture current tmux pane content (with ANSI colors) so the
+					// client sees the screen immediately instead of a blank terminal
+					// while waiting for the app to redraw after resize.
+					log.info("Reconnecting to existing PTY, capturing pane", { taskId: shortId(sessionId) });
+					const content = capturePane(sessionId);
+					if (content) {
+						(ws as any).sendText("\x1b[H" + content);
+					}
+				}
+			} catch (err) {
+				log.error("WS open handler CRASHED", {
+					error: String(err),
+					stack: (err as Error)?.stack ?? "no stack",
+				});
 			}
 		},
 		message(ws, message) {
-			const sessionId = (ws as any).sessionId as string | undefined;
-			if (!sessionId) return;
-			const session = sessions.get(sessionId);
-			if (!session?.proc?.terminal) return;
+			try {
+				const sessionId = (ws as any).sessionId as string | undefined;
+				if (!sessionId) return;
+				const session = sessions.get(sessionId);
+				if (!session?.proc?.terminal) return;
 
-			const data =
-				typeof message === "string"
-					? message
-					: new TextDecoder().decode(message);
+				const data =
+					typeof message === "string"
+						? message
+						: new TextDecoder().decode(message);
 
-			// Handle resize messages
-			if (data.startsWith("\x1b]resize;")) {
-				const match = data.match(/\x1b\]resize;(\d+);(\d+)\x07/);
-				if (match) {
-					session.proc.terminal.resize(
-						Number(match[1]),
-						Number(match[2]),
-					);
+				// Handle resize messages
+				if (data.startsWith("\x1b]resize;")) {
+					const match = data.match(/\x1b\]resize;(\d+);(\d+)\x07/);
+					if (match) {
+						session.proc.terminal.resize(
+							Number(match[1]),
+							Number(match[2]),
+						);
+					}
+					return;
 				}
-				return;
-			}
 
-			session.proc.terminal.write(data);
+				session.proc.terminal.write(data);
+			} catch (err) {
+				log.error("WS message handler error", {
+					error: String(err),
+					stack: (err as Error)?.stack ?? "no stack",
+				});
+			}
 		},
 		close(ws) {
-			const sessionId = (ws as any).sessionId as string | undefined;
-			if (!sessionId) return;
+			try {
+				const sessionId = (ws as any).sessionId as string | undefined;
+				if (!sessionId) return;
 
-			log.info("WS disconnected", { taskId: shortId(sessionId) });
+				log.info("WS disconnected", { taskId: shortId(sessionId) });
 
-			const session = sessions.get(sessionId);
-			if (session && session.ws === (ws as any)) {
-				// Don't kill the PTY — just detach the WS
-				session.ws = null;
+				const session = sessions.get(sessionId);
+				if (session && session.ws === (ws as any)) {
+					// Don't kill the PTY — just detach the WS
+					session.ws = null;
+				}
+			} catch (err) {
+				log.error("WS close handler error", {
+					error: String(err),
+					stack: (err as Error)?.stack ?? "no stack",
+				});
 			}
 		},
 	},
