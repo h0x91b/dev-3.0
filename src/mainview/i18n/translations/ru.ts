@@ -207,7 +207,6 @@ const ru: TranslationRecord & Record<string, string> = {
 	"requirements.subtitle": "Для работы dev-3.0 необходимы следующие инструменты",
 	"requirements.installed": "Установлено",
 	"requirements.missing": "Не найдено",
-	"requirements.install": "Установить",
 	"requirements.refresh": "Проверить снова",
 	"requirements.copied": "Скопировано!",
 	"requirements.installGit": "Установить через Xcode CLI tools:",

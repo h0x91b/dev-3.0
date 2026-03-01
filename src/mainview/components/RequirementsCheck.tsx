@@ -88,14 +88,6 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 												</span>
 											)}
 										</div>
-										<a
-											href={req.installUrl}
-											target="_blank"
-											rel="noopener noreferrer"
-											className="text-accent text-xs hover:underline mt-2 inline-block"
-										>
-											{t("requirements.install")} &rarr;
-										</a>
 									</div>
 								)}
 							</div>

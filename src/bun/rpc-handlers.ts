@@ -14,8 +14,8 @@ import { spawn, spawnSync } from "./spawn";
 const log = createLogger("rpc");
 
 const SYSTEM_REQUIREMENTS = [
-	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install", installUrl: "https://git-scm.com/download/mac" },
-	{ id: "tmux", name: "tmux", checkCommand: "tmux2", installHint: "requirements.installTmux", installCommand: "brew install tmux", installUrl: "https://github.com/tmux/tmux/wiki/Installing" },
+	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install" },
+	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux" },
 ];
 
 // Will be set by index.ts after window creation
@@ -899,7 +899,6 @@ export const handlers = {
 				installed,
 				installHint: req.installHint,
 				installCommand: req.installCommand,
-				installUrl: req.installUrl,
 			};
 		});
 		log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}`) });

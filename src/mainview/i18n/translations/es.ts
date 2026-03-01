@@ -206,7 +206,6 @@ const es: TranslationRecord & Record<string, string> = {
 	"requirements.subtitle": "Las siguientes herramientas deben estar instaladas para usar dev-3.0",
 	"requirements.installed": "Instalado",
 	"requirements.missing": "No encontrado",
-	"requirements.install": "Instalar",
 	"requirements.refresh": "Verificar de nuevo",
 	"requirements.copied": "Copiado!",
 	"requirements.installGit": "Instalar con Xcode CLI tools:",

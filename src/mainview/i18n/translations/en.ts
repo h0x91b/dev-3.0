@@ -203,7 +203,6 @@ const en = {
 	"requirements.subtitle": "The following tools must be installed to use dev-3.0",
 	"requirements.installed": "Installed",
 	"requirements.missing": "Not found",
-	"requirements.install": "Install",
 	"requirements.refresh": "Re-check",
 	"requirements.copied": "Copied!",
 	"requirements.installGit": "Install via Xcode CLI tools:",

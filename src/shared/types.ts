@@ -193,7 +193,6 @@ export interface RequirementCheckResult {
 	installed: boolean;
 	installHint: string; // i18n key
 	installCommand: string;
-	installUrl: string;
 }
 
 // ---- RPC schema ----
