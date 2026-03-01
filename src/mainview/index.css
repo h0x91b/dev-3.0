@@ -22,7 +22,7 @@
 :root,
 [data-theme="dark"] {
 	/* ---- Surfaces (opaque fallbacks, used outside kanban) ---- */
-	--surface-base: 43 46 56;
+	--surface-base: 6 9 21;
 	--surface-raised: 14 18 30;
 	--surface-raised-hover: 23 28 44;
 	--surface-elevated: 21 26 41;
@@ -46,9 +46,9 @@
 
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 115deg;
-	--bg-grad-from: #2b2e38;
-	--bg-grad-mid: #333a50;
-	--bg-grad-to: #3b3149;
+	--bg-grad-from: #060915;
+	--bg-grad-mid: #0f1731;
+	--bg-grad-to: #180d29;
 
 	/* ---- Glass surfaces ---- */
 	--glass-column-rgb: 12 16 23;
