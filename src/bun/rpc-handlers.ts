@@ -9,6 +9,7 @@ import * as agents from "./agents";
 import * as updater from "./updater";
 import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
+import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("rpc");
@@ -295,7 +296,11 @@ export async function launchTaskPty(
 		tmuxCmd = `bash "${startupPath}"`;
 	}
 
-	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
+	// Prepend ~/.dev3.0/bin to PATH so `dev3` CLI is available inside the worktree
+	const dev3Bin = `${DEV3_HOME}/bin`;
+	const currentPath = process.env.PATH || "";
+	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
+	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
 	const echoAndRun = `echo "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && ${tmuxCmd}`;
 	log.info("Creating PTY session", {
 		taskId: task.id.slice(0, 8),

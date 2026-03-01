@@ -10,11 +10,11 @@ Electrobun's Zig launcher initializes the native GUI event loop before any Bun c
 
 ## Decision
 
-The CLI is a **standalone Bun script** (`src/cli/main.ts`) that communicates with the running Electrobun app via a **Unix domain socket**. The socket server lives in `src/bun/cli-socket-server.ts` and starts automatically on app launch. Multi-instance support uses PID-based socket paths (`~/.dev3.0/sockets/<pid>.sock`). Worktrees get a `.dev3-marker` JSON file (written during `git.createWorktree()`) containing `projectId`, `taskId`, and `socketPath` for auto-detection. The CLI binary (`~/.dev3.0/bin/dev3`) is symlinked to `/usr/local/bin/dev3` on every app startup.
+The CLI is a **standalone Bun script** (`src/cli/main.ts`) that communicates with the running Electrobun app via a **Unix domain socket**. The socket server lives in `src/bun/cli-socket-server.ts` and starts automatically on app launch. Multi-instance support uses PID-based socket paths (`~/.dev3.0/sockets/<pid>.sock`). Worktrees get a `.dev3-marker` JSON file (written during `git.createWorktree()`) containing `projectId`, `taskId`, and `socketPath` for auto-detection. The CLI script lives at `~/.dev3.0/bin/dev3` and is made available to agents by prepending `~/.dev3.0/bin` to PATH in every worktree tmux session (`launchTaskPty` in `rpc-handlers.ts`). No system-wide symlink required. Context auto-detection also parses the worktree path as a fallback when `.dev3-marker` doesn't exist.
 
 ## Risks
 
-- Symlink creation to `/usr/local/bin/` may fail without sudo — handled as best-effort with a warning log.
+- No system-wide `dev3` command — only available inside dev3-managed tmux sessions. Users can manually add `~/.dev3.0/bin` to their PATH if needed.
 - If the app crashes, the socket file is orphaned — cleaned up on next startup via PID liveness check.
 - `.dev3-marker` socket path becomes stale if the app restarts — CLI falls back to socket discovery via `~/.dev3.0/sockets/`.
 

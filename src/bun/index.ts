@@ -106,15 +106,15 @@ if (shellEnv.lang) {
 const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
-// ── CLI symlink ──
-// Ensure the `dev3` CLI command is available in PATH.
+// ── CLI script ──
+// Write ~/.dev3.0/bin/dev3 launcher script. PATH is injected into
+// worktree tmux sessions (see launchTaskPty), so no system symlink needed.
 {
-	const { existsSync: fExists, mkdirSync: fMkdir, writeFileSync: fWrite, symlinkSync: fSymlink, unlinkSync: fUnlink, lstatSync: fLstat, chmodSync: fChmod } = await import("node:fs");
+	const { existsSync: fExists, mkdirSync: fMkdir, writeFileSync: fWrite, chmodSync: fChmod } = await import("node:fs");
 	const { resolve: fResolve } = await import("node:path");
 
 	const cliBinDir = `${DEV3_HOME}/bin`;
 	const cliScript = `${cliBinDir}/dev3`;
-	const symlinkTarget = "/usr/local/bin/dev3";
 
 	try {
 		fMkdir(cliBinDir, { recursive: true });
@@ -127,30 +127,13 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 		if (fExists(devCliPath)) {
 			cliMainPath = devCliPath;
 		} else {
-			// Production fallback: look for compiled CLI next to this module
 			cliMainPath = fResolve(import.meta.dir, "..", "cli", "main.js");
 		}
 
 		const scriptContent = `#!/usr/bin/env bun\nimport "${cliMainPath}";\n`;
 		fWrite(cliScript, scriptContent, "utf-8");
 		fChmod(cliScript, 0o755);
-
-		// Create symlink (best-effort — may fail without sudo)
-		try {
-			if (fExists(symlinkTarget)) {
-				const stat = fLstat(symlinkTarget);
-				if (stat.isSymbolicLink() || stat.isFile()) {
-					fUnlink(symlinkTarget);
-				}
-			}
-			fSymlink(cliScript, symlinkTarget);
-			log.info("CLI symlink created", { link: symlinkTarget, target: cliScript });
-		} catch (err) {
-			log.warn("Could not create CLI symlink (may need sudo)", {
-				link: symlinkTarget,
-				error: String(err),
-			});
-		}
+		log.info("CLI script written", { path: cliScript });
 	} catch (err) {
 		log.warn("CLI setup failed (non-fatal)", { error: String(err) });
 	}
