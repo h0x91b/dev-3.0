@@ -6,6 +6,7 @@ import { exitAppNotRunning, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
 import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
+import { handleCurrent } from "./commands/current";
 
 const HELP = `dev3 — CLI for dev-3.0 project manager
 
@@ -13,6 +14,7 @@ Usage:
   dev3 <command> <subcommand> [options]
 
 Commands:
+  current                                Show current project/task context
   projects list                          List all projects
   tasks list [--project <id>] [--status] List tasks in a project
   task show [<id>] [--project <id>]      Show task details
@@ -30,7 +32,7 @@ Options:
   --version       Show version
 
 When run from inside a dev3 worktree, --project and task <id>
-are auto-detected from the .dev3-marker file.
+are auto-detected from the .dev3-marker file or worktree path.
 `;
 
 async function main(): Promise<void> {
@@ -54,6 +56,12 @@ async function main(): Promise<void> {
 	const context = detectContext();
 	const socketPath = resolveSocketPath();
 
+	// Commands that work without the app running
+	if (command === "current") {
+		return await handleCurrent(socketPath);
+	}
+
+	// All other commands require the socket
 	if (!socketPath) {
 		exitAppNotRunning();
 	}
