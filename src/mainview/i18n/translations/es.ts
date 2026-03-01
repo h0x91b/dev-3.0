@@ -211,6 +211,18 @@ const es: TranslationRecord & Record<string, string> = {
 	"requirements.installGit": "Instalar con Xcode CLI tools:",
 	"requirements.installTmux": "Instalar con Homebrew:",
 
+	// Changelog
+	"header.changelog": "Registro de cambios",
+	"header.changelogLabel": "Log",
+	"header.changelogTooltip": "Ver registro de cambios",
+	"changelog.loading": "Cargando...",
+	"changelog.empty": "Aún no hay entradas",
+	"changelog.feature": "feature",
+	"changelog.fix": "fix",
+	"changelog.refactor": "refactor",
+	"changelog.docs": "docs",
+	"changelog.chore": "chore",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

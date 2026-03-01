@@ -8,12 +8,14 @@ export type Route =
 	| { screen: "project"; projectId: string }
 	| { screen: "task"; projectId: string; taskId: string }
 	| { screen: "project-settings"; projectId: string }
-	| { screen: "settings" };
+	| { screen: "settings" }
+	| { screen: "changelog" };
 
 // ---- State ----
 
 export interface AppState {
 	route: Route;
+	previousRoute: Route | null;
 	projects: Project[];
 	currentProjectTasks: Task[];
 	loading: boolean;
@@ -22,6 +24,7 @@ export interface AppState {
 
 export const initialState: AppState = {
 	route: { screen: "dashboard" },
+	previousRoute: null,
 	projects: [],
 	currentProjectTasks: [],
 	loading: true,
@@ -54,7 +57,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				bellCounts = new Map(bellCounts);
 				bellCounts.delete(action.route.taskId);
 			}
-			return { ...state, route: action.route, bellCounts };
+			return { ...state, route: action.route, previousRoute: state.route, bellCounts };
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };

@@ -1,5 +1,14 @@
 import type { RPCSchema } from "electrobun/bun";
 
+// ---- Changelog ----
+
+export interface ChangelogEntry {
+	date: string; // "2026-03-01"
+	type: string; // "feature" | "fix" | "refactor" | "docs" | "chore"
+	slug: string; // "system-requirements-check"
+	title: string; // First sentence of content (truncated to ~120 chars)
+}
+
 // ---- Data models ----
 
 export type TaskStatus =
@@ -326,6 +335,10 @@ export type AppRPCSchema = {
 			checkSystemRequirements: {
 				params: void;
 				response: RequirementCheckResult[];
+			};
+			getChangelogs: {
+				params: void;
+				response: ChangelogEntry[];
 			};
 		};
 		messages: {

@@ -10,6 +10,7 @@ import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
+import Changelog from "./components/Changelog";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -211,6 +212,8 @@ function App() {
 				);
 			case "settings":
 				return <GlobalSettings />;
+			case "changelog":
+				return <Changelog navigate={navigate} previousRoute={state.previousRoute} />;
 			default:
 				return null;
 		}

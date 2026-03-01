@@ -1,0 +1,1 @@
+Added a changelog viewer page accessible from the global header. Displays all changelog entries grouped by date with type badges and short titles. Data is read from the change-logs/ directory via RPC.

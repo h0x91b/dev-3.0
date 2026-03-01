@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
-import type { CodingAgent, GlobalSettings, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, GlobalSettings, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { ACTIVE_STATUSES, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -1060,6 +1060,69 @@ export const handlers = {
 		};
 		log.info("<- getAppVersion", result);
 		return result;
+	},
+
+	async getChangelogs(): Promise<ChangelogEntry[]> {
+		log.info("-> getChangelogs");
+		const { join, dirname } = await import("path");
+		const { readdirSync, existsSync } = await import("fs");
+
+		// Find project root (same pattern as "rebuild" menu handler)
+		let root = import.meta.dir;
+		for (let i = 0; i < 20; i++) {
+			if (existsSync(join(root, "vite.config.ts"))) break;
+			const parent = dirname(root);
+			if (parent === root) break;
+			root = parent;
+		}
+
+		const changeLogsDir = join(root, "change-logs");
+		if (!existsSync(changeLogsDir)) {
+			log.info("<- getChangelogs (no change-logs dir)");
+			return [];
+		}
+
+		const entries: ChangelogEntry[] = [];
+
+		// Scan YYYY/MM/DD structure
+		for (const year of readdirSync(changeLogsDir)) {
+			const yearPath = join(changeLogsDir, year);
+			if (!/^\d{4}$/.test(year)) continue;
+			for (const month of readdirSync(yearPath)) {
+				const monthPath = join(yearPath, month);
+				if (!/^\d{2}$/.test(month)) continue;
+				for (const day of readdirSync(monthPath)) {
+					const dayPath = join(monthPath, day);
+					if (!/^\d{2}$/.test(day)) continue;
+					for (const file of readdirSync(dayPath)) {
+						if (!file.endsWith(".md") || file === "README.md") continue;
+						const basename = file.replace(/\.md$/, "");
+						const dashIdx = basename.indexOf("-");
+						if (dashIdx === -1) continue;
+						const type = basename.slice(0, dashIdx);
+						const slug = basename.slice(dashIdx + 1);
+
+						// Read first sentence as title
+						const content = await Bun.file(join(dayPath, file)).text();
+						const firstSentence = content.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
+						const title = firstSentence.length > 120
+							? firstSentence.slice(0, 117) + "..."
+							: firstSentence;
+
+						entries.push({
+							date: `${year}-${month}-${day}`,
+							type,
+							slug,
+							title: title || slug,
+						});
+					}
+				}
+			}
+		}
+
+		entries.sort((a, b) => b.date.localeCompare(a.date));
+		log.info("<- getChangelogs", { count: entries.length });
+		return entries;
 	},
 
 	async checkSystemRequirements(): Promise<RequirementCheckResult[]> {

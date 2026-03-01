@@ -208,6 +208,18 @@ const en = {
 	"requirements.installGit": "Install via Xcode CLI tools:",
 	"requirements.installTmux": "Install via Homebrew:",
 
+	// Changelog
+	"header.changelog": "Changelog",
+	"header.changelogLabel": "Log",
+	"header.changelogTooltip": "View changelog",
+	"changelog.loading": "Loading...",
+	"changelog.empty": "No changelog entries yet",
+	"changelog.feature": "feature",
+	"changelog.fix": "fix",
+	"changelog.refactor": "refactor",
+	"changelog.docs": "docs",
+	"changelog.chore": "chore",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

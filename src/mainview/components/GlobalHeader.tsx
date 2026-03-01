@@ -55,6 +55,8 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 		segments.push({ label: t("header.settings") });
 	} else if (route.screen === "settings") {
 		segments.push({ label: t("header.settings") });
+	} else if (route.screen === "changelog") {
+		segments.push({ label: t("header.changelog") });
 	}
 
 	return (
@@ -105,8 +107,33 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 				))}
 			</div>
 
-			{/* Actions — project settings & global settings only */}
+			{/* Actions — changelog, project settings, global settings */}
 			<div className="flex items-center gap-1.5 flex-shrink-0">
+				{/* Changelog */}
+				{route.screen !== "changelog" && (
+					<button
+						onClick={() => navigate({ screen: "changelog" })}
+						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+						title={t("header.changelogTooltip")}
+					>
+						<svg
+							className="w-[18px] h-[18px]"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							{/* Document list icon */}
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth={1.5}
+								d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+							/>
+						</svg>
+						<span className="text-[11px] font-medium">{t("header.changelogLabel")}</span>
+					</button>
+				)}
+
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
 				{"projectId" in route && route.screen !== "project-settings" && (
 					<button
