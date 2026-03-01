@@ -209,8 +209,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"requirements.missing": "Не найдено",
 	"requirements.install": "Установить",
 	"requirements.refresh": "Проверить снова",
-	"requirements.installGit": "Установить через Xcode CLI tools: xcode-select --install",
-	"requirements.installTmux": "Установить через Homebrew: brew install tmux",
+	"requirements.copied": "Скопировано!",
+	"requirements.installGit": "Установить через Xcode CLI tools:",
+	"requirements.installTmux": "Установить через Homebrew:",
 
 	// Status labels
 	"status.todo": "К выполнению",

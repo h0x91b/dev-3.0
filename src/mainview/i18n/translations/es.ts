@@ -208,8 +208,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"requirements.missing": "No encontrado",
 	"requirements.install": "Instalar",
 	"requirements.refresh": "Verificar de nuevo",
-	"requirements.installGit": "Instalar con Xcode CLI tools: xcode-select --install",
-	"requirements.installTmux": "Instalar con Homebrew: brew install tmux",
+	"requirements.copied": "Copiado!",
+	"requirements.installGit": "Instalar con Xcode CLI tools:",
+	"requirements.installTmux": "Instalar con Homebrew:",
 
 	// Status labels
 	"status.todo": "Por hacer",

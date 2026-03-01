@@ -192,6 +192,7 @@ export interface RequirementCheckResult {
 	name: string;
 	installed: boolean;
 	installHint: string; // i18n key
+	installCommand: string;
 	installUrl: string;
 }
 

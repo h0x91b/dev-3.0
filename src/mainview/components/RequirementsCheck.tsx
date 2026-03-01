@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import type { RequirementCheckResult } from "../../shared/types";
 import { useT } from "../i18n";
 
@@ -9,6 +10,13 @@ interface Props {
 
 export default function RequirementsCheck({ results, checking, onRefresh }: Props) {
 	const t = useT();
+	const [copiedId, setCopiedId] = useState<string | null>(null);
+
+	const handleCopy = useCallback((id: string, command: string) => {
+		navigator.clipboard.writeText(command);
+		setCopiedId(id);
+		setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000);
+	}, []);
 
 	return (
 		<div className="h-full w-full flex items-center justify-center bg-base">
@@ -49,15 +57,42 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 									</span>
 								</div>
 								{!req.installed && (
-									<div className="mt-1.5">
-										<p className="text-fg-muted text-xs">
+									<div className="mt-2">
+										<p className="text-fg-muted text-xs mb-1.5">
 											{t(req.installHint as any)}
 										</p>
+										<div className="flex items-center gap-1.5">
+											<code className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded text-xs font-mono">
+												{req.installCommand}
+											</code>
+											<button
+												type="button"
+												onClick={() => handleCopy(req.id, req.installCommand)}
+												className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+												title="Copy"
+											>
+												{copiedId === req.id ? (
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+														<polyline points="20 6 9 17 4 12" />
+													</svg>
+												) : (
+													<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+														<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+														<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+													</svg>
+												)}
+											</button>
+											{copiedId === req.id && (
+												<span className="text-green-400 text-xs">
+													{t("requirements.copied")}
+												</span>
+											)}
+										</div>
 										<a
 											href={req.installUrl}
 											target="_blank"
 											rel="noopener noreferrer"
-											className="text-accent text-xs hover:underline mt-1 inline-block"
+											className="text-accent text-xs hover:underline mt-2 inline-block"
 										>
 											{t("requirements.install")} &rarr;
 										</a>

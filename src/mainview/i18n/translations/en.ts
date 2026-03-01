@@ -205,8 +205,9 @@ const en = {
 	"requirements.missing": "Not found",
 	"requirements.install": "Install",
 	"requirements.refresh": "Re-check",
-	"requirements.installGit": "Install via Xcode CLI tools: xcode-select --install",
-	"requirements.installTmux": "Install via Homebrew: brew install tmux",
+	"requirements.copied": "Copied!",
+	"requirements.installGit": "Install via Xcode CLI tools:",
+	"requirements.installTmux": "Install via Homebrew:",
 
 	// Status labels
 	"status.todo": "To Do",
