@@ -107,6 +107,21 @@ function App() {
 		return () => window.removeEventListener("rpc:navigateToSettings", onNavigateToSettings);
 	}, [navigate]);
 
+	// Close settings screens with Escape
+	useEffect(() => {
+		function onKeyDown(e: KeyboardEvent) {
+			if (e.key !== "Escape") return;
+			const { route } = state;
+			if (route.screen === "settings") {
+				navigate({ screen: "dashboard" });
+			} else if (route.screen === "project-settings") {
+				navigate({ screen: "project", projectId: route.projectId });
+			}
+		}
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [state, navigate]);
+
 	if (reqStatus === "checking") {
 		return (
 			<div className="h-full w-full flex items-center justify-center bg-base">
