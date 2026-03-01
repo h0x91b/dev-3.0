@@ -55,7 +55,7 @@ async function killExistingGitPane(taskId: string, tmuxSession: string): Promise
 
 async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string): Promise<string | null> {
 	const proc = spawn([
-		"tmux", "split-window", "-h",
+		"tmux", "split-window", "-v",
 		"-t", tmuxSession,
 		"-c", cwd,
 		"-P", "-F", "#{pane_id}",
@@ -77,16 +77,21 @@ async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: strin
 
 function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string): void {
 	if (!paneId) return;
+	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
 	const exitFilePath = `/tmp/dev3-${taskId}-git-${operation}.sh.exit`;
 
 	const interval = setInterval(async () => {
 		try {
-			const checkProc = spawn([
-				"tmux", "display-message", "-t", paneId, "-p", "",
+			// List all pane IDs in the session and check if ours is still there
+			const listProc = spawn([
+				"tmux", "list-panes", "-t", tmuxSession, "-F", "#{pane_id}",
 			], { stdout: "pipe", stderr: "pipe" });
-			const checkExit = await checkProc.exited;
+			const output = await new Response(listProc.stdout).text();
+			await listProc.exited;
 
-			if (checkExit !== 0) {
+			const paneStillExists = output.trim().split("\n").includes(paneId);
+
+			if (!paneStillExists) {
 				// Pane no longer exists — operation finished
 				clearInterval(interval);
 				gitOpPaneIds.delete(taskId);
