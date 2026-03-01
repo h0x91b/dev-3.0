@@ -1,0 +1,1 @@
+Bundle JetBrains Mono (Regular + Bold, woff2) as a web font so the terminal renders correctly in production builds. WKWebView's views:// protocol can't access user-installed fonts from ~/Library/Fonts/. Added @font-face declarations to index.css, font preloading via document.fonts.load() before Terminal init, and improved the fallback chain to SF Mono > Menlo > monospace.

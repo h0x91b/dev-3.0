@@ -161,6 +161,9 @@ ApplicationMenu.setApplicationMenu([
 			{ label: "Rebuild", action: "rebuild", accelerator: "r" },
 			{ label: "Toggle Developer Tools", action: "toggle-devtools" },
 			{ type: "separator" },
+			{ label: "Soft Reset Terminal", action: "terminal-soft-reset" },
+			{ label: "Hard Reset Terminal", action: "terminal-hard-reset" },
+			{ type: "separator" },
 			{ role: "toggleFullScreen" },
 		],
 	},
@@ -356,6 +359,10 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				buttons: ["OK"],
 			});
 		}
+	} else if (e.data.action === "terminal-soft-reset") {
+		(mainWindow.webview.rpc as any).send.terminalSoftReset?.({});
+	} else if (e.data.action === "terminal-hard-reset") {
+		(mainWindow.webview.rpc as any).send.terminalHardReset?.({});
 	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
 	}

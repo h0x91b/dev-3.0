@@ -326,6 +326,8 @@ export type AppRPCSchema = {
 		requests: Record<string, never>;
 		messages: {
 			navigateToSettings: {};
+			terminalSoftReset: {};
+			terminalHardReset: {};
 		};
 	}>;
 };

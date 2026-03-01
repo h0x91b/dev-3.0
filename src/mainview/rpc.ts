@@ -26,6 +26,16 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:navigateToSettings"),
 				);
 			},
+			terminalSoftReset: () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:terminalSoftReset"),
+				);
+			},
+			terminalHardReset: () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:terminalHardReset"),
+				);
+			},
 		} as any,
 	},
 });

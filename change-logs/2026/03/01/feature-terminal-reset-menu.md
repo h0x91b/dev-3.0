@@ -1,0 +1,1 @@
+Added "Soft Reset Terminal" and "Hard Reset Terminal" to the View menu. Soft reset sends charset-restore sequences + DECSTR to the PTY. Hard reset calls ghostty-web's term.reset() + renderer.remeasureFont(), sends RIS to PTY, and forces a tmux redraw via resize nudge. Useful when Unicode rendering breaks (e.g. Russian chars showing as underscores after reboot).
