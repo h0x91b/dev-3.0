@@ -12,6 +12,7 @@ import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellPath } from "./shell-env";
+import { spawn } from "./spawn";
 import electrobunConfig from "../../electrobun.config";
 
 const log = createLogger("main");
@@ -263,7 +264,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		}
 
 		log.info("Rebuilding frontend...", { cwd: projectRoot });
-		const proc = Bun.spawn(["bunx", "vite", "build"], {
+		const proc = spawn(["bunx", "vite", "build"], {
 			cwd: projectRoot,
 			stdout: "inherit",
 			stderr: "inherit",

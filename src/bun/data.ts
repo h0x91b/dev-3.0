@@ -1,6 +1,7 @@
 import type { Project, Task, TaskStatus } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
+import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("data");
@@ -17,7 +18,7 @@ function tasksFile(project: Project): string {
 
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
-	const proc = Bun.spawn(["mkdir", "-p", dir]);
+	const proc = spawn(["mkdir", "-p", dir]);
 	await proc.exited;
 }
 

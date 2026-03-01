@@ -1,5 +1,6 @@
 import type { Project, Task } from "../shared/types";
 import { createLogger } from "./logger";
+import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("git");
@@ -9,7 +10,7 @@ async function run(
 	cwd: string,
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
 	log.debug(`exec: ${cmd.join(" ")}`, { cwd });
-	const proc = Bun.spawn(cmd, {
+	const proc = spawn(cmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
@@ -94,7 +95,7 @@ export async function createWorktree(
 	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id, taskDir: tDir });
 
 	// Create the task container directory (with logs/ subfolder)
-	const mkdirProc = Bun.spawn(["mkdir", "-p", `${tDir}/logs`]);
+	const mkdirProc = spawn(["mkdir", "-p", `${tDir}/logs`]);
 	await mkdirProc.exited;
 
 	const result = await run(

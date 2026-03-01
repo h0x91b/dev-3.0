@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { createLogger } from "./logger";
+import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("pty");
 
@@ -62,7 +63,7 @@ export function destroySession(taskId: string): void {
 	// attached client, the session itself keeps running on the tmux server.
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
-		Bun.spawn(["tmux", "kill-session", "-t", tmuxSessionName]);
+		spawn(["tmux", "kill-session", "-t", tmuxSessionName]);
 	} catch (err) {
 		log.warn("tmux kill-session failed (best-effort)", {
 			taskId: taskId.slice(0, 8),
@@ -91,7 +92,7 @@ export function hasSession(taskId: string): boolean {
 export function capturePane(taskId: string): string | null {
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
-		const result = Bun.spawnSync(
+		const result = spawnSync(
 			["tmux", "capture-pane", "-p", "-e", "-t", tmuxSessionName],
 		);
 		if (result.exitCode === 0 && result.stdout.length > 0) {
@@ -125,7 +126,7 @@ function handleOsc52(data: string): string {
 		if (b64 && b64 !== "?") {
 			try {
 				const text = Buffer.from(b64, "base64").toString("utf-8");
-				const proc = Bun.spawn(["pbcopy"], { stdin: "pipe" });
+				const proc = spawn(["pbcopy"], { stdin: "pipe" });
 				proc.stdin.write(text);
 				proc.stdin.end();
 				log.info("OSC 52: copied to clipboard", { len: text.length });
@@ -148,18 +149,18 @@ function checkForBell(data: string, taskId: string): void {
 
 function configureTmux(tmuxSessionName: string): void {
 	// Clipboard
-	Bun.spawnSync(["tmux", "set", "-s", "set-clipboard", "on"]);
+	spawnSync(["tmux", "set", "-s", "set-clipboard", "on"]);
 	for (const table of ["copy-mode", "copy-mode-vi"]) {
-		Bun.spawnSync([
+		spawnSync([
 			"tmux", "bind", "-T", table,
 			"MouseDragEnd1Pane",
 			"send-keys", "-X", "copy-pipe-and-cancel", "pbcopy",
 		]);
 	}
 	// Bell: ensure tmux passes BEL through to the parent terminal
-	Bun.spawnSync(["tmux", "set", "-t", tmuxSessionName, "visual-bell", "off"]);
-	Bun.spawnSync(["tmux", "set", "-t", tmuxSessionName, "bell-action", "any"]);
-	Bun.spawnSync(["tmux", "set", "-t", tmuxSessionName, "monitor-bell", "on"]);
+	spawnSync(["tmux", "set", "-t", tmuxSessionName, "visual-bell", "off"]);
+	spawnSync(["tmux", "set", "-t", tmuxSessionName, "bell-action", "any"]);
+	spawnSync(["tmux", "set", "-t", tmuxSessionName, "monitor-bell", "on"]);
 	log.info("tmux configured (clipboard + bell pass-through)", { tmuxSession: tmuxSessionName });
 }
 
@@ -186,7 +187,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 
 	// Check if tmux binary is accessible
 	try {
-		const which = Bun.spawnSync(["which", "tmux"]);
+		const which = spawnSync(["which", "tmux"]);
 		const tmuxPath = new TextDecoder().decode(which.stdout).trim();
 		log.info("tmux binary found", {
 			taskId: shortId(session.taskId),
@@ -202,7 +203,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 
 	let proc: ReturnType<typeof Bun.spawn>;
 	try {
-		proc = Bun.spawn(
+		proc = spawn(
 			["tmux", "new-session", "-A", "-s", tmuxSessionName, tmuxCmd],
 			{
 				terminal: {
@@ -229,7 +230,6 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 					},
 				},
 				env: {
-					...process.env,
 					TERM: "xterm-256color",
 					HOME: process.env.HOME || "/",
 					...session.env,

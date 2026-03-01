@@ -1,0 +1,1 @@
+Replaced all direct `Bun.spawn`/`Bun.spawnSync` calls across the backend with `spawn`/`spawnSync` wrappers from the new `src/bun/spawn.ts` utility. The wrapper always injects `process.env` into spawned processes, fixing tmux/git/pbcopy not being found in production builds where macOS .app bundles inherit a minimal PATH. Added the rule to AGENTS.md to prevent regressions.

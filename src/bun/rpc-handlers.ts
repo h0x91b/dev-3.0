@@ -9,6 +9,7 @@ import * as agents from "./agents";
 import * as updater from "./updater";
 import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
+import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("rpc");
 
@@ -71,11 +72,11 @@ async function runCleanupScript(task: Task, project: Project): Promise<void> {
 
 	// Run attached (no -d) so proc.exited fires when the script finishes
 	// and tmux destroys the session automatically when the shell exits.
-	const proc = Bun.spawn(
+	const proc = spawn(
 		["tmux", "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`],
 		{
 			terminal: { cols: 220, rows: 50, data: () => {} },
-			env: { ...process.env, TERM: "xterm-256color", HOME: process.env.HOME || "/" },
+			env: { TERM: "xterm-256color", HOME: process.env.HOME || "/" },
 			cwd: task.worktreePath,
 		},
 	);
@@ -563,13 +564,13 @@ export const handlers = {
 			// Check both in-memory map and tmux directly (map lost on restart)
 			const existingPane = devPaneIds.get(task.id);
 			if (existingPane) {
-				const kill = Bun.spawn(["tmux", "kill-pane", "-t", existingPane]);
+				const kill = spawn(["tmux", "kill-pane", "-t", existingPane]);
 				await kill.exited;
 				devPaneIds.delete(task.id);
 				log.info("Killed existing dev pane (from map)", { taskId: task.id.slice(0, 8), paneId: existingPane });
 			} else {
 				// Fallback: find panes running the dev script file for this task
-				const listProc = Bun.spawn([
+				const listProc = spawn([
 					"tmux", "list-panes", "-t", tmuxSession,
 					"-F", "#{pane_id} #{pane_start_command}",
 				], { stdout: "pipe", stderr: "pipe" });
@@ -578,7 +579,7 @@ export const handlers = {
 				for (const line of listOutput.trim().split("\n")) {
 					if (line.includes(devScriptPath)) {
 						const paneId = line.split(" ")[0];
-						const kill = Bun.spawn(["tmux", "kill-pane", "-t", paneId]);
+						const kill = spawn(["tmux", "kill-pane", "-t", paneId]);
 						await kill.exited;
 						log.info("Killed existing dev pane (from tmux scan)", { taskId: task.id.slice(0, 8), paneId });
 					}
@@ -600,7 +601,7 @@ export const handlers = {
 			await Bun.write(devScriptPath, wrappedScript);
 
 			// Create pane and capture its ID with -P -F
-			const proc = Bun.spawn([
+			const proc = spawn([
 				"tmux", "split-window", "-h",
 				"-t", tmuxSession,
 				"-c", task.worktreePath,
@@ -799,7 +800,7 @@ export const handlers = {
 	async resolveFilename(params: { filename: string; size: number; lastModified: number }): Promise<string | null> {
 		// WKWebView doesn't expose native file paths via drag-and-drop.
 		// Use Spotlight (mdfind) to find the full path by filename.
-		const proc = Bun.spawnSync([
+		const proc = spawnSync([
 			"mdfind",
 			"-onlyin", "/",
 			`kMDItemFSName == "${params.filename}"`,

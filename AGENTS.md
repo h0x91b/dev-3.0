@@ -138,6 +138,12 @@ WKWebView (used by Electrobun) does **not** expose native file paths in drag-and
 
 To work around this, `resolveFilename` in `src/bun/rpc-handlers.ts` uses **macOS Spotlight (`mdfind`)** to search for the file by name, then verifies candidates by size and lastModified. This is a **best-effort heuristic**, not a guaranteed resolution. See [decision 005](decisions/005-dnd-file-path-heuristic.md) for details.
 
+### Process spawning (`Bun.spawn`)
+
+**NEVER use `Bun.spawn` or `Bun.spawnSync` directly.** Always import and use `spawn` / `spawnSync` from `src/bun/spawn.ts`.
+
+macOS `.app` bundles inherit a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`). We resolve the user's full PATH at startup (`shell-env.ts` → `index.ts`) and patch `process.env.PATH`, but `Bun.spawn` without an explicit `env` option does not pick up the patched value. The `spawn.ts` wrapper always passes `{ ...process.env, ...opts.env }`, ensuring every child process sees the full user PATH (homebrew, nvm, etc.).
+
 ## Styling & design tokens
 
 All colors in the UI are defined as **CSS custom properties** (design tokens) in `src/mainview/index.css` and mapped to Tailwind via `tailwind.config.js`. Two themes exist: `dark` (default) and `light` (via `[data-theme="light"]` on `<html>`).

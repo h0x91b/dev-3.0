@@ -1,4 +1,5 @@
 import { createLogger } from "./logger";
+import { spawn } from "./spawn";
 
 const log = createLogger("shell-env");
 
@@ -14,10 +15,9 @@ export async function resolveShellPath(): Promise<string | undefined> {
 	const timeout = 5_000;
 
 	try {
-		const proc = Bun.spawn([shell, "-ilc", "echo $PATH"], {
+		const proc = spawn([shell, "-ilc", "echo $PATH"], {
 			stdout: "pipe",
 			stderr: "pipe",
-			env: { ...process.env, HOME: process.env.HOME },
 		});
 
 		const timer = setTimeout(() => proc.kill(), timeout);

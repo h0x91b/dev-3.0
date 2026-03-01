@@ -1,4 +1,5 @@
 import { DEV3_HOME } from "./paths";
+import { spawn } from "./spawn";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -54,7 +55,7 @@ function getLogFile(): string {
 
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
-	const proc = Bun.spawn(["mkdir", "-p", dir]);
+	const proc = spawn(["mkdir", "-p", dir]);
 	await proc.exited;
 }
 
