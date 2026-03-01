@@ -1,25 +1,52 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
 import { useT } from "./i18n";
+import type { RequirementCheckResult } from "../shared/types";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
+import RequirementsCheck from "./components/RequirementsCheck";
 
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
+
+	// System requirements gate
+	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
+	const [reqResults, setReqResults] = useState<RequirementCheckResult[]>([]);
+	const [reqChecking, setReqChecking] = useState(false);
+
+	const checkRequirements = useCallback(async () => {
+		setReqChecking(true);
+		try {
+			const results = await api.request.checkSystemRequirements();
+			setReqResults(results);
+			const allOk = results.every((r) => r.installed);
+			setReqStatus(allOk ? "passed" : "failed");
+		} catch (err) {
+			console.error("Failed to check system requirements:", err);
+			// If we can't check, assume OK to avoid blocking the app
+			setReqStatus("passed");
+		}
+		setReqChecking(false);
+	}, []);
+
+	useEffect(() => {
+		checkRequirements();
+	}, [checkRequirements]);
 
 	const navigate = useCallback(
 		(route: Route) => dispatch({ type: "navigate", route }),
 		[dispatch],
 	);
 
-	// Load projects on mount
+	// Load projects on mount — gated on requirements passing
 	useEffect(() => {
+		if (reqStatus !== "passed") return;
 		(async () => {
 			try {
 				const projects = await api.request.getProjects();
@@ -29,7 +56,7 @@ function App() {
 			}
 			dispatch({ type: "setLoading", loading: false });
 		})();
-	}, [dispatch]);
+	}, [dispatch, reqStatus]);
 
 	// Listen for push messages from bun
 	useEffect(() => {
@@ -79,6 +106,27 @@ function App() {
 		window.addEventListener("rpc:navigateToSettings", onNavigateToSettings);
 		return () => window.removeEventListener("rpc:navigateToSettings", onNavigateToSettings);
 	}, [navigate]);
+
+	if (reqStatus === "checking") {
+		return (
+			<div className="h-full w-full flex items-center justify-center bg-base">
+				<div className="flex items-center gap-3">
+					<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+					<span className="text-fg-3 text-sm">{t("app.loading")}</span>
+				</div>
+			</div>
+		);
+	}
+
+	if (reqStatus === "failed") {
+		return (
+			<RequirementsCheck
+				results={reqResults}
+				checking={reqChecking}
+				onRefresh={checkRequirements}
+			/>
+		);
+	}
 
 	if (state.loading) {
 		return (

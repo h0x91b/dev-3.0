@@ -201,6 +201,16 @@ const es: TranslationRecord & Record<string, string> = {
 	"update.laterBtn": "Despues",
 	"update.errorTitle": "Error al buscar actualizaciones",
 
+	// Requirements
+	"requirements.title": "Requisitos del sistema",
+	"requirements.subtitle": "Las siguientes herramientas deben estar instaladas para usar dev-3.0",
+	"requirements.installed": "Instalado",
+	"requirements.missing": "No encontrado",
+	"requirements.install": "Instalar",
+	"requirements.refresh": "Verificar de nuevo",
+	"requirements.installGit": "Instalar con Xcode CLI tools: xcode-select --install",
+	"requirements.installTmux": "Instalar con Homebrew: brew install tmux",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

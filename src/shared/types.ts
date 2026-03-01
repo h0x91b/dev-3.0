@@ -185,6 +185,16 @@ export interface BranchStatus {
 	deletions: number;
 }
 
+// ---- System requirements ----
+
+export interface RequirementCheckResult {
+	id: string;
+	name: string;
+	installed: boolean;
+	installHint: string; // i18n key
+	installUrl: string;
+}
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
@@ -312,6 +322,10 @@ export type AppRPCSchema = {
 			getAppVersion: {
 				params: void;
 				response: { version: string; channel: string; buildChannel: string };
+			};
+			checkSystemRequirements: {
+				params: void;
+				response: RequirementCheckResult[];
 			};
 		};
 		messages: {

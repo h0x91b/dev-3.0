@@ -1,0 +1,1 @@
+Added system requirements check on app startup. The app now verifies that git and tmux are installed before loading. If any dependency is missing, a full-screen checklist is shown with installation instructions and a "Re-check" button. The requirements list is easily extensible by adding entries to the SYSTEM_REQUIREMENTS array in rpc-handlers.ts.

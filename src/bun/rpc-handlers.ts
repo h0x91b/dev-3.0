@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
-import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { ACTIVE_STATUSES, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -12,6 +12,11 @@ import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("rpc");
+
+const SYSTEM_REQUIREMENTS = [
+	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installUrl: "https://git-scm.com/download/mac" },
+	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installUrl: "https://github.com/tmux/tmux/wiki/Installing" },
+];
 
 // Will be set by index.ts after window creation
 let pushMessage: ((name: string, payload: any) => void) | null = null;
@@ -880,5 +885,23 @@ export const handlers = {
 		};
 		log.info("<- getAppVersion", result);
 		return result;
+	},
+
+	async checkSystemRequirements(): Promise<RequirementCheckResult[]> {
+		log.info("-> checkSystemRequirements");
+		const results: RequirementCheckResult[] = SYSTEM_REQUIREMENTS.map((req) => {
+			const proc = Bun.spawnSync(["which", req.checkCommand]);
+			const installed = proc.exitCode === 0;
+			log.info(`  ${req.id}: ${installed ? "found" : "NOT found"}`);
+			return {
+				id: req.id,
+				name: req.name,
+				installed,
+				installHint: req.installHint,
+				installUrl: req.installUrl,
+			};
+		});
+		log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}`) });
+		return results;
 	},
 };
