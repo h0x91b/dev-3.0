@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
 import { useT } from "./i18n";
+import { trackPageView } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
@@ -107,6 +108,12 @@ function App() {
 		window.addEventListener("rpc:navigateToSettings", onNavigateToSettings);
 		return () => window.removeEventListener("rpc:navigateToSettings", onNavigateToSettings);
 	}, [navigate]);
+
+	// Track page views on route changes
+	useEffect(() => {
+		const { screen } = state.route;
+		trackPageView(screen);
+	}, [state.route]);
 
 	// Close settings screens with Escape
 	useEffect(() => {

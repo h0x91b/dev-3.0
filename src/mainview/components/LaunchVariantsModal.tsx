@@ -4,6 +4,7 @@ import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { trackEvent } from "../analytics";
 
 interface SelectOption {
 	value: string;
@@ -190,6 +191,7 @@ function LaunchVariantsModal({
 				variants,
 			});
 			dispatch({ type: "spawnVariants", sourceTaskId: task.id, variants: resultTasks });
+			trackEvent("task_spawned", { project_id: project.id, variant_count: resultTasks.length });
 			onClose();
 		} catch (err) {
 			setError(String(err));

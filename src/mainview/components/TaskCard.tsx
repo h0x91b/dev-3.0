@@ -6,6 +6,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 import { ansiToHtml } from "../utils/ansi-to-html";
+import { trackEvent } from "../analytics";
 
 interface TaskCardProps {
 	task: Task;
@@ -113,6 +114,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			return;
 		}
 
+		const fromStatus = task.status;
 		setMoving(true);
 		setMenuOpen(false);
 		try {
@@ -123,6 +125,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			});
 			dispatch({ type: "updateTask", task: updated });
 			onTaskMoved(task.id);
+			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 		} catch (err) {
 			// Auto-retry with force — environment is likely broken
 			try {
@@ -134,6 +137,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				});
 				dispatch({ type: "updateTask", task: updated });
 				onTaskMoved(task.id);
+				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 			} catch (retryErr) {
 				alert(t("task.failedMove", { error: String(retryErr) }));
 			}
@@ -154,6 +158,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				projectId: project.id,
 			});
 			dispatch({ type: "removeTask", taskId: task.id });
+			trackEvent("task_deleted", { project_id: project.id });
 		} catch (err) {
 			alert(t("task.failedDelete", { error: String(err) }));
 		}
@@ -214,6 +219,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				description: trimmed,
 			});
 			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_edited", { project_id: project.id });
 			setIsEditing(false);
 		} catch (err) {
 			alert(t("task.failedEdit", { error: String(err) }));

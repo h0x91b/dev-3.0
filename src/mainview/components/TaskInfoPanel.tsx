@@ -5,6 +5,7 @@ import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../sha
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
+import { trackEvent } from "../analytics";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -125,6 +126,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	}
 
 	async function handleStatusMove(newStatus: TaskStatus) {
+		const fromStatus = task.status;
 		setMovingStatus(true);
 		setStatusMenuOpen(false);
 		try {
@@ -134,6 +136,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				newStatus,
 			});
 			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 			if (!ACTIVE_STATUSES.includes(newStatus)) {
 				navigate({ screen: "project", projectId: project.id });
 			}
@@ -147,6 +150,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					force: true,
 				});
 				dispatch({ type: "updateTask", task: updated });
+				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 				if (!ACTIVE_STATUSES.includes(newStatus)) {
 					navigate({ screen: "project", projectId: project.id });
 				}
@@ -360,6 +364,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					message: t("infoPanel.mergeCompleteMessage"),
 				});
 				if (shouldComplete) {
+					const fromStatus = task.status;
 					try {
 						const updated = await api.request.moveTask({
 							taskId: task.id,
@@ -376,6 +381,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						});
 						dispatch({ type: "updateTask", task: updated });
 					}
+					trackEvent("task_moved", { from_status: fromStatus, to_status: "completed" });
 					navigate({ screen: "project", projectId: project.id });
 				}
 			}

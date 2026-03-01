@@ -4,6 +4,7 @@ import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
 import { api } from "../rpc";
+import { trackEvent } from "../analytics";
 import KanbanColumn from "./KanbanColumn";
 import CreateTaskModal from "./CreateTaskModal";
 import LaunchVariantsModal from "./LaunchVariantsModal";
@@ -67,6 +68,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts }: KanbanB
 			return;
 		}
 
+		const fromStatus = task.status;
 		// Direct move for all other transitions
 		try {
 			const updated = await api.request.moveTask({
@@ -76,6 +78,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts }: KanbanB
 			});
 			dispatch({ type: "updateTask", task: updated });
 			recordMove(task.id);
+			trackEvent("task_moved", { from_status: fromStatus, to_status: targetStatus });
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}

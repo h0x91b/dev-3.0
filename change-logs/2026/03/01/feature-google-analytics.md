@@ -1,0 +1,1 @@
+Integrated Google Analytics 4 (GA4) into the desktop app. Tracks page views on navigation, heartbeat pings every 60 seconds for Realtime presence, and custom events for all task operations (create, move, delete, edit, spawn). User properties for operating system and app version are set on init.

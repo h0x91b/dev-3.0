@@ -3,6 +3,7 @@ import type { Task, Project } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { trackEvent } from "../analytics";
 import TerminalView from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
 
@@ -77,10 +78,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch }
 	}, [ptyUrl, error]);
 
 	async function handleMove(newStatus: "completed" | "cancelled") {
+		const fromStatus = task?.status ?? "unknown";
 		setMoving(true);
 		try {
 			const updated = await api.request.moveTask({ taskId, projectId, newStatus, force: true });
 			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 			navigate({ screen: "project", projectId });
 		} catch (err) {
 			console.error("Failed to move task:", err);

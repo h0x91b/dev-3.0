@@ -5,6 +5,8 @@ import "./index.css";
 import "./rpc";
 import App from "./App";
 import { I18nProvider } from "./i18n";
+import { initAnalytics } from "./analytics";
+import { api } from "./rpc";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page.
@@ -46,6 +48,15 @@ async function bootstrap() {
 			message: (err as Error)?.message,
 			stack: (err as Error)?.stack,
 		});
+	}
+
+	// Initialize Google Analytics with app version
+	try {
+		const { version } = await api.request.getAppVersion();
+		initAnalytics(version);
+	} catch (err) {
+		console.warn("[main] Failed to init analytics:", err);
+		initAnalytics("unknown");
 	}
 
 	console.log("[main] Rendering React app...");

@@ -35,6 +35,7 @@ describe("initialState", () => {
 	it("has expected defaults", () => {
 		expect(initialState).toEqual({
 			route: { screen: "dashboard" },
+			previousRoute: null,
 			projects: [],
 			currentProjectTasks: [],
 			loading: true,

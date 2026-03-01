@@ -4,6 +4,7 @@ import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { trackEvent } from "../analytics";
 
 interface CreateTaskModalProps {
 	project: Project;
@@ -43,6 +44,7 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 				description: trimmed,
 			});
 			dispatch({ type: "addTask", task });
+			trackEvent("task_created", { project_id: project.id });
 			onClose();
 		} catch (err) {
 			alert(t("kanban.failedCreate", { error: String(err) }));
