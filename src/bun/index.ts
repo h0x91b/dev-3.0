@@ -111,7 +111,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 // worktree tmux sessions (see launchTaskPty), so no system symlink needed.
 {
 	const { existsSync: fExists, mkdirSync: fMkdir, writeFileSync: fWrite, chmodSync: fChmod } = await import("node:fs");
-	const { resolve: fResolve } = await import("node:path");
+	const { resolve: fResolve, dirname: fDirname, join: fJoin } = await import("node:path");
 
 	const cliBinDir = `${DEV3_HOME}/bin`;
 	const cliScript = `${cliBinDir}/dev3`;
@@ -119,21 +119,30 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 	try {
 		fMkdir(cliBinDir, { recursive: true });
 
-		// Resolve the CLI main.ts path relative to this file's location.
-		// In dev mode import.meta.dir points to src/bun/, so CLI is at ../cli/main.ts.
-		// In production the CLI module is bundled alongside.
+		// Find the project root by walking up from the app bundle.
+		// In dev mode: import.meta.dir is inside build/.../app/ (Electrobun bundle).
+		// We walk up until we find vite.config.ts to locate the source tree.
+		let projectRoot = import.meta.dir;
+		for (let i = 0; i < 20; i++) {
+			if (fExists(fJoin(projectRoot, "vite.config.ts"))) break;
+			const parent = fDirname(projectRoot);
+			if (parent === projectRoot) break;
+			projectRoot = parent;
+		}
+
 		let cliMainPath: string;
-		const devCliPath = fResolve(import.meta.dir, "..", "cli", "main.ts");
+		const devCliPath = fJoin(projectRoot, "src", "cli", "main.ts");
 		if (fExists(devCliPath)) {
 			cliMainPath = devCliPath;
 		} else {
+			// Production fallback: CLI bundled next to the app module
 			cliMainPath = fResolve(import.meta.dir, "..", "cli", "main.js");
 		}
 
 		const scriptContent = `#!/usr/bin/env bun\nimport "${cliMainPath}";\n`;
 		fWrite(cliScript, scriptContent, "utf-8");
 		fChmod(cliScript, 0o755);
-		log.info("CLI script written", { path: cliScript });
+		log.info("CLI script written", { path: cliScript, cliMainPath });
 	} catch (err) {
 		log.warn("CLI setup failed (non-fatal)", { error: String(err) });
 	}
