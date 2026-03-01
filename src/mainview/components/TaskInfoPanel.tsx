@@ -285,19 +285,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		if (rebasing) return;
 		setRebasing(true);
 		try {
-			const result = await api.request.rebaseTask({
+			await api.request.rebaseTask({
 				taskId: task.id,
 				projectId: project.id,
 			});
-			if (result.ok) {
-				const status = await api.request.getBranchStatus({
-					taskId: task.id,
-					projectId: project.id,
-				});
-				setBranchStatus(status);
-			} else {
-				alert(t("infoPanel.rebaseFailed", { error: result.error || "unknown" }));
-			}
 		} catch (err) {
 			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
 		}
@@ -308,11 +299,52 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		if (merging) return;
 		setMerging(true);
 		try {
-			const result = await api.request.mergeTask({
+			await api.request.mergeTask({
 				taskId: task.id,
 				projectId: project.id,
 			});
-			if (result.ok) {
+		} catch (err) {
+			alert(t("infoPanel.mergeFailed", { error: String(err) }));
+		}
+		setMerging(false);
+	}
+
+	async function handlePush() {
+		if (pushing) return;
+		setPushing(true);
+		try {
+			await api.request.pushTask({
+				taskId: task.id,
+				projectId: project.id,
+			});
+		} catch (err) {
+			alert(t("infoPanel.pushFailed", { error: String(err) }));
+		}
+		setPushing(false);
+	}
+
+	// Listen for git operation completion — refresh branch status and handle post-merge dialog
+	useEffect(() => {
+		async function onGitOpCompleted(e: Event) {
+			const detail = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				operation: string;
+				ok: boolean;
+			};
+			if (detail.taskId !== task.id) return;
+
+			// Refresh branch status
+			try {
+				const status = await api.request.getBranchStatus({
+					taskId: task.id,
+					projectId: project.id,
+				});
+				setBranchStatus(status);
+			} catch { /* silently ignore */ }
+
+			// Post-merge: show "complete task?" dialog
+			if (detail.operation === "merge" && detail.ok) {
 				const shouldComplete = await api.request.showConfirm({
 					title: t("infoPanel.mergeComplete"),
 					message: t("infoPanel.mergeCompleteMessage"),
@@ -335,44 +367,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						dispatch({ type: "updateTask", task: updated });
 					}
 					navigate({ screen: "project", projectId: project.id });
-				} else {
-					const status = await api.request.getBranchStatus({
-						taskId: task.id,
-						projectId: project.id,
-					});
-					setBranchStatus(status);
 				}
-			} else {
-				alert(t("infoPanel.mergeFailed", { error: result.error || "unknown" }));
 			}
-		} catch (err) {
-			alert(t("infoPanel.mergeFailed", { error: String(err) }));
 		}
-		setMerging(false);
-	}
 
-	async function handlePush() {
-		if (pushing) return;
-		setPushing(true);
-		try {
-			const result = await api.request.pushTask({
-				taskId: task.id,
-				projectId: project.id,
-			});
-			if (result.ok) {
-				const status = await api.request.getBranchStatus({
-					taskId: task.id,
-					projectId: project.id,
-				});
-				setBranchStatus(status);
-			} else {
-				alert(t("infoPanel.pushFailed", { error: result.error || "unknown" }));
-			}
-		} catch (err) {
-			alert(t("infoPanel.pushFailed", { error: String(err) }));
-		}
-		setPushing(false);
-	}
+		window.addEventListener("rpc:gitOpCompleted", onGitOpCompleted);
+		return () => window.removeEventListener("rpc:gitOpCompleted", onGitOpCompleted);
+	}, [task.id, project.id, dispatch, navigate, t]);
 
 	// ---- Panel collapse / drag ----
 

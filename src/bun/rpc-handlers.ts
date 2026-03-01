@@ -24,6 +24,91 @@ let pushMessage: ((name: string, payload: any) => void) | null = null;
 // Track dev server tmux pane IDs per task
 const devPaneIds = new Map<string, string>();
 
+// Track git operation tmux pane IDs per task
+const gitOpPaneIds = new Map<string, string>();
+
+async function killExistingGitPane(taskId: string, tmuxSession: string): Promise<void> {
+	const existingPane = gitOpPaneIds.get(taskId);
+	if (existingPane) {
+		const kill = spawn(["tmux", "kill-pane", "-t", existingPane]);
+		await kill.exited;
+		gitOpPaneIds.delete(taskId);
+		log.info("Killed existing git op pane (from map)", { taskId: taskId.slice(0, 8), paneId: existingPane });
+	} else {
+		// Fallback: find panes running git op scripts for this task
+		const listProc = spawn([
+			"tmux", "list-panes", "-t", tmuxSession,
+			"-F", "#{pane_id} #{pane_start_command}",
+		], { stdout: "pipe", stderr: "pipe" });
+		const listOutput = await new Response(listProc.stdout).text();
+		await listProc.exited;
+		for (const line of listOutput.trim().split("\n")) {
+			if (line.includes(`dev3-${taskId}-git-`)) {
+				const paneId = line.split(" ")[0];
+				const kill = spawn(["tmux", "kill-pane", "-t", paneId]);
+				await kill.exited;
+				log.info("Killed existing git op pane (from tmux scan)", { taskId: taskId.slice(0, 8), paneId });
+			}
+		}
+	}
+}
+
+async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string): Promise<string | null> {
+	const proc = spawn([
+		"tmux", "split-window", "-h",
+		"-t", tmuxSession,
+		"-c", cwd,
+		"-P", "-F", "#{pane_id}",
+		`bash "${scriptPath}"`,
+	], { stdout: "pipe", stderr: "pipe" });
+	const output = await new Response(proc.stdout).text();
+	const stderrOutput = await new Response(proc.stderr).text();
+	const exitCode = await proc.exited;
+
+	if (stderrOutput.trim()) {
+		log.warn("openGitOpPane tmux stderr", { stderr: stderrOutput.trim() });
+	}
+	if (exitCode !== 0) {
+		throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+	}
+
+	return output.trim() || null;
+}
+
+function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string): void {
+	if (!paneId) return;
+	const exitFilePath = `/tmp/dev3-${taskId}-git-${operation}.sh.exit`;
+
+	const interval = setInterval(async () => {
+		try {
+			const checkProc = spawn([
+				"tmux", "display-message", "-t", paneId, "-p", "",
+			], { stdout: "pipe", stderr: "pipe" });
+			const checkExit = await checkProc.exited;
+
+			if (checkExit !== 0) {
+				// Pane no longer exists — operation finished
+				clearInterval(interval);
+				gitOpPaneIds.delete(taskId);
+
+				let ok = false;
+				try {
+					const exitCodeStr = await Bun.file(exitFilePath).text();
+					ok = exitCodeStr.trim() === "0";
+				} catch { /* file missing = assume failure */ }
+
+				log.info("Git op pane closed", { taskId: taskId.slice(0, 8), operation, ok });
+				pushMessage?.("gitOpCompleted", { taskId, projectId, operation, ok });
+			}
+		} catch {
+			clearInterval(interval);
+		}
+	}, 1000);
+
+	// Safety timeout: stop polling after 10 minutes
+	setTimeout(() => clearInterval(interval), 10 * 60 * 1000);
+}
+
 export function setPushMessage(fn: (name: string, payload: any) => void): void {
 	pushMessage = fn;
 }
@@ -664,57 +749,147 @@ export const handlers = {
 		return result;
 	},
 
-	async rebaseTask(params: { taskId: string; projectId: string }) {
+	async rebaseTask(params: { taskId: string; projectId: string }): Promise<void> {
 		log.info("→ rebaseTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 
-		if (!task.worktreePath) {
-			return { ok: false, error: "Task has no worktree" };
-		}
+		if (!task.worktreePath) throw new Error("Task has no worktree");
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-		await git.fetchOrigin(project.path);
-		const result = await git.rebaseOnBase(task.worktreePath, baseBranch);
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const scriptPath = `/tmp/dev3-${task.id}-git-rebase.sh`;
 
-		log.info("← rebaseTask", result);
-		return result;
+		await killExistingGitPane(task.id, tmuxSession);
+
+		const script = [
+			`#!/bin/bash`,
+			`echo "Fetching origin..."`,
+			`git fetch origin --quiet`,
+			`echo "Rebasing on ${baseBranch}..."`,
+			`set -x`,
+			`git rebase ${baseBranch}`,
+			`EXIT_CODE=$?`,
+			`set +x`,
+			`echo $EXIT_CODE > "${scriptPath}.exit"`,
+			`echo ""`,
+			`if [ $EXIT_CODE -eq 0 ]; then`,
+			`  printf '\\033[1;32m✓ Rebase complete\\033[0m\\n'`,
+			`  sleep 5`,
+			`else`,
+			`  printf '\\033[1;31m✗ Rebase failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
+			`  echo "Resolve conflicts in the main terminal, then: git rebase --continue"`,
+			`  echo "Or abort with: git rebase --abort"`,
+			`  echo ""`,
+			`  echo "Press any key to close this pane."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(scriptPath, script);
+
+		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		monitorGitPane(paneId, task.id, params.projectId, "rebase");
+
+		log.info("← rebaseTask (pane opened)", { paneId });
 	},
 
-	async mergeTask(params: { taskId: string; projectId: string }) {
+	async mergeTask(params: { taskId: string; projectId: string }): Promise<void> {
 		log.info("→ mergeTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 
-		if (!task.branchName) {
-			return { ok: false, error: "Task has no branch" };
-		}
+		if (!task.branchName) throw new Error("Task has no branch");
+		if (!task.worktreePath) throw new Error("Task has no worktree");
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-		await git.fetchOrigin(project.path);
-		const status = await git.getBranchStatus(task.worktreePath!, baseBranch);
+		const status = await git.getBranchStatus(task.worktreePath, baseBranch);
+		if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
-		if (status.behind > 0) {
-			return { ok: false, error: "Branch is not rebased" };
-		}
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const scriptPath = `/tmp/dev3-${task.id}-git-merge.sh`;
 
-		const result = await git.mergeBranch(project.path, task.branchName, task.title);
-		log.info("← mergeTask", result);
-		return result;
+		await killExistingGitPane(task.id, tmuxSession);
+
+		const escapedPath = project.path.replace(/'/g, "'\\''");
+		const escapedTitle = task.title.replace(/'/g, "'\\''");
+
+		const script = [
+			`#!/bin/bash`,
+			`cd '${escapedPath}'`,
+			`echo "Squash-merging ${task.branchName} into $(git branch --show-current)..."`,
+			`set -x`,
+			`git merge --squash ${task.branchName}`,
+			`MERGE_CODE=$?`,
+			`set +x`,
+			`if [ $MERGE_CODE -ne 0 ]; then`,
+			`  echo $MERGE_CODE > "${scriptPath}.exit"`,
+			`  echo ""`,
+			`  printf '\\033[1;31m✗ Merge failed (exit %s)\\033[0m\\n' "$MERGE_CODE"`,
+			`  echo "Press any key to close."`,
+			`  read -n 1 -s`,
+			`  exit $MERGE_CODE`,
+			`fi`,
+			`set -x`,
+			`git commit -m '${escapedTitle}'`,
+			`EXIT_CODE=$?`,
+			`set +x`,
+			`echo $EXIT_CODE > "${scriptPath}.exit"`,
+			`echo ""`,
+			`if [ $EXIT_CODE -eq 0 ]; then`,
+			`  printf '\\033[1;32m✓ Merge complete\\033[0m\\n'`,
+			`  sleep 5`,
+			`else`,
+			`  printf '\\033[1;31m✗ Commit failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
+			`  echo "Press any key to close."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(scriptPath, script);
+
+		const paneId = await openGitOpPane(tmuxSession, project.path, scriptPath);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		monitorGitPane(paneId, task.id, params.projectId, "merge");
+
+		log.info("← mergeTask (pane opened)", { paneId });
 	},
 
-	async pushTask(params: { taskId: string; projectId: string }) {
+	async pushTask(params: { taskId: string; projectId: string }): Promise<void> {
 		log.info("→ pushTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 
-		if (!task.worktreePath) {
-			return { ok: false, error: "Task has no worktree" };
-		}
+		if (!task.worktreePath) throw new Error("Task has no worktree");
 
-		const result = await git.pushBranch(task.worktreePath);
-		log.info("← pushTask", result);
-		return result;
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const scriptPath = `/tmp/dev3-${task.id}-git-push.sh`;
+
+		await killExistingGitPane(task.id, tmuxSession);
+
+		const script = [
+			`#!/bin/bash`,
+			`set -x`,
+			`git push origin HEAD`,
+			`EXIT_CODE=$?`,
+			`set +x`,
+			`echo $EXIT_CODE > "${scriptPath}.exit"`,
+			`echo ""`,
+			`if [ $EXIT_CODE -eq 0 ]; then`,
+			`  printf '\\033[1;32m✓ Push complete\\033[0m\\n'`,
+			`  sleep 5`,
+			`else`,
+			`  printf '\\033[1;31m✗ Push failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
+			`  echo "Press any key to close."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(scriptPath, script);
+
+		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		monitorGitPane(paneId, task.id, params.projectId, "push");
+
+		log.info("← pushTask (pane opened)", { paneId });
 	},
 
 	async getTerminalPreview(params: { taskId: string }): Promise<string | null> {

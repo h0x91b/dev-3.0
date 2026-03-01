@@ -1,0 +1,1 @@
+Git operations (push, rebase, merge) now run in a visible tmux terminal pane instead of silently in the background. Users can see full command output in real-time, with colored success/failure messages and the ability to read error details directly. Post-operation branch status refresh and merge auto-complete dialog are preserved via a `gitOpCompleted` push message.

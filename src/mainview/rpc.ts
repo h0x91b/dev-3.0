@@ -21,6 +21,11 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:terminalBell", { detail: payload }),
 				);
 			},
+			gitOpCompleted: (payload: any) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:gitOpCompleted", { detail: payload }),
+				);
+			},
 			navigateToSettings: () => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:navigateToSettings"),

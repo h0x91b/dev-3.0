@@ -293,15 +293,15 @@ export type AppRPCSchema = {
 			};
 			rebaseTask: {
 				params: { taskId: string; projectId: string };
-				response: { ok: boolean; error?: string };
+				response: void;
 			};
 			mergeTask: {
 				params: { taskId: string; projectId: string };
-				response: { ok: boolean; error?: string };
+				response: void;
 			};
 			pushTask: {
 				params: { taskId: string; projectId: string };
-				response: { ok: boolean; error?: string };
+				response: void;
 			};
 			getTerminalPreview: {
 				params: { taskId: string };
@@ -332,6 +332,7 @@ export type AppRPCSchema = {
 			taskUpdated: { projectId: string; task: Task };
 			ptyDied: { taskId: string };
 			terminalBell: { taskId: string };
+			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
 			updateDownloadProgress: { status: string; progress?: number };
 		};

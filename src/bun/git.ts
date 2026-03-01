@@ -192,59 +192,6 @@ export async function canRebaseCleanly(
 	return result.ok;
 }
 
-export async function rebaseOnBase(
-	worktreePath: string,
-	baseBranch: string,
-): Promise<{ ok: boolean; error?: string }> {
-	const result = await run(
-		["git", "rebase", `${baseBranch}`],
-		worktreePath,
-	);
-	if (result.ok) {
-		return { ok: true };
-	}
-	// Abort the failed rebase to restore clean worktree
-	await run(["git", "rebase", "--abort"], worktreePath);
-	return { ok: false, error: result.stderr };
-}
-
-export async function mergeBranch(
-	projectPath: string,
-	branchName: string,
-	commitMessage: string,
-): Promise<{ ok: boolean; error?: string }> {
-	log.info("Squash-merging branch into main working tree", { projectPath, branchName });
-
-	const squash = await run(
-		["git", "merge", "--squash", branchName],
-		projectPath,
-	);
-	if (!squash.ok) {
-		return { ok: false, error: squash.stderr };
-	}
-
-	const commit = await run(
-		["git", "commit", "-m", commitMessage],
-		projectPath,
-	);
-	if (!commit.ok) {
-		return { ok: false, error: commit.stderr };
-	}
-
-	return { ok: true };
-}
-
-export async function pushBranch(
-	worktreePath: string,
-): Promise<{ ok: boolean; error?: string }> {
-	log.info("Pushing current branch", { worktreePath });
-	const result = await run(["git", "push", "origin", "HEAD"], worktreePath);
-	if (result.ok) {
-		return { ok: true };
-	}
-	return { ok: false, error: result.stderr };
-}
-
 export async function removeWorktree(
 	project: Project,
 	task: Task,
