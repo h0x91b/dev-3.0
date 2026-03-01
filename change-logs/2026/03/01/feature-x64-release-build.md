@@ -1,0 +1,1 @@
+Added x64 (Intel) macOS build to the release workflow. Both arm64 and x64 builds run sequentially on the same self-hosted ARM Mac runner using Rosetta 2. Extracted artifact creation logic into a reusable script (scripts/create-release-artifacts.sh) parameterized by architecture. GitHub Release notes now list download links for both architectures.

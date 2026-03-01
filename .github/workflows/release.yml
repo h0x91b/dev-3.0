@@ -15,10 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
+      - name: Setup Bun (arm64)
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.10"
+
+      - name: Download x64 Bun binary
+        run: |
+          mkdir -p $HOME/.bun-x64/bin
+          curl -fsSL -o /tmp/bun-x64.zip "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-darwin-x64-baseline.zip"
+          unzip -o /tmp/bun-x64.zip -d /tmp/bun-x64
+          cp /tmp/bun-x64/bun-darwin-x64-baseline/bun $HOME/.bun-x64/bin/bun
+          chmod +x $HOME/.bun-x64/bin/bun
+          ln -sf $HOME/.bun-x64/bin/bun $HOME/.bun-x64/bin/bunx
+          echo "x64 Bun version:"
+          arch -x86_64 $HOME/.bun-x64/bin/bun --version
 
       - name: Install dependencies
         run: bun install
@@ -53,10 +64,14 @@ jobs:
           echo "Patched electrobun.config.ts for signing:"
           grep -E 'codesign|notarize' electrobun.config.ts
 
-      - name: Clean previous build artifacts
+      # ========================================
+      # Phase A: arm64 build (native)
+      # ========================================
+
+      - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
-      - name: Build stable release (signed + notarized)
+      - name: Build arm64 release (signed + notarized)
         env:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
@@ -66,13 +81,9 @@ jobs:
           COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
         run: |
           bunx vite build
-          # Electrobun bug: after codesign+notarize+staple, it tars the .app, deletes
-          # the original, compresses to .tar.zst, then tries to re-sign the deleted .app.
-          # The signed .app.tar.zst is already created before the crash, so we let it fail
-          # and recover the artifacts manually.
           bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (known post-tar codesign bug, recovering artifacts)"
 
-      - name: Debug build output
+      - name: Debug arm64 build output
         if: always()
         run: |
           echo "=== ./build/ ==="
@@ -81,127 +92,79 @@ jobs:
           echo "=== ./artifacts/ ==="
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
 
-      - name: Create release artifacts
+      - name: Create arm64 release artifacts
+        run: bash ./scripts/create-release-artifacts.sh arm64
+
+      # Upload arm64 immediately so auto-update works even if x64 build fails
+      - name: Upload arm64 artifacts to S3 (early)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
         run: |
-          BUILD_DIR="./build/stable-macos-arm64"
-          APP_NAME="dev-3.0"
-          PLATFORM_PREFIX="stable-macos-arm64"
+          aws s3 sync ./artifacts-arm64/ s3://h0x91b-releases/dev-3.0/${{ github.ref_name }}/
+          aws s3 sync ./artifacts-arm64/ s3://h0x91b-releases/dev-3.0/ --exclude "*.dmg"
+          echo "arm64 artifacts uploaded to S3 (early upload)"
 
-          # Helper: create DMG with /Applications symlink
-          # Usage: create_dmg <app_path> <dmg_output_path> <vol_name>
-          create_dmg() {
-            local APP_PATH="$1"
-            local DMG_OUT="$2"
-            local VOL_NAME="$3"
+      # ========================================
+      # Phase B: x64 build (Rosetta)
+      # ========================================
 
-            # Unmount any leftover volume from previous runs
-            hdiutil detach "/Volumes/${VOL_NAME}" -force 2>/dev/null || true
-            hdiutil detach "/Volumes/${APP_NAME}" -force 2>/dev/null || true
+      - name: Clean for x64 build
+        continue-on-error: true
+        run: rm -rf ./build ./artifacts ./node_modules
 
-            # Stage .app + Applications symlink
-            local STAGE_DIR
-            STAGE_DIR=$(mktemp -d)
-            cp -R "$APP_PATH" "$STAGE_DIR/"
-            ln -s /Applications "$STAGE_DIR/Applications"
+      - name: Install x64 dependencies (Rosetta)
+        id: x64_install
+        continue-on-error: true
+        run: arch -x86_64 $HOME/.bun-x64/bin/bun install
 
-            hdiutil create -volname "$VOL_NAME" -srcfolder "$STAGE_DIR" \
-              -ov -format UDZO "$DMG_OUT"
+      - name: Build x64 release (Rosetta, signed + notarized)
+        id: x64_build
+        if: steps.x64_install.outcome == 'success'
+        continue-on-error: true
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
+          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
+          COPYFILE_DISABLE: "1"
+          COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
+        run: |
+          # Vite output (dist/) is platform-independent JS/CSS — reuse from arm64 phase.
+          # Only electrobun build needs to run per-arch (creates native .app bundle).
+          arch -x86_64 $HOME/.bun-x64/bin/bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (known post-tar codesign bug, recovering artifacts)"
 
-            # Cleanup
-            rm -rf "$STAGE_DIR"
-            hdiutil detach "/Volumes/${VOL_NAME}" -force 2>/dev/null || true
-          }
+      - name: Debug x64 build output
+        if: steps.x64_build.outcome == 'success'
+        run: |
+          echo "=== ./build/ ==="
+          find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
+          echo ""
+          echo "=== ./artifacts/ ==="
+          ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
 
-          # Electrobun may succeed fully and move artifacts to ./artifacts/,
-          # or it may crash after tarring and leave tar/tar.zst in the build dir.
-          # We handle both cases.
+      - name: Create x64 release artifacts
+        id: x64_artifacts
+        if: steps.x64_build.outcome == 'success'
+        continue-on-error: true
+        run: bash ./scripts/create-release-artifacts.sh x64
 
-          # Case 1: Electrobun succeeded and created its own artifacts
-          EBUN_TAR_ZST=$(find ./artifacts -name "*.app.tar.zst" 2>/dev/null | head -1)
-          EBUN_DMG=$(find ./artifacts -name "*.dmg" 2>/dev/null | head -1)
-          EBUN_UPDATE=$(find ./artifacts -name "update.json" -o -name "*-update.json" 2>/dev/null | head -1)
+      # ========================================
+      # Merge & Upload
+      # ========================================
 
-          if [ -n "$EBUN_TAR_ZST" ]; then
-            echo "Electrobun created artifacts successfully, using them directly"
-            ls -lh ./artifacts/
-
-            # Rename to our naming convention if needed
-            mkdir -p ./artifacts-final
-            cp "$EBUN_TAR_ZST" "./artifacts-final/${PLATFORM_PREFIX}-${APP_NAME}.app.tar.zst"
-
-            # Get version info from Electrobun's update.json or from the .app
-            if [ -n "$EBUN_UPDATE" ]; then
-              HASH=$(bun -e "const j=await Bun.file('${EBUN_UPDATE}').json();console.log(j.hash)")
-              VERSION=$(bun -e "const j=await Bun.file('${EBUN_UPDATE}').json();console.log(j.version)")
-            else
-              # Extract from tar.zst
-              RECOVER_DIR="${BUILD_DIR}/recovered"
-              mkdir -p "$RECOVER_DIR"
-              tar -xf <(zstd -d "$EBUN_TAR_ZST" --stdout) -C "$RECOVER_DIR"
-              VERSION_JSON="${RECOVER_DIR}/${APP_NAME}.app/Contents/Resources/version.json"
-              HASH=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.hash)")
-              VERSION=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.version)")
-            fi
-            echo "Bundle hash: $HASH, version: $VERSION"
-
-            # Create our update.json with platform prefix
-            echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"macos\",\"arch\":\"arm64\"}" \
-              > "./artifacts-final/${PLATFORM_PREFIX}-update.json"
-
-            # Use Electrobun's DMG or create one with /Applications symlink
-            if [ -n "$EBUN_DMG" ]; then
-              cp "$EBUN_DMG" "./artifacts-final/${PLATFORM_PREFIX}-${APP_NAME}.dmg"
-            elif [ -d "${BUILD_DIR}/${APP_NAME}.app" ]; then
-              create_dmg "${BUILD_DIR}/${APP_NAME}.app" "./artifacts-final/${PLATFORM_PREFIX}-${APP_NAME}.dmg" "${APP_NAME} ${VERSION}"
-            fi
-
-            rm -rf ./artifacts
-            mv ./artifacts-final ./artifacts
-            echo "Final artifacts:"
-            ls -lh ./artifacts/
-            exit 0
-          fi
-
-          # Case 2: Electrobun crashed — recover from tar in build dir
-          echo "Electrobun artifacts not found, recovering from build dir..."
-          TAR_ZST="${BUILD_DIR}/${APP_NAME}.app.tar.zst"
-          TAR="${BUILD_DIR}/${APP_NAME}.app.tar"
-
-          if [ ! -f "$TAR_ZST" ] && [ ! -f "$TAR" ]; then
-            echo "::error::Neither tar.zst nor tar found — build failed before tarring"
-            find ./build -maxdepth 3 -type f 2>/dev/null || true
-            exit 1
-          fi
-
+      - name: Merge artifacts
+        run: |
           mkdir -p ./artifacts
-
-          # Compress tar if electrobun didn't get to it
-          if [ ! -f "$TAR_ZST" ] && [ -f "$TAR" ]; then
-            ZSTD="./node_modules/electrobun/dist-macos-arm64/zig-zstd"
-            "$ZSTD" "$TAR" -o "$TAR_ZST"
+          cp ./artifacts-arm64/* ./artifacts/
+          if [ -d ./artifacts-x64 ]; then
+            cp ./artifacts-x64/* ./artifacts/
+            echo "Merged arm64 + x64 artifacts"
+          else
+            echo "::warning::x64 artifacts not available, shipping arm64 only"
           fi
-          cp "$TAR_ZST" "./artifacts/${PLATFORM_PREFIX}-${APP_NAME}.app.tar.zst"
-
-          # Extract .app from tar to recover version.json and create DMG
-          RECOVER_DIR="${BUILD_DIR}/recovered"
-          mkdir -p "$RECOVER_DIR"
-          tar -xf "$TAR" -C "$RECOVER_DIR" 2>/dev/null || tar -xf <(zstd -d "$TAR_ZST" --stdout) -C "$RECOVER_DIR"
-
-          # Read version info
-          VERSION_JSON="${RECOVER_DIR}/${APP_NAME}.app/Contents/Resources/version.json"
-          HASH=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.hash)")
-          VERSION=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.version)")
-          echo "Bundle hash: $HASH, version: $VERSION"
-
-          # Create update.json
-          echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"macos\",\"arch\":\"arm64\"}" \
-            > "./artifacts/${PLATFORM_PREFIX}-update.json"
-
-          # Create DMG from recovered .app (with /Applications symlink)
-          DMG_PATH="./artifacts/${PLATFORM_PREFIX}-${APP_NAME}.dmg"
-          create_dmg "${RECOVER_DIR}/${APP_NAME}.app" "$DMG_PATH" "${APP_NAME} ${VERSION}"
-
-          echo "Artifacts created:"
+          echo "All artifacts:"
           ls -lh ./artifacts/
 
       - name: Upload tagged artifacts to S3
@@ -223,12 +186,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/${{ github.ref_name }}"
-          DMG=$(ls ./artifacts/stable-macos-*-*.dmg 2>/dev/null | head -1 | xargs basename)
+          X64_OK="${{ steps.x64_artifacts.outcome }}"
 
           {
             echo "## Download"
             echo ""
-            echo "- [\`$DMG\`]($S3_BASE/$DMG)"
+            echo "### macOS (Apple Silicon)"
+            echo "- [\`stable-macos-arm64-dev-3.0.dmg\`]($S3_BASE/stable-macos-arm64-dev-3.0.dmg)"
+            if [ "$X64_OK" = "success" ]; then
+              echo ""
+              echo "### macOS (Intel)"
+              echo "- [\`stable-macos-x64-dev-3.0.dmg\`]($S3_BASE/stable-macos-x64-dev-3.0.dmg)"
+            fi
             echo ""
             echo "### All artifacts"
             echo ""
