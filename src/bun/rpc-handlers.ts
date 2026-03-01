@@ -392,9 +392,11 @@ export const handlers = {
 
 		// todo → active: create worktree + PTY session
 		if (!isActive(oldStatus) && isActive(newStatus)) {
-			log.info("Transition: inactive → active, creating worktree + PTY");
+			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
+			log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
 			const wt = await git.createWorktree(project, task);
-			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
+			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
+			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true);
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,

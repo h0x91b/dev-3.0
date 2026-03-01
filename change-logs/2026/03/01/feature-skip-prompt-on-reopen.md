@@ -1,0 +1,1 @@
+When a task is moved from completed or cancelled back to an active status, the coding agent now starts without the original task description as a prompt. This gives the user a clean, empty terminal session for continued work.
