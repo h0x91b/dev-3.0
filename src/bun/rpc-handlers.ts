@@ -27,25 +27,25 @@ const devPaneIds = new Map<string, string>();
 // Track git operation tmux pane IDs per task
 const gitOpPaneIds = new Map<string, string>();
 
-async function killExistingGitPane(taskId: string, tmuxSession: string): Promise<void> {
+async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
 	if (existingPane) {
-		const kill = spawn(["tmux", "kill-pane", "-t", existingPane]);
+		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
 		await kill.exited;
 		gitOpPaneIds.delete(taskId);
 		log.info("Killed existing git op pane (from map)", { taskId: taskId.slice(0, 8), paneId: existingPane });
 	} else {
 		// Fallback: find panes running git op scripts for this task
-		const listProc = spawn([
-			"tmux", "list-panes", "-t", tmuxSession,
+		const listProc = spawn(pty.tmuxArgs(socket,
+			"list-panes", "-t", tmuxSession,
 			"-F", "#{pane_id} #{pane_start_command}",
-		], { stdout: "pipe", stderr: "pipe" });
+		), { stdout: "pipe", stderr: "pipe" });
 		const listOutput = await new Response(listProc.stdout).text();
 		await listProc.exited;
 		for (const line of listOutput.trim().split("\n")) {
 			if (line.includes(`dev3-${taskId}-git-`)) {
 				const paneId = line.split(" ")[0];
-				const kill = spawn(["tmux", "kill-pane", "-t", paneId]);
+				const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
 				await kill.exited;
 				log.info("Killed existing git op pane (from tmux scan)", { taskId: taskId.slice(0, 8), paneId });
 			}
@@ -53,14 +53,14 @@ async function killExistingGitPane(taskId: string, tmuxSession: string): Promise
 	}
 }
 
-async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string): Promise<string | null> {
-	const proc = spawn([
-		"tmux", "split-window", "-v",
+async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string | null): Promise<string | null> {
+	const proc = spawn(pty.tmuxArgs(socket,
+		"split-window", "-v",
 		"-t", tmuxSession,
 		"-c", cwd,
 		"-P", "-F", "#{pane_id}",
 		`bash "${scriptPath}"`,
-	], { stdout: "pipe", stderr: "pipe" });
+	), { stdout: "pipe", stderr: "pipe" });
 	const output = await new Response(proc.stdout).text();
 	const stderrOutput = await new Response(proc.stderr).text();
 	const exitCode = await proc.exited;
@@ -75,7 +75,7 @@ async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: strin
 	return output.trim() || null;
 }
 
-function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string): void {
+function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string | null): void {
 	if (!paneId) return;
 	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
 	const exitFilePath = `/tmp/dev3-${taskId}-git-${operation}.sh.exit`;
@@ -83,9 +83,9 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	const interval = setInterval(async () => {
 		try {
 			// List all pane IDs in the session and check if ours is still there
-			const listProc = spawn([
-				"tmux", "list-panes", "-t", tmuxSession, "-F", "#{pane_id}",
-			], { stdout: "pipe", stderr: "pipe" });
+			const listProc = spawn(pty.tmuxArgs(socket,
+				"list-panes", "-t", tmuxSession, "-F", "#{pane_id}",
+			), { stdout: "pipe", stderr: "pipe" });
 			const output = await new Response(listProc.stdout).text();
 			await listProc.exited;
 
@@ -167,8 +167,12 @@ async function runCleanupScript(task: Task, project: Project): Promise<void> {
 
 	// Run attached (no -d) so proc.exited fires when the script finishes
 	// and tmux destroys the session automatically when the shell exits.
+	const cleanupSocket = task.tmuxSocket ?? null;
+	const cleanupArgs = cleanupSocket
+		? pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`)
+		: pty.tmuxArgs(null, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`);
 	const proc = spawn(
-		["tmux", "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`],
+		cleanupArgs,
 		{
 			terminal: { cols: 220, rows: 50, data: () => {} },
 			env: { TERM: "xterm-256color", HOME: process.env.HOME || "/" },
@@ -296,7 +300,7 @@ async function launchTaskPty(
 		envKeys: Object.keys(env),
 	});
 	try {
-		pty.createSession(task.id, project.id, worktreePath, echoAndRun, env);
+		pty.createSession(task.id, project.id, worktreePath, echoAndRun, env, task.tmuxSocket ?? null);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
@@ -656,27 +660,28 @@ export const handlers = {
 
 			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 			const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
+			const socket = task.tmuxSocket ?? null;
 
 			// Kill existing dev pane for this task if it's still alive
 			// Check both in-memory map and tmux directly (map lost on restart)
 			const existingPane = devPaneIds.get(task.id);
 			if (existingPane) {
-				const kill = spawn(["tmux", "kill-pane", "-t", existingPane]);
+				const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
 				await kill.exited;
 				devPaneIds.delete(task.id);
 				log.info("Killed existing dev pane (from map)", { taskId: task.id.slice(0, 8), paneId: existingPane });
 			} else {
 				// Fallback: find panes running the dev script file for this task
-				const listProc = spawn([
-					"tmux", "list-panes", "-t", tmuxSession,
+				const listProc = spawn(pty.tmuxArgs(socket,
+					"list-panes", "-t", tmuxSession,
 					"-F", "#{pane_id} #{pane_start_command}",
-				], { stdout: "pipe", stderr: "pipe" });
+				), { stdout: "pipe", stderr: "pipe" });
 				const listOutput = await new Response(listProc.stdout).text();
 				await listProc.exited;
 				for (const line of listOutput.trim().split("\n")) {
 					if (line.includes(devScriptPath)) {
 						const paneId = line.split(" ")[0];
-						const kill = spawn(["tmux", "kill-pane", "-t", paneId]);
+						const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
 						await kill.exited;
 						log.info("Killed existing dev pane (from tmux scan)", { taskId: task.id.slice(0, 8), paneId });
 					}
@@ -698,13 +703,13 @@ export const handlers = {
 			await Bun.write(devScriptPath, wrappedScript);
 
 			// Create pane and capture its ID with -P -F
-			const proc = spawn([
-				"tmux", "split-window", "-h",
+			const proc = spawn(pty.tmuxArgs(socket,
+				"split-window", "-h",
 				"-t", tmuxSession,
 				"-c", task.worktreePath,
 				"-P", "-F", "#{pane_id}",
 				`bash "${devScriptPath}"`,
-			], { stdout: "pipe", stderr: "pipe" });
+			), { stdout: "pipe", stderr: "pipe" });
 			const output = await new Response(proc.stdout).text();
 			const stderrOutput = await new Response(proc.stderr).text();
 			const exitCode = await proc.exited;
@@ -767,7 +772,8 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-rebase.sh`;
 
-		await killExistingGitPane(task.id, tmuxSession);
+		const socket = task.tmuxSocket ?? null;
+		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
 			`#!/bin/bash`,
@@ -794,9 +800,9 @@ export const handlers = {
 		].join("\n") + "\n";
 		await Bun.write(scriptPath, script);
 
-		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath);
+		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
 		if (paneId) gitOpPaneIds.set(task.id, paneId);
-		monitorGitPane(paneId, task.id, params.projectId, "rebase");
+		monitorGitPane(paneId, task.id, params.projectId, "rebase", socket);
 
 		log.info("← rebaseTask (pane opened)", { paneId });
 	},
@@ -816,7 +822,8 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-merge.sh`;
 
-		await killExistingGitPane(task.id, tmuxSession);
+		const socket = task.tmuxSocket ?? null;
+		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const escapedPath = project.path.replace(/'/g, "'\\''");
 		const escapedTitle = task.title.replace(/'/g, "'\\''");
@@ -854,9 +861,9 @@ export const handlers = {
 		].join("\n") + "\n";
 		await Bun.write(scriptPath, script);
 
-		const paneId = await openGitOpPane(tmuxSession, project.path, scriptPath);
+		const paneId = await openGitOpPane(tmuxSession, project.path, scriptPath, socket);
 		if (paneId) gitOpPaneIds.set(task.id, paneId);
-		monitorGitPane(paneId, task.id, params.projectId, "merge");
+		monitorGitPane(paneId, task.id, params.projectId, "merge", socket);
 
 		log.info("← mergeTask (pane opened)", { paneId });
 	},
@@ -871,7 +878,8 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-push.sh`;
 
-		await killExistingGitPane(task.id, tmuxSession);
+		const socket = task.tmuxSocket ?? null;
+		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
 			`#!/bin/bash`,
@@ -892,9 +900,9 @@ export const handlers = {
 		].join("\n") + "\n";
 		await Bun.write(scriptPath, script);
 
-		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath);
+		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
 		if (paneId) gitOpPaneIds.set(task.id, paneId);
-		monitorGitPane(paneId, task.id, params.projectId, "push");
+		monitorGitPane(paneId, task.id, params.projectId, "push", socket);
 
 		log.info("← pushTask (pane opened)", { paneId });
 	},

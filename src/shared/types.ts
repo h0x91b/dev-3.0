@@ -169,6 +169,7 @@ export interface Task {
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;
+	tmuxSocket?: string | null;
 }
 
 /** Generate a short title from a description (first ~maxLen chars, word-boundary truncated). */
