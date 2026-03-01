@@ -1,3 +1,1 @@
-Fix: setup-скрипт и claude-команда не работали из-за того, что tmux-сервер не наследует
-кастомные env vars от клиентского процесса. Заменил передачу через env vars на запись
-контента в отдельные файлы (/tmp/dev3-{taskId}-setup.sh, /tmp/dev3-{taskId}-cmd.sh).
+Fix: setup script and claude command failed because tmux server does not inherit custom env vars from the client process. Switched from env vars to writing content into temp files (/tmp/dev3-{taskId}-setup.sh, /tmp/dev3-{taskId}-cmd.sh).

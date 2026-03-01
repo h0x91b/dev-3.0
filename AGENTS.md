@@ -60,7 +60,7 @@ Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`
 
 **Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
 
-**Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers.
+**Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers. **Keep it short — one paragraph max.**
 
 **Rules:**
 - Include the changelog file in the same commit as the code change.
@@ -90,7 +90,7 @@ Non-obvious architectural decisions, hacks, and workarounds are documented in `d
 
 **Rules:**
 - Include the decision file in the same commit as the code change.
-- Keep it concise — this is a reference document, not a blog post.
+- **Keep it short.** Each section should be 2-4 sentences max. This is a quick reference, not a blog post. A good decision record fits on one screen.
 - Link to relevant code paths (file + function names) so readers can find the implementation.
 
 ## What is this

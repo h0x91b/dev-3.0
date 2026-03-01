@@ -1,3 +1,1 @@
-Setup script теперь запускается в отдельной tmux-панельке (pane 0), а агент — в нижней (pane 1).
-В режиме foreground агент стартует только после завершения setup; в режиме background оба запускаются параллельно.
-Реализовано через startup-скрипт в /tmp с передачей данных через env vars, без escaping проблем.
+Setup script now runs in a dedicated tmux pane (pane 0), agent runs in the bottom pane (pane 1). In foreground mode the agent waits for setup to finish; in background mode both run in parallel. Implemented via a startup script in /tmp, no escaping issues.
