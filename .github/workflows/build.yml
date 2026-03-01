@@ -15,10 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
+      - name: Setup Bun (arm64)
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.10"
+
+      - name: Download x64 Bun binary
+        run: |
+          mkdir -p $HOME/.bun-x64/bin
+          curl -fsSL -o /tmp/bun-x64.zip "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-darwin-x64.zip"
+          unzip -o /tmp/bun-x64.zip -d /tmp/bun-x64
+          cp /tmp/bun-x64/bun-darwin-x64/bun $HOME/.bun-x64/bin/bun
+          chmod +x $HOME/.bun-x64/bin/bun
 
       - name: Install dependencies
         run: bun install
@@ -35,11 +43,81 @@ jobs:
           sed -i '' "s/name: \"dev-3.0\"/name: \"${APP_NAME}\"/" electrobun.config.ts
           echo "Patched app name to: ${APP_NAME}"
 
+      # ========================================
+      # Phase A: arm64 build (native)
+      # ========================================
+
       - name: Clean previous build artifacts
         run: rm -rf ./build ./artifacts
 
-      - name: Build application
+      - name: Build arm64 application
         run: bunx vite build && bunx electrobun build --env=canary
+
+      - name: Collect arm64 artifacts
+        run: |
+          mkdir -p ./artifacts-arm64
+          for f in ./artifacts/*; do
+            name=$(basename "$f")
+            # Rename canary-macos-arm64-* files (already correct prefix, just copy)
+            cp "$f" "./artifacts-arm64/$name"
+          done
+          echo "arm64 artifacts:"
+          ls -lh ./artifacts-arm64/
+
+      # ========================================
+      # Phase B: x64 build (Rosetta)
+      # ========================================
+
+      - name: Clean for x64 build
+        continue-on-error: true
+        run: rm -rf ./build ./artifacts ./node_modules
+
+      - name: Install x64 dependencies (Rosetta)
+        id: x64_install
+        continue-on-error: true
+        run: arch -x86_64 $HOME/.bun-x64/bin/bun install
+
+      - name: Build x64 application (Rosetta)
+        id: x64_build
+        if: steps.x64_install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          arch -x86_64 $HOME/.bun-x64/bin/bunx vite build
+          arch -x86_64 $HOME/.bun-x64/bin/bunx electrobun build --env=canary
+
+      - name: Collect x64 artifacts
+        id: x64_artifacts
+        if: steps.x64_build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          mkdir -p ./artifacts-x64
+          for f in ./artifacts/*; do
+            name=$(basename "$f")
+            # Electrobun produces canary-macos-arm64-* even under Rosetta,
+            # so rename to canary-macos-x64-*
+            newname=$(echo "$name" | sed 's/canary-macos-arm64/canary-macos-x64/')
+            cp "$f" "./artifacts-x64/$newname"
+          done
+          echo "x64 artifacts:"
+          ls -lh ./artifacts-x64/
+
+      # ========================================
+      # Merge & Upload
+      # ========================================
+
+      - name: Merge artifacts
+        run: |
+          rm -rf ./artifacts
+          mkdir -p ./artifacts
+          cp ./artifacts-arm64/* ./artifacts/
+          if [ -d ./artifacts-x64 ]; then
+            cp ./artifacts-x64/* ./artifacts/
+            echo "Merged arm64 + x64 artifacts"
+          else
+            echo "::warning::x64 artifacts not available, shipping arm64 only"
+          fi
+          echo "All artifacts:"
+          ls -lh ./artifacts/
 
       - name: Upload to S3
         env:
@@ -54,16 +132,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/${{ github.sha }}"
-          DMG=$(ls ./artifacts/canary-macos-*-*.dmg 2>/dev/null | head -1 | xargs basename)
-          APP=$(echo "$DMG" | sed 's/^canary-macos-[^-]*-//; s/\.dmg$//')
+          ARM_DMG=$(ls ./artifacts-arm64/*.dmg 2>/dev/null | head -1 | xargs basename)
+          APP=$(echo "$ARM_DMG" | sed 's/^canary-macos-[^-]*-//; s/\.dmg$//')
+          X64_OK="${{ steps.x64_artifacts.outcome }}"
 
           {
             echo "## Build Artifacts"
             echo ""
-            for file in ./artifacts/*; do
+            echo "### Apple Silicon (arm64)"
+            for file in ./artifacts-arm64/*; do
               name=$(basename "$file")
               echo "- [\`$name\`]($S3_BASE/$name)"
             done
+            if [ "$X64_OK" = "success" ]; then
+              echo ""
+              echo "### Intel (x64)"
+              for file in ./artifacts-x64/*; do
+                name=$(basename "$file")
+                echo "- [\`$name\`]($S3_BASE/$name)"
+              done
+            else
+              echo ""
+              echo "> **Note:** x64 (Intel) build was not available for this PR."
+            fi
             echo ""
             echo "### Running unsigned builds"
             echo ""

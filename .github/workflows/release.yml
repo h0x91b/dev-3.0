@@ -94,17 +94,34 @@ jobs:
       - name: Create arm64 release artifacts
         run: bash ./scripts/create-release-artifacts.sh arm64
 
+      # Upload arm64 immediately so auto-update works even if x64 build fails
+      - name: Upload arm64 artifacts to S3 (early)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: |
+          aws s3 sync ./artifacts-arm64/ s3://h0x91b-releases/dev-3.0/${{ github.ref_name }}/
+          aws s3 sync ./artifacts-arm64/ s3://h0x91b-releases/dev-3.0/ --exclude "*.dmg"
+          echo "arm64 artifacts uploaded to S3 (early upload)"
+
       # ========================================
       # Phase B: x64 build (Rosetta)
       # ========================================
 
       - name: Clean for x64 build
+        continue-on-error: true
         run: rm -rf ./build ./artifacts ./node_modules
 
       - name: Install x64 dependencies (Rosetta)
+        id: x64_install
+        continue-on-error: true
         run: arch -x86_64 $HOME/.bun-x64/bin/bun install
 
       - name: Build x64 release (Rosetta, signed + notarized)
+        id: x64_build
+        if: steps.x64_install.outcome == 'success'
+        continue-on-error: true
         env:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
@@ -117,7 +134,7 @@ jobs:
           arch -x86_64 $HOME/.bun-x64/bin/bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (known post-tar codesign bug, recovering artifacts)"
 
       - name: Debug x64 build output
-        if: always()
+        if: steps.x64_build.outcome == 'success'
         run: |
           echo "=== ./build/ ==="
           find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
@@ -126,6 +143,9 @@ jobs:
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
 
       - name: Create x64 release artifacts
+        id: x64_artifacts
+        if: steps.x64_build.outcome == 'success'
+        continue-on-error: true
         run: bash ./scripts/create-release-artifacts.sh x64
 
       # ========================================
@@ -136,7 +156,12 @@ jobs:
         run: |
           mkdir -p ./artifacts
           cp ./artifacts-arm64/* ./artifacts/
-          cp ./artifacts-x64/* ./artifacts/
+          if [ -d ./artifacts-x64 ]; then
+            cp ./artifacts-x64/* ./artifacts/
+            echo "Merged arm64 + x64 artifacts"
+          else
+            echo "::warning::x64 artifacts not available, shipping arm64 only"
+          fi
           echo "All artifacts:"
           ls -lh ./artifacts/
 
@@ -159,15 +184,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/${{ github.ref_name }}"
+          X64_OK="${{ steps.x64_artifacts.outcome }}"
 
           {
             echo "## Download"
             echo ""
             echo "### macOS (Apple Silicon)"
             echo "- [\`stable-macos-arm64-dev-3.0.dmg\`]($S3_BASE/stable-macos-arm64-dev-3.0.dmg)"
-            echo ""
-            echo "### macOS (Intel)"
-            echo "- [\`stable-macos-x64-dev-3.0.dmg\`]($S3_BASE/stable-macos-x64-dev-3.0.dmg)"
+            if [ "$X64_OK" = "success" ]; then
+              echo ""
+              echo "### macOS (Intel)"
+              echo "- [\`stable-macos-x64-dev-3.0.dmg\`]($S3_BASE/stable-macos-x64-dev-3.0.dmg)"
+            fi
             echo ""
             echo "### All artifacts"
             echo ""
