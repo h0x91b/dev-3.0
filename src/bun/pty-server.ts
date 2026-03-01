@@ -1,6 +1,73 @@
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
+
+// --- Bundled tmux configuration -------------------------------------------
+// Based on the developer's personal tmux.conf, stripped of locale-specific
+// comments and extended with clipboard / bell pass-through settings that
+// were previously applied programmatically in configureTmux().
+
+const TMUX_SOCKET = "dev3";
+export const TMUX_CONF_PATH = "/tmp/dev3-tmux.conf";
+
+const TMUX_CONFIG = `# Mouse support
+setw -g mouse on
+
+# Window/pane numbering starts at 1
+set -g base-index 1
+setw -g pane-base-index 1
+
+# 256-color terminal
+set -g default-terminal "tmux-256color"
+
+# Scrollback buffer
+set -g history-limit 50000
+
+# No escape delay (for vim/neovim)
+set -sg escape-time 0
+
+# Auto-rename windows by running command
+setw -g automatic-rename on
+
+# Renumber windows when one is closed
+set -g renumber-windows on
+
+# Intuitive splits (open in same directory)
+bind | split-window -h -c "#{pane_current_path}"
+bind \\\\ split-window -h -c "#{pane_current_path}"
+bind - split-window -v -c "#{pane_current_path}"
+
+# Alt+arrow pane switching (no prefix required)
+bind -n M-Left select-pane -L
+bind -n M-Right select-pane -R
+bind -n M-Up select-pane -U
+bind -n M-Down select-pane -D
+
+# Status bar
+set -g status-right "#(ps -t #{pane_tty} -o pid=,comm= --sort=-start_time | head -1) | #{pane_current_path} | #(cd #{pane_current_path}; git branch --show-current 2>/dev/null || echo '-') | ^b+| split ^b+- hsplit ^b+z zoom"
+set -g status-right-length 150
+
+# Clipboard support
+set -s set-clipboard on
+bind -T copy-mode MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
+bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
+
+# Bell pass-through
+set -g visual-bell off
+set -g bell-action any
+setw -g monitor-bell on
+`;
+
+writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
+
+/**
+ * Build a tmux command array with our custom socket.
+ * All tmux invocations in the app MUST use this helper to ensure
+ * session isolation from the user's personal tmux server.
+ */
+export function tmuxArgs(...args: string[]): string[] {
+	return ["tmux", "-L", TMUX_SOCKET, ...args];
+}
 
 const log = createLogger("pty");
 
@@ -63,7 +130,7 @@ export function destroySession(taskId: string): void {
 	// attached client, the session itself keeps running on the tmux server.
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
-		spawn(["tmux", "kill-session", "-t", tmuxSessionName]);
+		spawn(tmuxArgs("kill-session", "-t", tmuxSessionName));
 	} catch (err) {
 		log.warn("tmux kill-session failed (best-effort)", {
 			taskId: taskId.slice(0, 8),
@@ -93,7 +160,7 @@ export function capturePane(taskId: string): string | null {
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
 		const result = spawnSync(
-			["tmux", "capture-pane", "-p", "-e", "-t", tmuxSessionName],
+			tmuxArgs("capture-pane", "-p", "-e", "-t", tmuxSessionName),
 		);
 		if (result.exitCode === 0 && result.stdout.length > 0) {
 			return new TextDecoder().decode(result.stdout);
@@ -149,20 +216,10 @@ function checkForBell(data: string, taskId: string): void {
 }
 
 function configureTmux(tmuxSessionName: string): void {
-	// Clipboard
-	spawnSync(["tmux", "set", "-s", "set-clipboard", "on"]);
-	for (const table of ["copy-mode", "copy-mode-vi"]) {
-		spawnSync([
-			"tmux", "bind", "-T", table,
-			"MouseDragEnd1Pane",
-			"send-keys", "-X", "copy-pipe-and-cancel", "pbcopy",
-		]);
-	}
-	// Bell: ensure tmux passes BEL through to the parent terminal
-	spawnSync(["tmux", "set", "-t", tmuxSessionName, "visual-bell", "off"]);
-	spawnSync(["tmux", "set", "-t", tmuxSessionName, "bell-action", "any"]);
-	spawnSync(["tmux", "set", "-t", tmuxSessionName, "monitor-bell", "on"]);
-	log.info("tmux configured (clipboard + bell pass-through)", { tmuxSession: tmuxSessionName });
+	// Re-source the config in case the tmux server was already running
+	// (the -f flag on new-session only applies when starting a fresh server)
+	spawnSync(tmuxArgs("source-file", TMUX_CONF_PATH));
+	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
 }
 
 function spawnPty(session: PtySession, cols: number, rows: number): void {
@@ -205,7 +262,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	let proc: ReturnType<typeof Bun.spawn>;
 	try {
 		proc = spawn(
-			["tmux", "new-session", "-A", "-s", tmuxSessionName, tmuxCmd],
+			tmuxArgs("-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd),
 			{
 				terminal: {
 					cols,

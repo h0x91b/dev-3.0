@@ -1,0 +1,1 @@
+Ship a bundled tmux configuration based on the developer's personal setup (mouse support, intuitive splits, 256-color, vim-friendly escape-time, clipboard/bell pass-through). All tmux sessions now run on an isolated `-L dev3` socket with this config, preventing conflicts with the user's personal tmux server.
