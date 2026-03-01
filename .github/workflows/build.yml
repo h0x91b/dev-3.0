@@ -83,7 +83,8 @@ jobs:
         if: steps.x64_install.outcome == 'success'
         continue-on-error: true
         run: |
-          arch -x86_64 $HOME/.bun-x64/bin/bunx vite build
+          # Vite output (dist/) is platform-independent JS/CSS — reuse from arm64 phase.
+          # Only electrobun build needs to run per-arch (creates native .app bundle).
           arch -x86_64 $HOME/.bun-x64/bin/bunx electrobun build --env=canary
 
       - name: Collect x64 artifacts

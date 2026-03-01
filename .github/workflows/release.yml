@@ -131,7 +131,8 @@ jobs:
           COPYFILE_DISABLE: "1"
           COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
         run: |
-          arch -x86_64 $HOME/.bun-x64/bin/bunx vite build
+          # Vite output (dist/) is platform-independent JS/CSS — reuse from arm64 phase.
+          # Only electrobun build needs to run per-arch (creates native .app bundle).
           arch -x86_64 $HOME/.bun-x64/bin/bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (known post-tar codesign bug, recovering artifacts)"
 
       - name: Debug x64 build output
