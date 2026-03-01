@@ -253,12 +253,17 @@ Call with `t.plural("dashboard.projectCount", count)`.
 **Framework: Vitest** with `happy-dom` environment and React Testing Library. Config in `vitest.config.ts`.
 
 ```bash
+# TypeScript type-check (must pass before committing)
+bun run lint
+
 # Run all tests once
 bun run test
 
 # Watch mode (re-runs on file changes)
 bun run test:watch
 ```
+
+> **Rule:** Always run both `bun run lint` **and** `bun run test` before committing. A commit that breaks type-checking is not acceptable, even if tests pass. Fix all TypeScript errors before pushing.
 
 ### Where tests live
 

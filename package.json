@@ -9,6 +9,7 @@
 		"build": "vite build && electrobun build",
 		"build:prod": "vite build && electrobun build --channel prod",
 		"start": "electrobun build && electrobun dev",
+		"lint": "bun scripts/lint.ts",
 		"test": "vitest run",
 		"test:bun": "vitest run --config vitest.config.bun.ts",
 		"test:watch": "vitest",

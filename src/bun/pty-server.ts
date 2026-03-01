@@ -127,8 +127,9 @@ function handleOsc52(data: string): string {
 			try {
 				const text = Buffer.from(b64, "base64").toString("utf-8");
 				const proc = spawn(["pbcopy"], { stdin: "pipe" });
-				proc.stdin.write(text);
-				proc.stdin.end();
+				const pbcopyStdin = proc.stdin as unknown as import("bun").FileSink;
+				pbcopyStdin.write(text);
+				pbcopyStdin.end();
 				log.info("OSC 52: copied to clipboard", { len: text.length });
 			} catch {
 				// ignore
@@ -209,7 +210,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				terminal: {
 					cols,
 					rows,
-					data(_terminal, data) {
+					data(_terminal: unknown, data: string | Uint8Array) {
 						try {
 							const str =
 								typeof data === "string"
