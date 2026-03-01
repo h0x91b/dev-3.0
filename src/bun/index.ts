@@ -148,6 +148,28 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 	}
 }
 
+// ── Shell profile PATH injection ──
+// Append ~/.dev3.0/bin to the user's shell RC file (idempotent).
+// This makes `dev3` available in all terminals, not just worktree tmux sessions.
+{
+	const { existsSync: fExistsRc, readFileSync: fReadRc, appendFileSync: fAppendRc } = await import("node:fs");
+	const shell = process.env.SHELL || "/bin/zsh";
+	const home = process.env.HOME || "/tmp";
+	const rcFile = shell.endsWith("bash") ? `${home}/.bashrc` : `${home}/.zshrc`;
+	const marker = ".dev3.0/bin";
+	try {
+		const content = fExistsRc(rcFile) ? fReadRc(rcFile, "utf-8") : "";
+		if (!content.includes(marker)) {
+			fAppendRc(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
+			log.info("Shell profile updated with dev3 PATH", { rcFile });
+		} else {
+			log.info("Shell profile already contains dev3 PATH", { rcFile });
+		}
+	} catch (err) {
+		log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
+	}
+}
+
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell } = await import("./pty-server");
 

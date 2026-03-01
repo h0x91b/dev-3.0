@@ -346,10 +346,16 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 
 	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
 
-	// Configure tmux (clipboard + bell pass-through) after session is ready
+	// Configure tmux (clipboard + bell pass-through) after session is ready.
+	// Also propagate PATH to session environment so all new panes inherit it
+	// (the env passed to Bun.spawn only affects the initial process).
 	setTimeout(() => {
 		try {
 			configureTmux(tmuxSessionName, session.tmuxSocket);
+			if (session.env?.PATH) {
+				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "PATH", session.env.PATH));
+				log.info("tmux session PATH set", { tmuxSession: tmuxSessionName });
+			}
 		} catch (err) {
 			log.error("configureTmux failed", {
 				taskId: shortId(session.taskId),

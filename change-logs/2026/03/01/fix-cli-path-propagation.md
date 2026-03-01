@@ -1,0 +1,1 @@
+Fix dev3 CLI PATH propagation to all tmux panes and user shells. Set PATH via tmux set-environment per session so new panes inherit it. Also inject ~/.dev3.0/bin into shell profile (~/.zshrc or ~/.bashrc) idempotently on app startup, making dev3 available in all terminals.
