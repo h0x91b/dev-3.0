@@ -4,6 +4,20 @@ This file provides guidance to AI coding agents when working with code in this r
 
 > **Note:** `CLAUDE.md` is a symbolic link to this file (`AGENTS.md`). This is intentional — it ensures all agents (Claude Code, Cursor, Codex, etc.) read the same instructions regardless of which filename convention they follow. If you see both files changed in a diff, that's expected.
 
+## Language policy
+
+**All code-related content MUST be in English — no exceptions.**
+
+This applies to:
+- Commit messages
+- Changelog files (`change-logs/`)
+- Code comments and docstrings
+- Decision records (`decisions/`)
+- PR titles and descriptions
+- Any text written inside source files
+
+The user may communicate with agents in Russian, but everything written into the codebase or git history must be in English only.
+
 ## Multi-agent workflow
 
 Multiple AI agents may work on this project in parallel. Each agent MUST:
@@ -46,7 +60,7 @@ Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`
 
 **Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
 
-**Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers.
+**Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers. **Keep it short — one paragraph max.**
 
 **Rules:**
 - Include the changelog file in the same commit as the code change.
@@ -76,7 +90,7 @@ Non-obvious architectural decisions, hacks, and workarounds are documented in `d
 
 **Rules:**
 - Include the decision file in the same commit as the code change.
-- Keep it concise — this is a reference document, not a blog post.
+- **Keep it short.** Each section should be 2-4 sentences max. This is a quick reference, not a blog post. A good decision record fits on one screen.
 - Link to relevant code paths (file + function names) so readers can find the implementation.
 
 ## What is this
