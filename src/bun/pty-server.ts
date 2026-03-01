@@ -7,7 +7,6 @@ import { spawn, spawnSync } from "./spawn";
 // comments and extended with clipboard / bell pass-through settings that
 // were previously applied programmatically in configureTmux().
 
-const TMUX_SOCKET = "dev3";
 export const TMUX_CONF_PATH = "/tmp/dev3-tmux.conf";
 
 const TMUX_CONFIG = `# Mouse support
@@ -65,8 +64,11 @@ writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
  * All tmux invocations in the app MUST use this helper to ensure
  * session isolation from the user's personal tmux server.
  */
-export function tmuxArgs(...args: string[]): string[] {
-	return ["tmux", "-L", TMUX_SOCKET, ...args];
+export function tmuxArgs(socket: string | null | undefined, ...args: string[]): string[] {
+	if (socket) {
+		return ["tmux", "-L", socket, ...args];
+	}
+	return ["tmux", ...args];
 }
 
 const log = createLogger("pty");
@@ -81,6 +83,7 @@ interface PtySession {
 	env: Record<string, string>;
 	proc: ReturnType<typeof Bun.spawn> | null;
 	ws: any;
+	tmuxSocket: string | null;
 }
 
 const sessions = new Map<string, PtySession>();
@@ -101,8 +104,9 @@ export function createSession(
 	cwd: string,
 	tmuxCommand: string,
 	extraEnv: Record<string, string> = {},
+	tmuxSocket: string | null = null,
 ): void {
-	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand });
+	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand, tmuxSocket });
 	const session: PtySession = {
 		taskId,
 		projectId,
@@ -111,6 +115,7 @@ export function createSession(
 		env: extraEnv,
 		proc: null,
 		ws: null,
+		tmuxSocket,
 	};
 	sessions.set(taskId, session);
 	// Spawn immediately in the background — don't wait for WS connection
@@ -130,7 +135,7 @@ export function destroySession(taskId: string): void {
 	// attached client, the session itself keeps running on the tmux server.
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
-		spawn(tmuxArgs("kill-session", "-t", tmuxSessionName));
+		spawn(tmuxArgs(session.tmuxSocket, "kill-session", "-t", tmuxSessionName));
 	} catch (err) {
 		log.warn("tmux kill-session failed (best-effort)", {
 			taskId: taskId.slice(0, 8),
@@ -157,10 +162,12 @@ export function hasSession(taskId: string): boolean {
 }
 
 export function capturePane(taskId: string): string | null {
+	const session = sessions.get(taskId);
+	const socket = session?.tmuxSocket ?? null;
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
 		const result = spawnSync(
-			tmuxArgs("capture-pane", "-p", "-e", "-t", tmuxSessionName),
+			tmuxArgs(socket, "capture-pane", "-p", "-e", "-t", tmuxSessionName),
 		);
 		if (result.exitCode === 0 && result.stdout.length > 0) {
 			return new TextDecoder().decode(result.stdout);
@@ -173,6 +180,10 @@ export function capturePane(taskId: string): string | null {
 
 export function getSessionProjectId(taskId: string): string | null {
 	return sessions.get(taskId)?.projectId ?? null;
+}
+
+export function getSessionSocket(taskId: string): string | null {
+	return sessions.get(taskId)?.tmuxSocket ?? null;
 }
 
 export function getPtyPort(): number {
@@ -215,11 +226,13 @@ function checkForBell(data: string, taskId: string): void {
 	}
 }
 
-function configureTmux(tmuxSessionName: string): void {
-	// Re-source the config in case the tmux server was already running
-	// (the -f flag on new-session only applies when starting a fresh server)
-	spawnSync(tmuxArgs("source-file", TMUX_CONF_PATH));
-	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
+function configureTmux(tmuxSessionName: string, socket: string | null): void {
+	if (socket) {
+		// Re-source the config in case the tmux server was already running
+		// (the -f flag on new-session only applies when starting a fresh server)
+		spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
+		log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
+	}
 }
 
 function spawnPty(session: PtySession, cols: number, rows: number): void {
@@ -261,8 +274,11 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 
 	let proc: ReturnType<typeof Bun.spawn>;
 	try {
+		const newSessionArgs = session.tmuxSocket
+			? tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd)
+			: tmuxArgs(null, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd);
 		proc = spawn(
-			tmuxArgs("-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd),
+			newSessionArgs,
 			{
 				terminal: {
 					cols,
@@ -329,7 +345,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	// Configure tmux (clipboard + bell pass-through) after session is ready
 	setTimeout(() => {
 		try {
-			configureTmux(tmuxSessionName);
+			configureTmux(tmuxSessionName, session.tmuxSocket);
 		} catch (err) {
 			log.error("configureTmux failed", {
 				taskId: shortId(session.taskId),

@@ -204,6 +204,7 @@ export async function addTask(
 		configId: extras?.configId ?? null,
 		createdAt: now,
 		updatedAt: now,
+		tmuxSocket: "dev3",
 	};
 	tasks.push(task);
 	await saveTasks(project, tasks);
