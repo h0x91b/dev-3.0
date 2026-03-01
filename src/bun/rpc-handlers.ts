@@ -118,7 +118,11 @@ export function setPushMessage(fn: (name: string, payload: any) => void): void {
 	pushMessage = fn;
 }
 
-function isActive(status: TaskStatus): boolean {
+export function getPushMessage(): ((name: string, payload: any) => void) | null {
+	return pushMessage;
+}
+
+export function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
 }
 
@@ -146,7 +150,7 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 
 const DEFAULT_CLEANUP_SCRIPT = 'say "task finished"';
 
-async function runCleanupScript(task: Task, project: Project): Promise<void> {
+export async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath) return;
 
 	if (!existsSync(task.worktreePath)) {
@@ -185,7 +189,7 @@ async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	log.info("Cleanup session finished", { session: sessionName });
 }
 
-async function launchTaskPty(
+export async function launchTaskPty(
 	project: Project,
 	task: Task,
 	worktreePath: string,

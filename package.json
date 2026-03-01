@@ -14,6 +14,7 @@
 		"lint": "bun scripts/lint.ts",
 		"test": "vitest run",
 		"test:bun": "vitest run --config vitest.config.bun.ts",
+		"test:cli": "vitest run --config vitest.config.cli.ts",
 		"test:watch": "vitest",
 		"bump": "bun run scripts/bump.ts",
 		"full-release": "bun run scripts/full-release.ts"

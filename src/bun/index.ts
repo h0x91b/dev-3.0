@@ -13,6 +13,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { spawn } from "./spawn";
+import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 
@@ -98,6 +99,61 @@ if (shellEnv.lang) {
 	// Fallback: ensure UTF-8 even if the shell doesn't export LANG
 	process.env.LANG = "en_US.UTF-8";
 	log.info("LANG not found in shell, using fallback", { lang: "en_US.UTF-8" });
+}
+
+// ── CLI socket server ──
+// Start Unix domain socket server for CLI tool communication.
+const cliSocketPath = startSocketServer();
+log.info("CLI socket server ready", { path: cliSocketPath });
+
+// ── CLI symlink ──
+// Ensure the `dev3` CLI command is available in PATH.
+{
+	const { existsSync: fExists, mkdirSync: fMkdir, writeFileSync: fWrite, symlinkSync: fSymlink, unlinkSync: fUnlink, lstatSync: fLstat, chmodSync: fChmod } = await import("node:fs");
+	const { resolve: fResolve } = await import("node:path");
+
+	const cliBinDir = `${DEV3_HOME}/bin`;
+	const cliScript = `${cliBinDir}/dev3`;
+	const symlinkTarget = "/usr/local/bin/dev3";
+
+	try {
+		fMkdir(cliBinDir, { recursive: true });
+
+		// Resolve the CLI main.ts path relative to this file's location.
+		// In dev mode import.meta.dir points to src/bun/, so CLI is at ../cli/main.ts.
+		// In production the CLI module is bundled alongside.
+		let cliMainPath: string;
+		const devCliPath = fResolve(import.meta.dir, "..", "cli", "main.ts");
+		if (fExists(devCliPath)) {
+			cliMainPath = devCliPath;
+		} else {
+			// Production fallback: look for compiled CLI next to this module
+			cliMainPath = fResolve(import.meta.dir, "..", "cli", "main.js");
+		}
+
+		const scriptContent = `#!/usr/bin/env bun\nimport "${cliMainPath}";\n`;
+		fWrite(cliScript, scriptContent, "utf-8");
+		fChmod(cliScript, 0o755);
+
+		// Create symlink (best-effort — may fail without sudo)
+		try {
+			if (fExists(symlinkTarget)) {
+				const stat = fLstat(symlinkTarget);
+				if (stat.isSymbolicLink() || stat.isFile()) {
+					fUnlink(symlinkTarget);
+				}
+			}
+			fSymlink(cliScript, symlinkTarget);
+			log.info("CLI symlink created", { link: symlinkTarget, target: cliScript });
+		} catch (err) {
+			log.warn("Could not create CLI symlink (may need sudo)", {
+				link: symlinkTarget,
+				error: String(err),
+			});
+		}
+	} catch (err) {
+		log.warn("CLI setup failed (non-fatal)", { error: String(err) });
+	}
 }
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
@@ -248,7 +304,8 @@ setOnBell((taskId) => {
 });
 
 mainWindow.on("close", () => {
-	log.info("Main window closing, quitting app");
+	log.info("Main window closing, cleaning up");
+	stopSocketServer();
 	Utils.quit();
 });
 
