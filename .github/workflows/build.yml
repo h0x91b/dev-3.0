@@ -23,10 +23,11 @@ jobs:
       - name: Download x64 Bun binary
         run: |
           mkdir -p $HOME/.bun-x64/bin
-          curl -fsSL -o /tmp/bun-x64.zip "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-darwin-x64.zip"
+          curl -fsSL -o /tmp/bun-x64.zip "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-darwin-x64-baseline.zip"
           unzip -o /tmp/bun-x64.zip -d /tmp/bun-x64
-          cp /tmp/bun-x64/bun-darwin-x64/bun $HOME/.bun-x64/bin/bun
+          cp /tmp/bun-x64/bun-darwin-x64-baseline/bun $HOME/.bun-x64/bin/bun
           chmod +x $HOME/.bun-x64/bin/bun
+          ln -sf $HOME/.bun-x64/bin/bun $HOME/.bun-x64/bin/bunx
 
       - name: Install dependencies
         run: bun install
