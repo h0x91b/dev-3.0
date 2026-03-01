@@ -72,6 +72,18 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
+		// Preload bundled font before creating the terminal.
+		// Canvas rendering doesn't trigger CSS @font-face loading, so the
+		// font must be ready before ghostty-web measures it for cell metrics.
+		const TERMINAL_FONT = "'JetBrains Mono', 'SF Mono', 'Menlo', monospace";
+		document.fonts.load(`14px ${TERMINAL_FONT}`).then(() => {
+			console.log("[TerminalView] Font preloaded, starting setup");
+			if (!disposed) setup();
+		}).catch(() => {
+			console.warn("[TerminalView] Font preload failed, starting setup with fallback");
+			if (!disposed) setup();
+		});
+
 		function setup() {
 			if (!containerRef.current || disposed) {
 				console.warn("[TerminalView] setup() aborted", {
@@ -84,8 +96,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
 			const term = new Terminal({
 				fontSize: 14,
-				fontFamily:
-					"'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
 				theme: {
@@ -334,7 +345,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			});
 		}
 
-		setup();
+		// setup() is called after font preload above — not here directly
 
 		return () => {
 			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });

@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---- Bundled terminal font (JetBrains Mono) ---- */
+@font-face {
+	font-family: 'JetBrains Mono';
+	src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'JetBrains Mono';
+	src: url('./assets/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+
 /* ---- Theme tokens (space-separated RGB for Tailwind alpha support) ---- */
 :root,
 [data-theme="dark"] {
