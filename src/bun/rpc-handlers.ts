@@ -1154,18 +1154,36 @@ export const handlers = {
 			return [];
 		}
 
+		// Build shortId → taskTitle map from all projects/tasks
+		const titleMap = new Map<string, string>();
+		try {
+			const projects = await data.loadProjects();
+			for (const project of projects) {
+				const tasks = await data.loadTasks(project);
+				for (const task of tasks) {
+					titleMap.set(task.id.slice(0, 8), task.title);
+				}
+			}
+		} catch {
+			// Best effort — if loading fails, we just won't have titles
+		}
+
 		const sessions: TmuxSessionInfo[] = [];
 		for (const line of output.trim().split("\n")) {
 			if (!line) continue;
 			const [name, cwd, windowsStr, createdStr] = line.split("|");
 			if (!name.startsWith("dev3-")) continue;
 
+			const isCleanup = name.startsWith("dev3-cl-");
+			const shortId = isCleanup ? name.slice(8) : name.slice(5);
+
 			sessions.push({
 				name,
 				cwd: cwd || "",
 				createdAt: parseInt(createdStr, 10) || 0,
 				windowCount: parseInt(windowsStr, 10) || 1,
-				isCleanup: name.startsWith("dev3-cl-"),
+				isCleanup,
+				taskTitle: titleMap.get(shortId),
 			});
 		}
 

@@ -237,8 +237,8 @@ function TmuxSessionManager() {
 										{/* Session name + badges + kill */}
 										<div className="flex items-center justify-between gap-2">
 											<div className="flex items-center gap-2 min-w-0">
-												<span className="text-sm font-mono font-semibold text-fg truncate">
-													{session.name}
+												<span className="text-sm font-semibold text-fg truncate" title={session.name}>
+													{session.taskTitle || session.name}
 												</span>
 												{session.isCleanup && (
 													<span className="text-[9px] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
