@@ -235,6 +235,32 @@ describe('sortTasksForColumn — "bottom" mode with grouped/variant tasks', () =
 });
 
 // ============================================================
+// "bottom" mode — movedAt fallback (persisted, no moveOrderMap)
+// ============================================================
+
+describe('sortTasksForColumn — "bottom" mode with movedAt fallback', () => {
+	it("tasks with movedAt below tasks without", () => {
+		const tasks = [
+			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", createdAt: "2025-06-01T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
+		expect(ids(result)).toEqual(["A", "B"]);
+	});
+
+	it("multiple movedAt: most recently moved last (bottom)", () => {
+		const tasks = [
+			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z", movedAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
+		// C has no movedAt → first; B movedAt earlier → second; A movedAt more recent → last (bottom)
+		expect(ids(result)).toEqual(["C", "B", "A"]);
+	});
+});
+
+// ============================================================
 // "bottom" mode — no moveOrderMap (default behavior)
 // ============================================================
 

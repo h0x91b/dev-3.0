@@ -26,12 +26,16 @@ export function sortTasksForColumn(
 		if (a.groupId && b.groupId) {
 			return (a.variantIndex ?? 0) - (b.variantIndex ?? 0);
 		}
-		// Ungrouped: sort by position preference
+		// Ungrouped: sort by position preference using movedAt (persisted across reloads)
 		if (dropPosition === "top") {
-			// Fallback: movedAt from task (persisted across reloads)
 			if (a.movedAt && b.movedAt) return b.movedAt > a.movedAt ? 1 : -1;
 			if (a.movedAt) return -1;
 			if (b.movedAt) return 1;
+		} else {
+			// "bottom": recently moved tasks go to the end
+			if (a.movedAt && b.movedAt) return a.movedAt > b.movedAt ? 1 : -1;
+			if (a.movedAt) return 1;
+			if (b.movedAt) return -1;
 		}
 		return a.createdAt < b.createdAt ? -1 : 1;
 	});
