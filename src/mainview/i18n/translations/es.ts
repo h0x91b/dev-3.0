@@ -176,6 +176,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.push": "Push",
 	"infoPanel.pushing": "Push...",
 	"infoPanel.pushFailed": "Push falló: {error}",
+	"infoPanel.showDiff": "Show Diff",
+	"infoPanel.showDiffFailed": "Error al mostrar diff: {error}",
 	"infoPanel.devServerFailed": "Error al iniciar el servidor de desarrollo: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Actualizar estado de la rama",
