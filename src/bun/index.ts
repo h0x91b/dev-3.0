@@ -11,7 +11,7 @@ import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpd
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { resolveShellPath } from "./shell-env";
+import { resolveShellEnv } from "./shell-env";
 import { spawn } from "./spawn";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
@@ -72,19 +72,32 @@ log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
-// ── Resolve user's shell PATH ──
-// macOS .app bundles inherit a minimal PATH. Resolve the full PATH from the
-// user's login shell BEFORE starting the PTY server or spawning any processes.
+// ── Resolve user's shell environment (PATH + LANG) ──
+// macOS .app bundles inherit a minimal env: PATH=/usr/bin:/bin:/usr/sbin:/sbin,
+// no LANG. Without LANG, tmux replaces non-ASCII chars (Cyrillic, etc.) with
+// underscores. Resolve both from the user's login shell BEFORE starting the PTY.
 const originalPath = process.env.PATH;
-const resolvedPath = await resolveShellPath();
-if (resolvedPath) {
-	process.env.PATH = resolvedPath;
+const originalLang = process.env.LANG;
+const shellEnv = await resolveShellEnv();
+if (shellEnv.path) {
+	process.env.PATH = shellEnv.path;
 	log.info("Shell PATH resolved", {
 		original: originalPath,
-		resolved: resolvedPath,
+		resolved: shellEnv.path,
 	});
 } else {
 	log.warn("Could not resolve shell PATH, using original", { path: originalPath });
+}
+if (shellEnv.lang) {
+	process.env.LANG = shellEnv.lang;
+	log.info("Shell LANG resolved", {
+		original: originalLang,
+		resolved: shellEnv.lang,
+	});
+} else if (!process.env.LANG) {
+	// Fallback: ensure UTF-8 even if the shell doesn't export LANG
+	process.env.LANG = "en_US.UTF-8";
+	log.info("LANG not found in shell, using fallback", { lang: "en_US.UTF-8" });
 }
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
