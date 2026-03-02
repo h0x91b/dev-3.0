@@ -89,13 +89,7 @@ See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.
 
 ## Star History
 
-<a href="https://star-history.com/#h0x91b/dev-3.0&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=Date" width="700" />
-  </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=date&legend=top-left)](https://www.star-history.com/?1#h0x91b/dev-3.0&type=date&legend=top-left)
 
 ## License
 
