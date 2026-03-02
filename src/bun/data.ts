@@ -24,8 +24,9 @@ async function ensureDir(filePath: string): Promise<void> {
 
 // ---- Projects ----
 
-export async function loadProjects(): Promise<Project[]> {
-	log.debug("Loading projects", { file: PROJECTS_FILE });
+/** Load all projects from disk, including soft-deleted ones. */
+async function loadAllProjects(): Promise<Project[]> {
+	log.debug("Loading all projects", { file: PROJECTS_FILE });
 	try {
 		const file = Bun.file(PROJECTS_FILE);
 		if (!(await file.exists())) {
@@ -33,12 +34,18 @@ export async function loadProjects(): Promise<Project[]> {
 			return [];
 		}
 		const projects: Project[] = await file.json();
-		log.info(`Loaded ${projects.length} project(s)`);
+		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
 		return projects;
 	} catch (err) {
 		log.error("Failed to load projects", { error: String(err) });
 		return [];
 	}
+}
+
+/** Load active (non-deleted) projects. */
+export async function loadProjects(): Promise<Project[]> {
+	const all = await loadAllProjects();
+	return all.filter((p) => !p.deleted);
 }
 
 export async function saveProjects(projects: Project[]): Promise<void> {
@@ -53,7 +60,7 @@ export async function addProject(
 	name: string,
 ): Promise<Project> {
 	log.info("Adding project", { name, path });
-	const projects = await loadProjects();
+	const projects = await loadAllProjects();
 	const project: Project = {
 		id: crypto.randomUUID(),
 		name,
@@ -71,10 +78,15 @@ export async function addProject(
 }
 
 export async function removeProject(projectId: string): Promise<void> {
-	log.info("Removing project", { projectId });
-	const projects = await loadProjects();
-	const filtered = projects.filter((p) => p.id !== projectId);
-	await saveProjects(filtered);
+	log.info("Soft-deleting project", { projectId });
+	const projects = await loadAllProjects();
+	const idx = projects.findIndex((p) => p.id === projectId);
+	if (idx === -1) {
+		log.warn("Project not found for soft-delete", { projectId });
+		return;
+	}
+	projects[idx] = { ...projects[idx], deleted: true };
+	await saveProjects(projects);
 }
 
 export async function updateProject(
@@ -83,7 +95,7 @@ export async function updateProject(
 ): Promise<Project> {
 	console.log("[updateProject] updates:", JSON.stringify(updates));
 	log.info("Updating project", { projectId, updates });
-	const projects = await loadProjects();
+	const projects = await loadAllProjects();
 	const idx = projects.findIndex((p) => p.id === projectId);
 	if (idx === -1) throw new Error(`Project not found: ${projectId}`);
 	projects[idx] = { ...projects[idx], ...updates };
@@ -93,7 +105,7 @@ export async function updateProject(
 }
 
 export async function getProject(projectId: string): Promise<Project> {
-	const projects = await loadProjects();
+	const projects = await loadAllProjects();
 	const project = projects.find((p) => p.id === projectId);
 	if (!project) throw new Error(`Project not found: ${projectId}`);
 	return project;

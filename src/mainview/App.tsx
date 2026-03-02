@@ -60,6 +60,19 @@ function App() {
 		})();
 	}, [dispatch, reqStatus]);
 
+	// Refresh projects from disk whenever user navigates to dashboard
+	useEffect(() => {
+		if (state.route.screen !== "dashboard" || state.loading) return;
+		(async () => {
+			try {
+				const projects = await api.request.getProjects();
+				dispatch({ type: "setProjects", projects });
+			} catch (err) {
+				console.error("Failed to refresh projects:", err);
+			}
+		})();
+	}, [dispatch, state.route.screen, state.loading]);
+
 	// Listen for push messages from bun
 	useEffect(() => {
 		function onTaskUpdated(e: Event) {

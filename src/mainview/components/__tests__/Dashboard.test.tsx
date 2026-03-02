@@ -11,6 +11,7 @@ vi.mock("../../rpc", () => ({
 			pickFolder: vi.fn(),
 			addProject: vi.fn(),
 			removeProject: vi.fn(),
+			showConfirm: vi.fn(),
 		},
 	},
 }));
@@ -141,7 +142,7 @@ describe("Dashboard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 
-			window.confirm = vi.fn(() => true);
+			mockedApi.request.showConfirm.mockResolvedValue(true);
 			mockedApi.request.removeProject.mockResolvedValue(undefined);
 
 			renderDashboard([mockProject], dispatch);
@@ -149,7 +150,7 @@ describe("Dashboard", () => {
 			const removeBtn = screen.getByText("Remove");
 			await user.click(removeBtn);
 
-			expect(window.confirm).toHaveBeenCalled();
+			expect(mockedApi.request.showConfirm).toHaveBeenCalled();
 			expect(mockedApi.request.removeProject).toHaveBeenCalledWith({
 				projectId: "p1",
 			});
@@ -163,7 +164,7 @@ describe("Dashboard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 
-			window.confirm = vi.fn(() => false);
+			mockedApi.request.showConfirm.mockResolvedValue(false);
 
 			renderDashboard([mockProject], dispatch);
 			await user.click(screen.getByText("Remove"));

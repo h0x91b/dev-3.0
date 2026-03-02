@@ -32,7 +32,11 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 	}
 
 	async function handleRemoveProject(projectId: string) {
-		if (!confirm(t("dashboard.confirmRemove"))) return;
+		const confirmed = await api.request.showConfirm({
+			title: t("dashboard.remove"),
+			message: t("dashboard.confirmRemove"),
+		});
+		if (!confirmed) return;
 		try {
 			await api.request.removeProject({ projectId });
 			dispatch({ type: "removeProject", projectId });

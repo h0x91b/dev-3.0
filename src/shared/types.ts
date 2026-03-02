@@ -150,6 +150,7 @@ export interface Project {
 	cleanupScript: string;
 	defaultBaseBranch: string;
 	createdAt: string;
+	deleted?: boolean;
 }
 
 export interface Task {
