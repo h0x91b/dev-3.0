@@ -1,0 +1,1 @@
+Block "completed" and "cancelled" statuses via CLI. These statuses destroy the worktree and terminal session, so an agent running inside a worktree must not be able to accidentally kill its own session. Also rewrote the --help text to be agent-oriented with concrete use cases and examples.

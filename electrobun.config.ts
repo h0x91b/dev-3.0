@@ -15,6 +15,7 @@ export default {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
 			"changelog.json": "changelog.json",
+			"dist/dev3": "cli/dev3",
 		},
 		mac: {
 			bundleCEF: false,

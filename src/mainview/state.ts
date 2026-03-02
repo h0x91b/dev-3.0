@@ -68,13 +68,29 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			return { ...state, projects: action.projects };
 		case "setTasks":
 			return { ...state, currentProjectTasks: action.tasks };
-		case "updateTask":
-			return {
-				...state,
-				currentProjectTasks: state.currentProjectTasks.map((t) =>
-					t.id === action.task.id ? action.task : t,
-				),
-			};
+		case "updateTask": {
+			const exists = state.currentProjectTasks.some((t) => t.id === action.task.id);
+			if (exists) {
+				return {
+					...state,
+					currentProjectTasks: state.currentProjectTasks.map((t) =>
+						t.id === action.task.id ? action.task : t,
+					),
+				};
+			}
+			// New task (e.g. created via CLI) — add if we're viewing the same project
+			const viewingProjectId =
+				state.route.screen === "project" || state.route.screen === "task" || state.route.screen === "project-settings"
+					? state.route.projectId
+					: null;
+			if (viewingProjectId && action.task.projectId === viewingProjectId) {
+				return {
+					...state,
+					currentProjectTasks: [...state.currentProjectTasks, action.task],
+				};
+			}
+			return state;
+		}
 		case "addTask":
 			return {
 				...state,

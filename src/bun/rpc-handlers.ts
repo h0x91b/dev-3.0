@@ -9,6 +9,7 @@ import * as agents from "./agents";
 import * as updater from "./updater";
 import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
+import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("rpc");
@@ -118,7 +119,11 @@ export function setPushMessage(fn: (name: string, payload: any) => void): void {
 	pushMessage = fn;
 }
 
-function isActive(status: TaskStatus): boolean {
+export function getPushMessage(): ((name: string, payload: any) => void) | null {
+	return pushMessage;
+}
+
+export function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
 }
 
@@ -146,7 +151,7 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 
 const DEFAULT_CLEANUP_SCRIPT = 'say "task finished"';
 
-async function runCleanupScript(task: Task, project: Project): Promise<void> {
+export async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath) return;
 
 	if (!existsSync(task.worktreePath)) {
@@ -185,7 +190,7 @@ async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	log.info("Cleanup session finished", { session: sessionName });
 }
 
-async function launchTaskPty(
+export async function launchTaskPty(
 	project: Project,
 	task: Task,
 	worktreePath: string,
@@ -291,7 +296,11 @@ async function launchTaskPty(
 		tmuxCmd = `bash "${startupPath}"`;
 	}
 
-	const env = { ...extraEnv, DEV3_TASK_ID: task.id };
+	// Prepend ~/.dev3.0/bin to PATH so `dev3` CLI is available inside the worktree
+	const dev3Bin = `${DEV3_HOME}/bin`;
+	const currentPath = process.env.PATH || "";
+	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
+	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
 	const echoAndRun = `echo "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && ${tmuxCmd}`;
 	log.info("Creating PTY session", {
 		taskId: task.id.slice(0, 8),

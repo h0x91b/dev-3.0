@@ -1,0 +1,1 @@
+Switch dev3 CLI from a Bun TypeScript script to a standalone compiled binary via `bun build --compile`. The binary has zero runtime dependencies and is rebuilt as part of the build pipeline. On every app start the binary is copied from the app bundle to ~/.dev3.0/bin/dev3.

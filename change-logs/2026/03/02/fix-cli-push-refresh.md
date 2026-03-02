@@ -1,0 +1,1 @@
+CLI mutations (task create, update, move) now trigger live UI refresh. Added missing pushMessage to task.create handler and made the updateTask reducer an upsert — new tasks created via CLI appear in the Kanban board without requiring a manual page reload.

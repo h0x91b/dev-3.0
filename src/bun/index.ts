@@ -13,6 +13,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { spawn } from "./spawn";
+import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 
@@ -98,6 +99,58 @@ if (shellEnv.lang) {
 	// Fallback: ensure UTF-8 even if the shell doesn't export LANG
 	process.env.LANG = "en_US.UTF-8";
 	log.info("LANG not found in shell, using fallback", { lang: "en_US.UTF-8" });
+}
+
+// ── CLI socket server ──
+// Start Unix domain socket server for CLI tool communication.
+const cliSocketPath = startSocketServer();
+log.info("CLI socket server ready", { path: cliSocketPath });
+
+// ── CLI binary ──
+// Copy the compiled CLI binary from app bundle to ~/.dev3.0/bin/dev3.
+// Overwritten on every start to ensure it matches the running app version.
+{
+	const { existsSync: fExists, mkdirSync: fMkdir, copyFileSync: fCopy, chmodSync: fChmod } = await import("node:fs");
+	const { resolve: fResolve } = await import("node:path");
+
+	const cliBinDir = `${DEV3_HOME}/bin`;
+	const cliDest = `${cliBinDir}/dev3`;
+	const bundledCli = fResolve(import.meta.dir, "..", "cli", "dev3");
+
+	try {
+		fMkdir(cliBinDir, { recursive: true });
+		if (fExists(bundledCli)) {
+			fCopy(bundledCli, cliDest);
+			fChmod(cliDest, 0o755);
+			log.info("CLI binary installed", { from: bundledCli, to: cliDest });
+		} else {
+			log.warn("CLI binary not found in bundle (skip)", { expected: bundledCli });
+		}
+	} catch (err) {
+		log.warn("CLI setup failed (non-fatal)", { error: String(err) });
+	}
+}
+
+// ── Shell profile PATH injection ──
+// Append ~/.dev3.0/bin to the user's shell RC file (idempotent).
+// This makes `dev3` available in all terminals, not just worktree tmux sessions.
+{
+	const { existsSync: fExistsRc, readFileSync: fReadRc, appendFileSync: fAppendRc } = await import("node:fs");
+	const shell = process.env.SHELL || "/bin/zsh";
+	const home = process.env.HOME || "/tmp";
+	const rcFile = shell.endsWith("bash") ? `${home}/.bashrc` : `${home}/.zshrc`;
+	const marker = ".dev3.0/bin";
+	try {
+		const content = fExistsRc(rcFile) ? fReadRc(rcFile, "utf-8") : "";
+		if (!content.includes(marker)) {
+			fAppendRc(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
+			log.info("Shell profile updated with dev3 PATH", { rcFile });
+		} else {
+			log.info("Shell profile already contains dev3 PATH", { rcFile });
+		}
+	} catch (err) {
+		log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
+	}
 }
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
@@ -248,7 +301,8 @@ setOnBell((taskId) => {
 });
 
 mainWindow.on("close", () => {
-	log.info("Main window closing, quitting app");
+	log.info("Main window closing, cleaning up");
+	stopSocketServer();
 	Utils.quit();
 });
 

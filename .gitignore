@@ -6,3 +6,4 @@ bun.lock
 .claude/settings.local.json
 src/shared/build-info.generated.ts
 changelog.json
+*.bun-build

@@ -244,6 +244,27 @@ export interface RequirementCheckResult {
 	installCommand: string;
 }
 
+// ---- CLI socket protocol ----
+
+export interface CliRequest {
+	id: string;
+	method: string;
+	params: Record<string, unknown>;
+}
+
+export interface CliResponse {
+	id: string;
+	ok: boolean;
+	data?: unknown;
+	error?: string;
+}
+
+export interface Dev3Marker {
+	projectId: string;
+	taskId: string;
+	socketPath: string;
+}
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
