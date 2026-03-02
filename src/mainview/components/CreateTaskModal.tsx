@@ -114,16 +114,11 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				</div>
 
 				{/* Actions */}
-				<div className="flex items-center justify-between pt-1">
-					<span className="text-fg-muted text-xs">
-						{onCreateAndRun
-							? t("createTask.submitHintRun")
-							: t("createTask.submitHint")}
-					</span>
-					<div className="flex gap-2">
+				<div className="space-y-2.5 pt-1">
+					<div className="flex items-center justify-end gap-2">
 						<button
 							onClick={onClose}
-							className="px-4 py-2 text-fg-3 text-sm hover:text-fg transition-colors rounded-xl"
+							className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
 						>
 							{t("kanban.cancel")}
 						</button>
@@ -131,7 +126,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 							<button
 								onClick={handleCreateAndRun}
 								disabled={!description.trim() || creating}
-								className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+								className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 							>
 								<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
 									<path d="M8 5v14l11-7z" />
@@ -142,10 +137,15 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						<button
 							onClick={handleCreate}
 							disabled={!description.trim() || creating}
-							className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{creating ? t("createTask.creating") : t("createTask.create")}
 						</button>
+					</div>
+					<div className="text-fg-muted text-[11px] text-right">
+						{onCreateAndRun
+							? t("createTask.submitHintRun")
+							: t("createTask.submitHint")}
 					</div>
 				</div>
 			</div>
