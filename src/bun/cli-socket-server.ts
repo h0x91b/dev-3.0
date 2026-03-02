@@ -103,6 +103,7 @@ const handlers: Record<string, Handler> = {
 
 		const project = await data.getProject(projectId);
 		const task = await data.addTask(project, title, "todo");
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 		return task;
 	},
 

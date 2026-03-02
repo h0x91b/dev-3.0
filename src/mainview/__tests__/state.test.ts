@@ -90,6 +90,40 @@ describe("reducer", () => {
 		expect(next.currentProjectTasks[1]).toBe(other);
 	});
 
+	it("updateTask: adds new task when viewing the same project", () => {
+		const newTask: Task = { ...mockTask, id: "t-new", title: "Created via CLI" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1" },
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next.currentProjectTasks).toHaveLength(2);
+		expect(next.currentProjectTasks[1].id).toBe("t-new");
+	});
+
+	it("updateTask: ignores new task from a different project", () => {
+		const foreignTask: Task = { ...mockTask, id: "t-other", projectId: "p-other" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1" },
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, { type: "updateTask", task: foreignTask });
+		expect(next.currentProjectTasks).toHaveLength(1);
+	});
+
+	it("updateTask: ignores new task when on dashboard (no project context)", () => {
+		const newTask: Task = { ...mockTask, id: "t-new" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "dashboard" },
+			currentProjectTasks: [],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next.currentProjectTasks).toHaveLength(0);
+	});
+
 	it("addTask: appends to currentProjectTasks", () => {
 		const next = reducer(initialState, {
 			type: "addTask",
