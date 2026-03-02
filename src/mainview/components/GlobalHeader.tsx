@@ -13,6 +13,7 @@ interface GlobalHeaderProps {
 
 interface BreadcrumbSegment {
 	label: string;
+	badge?: string;
 	onClick?: () => void;
 }
 
@@ -50,9 +51,12 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 	// Last segment — screen-specific
 	if (route.screen === "task") {
 		const task = tasks.find((t) => t.id === route.taskId);
-		const attemptSuffix = task?.variantIndex != null ? ` · ${t("task.attempt", { n: String(task.variantIndex) })}` : "";
-		const taskLabel = task ? `#${task.seq}${attemptSuffix} ${task.title}` : t("header.task");
-		segments.push({ label: taskLabel });
+		if (task) {
+			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
+			segments.push({ badge, label: task.title });
+		} else {
+			segments.push({ label: t("header.task") });
+		}
 	} else if (route.screen === "project-settings") {
 		segments.push({ label: t("header.settings") });
 	} else if (route.screen === "settings") {
@@ -101,8 +105,11 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 								{seg.label}
 							</button>
 						) : (
-							<span className="text-fg font-semibold truncate">
-								{seg.label}
+							<span className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
+								{seg.badge && (
+									<span className="font-mono text-[11px] text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
+								)}
+								<span className="text-fg font-semibold truncate">{seg.label}</span>
 							</span>
 						)}
 					</Fragment>
