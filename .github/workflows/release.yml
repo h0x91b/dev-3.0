@@ -144,6 +144,7 @@ jobs:
 
           echo "Updating Homebrew Cask: version=${VERSION} sha256=${SHA256}"
 
+          rm -rf /tmp/homebrew-dev3
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/h0x91b/homebrew-dev3.git" /tmp/homebrew-dev3
           cd /tmp/homebrew-dev3
 

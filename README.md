@@ -71,9 +71,19 @@ brew tap h0x91b/dev3
 brew install --cask dev3
 ```
 
+This will also install required dependencies (`git`, `tmux`) if not already present.
+
+```sh
+# Update to latest version
+brew upgrade --cask dev3
+
+# Uninstall
+brew uninstall --cask dev3
+```
+
 ### Manual download
 
-Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run.
+Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git` and `tmux` are installed.
 
 macOS only for now — Linux and Windows coming soon.
 
