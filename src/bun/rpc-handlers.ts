@@ -10,6 +10,7 @@ import * as updater from "./updater";
 import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
+import { CHANGELOG_ENTRIES } from "../shared/changelog.generated";
 
 const log = createLogger("rpc");
 
@@ -1093,8 +1094,8 @@ export const handlers = {
 
 		const changeLogsDir = join(root, "change-logs");
 		if (!existsSync(changeLogsDir)) {
-			log.info("<- getChangelogs (no change-logs dir)");
-			return [];
+			log.info("<- getChangelogs (no change-logs dir, using built-in data)", { count: CHANGELOG_ENTRIES.length });
+			return CHANGELOG_ENTRIES;
 		}
 
 		const entries: ChangelogEntry[] = [];

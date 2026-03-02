@@ -1,0 +1,1 @@
+Fixed changelog not showing in production builds. Changelog entries are now baked into the app at build time via a generated TypeScript module, so the production app no longer depends on the change-logs/ directory existing on disk.
