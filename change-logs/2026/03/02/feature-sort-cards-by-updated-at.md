@@ -1,0 +1,1 @@
+Sort kanban cards by `updatedAt` timestamp instead of `movedAt`. Cards most recently modified (title edits, notes, status changes) now bubble to the top/bottom of their column. `movedAt` (status change time) is retained as a tiebreaker when `updatedAt` values are equal.
