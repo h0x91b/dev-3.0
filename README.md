@@ -112,7 +112,7 @@ See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=date&legend=top-left)](https://www.star-history.com/?1#h0x91b/dev-3.0&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=timeline&legend=top-left)](https://www.star-history.com/?1#h0x91b/dev-3.0&type=timeline&logscale&legend=top-left)
 
 ## License
 
