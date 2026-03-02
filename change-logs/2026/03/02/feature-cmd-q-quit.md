@@ -1,0 +1,1 @@
+Added Cmd+Q keyboard shortcut to quit the app. A window-level capture listener in App.tsx intercepts the keystroke before the ghostty-web terminal can swallow it, then calls a new `quitApp` RPC handler that invokes `Utils.quit()` on the main process.

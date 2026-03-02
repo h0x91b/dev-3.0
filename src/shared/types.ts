@@ -416,6 +416,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: ChangelogEntry[];
 			};
+			quitApp: {
+				params: void;
+				response: void;
+			};
 			listTmuxSessions: {
 				params: void;
 				response: TmuxSessionInfo[];

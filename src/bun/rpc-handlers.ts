@@ -322,6 +322,11 @@ export async function launchTaskPty(
 }
 
 export const handlers = {
+	async quitApp(): Promise<void> {
+		log.info("→ quitApp (Cmd+Q from renderer)");
+		Utils.quit();
+	},
+
 	async showConfirm(params: { title: string; message: string }): Promise<boolean> {
 		const { response } = await Utils.showMessageBox({
 			type: "question",

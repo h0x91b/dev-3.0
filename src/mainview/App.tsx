@@ -41,6 +41,19 @@ function App() {
 		checkRequirements();
 	}, [checkRequirements]);
 
+	// Cmd+Q to quit — intercept before ghostty-web terminal can swallow it
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			if (e.metaKey && e.key === "q") {
+				e.preventDefault();
+				e.stopPropagation();
+				api.request.quitApp().catch(() => {});
+			}
+		}
+		window.addEventListener("keydown", handleKeyDown, { capture: true });
+		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+	}, []);
+
 	const navigate = useCallback(
 		(route: Route) => dispatch({ type: "navigate", route }),
 		[dispatch],
