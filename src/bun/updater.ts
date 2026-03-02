@@ -1,5 +1,6 @@
 import { Updater } from "electrobun/bun";
 import { createLogger } from "./logger";
+import { isNewerVersion } from "../shared/version";
 
 const log = createLogger("updater");
 
@@ -52,16 +53,17 @@ export async function checkForUpdateWithChannel(channel: string): Promise<Update
 
 		const remote: UpdateJson = await resp.json();
 
-		if (!remote.hash) {
-			return { updateAvailable: false, version: local.version, error: "Invalid update.json: missing hash" };
+		if (!remote.version) {
+			return { updateAvailable: false, version: local.version, error: "Invalid update.json: missing version" };
 		}
 
-		const updateAvailable = remote.hash !== local.hash;
+		const updateAvailable = isNewerVersion(local.version, remote.version);
 		log.info("Update check result", {
 			updateAvailable,
+			localVersion: local.version,
+			remoteVersion: remote.version,
 			localHash: local.hash.slice(0, 12),
 			remoteHash: remote.hash.slice(0, 12),
-			remoteVersion: remote.version,
 		});
 
 		return {
