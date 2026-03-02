@@ -131,6 +131,10 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts }: KanbanB
 					project={project}
 					dispatch={dispatch}
 					onClose={() => setShowCreateModal(false)}
+					onCreateAndRun={(task) => {
+						setShowCreateModal(false);
+						setLaunchModal({ task, targetStatus: "in-progress" });
+					}}
 				/>
 			)}
 
