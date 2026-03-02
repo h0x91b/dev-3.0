@@ -3,6 +3,7 @@
 import { $ } from "bun";
 
 const CONFIG_PATH = "electrobun.config.ts";
+const PACKAGE_JSON_PATH = "package.json";
 
 type BumpType = "patch" | "minor" | "major";
 
@@ -40,10 +41,19 @@ const updated = content.replace(
 
 await Bun.write(CONFIG_PATH, updated);
 
+// Also update package.json version
+const pkgContent = await Bun.file(PACKAGE_JSON_PATH).text();
+const pkg = JSON.parse(pkgContent);
+pkg.version = newVersion;
+await Bun.write(PACKAGE_JSON_PATH, JSON.stringify(pkg, null, "\t") + "\n");
+
 console.log(`${oldVersion} → ${newVersion} (${type})`);
 
-await $`git add ${CONFIG_PATH}`;
+await $`git add ${CONFIG_PATH} ${PACKAGE_JSON_PATH}`;
 await $`git commit -m ${"v" + newVersion}`;
 await $`git tag ${"v" + newVersion}`;
 
-console.log(`Tag v${newVersion} created. Push with: git push && git push --tags`);
+await $`git push`;
+await $`git push --tags`;
+
+console.log(`Tag v${newVersion} pushed.`);

@@ -1,0 +1,1 @@
+Fixed `bun run bump [minor|major]` argument passing. Moved git push logic into the script so extra args don't leak into git commands. Also bumps `package.json` version alongside `electrobun.config.ts`.
