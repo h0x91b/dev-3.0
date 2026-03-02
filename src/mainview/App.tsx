@@ -138,6 +138,9 @@ function App() {
 	useEffect(() => {
 		function onKeyDown(e: KeyboardEvent) {
 			if (e.key !== "Escape") return;
+			// Don't intercept Escape when a terminal has focus
+			const terminalEl = document.querySelector('[data-terminal="true"]');
+			if (terminalEl?.contains(document.activeElement)) return;
 			const { route } = state;
 			if (route.screen === "settings") {
 				navigate({ screen: "dashboard" });

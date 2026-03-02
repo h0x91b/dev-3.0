@@ -411,6 +411,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			ref={containerRef}
 			className="w-full h-full min-h-0"
 			style={{ padding: "4px" }}
+			data-terminal="true"
 			onClick={() => termRef.current?.focus()}
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}
