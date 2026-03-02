@@ -1,0 +1,1 @@
+Removed `.dev3-marker` file creation from worktree setup and all marker-based context detection from the CLI. The CLI now relies solely on the worktree directory path (`~/.dev3.0/worktrees/{slug}/{id}/worktree`) to resolve project and task context. Updated the `dev3` Claude Code skill to trigger based on the working directory path instead of the marker file presence.

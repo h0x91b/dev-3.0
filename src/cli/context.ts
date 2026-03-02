@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Dev3Marker } from "../shared/types";
 
 const HOME = process.env.HOME || "/tmp";
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -12,32 +11,6 @@ export interface CliContext {
 	projectId: string;
 	taskId: string;
 	socketPath: string;
-}
-
-/**
- * Walk up from cwd to find .dev3-marker and resolve project/task context.
- */
-function detectFromMarker(cwd: string): CliContext | null {
-	let dir = cwd;
-	for (let i = 0; i < 30; i++) {
-		const markerPath = `${dir}/.dev3-marker`;
-		if (existsSync(markerPath)) {
-			try {
-				const marker: Dev3Marker = JSON.parse(readFileSync(markerPath, "utf-8"));
-				return {
-					projectId: marker.projectId,
-					taskId: marker.taskId,
-					socketPath: marker.socketPath,
-				};
-			} catch {
-				return null;
-			}
-		}
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
-	return null;
 }
 
 /**
@@ -103,10 +76,10 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 }
 
 /**
- * Detect context: marker file first, then worktree path fallback.
+ * Detect context from worktree path structure.
  */
 export function detectContext(cwd: string = process.cwd()): CliContext | null {
-	return detectFromMarker(cwd) || resolveFromWorktreePath(cwd);
+	return resolveFromWorktreePath(cwd);
 }
 
 /**
