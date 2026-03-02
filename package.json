@@ -2,6 +2,8 @@
 	"name": "electrobun-react-tailwind-vite",
 	"version": "0.2.6",
 	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
+	"license": "Apache-2.0",
+	"author": "Arseny Pavlenko",
 	"scripts": {
 		"dev": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && electrobun build && electrobun dev",
 		"watch": "concurrently --kill-others \"bun run hmr\" \"bun run scripts/watch-main.ts\"",
