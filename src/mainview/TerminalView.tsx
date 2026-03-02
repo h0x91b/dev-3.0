@@ -409,8 +409,8 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 	return (
 		<div
 			ref={containerRef}
-			className="w-full h-full min-h-0"
-			style={{ padding: "4px" }}
+			className="w-full h-full min-h-0 overflow-hidden"
+			style={{ padding: "4px 4px 0 4px" }}
 			data-terminal="true"
 			onClick={() => termRef.current?.focus()}
 			onDragOver={handleDragOver}
