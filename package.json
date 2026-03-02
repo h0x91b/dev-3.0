@@ -1,6 +1,6 @@
 {
 	"name": "electrobun-react-tailwind-vite",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
 	"scripts": {
 		"dev": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && electrobun build && electrobun dev",
