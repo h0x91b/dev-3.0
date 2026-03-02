@@ -305,6 +305,10 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				},
 				env: {
 					TERM: "xterm-256color",
+					// Ensure tmux knows the client supports UTF-8.
+					// macOS .app bundles inherit a minimal env without LANG;
+					// without it tmux replaces non-ASCII chars with underscores.
+					LANG: process.env.LANG || "en_US.UTF-8",
 					HOME: process.env.HOME || "/",
 					...session.env,
 				},

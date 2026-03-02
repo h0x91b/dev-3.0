@@ -1,0 +1,1 @@
+Fix Cyrillic/Unicode rendering as underscores in production terminal. Root cause: macOS .app bundles inherit a minimal environment without LANG, causing tmux to replace all non-ASCII characters with underscores. Now resolve LANG from the user's login shell alongside PATH and pass it to tmux via the PTY environment.

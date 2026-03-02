@@ -4,18 +4,21 @@ import { spawn } from "./spawn";
 const log = createLogger("shell-env");
 
 /**
- * Resolve the user's full shell PATH by spawning their login shell.
+ * Resolve the user's full shell environment (PATH, LANG) by spawning their login shell.
  *
- * macOS .app bundles launch with a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
- * This function gets the real PATH from the user's configured shell so that
- * spawned processes (tmux, git, pbcopy, etc.) can be found.
+ * macOS .app bundles launch with a minimal environment:
+ * - PATH: /usr/bin:/bin:/usr/sbin:/sbin (no homebrew, nvm, etc.)
+ * - LANG: undefined (causes tmux to replace non-ASCII with underscores)
+ *
+ * This function gets the real values from the user's configured shell so that
+ * spawned processes (tmux, git, pbcopy, etc.) work correctly.
  */
-export async function resolveShellPath(): Promise<string | undefined> {
+export async function resolveShellEnv(): Promise<{ path?: string; lang?: string }> {
 	const shell = process.env.SHELL || "/bin/zsh";
 	const timeout = 5_000;
 
 	try {
-		const proc = spawn([shell, "-ilc", "echo $PATH"], {
+		const proc = spawn([shell, "-ilc", 'echo "___PATH=$PATH";echo "___LANG=$LANG"'], {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -28,25 +31,39 @@ export async function resolveShellPath(): Promise<string | undefined> {
 		if (exitCode !== 0) {
 			const stderr = await new Response(proc.stderr).text();
 			log.warn("Shell exited with non-zero code", { shell, exitCode, stderr: stderr.trim() });
-			return undefined;
+			return {};
 		}
 
 		const stdout = await new Response(proc.stdout).text();
-		// The last non-empty line should be the PATH
-		const lines = stdout.trim().split("\n");
-		const pathLine = lines[lines.length - 1]?.trim();
+		const lines = stdout.split("\n");
 
-		if (!pathLine || !pathLine.includes("/")) {
-			log.warn("Shell returned unexpected PATH output", { shell, output: stdout.trim() });
-			return undefined;
+		let path: string | undefined;
+		let lang: string | undefined;
+
+		for (const line of lines) {
+			if (line.startsWith("___PATH=")) {
+				const val = line.slice("___PATH=".length).trim();
+				if (val && val.includes("/")) path = val;
+			} else if (line.startsWith("___LANG=")) {
+				const val = line.slice("___LANG=".length).trim();
+				if (val) lang = val;
+			}
 		}
 
-		return pathLine;
+		return { path, lang };
 	} catch (err) {
-		log.warn("Failed to resolve shell PATH", {
+		log.warn("Failed to resolve shell environment", {
 			shell,
 			error: String(err),
 		});
-		return undefined;
+		return {};
 	}
+}
+
+/**
+ * @deprecated Use resolveShellEnv() instead, which also resolves LANG.
+ */
+export async function resolveShellPath(): Promise<string | undefined> {
+	const env = await resolveShellEnv();
+	return env.path;
 }
