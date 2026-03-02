@@ -124,3 +124,34 @@ jobs:
           gh release create ${{ github.ref_name }} \
             --title "${{ github.ref_name }}" \
             --notes-file /tmp/release-notes.md
+
+      - name: Upload DMG to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.ref_name }} \
+            ./artifacts-arm64/stable-macos-arm64-dev-3.0.dmg \
+            --clobber
+
+      - name: Update Homebrew Cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          DMG_PATH="./artifacts-arm64/stable-macos-arm64-dev-3.0.dmg"
+          SHA256=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+
+          echo "Updating Homebrew Cask: version=${VERSION} sha256=${SHA256}"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/h0x91b/homebrew-dev3.git" /tmp/homebrew-dev3
+          cd /tmp/homebrew-dev3
+
+          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/dev3.rb
+          sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/dev3.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/dev3.rb
+          git commit -m "Update dev3 to ${VERSION}"
+          git push origin main

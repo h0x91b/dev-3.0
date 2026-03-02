@@ -1,0 +1,1 @@
+Add Homebrew Cask support via personal tap `h0x91b/dev3`. Users can now install with `brew tap h0x91b/dev3 && brew install --cask dev3`. The release workflow automatically updates the Cask formula (version + sha256) on every new version tag.

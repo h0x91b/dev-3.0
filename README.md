@@ -64,6 +64,15 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 
 ## Install
 
+### Homebrew (recommended)
+
+```sh
+brew tap h0x91b/dev3
+brew install --cask dev3
+```
+
+### Manual download
+
 Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run.
 
 macOS only for now — Linux and Windows coming soon.
