@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, Project, RequirementCheckResult, Task, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -1352,5 +1352,47 @@ export const handlers = {
 		const task = await data.updateTask(project, params.taskId, { labelIds: params.labelIds });
 		log.info("← setTaskLabels done", { taskId: params.taskId });
 		return task;
+	},
+
+	async addTaskNote(params: { taskId: string; projectId: string; content: string; source?: NoteSource }): Promise<Task> {
+		log.info("→ addTaskNote", { taskId: params.taskId });
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		const now = new Date().toISOString();
+		const note: TaskNote = {
+			id: crypto.randomUUID(),
+			content: params.content,
+			source: params.source ?? "user",
+			createdAt: now,
+			updatedAt: now,
+		};
+		const notes = [...(task.notes ?? []), note];
+		const updated = await data.updateTask(project, params.taskId, { notes });
+		log.info("← addTaskNote done", { taskId: params.taskId, noteId: note.id });
+		return updated;
+	},
+
+	async updateTaskNote(params: { taskId: string; projectId: string; noteId: string; content: string }): Promise<Task> {
+		log.info("→ updateTaskNote", { taskId: params.taskId, noteId: params.noteId });
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		const notes = (task.notes ?? []).map(n =>
+			n.id === params.noteId
+				? { ...n, content: params.content, updatedAt: new Date().toISOString() }
+				: n
+		);
+		const updated = await data.updateTask(project, params.taskId, { notes });
+		log.info("← updateTaskNote done", { taskId: params.taskId, noteId: params.noteId });
+		return updated;
+	},
+
+	async deleteTaskNote(params: { taskId: string; projectId: string; noteId: string }): Promise<Task> {
+		log.info("→ deleteTaskNote", { taskId: params.taskId, noteId: params.noteId });
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		const notes = (task.notes ?? []).filter(n => n.id !== params.noteId);
+		const updated = await data.updateTask(project, params.taskId, { notes });
+		log.info("← deleteTaskNote done", { taskId: params.taskId, noteId: params.noteId });
+		return updated;
 	},
 };

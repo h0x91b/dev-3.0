@@ -267,6 +267,17 @@ const ru: TranslationRecord & Record<string, string> = {
 	"labels.failedSetLabels": "Не удалось обновить метки задачи: {error}",
 	"labels.taskLabels": "Метки",
 
+	// Notes
+	"notes.title": "Заметки",
+	"notes.add": "+ Добавить заметку",
+	"notes.empty": "Заметок пока нет",
+	"notes.delete": "Удалить заметку",
+	"notes.sourceUser": "Пользователь",
+	"notes.sourceAi": "ИИ",
+	"notes.placeholder": "Напишите заметку...",
+	"notes.failedAdd": "Не удалось добавить заметку: {error}",
+	"notes.failedDelete": "Не удалось удалить заметку: {error}",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

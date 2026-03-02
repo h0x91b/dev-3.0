@@ -198,6 +198,17 @@ export interface Task {
 	movedAt?: string;
 	tmuxSocket?: string | null;
 	labelIds?: string[];
+	notes?: TaskNote[];
+}
+
+export type NoteSource = "user" | "ai";
+
+export interface TaskNote {
+	id: string;
+	content: string;
+	source: NoteSource;
+	createdAt: string;
+	updatedAt: string;
 }
 
 /** Generate a short title from a description (first ~maxLen chars, word-boundary truncated). */
@@ -427,6 +438,18 @@ export type AppRPCSchema = {
 			};
 			setTaskLabels: {
 				params: { taskId: string; projectId: string; labelIds: string[] };
+				response: Task;
+			};
+			addTaskNote: {
+				params: { taskId: string; projectId: string; content: string; source?: NoteSource };
+				response: Task;
+			};
+			updateTaskNote: {
+				params: { taskId: string; projectId: string; noteId: string; content: string };
+				response: Task;
+			};
+			deleteTaskNote: {
+				params: { taskId: string; projectId: string; noteId: string };
 				response: Task;
 			};
 		};

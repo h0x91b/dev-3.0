@@ -264,6 +264,17 @@ const es: TranslationRecord & Record<string, string> = {
 	"labels.failedSetLabels": "Error al actualizar etiquetas de tarea: {error}",
 	"labels.taskLabels": "Etiquetas",
 
+	// Notes
+	"notes.title": "Notas",
+	"notes.add": "+ Agregar nota",
+	"notes.empty": "Aún no hay notas",
+	"notes.delete": "Eliminar nota",
+	"notes.sourceUser": "Usuario",
+	"notes.sourceAi": "IA",
+	"notes.placeholder": "Escribe una nota...",
+	"notes.failedAdd": "Error al agregar nota: {error}",
+	"notes.failedDelete": "Error al eliminar nota: {error}",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

@@ -261,6 +261,17 @@ const en = {
 	"labels.failedSetLabels": "Failed to update task labels: {error}",
 	"labels.taskLabels": "Labels",
 
+	// Notes
+	"notes.title": "Notes",
+	"notes.add": "+ Add Note",
+	"notes.empty": "No notes yet",
+	"notes.delete": "Delete note",
+	"notes.sourceUser": "User",
+	"notes.sourceAi": "AI",
+	"notes.placeholder": "Write a note...",
+	"notes.failedAdd": "Failed to add note: {error}",
+	"notes.failedDelete": "Failed to delete note: {error}",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

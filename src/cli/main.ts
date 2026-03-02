@@ -5,6 +5,7 @@ import { handleProjects } from "./commands/projects";
 import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
+import { handleNote } from "./commands/note";
 
 const HELP = `dev3 — control the dev-3.0 Kanban UI from the terminal
 
@@ -42,6 +43,20 @@ You almost never need to specify them explicitly.
 
   dev3 task create --title "Add unit tests for auth module"
       Create a new task in To Do (same project, auto-detected).
+
+━━━ Notes (per-task scratchpad) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  dev3 note add "Found a race condition in auth"
+      Add a note to the current task (source defaults to "ai").
+
+  dev3 note add "User feedback" --source user
+      Add a note with explicit source (user or ai).
+
+  dev3 note list
+      List all notes on the current task.
+
+  dev3 note delete <note-id>
+      Delete a note by ID (8-char prefix works).
 
 ━━━ Browse ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -107,6 +122,8 @@ async function main(): Promise<void> {
 				return await handleTasks(subcommand, args, socketPath, context);
 			case "task":
 				return await handleTask(subcommand, args, socketPath, context);
+			case "note":
+				return await handleNote(subcommand, args, socketPath, context);
 			default:
 				exitUsage(`Unknown command: ${command}\nRun "dev3 --help" for usage.`);
 		}
