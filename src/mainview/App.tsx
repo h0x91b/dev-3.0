@@ -92,33 +92,6 @@ function App() {
 		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
 	}, [dispatch]);
 
-	// Auto-move task back to "in-progress" when user opens its terminal
-	useEffect(() => {
-		const currentRoute = state.route;
-		let viewingTaskId: string | undefined;
-		if (currentRoute.screen === "task") {
-			viewingTaskId = currentRoute.taskId;
-		} else if (currentRoute.screen === "project" && currentRoute.activeTaskId) {
-			viewingTaskId = currentRoute.activeTaskId;
-		}
-		if (!viewingTaskId) return;
-		const task = state.currentProjectTasks.find(
-			(t) => t.id === viewingTaskId,
-		);
-		if (task && task.status === "user-questions") {
-			api.request
-				.moveTask({
-					taskId: task.id,
-					projectId: task.projectId,
-					newStatus: "in-progress",
-				})
-				.catch((err) =>
-					console.error("Failed to auto-move task to in-progress:", err),
-				);
-		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [state.route]);
-
 	// Listen for Cmd+, (Settings menu item)
 	useEffect(() => {
 		function onNavigateToSettings() {

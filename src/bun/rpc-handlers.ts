@@ -128,25 +128,11 @@ export function isActive(status: TaskStatus): boolean {
 }
 
 /**
- * Auto-move a task to "user-questions" when a terminal bell is detected.
- * Only transitions from "in-progress" — other statuses are left untouched.
+ * Handle terminal bell notification. Status management is now fully
+ * delegated to the AI agent via the dev3 CLI skill — no auto-transitions.
  */
-export async function handleBellAutoStatus(taskId: string): Promise<void> {
-	const projectId = pty.getSessionProjectId(taskId);
-	if (!projectId) return;
-
-	try {
-		const project = await data.getProject(projectId);
-		const task = await data.getTask(project, taskId);
-
-		if (task.status !== "in-progress") return;
-
-		log.info("Bell auto-status: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
-		const updated = await data.updateTask(project, task.id, { status: "user-questions" });
-		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
-	} catch (err) {
-		log.error("Bell auto-status failed", { taskId: taskId.slice(0, 8), error: String(err) });
-	}
+export function handleBellAutoStatus(_taskId: string): void {
+	// noop — status changes are managed by the agent via `dev3 task move`
 }
 
 const DEFAULT_CLEANUP_SCRIPT = 'say "task finished"';

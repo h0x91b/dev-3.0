@@ -14,6 +14,7 @@ import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { spawn } from "./spawn";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { installAgentSkills } from "./agent-skills";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 
@@ -152,6 +153,11 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 		log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
 	}
 }
+
+// ── Agent skill files ──
+// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
+// Overwritten on every start to match the running app version (same pattern as CLI binary).
+installAgentSkills();
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell } = await import("./pty-server");
