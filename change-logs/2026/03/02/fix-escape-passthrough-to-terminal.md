@@ -1,0 +1,1 @@
+Fix Escape key being intercepted when terminal is focused instead of passing through to the terminal process. Added `data-terminal` attribute to the TerminalView container and skipped the global Escape handler when `document.activeElement` is inside a terminal element.
