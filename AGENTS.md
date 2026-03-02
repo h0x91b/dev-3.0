@@ -65,6 +65,7 @@ Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`
 **Rules:**
 - Include the changelog file in the same commit as the code change.
 - The slug must be unique and descriptive enough to avoid collisions between parallel agents.
+- **One worktree = one changelog file.** A single task (worktree) must produce exactly one changelog entry for the entire session — not one per commit, not one per feature. If the task evolves, update or append to the existing changelog file rather than creating new ones.
 - See `change-logs/README.md` for the full format specification.
 
 ## Decision records
