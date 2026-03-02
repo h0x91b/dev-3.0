@@ -1,0 +1,1 @@
+Fix auto-updater repeatedly offering the same version. Replaced hash-based comparison with semver version comparison (major.minor.patch) so updates are only offered when the remote version is strictly greater than the local one.
