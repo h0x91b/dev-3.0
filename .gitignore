@@ -2,6 +2,7 @@ node_modules/
 bun.lock
 /build/
 /dist/
+/artifacts/
 .claude/settings.local.json
 src/shared/build-info.generated.ts
 changelog.json
