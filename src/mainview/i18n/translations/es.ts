@@ -244,6 +244,23 @@ const es: TranslationRecord & Record<string, string> = {
 	"tmuxSessions.killAllConfirmTitle": "Terminar todas las sesiones tmux",
 	"tmuxSessions.killAllConfirmMessage": "¿Terminar las {count} sesiones dev3? Esto cerrará todos los procesos.",
 
+	// Labels
+	"labels.filterTitle": "Etiquetas",
+	"labels.noLabels": "Aún no hay etiquetas. Escribe un nombre para crear una.",
+	"labels.createLabel": "Crear \"{name}\"",
+	"labels.searchPlaceholder": "Buscar o crear...",
+	"labels.addLabel": "+ Agregar etiqueta",
+	"labels.clearFilters": "Limpiar",
+	"labels.deleteLabel": "Eliminar etiqueta",
+	"labels.labelName": "Nombre de etiqueta",
+	"labels.settingsTitle": "Etiquetas",
+	"labels.settingsDesc": "Organiza las tareas por dominio o tema",
+	"labels.failedCreate": "Error al crear etiqueta: {error}",
+	"labels.failedUpdate": "Error al actualizar etiqueta: {error}",
+	"labels.failedDelete": "Error al eliminar etiqueta: {error}",
+	"labels.failedSetLabels": "Error al actualizar etiquetas de tarea: {error}",
+	"labels.taskLabels": "Etiquetas",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

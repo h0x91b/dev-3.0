@@ -241,6 +241,23 @@ const en = {
 	"tmuxSessions.killAllConfirmTitle": "Kill all tmux sessions",
 	"tmuxSessions.killAllConfirmMessage": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
 
+	// Labels
+	"labels.filterTitle": "Labels",
+	"labels.noLabels": "No labels yet. Type a name to create one.",
+	"labels.createLabel": "Create \"{name}\"",
+	"labels.searchPlaceholder": "Search or create...",
+	"labels.addLabel": "+ Add Label",
+	"labels.clearFilters": "Clear",
+	"labels.deleteLabel": "Delete label",
+	"labels.labelName": "Label name",
+	"labels.settingsTitle": "Labels",
+	"labels.settingsDesc": "Organize tasks by domain or theme",
+	"labels.failedCreate": "Failed to create label: {error}",
+	"labels.failedUpdate": "Failed to update label: {error}",
+	"labels.failedDelete": "Failed to delete label: {error}",
+	"labels.failedSetLabels": "Failed to update task labels: {error}",
+	"labels.taskLabels": "Labels",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",

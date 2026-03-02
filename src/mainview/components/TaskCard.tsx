@@ -7,6 +7,8 @@ import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 import { ansiToHtml } from "../utils/ansi-to-html";
 import { trackEvent } from "../analytics";
+import LabelChip from "./LabelChip";
+import LabelPicker from "./LabelPicker";
 
 interface TaskCardProps {
 	task: Task;
@@ -30,6 +32,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [isEditing, setIsEditing] = useState(false);
 	const [editValue, setEditValue] = useState("");
 	const [saving, setSaving] = useState(false);
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -469,6 +473,71 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					{task.title}
 				</div>
 			)}
+
+			{/* Label chips row — always rendered so "+" is discoverable on hover */}
+			{(() => {
+				const projectLabels = project.labels ?? [];
+				const taskLabelIds = task.labelIds ?? [];
+				const assignedLabels = taskLabelIds
+					.map((id) => projectLabels.find((l) => l.id === id))
+					.filter(Boolean) as typeof projectLabels;
+
+				async function removeLabel(labelId: string) {
+					try {
+						const updated = await api.request.setTaskLabels({
+							taskId: task.id,
+							projectId: project.id,
+							labelIds: taskLabelIds.filter((id) => id !== labelId),
+						});
+						dispatch({ type: "updateTask", task: updated });
+					} catch {
+						// ignore
+					}
+				}
+
+				return (
+					<div className="flex items-center flex-wrap gap-1 mt-2 min-h-[18px]">
+						{assignedLabels.map((label) => (
+							<LabelChip
+								key={label.id}
+								label={label}
+								size="xs"
+								onClick={(e) => {
+									e.stopPropagation();
+									setPickerOpen(true);
+								}}
+								onRemove={(e) => {
+									e.stopPropagation();
+									removeLabel(label.id);
+								}}
+							/>
+						))}
+						<button
+							ref={pickerAnchorRef}
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								setPickerOpen(true);
+							}}
+							className="opacity-0 group-hover:opacity-70 hover:!opacity-100 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-fg-3 hover:text-fg hover:bg-fg/8 transition-all flex-shrink-0"
+						>
+							<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+								<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+							</svg>
+							<span className="text-[10px] font-medium leading-none">Add label</span>
+						</button>
+						{pickerOpen && pickerAnchorRef.current && (
+							<LabelPicker
+								project={project}
+								task={task}
+								dispatch={dispatch}
+								onClose={() => setPickerOpen(false)}
+								anchorEl={pickerAnchorRef.current}
+							/>
+						)}
+					</div>
+				);
+			})()}
 
 			{/* Bottom row */}
 			<div className="flex items-center justify-between mt-3 gap-2">

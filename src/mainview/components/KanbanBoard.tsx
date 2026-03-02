@@ -9,6 +9,7 @@ import KanbanColumn from "./KanbanColumn";
 import CreateTaskModal from "./CreateTaskModal";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
+import LabelFilterBar from "./LabelFilterBar";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -32,6 +33,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
+	const [activeFilters, setActiveFilters] = useState<string[]>([]);
 	const moveCounterRef = useRef(0);
 
 	function recordMove(taskId: string) {
@@ -85,11 +87,19 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 	}
 
+	const projectLabels = project.labels ?? [];
+
+	// Apply label filters
+	const displayTasks =
+		activeFilters.length > 0
+			? tasks.filter((t) => activeFilters.some((id) => t.labelIds?.includes(id)))
+			: tasks;
+
 	const tasksByStatus = new Map<TaskStatus, Task[]>();
 	for (const status of ALL_STATUSES) {
 		tasksByStatus.set(status, []);
 	}
-	for (const task of tasks) {
+	for (const task of displayTasks) {
 		tasksByStatus.get(task.status)?.push(task);
 	}
 
@@ -103,6 +113,16 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 
 	return (
 		<>
+			<LabelFilterBar
+				labels={projectLabels}
+				activeFilters={activeFilters}
+				onToggle={(id) =>
+					setActiveFilters((prev) =>
+						prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
+					)
+				}
+				onClear={() => setActiveFilters([])}
+			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-12 overflow-x-auto overflow-y-hidden">
 				{ALL_STATUSES.map((status) => (
 					<KanbanColumn

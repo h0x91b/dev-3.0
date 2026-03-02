@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { Label, Project, Task } from "../../shared/types";
 import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
+import LabelChip from "./LabelChip";
 
 interface CreateTaskModalProps {
 	project: Project;
@@ -17,7 +18,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const t = useT();
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
+	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const projectLabels = project.labels ?? [];
 
 	const generatedTitle = description.trim()
 		? titleFromDescription(description)
@@ -40,10 +43,17 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		if (!trimmed || creating) return;
 		setCreating(true);
 		try {
-			const task = await api.request.createTask({
+			let task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
 			});
+			if (selectedLabelIds.length > 0) {
+				task = await api.request.setTaskLabels({
+					taskId: task.id,
+					projectId: project.id,
+					labelIds: selectedLabelIds,
+				});
+			}
 			dispatch({ type: "addTask", task });
 			trackEvent("task_created", { project_id: project.id });
 			onClose();
@@ -58,10 +68,17 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		if (!trimmed || creating || !onCreateAndRun) return;
 		setCreating(true);
 		try {
-			const task = await api.request.createTask({
+			let task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
 			});
+			if (selectedLabelIds.length > 0) {
+				task = await api.request.setTaskLabels({
+					taskId: task.id,
+					projectId: project.id,
+					labelIds: selectedLabelIds,
+				});
+			}
 			dispatch({ type: "addTask", task });
 			trackEvent("task_created", { project_id: project.id, source: "create_and_run" });
 			onCreateAndRun(task);
@@ -69,6 +86,12 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			alert(t("kanban.failedCreate", { error: String(err) }));
 			setCreating(false);
 		}
+	}
+
+	function toggleLabel(label: Label) {
+		setSelectedLabelIds((prev) =>
+			prev.includes(label.id) ? prev.filter((id) => id !== label.id) : [...prev, label.id],
+		);
 	}
 
 	return (
@@ -112,6 +135,26 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						</div>
 					)}
 				</div>
+
+				{/* Label selector — only shown if project has labels */}
+				{projectLabels.length > 0 && (
+					<div className="space-y-2">
+						<label className="text-fg-2 text-sm font-medium">
+							{t("labels.taskLabels")}
+						</label>
+						<div className="flex flex-wrap gap-1.5">
+							{projectLabels.map((label) => (
+								<LabelChip
+									key={label.id}
+									label={label}
+									size="sm"
+									active={selectedLabelIds.includes(label.id)}
+									onClick={() => toggleLabel(label)}
+								/>
+							))}
+						</div>
+					</div>
+				)}
 
 				{/* Actions */}
 				<div className="space-y-2.5 pt-1">

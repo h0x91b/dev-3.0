@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, GlobalSettings, Project, RequirementCheckResult, Task, TaskStatus, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, titleFromDescription } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, Project, RequirementCheckResult, Task, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -1283,5 +1283,64 @@ export const handlers = {
 		});
 		log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}`) });
 		return results;
+	},
+
+	async createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
+		log.info("→ createLabel", { projectId: params.projectId, name: params.name });
+		const project = await data.getProject(params.projectId);
+		const labels = project.labels ?? [];
+		// Auto-pick next unused color from palette
+		const usedColors = new Set(labels.map((l) => l.color));
+		const color = params.color ?? LABEL_COLORS.find((c) => !usedColors.has(c)) ?? LABEL_COLORS[labels.length % LABEL_COLORS.length];
+		const label: Label = {
+			id: crypto.randomUUID(),
+			name: params.name.trim(),
+			color,
+		};
+		await data.updateProject(params.projectId, { labels: [...labels, label] });
+		log.info("← createLabel done", { labelId: label.id });
+		return label;
+	},
+
+	async updateLabel(params: { projectId: string; labelId: string; name?: string; color?: string }): Promise<Label> {
+		log.info("→ updateLabel", { projectId: params.projectId, labelId: params.labelId });
+		const project = await data.getProject(params.projectId);
+		const labels = project.labels ?? [];
+		const idx = labels.findIndex((l) => l.id === params.labelId);
+		if (idx === -1) throw new Error(`Label not found: ${params.labelId}`);
+		const updated: Label = {
+			...labels[idx],
+			...(params.name !== undefined ? { name: params.name.trim() } : {}),
+			...(params.color !== undefined ? { color: params.color } : {}),
+		};
+		const newLabels = [...labels];
+		newLabels[idx] = updated;
+		await data.updateProject(params.projectId, { labels: newLabels });
+		log.info("← updateLabel done", { labelId: updated.id });
+		return updated;
+	},
+
+	async deleteLabel(params: { projectId: string; labelId: string }): Promise<void> {
+		log.info("→ deleteLabel", { projectId: params.projectId, labelId: params.labelId });
+		const project = await data.getProject(params.projectId);
+		const newLabels = (project.labels ?? []).filter((l) => l.id !== params.labelId);
+		await data.updateProject(params.projectId, { labels: newLabels });
+		// Remove this labelId from all tasks in the project
+		const tasks = await data.loadTasks(project);
+		const affectedTasks = tasks.filter((t) => t.labelIds?.includes(params.labelId));
+		for (const task of affectedTasks) {
+			await data.updateTask(project, task.id, {
+				labelIds: (task.labelIds ?? []).filter((id) => id !== params.labelId),
+			});
+		}
+		log.info("← deleteLabel done", { removed_from_tasks: affectedTasks.length });
+	},
+
+	async setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {
+		log.info("→ setTaskLabels", { taskId: params.taskId, labelIds: params.labelIds });
+		const project = await data.getProject(params.projectId);
+		const task = await data.updateTask(project, params.taskId, { labelIds: params.labelIds });
+		log.info("← setTaskLabels done", { taskId: params.taskId });
+		return task;
 	},
 };

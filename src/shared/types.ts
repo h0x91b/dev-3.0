@@ -141,6 +141,31 @@ export interface GlobalSettings {
 	updateChannel: "stable" | "canary";
 }
 
+// ---- Labels ----
+
+export interface Label {
+	id: string;
+	name: string;
+	color: string; // hex color from LABEL_COLORS palette
+}
+
+// Colors ordered to maximize perceptual distance between consecutive picks
+// (each step jumps ~150° around the color wheel: warm→cool→warm→cool…)
+export const LABEL_COLORS = [
+	"#ef4444", // red       0°
+	"#14b8a6", // teal    174°
+	"#f97316", // orange   25°
+	"#8b5cf6", // violet  258°
+	"#84cc16", // lime     80°
+	"#ec4899", // pink    322°
+	"#06b6d4", // cyan    188°
+	"#eab308", // yellow   50°
+	"#3b82f6", // blue    217°
+	"#22c55e", // green   142°
+	"#f43f5e", // rose    350°
+	"#6366f1", // indigo  239°
+] as const;
+
 export interface Project {
 	id: string;
 	name: string;
@@ -151,6 +176,7 @@ export interface Project {
 	defaultBaseBranch: string;
 	createdAt: string;
 	deleted?: boolean;
+	labels?: Label[];
 }
 
 export interface Task {
@@ -171,6 +197,7 @@ export interface Task {
 	updatedAt: string;
 	movedAt?: string;
 	tmuxSocket?: string | null;
+	labelIds?: string[];
 }
 
 /** Generate a short title from a description (first ~maxLen chars, word-boundary truncated). */
@@ -364,6 +391,22 @@ export type AppRPCSchema = {
 			killTmuxSession: {
 				params: { sessionName: string };
 				response: void;
+			};
+			createLabel: {
+				params: { projectId: string; name: string; color?: string };
+				response: Label;
+			};
+			updateLabel: {
+				params: { projectId: string; labelId: string; name?: string; color?: string };
+				response: Label;
+			};
+			deleteLabel: {
+				params: { projectId: string; labelId: string };
+				response: void;
+			};
+			setTaskLabels: {
+				params: { taskId: string; projectId: string; labelIds: string[] };
+				response: Task;
 			};
 		};
 		messages: {

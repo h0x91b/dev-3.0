@@ -1,0 +1,1 @@
+Added task labels feature: colored label chips on task cards with instant assignment via inline LabelPicker popover, label filter bar above the Kanban board for OR-based filtering, and label management (create, rename, recolor, delete) in Project Settings.

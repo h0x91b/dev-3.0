@@ -1,8 +1,86 @@
 import { useState, type Dispatch } from "react";
-import type { Project } from "../../shared/types";
+import type { Label, Project } from "../../shared/types";
+import { LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+
+interface LabelRowProps {
+	label: Label;
+	saving: boolean;
+	onUpdate: (name: string, color: string) => void;
+	onDelete: () => void;
+	nameLabel: string;
+	deleteLabel: string;
+}
+
+function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel }: LabelRowProps) {
+	const [name, setName] = useState(label.name);
+	const [color, setColor] = useState(label.color);
+
+	function commitUpdate(newName = name, newColor = color) {
+		if (newName.trim() && (newName !== label.name || newColor !== label.color)) {
+			onUpdate(newName.trim(), newColor);
+		}
+	}
+
+	return (
+		<div className="flex items-center gap-2 p-2.5 bg-raised rounded-xl border border-edge">
+			{/* Color dot (shows current color) */}
+			<div
+				className="w-4 h-4 rounded-full flex-shrink-0 border border-edge-active"
+				style={{ background: color }}
+			/>
+			{/* Name input */}
+			<input
+				type="text"
+				value={name}
+				onChange={(e) => setName(e.target.value)}
+				onBlur={() => commitUpdate()}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") {
+						e.currentTarget.blur();
+					}
+				}}
+				aria-label={nameLabel}
+				placeholder={nameLabel}
+				disabled={saving}
+				className="flex-1 bg-transparent text-fg text-sm outline-none placeholder-fg-muted min-w-0"
+			/>
+			{/* Color palette */}
+			<div className="flex items-center gap-1 flex-shrink-0">
+				{LABEL_COLORS.map((c) => (
+					<button
+						key={c}
+						type="button"
+						onClick={() => {
+							setColor(c);
+							commitUpdate(name, c);
+						}}
+						disabled={saving}
+						className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${
+							c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""
+						}`}
+						style={{ background: c }}
+						title={c}
+					/>
+				))}
+			</div>
+			{/* Delete */}
+			<button
+				type="button"
+				onClick={onDelete}
+				disabled={saving}
+				className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
+				title={deleteLabel}
+			>
+				<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
+		</div>
+	);
+}
 
 interface ProjectSettingsProps {
 	projectId: string;
@@ -27,6 +105,7 @@ function ProjectSettings({
 		project?.defaultBaseBranch || "main",
 	);
 	const [saving, setSaving] = useState(false);
+	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 
 	if (!project) {
 		return (
@@ -34,6 +113,51 @@ function ProjectSettings({
 				<span className="text-danger text-base">{t("project.notFound")}</span>
 			</div>
 		);
+	}
+
+	async function handleAddLabel() {
+		if (!project) return;
+		setLabelSaving("new");
+		try {
+			const label = await api.request.createLabel({ projectId, name: "New label" });
+			const updated: Project = { ...project, labels: [...(project.labels ?? []), label] };
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			alert(t("labels.failedCreate", { error: String(err) }));
+		}
+		setLabelSaving(null);
+	}
+
+	async function handleUpdateLabel(labelId: string, name: string, color: string) {
+		if (!project) return;
+		setLabelSaving(labelId);
+		try {
+			const label = await api.request.updateLabel({ projectId, labelId, name, color });
+			const updated: Project = {
+				...project,
+				labels: (project.labels ?? []).map((l) => (l.id === labelId ? label : l)),
+			};
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			alert(t("labels.failedUpdate", { error: String(err) }));
+		}
+		setLabelSaving(null);
+	}
+
+	async function handleDeleteLabel(labelId: string) {
+		if (!project) return;
+		setLabelSaving(labelId);
+		try {
+			await api.request.deleteLabel({ projectId, labelId });
+			const updated: Project = {
+				...project,
+				labels: (project.labels ?? []).filter((l) => l.id !== labelId),
+			};
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			alert(t("labels.failedDelete", { error: String(err) }));
+		}
+		setLabelSaving(null);
 	}
 
 	async function handleSave() {
@@ -124,6 +248,40 @@ function ProjectSettings({
 							placeholder="main"
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
 						/>
+					</div>
+
+					{/* Labels */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("labels.settingsTitle")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("labels.settingsDesc")}
+						</p>
+						<div className="space-y-2">
+							{(project.labels ?? []).map((label: Label) => (
+								<LabelRow
+									key={label.id}
+									label={label}
+									saving={labelSaving === label.id}
+									onUpdate={(name, color) => handleUpdateLabel(label.id, name, color)}
+									onDelete={() => handleDeleteLabel(label.id)}
+									nameLabel={t("labels.labelName")}
+									deleteLabel={t("labels.deleteLabel")}
+								/>
+							))}
+							{(project.labels ?? []).length === 0 && (
+								<p className="text-fg-muted text-sm italic">{t("labels.noLabels")}</p>
+							)}
+						</div>
+						<button
+							type="button"
+							onClick={handleAddLabel}
+							disabled={labelSaving !== null}
+							className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
+						>
+							{t("labels.addLabel")}
+						</button>
 					</div>
 
 					{/* Save Button */}

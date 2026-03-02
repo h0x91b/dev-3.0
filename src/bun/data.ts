@@ -34,6 +34,12 @@ async function loadAllProjects(): Promise<Project[]> {
 			return [];
 		}
 		const projects: Project[] = await file.json();
+		// Backfill labels for projects created before this field existed
+		for (const project of projects) {
+			if ((project as any).labels === undefined) {
+				project.labels = [];
+			}
+		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
 		return projects;
 	} catch (err) {
@@ -70,6 +76,7 @@ export async function addProject(
 		cleanupScript: "",
 		defaultBaseBranch: "main",
 		createdAt: new Date().toISOString(),
+		labels: [],
 	};
 	projects.push(project);
 	await saveProjects(projects);
@@ -91,7 +98,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch">>,
+	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "labels">>,
 ): Promise<Project> {
 	console.log("[updateProject] updates:", JSON.stringify(updates));
 	log.info("Updating project", { projectId, updates });
@@ -141,6 +148,7 @@ export async function loadTasks(project: Project): Promise<Task[]> {
 			if ((task as any).variantIndex === undefined) task.variantIndex = null;
 			if ((task as any).agentId === undefined) task.agentId = null;
 			if ((task as any).configId === undefined) task.configId = null;
+			if ((task as any).labelIds === undefined) task.labelIds = [];
 		}
 
 		// Backfill seq for tasks created before seq existed
@@ -217,6 +225,7 @@ export async function addTask(
 		createdAt: now,
 		updatedAt: now,
 		tmuxSocket: "dev3",
+		labelIds: [],
 	};
 	tasks.push(task);
 	await saveTasks(project, tasks);
