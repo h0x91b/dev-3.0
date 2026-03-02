@@ -41,7 +41,18 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 
+				if (task.description && task.description !== task.title) {
+					fields.push(["", ""]);
+					fields.push(["Description:", ""]);
+				}
+
 				printDetail(fields);
+
+				if (task.description && task.description !== task.title) {
+					for (const line of task.description.split("\n")) {
+						process.stdout.write(`  ${line}\n`);
+					}
+				}
 				return;
 			}
 		} catch {
@@ -64,10 +75,28 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 		if (task.title) fields.push(["Title:", task.title as string]);
 		if (task.status) fields.push(["Status:", STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] || (task.status as string)]);
 		if (task.branchName) fields.push(["Branch:", task.branchName as string]);
+		if (task.worktreePath) fields.push(["Worktree:", task.worktreePath as string]);
+
+		const desc = task.description as string | undefined;
+		if (desc && desc !== (task.title as string)) {
+			fields.push(["", ""]);
+			fields.push(["Description:", ""]);
+		}
+
+		fields.push(["", ""]);
+		fields.push(["(offline)", "App not running — showing cached data"]);
+
+		printDetail(fields);
+
+		if (desc && desc !== (task.title as string)) {
+			for (const line of desc.split("\n")) {
+				process.stdout.write(`  ${line}\n`);
+			}
+		}
+	} else {
+		fields.push(["", ""]);
+		fields.push(["(offline)", "App not running — showing cached data"]);
+
+		printDetail(fields);
 	}
-
-	fields.push(["", ""]);
-	fields.push(["(offline)", "App not running — showing cached data"]);
-
-	printDetail(fields);
 }
