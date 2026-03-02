@@ -337,18 +337,22 @@ render(
 | 3 | Font files differ from official release | MD5 hashes differ but both have identical Cyrillic coverage |
 | 4 | tmux or PTY encoding issue | Same tmux session works in iTerm2 |
 
-### Current hypothesis (investigating)
+### Hypotheses tested and rejected (continued)
 
-**WKWebView canvas cannot use @font-face fonts loaded via `views://` protocol** — even though the font loads for DOM, the Canvas 2D API (`ctx.fillText()`) cannot access it. Canvas falls back to system fonts, and system fonts may not be accessible either in `views://` context, resulting in a generic monospace without Cyrillic.
+| # | Hypothesis | Why rejected |
+|---|---|---|
+| 5 | Canvas cannot use @font-face fonts via views:// → use FontFace API with binary data | FontFace API loaded fonts successfully (`Fonts loaded via FontFace API` in console), but Cyrillic STILL shows as underscores. Font loading is not the problem. |
 
-Evidence:
-- DOM text (React UI) renders Cyrillic with the same JetBrains Mono ✓
-- Canvas text (ghostty-web terminal) renders Cyrillic as underscores ✗
-- Both use the same @font-face font, same URL, same protocol
+### Current status
 
-### Planned fix
+The font IS loaded and registered in `document.fonts` (both via CSS @font-face AND via FontFace API with binary data). DOM rendering uses it for Cyrillic correctly. But Canvas 2D `fillText()` in ghostty-web still renders Cyrillic as underscores. Debug logging added to measure canvas font metrics and compare Latin vs Cyrillic glyph widths.
 
-**Use FontFace API with binary data** — instead of relying on CSS @font-face + `document.fonts.load()`, fetch the woff2 as ArrayBuffer and register via `new FontFace()`. This explicitly makes the font available to canvas regardless of protocol.
+### Open questions
+
+1. Does `ctx.measureText("Б")` return width 0 or non-zero in production?
+2. Does `ctx.font` resolve to 'JetBrains Mono' or a fallback in production?
+3. Is the WASM module (`ghostty-vt.wasm`) producing correct codepoints for Cyrillic, or is it the one replacing them with underscore (0x5F)?
+4. Could this be a WKWebView canvas rendering bug specific to non-Latin characters with custom URL schemes?
 
 ### Key files
 

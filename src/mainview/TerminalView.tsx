@@ -81,10 +81,32 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		const TERMINAL_FONT = "'JetBrains Mono', 'SF Mono', 'Menlo', monospace";
 		(async () => {
 			try {
-				const [regularBuf, boldBuf] = await Promise.all([
-					fetch(fontRegularUrl).then((r) => r.arrayBuffer()),
-					fetch(fontBoldUrl).then((r) => r.arrayBuffer()),
+				console.log("[TerminalView] Font URLs:", { fontRegularUrl, fontBoldUrl });
+				console.log("[TerminalView] document.fonts.check before:", {
+					regular: document.fonts.check("14px 'JetBrains Mono'"),
+					bold: document.fonts.check("bold 14px 'JetBrains Mono'"),
+				});
+
+				const [regularResp, boldResp] = await Promise.all([
+					fetch(fontRegularUrl),
+					fetch(fontBoldUrl),
 				]);
+				console.log("[TerminalView] Fetch results:", {
+					regularOk: regularResp.ok,
+					regularStatus: regularResp.status,
+					boldOk: boldResp.ok,
+					boldStatus: boldResp.status,
+				});
+
+				const [regularBuf, boldBuf] = await Promise.all([
+					regularResp.arrayBuffer(),
+					boldResp.arrayBuffer(),
+				]);
+				console.log("[TerminalView] ArrayBuffer sizes:", {
+					regular: regularBuf.byteLength,
+					bold: boldBuf.byteLength,
+				});
+
 				const regular = new FontFace("JetBrains Mono", regularBuf, {
 					weight: "400",
 					style: "normal",
@@ -94,8 +116,31 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 					style: "normal",
 				});
 				await Promise.all([regular.load(), bold.load()]);
+				console.log("[TerminalView] FontFace loaded:", {
+					regularStatus: regular.status,
+					boldStatus: bold.status,
+				});
+
 				document.fonts.add(regular);
 				document.fonts.add(bold);
+				console.log("[TerminalView] document.fonts.check after:", {
+					regular: document.fonts.check("14px 'JetBrains Mono'"),
+					bold: document.fonts.check("bold 14px 'JetBrains Mono'"),
+				});
+
+				// Canvas test: try rendering Cyrillic on a temp canvas
+				const testCanvas = document.createElement("canvas");
+				const testCtx = testCanvas.getContext("2d")!;
+				testCtx.font = `14px ${TERMINAL_FONT}`;
+				const latinMetrics = testCtx.measureText("A");
+				const cyrillicMetrics = testCtx.measureText("Б");
+				console.log("[TerminalView] Canvas font test:", {
+					canvasFont: testCtx.font,
+					latinWidth: latinMetrics.width,
+					cyrillicWidth: cyrillicMetrics.width,
+					cyrillicWidthIsZero: cyrillicMetrics.width === 0,
+				});
+
 				console.log("[TerminalView] Fonts loaded via FontFace API");
 			} catch (err) {
 				console.warn("[TerminalView] FontFace API failed, falling back to CSS @font-face", err);
