@@ -1,0 +1,1 @@
+Added a prominent CAUTION notice at the top of README.md clarifying that task movement between Kanban columns is currently manual-only. Automatic AI-driven task management is planned but not yet implemented.

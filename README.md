@@ -23,6 +23,10 @@
 
 ---
 
+> [!CAUTION]
+> **Task movement is currently MANUAL only.**
+> Dragging tasks between Kanban columns (status changes) must be done by hand. Automatic AI-driven task management is planned but **not yet implemented** — this is a work in progress.
+
 <p align="center">
   <img src="docs/screenshots/kanban-board.png" width="800" alt="Kanban board with AI agents">
 </p>
