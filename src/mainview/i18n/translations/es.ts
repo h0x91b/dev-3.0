@@ -31,6 +31,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.themeDarkDesc": "Índigo nocturno",
 	"settings.themeLight": "Claro",
 	"settings.themeLightDesc": "Limpio y brillante",
+	"settings.themeSystem": "Sistema",
+	"settings.themeSystemDesc": "Según tu SO",
 	"settings.language": "Idioma",
 	"settings.agents": "Agentes de código",
 	"settings.addAgent": "Agregar agente",

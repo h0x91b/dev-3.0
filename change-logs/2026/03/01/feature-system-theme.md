@@ -1,0 +1,1 @@
+Added a "System" theme option that automatically follows the OS dark/light mode preference. When selected, the app listens for OS theme changes and switches in real time. Localized for English, Russian, and Spanish.

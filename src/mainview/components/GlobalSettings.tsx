@@ -4,7 +4,7 @@ import type { Locale } from "../i18n";
 import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel } from "../../shared/types";
 import { api } from "../rpc";
 
-type Theme = "dark" | "light";
+type Theme = "dark" | "light" | "system";
 
 function GlobalSettings() {
 	const t = useT();
@@ -33,9 +33,18 @@ function GlobalSettings() {
 	const selectedDefaultAgent = agents.find((a) => a.id === globalSettings.defaultAgentId);
 	const defaultAgentConfigs: AgentConfiguration[] = selectedDefaultAgent?.configurations || [];
 
+	function resolveTheme(th: Theme): "dark" | "light" {
+		if (th === "system") {
+			return window.matchMedia("(prefers-color-scheme: dark)").matches
+				? "dark"
+				: "light";
+		}
+		return th;
+	}
+
 	function applyTheme(th: Theme) {
 		setTheme(th);
-		document.documentElement.dataset.theme = th;
+		document.documentElement.dataset.theme = resolveTheme(th);
 		localStorage.setItem("dev3-theme", th);
 	}
 
@@ -177,6 +186,18 @@ function GlobalSettings() {
 									bg: "#f5f6fa",
 									raised: "#ffffff",
 									text: "#1a1d2e",
+									accent: "#5e9eff",
+								}}
+							/>
+							<ThemeCard
+								name={t("settings.themeSystem")}
+								description={t("settings.themeSystemDesc")}
+								active={theme === "system"}
+								onClick={() => applyTheme("system")}
+								preview={{
+									bg: "linear-gradient(135deg, #171924 50%, #f5f6fa 50%)",
+									raised: "#1e2133",
+									text: "#eceef8",
 									accent: "#5e9eff",
 								}}
 							/>

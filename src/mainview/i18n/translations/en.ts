@@ -29,6 +29,8 @@ const en = {
 	"settings.themeDarkDesc": "Midnight indigo",
 	"settings.themeLight": "Light",
 	"settings.themeLightDesc": "Clean & bright",
+	"settings.themeSystem": "System",
+	"settings.themeSystemDesc": "Follows your OS",
 	"settings.language": "Language",
 	"settings.agents": "Coding Agents",
 	"settings.addAgent": "Add Agent",

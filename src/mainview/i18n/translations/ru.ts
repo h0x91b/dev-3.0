@@ -33,6 +33,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.themeDarkDesc": "Полуночный индиго",
 	"settings.themeLight": "Светлая",
 	"settings.themeLightDesc": "Чистая и яркая",
+	"settings.themeSystem": "Системная",
+	"settings.themeSystemDesc": "Как в ОС",
 	"settings.language": "Язык",
 	"settings.agents": "Кодинг-агенты",
 	"settings.addAgent": "Добавить агента",

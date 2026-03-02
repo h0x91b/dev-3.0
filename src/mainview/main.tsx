@@ -26,9 +26,17 @@ window.addEventListener("unhandledrejection", (event) => {
 	});
 });
 
-// Apply saved theme before React mounts
-const savedTheme = localStorage.getItem("dev3-theme") || "dark";
-document.documentElement.dataset.theme = savedTheme;
+// Apply saved theme before React mounts & keep in sync with OS
+const systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applySavedTheme() {
+	const saved = localStorage.getItem("dev3-theme") || "dark";
+	document.documentElement.dataset.theme =
+		saved === "system" ? (systemThemeMq.matches ? "dark" : "light") : saved;
+}
+
+applySavedTheme();
+systemThemeMq.addEventListener("change", applySavedTheme);
 
 // Apply saved locale before React mounts
 const savedLocale = localStorage.getItem("dev3-locale") || "en";
