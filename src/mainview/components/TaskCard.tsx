@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, Label, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
+import LabelBadge from "./LabelBadge";
+import LabelPicker from "./LabelPicker";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -14,13 +16,14 @@ interface TaskCardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	agents: CodingAgent[];
+	labels: Label[];
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0 }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, labels, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0 }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -32,6 +35,27 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+	// Label picker state
+	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
+	const labelBtnRef = useRef<HTMLButtonElement>(null);
+
+	async function handleToggleLabel(labelId: string) {
+		const current = task.labelIds;
+		const next = current.includes(labelId)
+			? current.filter((id) => id !== labelId)
+			: [...current, labelId];
+		try {
+			const updated = await api.request.setTaskLabels({
+				taskId: task.id,
+				projectId: project.id,
+				labelIds: next,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			alert(t("labels.failedSetLabels", { error: String(err) }));
+		}
+	}
 
 	// Terminal preview state
 	const [previewOpen, setPreviewOpen] = useState(false);
@@ -464,6 +488,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				</div>
 			)}
 
+			{/* Label badges */}
+			{task.labelIds.length > 0 && (
+				<div className="flex flex-wrap gap-1 mt-1.5">
+					{task.labelIds.map((id) => {
+						const label = labels.find((l) => l.id === id);
+						if (!label) return null;
+						return <LabelBadge key={id} label={label} size="sm" />;
+					})}
+				</div>
+			)}
+
 			{/* Bottom row */}
 			<div className="flex items-center justify-between mt-3 gap-2">
 				{/* Status dropdown trigger */}
@@ -481,6 +516,23 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{t(statusKey(task.status))}
 					</span>
 				</button>
+
+				{/* Label tag button */}
+				{labels.length > 0 && (
+					<button
+						ref={labelBtnRef}
+						onClick={(e) => {
+							e.stopPropagation();
+							setLabelPickerOpen(!labelPickerOpen);
+						}}
+						className="opacity-0 group-hover:opacity-100 flex items-center px-1.5 py-1 rounded-lg hover:bg-fg/5 transition-all text-fg-3 hover:text-fg-2"
+						title={t("labels.assign")}
+					>
+						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+						</svg>
+					</button>
+				)}
 
 				{/* Right side actions */}
 				{isTodo ? (
@@ -555,6 +607,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					)}
 				</div>,
 				document.body
+			)}
+
+			{/* Label picker */}
+			{labelPickerOpen && labelBtnRef.current && (
+				<LabelPicker
+					labels={labels}
+					selectedIds={task.labelIds}
+					onToggle={handleToggleLabel}
+					onClose={() => setLabelPickerOpen(false)}
+					anchorRect={labelBtnRef.current.getBoundingClientRect()}
+				/>
 			)}
 
 			{/* Terminal preview popover */}

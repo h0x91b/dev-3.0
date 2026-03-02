@@ -99,6 +99,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		variantIndex: null,
 		agentId: null,
 		configId: null,
+		labelIds: [],
 		createdAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
 		...overrides,

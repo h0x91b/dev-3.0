@@ -69,6 +69,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		variantIndex: null,
 		agentId: null,
 		configId: null,
+		labelIds: [],
 		createdAt: "2025-01-01T00:00:00Z",
 		updatedAt: "2025-01-01T00:00:00Z",
 		...overrides,
@@ -93,6 +94,7 @@ function renderCard(
 				dispatch={opts?.dispatch ?? vi.fn()}
 				navigate={opts?.navigate ?? vi.fn()}
 				agents={agents}
+				labels={[]}
 				onLaunchVariants={opts?.onLaunchVariants ?? vi.fn()}
 				onDragStart={opts?.onDragStart ?? vi.fn()}
 				onTaskMoved={opts?.onTaskMoved ?? vi.fn()}

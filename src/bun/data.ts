@@ -1,4 +1,4 @@
-import type { Project, Task, TaskStatus } from "../shared/types";
+import type { Label, Project, Task, TaskStatus } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
@@ -14,6 +14,10 @@ function projectSlug(projectPath: string): string {
 
 function tasksFile(project: Project): string {
 	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
+}
+
+function labelsFile(project: Project): string {
+	return `${DEV3_HOME}/data/${projectSlug(project.path)}/labels.json`;
 }
 
 async function ensureDir(filePath: string): Promise<void> {
@@ -129,6 +133,7 @@ export async function loadTasks(project: Project): Promise<Task[]> {
 			if ((task as any).variantIndex === undefined) task.variantIndex = null;
 			if ((task as any).agentId === undefined) task.agentId = null;
 			if ((task as any).configId === undefined) task.configId = null;
+			if ((task as any).labelIds === undefined) (task as any).labelIds = [];
 		}
 
 		// Backfill seq for tasks created before seq existed
@@ -182,7 +187,7 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
-	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number },
+	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; labelIds?: string[] },
 ): Promise<Task> {
 	const title = titleFromDescription(description);
 	log.info("Creating task", { projectId: project.id, title, status });
@@ -202,6 +207,7 @@ export async function addTask(
 		variantIndex: extras?.variantIndex ?? null,
 		agentId: extras?.agentId ?? null,
 		configId: extras?.configId ?? null,
+		labelIds: extras?.labelIds ?? [],
 		createdAt: now,
 		updatedAt: now,
 		tmuxSocket: "dev3",
@@ -246,4 +252,70 @@ export async function getTask(
 	const task = tasks.find((t) => t.id === taskId);
 	if (!task) throw new Error(`Task not found: ${taskId}`);
 	return task;
+}
+
+// ---- Labels ----
+
+export async function loadLabels(project: Project): Promise<Label[]> {
+	const file = labelsFile(project);
+	log.debug("Loading labels", { projectId: project.id, file });
+	try {
+		const f = Bun.file(file);
+		if (!(await f.exists())) return [];
+		const labels: Label[] = await f.json();
+		log.info(`Loaded ${labels.length} label(s)`, { projectId: project.id });
+		return labels;
+	} catch (err) {
+		log.error("Failed to load labels", { projectId: project.id, error: String(err) });
+		return [];
+	}
+}
+
+export async function saveLabels(project: Project, labels: Label[]): Promise<void> {
+	const file = labelsFile(project);
+	log.debug("Saving labels", { projectId: project.id, count: labels.length });
+	await ensureDir(file);
+	await Bun.write(file, JSON.stringify(labels, null, 2));
+	log.info(`Saved ${labels.length} label(s)`, { projectId: project.id });
+}
+
+export async function addLabel(project: Project, name: string, color: string): Promise<Label> {
+	log.info("Creating label", { projectId: project.id, name, color });
+	const labels = await loadLabels(project);
+	const label: Label = { id: crypto.randomUUID(), name, color };
+	labels.push(label);
+	await saveLabels(project, labels);
+	return label;
+}
+
+export async function updateLabel(
+	project: Project,
+	labelId: string,
+	updates: Partial<Pick<Label, "name" | "color">>,
+): Promise<Label> {
+	log.info("Updating label", { projectId: project.id, labelId, updates });
+	const labels = await loadLabels(project);
+	const idx = labels.findIndex((l) => l.id === labelId);
+	if (idx === -1) throw new Error(`Label not found: ${labelId}`);
+	labels[idx] = { ...labels[idx], ...updates };
+	await saveLabels(project, labels);
+	return labels[idx];
+}
+
+export async function deleteLabel(project: Project, labelId: string): Promise<void> {
+	log.info("Deleting label", { projectId: project.id, labelId });
+	const labels = await loadLabels(project);
+	const filtered = labels.filter((l) => l.id !== labelId);
+	await saveLabels(project, filtered);
+
+	// Strip deleted label from all tasks
+	const tasks = await loadTasks(project);
+	let changed = false;
+	for (const task of tasks) {
+		if (task.labelIds.includes(labelId)) {
+			task.labelIds = task.labelIds.filter((id) => id !== labelId);
+			changed = true;
+		}
+	}
+	if (changed) await saveTasks(project, tasks);
 }

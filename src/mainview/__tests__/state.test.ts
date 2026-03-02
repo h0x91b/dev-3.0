@@ -27,6 +27,7 @@ const mockTask: Task = {
 	variantIndex: null,
 	agentId: null,
 	configId: null,
+	labelIds: [],
 	createdAt: "2025-01-01T00:00:00Z",
 	updatedAt: "2025-01-01T00:00:00Z",
 };
@@ -38,6 +39,8 @@ describe("initialState", () => {
 			previousRoute: null,
 			projects: [],
 			currentProjectTasks: [],
+			currentProjectLabels: [],
+			activeLabelFilter: [],
 			loading: true,
 			bellCounts: new Map(),
 		});

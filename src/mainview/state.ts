@@ -1,5 +1,5 @@
 import { useReducer } from "react";
-import type { Project, Task } from "../shared/types";
+import type { Label, Project, Task } from "../shared/types";
 
 // ---- Routes ----
 
@@ -18,6 +18,8 @@ export interface AppState {
 	previousRoute: Route | null;
 	projects: Project[];
 	currentProjectTasks: Task[];
+	currentProjectLabels: Label[];
+	activeLabelFilter: string[];
 	loading: boolean;
 	bellCounts: Map<string, number>;
 }
@@ -27,6 +29,8 @@ export const initialState: AppState = {
 	previousRoute: null,
 	projects: [],
 	currentProjectTasks: [],
+	currentProjectLabels: [],
+	activeLabelFilter: [],
 	loading: true,
 	bellCounts: new Map(),
 };
@@ -46,7 +50,13 @@ export type AppAction =
 	| { type: "updateProject"; project: Project }
 	| { type: "setLoading"; loading: boolean }
 	| { type: "addBell"; taskId: string }
-	| { type: "clearBell"; taskId: string };
+	| { type: "clearBell"; taskId: string }
+	| { type: "setLabels"; labels: Label[] }
+	| { type: "addLabel"; label: Label }
+	| { type: "updateLabel"; label: Label }
+	| { type: "removeLabel"; labelId: string }
+	| { type: "toggleLabelFilter"; labelId: string }
+	| { type: "clearLabelFilter" };
 
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -126,6 +136,37 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			bellCounts.delete(action.taskId);
 			return { ...state, bellCounts };
 		}
+		case "setLabels":
+			return { ...state, currentProjectLabels: action.labels, activeLabelFilter: [] };
+		case "addLabel":
+			return { ...state, currentProjectLabels: [...state.currentProjectLabels, action.label] };
+		case "updateLabel":
+			return {
+				...state,
+				currentProjectLabels: state.currentProjectLabels.map((l) =>
+					l.id === action.label.id ? action.label : l,
+				),
+			};
+		case "removeLabel":
+			return {
+				...state,
+				currentProjectLabels: state.currentProjectLabels.filter((l) => l.id !== action.labelId),
+				activeLabelFilter: state.activeLabelFilter.filter((id) => id !== action.labelId),
+				currentProjectTasks: state.currentProjectTasks.map((t) =>
+					t.labelIds.includes(action.labelId)
+						? { ...t, labelIds: t.labelIds.filter((id) => id !== action.labelId) }
+						: t,
+				),
+			};
+		case "toggleLabelFilter": {
+			const active = state.activeLabelFilter;
+			const next = active.includes(action.labelId)
+				? active.filter((id) => id !== action.labelId)
+				: [...active, action.labelId];
+			return { ...state, activeLabelFilter: next };
+		}
+		case "clearLabelFilter":
+			return { ...state, activeLabelFilter: [] };
 		default:
 			return state;
 	}

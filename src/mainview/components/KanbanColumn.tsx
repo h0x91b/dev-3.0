@@ -1,5 +1,5 @@
 import { useState, type Dispatch } from "react";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, Label, Project, Task, TaskStatus } from "../../shared/types";
 import { STATUS_COLORS, hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
@@ -20,6 +20,7 @@ interface KanbanColumnProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
+	labels: Label[];
 }
 
 function KanbanColumn({
@@ -37,6 +38,7 @@ function KanbanColumn({
 	onDragStart,
 	onTaskMoved,
 	bellCounts,
+	labels,
 }: KanbanColumnProps) {
 	const t = useT();
 	const color = STATUS_COLORS[status];
@@ -132,6 +134,7 @@ function KanbanColumn({
 						dispatch={dispatch}
 						navigate={navigate}
 						agents={agents}
+						labels={labels}
 						onLaunchVariants={onLaunchVariants}
 						onDragStart={onDragStart}
 					onTaskMoved={onTaskMoved}

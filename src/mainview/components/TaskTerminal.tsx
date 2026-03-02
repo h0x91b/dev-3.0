@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch } from "react";
-import type { Task, Project } from "../../shared/types";
+import type { Label, Task, Project } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -11,6 +11,7 @@ interface TaskTerminalProps {
 	projectId: string;
 	taskId: string;
 	tasks: Task[];
+	labels: Label[];
 	projects: Project[];
 	navigate: (route: Route) => void;
 	dispatch: Dispatch<AppAction>;
@@ -18,7 +19,7 @@ interface TaskTerminalProps {
 
 const PTY_CONNECT_TIMEOUT_MS = 10_000;
 
-function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch }: TaskTerminalProps) {
+function TaskTerminal({ projectId, taskId, tasks, labels, projects, navigate, dispatch }: TaskTerminalProps) {
 	const t = useT();
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -129,7 +130,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch }
 
 	return (
 		<div className="h-full w-full flex flex-col">
-			{task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} />}
+			{task && project && <TaskInfoPanel task={task} project={project} labels={labels} dispatch={dispatch} navigate={navigate} />}
 			<div className="flex-1 min-h-0">
 				{ptyUrl ? (
 					<TerminalView ptyUrl={ptyUrl} taskId={taskId} />

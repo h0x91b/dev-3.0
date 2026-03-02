@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
-import type { Project } from "../../shared/types";
+import type { Label, Project } from "../../shared/types";
 import { titleFromDescription } from "../../shared/types";
+import LabelBadge from "./LabelBadge";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -8,14 +9,16 @@ import { trackEvent } from "../analytics";
 
 interface CreateTaskModalProps {
 	project: Project;
+	labels: Label[];
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
 }
 
-function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
+function CreateTaskModal({ project, labels, dispatch, onClose }: CreateTaskModalProps) {
 	const t = useT();
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
+	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const generatedTitle = description.trim()
@@ -42,6 +45,7 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 			const task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
+				labelIds: selectedLabelIds.length > 0 ? selectedLabelIds : undefined,
 			});
 			dispatch({ type: "addTask", task });
 			trackEvent("task_created", { project_id: project.id });
@@ -89,6 +93,35 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 						</div>
 					)}
 				</div>
+
+				{/* Label selector */}
+				{labels.length > 0 && (
+					<div className="space-y-1.5">
+						<label className="text-fg-2 text-sm font-medium">
+							{t("labels.assign")}
+						</label>
+						<div className="flex flex-wrap gap-1.5">
+							{labels.map((label) => {
+								const selected = selectedLabelIds.includes(label.id);
+								return (
+									<LabelBadge
+										key={label.id}
+										label={label}
+										onClick={() => {
+											setSelectedLabelIds((prev) =>
+												selected
+													? prev.filter((id) => id !== label.id)
+													: [...prev, label.id],
+											);
+										}}
+										active={selected}
+										size="md"
+									/>
+								);
+							})}
+						</div>
+					</div>
+				)}
 
 				{/* Actions */}
 				<div className="flex items-center justify-between pt-1">

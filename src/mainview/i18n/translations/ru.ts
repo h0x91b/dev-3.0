@@ -244,6 +244,24 @@ const ru: TranslationRecord & Record<string, string> = {
 	"tmuxSessions.killAllConfirmTitle": "Убить все сессии tmux",
 	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",
 
+	// Labels
+	"labels.title": "Метки",
+	"labels.manage": "Управление метками",
+	"labels.add": "Добавить метку",
+	"labels.name": "Название",
+	"labels.namePlaceholder": "Название метки...",
+	"labels.color": "Цвет",
+	"labels.edit": "Редактировать",
+	"labels.delete": "Удалить",
+	"labels.confirmDelete": "Удалить метку «{name}»? Она будет убрана из всех задач.",
+	"labels.clearFilter": "Сбросить",
+	"labels.noLabels": "Меток пока нет",
+	"labels.assign": "Метки",
+	"labels.failedCreate": "Не удалось создать метку: {error}",
+	"labels.failedUpdate": "Не удалось обновить метку: {error}",
+	"labels.failedDelete": "Не удалось удалить метку: {error}",
+	"labels.failedSetLabels": "Не удалось обновить метки задачи: {error}",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { Label, Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -9,6 +9,8 @@ interface ProjectViewProps {
 	projectId: string;
 	projects: Project[];
 	tasks: Task[];
+	labels: Label[];
+	activeLabelFilter: string[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
@@ -18,6 +20,8 @@ function ProjectView({
 	projectId,
 	projects,
 	tasks,
+	labels,
+	activeLabelFilter,
 	dispatch,
 	navigate,
 	bellCounts,
@@ -28,10 +32,14 @@ function ProjectView({
 	useEffect(() => {
 		(async () => {
 			try {
-				const tasks = await api.request.getTasks({ projectId });
+				const [tasks, labels] = await Promise.all([
+					api.request.getTasks({ projectId }),
+					api.request.getLabels({ projectId }),
+				]);
 				dispatch({ type: "setTasks", tasks });
+				dispatch({ type: "setLabels", labels });
 			} catch (err) {
-				console.error("Failed to load tasks:", err);
+				console.error("Failed to load tasks/labels:", err);
 			}
 		})();
 	}, [projectId, dispatch]);
@@ -49,6 +57,8 @@ function ProjectView({
 			<KanbanBoard
 				project={project}
 				tasks={tasks}
+				labels={labels}
+				activeLabelFilter={activeLabelFilter}
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}

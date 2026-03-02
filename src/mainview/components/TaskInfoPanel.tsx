@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, BranchStatus } from "../../shared/types";
+import type { Label, Task, Project, TaskStatus, BranchStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
+import LabelBadge from "./LabelBadge";
+import LabelPicker from "./LabelPicker";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -10,6 +12,7 @@ import { trackEvent } from "../analytics";
 interface TaskInfoPanelProps {
 	task: Task;
 	project: Project;
+	labels: Label[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 }
@@ -56,8 +59,27 @@ function formatDate(iso: string): string {
 	}
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, labels, dispatch, navigate }: TaskInfoPanelProps) {
 	const t = useT();
+	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
+	const labelBtnRef = useRef<HTMLButtonElement>(null);
+
+	async function handleToggleLabel(labelId: string) {
+		const current = task.labelIds;
+		const next = current.includes(labelId)
+			? current.filter((id) => id !== labelId)
+			: [...current, labelId];
+		try {
+			const updated = await api.request.setTaskLabels({
+				taskId: task.id,
+				projectId: project.id,
+				labelIds: next,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			alert(t("labels.failedSetLabels", { error: String(err) }));
+		}
+	}
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 
@@ -775,6 +797,40 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
 								{uncommittedBadge}
 							</>
+						)}
+						{/* Label badges */}
+						{task.labelIds.length > 0 && (
+							<>
+								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+								<div className="flex gap-1 flex-shrink-0">
+									{task.labelIds.map((id) => {
+										const label = labels.find((l) => l.id === id);
+										if (!label) return null;
+										return <LabelBadge key={id} label={label} size="sm" />;
+									})}
+								</div>
+							</>
+						)}
+						{labels.length > 0 && (
+							<button
+								ref={labelBtnRef}
+								onClick={() => setLabelPickerOpen(!labelPickerOpen)}
+								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								title={t("labels.assign")}
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+								</svg>
+							</button>
+						)}
+						{labelPickerOpen && labelBtnRef.current && (
+							<LabelPicker
+								labels={labels}
+								selectedIds={task.labelIds}
+								onToggle={handleToggleLabel}
+								onClose={() => setLabelPickerOpen(false)}
+								anchorRect={labelBtnRef.current.getBoundingClientRect()}
+							/>
 						)}
 						<div className="flex-1" />
 						{tmuxHintsInline}

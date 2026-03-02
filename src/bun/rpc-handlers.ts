@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, GlobalSettings, Project, RequirementCheckResult, Task, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, Project, RequirementCheckResult, Task, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -443,11 +443,12 @@ export const handlers = {
 		projectId: string;
 		description: string;
 		status?: TaskStatus;
+		labelIds?: string[];
 	}): Promise<Task> {
 		log.info("→ createTask", params);
 		const project = await data.getProject(params.projectId);
 		const status = params.status || "todo";
-		const task = await data.addTask(project, params.description, status);
+		const task = await data.addTask(project, params.description, status, params.labelIds?.length ? { labelIds: params.labelIds } : undefined);
 
 		// If created directly into an active status, set up worktree + PTY
 		if (isActive(status)) {
@@ -646,6 +647,48 @@ export const handlers = {
 			title,
 		});
 		log.info("← editTask done", { taskId: task.id });
+		return updated;
+	},
+
+	// ---- Labels ----
+
+	async getLabels(params: { projectId: string }): Promise<Label[]> {
+		const project = await data.getProject(params.projectId);
+		return data.loadLabels(project);
+	},
+
+	async createLabel(params: { projectId: string; name: string; color: string }): Promise<Label> {
+		log.info("→ createLabel", params);
+		const project = await data.getProject(params.projectId);
+		const label = await data.addLabel(project, params.name, params.color);
+		log.info("← createLabel", { labelId: label.id });
+		return label;
+	},
+
+	async updateLabel(params: { projectId: string; labelId: string; name?: string; color?: string }): Promise<Label> {
+		log.info("→ updateLabel", params);
+		const project = await data.getProject(params.projectId);
+		const updates: Partial<Pick<Label, "name" | "color">> = {};
+		if (params.name !== undefined) updates.name = params.name;
+		if (params.color !== undefined) updates.color = params.color;
+		const label = await data.updateLabel(project, params.labelId, updates);
+		log.info("← updateLabel", { labelId: label.id });
+		return label;
+	},
+
+	async deleteLabel(params: { projectId: string; labelId: string }): Promise<void> {
+		log.info("→ deleteLabel", params);
+		const project = await data.getProject(params.projectId);
+		await data.deleteLabel(project, params.labelId);
+		log.info("← deleteLabel done", { labelId: params.labelId });
+	},
+
+	async setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {
+		log.info("→ setTaskLabels", { taskId: params.taskId, labelIds: params.labelIds });
+		const project = await data.getProject(params.projectId);
+		const updated = await data.updateTask(project, params.taskId, { labelIds: params.labelIds });
+		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		log.info("← setTaskLabels done", { taskId: updated.id });
 		return updated;
 	},
 

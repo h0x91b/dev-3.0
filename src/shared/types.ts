@@ -9,6 +9,21 @@ export interface ChangelogEntry {
 	title: string; // First sentence of content (truncated to ~120 chars)
 }
 
+// ---- Labels ----
+
+export interface Label {
+	id: string;
+	name: string;
+	color: string; // hex, e.g. "#ff6b6b"
+}
+
+/** Curated color palette for quick-pick when creating labels. */
+export const LABEL_COLORS: string[] = [
+	"#ff6b6b", "#ffa94d", "#ffd43b", "#69db7c",
+	"#38d9a9", "#4dabf7", "#748ffc", "#da77f2",
+	"#f783ac", "#a9e34b", "#66d9e8", "#e599f7",
+];
+
 // ---- Data models ----
 
 export type TaskStatus =
@@ -166,6 +181,7 @@ export interface Task {
 	variantIndex: number | null;
 	agentId: string | null;
 	configId: string | null;
+	labelIds: string[];
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;
@@ -268,7 +284,7 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus };
+				params: { projectId: string; description: string; status?: TaskStatus; labelIds?: string[] };
 				response: Task;
 			};
 			moveTask: {
@@ -281,6 +297,26 @@ export type AppRPCSchema = {
 			};
 			editTask: {
 				params: { taskId: string; projectId: string; description: string };
+				response: Task;
+			};
+			getLabels: {
+				params: { projectId: string };
+				response: Label[];
+			};
+			createLabel: {
+				params: { projectId: string; name: string; color: string };
+				response: Label;
+			};
+			updateLabel: {
+				params: { projectId: string; labelId: string; name?: string; color?: string };
+				response: Label;
+			};
+			deleteLabel: {
+				params: { projectId: string; labelId: string };
+				response: void;
+			};
+			setTaskLabels: {
+				params: { taskId: string; projectId: string; labelIds: string[] };
 				response: Task;
 			};
 			spawnVariants: {

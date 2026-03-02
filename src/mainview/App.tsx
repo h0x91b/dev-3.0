@@ -192,6 +192,8 @@ function App() {
 						projectId={route.projectId}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
+						labels={state.currentProjectLabels}
+						activeLabelFilter={state.activeLabelFilter}
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
@@ -203,6 +205,7 @@ function App() {
 						projectId={route.projectId}
 						taskId={route.taskId}
 						tasks={state.currentProjectTasks}
+						labels={state.currentProjectLabels}
 						projects={state.projects}
 						navigate={navigate}
 						dispatch={dispatch}
