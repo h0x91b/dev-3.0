@@ -907,6 +907,55 @@ export const handlers = {
 		log.info("← pushTask (pane opened)", { paneId });
 	},
 
+	async showDiff(params: { taskId: string; projectId: string }): Promise<void> {
+		log.info("→ showDiff", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
+
+		const socket = task.tmuxSocket ?? null;
+		await killExistingGitPane(task.id, tmuxSession, socket);
+
+		const script = [
+			`#!/bin/bash`,
+			`git diff --color=always ${baseBranch}...HEAD | less -R`,
+			`EXIT_CODE=\${PIPESTATUS[0]}`,
+			`if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 141 ]; then`,
+			`  printf '\\033[1;31m✗ git diff failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
+			`  echo "Press any key to close."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(scriptPath, script);
+
+		const proc = spawn(pty.tmuxArgs(socket,
+			"split-window", "-h",
+			"-t", tmuxSession,
+			"-c", task.worktreePath,
+			"-P", "-F", "#{pane_id}",
+			`bash "${scriptPath}"`,
+		), { stdout: "pipe", stderr: "pipe" });
+		const output = await new Response(proc.stdout).text();
+		const stderrOutput = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+
+		if (stderrOutput.trim()) {
+			log.warn("showDiff tmux stderr", { stderr: stderrOutput.trim() });
+		}
+		if (exitCode !== 0) {
+			throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+		}
+
+		const paneId = output.trim() || null;
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		log.info("← showDiff (pane opened)", { paneId });
+	},
+
 	async getTerminalPreview(params: { taskId: string }): Promise<string | null> {
 		return pty.capturePane(params.taskId);
 	},

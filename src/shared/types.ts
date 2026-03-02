@@ -324,6 +324,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
+			showDiff: {
+				params: { taskId: string; projectId: string };
+				response: void;
+			};
 			getTerminalPreview: {
 				params: { taskId: string };
 				response: string | null;

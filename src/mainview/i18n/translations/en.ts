@@ -173,6 +173,8 @@ const en = {
 	"infoPanel.push": "Push",
 	"infoPanel.pushing": "Pushing...",
 	"infoPanel.pushFailed": "Push failed: {error}",
+	"infoPanel.showDiff": "Show Diff",
+	"infoPanel.showDiffFailed": "Show diff failed: {error}",
 	"infoPanel.devServerFailed": "Failed to start dev server: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Refresh branch status",

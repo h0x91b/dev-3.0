@@ -337,6 +337,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		setPushing(false);
 	}
 
+	async function handleShowDiff() {
+		try {
+			await api.request.showDiff({
+				taskId: task.id,
+				projectId: project.id,
+			});
+		} catch (err) {
+			alert(t("infoPanel.showDiffFailed", { error: String(err) }));
+		}
+	}
+
 	// Listen for git operation completion — refresh branch status and handle post-merge dialog
 	useEffect(() => {
 		async function onGitOpCompleted(e: Event) {
@@ -584,6 +595,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{merging ? t("infoPanel.merging") : t("infoPanel.merge")}
 				</button>
 			)}
+			<button
+				onClick={handleShowDiff}
+				className="px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors text-fg-muted hover:text-fg hover:bg-elevated"
+				title={t("infoPanel.showDiff")}
+			>
+				{t("infoPanel.showDiff")}
+			</button>
 			<button
 				onClick={handleRefreshStatus}
 				disabled={refreshingStatus}
