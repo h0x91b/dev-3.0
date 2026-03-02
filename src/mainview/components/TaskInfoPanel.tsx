@@ -15,7 +15,7 @@ interface TaskInfoPanelProps {
 	navigate: (route: Route) => void;
 }
 
-const COLLAPSED_HEIGHT = 36;
+const COLLAPSED_HEIGHT = 62;
 const DEFAULT_HEIGHT = 200;
 const MIN_HEIGHT = 80;
 const MAX_RATIO = 0.33;
@@ -744,26 +744,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</button>
 	);
 
-	const tmuxKbd = "px-1 py-0.5 rounded bg-base border border-edge/50 font-mono text-[10px] text-fg-3";
-
 	const tmuxHintsInline = (
 		<div
 			ref={hintsTriggerRef}
-			className="flex items-center gap-1.5 flex-shrink-0"
+			className="flex items-center flex-shrink-0"
 			onMouseEnter={showHints}
 			onMouseLeave={hideHints}
 		>
-			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
-				<kbd className={tmuxKbd}>⌃B -</kbd>{t("tmux.hSplit")}
-			</span>
-			<span className="text-fg-muted/30">·</span>
-			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
-				<kbd className={tmuxKbd}>⌃B |</kbd>{t("tmux.vSplit")}
-			</span>
-			<span className="text-fg-muted/30">·</span>
-			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
-				<kbd className={tmuxKbd}>⌃B z</kbd>{t("tmux.zoom")}
-			</span>
 			<button
 				className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
 				onClick={(e) => { e.stopPropagation(); setHintsOpen((o) => !o); }}
@@ -815,84 +802,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			style={{ height }}
 		>
 			{collapsed ? (
-				/* ---- Collapsed: single row ---- */
-				<div className="flex items-center h-full px-4 gap-1.5 min-w-0">
-					{statusDropdownButton}
-					{statusDropdownPortal}
-					{task.branchName && (
-						<>
-							<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-							<span className="text-fg-3 text-xs font-mono truncate max-w-[200px] flex-shrink-0">
-								{task.branchName}
-							</span>
-						</>
-					)}
-					{(branchStatusBadge || branchStatusLoading) && (
-						<>
-							<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-							{branchStatusBadge || branchStatusLoading}
-						</>
-					)}
-					{uncommittedBadge && (
-						<>
-							<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-							{uncommittedBadge}
-						</>
-					)}
-					<div className="flex-1" />
-					{tmuxHintsInline}
-					{tmuxHintsPopover}
-					{devServerButton}
-					<button
-						onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
-						className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-						title={t("infoPanel.fullScreen")}
-					>
-						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
-						</svg>
-					</button>
-					<button
-						onClick={toggleCollapsed}
-						className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-						title={t("infoPanel.expand")}
-					>
-						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-						</svg>
-					</button>
-				</div>
-			) : (
-				/* ---- Expanded ---- */
-				<div className="flex flex-col h-full">
-					{/* Header row with controls */}
-					<div className="flex items-center px-4 py-2 gap-2 min-w-0">
-						{statusDropdownButton}
-						{statusDropdownPortal}
-						{task.branchName && (
-							<>
-								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-								<span className="text-fg-3 text-xs font-mono truncate max-w-[200px] flex-shrink-0">
-									{task.branchName}
-								</span>
-							</>
-						)}
-						{branchStatusBadge && (
-							<>
-								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-								{branchStatusBadge}
-							</>
-						)}
-						{uncommittedBadge && (
-							<>
-								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-								{uncommittedBadge}
-							</>
-						)}
+				/* ---- Collapsed: two rows ---- */
+				<div className="flex flex-col h-full px-4">
+					{/* Top row: utility buttons */}
+					<div className="flex items-center gap-2 min-w-0 pt-1">
 						<div className="flex-1" />
+						{devServerButton}
 						{tmuxHintsInline}
 						{tmuxHintsPopover}
-						{devServerButton}
 						<button
 							onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
@@ -905,12 +822,94 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						<button
 							onClick={toggleCollapsed}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={t("infoPanel.collapse")}
+							title={t("infoPanel.expand")}
 						>
 							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
 							</svg>
 						</button>
+					</div>
+					{/* Bottom row: status + git */}
+					<div className="flex items-center gap-1.5 min-w-0 pb-1">
+						{statusDropdownButton}
+						{statusDropdownPortal}
+						{task.branchName && (
+							<>
+								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+								<span className="text-fg-3 text-xs font-mono truncate max-w-[200px] flex-shrink-0">
+									{task.branchName}
+								</span>
+							</>
+						)}
+						{(branchStatusBadge || branchStatusLoading) && (
+							<>
+								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+								{branchStatusBadge || branchStatusLoading}
+							</>
+						)}
+						{uncommittedBadge && (
+							<>
+								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+								{uncommittedBadge}
+							</>
+						)}
+					</div>
+				</div>
+			) : (
+				/* ---- Expanded ---- */
+				<div className="flex flex-col h-full">
+					{/* Header rows with controls */}
+					<div className="flex flex-col px-4">
+						{/* Top row: utility buttons */}
+						<div className="flex items-center gap-2 min-w-0 pt-1">
+							<div className="flex-1" />
+							{devServerButton}
+							{tmuxHintsInline}
+							{tmuxHintsPopover}
+							<button
+								onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								title={t("infoPanel.fullScreen")}
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+								</svg>
+							</button>
+							<button
+								onClick={toggleCollapsed}
+								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								title={t("infoPanel.collapse")}
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+								</svg>
+							</button>
+						</div>
+						{/* Bottom row: status + git */}
+						<div className="flex items-center gap-1.5 min-w-0 pb-1">
+							{statusDropdownButton}
+							{statusDropdownPortal}
+							{task.branchName && (
+								<>
+									<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+									<span className="text-fg-3 text-xs font-mono truncate max-w-[200px] flex-shrink-0">
+										{task.branchName}
+									</span>
+								</>
+							)}
+							{branchStatusBadge && (
+								<>
+									<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+									{branchStatusBadge}
+								</>
+							)}
+							{uncommittedBadge && (
+								<>
+									<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+									{uncommittedBadge}
+								</>
+							)}
+						</div>
 					</div>
 
 					{/* Metadata grid */}
