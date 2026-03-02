@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
-import type { Project } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -10,9 +10,10 @@ interface CreateTaskModalProps {
 	project: Project;
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
+	onCreateAndRun?: (task: Task) => void;
 }
 
-function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
+function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateTaskModalProps) {
 	const t = useT();
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
@@ -52,6 +53,24 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 		}
 	}
 
+	async function handleCreateAndRun() {
+		const trimmed = description.trim();
+		if (!trimmed || creating || !onCreateAndRun) return;
+		setCreating(true);
+		try {
+			const task = await api.request.createTask({
+				projectId: project.id,
+				description: trimmed,
+			});
+			dispatch({ type: "addTask", task });
+			trackEvent("task_created", { project_id: project.id, source: "create_and_run" });
+			onCreateAndRun(task);
+		} catch (err) {
+			alert(t("kanban.failedCreate", { error: String(err) }));
+			setCreating(false);
+		}
+	}
+
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -75,7 +94,11 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 						onChange={(e) => setDescription(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-								handleCreate();
+								if (e.shiftKey && onCreateAndRun) {
+									handleCreateAndRun();
+								} else {
+									handleCreate();
+								}
 							}
 						}}
 						placeholder={t("createTask.descriptionPlaceholder")}
@@ -91,24 +114,38 @@ function CreateTaskModal({ project, dispatch, onClose }: CreateTaskModalProps) {
 				</div>
 
 				{/* Actions */}
-				<div className="flex items-center justify-between pt-1">
-					<span className="text-fg-muted text-xs">
-						{t("createTask.submitHint")}
-					</span>
-					<div className="flex gap-2">
+				<div className="space-y-2.5 pt-1">
+					<div className="flex items-center justify-end gap-2">
 						<button
 							onClick={onClose}
-							className="px-4 py-2 text-fg-3 text-sm hover:text-fg transition-colors rounded-xl"
+							className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
 						>
 							{t("kanban.cancel")}
 						</button>
+						{onCreateAndRun && (
+							<button
+								onClick={handleCreateAndRun}
+								disabled={!description.trim() || creating}
+								className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+							>
+								<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M8 5v14l11-7z" />
+								</svg>
+								{t("createTask.createAndRun")}
+							</button>
+						)}
 						<button
 							onClick={handleCreate}
 							disabled={!description.trim() || creating}
-							className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{creating ? t("createTask.creating") : t("createTask.create")}
 						</button>
+					</div>
+					<div className="text-fg-muted text-[11px] text-right">
+						{onCreateAndRun
+							? t("createTask.submitHintRun")
+							: t("createTask.submitHint")}
 					</div>
 				</div>
 			</div>

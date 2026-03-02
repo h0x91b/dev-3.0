@@ -92,6 +92,8 @@ const en = {
 	"createTask.create": "Create",
 	"createTask.creating": "Creating...",
 	"createTask.submitHint": "\u2318Enter to create",
+	"createTask.createAndRun": "Create & Run",
+	"createTask.submitHintRun": "\u2318Enter create \u00b7 \u2318\u21e7Enter create & run",
 
 	// TaskCard
 	"task.moveTo": "Move to",

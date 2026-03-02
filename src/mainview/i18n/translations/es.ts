@@ -94,6 +94,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"createTask.create": "Crear",
 	"createTask.creating": "Creando...",
 	"createTask.submitHint": "\u2318Enter para crear",
+	"createTask.createAndRun": "Crear y ejecutar",
+	"createTask.submitHintRun": "\u2318Enter crear \u00b7 \u2318\u21e7Enter crear y ejecutar",
 
 	// TaskCard
 	"task.moveTo": "Mover a",

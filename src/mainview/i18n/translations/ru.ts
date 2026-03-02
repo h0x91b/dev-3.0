@@ -96,6 +96,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"createTask.create": "Создать",
 	"createTask.creating": "Создаётся...",
 	"createTask.submitHint": "\u2318Enter для создания",
+	"createTask.createAndRun": "Создать и запустить",
+	"createTask.submitHintRun": "\u2318Enter создать \u00b7 \u2318\u21e7Enter создать и запустить",
 
 	// TaskCard
 	"task.moveTo": "Переместить в",

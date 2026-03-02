@@ -1,0 +1,1 @@
+Added "Create & Run" button to the task creation modal. Users can now create a task and immediately open the launch dialog to select an agent and run it, saving the extra click of finding the task on the board and pressing "Run". Keyboard shortcut: Cmd+Shift+Enter (Cmd+Enter remains "Create" only).
