@@ -278,6 +278,13 @@ const ru: TranslationRecord & Record<string, string> = {
 	"notes.failedAdd": "Не удалось добавить заметку: {error}",
 	"notes.failedDelete": "Не удалось удалить заметку: {error}",
 
+	// Quit dialog
+	"quit.dialogTitle": "Сессии продолжают работать",
+	"quit.dialogMessage": "Ваши терминальные сессии продолжат работать в tmux после выхода. Вы сможете подключиться к ним при следующем запуске приложения.",
+	"quit.dontShowAgain": "Больше не показывать",
+	"quit.confirm": "Выйти",
+	"quit.cancel": "Отмена",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",

@@ -275,6 +275,13 @@ const es: TranslationRecord & Record<string, string> = {
 	"notes.failedAdd": "Error al agregar nota: {error}",
 	"notes.failedDelete": "Error al eliminar nota: {error}",
 
+	// Quit dialog
+	"quit.dialogTitle": "Las sesiones siguen activas",
+	"quit.dialogMessage": "Tus sesiones de terminal seguirán ejecutándose en tmux después de salir. Podrás reconectarte al volver a abrir la aplicación.",
+	"quit.dontShowAgain": "No mostrar de nuevo",
+	"quit.confirm": "Salir",
+	"quit.cancel": "Cancelar",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",

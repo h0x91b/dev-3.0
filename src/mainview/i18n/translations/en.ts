@@ -272,6 +272,13 @@ const en = {
 	"notes.failedAdd": "Failed to add note: {error}",
 	"notes.failedDelete": "Failed to delete note: {error}",
 
+	// Quit dialog
+	"quit.dialogTitle": "Sessions keep running",
+	"quit.dialogMessage": "Your terminal sessions will continue running in tmux after quitting. You can reattach to them when you reopen the app.",
+	"quit.dontShowAgain": "Don't show again",
+	"quit.confirm": "Quit",
+	"quit.cancel": "Cancel",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "In Progress",
