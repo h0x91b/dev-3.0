@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, Project, Task, TaskStatus } from "../shared/types";
+import type { CliRequest, CliResponse, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
 import { ALL_STATUSES, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -143,6 +143,92 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const updated = await data.updateTask(project, task.id, updates);
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return updated;
+	},
+
+	"note.add": async (params) => {
+		const taskId = params.taskId as string;
+		const content = params.content as string;
+		if (!taskId) throw new Error("taskId is required");
+		if (!content) throw new Error("content is required");
+
+		let project: Project;
+		let task: Task;
+
+		if (params.projectId) {
+			project = await data.getProject(params.projectId as string);
+			const tasks = await data.loadTasks(project);
+			const found = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			if (!found) throw new Error(`Task not found: ${taskId}`);
+			task = found;
+		} else {
+			const found = await resolveTaskAcrossProjects(taskId);
+			if (!found) throw new Error(`Task not found: ${taskId}`);
+			project = found.project;
+			task = found.task;
+		}
+
+		const now = new Date().toISOString();
+		const note: TaskNote = {
+			id: crypto.randomUUID(),
+			content,
+			source: (params.source as NoteSource) ?? "ai",
+			createdAt: now,
+			updatedAt: now,
+		};
+		const notes = [...(task.notes ?? []), note];
+		const updated = await data.updateTask(project, task.id, { notes });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return updated;
+	},
+
+	"note.list": async (params) => {
+		const taskId = params.taskId as string;
+		if (!taskId) throw new Error("taskId is required");
+
+		let task: Task;
+
+		if (params.projectId) {
+			const project = await data.getProject(params.projectId as string);
+			task = await data.getTask(project, taskId);
+		} else {
+			const found = await resolveTaskAcrossProjects(taskId);
+			if (!found) throw new Error(`Task not found: ${taskId}`);
+			task = found.task;
+		}
+
+		return task.notes ?? [];
+	},
+
+	"note.delete": async (params) => {
+		const taskId = params.taskId as string;
+		const noteId = params.noteId as string;
+		if (!taskId) throw new Error("taskId is required");
+		if (!noteId) throw new Error("noteId is required");
+
+		let project: Project;
+		let task: Task;
+
+		if (params.projectId) {
+			project = await data.getProject(params.projectId as string);
+			const tasks = await data.loadTasks(project);
+			const found = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			if (!found) throw new Error(`Task not found: ${taskId}`);
+			task = found;
+		} else {
+			const found = await resolveTaskAcrossProjects(taskId);
+			if (!found) throw new Error(`Task not found: ${taskId}`);
+			project = found.project;
+			task = found.task;
+		}
+
+		const before = task.notes ?? [];
+		const notes = before.filter((n) => n.id !== noteId && !n.id.startsWith(noteId));
+		if (notes.length === before.length) {
+			throw new Error(`Note not found: ${noteId}`);
+		}
+		const updated = await data.updateTask(project, task.id, { notes });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
 	},

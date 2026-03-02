@@ -35,6 +35,7 @@ function printTask(task: Task): void {
 	fields.push(["Created:", formatDate(task.createdAt)]);
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
+	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
 
 	if (task.description && task.description !== task.title) {
 		fields.push(["", ""]);
