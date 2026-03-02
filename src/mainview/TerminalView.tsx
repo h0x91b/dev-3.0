@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
-import fontRegularUrl from "./assets/fonts/JetBrainsMono-Regular.woff2";
-import fontBoldUrl from "./assets/fonts/JetBrainsMono-Bold.woff2";
 
 interface TerminalViewProps {
 	ptyUrl: string;
@@ -74,80 +72,17 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
-		// Preload bundled font via FontFace API with binary data.
-		// CSS @font-face works for DOM text but NOT for Canvas 2D in
-		// WKWebView's views:// protocol. Fetching the woff2 as ArrayBuffer
-		// and registering via FontFace makes it available to canvas.
+		// Preload bundled font before creating the terminal.
+		// Canvas rendering doesn't trigger CSS @font-face loading, so the
+		// font must be ready before ghostty-web measures it for cell metrics.
 		const TERMINAL_FONT = "'JetBrains Mono', 'SF Mono', 'Menlo', monospace";
-		(async () => {
-			try {
-				console.log("[TerminalView] Font URLs:", { fontRegularUrl, fontBoldUrl });
-				console.log("[TerminalView] document.fonts.check before:", {
-					regular: document.fonts.check("14px 'JetBrains Mono'"),
-					bold: document.fonts.check("bold 14px 'JetBrains Mono'"),
-				});
-
-				const [regularResp, boldResp] = await Promise.all([
-					fetch(fontRegularUrl),
-					fetch(fontBoldUrl),
-				]);
-				console.log("[TerminalView] Fetch results:", {
-					regularOk: regularResp.ok,
-					regularStatus: regularResp.status,
-					boldOk: boldResp.ok,
-					boldStatus: boldResp.status,
-				});
-
-				const [regularBuf, boldBuf] = await Promise.all([
-					regularResp.arrayBuffer(),
-					boldResp.arrayBuffer(),
-				]);
-				console.log("[TerminalView] ArrayBuffer sizes:", {
-					regular: regularBuf.byteLength,
-					bold: boldBuf.byteLength,
-				});
-
-				const regular = new FontFace("JetBrains Mono", regularBuf, {
-					weight: "400",
-					style: "normal",
-				});
-				const bold = new FontFace("JetBrains Mono", boldBuf, {
-					weight: "700",
-					style: "normal",
-				});
-				await Promise.all([regular.load(), bold.load()]);
-				console.log("[TerminalView] FontFace loaded:", {
-					regularStatus: regular.status,
-					boldStatus: bold.status,
-				});
-
-				document.fonts.add(regular);
-				document.fonts.add(bold);
-				console.log("[TerminalView] document.fonts.check after:", {
-					regular: document.fonts.check("14px 'JetBrains Mono'"),
-					bold: document.fonts.check("bold 14px 'JetBrains Mono'"),
-				});
-
-				// Canvas test: try rendering Cyrillic on a temp canvas
-				const testCanvas = document.createElement("canvas");
-				const testCtx = testCanvas.getContext("2d")!;
-				testCtx.font = `14px ${TERMINAL_FONT}`;
-				const latinMetrics = testCtx.measureText("A");
-				const cyrillicMetrics = testCtx.measureText("Б");
-				console.log("[TerminalView] Canvas font test:", {
-					canvasFont: testCtx.font,
-					latinWidth: latinMetrics.width,
-					cyrillicWidth: cyrillicMetrics.width,
-					cyrillicWidthIsZero: cyrillicMetrics.width === 0,
-				});
-
-				console.log("[TerminalView] Fonts loaded via FontFace API");
-			} catch (err) {
-				console.warn("[TerminalView] FontFace API failed, falling back to CSS @font-face", err);
-				await document.fonts.load(`14px ${TERMINAL_FONT}`).catch(() => {});
-			}
+		document.fonts.load(`14px ${TERMINAL_FONT}`).then(() => {
+			console.log("[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
-		})();
+		}).catch(() => {
+			console.warn("[TerminalView] Font preload failed, starting setup with fallback");
+			if (!disposed) setup();
+		});
 
 		function setup() {
 			if (!containerRef.current || disposed) {
@@ -228,38 +163,6 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							fitAddon!.observeResize();
 							term.focus();
 							mouseCleanup = setupMouseTracking(term);
-
-							// ── fillText interceptor: diagnose what codepoints ghostty-web renders ──
-							const termCanvas = term.renderer?.getCanvas();
-							if (termCanvas) {
-								const ctx2d = termCanvas.getContext("2d");
-								if (ctx2d) {
-									const origFillText = ctx2d.fillText.bind(ctx2d);
-									let diagCount = 0;
-									ctx2d.fillText = function (text: string, x: number, y: number, maxWidth?: number) {
-										if (diagCount < 200 && text.length >= 1) {
-											const cp = text.codePointAt(0) ?? 0;
-											if (cp >= 0x0400 && cp <= 0x04FF) {
-												console.log(`[fillText] CYRILLIC U+${cp.toString(16).padStart(4, "0")} "${text}" at (${Math.round(x)},${Math.round(y)})`);
-												diagCount++;
-											} else if (cp === 0x5F) {
-												// Underscore — is this where Cyrillic should be?
-												console.log(`[fillText] UNDERSCORE at (${Math.round(x)},${Math.round(y)}) font="${ctx2d.font}"`);
-												diagCount++;
-											} else if (cp > 127 && diagCount < 50) {
-												console.log(`[fillText] U+${cp.toString(16).padStart(4, "0")} "${text}"`);
-												diagCount++;
-											}
-										}
-										if (maxWidth !== undefined) {
-											return origFillText(text, x, y, maxWidth);
-										}
-										return origFillText(text, x, y);
-									};
-									console.log("[TerminalView] fillText interceptor installed on ghostty canvas");
-								}
-							}
-
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");
 							connectPty(term, fitAddon!);
 						} catch (err) {
@@ -407,32 +310,11 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			};
 
 			ws.onmessage = (event) => {
-				// ── Diagnostic: check if Cyrillic arrives correctly in WebSocket data ──
 				if (typeof event.data === "string") {
 					const cleaned = event.data.replace(OSC52_RE, "");
-					if (cleaned) {
-						// Scan for Cyrillic range U+0400-U+04FF
-						for (let idx = 0; idx < Math.min(cleaned.length, 2000); idx++) {
-							const cp = cleaned.codePointAt(idx) ?? 0;
-							if (cp >= 0x0400 && cp <= 0x04FF) {
-								const snippet = cleaned.slice(Math.max(0, idx - 5), idx + 10);
-								const cps = [...snippet].map(c => "U+" + (c.codePointAt(0) ?? 0).toString(16).padStart(4, "0"));
-								console.log(`[WS-DIAG] Cyrillic found in WS string at idx=${idx}: U+${cp.toString(16)} context=[${cps.join(",")}]`);
-								break; // log only first occurrence per message
-							}
-						}
-						term.write(cleaned);
-					}
+					if (cleaned) term.write(cleaned);
 				} else {
-					const arr = new Uint8Array(event.data);
-					// Check for Cyrillic UTF-8 lead bytes (0xD0, 0xD1)
-					for (let i = 0; i < Math.min(arr.length, 2000); i++) {
-						if ((arr[i] === 0xD0 || arr[i] === 0xD1) && i + 1 < arr.length && arr[i + 1] >= 0x80 && arr[i + 1] <= 0xBF) {
-							console.log(`[WS-DIAG] Cyrillic UTF-8 bytes in binary frame at ${i}: [0x${arr[i].toString(16)}, 0x${arr[i + 1].toString(16)}]`);
-							break;
-						}
-					}
-					term.write(arr);
+					term.write(new Uint8Array(event.data));
 				}
 			};
 

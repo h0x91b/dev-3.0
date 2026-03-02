@@ -143,7 +143,6 @@ body, #root {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
-	font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
 }
 
 #root {
