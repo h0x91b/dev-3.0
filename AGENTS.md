@@ -311,3 +311,50 @@ render(
 - `vite.config.ts` — Vite config (root: `src/mainview`, output: `dist/`)
 - `tailwind.config.js` — Tailwind scans `src/mainview/**/*.{html,js,ts,jsx,tsx}`
 - `tsconfig.json` — Strict mode, ES2020 target, bundler module resolution
+
+---
+
+## TEMPORARY: Unicode font investigation log (remove before merge)
+
+**Bug:** Cyrillic characters render as underscores in the production terminal (ghostty-web), but work fine in `bun run dev`. UI (DOM) text renders Cyrillic correctly in both modes.
+
+### Confirmed facts
+
+1. **Font files load in production** — confirmed via Web Inspector Network tab (both Regular and Bold woff2)
+2. **Font files contain Cyrillic** — fonttools analysis: 122 Cyrillic glyphs (U+0400-04FF) in both project and official JetBrains Mono 2.304
+3. **DOM rendering works** — task titles with Cyrillic display correctly in production `.app` (same bundled JetBrains Mono font)
+4. **Canvas rendering fails** — ghostty-web terminal shows underscores instead of Cyrillic in production `.app`
+5. **Same tmux session works in iTerm2** — user attached to same tmux from external terminal, Cyrillic visible. Bug is NOT in tmux/PTY.
+6. **Bug reproduces locally** — `bun run build` → open `.app` → underscores in terminal
+7. **Dev mode works** — `bun run dev` (localhost:5173) → Cyrillic renders fine in terminal
+
+### Hypotheses tested and rejected
+
+| # | Hypothesis | Why rejected |
+|---|---|---|
+| 1 | Font files are Latin-only subsets | fonttools confirmed 122 Cyrillic glyphs in cmap |
+| 2 | Vite `base` URL breaks font loading | Fonts load fine (Network tab), DOM uses them for Cyrillic |
+| 3 | Font files differ from official release | MD5 hashes differ but both have identical Cyrillic coverage |
+| 4 | tmux or PTY encoding issue | Same tmux session works in iTerm2 |
+
+### Current hypothesis (investigating)
+
+**WKWebView canvas cannot use @font-face fonts loaded via `views://` protocol** — even though the font loads for DOM, the Canvas 2D API (`ctx.fillText()`) cannot access it. Canvas falls back to system fonts, and system fonts may not be accessible either in `views://` context, resulting in a generic monospace without Cyrillic.
+
+Evidence:
+- DOM text (React UI) renders Cyrillic with the same JetBrains Mono ✓
+- Canvas text (ghostty-web terminal) renders Cyrillic as underscores ✗
+- Both use the same @font-face font, same URL, same protocol
+
+### Planned fix
+
+**Use FontFace API with binary data** — instead of relying on CSS @font-face + `document.fonts.load()`, fetch the woff2 as ArrayBuffer and register via `new FontFace()`. This explicitly makes the font available to canvas regardless of protocol.
+
+### Key files
+
+- `src/mainview/TerminalView.tsx` — font preloading + terminal setup (lines 75-85)
+- `src/mainview/index.css` — @font-face declarations (lines 5-19)
+- `src/mainview/assets/fonts/` — bundled woff2 files
+- `node_modules/ghostty-web/dist/ghostty-web.js` — canvas rendering: `renderCellText()` (line 1522), `measureFont()` (line 1363)
+- `vite.config.ts` — build config (no `base` set, defaults to `/`)
+- `electrobun.config.ts` — asset copy: `dist/assets` → `views/mainview/assets`

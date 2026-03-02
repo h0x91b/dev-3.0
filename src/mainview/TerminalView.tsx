@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
+import fontRegularUrl from "./assets/fonts/JetBrainsMono-Regular.woff2";
+import fontBoldUrl from "./assets/fonts/JetBrainsMono-Bold.woff2";
 
 interface TerminalViewProps {
 	ptyUrl: string;
@@ -72,17 +74,35 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
-		// Preload bundled font before creating the terminal.
-		// Canvas rendering doesn't trigger CSS @font-face loading, so the
-		// font must be ready before ghostty-web measures it for cell metrics.
+		// Preload bundled font via FontFace API with binary data.
+		// CSS @font-face works for DOM text but NOT for Canvas 2D in
+		// WKWebView's views:// protocol. Fetching the woff2 as ArrayBuffer
+		// and registering via FontFace makes it available to canvas.
 		const TERMINAL_FONT = "'JetBrains Mono', 'SF Mono', 'Menlo', monospace";
-		document.fonts.load(`14px ${TERMINAL_FONT}`).then(() => {
-			console.log("[TerminalView] Font preloaded, starting setup");
+		(async () => {
+			try {
+				const [regularBuf, boldBuf] = await Promise.all([
+					fetch(fontRegularUrl).then((r) => r.arrayBuffer()),
+					fetch(fontBoldUrl).then((r) => r.arrayBuffer()),
+				]);
+				const regular = new FontFace("JetBrains Mono", regularBuf, {
+					weight: "400",
+					style: "normal",
+				});
+				const bold = new FontFace("JetBrains Mono", boldBuf, {
+					weight: "700",
+					style: "normal",
+				});
+				await Promise.all([regular.load(), bold.load()]);
+				document.fonts.add(regular);
+				document.fonts.add(bold);
+				console.log("[TerminalView] Fonts loaded via FontFace API");
+			} catch (err) {
+				console.warn("[TerminalView] FontFace API failed, falling back to CSS @font-face", err);
+				await document.fonts.load(`14px ${TERMINAL_FONT}`).catch(() => {});
+			}
 			if (!disposed) setup();
-		}).catch(() => {
-			console.warn("[TerminalView] Font preload failed, starting setup with fallback");
-			if (!disposed) setup();
-		});
+		})();
 
 		function setup() {
 			if (!containerRef.current || disposed) {
