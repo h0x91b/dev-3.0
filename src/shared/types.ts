@@ -203,6 +203,7 @@ export interface TmuxSessionInfo {
 	createdAt: number;
 	windowCount: number;
 	isCleanup: boolean;
+	taskTitle?: string;
 }
 
 // ---- System requirements ----
