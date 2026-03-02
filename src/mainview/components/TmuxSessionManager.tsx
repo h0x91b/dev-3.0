@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { TmuxSessionInfo } from "../../shared/types";
 import { api } from "../rpc";
@@ -12,38 +12,37 @@ function TmuxSessionManager() {
 	const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
 	const [popoverVisible, setPopoverVisible] = useState(false);
 	const [copiedName, setCopiedName] = useState<string | null>(null);
+	const [refreshing, setRefreshing] = useState(false);
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const popoverRef = useRef<HTMLDivElement>(null);
 
-	// Poll every 10 seconds
-	useEffect(() => {
-		let cancelled = false;
-		async function fetchSessions() {
-			try {
-				const result = await api.request.listTmuxSessions();
-				if (!cancelled) setSessions(result);
-			} catch {
-				/* silently ignore */
-			}
+	const fetchSessions = useCallback(async () => {
+		try {
+			const result = await api.request.listTmuxSessions();
+			setSessions(result);
+		} catch {
+			/* silently ignore */
 		}
-		fetchSessions();
-		const interval = setInterval(fetchSessions, 10_000);
-		return () => {
-			cancelled = true;
-			clearInterval(interval);
-		};
 	}, []);
+
+	// Poll every 30 seconds
+	useEffect(() => {
+		fetchSessions();
+		const interval = setInterval(fetchSessions, 30_000);
+		return () => clearInterval(interval);
+	}, [fetchSessions]);
 
 	// Refresh on popover open
 	useEffect(() => {
-		if (popoverOpen) {
-			api.request
-				.listTmuxSessions()
-				.then(setSessions)
-				.catch(() => {});
-		}
-	}, [popoverOpen]);
+		if (popoverOpen) fetchSessions();
+	}, [popoverOpen, fetchSessions]);
+
+	async function handleRefresh() {
+		setRefreshing(true);
+		await fetchSessions();
+		setRefreshing(false);
+	}
 
 	// Click outside to close
 	useEffect(() => {
@@ -212,14 +211,36 @@ function TmuxSessionManager() {
 									)}
 								</span>
 							</span>
-							{count > 0 && (
+							<div className="flex items-center gap-1">
 								<button
-									onClick={handleKillAll}
-									className="text-[10px] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+									onClick={handleRefresh}
+									disabled={refreshing}
+									className="text-fg-3 hover:text-fg hover:bg-elevated p-1 rounded transition-colors disabled:opacity-40"
+									title={t("tmuxSessions.refresh")}
 								>
-									{t("tmuxSessions.killAll")}
+									<svg
+										className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`}
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-3.36M20 15a9 9 0 01-14.13 3.36"
+											strokeWidth={2}
+											strokeLinecap="round"
+											strokeLinejoin="round"
+										/>
+									</svg>
 								</button>
-							)}
+								{count > 0 && (
+									<button
+										onClick={handleKillAll}
+										className="text-[10px] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+									>
+										{t("tmuxSessions.killAll")}
+									</button>
+								)}
+							</div>
 						</div>
 
 						{/* Session list */}

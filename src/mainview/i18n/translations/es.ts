@@ -245,6 +245,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"tmuxSessions.killAll": "Terminar todas",
 	"tmuxSessions.killAllConfirmTitle": "Terminar todas las sesiones tmux",
 	"tmuxSessions.killAllConfirmMessage": "¿Terminar las {count} sesiones dev3? Esto cerrará todos los procesos.",
+	"tmuxSessions.refresh": "Actualizar",
 
 	// Labels
 	"labels.filterTitle": "Etiquetas",
