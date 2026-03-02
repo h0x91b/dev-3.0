@@ -1,0 +1,1 @@
+Simplify PR CI workflow to lint + tests + Vite build check only. Removed nightly builds (DMG, artifacts, S3 upload, PR comments) because macOS XProtect (Sequoia) silently deletes the unsigned Electrobun launcher binary, making PR build artifacts unusable. Added `scripts/fix-dmg.ts` as a workaround for future use with signed release builds.
