@@ -740,6 +740,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{tmuxHintsPopover}
 					{devServerButton}
 					<button
+						onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+						className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+						title={t("infoPanel.fullScreen")}
+					>
+						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+						</svg>
+					</button>
+					<button
 						onClick={toggleCollapsed}
 						className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 						title={t("infoPanel.expand")}
@@ -780,6 +789,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						{tmuxHintsInline}
 						{tmuxHintsPopover}
 						{devServerButton}
+						<button
+							onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+							title={t("infoPanel.fullScreen")}
+						>
+							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+							</svg>
+						</button>
 						<button
 							onClick={toggleCollapsed}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"

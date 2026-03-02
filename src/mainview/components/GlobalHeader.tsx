@@ -37,7 +37,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 			segments.push({
 				label: project.name,
 				onClick:
-					route.screen !== "project"
+					route.screen !== "project" || (route.screen === "project" && route.activeTaskId)
 						? () =>
 								navigate({
 									screen: "project",
@@ -45,6 +45,15 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 								})
 						: undefined,
 			});
+		}
+	}
+
+	// Task segment for split view
+	if (route.screen === "project" && route.activeTaskId) {
+		const task = tasks.find((t) => t.id === route.activeTaskId);
+		if (task) {
+			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
+			segments.push({ badge, label: task.title });
 		}
 	}
 

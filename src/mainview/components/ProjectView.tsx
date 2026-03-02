@@ -4,6 +4,8 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import KanbanBoard from "./KanbanBoard";
+import TaskTerminal from "./TaskTerminal";
+import SplitLayout from "./SplitLayout";
 
 interface ProjectViewProps {
 	projectId: string;
@@ -12,6 +14,7 @@ interface ProjectViewProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	activeTaskId?: string;
 }
 
 function ProjectView({
@@ -21,6 +24,7 @@ function ProjectView({
 	dispatch,
 	navigate,
 	bellCounts,
+	activeTaskId,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -41,6 +45,33 @@ function ProjectView({
 			<div className="h-full w-full flex items-center justify-center">
 				<span className="text-danger text-base">{t("project.notFound")}</span>
 			</div>
+		);
+	}
+
+	if (activeTaskId) {
+		return (
+			<SplitLayout
+				kanbanContent={
+					<KanbanBoard
+						project={project}
+						tasks={tasks}
+						dispatch={dispatch}
+						navigate={navigate}
+						bellCounts={bellCounts}
+						activeTaskId={activeTaskId}
+					/>
+				}
+				terminalContent={
+					<TaskTerminal
+						projectId={projectId}
+						taskId={activeTaskId}
+						tasks={tasks}
+						projects={projects}
+						navigate={navigate}
+						dispatch={dispatch}
+					/>
+				}
+			/>
 		);
 	}
 

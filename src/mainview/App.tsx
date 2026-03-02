@@ -95,9 +95,15 @@ function App() {
 	// Auto-move task back to "in-progress" when user opens its terminal
 	useEffect(() => {
 		const currentRoute = state.route;
-		if (currentRoute.screen !== "task") return;
+		let viewingTaskId: string | undefined;
+		if (currentRoute.screen === "task") {
+			viewingTaskId = currentRoute.taskId;
+		} else if (currentRoute.screen === "project" && currentRoute.activeTaskId) {
+			viewingTaskId = currentRoute.activeTaskId;
+		}
+		if (!viewingTaskId) return;
 		const task = state.currentProjectTasks.find(
-			(t) => t.id === currentRoute.taskId,
+			(t) => t.id === viewingTaskId,
 		);
 		if (task && task.status === "user-questions") {
 			api.request
@@ -128,7 +134,7 @@ function App() {
 		trackPageView(screen);
 	}, [state.route]);
 
-	// Close settings screens with Escape
+	// Close settings screens / split view with Escape
 	useEffect(() => {
 		function onKeyDown(e: KeyboardEvent) {
 			if (e.key !== "Escape") return;
@@ -136,6 +142,8 @@ function App() {
 			if (route.screen === "settings") {
 				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project-settings") {
+				navigate({ screen: "project", projectId: route.projectId });
+			} else if (route.screen === "project" && route.activeTaskId) {
 				navigate({ screen: "project", projectId: route.projectId });
 			}
 		}
@@ -208,6 +216,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						activeTaskId={route.activeTaskId}
 					/>
 				);
 			case "task":

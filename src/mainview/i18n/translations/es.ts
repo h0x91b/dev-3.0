@@ -160,6 +160,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.updated": "Actualizado",
 	"infoPanel.collapse": "Contraer panel",
 	"infoPanel.expand": "Expandir panel",
+	"infoPanel.fullScreen": "Pantalla completa",
 	"infoPanel.commitsBehind": "{count} commits atrás",
 	"infoPanel.commitsAhead": "{count} commits adelante",
 	"infoPanel.commitsAheadBehind": "{ahead} adelante · {behind} atrás",

@@ -16,9 +16,10 @@ interface KanbanBoardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	activeTaskId?: string;
 }
 
-function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts }: KanbanBoardProps) {
+function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTaskId }: KanbanBoardProps) {
 	const t = useT();
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -122,6 +123,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts }: KanbanB
 						onDragStart={handleDragStart}
 					onTaskMoved={recordMove}
 						bellCounts={bellCounts}
+					activeTaskId={activeTaskId}
 					/>
 				))}
 			</div>

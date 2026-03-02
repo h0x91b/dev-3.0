@@ -18,9 +18,10 @@ interface TaskCardProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
+	isActiveInSplit?: boolean;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0 }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -182,11 +183,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	function handleClick() {
 		if (isActive && !menuOpen) {
 			closePreview();
-			navigate({
-				screen: "task",
-				projectId: project.id,
-				taskId: task.id,
-			});
+			if (isActiveInSplit) {
+				// Toggle: clicking the already-active card closes the split
+				navigate({ screen: "project", projectId: project.id });
+			} else {
+				navigate({
+					screen: "project",
+					projectId: project.id,
+					activeTaskId: task.id,
+				});
+			}
 		}
 	}
 
@@ -363,7 +369,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onDragStart={handleDragStart}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-transparent border-l-[3px] ${
+			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-l-[3px] ${isActiveInSplit ? "border-accent/50 ring-2 ring-accent/30" : "border-transparent"} ${
 				isActive
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"

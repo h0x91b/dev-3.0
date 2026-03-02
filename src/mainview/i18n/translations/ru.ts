@@ -161,6 +161,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"infoPanel.updated": "Обновлено",
 	"infoPanel.collapse": "Свернуть панель",
 	"infoPanel.expand": "Развернуть панель",
+	"infoPanel.fullScreen": "На весь экран",
 	"infoPanel.commitsBehind": "{count} коммитов позади",
 	"infoPanel.commitsAhead": "{count} коммитов впереди",
 	"infoPanel.commitsAheadBehind": "{ahead} впереди · {behind} позади",

@@ -20,6 +20,7 @@ interface KanbanColumnProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
+	activeTaskId?: string;
 }
 
 function KanbanColumn({
@@ -37,6 +38,7 @@ function KanbanColumn({
 	onDragStart,
 	onTaskMoved,
 	bellCounts,
+	activeTaskId,
 }: KanbanColumnProps) {
 	const t = useT();
 	const color = STATUS_COLORS[status];
@@ -136,6 +138,7 @@ function KanbanColumn({
 						onDragStart={onDragStart}
 					onTaskMoved={onTaskMoved}
 						bellCount={bellCounts.get(task.id) ?? 0}
+						isActiveInSplit={task.id === activeTaskId}
 					/>
 				))}
 

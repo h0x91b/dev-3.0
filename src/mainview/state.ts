@@ -5,7 +5,7 @@ import type { Project, Task } from "../shared/types";
 
 export type Route =
 	| { screen: "dashboard" }
-	| { screen: "project"; projectId: string }
+	| { screen: "project"; projectId: string; activeTaskId?: string }
 	| { screen: "task"; projectId: string; taskId: string }
 	| { screen: "project-settings"; projectId: string }
 	| { screen: "settings" }
@@ -56,6 +56,11 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			if (action.route.screen === "task" && bellCounts.has(action.route.taskId)) {
 				bellCounts = new Map(bellCounts);
 				bellCounts.delete(action.route.taskId);
+			}
+			// Also clear bell when opening task in split view
+			if (action.route.screen === "project" && action.route.activeTaskId && bellCounts.has(action.route.activeTaskId)) {
+				bellCounts = new Map(bellCounts);
+				bellCounts.delete(action.route.activeTaskId);
 			}
 			return { ...state, route: action.route, previousRoute: state.route, bellCounts };
 		}
@@ -113,6 +118,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			if (
 				state.route.screen === "task" &&
 				state.route.taskId === action.taskId
+			) {
+				return state;
+			}
+			// Also suppress bell when viewing task in split view
+			if (
+				state.route.screen === "project" &&
+				state.route.activeTaskId === action.taskId
 			) {
 				return state;
 			}

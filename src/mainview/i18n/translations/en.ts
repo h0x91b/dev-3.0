@@ -157,6 +157,7 @@ const en = {
 	"infoPanel.updated": "Updated",
 	"infoPanel.collapse": "Collapse panel",
 	"infoPanel.expand": "Expand panel",
+	"infoPanel.fullScreen": "Full screen",
 	"infoPanel.commitsBehind": "{count} commits behind",
 	"infoPanel.commitsAhead": "{count} commits ahead",
 	"infoPanel.commitsAheadBehind": "{ahead} ahead · {behind} behind",
