@@ -1,0 +1,1 @@
+Add cross-platform release builds for Intel macOS and Linux x64. Tag push still builds ARM64 only (free, self-hosted). Manual workflow dispatch builds all three platforms in parallel on GitHub-hosted runners. The artifact script now accepts OS parameter and handles Linux bundles (no DMG).
