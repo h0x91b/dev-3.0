@@ -19,7 +19,7 @@ function makeTask(overrides: Partial<Task> & { id: string }): Task {
 		createdAt: "2025-01-01T00:00:00Z",
 		updatedAt: "2025-01-01T00:00:00Z",
 		...overrides,
-	};
+	} as Task;
 }
 
 function ids(tasks: Task[]): string[] {
@@ -130,37 +130,73 @@ describe('sortTasksForColumn — "top" mode with grouped/variant tasks', () => {
 });
 
 // ============================================================
-// "top" mode — updatedAt sort (persisted, no moveOrderMap)
+// "top" mode — lastActivityAt sort (bell / PTY exit)
 // ============================================================
 
-describe('sortTasksForColumn — "top" mode with updatedAt sort', () => {
-	it("tasks with more recent updatedAt appear first (top)", () => {
+describe('sortTasksForColumn — "top" mode with lastActivityAt', () => {
+	it("task with lastActivityAt appears before task without it (top)", () => {
 		const tasks = [
-			makeTask({ id: "A", updatedAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", updatedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z", lastActivityAt: "2026-01-01T00:00:00Z" }),
 		];
 		const result = sortTasksForColumn(tasks, "top", emptyMap);
 		expect(ids(result)).toEqual(["B", "A"]);
 	});
 
-	it("multiple updatedAt: most recently updated first (top)", () => {
+	it("most recent lastActivityAt wins (top)", () => {
 		const tasks = [
-			makeTask({ id: "A", updatedAt: "2026-01-01T00:00:00Z" }),
-			makeTask({ id: "B", updatedAt: "2026-02-01T00:00:00Z" }),
-			makeTask({ id: "C", updatedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "A", lastActivityAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "B", lastActivityAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "C", lastActivityAt: "2025-01-01T00:00:00Z" }),
 		];
 		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// B most recently updated → first, then A, then C (oldest)
+		// B most recent → first, then A, then C
 		expect(ids(result)).toEqual(["B", "A", "C"]);
 	});
 
-	it("same updatedAt: movedAt as tiebreaker (top)", () => {
+	it("falls through to movedAt when neither has lastActivityAt (top)", () => {
 		const tasks = [
-			makeTask({ id: "A", updatedAt: "2026-01-01T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
-			makeTask({ id: "B", updatedAt: "2026-01-01T00:00:00Z", movedAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "A", movedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2026-02-01T00:00:00Z" }),
 		];
 		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// Same updatedAt; B movedAt more recent → B first
+		// B movedAt more recent → B first
+		expect(ids(result)).toEqual(["B", "A"]);
+	});
+});
+
+// ============================================================
+// "top" mode — movedAt sort (persisted, no moveOrderMap)
+// ============================================================
+
+describe('sortTasksForColumn — "top" mode with movedAt sort', () => {
+	it("tasks with more recent movedAt appear first (top)", () => {
+		const tasks = [
+			makeTask({ id: "A", movedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2026-01-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["B", "A"]);
+	});
+
+	it("multiple movedAt: most recently moved first (top)", () => {
+		const tasks = [
+			makeTask({ id: "A", movedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "C", movedAt: "2025-01-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		// B most recently moved → first, then A, then C (oldest)
+		expect(ids(result)).toEqual(["B", "A", "C"]);
+	});
+
+	it("tasks with movedAt appear before tasks without it (top)", () => {
+		const tasks = [
+			makeTask({ id: "A", createdAt: "2020-01-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2025-01-01T00:00:00Z", createdAt: "2026-01-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		// B has movedAt → goes to top
 		expect(ids(result)).toEqual(["B", "A"]);
 	});
 });
@@ -245,39 +281,66 @@ describe('sortTasksForColumn — "bottom" mode with grouped/variant tasks', () =
 });
 
 // ============================================================
-// "bottom" mode — updatedAt sort (persisted, no moveOrderMap)
+// "bottom" mode — lastActivityAt sort (bell / PTY exit)
 // ============================================================
 
-describe('sortTasksForColumn — "bottom" mode with updatedAt sort', () => {
-	it("tasks with more recent updatedAt appear last (bottom)", () => {
+describe('sortTasksForColumn — "bottom" mode with lastActivityAt', () => {
+	it("task with lastActivityAt appears after task without it (bottom)", () => {
 		const tasks = [
-			makeTask({ id: "A", updatedAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", updatedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z", lastActivityAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z" }),
 		];
 		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		// A older → first; B more recently updated → last
-		expect(ids(result)).toEqual(["A", "B"]);
+		// B has no lastActivityAt → first; A has it → last
+		expect(ids(result)).toEqual(["B", "A"]);
 	});
 
-	it("multiple updatedAt: most recently updated last (bottom)", () => {
+	it("most recent lastActivityAt appears last (bottom)", () => {
 		const tasks = [
-			makeTask({ id: "A", updatedAt: "2026-01-01T00:00:00Z" }),
-			makeTask({ id: "B", updatedAt: "2026-02-01T00:00:00Z" }),
-			makeTask({ id: "C", updatedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "A", lastActivityAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "B", lastActivityAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "C", lastActivityAt: "2025-01-01T00:00:00Z" }),
 		];
 		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		// C oldest → first; A next; B most recently updated → last
+		// C oldest → first; A next; B most recent → last
 		expect(ids(result)).toEqual(["C", "A", "B"]);
 	});
 
-	it("same updatedAt: movedAt as tiebreaker (bottom)", () => {
+	it("falls through to movedAt when neither has lastActivityAt (bottom)", () => {
 		const tasks = [
-			makeTask({ id: "A", updatedAt: "2026-01-01T00:00:00Z", movedAt: "2026-02-01T00:00:00Z" }),
-			makeTask({ id: "B", updatedAt: "2026-01-01T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "A", movedAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2026-01-01T00:00:00Z" }),
 		];
 		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		// Same updatedAt; B movedAt older → first; A movedAt most recent → last
+		// B movedAt older → first; A movedAt most recent → last
 		expect(ids(result)).toEqual(["B", "A"]);
+	});
+});
+
+// ============================================================
+// "bottom" mode — movedAt sort (persisted, no moveOrderMap)
+// ============================================================
+
+describe('sortTasksForColumn — "bottom" mode with movedAt sort', () => {
+	it("tasks with more recent movedAt appear last (bottom)", () => {
+		const tasks = [
+			makeTask({ id: "A", movedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2026-01-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
+		// A older → first; B more recently moved → last
+		expect(ids(result)).toEqual(["A", "B"]);
+	});
+
+	it("multiple movedAt: most recently moved last (bottom)", () => {
+		const tasks = [
+			makeTask({ id: "A", movedAt: "2026-01-01T00:00:00Z" }),
+			makeTask({ id: "B", movedAt: "2026-02-01T00:00:00Z" }),
+			makeTask({ id: "C", movedAt: "2025-01-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
+		// C oldest → first; A next; B most recently moved → last
+		expect(ids(result)).toEqual(["C", "A", "B"]);
 	});
 });
 

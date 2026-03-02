@@ -129,7 +129,7 @@ export function isActive(status: TaskStatus): boolean {
 
 /**
  * Auto-move a task to "user-questions" when a terminal bell is detected.
- * Only transitions from "in-progress" — other statuses are left untouched.
+ * Always stamps lastActivityAt; only transitions status from "in-progress".
  */
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	const projectId = pty.getSessionProjectId(taskId);
@@ -139,13 +139,33 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 		const project = await data.getProject(projectId);
 		const task = await data.getTask(project, taskId);
 
-		if (task.status !== "in-progress") return;
-
-		log.info("Bell auto-status: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
-		const updated = await data.updateTask(project, task.id, { status: "user-questions" });
+		const updates: Partial<Task> = { lastActivityAt: new Date().toISOString() };
+		if (task.status === "in-progress") {
+			updates.status = "user-questions";
+			log.info("Bell auto-status: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
+		}
+		const updated = await data.updateTask(project, task.id, updates);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 	} catch (err) {
 		log.error("Bell auto-status failed", { taskId: taskId.slice(0, 8), error: String(err) });
+	}
+}
+
+/**
+ * Stamp lastActivityAt when a PTY process exits.
+ */
+export async function handlePtyDiedActivity(taskId: string): Promise<void> {
+	const projectId = pty.getSessionProjectId(taskId);
+	if (!projectId) return;
+	try {
+		const project = await data.getProject(projectId);
+		const task = await data.getTask(project, taskId);
+		const updated = await data.updateTask(project, task.id, {
+			lastActivityAt: new Date().toISOString(),
+		});
+		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+	} catch (err) {
+		log.error("PTY died activity update failed", { taskId: taskId.slice(0, 8), error: String(err) });
 	}
 }
 

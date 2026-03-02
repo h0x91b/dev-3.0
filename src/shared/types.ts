@@ -196,6 +196,7 @@ export interface Task {
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;
+	lastActivityAt?: string;
 	tmuxSocket?: string | null;
 	labelIds?: string[];
 	notes?: TaskNote[];

@@ -26,16 +26,20 @@ export function sortTasksForColumn(
 		if (a.groupId && b.groupId) {
 			return (a.variantIndex ?? 0) - (b.variantIndex ?? 0);
 		}
-		// Ungrouped: sort by updatedAt (most recently modified first/last depending on mode)
-		if (a.updatedAt !== b.updatedAt) {
-			if (dropPosition === "top") return b.updatedAt > a.updatedAt ? 1 : -1;
-			else return a.updatedAt > b.updatedAt ? 1 : -1;
+		// lastActivityAt: terminal requested attention (bell) or process exited
+		const aActivity = a.lastActivityAt ?? "";
+		const bActivity = b.lastActivityAt ?? "";
+		if (aActivity !== bActivity) {
+			if (dropPosition === "top") return bActivity > aActivity ? 1 : -1;
+			else return aActivity > bActivity ? 1 : -1;
 		}
-		// Tiebreaker: movedAt (status change time, subset of updatedAt changes)
+		// Ungrouped: sort by movedAt (persisted across reloads)
 		if (a.movedAt && b.movedAt && a.movedAt !== b.movedAt) {
 			if (dropPosition === "top") return b.movedAt > a.movedAt ? 1 : -1;
 			else return a.movedAt > b.movedAt ? 1 : -1;
 		}
+		if (a.movedAt) return dropPosition === "top" ? -1 : 1;
+		if (b.movedAt) return dropPosition === "top" ? 1 : -1;
 		return a.createdAt < b.createdAt ? -1 : 1;
 	});
 }

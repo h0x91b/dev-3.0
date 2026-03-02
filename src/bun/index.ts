@@ -6,7 +6,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, handleBellAutoStatus } from "./rpc-handlers";
+import { handlers, setPushMessage, handleBellAutoStatus, handlePtyDiedActivity } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -275,6 +275,7 @@ setOnPtyDied((taskId) => {
 	try {
 		log.info("PTY died, notifying renderer", { taskId: taskId.slice(0, 8) });
 		(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId });
+		handlePtyDiedActivity(taskId);
 	} catch (err) {
 		log.error("Failed to notify renderer about PTY death", {
 			taskId: taskId.slice(0, 8),
