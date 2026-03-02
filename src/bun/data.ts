@@ -149,6 +149,7 @@ export async function loadTasks(project: Project): Promise<Task[]> {
 			if ((task as any).agentId === undefined) task.agentId = null;
 			if ((task as any).configId === undefined) task.configId = null;
 			if ((task as any).labelIds === undefined) task.labelIds = [];
+			if ((task as any).notes === undefined) task.notes = [];
 		}
 
 		// Backfill seq for tasks created before seq existed
