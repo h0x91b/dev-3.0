@@ -1,0 +1,1 @@
+Fixed `listTmuxSessions` missing sessions in non-current tmux socket servers. The Bun process inherits the `TMUX` env var of the socket it was launched in, so a bare `tmux list-sessions` only queried that server. Now queries all unique sockets found in task data (plus the default server) and merges results, deduplicating by session name.

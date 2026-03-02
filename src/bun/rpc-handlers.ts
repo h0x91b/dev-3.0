@@ -1198,17 +1198,6 @@ export const handlers = {
 
 	async listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		log.info("→ listTmuxSessions");
-		const proc = spawn(
-			["tmux", "list-sessions", "-F", "#{session_name}|#{pane_current_path}|#{session_windows}|#{session_created}"],
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		const output = await new Response(proc.stdout).text();
-		const exitCode = await proc.exited;
-
-		if (exitCode !== 0) {
-			log.info("← listTmuxSessions (no tmux server or error)");
-			return [];
-		}
 
 		// Build shortId → taskTitle map from all projects/tasks
 		const titleMap = new Map<string, string>();
@@ -1222,6 +1211,18 @@ export const handlers = {
 			}
 		} catch {
 			// Best effort — if loading fails, we just won't have titles
+		}
+
+		const FORMAT = "#{session_name}|#{pane_current_path}|#{session_windows}|#{session_created}";
+		// Use -L dev3 explicitly so tmux ignores the inherited TMUX env var and always
+		// queries the correct socket server regardless of where the app was launched from.
+		const proc = spawn(pty.tmuxArgs("dev3", "list-sessions", "-F", FORMAT), { stdout: "pipe", stderr: "pipe" });
+		const output = await new Response(proc.stdout).text();
+		const exitCode = await proc.exited;
+
+		if (exitCode !== 0) {
+			log.info("← listTmuxSessions (no tmux server or error)");
+			return [];
 		}
 
 		const sessions: TmuxSessionInfo[] = [];
