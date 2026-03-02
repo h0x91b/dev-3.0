@@ -237,10 +237,17 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 									const origFillText = ctx2d.fillText.bind(ctx2d);
 									let diagCount = 0;
 									ctx2d.fillText = function (text: string, x: number, y: number, maxWidth?: number) {
-										if (diagCount < 100 && text.length >= 1) {
+										if (diagCount < 200 && text.length >= 1) {
 											const cp = text.codePointAt(0) ?? 0;
-											if (cp > 127) {
-												console.log(`[fillText] U+${cp.toString(16).padStart(4, "0")} "${text}" at (${Math.round(x)},${Math.round(y)})`);
+											if (cp >= 0x0400 && cp <= 0x04FF) {
+												console.log(`[fillText] CYRILLIC U+${cp.toString(16).padStart(4, "0")} "${text}" at (${Math.round(x)},${Math.round(y)})`);
+												diagCount++;
+											} else if (cp === 0x5F) {
+												// Underscore — is this where Cyrillic should be?
+												console.log(`[fillText] UNDERSCORE at (${Math.round(x)},${Math.round(y)}) font="${ctx2d.font}"`);
+												diagCount++;
+											} else if (cp > 127 && diagCount < 50) {
+												console.log(`[fillText] U+${cp.toString(16).padStart(4, "0")} "${text}"`);
 												diagCount++;
 											}
 										}
@@ -400,11 +407,32 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			};
 
 			ws.onmessage = (event) => {
+				// ── Diagnostic: check if Cyrillic arrives correctly in WebSocket data ──
 				if (typeof event.data === "string") {
 					const cleaned = event.data.replace(OSC52_RE, "");
-					if (cleaned) term.write(cleaned);
+					if (cleaned) {
+						// Scan for Cyrillic range U+0400-U+04FF
+						for (let idx = 0; idx < Math.min(cleaned.length, 2000); idx++) {
+							const cp = cleaned.codePointAt(idx) ?? 0;
+							if (cp >= 0x0400 && cp <= 0x04FF) {
+								const snippet = cleaned.slice(Math.max(0, idx - 5), idx + 10);
+								const cps = [...snippet].map(c => "U+" + (c.codePointAt(0) ?? 0).toString(16).padStart(4, "0"));
+								console.log(`[WS-DIAG] Cyrillic found in WS string at idx=${idx}: U+${cp.toString(16)} context=[${cps.join(",")}]`);
+								break; // log only first occurrence per message
+							}
+						}
+						term.write(cleaned);
+					}
 				} else {
-					term.write(new Uint8Array(event.data));
+					const arr = new Uint8Array(event.data);
+					// Check for Cyrillic UTF-8 lead bytes (0xD0, 0xD1)
+					for (let i = 0; i < Math.min(arr.length, 2000); i++) {
+						if ((arr[i] === 0xD0 || arr[i] === 0xD1) && i + 1 < arr.length && arr[i + 1] >= 0x80 && arr[i + 1] <= 0xBF) {
+							console.log(`[WS-DIAG] Cyrillic UTF-8 bytes in binary frame at ${i}: [0x${arr[i].toString(16)}, 0x${arr[i + 1].toString(16)}]`);
+							break;
+						}
+					}
+					term.write(arr);
 				}
 			};
 
