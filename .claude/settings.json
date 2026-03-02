@@ -1,1 +1,19 @@
-{}
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(git log:*)",
+      "Bash(then find:*)",
+      "Bash(python3:*)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(md5:*)",
+      "Bash(fc-query:*)",
+      "Bash(pip3 install:*)",
+      "Bash(bun run:*)",
+      "Bash(git:*)",
+      "Bash(bun:*)",
+      "Bash(gh run:*)"
+    ]
+  }
+}
