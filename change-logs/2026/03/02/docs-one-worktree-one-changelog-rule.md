@@ -1,0 +1,1 @@
+Added "one worktree = one changelog" rule to AGENTS.md changelog policy. Agents must produce exactly one changelog entry per task session, updating it in place rather than creating new files per commit or feature.
