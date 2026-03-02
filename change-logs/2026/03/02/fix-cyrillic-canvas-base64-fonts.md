@@ -1,0 +1,1 @@
+Embed JetBrains Mono fonts as base64 data URIs in CSS @font-face to bypass WKWebView custom scheme (views://) font loading bug that causes canvas fillText to render underscores for Cyrillic characters. Also added fillText interceptor diagnostic to confirm whether ghostty-web WASM sends correct codepoints.

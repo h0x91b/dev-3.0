@@ -228,6 +228,31 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							fitAddon!.observeResize();
 							term.focus();
 							mouseCleanup = setupMouseTracking(term);
+
+							// ── fillText interceptor: diagnose what codepoints ghostty-web renders ──
+							const termCanvas = term.renderer?.getCanvas();
+							if (termCanvas) {
+								const ctx2d = termCanvas.getContext("2d");
+								if (ctx2d) {
+									const origFillText = ctx2d.fillText.bind(ctx2d);
+									let diagCount = 0;
+									ctx2d.fillText = function (text: string, x: number, y: number, maxWidth?: number) {
+										if (diagCount < 100 && text.length >= 1) {
+											const cp = text.codePointAt(0) ?? 0;
+											if (cp > 127) {
+												console.log(`[fillText] U+${cp.toString(16).padStart(4, "0")} "${text}" at (${Math.round(x)},${Math.round(y)})`);
+												diagCount++;
+											}
+										}
+										if (maxWidth !== undefined) {
+											return origFillText(text, x, y, maxWidth);
+										}
+										return origFillText(text, x, y);
+									};
+									console.log("[TerminalView] fillText interceptor installed on ghostty canvas");
+								}
+							}
+
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");
 							connectPty(term, fitAddon!);
 						} catch (err) {
