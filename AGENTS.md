@@ -181,15 +181,19 @@ If you need a new color, **add a CSS variable** in `index.css` (both themes) + a
 
 ## Documentation
 
-Local documentation for key dependencies lives in `docs/`:
+Local documentation for key dependencies lives in `vendor-docs/`:
 
 | Directory | What's inside | How to use |
 |---|---|---|
-| `docs/electrobun/` | Local markdown docs (APIs, guides) | Read files directly |
-| `docs/ghostty-web/` | Local markdown docs (API, guides) | Read files directly |
-| `docs/bun/` | Pointer to Bun's `llms.txt` | Fetch `https://bun.com/docs/llms-full.txt` for full docs in one request, or see `docs/bun/README.md` for all links |
+| `vendor-docs/electrobun/` | Local markdown docs (APIs, guides) | Read files directly |
+| `vendor-docs/ghostty-web/` | Local markdown docs (API, guides) | Read files directly |
+| `vendor-docs/bun/` | Pointer to Bun's `llms.txt` | Fetch `https://bun.com/docs/llms-full.txt` for full docs in one request, or see `vendor-docs/bun/README.md` for all links |
 
-**Before writing code that touches a dependency, check `docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
+**Before writing code that touches a dependency, check `vendor-docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
+
+## Landing page (GitHub Pages)
+
+The `docs/` directory hosts the **public landing page** served via GitHub Pages at `https://h0x91b.github.io/dev-3.0/`. Source: `docs/index.html`. Screenshots live in `docs/screenshots/`.
 
 ## Internationalization (i18n)
 

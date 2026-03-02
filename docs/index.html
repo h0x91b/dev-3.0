@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>dev-3.0 — Terminal-Centric Project Manager for AI Agents</title>
+<meta name="description" content="Manage dozens of AI coding agents in parallel. Kanban board meets terminal. Each task gets its own git worktree, tmux session, and full terminal — all from one interface.">
+<meta property="og:title" content="dev-3.0 — Terminal-Centric Project Manager for AI Agents">
+<meta property="og:description" content="Manage dozens of AI coding agents in parallel. Kanban board meets terminal.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#060915">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+/* ======= RESET & BASE ======= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-deep: #040712;
+  --bg-mid: #0a0f1f;
+  --bg-card: rgba(14, 18, 30, 0.6);
+  --accent: #4496ff;
+  --accent-glow: rgba(68, 150, 255, 0.3);
+  --accent-soft: rgba(68, 150, 255, 0.12);
+  --purple: #a855f7;
+  --purple-glow: rgba(168, 85, 247, 0.2);
+  --green: #34d399;
+  --green-glow: rgba(52, 211, 153, 0.2);
+  --orange: #fb923c;
+  --orange-glow: rgba(251, 146, 60, 0.2);
+  --red: #f87171;
+  --text-1: #fafcff;
+  --text-2: #aabbD4;
+  --text-3: #7385a0;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --glass-bg: rgba(12, 16, 23, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-deep);
+  color: var(--text-2);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ======= FONTS ======= */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ======= GLOBAL BG ======= */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(68, 150, 255, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 50%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 20% 80%, rgba(52, 211, 153, 0.04) 0%, transparent 50%),
+    linear-gradient(170deg, #060915 0%, #0f1731 45%, #180d29 100%);
+  z-index: -2;
+  pointer-events: none;
+}
+
+/* Noise texture overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* ======= GRID PATTERN ======= */
+.grid-pattern {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(68, 150, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(68, 150, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse 70% 50% at 50% 40%, black 20%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 50% at 50% 40%, black 20%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ======= CONTAINER ======= */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.container-wide {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ======= SCROLL ANIMATIONS ======= */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+.reveal-delay-5 { transition-delay: 0.5s; }
+
+/* ======= NAV ======= */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 16px 0;
+  background: rgba(6, 9, 21, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: all 0.3s;
+}
+nav.scrolled {
+  padding: 10px 0;
+  background: rgba(6, 9, 21, 0.9);
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--text-1);
+}
+.nav-logo img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+.nav-logo span {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: -0.5px;
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  color: var(--text-3);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--text-1); }
+.nav-github {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(68, 150, 255, 0.2);
+  color: var(--accent) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s !important;
+}
+.nav-github:hover {
+  background: rgba(68, 150, 255, 0.2) !important;
+  border-color: rgba(68, 150, 255, 0.4) !important;
+}
+.nav-github svg { width: 18px; height: 18px; }
+
+/* Mobile nav toggle */
+.nav-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* ======= HERO ======= */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 140px 24px 80px;
+  overflow: hidden;
+}
+
+/* Animated orbs */
+.hero-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  animation: float 20s ease-in-out infinite;
+}
+.hero-orb-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(68, 150, 255, 0.15), transparent 70%);
+  top: -10%; left: -5%;
+  animation-delay: 0s;
+}
+.hero-orb-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.12), transparent 70%);
+  top: 20%; right: -10%;
+  animation-delay: -7s;
+}
+.hero-orb-3 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.1), transparent 70%);
+  bottom: 10%; left: 30%;
+  animation-delay: -14s;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -40px) scale(1.05); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(40px, 30px) scale(1.02); }
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 100px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(68, 150, 255, 0.2);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 32px;
+  letter-spacing: 0.3px;
+}
+.hero-badge .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.hero h1 {
+  font-size: clamp(48px, 7vw, 88px);
+  font-weight: 900;
+  color: var(--text-1);
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 28px;
+  max-width: 900px;
+}
+.hero h1 .gradient-text {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle {
+  font-size: clamp(18px, 2.2vw, 22px);
+  color: var(--text-2);
+  max-width: 680px;
+  margin: 0 auto 48px;
+  line-height: 1.7;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 64px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  border: none;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(68, 150, 255, 0.3), 0 4px 20px rgba(68, 150, 255, 0.3);
+}
+.btn-primary:hover {
+  background: #2b72ff;
+  box-shadow: 0 0 0 1px rgba(68, 150, 255, 0.5), 0 8px 40px rgba(68, 150, 255, 0.4);
+  transform: translateY(-2px);
+}
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.btn svg { width: 18px; height: 18px; }
+
+/* Hero screenshot area */
+.hero-screenshot {
+  position: relative;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+.hero-screenshot-frame {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 25px 80px -20px rgba(0, 0, 0, 0.6),
+    0 0 60px -10px var(--accent-glow);
+}
+.hero-screenshot-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(68, 150, 255, 0.2), transparent 40%, transparent 60%, rgba(168, 85, 247, 0.2));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: xor;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Window chrome for screenshot */
+.window-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  background: rgba(14, 18, 30, 0.8);
+  border-bottom: 1px solid var(--border);
+}
+.window-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+}
+.window-dot-red { background: #ff5f57; }
+.window-dot-yellow { background: #febc2e; }
+.window-dot-green { background: #28c840; }
+.window-title {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+  font-family: var(--font-sans);
+  margin-right: 52px;
+}
+
+.screenshot-img {
+  width: 100%;
+  display: block;
+  background: linear-gradient(135deg, #0a0f1f, #13182a);
+}
+.screenshot-placeholder {
+  width: 100%;
+  aspect-ratio: 16/9.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text-3);
+  font-size: 14px;
+  font-family: var(--font-mono);
+  background: linear-gradient(135deg, #0a0f1f 0%, #131830 50%, #1a1030 100%);
+}
+.screenshot-placeholder svg { opacity: 0.3; }
+
+/* Floating glow behind screenshot */
+.hero-glow {
+  position: absolute;
+  width: 80%;
+  height: 60%;
+  top: 20%;
+  left: 10%;
+  background: radial-gradient(ellipse, rgba(68, 150, 255, 0.12), transparent 70%);
+  filter: blur(60px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ======= SOCIAL PROOF / TECH BAR ======= */
+.tech-bar {
+  padding: 60px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: rgba(6, 9, 21, 0.5);
+}
+.tech-bar-label {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 600;
+  margin-bottom: 32px;
+}
+.tech-bar-logos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  flex-wrap: wrap;
+  opacity: 0.5;
+}
+.tech-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  transition: opacity 0.2s;
+}
+.tech-bar-item:hover { opacity: 1; }
+.tech-bar-item svg { width: 28px; height: 28px; }
+
+/* ======= PROBLEM SECTION ======= */
+.problem {
+  padding: 120px 0;
+  position: relative;
+}
+.section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 20px;
+}
+.section-eyebrow::before {
+  content: '';
+  width: 24px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.section-title {
+  font-size: clamp(36px, 4.5vw, 56px);
+  font-weight: 800;
+  color: var(--text-1);
+  line-height: 1.15;
+  letter-spacing: -1px;
+  margin-bottom: 20px;
+}
+.section-desc {
+  font-size: 18px;
+  color: var(--text-2);
+  max-width: 640px;
+  line-height: 1.7;
+}
+
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 64px;
+}
+.problem-card {
+  padding: 32px;
+  border-radius: 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.problem-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.4);
+}
+.problem-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  font-size: 22px;
+}
+.problem-icon-red {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+}
+.problem-icon-orange {
+  background: rgba(251, 146, 60, 0.12);
+  color: var(--orange);
+}
+.problem-icon-purple {
+  background: rgba(168, 85, 247, 0.12);
+  color: var(--purple);
+}
+.problem-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 10px;
+}
+.problem-card p {
+  font-size: 15px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+/* ======= SOLUTION / HOW IT WORKS ======= */
+.solution {
+  padding: 120px 0;
+  position: relative;
+}
+
+.solution-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 100px;
+  margin-top: 80px;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: center;
+}
+.step:nth-child(even) { direction: rtl; }
+.step:nth-child(even) > * { direction: ltr; }
+
+.step-content {}
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  margin-bottom: 20px;
+}
+.step-number-blue { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(68, 150, 255, 0.2); }
+.step-number-purple { background: var(--purple-glow); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.2); }
+.step-number-green { background: var(--green-glow); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.2); }
+
+.step h3 {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-1);
+  margin-bottom: 16px;
+  line-height: 1.2;
+}
+.step p {
+  font-size: 16px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+
+.step-visual {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.5);
+}
+.step-visual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent 50%);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: xor;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+  z-index: 2;
+}
+.step-screenshot {
+  width: 100%;
+  display: block;
+}
+.step-screenshot-placeholder {
+  width: 100%;
+  aspect-ratio: 16/10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  background: linear-gradient(135deg, #0a0f1f, #131830);
+}
+
+/* ======= FEATURES GRID ======= */
+.features {
+  padding: 120px 0;
+  position: relative;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 64px;
+}
+
+.feature-card {
+  padding: 36px 32px;
+  border-radius: 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--card-accent, var(--accent)), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.feature-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.4);
+}
+.feature-card:hover::before { opacity: 1; }
+
+.feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  font-size: 24px;
+}
+.fi-blue { background: var(--accent-soft); color: var(--accent); }
+.fi-purple { background: var(--purple-glow); color: var(--purple); }
+.fi-green { background: var(--green-glow); color: var(--green); }
+.fi-orange { background: var(--orange-glow); color: var(--orange); }
+
+.feature-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 10px;
+}
+.feature-card p {
+  font-size: 15px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+/* Feature card with large screenshot */
+.feature-hero {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 48px;
+  padding: 48px;
+  align-items: center;
+}
+.feature-hero-visual {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 15px 40px -15px rgba(0, 0, 0, 0.5);
+}
+
+/* ======= TERMINAL DEMO ======= */
+.terminal-demo {
+  padding: 120px 0;
+  position: relative;
+}
+
+.terminal-window {
+  max-width: 800px;
+  margin: 48px auto 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: rgba(8, 10, 18, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 25px 60px -20px rgba(0, 0, 0, 0.6);
+}
+.terminal-body {
+  padding: 24px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-2);
+  min-height: 280px;
+}
+.terminal-line {
+  opacity: 0;
+  animation: typeLine 0.5s ease forwards;
+}
+.terminal-prompt {
+  color: var(--green);
+}
+.terminal-cmd {
+  color: var(--text-1);
+}
+.terminal-comment {
+  color: var(--text-3);
+}
+.terminal-accent {
+  color: var(--accent);
+}
+.terminal-purple {
+  color: var(--purple);
+}
+.terminal-output {
+  color: var(--text-3);
+  padding-left: 0;
+}
+@keyframes typeLine {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ======= INSTALL STEPS ======= */
+.install-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 48px;
+  flex-wrap: wrap;
+}
+.install-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 28px;
+  border-radius: 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  text-align: left;
+  transition: all 0.3s;
+  min-width: 240px;
+}
+.install-step:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.install-step-number {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+.install-step-content h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 2px;
+}
+.install-step-content p {
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.install-arrow {
+  opacity: 0.4;
+}
+
+/* ======= STAR HISTORY ======= */
+.star-history {
+  padding: 80px 0;
+  text-align: center;
+}
+.star-history-frame {
+  max-width: 800px;
+  margin: 32px auto 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #0d1117;
+}
+.star-history-frame img {
+  width: 100%;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .install-steps { flex-direction: column; gap: 12px; }
+  .install-arrow { transform: rotate(90deg); }
+  .install-step { min-width: auto; width: 100%; }
+}
+
+/* ======= ARCHITECTURE ======= */
+.architecture {
+  padding: 120px 0;
+  position: relative;
+}
+.arch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-top: 64px;
+}
+.arch-card {
+  padding: 28px 24px;
+  border-radius: 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  text-align: center;
+  transition: all 0.3s;
+}
+.arch-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.arch-card-icon {
+  font-size: 32px;
+  margin-bottom: 16px;
+}
+.arch-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+}
+.arch-card p {
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.5;
+}
+
+/* ======= AGENT COMPATIBILITY ======= */
+.agents {
+  padding: 120px 0;
+  position: relative;
+}
+.agents-grid {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 64px;
+}
+.agent-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 28px;
+  border-radius: 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-1);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  transition: all 0.3s;
+}
+.agent-badge:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.4);
+}
+.agent-badge-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+/* ======= CTA SECTION ======= */
+.cta {
+  padding: 120px 0;
+  text-align: center;
+  position: relative;
+}
+.cta-card {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 80px 60px;
+  border-radius: 24px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  position: relative;
+  overflow: hidden;
+}
+.cta-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(68, 150, 255, 0.3), transparent 40%, transparent 60%, rgba(168, 85, 247, 0.3));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: xor;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+.cta-glow {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(68, 150, 255, 0.1), transparent 70%);
+  top: -150px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.cta h2 {
+  font-size: clamp(32px, 4vw, 48px);
+  font-weight: 800;
+  color: var(--text-1);
+  margin-bottom: 16px;
+  position: relative;
+}
+.cta p {
+  font-size: 18px;
+  color: var(--text-2);
+  margin-bottom: 40px;
+  position: relative;
+}
+.cta .hero-actions { position: relative; }
+
+/* ======= FOOTER ======= */
+footer {
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-3);
+  font-size: 14px;
+}
+.footer-left img { width: 24px; height: 24px; border-radius: 6px; }
+.footer-links {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+}
+.footer-links a {
+  color: var(--text-3);
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+.footer-links a:hover { color: var(--text-1); }
+
+/* ======= RESPONSIVE ======= */
+@media (max-width: 1024px) {
+  .problem-grid { grid-template-columns: repeat(2, 1fr); }
+  .features-grid { grid-template-columns: repeat(2, 1fr); }
+  .feature-hero { grid-column: 1 / -1; grid-template-columns: 1fr; }
+  .arch-grid { grid-template-columns: repeat(2, 1fr); }
+  .step { grid-template-columns: 1fr; gap: 40px; }
+  .step:nth-child(even) { direction: ltr; }
+}
+
+@media (max-width: 768px) {
+  .hero { padding: 120px 20px 60px; }
+  .hero h1 { letter-spacing: -1px; }
+  .nav-links { display: none; }
+  .nav-toggle { display: block; }
+  .problem-grid { grid-template-columns: 1fr; }
+  .features-grid { grid-template-columns: 1fr; }
+  .arch-grid { grid-template-columns: 1fr; }
+  .footer-inner { flex-direction: column; gap: 16px; }
+  .tech-bar-logos { gap: 24px; }
+  .cta-card { padding: 48px 28px; }
+}
+
+/* ======= SCROLLBAR ======= */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Selection */
+::selection { background: rgba(68, 150, 255, 0.3); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <img src="icon.png" alt="dev-3.0">
+      <span>dev-3.0</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#get-started">Install</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li>
+        <a href="https://github.com/h0x91b/dev-3.0" class="nav-github" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+    <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('show')" aria-label="Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <div class="grid-pattern"></div>
+  <div class="hero-orb hero-orb-1"></div>
+  <div class="hero-orb hero-orb-2"></div>
+  <div class="hero-orb hero-orb-3"></div>
+
+  <h1 class="reveal reveal-delay-1">
+    One app to manage<br>
+    <span class="gradient-text">all your AI agents</span>
+  </h1>
+
+  <p class="hero-subtitle reveal reveal-delay-2">
+    Terminal-centric project manager where each task gets its own
+    <strong style="color:var(--text-1)">git worktree</strong>,
+    <strong style="color:var(--text-1)">tmux session</strong>, and
+    <strong style="color:var(--text-1)">full terminal</strong> &mdash;
+    all orchestrated from a Kanban board.
+  </p>
+
+  <div class="hero-actions reveal reveal-delay-3">
+    <a href="https://github.com/h0x91b/dev-3.0/releases" class="btn btn-primary" target="_blank" rel="noopener">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download for macOS
+    </a>
+    <a href="https://github.com/h0x91b/dev-3.0" class="btn btn-secondary" target="_blank" rel="noopener">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+
+  <!-- GitHub Stars Badge -->
+  <div class="reveal reveal-delay-3" style="margin-bottom: 48px;">
+    <a href="https://github.com/h0x91b/dev-3.0/stargazers" target="_blank" rel="noopener" style="display:inline-block">
+      <img src="https://img.shields.io/github/stars/h0x91b/dev-3.0?style=for-the-badge&logo=github&logoColor=white&label=GitHub%20Stars&color=1a1f36&labelColor=0d1117" alt="GitHub Stars" style="height:32px">
+    </a>
+  </div>
+
+  <div class="hero-screenshot reveal reveal-delay-4">
+    <div class="hero-glow"></div>
+    <div class="hero-screenshot-frame">
+      <div class="window-chrome">
+        <div class="window-dot window-dot-red"></div>
+        <div class="window-dot window-dot-yellow"></div>
+        <div class="window-dot window-dot-green"></div>
+        <div class="window-title">dev-3.0</div>
+      </div>
+      <!-- Replace this placeholder with: screenshots/kanban-board.png -->
+      <img src="screenshots/kanban-board.png" alt="dev-3.0 Kanban Board with multiple AI agents running in parallel" class="screenshot-img"
+           onerror="this.outerHTML='<div class=\'screenshot-placeholder\'><svg width=\'48\' height=\'48\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/kanban-board.png</span><span style=\'font-size:11px;opacity:0.5\'>Kanban board with tasks in multiple columns</span></div>'">
+    </div>
+  </div>
+</section>
+
+<!-- COMPATIBLE AGENTS -->
+<section class="tech-bar">
+  <div class="container">
+    <div class="tech-bar-label reveal">Works with any terminal-based agent</div>
+    <div class="tech-bar-logos reveal reveal-delay-1">
+      <div class="tech-bar-item">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 2H3a1 1 0 00-1 1v18a1 1 0 001 1h18a1 1 0 001-1V3a1 1 0 00-1-1zM9.8 18.4L5 12l4.8-6.4 1.6 1.2L7.5 12l3.9 5.2-1.6 1.2zm4.4 0l-1.6-1.2 3.9-5.2-3.9-5.2 1.6-1.2L19 12l-4.8 6.4z"/></svg>
+        Claude Code
+      </div>
+      <div class="tech-bar-item">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        Codex CLI
+      </div>
+      <div class="tech-bar-item">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
+        Gemini CLI
+      </div>
+      <div class="tech-bar-item">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        Aider
+      </div>
+      <div class="tech-bar-item">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+        Any CLI tool
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM -->
+<section class="problem" id="problem">
+  <div class="container">
+    <div class="section-eyebrow reveal">The Problem</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      AI agents are powerful.<br>Managing them is chaos.
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      You're running 5+ agents across different terminals, repos, and branches.
+      Switching context takes forever. You lose track of what's where.
+    </p>
+
+    <div class="problem-grid">
+      <div class="problem-card reveal reveal-delay-1">
+        <div class="problem-icon problem-icon-red">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="9" x2="22" y2="9"/><line x1="10" y1="3" x2="10" y2="9"/></svg>
+        </div>
+        <h3>Terminal soup</h3>
+        <p>Dozens of terminal tabs, each running a different agent in a different branch. Finding the right one is a nightmare.</p>
+      </div>
+
+      <div class="problem-card reveal reveal-delay-2">
+        <div class="problem-icon problem-icon-orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v10l4.24 4.24"/><circle cx="12" cy="12" r="10"/></svg>
+        </div>
+        <h3>Context switching tax</h3>
+        <p>Every time you switch between agents, you waste minutes remembering where you left off and what each one is doing.</p>
+      </div>
+
+      <div class="problem-card reveal reveal-delay-3">
+        <div class="problem-icon problem-icon-purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18"/><path d="M18 3v18"/><path d="M6 8h12"/><path d="M6 16h12"/></svg>
+        </div>
+        <h3>Branch conflicts</h3>
+        <p>Multiple agents editing the same repo. Constant merge conflicts. No isolation between parallel workstreams.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="solution" id="how-it-works">
+  <div class="container">
+    <div class="section-eyebrow reveal">How it works</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Three layers of organization
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      Projects, tasks, and terminals &mdash; each layer gives you
+      more control over your AI-powered workflow.
+    </p>
+
+    <div class="solution-steps">
+      <!-- Step 1 -->
+      <div class="step reveal">
+        <div class="step-content">
+          <div class="step-number step-number-blue">1</div>
+          <h3>Organize work on a Kanban board</h3>
+          <p>
+            Create tasks, drag them between columns, and see at a glance
+            what every agent is doing. Each task is a unit of work &mdash;
+            a feature, a bugfix, a refactor. You stay in control of the big picture.
+          </p>
+        </div>
+        <div class="step-visual">
+          <div class="window-chrome">
+            <div class="window-dot window-dot-red"></div>
+            <div class="window-dot window-dot-yellow"></div>
+            <div class="window-dot window-dot-green"></div>
+            <div class="window-title">Kanban Board</div>
+          </div>
+          <!-- Replace with: screenshots/kanban-overview.png -->
+          <img src="screenshots/kanban-overview.png" alt="Kanban board overview" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/kanban-overview.png</span></div>'">
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step reveal">
+        <div class="step-content">
+          <div class="step-number step-number-purple">2</div>
+          <h3>Each task = isolated git worktree</h3>
+          <p>
+            When you start a task, dev-3.0 creates a fresh git worktree.
+            Every agent works in its own copy of the repo &mdash;
+            zero conflicts, full isolation. Your setup script runs automatically.
+          </p>
+        </div>
+        <div class="step-visual">
+          <div class="window-chrome">
+            <div class="window-dot window-dot-red"></div>
+            <div class="window-dot window-dot-yellow"></div>
+            <div class="window-dot window-dot-green"></div>
+            <div class="window-title">Parallel agents in progress</div>
+          </div>
+          <!-- Replace with: screenshots/parallel-agents.png -->
+          <img src="screenshots/parallel-agents.png" alt="Multiple agents working in parallel" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><circle cx=\'12\' cy=\'12\' r=\'3\'/><path d=\'M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4\'/></svg><span>screenshots/parallel-agents.png</span></div>'">
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step reveal">
+        <div class="step-content">
+          <div class="step-number step-number-green">3</div>
+          <h3>Full terminal with tmux inside</h3>
+          <p>
+            Click any task to enter its terminal &mdash; powered by Ghostty's
+            rendering engine with tmux preconfigured. Split panes, scroll history,
+            copy-paste &mdash; everything you expect from a real terminal.
+            AI agents run natively, with all their features intact.
+          </p>
+        </div>
+        <div class="step-visual">
+          <div class="window-chrome">
+            <div class="window-dot window-dot-red"></div>
+            <div class="window-dot window-dot-yellow"></div>
+            <div class="window-dot window-dot-green"></div>
+            <div class="window-title">Terminal &mdash; Claude Code session</div>
+          </div>
+          <!-- Replace with: screenshots/terminal-view.png -->
+          <img src="screenshots/terminal-view.png" alt="Terminal with Claude Code running" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.png</span></div>'">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-eyebrow reveal">Features</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Built for the multi-agent era
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      Every feature is designed around one goal: managing many AI agents
+      across many tasks without losing your mind.
+    </p>
+
+    <div class="features-grid">
+      <!-- Feature: Live Preview -->
+      <div class="feature-card feature-hero reveal" style="--card-accent: var(--accent);">
+        <div>
+          <div class="feature-icon fi-blue">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Live terminal preview on hover</h3>
+          <p>
+            Hover over any task card on the Kanban board to see a
+            <strong style="color:var(--text-1)">live preview</strong> of its terminal &mdash;
+            without switching views. Instantly check what each agent is doing.
+            The preview updates in real-time, every second.
+          </p>
+        </div>
+        <div class="feature-hero-visual">
+          <!-- Replace with: screenshots/hover-preview.png -->
+          <img src="screenshots/hover-preview.png" alt="Live terminal preview on hover" style="width:100%;display:block;border-radius:8px;"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\' style=\'aspect-ratio:4/3\'><svg width=\'36\' height=\'36\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'14\' rx=\'2\'/><line x1=\'8\' y1=\'21\' x2=\'16\' y2=\'21\'/><line x1=\'12\' y1=\'17\' x2=\'12\' y2=\'21\'/></svg><span>screenshots/hover-preview.png</span></div>'">
+        </div>
+      </div>
+
+      <!-- Feature: Worktree Isolation -->
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--purple);">
+        <div class="feature-icon fi-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18"/><path d="M18 3v18"/><path d="M6 8h12"/><path d="M6 16h12"/></svg>
+        </div>
+        <h3>Git worktree per task</h3>
+        <p>Full repo isolation. No merge conflicts between parallel agents. Each task works on its own branch and copy.</p>
+      </div>
+
+      <!-- Feature: Tmux -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--green);">
+        <div class="feature-icon fi-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+        </div>
+        <h3>Tmux preconfigured</h3>
+        <p>Each task launches with tmux and your preferred command. Split panes, persistent sessions, full terminal power.</p>
+      </div>
+
+      <!-- Feature: Bell Alerts -->
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--red);">
+        <div class="feature-icon fi-orange" style="background: rgba(248, 113, 113, 0.12); color: var(--red);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        </div>
+        <h3>Terminal bell alerts</h3>
+        <p>Agents send a bell when they need your attention. Red badges appear on task cards so you never miss a prompt.</p>
+      </div>
+
+      <!-- Feature: Drag and Drop -->
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9l4-4 4 4"/><path d="M9 5v14"/><path d="M15 15l4 4 4-4"/><path d="M19 9v10"/></svg>
+        </div>
+        <h3>Drag-and-drop workflow</h3>
+        <p>Move tasks between status columns with drag-and-drop. Visual feedback, smooth animations, intuitive flow.</p>
+      </div>
+
+      <!-- Feature: Multi-variant -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
+        <div class="feature-icon fi-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg>
+        </div>
+        <h3>Multi-agent attempts</h3>
+        <p>Run the same task with different agents or configs. Compare approaches side-by-side and pick the best result.</p>
+      </div>
+
+      <!-- Feature: Setup Scripts -->
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--green);">
+        <div class="feature-icon fi-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h3>Automated setup</h3>
+        <p>Configure a setup script per project. Install deps, seed data, start services &mdash; runs automatically for each new task.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GET STARTED -->
+<section class="terminal-demo" id="get-started">
+  <div class="container" style="text-align:center">
+    <div class="section-eyebrow reveal" style="justify-content:center">Get Started</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Download. Open. Go.
+    </h2>
+    <p class="section-desc reveal reveal-delay-2" style="margin-left:auto;margin-right:auto">
+      dev-3.0 is a native desktop app. Download the DMG, drag to Applications, and you're ready.
+      No build steps, no dependencies, no configuration.
+    </p>
+
+    <div class="install-steps reveal reveal-delay-3">
+      <div class="install-step">
+        <div class="install-step-number" style="background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(68, 150, 255, 0.2);">1</div>
+        <div class="install-step-content">
+          <h3>Download the DMG</h3>
+          <p>Grab the latest release from GitHub Releases</p>
+        </div>
+      </div>
+      <div class="install-arrow">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+      <div class="install-step">
+        <div class="install-step-number" style="background: var(--purple-glow); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.2);">2</div>
+        <div class="install-step-content">
+          <h3>Drag to Applications</h3>
+          <p>Standard macOS install &mdash; nothing else needed</p>
+        </div>
+      </div>
+      <div class="install-arrow">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+      <div class="install-step">
+        <div class="install-step-number" style="background: var(--green-glow); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.2);">3</div>
+        <div class="install-step-content">
+          <h3>Add a project &amp; go</h3>
+          <p>Point it at any git repo, create a task, and your first agent is running</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal reveal-delay-4" style="margin-top: 40px;">
+      <a href="https://github.com/h0x91b/dev-3.0/releases" class="btn btn-primary" target="_blank" rel="noopener" style="font-size: 16px; padding: 16px 32px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download latest release
+      </a>
+      <p style="margin-top: 16px; font-size: 13px; color: var(--text-3);">
+        macOS only for now &mdash; Linux and Windows coming soon
+        <!-- <br>Or install via Homebrew: <code style="color: var(--text-2); background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 12px;">brew install --cask dev-3</code> -->
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="architecture" id="architecture">
+  <div class="container">
+    <div class="section-eyebrow reveal">Architecture</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Lightweight. Fast. No Electron.
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      Built on modern foundations for performance and simplicity.
+      Native-speed terminal rendering, instant startup, minimal memory footprint.
+    </p>
+
+    <div class="arch-grid">
+      <div class="arch-card reveal reveal-delay-1">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20"/><circle cx="6" cy="6" r="0.5" fill="var(--accent)"/><circle cx="9" cy="6" r="0.5" fill="var(--accent)"/></svg>
+        </div>
+        <h3>Electrobun</h3>
+        <p>Native macOS webview. No Chromium overhead. ~10x less memory than Electron.</p>
+      </div>
+
+      <div class="arch-card reveal reveal-delay-2">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+        </div>
+        <h3>Bun</h3>
+        <p>All-in-one JS runtime. Fast installs, native APIs, built-in bundling. Main process runs in Bun.</p>
+      </div>
+
+      <div class="arch-card reveal reveal-delay-3">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h3>Ghostty</h3>
+        <p>GPU-accelerated terminal rendering engine. Buttery smooth, true-color, fast as native.</p>
+      </div>
+
+      <div class="arch-card reveal reveal-delay-4">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+        </div>
+        <h3>tmux</h3>
+        <p>Battle-tested terminal multiplexer. Persistent sessions, split panes, keyboard-driven workflow.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AGENT COMPATIBILITY -->
+<section class="agents">
+  <div class="container" style="text-align:center">
+    <div class="section-eyebrow reveal" style="justify-content:center">Compatibility</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Your agent, your rules
+    </h2>
+    <p class="section-desc reveal reveal-delay-2" style="margin:0 auto 16px">
+      dev-3.0 doesn't integrate with agents &mdash; it hosts them. Any tool that runs
+      in a terminal works out of the box. When agents ship new features, you get them instantly.
+    </p>
+
+    <div class="agents-grid reveal reveal-delay-3">
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--accent-soft); color: var(--accent);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 2H3a1 1 0 00-1 1v18a1 1 0 001 1h18a1 1 0 001-1V3a1 1 0 00-1-1zM9.8 18.4L5 12l4.8-6.4 1.6 1.2L7.5 12l3.9 5.2-1.6 1.2zm4.4 0l-1.6-1.2 3.9-5.2-3.9-5.2 1.6-1.2L19 12l-4.8 6.4z"/></svg>
+        </div>
+        Claude Code
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--green-glow); color: var(--green);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        OpenAI Codex
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--purple-glow); color: var(--purple);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
+        </div>
+        Gemini CLI
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--orange-glow); color: var(--orange);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        </div>
+        Aider
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        Cursor Agent
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        Any CLI&hellip;
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STAR HISTORY -->
+<section class="star-history">
+  <div class="container">
+    <div class="section-eyebrow reveal" style="justify-content:center">Community</div>
+    <h2 class="section-title reveal reveal-delay-1" style="text-align:center">
+      Star History
+    </h2>
+    <p class="section-desc reveal reveal-delay-2" style="margin:0 auto;text-align:center">
+      Join the growing community of developers managing AI agents with dev-3.0.
+    </p>
+    <div class="star-history-frame reveal reveal-delay-3">
+      <a href="https://star-history.com/#h0x91b/dev-3.0&Date" target="_blank" rel="noopener">
+        <img src="https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=Date&theme=dark" alt="Star History Chart"
+             onerror="this.parentElement.parentElement.innerHTML='<div style=\'padding:48px;color:var(--text-3);font-family:var(--font-mono);font-size:14px\'>Star the repo to see the chart grow!<br><br><a href=&quot;https://github.com/h0x91b/dev-3.0&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; style=&quot;color:var(--accent);text-decoration:none&quot;>github.com/h0x91b/dev-3.0</a></div>'">
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="container">
+    <div class="cta-card reveal">
+      <div class="cta-glow"></div>
+      <h2>Ready to tame the chaos?</h2>
+      <p>dev-3.0 is free and open source. Star the repo, build from source, start shipping.</p>
+      <div class="hero-actions">
+        <a href="https://github.com/h0x91b/dev-3.0" class="btn btn-primary" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          Get started on GitHub
+        </a>
+        <a href="https://github.com/h0x91b/dev-3.0/releases" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download latest release
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-left">
+        <img src="icon.png" alt="dev-3.0">
+        <span>dev-3.0 &mdash; Open source under MIT license</span>
+      </div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/h0x91b/dev-3.0" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="https://github.com/h0x91b/dev-3.0/issues" target="_blank" rel="noopener">Issues</a></li>
+        <li><a href="https://github.com/h0x91b/dev-3.0/releases" target="_blank" rel="noopener">Releases</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>
+
+<!-- SCRIPTS -->
+<script>
+// Scroll reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Nav scroll effect
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 40);
+}, { passive: true });
+
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+
+</body>
+</html>
