@@ -2,15 +2,75 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
-  workflow_dispatch:
+    tags: ["v*", "full-v*"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: [self-hosted, macOS, ARM64]
+  # ──────────────────────────────────────────────────
+  # Determine build matrix and version
+  # ──────────────────────────────────────────────────
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      tag: ${{ steps.version.outputs.tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version tag
+        id: version
+        run: |
+          REF="${{ github.ref_name }}"
+          # Strip "full-" prefix if present: full-v0.2.7 → v0.2.7
+          TAG="${REF#full-}"
+          # For PRs, read version from package.json
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"\([0-9.]*\)".*/\1/')
+            TAG="v$VERSION"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "is_release=${{ github.event_name == 'push' }}" >> $GITHUB_OUTPUT
+          echo "Version tag: $TAG (from ref: $REF, event: ${{ github.event_name }})"
+
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == full-v* ]] || [ "${{ github.event_name }}" = "pull_request" ]; then
+            # full-v* tag or PR: all platforms
+            cat <<'EOF' > /tmp/matrix.json
+          {"include":[
+            {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true},
+            {"os":"macos","arch":"x64","runner":"\"macos-13\"","sign":true},
+            {"os":"linux","arch":"x64","runner":"\"ubuntu-22.04\"","sign":false}
+          ]}
+          EOF
+          else
+            # v* tag: ARM64 macOS only (self-hosted, free)
+            cat <<'EOF' > /tmp/matrix.json
+          {"include":[
+            {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true}
+          ]}
+          EOF
+          fi
+          MATRIX=$(cat /tmp/matrix.json | tr -d '\n' | tr -s ' ')
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Build matrix: $MATRIX"
+
+  # ──────────────────────────────────────────────────
+  # Build for each platform (parallel)
+  # ──────────────────────────────────────────────────
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ fromJson(matrix.runner) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,12 +79,23 @@ jobs:
         with:
           bun-version: "1.3.10"
 
+      # Linux: install system dependencies for Electrobun (WebKitGTK)
+      - name: Install Linux dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
       - name: Restore node_modules cache
         id: cache-deps
         uses: actions/cache/restore@v4
         with:
           path: ./node_modules
-          key: bun-deps-arm64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('bun.lockb') }}
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -35,12 +106,16 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ./node_modules
-          key: bun-deps-arm64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('bun.lockb') }}
 
+      # Tests only on self-hosted ARM64 to save GitHub-hosted minutes
       - name: Run tests
+        if: matrix.os == 'macos' && matrix.arch == 'arm64'
         run: bun run test
 
+      # macOS code signing
       - name: Import code signing certificate
+        if: matrix.sign
         env:
           MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
           MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
@@ -57,6 +132,7 @@ jobs:
           rm $RUNNER_TEMP/certificate.p12
 
       - name: Enable code signing in config
+        if: matrix.sign
         run: |
           sed -i '' 's/codesign: false/codesign: true/' electrobun.config.ts
           sed -i '' 's/notarize: false/notarize: true/' electrobun.config.ts
@@ -66,19 +142,19 @@ jobs:
       - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
-      - name: Build release (signed + notarized)
+      - name: Build release
         env:
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
-          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
-          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
+          ELECTROBUN_DEVELOPER_ID: ${{ matrix.sign && secrets.ELECTROBUN_DEVELOPER_ID || '' }}
+          ELECTROBUN_TEAMID: ${{ matrix.sign && secrets.ELECTROBUN_TEAMID || '' }}
+          ELECTROBUN_APPLEID: ${{ matrix.sign && secrets.ELECTROBUN_APPLEID || '' }}
+          ELECTROBUN_APPLEIDPASS: ${{ matrix.sign && secrets.ELECTROBUN_APPLEIDPASS || '' }}
           COPYFILE_DISABLE: "1"
           COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
         run: |
           bun scripts/generate-build-info.ts
           bun scripts/generate-changelog.ts
           bunx vite build
-          bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (known post-tar codesign bug, recovering artifacts)"
+          bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
 
       - name: Debug build output
         if: always()
@@ -89,67 +165,139 @@ jobs:
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
 
       - name: Create release artifacts
-        run: bash ./scripts/create-release-artifacts.sh arm64
+        run: bash ./scripts/create-release-artifacts.sh ${{ matrix.os }} ${{ matrix.arch }}
 
       - name: Upload artifacts to S3
+        if: needs.prepare.outputs.is_release == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: eu-west-1
         run: |
-          aws s3 sync ./artifacts-arm64/ s3://h0x91b-releases/dev-3.0/${{ github.ref_name }}/
-          aws s3 sync ./artifacts-arm64/ s3://h0x91b-releases/dev-3.0/ --exclude "*.dmg"
-          echo "Artifacts uploaded to S3"
+          TAG="${{ needs.prepare.outputs.tag }}"
+          ARTIFACT_DIR="./artifacts-${{ matrix.os }}-${{ matrix.arch }}"
+          aws s3 sync "$ARTIFACT_DIR/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          aws s3 sync "$ARTIFACT_DIR/" "s3://h0x91b-releases/dev-3.0/" \
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz"
+          echo "Artifacts uploaded to S3 for ${{ matrix.os }}-${{ matrix.arch }}"
+
+      - name: Upload artifacts for release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.os }}-${{ matrix.arch }}
+          path: ./artifacts-${{ matrix.os }}-${{ matrix.arch }}/
+
+  # ──────────────────────────────────────────────────
+  # Create GitHub Release (aggregates all platforms)
+  # ──────────────────────────────────────────────────
+  release:
+    if: needs.prepare.outputs.is_release == 'true'
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: ls -lhR all-artifacts/
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/${{ github.ref_name }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
+          S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/$TAG"
 
           {
             echo "## Download"
             echo ""
-            echo "### macOS (Apple Silicon)"
-            echo "- [\`stable-macos-arm64-dev-3.0.dmg\`]($S3_BASE/stable-macos-arm64-dev-3.0.dmg)"
-            echo ""
+
+            # macOS Apple Silicon
+            if ls all-artifacts/*macos-arm64*.dmg 1>/dev/null 2>&1; then
+              echo "### macOS (Apple Silicon)"
+              echo "- [\`stable-macos-arm64-dev-3.0.dmg\`]($S3_BASE/stable-macos-arm64-dev-3.0.dmg)"
+              echo ""
+            fi
+
+            # macOS Intel
+            if ls all-artifacts/*macos-x64*.dmg 1>/dev/null 2>&1; then
+              echo "### macOS (Intel)"
+              echo "- [\`stable-macos-x64-dev-3.0.dmg\`]($S3_BASE/stable-macos-x64-dev-3.0.dmg)"
+              echo ""
+            fi
+
+            # Linux
+            if ls all-artifacts/*linux-x64*.tar.zst 1>/dev/null 2>&1; then
+              echo "### Linux (x64)"
+              echo "- [\`stable-linux-x64-dev-3.0.tar.zst\`]($S3_BASE/stable-linux-x64-dev-3.0.tar.zst)"
+              echo ""
+            fi
+
             echo "### All artifacts"
             echo ""
-            for file in ./artifacts-arm64/*; do
+            for file in all-artifacts/*; do
+              [ -f "$file" ] || continue
               name=$(basename "$file")
               echo "- [\`$name\`]($S3_BASE/$name)"
             done
           } > /tmp/release-notes.md
 
-          gh release create ${{ github.ref_name }} \
-            --title "${{ github.ref_name }}" \
-            --notes-file /tmp/release-notes.md
+          echo "=== Release notes ==="
+          cat /tmp/release-notes.md
 
-      - name: Upload DMG to GitHub Release
+          # Create or update the release
+          if gh release view "$TAG" --repo "${{ github.repository }}" &>/dev/null; then
+            echo "Release $TAG exists, updating..."
+            gh release edit "$TAG" \
+              --repo "${{ github.repository }}" \
+              --notes-file /tmp/release-notes.md
+          else
+            echo "Creating release $TAG..."
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --notes-file /tmp/release-notes.md
+          fi
+
+      - name: Upload DMGs to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload ${{ github.ref_name }} \
-            ./artifacts-arm64/stable-macos-arm64-dev-3.0.dmg \
-            --clobber
+          TAG="${{ needs.prepare.outputs.tag }}"
+          for dmg in all-artifacts/*.dmg; do
+            [ -f "$dmg" ] || continue
+            echo "Uploading $(basename "$dmg") to release $TAG"
+            gh release upload "$TAG" "$dmg" --repo "${{ github.repository }}" --clobber
+          done
 
       - name: Update Homebrew Cask
+        if: contains(github.ref_name, 'full-v') == false
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          DMG_PATH="./artifacts-arm64/stable-macos-arm64-dev-3.0.dmg"
-          SHA256=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
+          TAG="${{ needs.prepare.outputs.tag }}"
+          VERSION="${TAG#v}"
+          DMG_PATH="all-artifacts/stable-macos-arm64-dev-3.0.dmg"
 
+          if [ ! -f "$DMG_PATH" ]; then
+            echo "::warning::ARM64 DMG not found, skipping Homebrew update"
+            exit 0
+          fi
+
+          SHA256=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
           echo "Updating Homebrew Cask: version=${VERSION} sha256=${SHA256}"
 
           rm -rf /tmp/homebrew-dev3
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/h0x91b/homebrew-dev3.git" /tmp/homebrew-dev3
           cd /tmp/homebrew-dev3
 
-          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/dev3.rb
-          sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/dev3.rb
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/dev3.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/dev3.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
