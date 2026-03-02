@@ -3,8 +3,6 @@ name: Release
 on:
   push:
     tags: ["v*", "full-v*"]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: write
@@ -46,7 +44,7 @@ jobs:
             cat <<'EOF' > /tmp/matrix.json
           {"include":[
             {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true},
-            {"os":"macos","arch":"x64","runner":"\"macos-13\"","sign":true},
+            {"os":"macos","arch":"x64","runner":"\"macos-15-intel\"","sign":true},
             {"os":"linux","arch":"x64","runner":"\"ubuntu-22.04\"","sign":false}
           ]}
           EOF

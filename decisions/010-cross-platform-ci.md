@@ -8,8 +8,10 @@ Release builds only targeted ARM64 macOS on a self-hosted runner (free). Intel M
 
 Single workflow with a dynamic matrix determined by trigger type:
 
-- **Tag push** (`v*`): ARM64 macOS only on self-hosted runner (free, fast)
-- **Manual dispatch** (`workflow_dispatch`): all platforms — ARM64 macOS (self-hosted), Intel macOS (`macos-13`), Linux x64 (`ubuntu-22.04`)
+- **Tag push** (`v*`): ARM64 macOS only on self-hosted runner (free, fast). Triggered by `bun run bump`.
+- **Tag push** (`full-v*`): all platforms — ARM64 macOS (self-hosted), Intel macOS (`macos-13`), Linux x64 (`ubuntu-22.04`). Triggered by `bun run full-release`.
+
+The `full-v*` tag reuses the same version number (e.g., `full-v0.2.7` → `v0.2.7`). The `full-` prefix is stripped for S3 paths and GitHub Release naming. This avoids the need for `workflow_dispatch` and its manual GitHub UI interaction.
 
 Three-job structure in `.github/workflows/release.yml`:
 1. `prepare` — reads version, outputs build matrix JSON
@@ -28,3 +30,4 @@ The `scripts/create-release-artifacts.sh` interface changed from `<arch>` to `<o
 
 - **Two separate workflows** (one for ARM64, one for cross-platform): simpler per-file but duplicates shared steps and complicates GitHub Release management.
 - **Always build all platforms**: rejected because GitHub-hosted macOS costs ~$0.08/min and most version bumps don't need Intel/Linux builds.
+- **`workflow_dispatch` instead of `full-v*` tag**: rejected because it requires opening GitHub UI, picking the right ref, and is easy to mess up. A tag-based trigger via `bun run full-release` is faster and leaves an audit trail in git history.
