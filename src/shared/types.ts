@@ -270,11 +270,6 @@ export interface CliResponse {
 	error?: string;
 }
 
-export interface Dev3Marker {
-	projectId: string;
-	taskId: string;
-	socketPath: string;
-}
 
 // ---- RPC schema ----
 

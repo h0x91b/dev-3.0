@@ -1,8 +1,7 @@
-import type { Dev3Marker, Project, Task } from "../shared/types";
+import type { Project, Task } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
-import { getSocketPath } from "./cli-socket-server";
 
 const log = createLogger("git");
 
@@ -110,19 +109,6 @@ export async function createWorktree(
 	}
 
 	log.info("Worktree created", { wtPath, branch });
-
-	// Write .dev3-marker for CLI auto-detection
-	try {
-		const marker: Dev3Marker = {
-			projectId: project.id,
-			taskId: task.id,
-			socketPath: getSocketPath(),
-		};
-		await Bun.write(`${wtPath}/.dev3-marker`, JSON.stringify(marker, null, 2));
-		log.info("Wrote .dev3-marker", { wtPath });
-	} catch (err) {
-		log.warn("Failed to write .dev3-marker (non-fatal)", { error: String(err) });
-	}
 
 	return { worktreePath: wtPath, branchName: branch };
 }
