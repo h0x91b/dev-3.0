@@ -103,16 +103,20 @@ export function reducer(state: AppState, action: AppAction): AppState {
 					(t) => t.id !== action.taskId,
 				),
 			};
-		case "spawnVariants":
+		case "spawnVariants": {
+			// Collect variant IDs to filter out any duplicates already added
+			// by a concurrent pushMessage("taskUpdated") race
+			const variantIds = new Set(action.variants.map((v) => v.id));
 			return {
 				...state,
 				currentProjectTasks: [
 					...state.currentProjectTasks.filter(
-						(t) => t.id !== action.sourceTaskId,
+						(t) => t.id !== action.sourceTaskId && !variantIds.has(t.id),
 					),
 					...action.variants,
 				],
 			};
+		}
 		case "addProject":
 			return { ...state, projects: [...state.projects, action.project] };
 		case "removeProject":

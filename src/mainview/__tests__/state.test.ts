@@ -211,6 +211,32 @@ describe("reducer", () => {
 		expect(next.currentProjectTasks[1].id).toBe("v2");
 	});
 
+	it("spawnVariants: deduplicates variants already added by pushMessage race", () => {
+		// Simulate the race: updateTask (from pushMessage) adds variant BEFORE
+		// spawnVariants action arrives. The reducer must not duplicate it.
+		const variant1: Task = {
+			...mockTask,
+			id: "v1",
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 1,
+			agentId: "builtin-claude",
+			configId: "claude-default",
+		};
+		const state: AppState = {
+			...initialState,
+			// Source task + variant already added by updateTask push
+			currentProjectTasks: [mockTask, variant1],
+		};
+		const next = reducer(state, {
+			type: "spawnVariants",
+			sourceTaskId: "t1",
+			variants: [variant1],
+		});
+		expect(next.currentProjectTasks).toHaveLength(1);
+		expect(next.currentProjectTasks[0].id).toBe("v1");
+	});
+
 	it("spawnVariants: preserves other tasks", () => {
 		const otherTask: Task = { ...mockTask, id: "t2", title: "Other" };
 		const state: AppState = {

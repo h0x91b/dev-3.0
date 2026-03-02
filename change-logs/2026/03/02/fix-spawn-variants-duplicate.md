@@ -1,0 +1,1 @@
+Fix duplicate task cards appearing in Kanban after launching a variant. The spawnVariants reducer now deduplicates tasks that were already added by a concurrent pushMessage("taskUpdated") event, preventing the same task from showing up twice in the In-Progress column.
