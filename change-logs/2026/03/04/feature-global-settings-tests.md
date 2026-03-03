@@ -1,0 +1,1 @@
+Added comprehensive test coverage for GlobalSettings component (34 tests). Covers theme switching, language selection, task drop position, update channel, default agent/config selection, agent CRUD, configuration CRUD, and config field editing (model, permission mode, effort level, max budget, append prompt).
