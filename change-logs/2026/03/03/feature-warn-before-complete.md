@@ -1,0 +1,1 @@
+Added a confirmation dialog when moving a task to "completed" or "cancelled" status. The dialog warns about uncommitted changes, unpushed commits, and unmerged branches before the worktree is destroyed. All three UI entry points (drag-and-drop, context menu, status dropdown) now show the warning.

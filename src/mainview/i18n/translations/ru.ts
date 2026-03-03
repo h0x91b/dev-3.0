@@ -117,6 +117,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.failedEdit": "Не удалось обновить задачу: {error}",
 	"task.editHint": "⌘Enter для сохранения",
 	"task.bellTooltip": "Требует внимания",
+	"task.warnCompletionTitle": "Несохранённые изменения",
+	"task.warnUncommitted": "Незакоммиченные изменения: +{insertions} / -{deletions} строк",
+	"task.warnNeverPushed": "{count} коммит(ов) не запушено — будут потеряны",
+	"task.warnUnpushed": "{count} незапушенных коммит(ов) — будут потеряны",
+	"task.warnUnmerged": "{count} коммит(ов) запушено, но не слито в {branch}",
+	"task.warnCompletionFooter": "Worktree и ветка будут удалены. Продолжить?",
 
 	// LaunchVariantsModal
 	"launch.title": "Запуск задачи",

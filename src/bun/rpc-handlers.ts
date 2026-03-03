@@ -745,18 +745,19 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 
 		if (!task.worktreePath) {
-			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0 };
+			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0 };
 		}
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-		const [, status, uncommitted] = await Promise.all([
+		const [, status, uncommitted, unpushed] = await Promise.all([
 			git.fetchOrigin(project.path),
 			git.getBranchStatus(task.worktreePath, baseBranch),
 			git.getUncommittedChanges(task.worktreePath),
+			git.getUnpushedCount(task.worktreePath, task.branchName ?? ""),
 		]);
 		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, baseBranch) : false;
 
-		const result = { ...status, canRebase, ...uncommitted };
+		const result = { ...status, canRebase, ...uncommitted, unpushed };
 		log.info("← getBranchStatus", result);
 		return result;
 	},

@@ -115,6 +115,12 @@ const es: TranslationRecord & Record<string, string> = {
 	"task.failedEdit": "Error al actualizar tarea: {error}",
 	"task.editHint": "⌘Enter para guardar",
 	"task.bellTooltip": "Requiere atención",
+	"task.warnCompletionTitle": "Cambios sin guardar",
+	"task.warnUncommitted": "Cambios sin confirmar: +{insertions} / -{deletions} líneas",
+	"task.warnNeverPushed": "{count} commit(s) nunca enviados — se perderán",
+	"task.warnUnpushed": "{count} commit(s) sin enviar — se perderán",
+	"task.warnUnmerged": "{count} commit(s) enviados pero no fusionados en {branch}",
+	"task.warnCompletionFooter": "El worktree y la rama se eliminarán. ¿Continuar?",
 
 	// LaunchVariantsModal
 	"launch.title": "Lanzar tarea",

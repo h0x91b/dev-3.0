@@ -192,6 +192,28 @@ export async function canRebaseCleanly(
 	return result.ok;
 }
 
+export async function getUnpushedCount(
+	worktreePath: string,
+	branchName: string,
+): Promise<number> {
+	if (!branchName) return 0;
+
+	// Check if the remote tracking branch exists
+	const ref = await run(
+		["git", "rev-parse", "--verify", `origin/${branchName}`],
+		worktreePath,
+	);
+	if (!ref.ok) return -1; // sentinel: branch was never pushed
+
+	// Count commits in HEAD but not in origin/<branchName>
+	const result = await run(
+		["git", "rev-list", "--count", `origin/${branchName}..HEAD`],
+		worktreePath,
+	);
+	if (!result.ok) return 0;
+	return parseInt(result.stdout, 10) || 0;
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,
