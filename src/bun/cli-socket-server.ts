@@ -258,6 +258,10 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
+		if (task.status === newStatus) {
+			return task;
+		}
+
 		const allowed = getAllowedTransitions(task.status);
 		if (!allowed.includes(newStatus)) {
 			throw new Error(
