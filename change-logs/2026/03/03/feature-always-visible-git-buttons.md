@@ -1,0 +1,1 @@
+Git action buttons (Show Diff, Rebase, Push, Merge, Refresh) are now always visible in the task info panel git row. Disabled buttons show explanatory tooltips instead of being hidden. Show Diff button has accent styling with an icon for better discoverability.
