@@ -1,0 +1,1 @@
+Label the "Review by AI" Kanban column as "(unimplemented)" across all locales (en/ru/es) to indicate the feature is not yet built. Also reorder columns so "Review by User" appears before "Review by AI".

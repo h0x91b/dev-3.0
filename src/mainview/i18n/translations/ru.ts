@@ -282,7 +282,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"status.todo": "К выполнению",
 	"status.inProgress": "В работе",
 	"status.userQuestions": "Вопросы пользователя",
-	"status.reviewByAi": "Ревью ИИ",
+	"status.reviewByAi": "Ревью ИИ (unimplemented)",
 	"status.reviewByUser": "Ревью пользователя",
 	"status.completed": "Завершено",
 	"status.cancelled": "Отменено",

@@ -279,7 +279,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"status.todo": "Por hacer",
 	"status.inProgress": "En progreso",
 	"status.userQuestions": "Preguntas del usuario",
-	"status.reviewByAi": "Revisión por IA",
+	"status.reviewByAi": "Revisión por IA (unimplemented)",
 	"status.reviewByUser": "Revisión por usuario",
 	"status.completed": "Completado",
 	"status.cancelled": "Cancelado",
