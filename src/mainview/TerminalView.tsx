@@ -2,6 +2,39 @@ import { useEffect, useRef } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
 
+/**
+ * ghostty-web's InputHandler has a shortcut path that treats Shift+Key
+ * identically to unmodified Key for functional keys (Enter, Tab, Home,
+ * End, Insert, Delete, PageUp/Down, F1-F12).  The Shift modifier is
+ * silently swallowed and the WASM KeyEncoder never runs.
+ *
+ * This map provides the correct xterm-style escape sequences for every
+ * Shift-only functional key so we can intercept them via
+ * attachCustomKeyEventHandler before the buggy shortcut fires.
+ */
+const SHIFT_KEY_SEQUENCES: Record<string, string> = {
+	Tab:      "\x1b[Z",       // Back-tab (CBT)
+	Enter:    "\x1b[13;2u",   // CSI u: Shift+Enter
+	Home:     "\x1b[1;2H",
+	End:      "\x1b[1;2F",
+	Insert:   "\x1b[2;2~",
+	Delete:   "\x1b[3;2~",
+	PageUp:   "\x1b[5;2~",
+	PageDown: "\x1b[6;2~",
+	F1:       "\x1b[1;2P",
+	F2:       "\x1b[1;2Q",
+	F3:       "\x1b[1;2R",
+	F4:       "\x1b[1;2S",
+	F5:       "\x1b[15;2~",
+	F6:       "\x1b[17;2~",
+	F7:       "\x1b[18;2~",
+	F8:       "\x1b[19;2~",
+	F9:       "\x1b[20;2~",
+	F10:      "\x1b[21;2~",
+	F11:      "\x1b[23;2~",
+	F12:      "\x1b[24;2~",
+};
+
 interface TerminalViewProps {
 	ptyUrl: string;
 	taskId: string;
@@ -163,6 +196,22 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							fitAddon!.observeResize();
 							term.focus();
 							mouseCleanup = setupMouseTracking(term);
+
+							// Fix Shift+functional keys — intercept before
+							// ghostty-web's buggy shortcut swallows the modifier
+							term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+								if (event.type !== "keydown" || !event.shiftKey) return false;
+								if (event.ctrlKey || event.altKey || event.metaKey) return false;
+								const seq = SHIFT_KEY_SEQUENCES[event.code];
+								if (seq) {
+									if (wsRef.current?.readyState === WebSocket.OPEN) {
+										wsRef.current.send(seq);
+									}
+									return true;
+								}
+								return false;
+							});
+
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");
 							connectPty(term, fitAddon!);
 						} catch (err) {
