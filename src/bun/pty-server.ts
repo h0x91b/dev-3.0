@@ -56,10 +56,6 @@ set -g visual-bell off
 set -g bell-action any
 setw -g monitor-bell on
 
-# Extended keys: always forward modified key sequences (CSI u format)
-# to inner applications so tools like Claude Code can receive
-# Shift+Tab, Shift+Home, Shift+F1, etc.
-set -s extended-keys always
 `;
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);

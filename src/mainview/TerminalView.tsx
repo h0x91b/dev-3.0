@@ -166,7 +166,8 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							mouseCleanup = setupMouseTracking(term);
 
 							// Fix Shift+functional keys — intercept before
-							// ghostty-web's buggy shortcut swallows the modifier
+							// ghostty-web's buggy shortcut swallows the modifier.
+							// https://github.com/coder/ghostty-web/issues/109
 							term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
 								const seq = getShiftKeySequence(event);
 								if (seq) {

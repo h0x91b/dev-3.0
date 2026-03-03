@@ -3,10 +3,11 @@
  * identically to unmodified Key for functional keys (Enter, Tab, Home,
  * End, Insert, Delete, PageUp/Down, F1-F12).  The Shift modifier is
  * silently swallowed and the WASM KeyEncoder never runs.
+ * See: https://github.com/coder/ghostty-web/issues/109
  *
- * This map provides the correct xterm-style escape sequences for every
- * Shift-only functional key.  The `;2` parameter means "Shift modifier"
- * per xterm's CSI convention.
+ * This map provides the correct sequences for every Shift-only functional
+ * key.  The `;2` parameter means "Shift modifier" per xterm's CSI convention.
+ * Enter is a special case — see comment below.
  *
  * Keys are KeyboardEvent.code values (physical key identifiers).
  */

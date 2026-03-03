@@ -69,16 +69,15 @@ We use `attachCustomKeyEventHandler()` (ghostty-web's official API for intercept
 
 The handler returns `true` to stop ghostty-web from processing the event further. The sequence map and handler logic live in `src/mainview/shift-key-sequences.ts`.
 
-### 2. tmux config: `set -s extended-keys always`
+### 2. No `extended-keys` in tmux config (intentional)
 
-Added to the `TMUX_CONFIG` in `pty-server.ts`. This tells tmux to forward extended key sequences (CSI u format) to inner applications. Needed for Shift+functional keys other than Tab and Enter.
+We considered `set -s extended-keys always` but removed it. All the xterm-style sequences we send (Shift+Home as `\x1b[1;2H`, Shift+F5 as `\x1b[15;2~`, etc.) exist in the `tmux-256color` terminfo. tmux forwards them correctly without extended-keys. Shift+Tab (`\x1b[Z`) is native terminfo. Shift+Enter (`\n`) isn't an escape sequence at all.
 
-The `always` variant was chosen over `on` because `on` requires the outer terminal to respond to capability queries — and ghostty-web running through a Bun PTY may not respond correctly to tmux's `\x1b[?u` probe.
+If a future inner application needs CSI u mode (Kitty keyboard protocol), add `set -s extended-keys always` to the tmux config. The `always` variant is preferred over `on` because `on` requires the outer terminal to respond to capability queries — and ghostty-web running through a Bun PTY may not respond correctly to tmux's `\x1b[?u` probe. You may also need `set -as terminal-features 'xterm-256color:extkeys'` for tmux to parse CSI u on INPUT from the outer terminal — see the "Notes for future maintainers" section below.
 
 ## Risks
 
-- **`extended-keys always`** makes tmux send extended key sequences to ALL inner applications, even if they didn't request them. Modern CLI tools (Claude Code, vim, etc.) handle this fine. Very old tools that don't understand CSI u sequences might display garbage, but this is unlikely in practice.
-- **`\n` for Shift+Enter is Claude Code-specific.** Other terminal applications might expect a proper escape sequence (modifyOtherKeys or CSI u). If we need to support other apps in the future, see the notes below.
+- **`\n` for Shift+Enter is Claude Code-specific.** Other terminal applications might expect a proper escape sequence (modifyOtherKeys or CSI u) to distinguish Shift+Enter from a literal newline. If we need to support other apps in the future, see the notes below.
 - **If ghostty-web fixes the bug upstream**, our handler is harmless — it fires first and sends the same sequences the fixed encoder would produce. No conflict.
 
 ## Notes for future maintainers
@@ -122,7 +121,7 @@ Multiple users in claude-code#1282 confirmed that `\x1b\r` works through tmux fo
 
 - `src/mainview/shift-key-sequences.ts` — `SHIFT_KEY_SEQUENCES` map + `getShiftKeySequence()` helper
 - `src/mainview/TerminalView.tsx` — `attachCustomKeyEventHandler` using the shared module
-- `src/bun/pty-server.ts` — `TMUX_CONFIG` constant (`extended-keys always`)
+- `src/bun/pty-server.ts` — `TMUX_CONFIG` constant
 
 ## References
 
