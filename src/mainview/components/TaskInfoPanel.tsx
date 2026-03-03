@@ -8,6 +8,7 @@ import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 import { trackEvent } from "../analytics";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
+import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -188,6 +189,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	}
 
 	async function handleStatusMove(newStatus: TaskStatus) {
+		// Warn before completing/cancelling with unpushed changes
+		if (
+			ACTIVE_STATUSES.includes(task.status) &&
+			(newStatus === "completed" || newStatus === "cancelled")
+		) {
+			setStatusMenuOpen(false);
+			const proceed = await confirmTaskCompletion(task, project, newStatus, t);
+			if (!proceed) return;
+		}
+
 		const fromStatus = task.status;
 		setMovingStatus(true);
 		setStatusMenuOpen(false);

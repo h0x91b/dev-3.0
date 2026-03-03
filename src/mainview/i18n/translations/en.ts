@@ -113,6 +113,12 @@ const en = {
 	"task.failedEdit": "Failed to update task: {error}",
 	"task.editHint": "⌘Enter to save",
 	"task.bellTooltip": "Needs attention",
+	"task.warnCompletionTitle": "Unsaved Changes",
+	"task.warnUncommitted": "Uncommitted changes: +{insertions} / -{deletions} lines",
+	"task.warnNeverPushed": "{count} commit(s) never pushed — will be lost",
+	"task.warnUnpushed": "{count} unpushed commit(s) — will be lost",
+	"task.warnUnmerged": "{count} commit(s) pushed but not merged into {branch}",
+	"task.warnCompletionFooter": "The worktree and branch will be deleted. Continue?",
 
 	// LaunchVariantsModal
 	"launch.title": "Launch Task",

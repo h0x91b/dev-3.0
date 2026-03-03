@@ -232,6 +232,7 @@ export interface BranchStatus {
 	canRebase: boolean;
 	insertions: number;
 	deletions: number;
+	unpushed: number; // -1 = never pushed, 0 = all pushed, N = N unpushed commits
 }
 
 // ---- Tmux sessions ----

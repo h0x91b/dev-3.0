@@ -16,7 +16,7 @@ const STORAGE_KEY = "dev3-locale";
 
 const translationSets: Record<Locale, Record<string, string>> = { en, ru, es };
 
-type TFunction = {
+export type TFunction = {
 	(key: TranslationKey, vars?: Record<string, string | number>): string;
 	plural(
 		baseKey: string,

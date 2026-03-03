@@ -10,6 +10,7 @@ import CreateTaskModal from "./CreateTaskModal";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
+import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -69,6 +70,15 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		if (task.status === "todo" && ACTIVE_STATUSES.includes(targetStatus)) {
 			setLaunchModal({ task, targetStatus });
 			return;
+		}
+
+		// Warn before completing/cancelling with unpushed changes
+		if (
+			ACTIVE_STATUSES.includes(task.status) &&
+			(targetStatus === "completed" || targetStatus === "cancelled")
+		) {
+			const proceed = await confirmTaskCompletion(task, project, targetStatus, t);
+			if (!proceed) return;
 		}
 
 		const fromStatus = task.status;

@@ -9,6 +9,7 @@ import { ansiToHtml } from "../utils/ansi-to-html";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 
 interface TaskCardProps {
 	task: Task;
@@ -117,6 +118,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			setMenuOpen(false);
 			onLaunchVariants(task, newStatus);
 			return;
+		}
+
+		// Warn before completing/cancelling with unpushed changes
+		if (
+			ACTIVE_STATUSES.includes(task.status) &&
+			(newStatus === "completed" || newStatus === "cancelled")
+		) {
+			setMenuOpen(false);
+			const proceed = await confirmTaskCompletion(task, project, newStatus, t);
+			if (!proceed) return;
 		}
 
 		const fromStatus = task.status;
