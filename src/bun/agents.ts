@@ -116,14 +116,20 @@ export function interpolateTemplate(template: string, ctx: TemplateContext): str
 // ---- Command Resolution ----
 
 /**
- * Short system-prompt reminder injected via --append-system-prompt for all
+ * System-prompt reminder injected via --append-system-prompt for all
  * Claude-based agents.  Belt-and-suspenders: the full skill lives in
  * ~/.claude/skills/dev3/SKILL.md, but the skill trigger is not 100 %
- * reliable, so we reinforce it at the CLI level.
+ * reliable, so we reinforce critical rules at the CLI level.
  */
 export const DEV3_SYSTEM_PROMPT =
 	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
-	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step.";
+	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
+	"TASK STATUS MANAGEMENT IS NON-NEGOTIABLE: " +
+	"(1) Run `dev3 task move --status in-progress` when you START working. " +
+	"(2) Run `dev3 task move --status user-questions` if you are BLOCKED and need human input. " +
+	"(3) Run `dev3 task move --status review-by-user` when you have COMPLETED all work. " +
+	"You MUST leave the task in one of these statuses before the session ends. " +
+	"NEVER finish a session without updating the task status.";
 
 /** Returns true when the resolved base command is the Claude CLI. */
 export function isClaudeCommand(baseCmd: string): boolean {

@@ -18,15 +18,22 @@ You are working inside a **dev-3.0 managed worktree** with a Kanban board task a
 
 Run \`dev3 --help\` to learn all available CLI commands. Then proceed with your task.
 
-## Task status management (CRITICAL)
+## Task status management (CRITICAL — NON-NEGOTIABLE)
 
-You MUST keep the task status up to date throughout the session:
+You MUST update the task status at every phase transition. This is NOT optional — failing to update statuses breaks the Kanban workflow for the entire team.
 
-- **\`dev3 task move --status in-progress\`** — Set this when you start working on the task.
-- **\`dev3 task move --status user-questions\`** — Set this when you are blocked and need human input (ambiguous requirements, missing context, approval needed). Clearly state your questions to the user.
-- **\`dev3 task move --status review-by-user\`** — Set this when you have fully completed all requested work. This signals the task is done and ready for human review.
+### Required status transitions:
 
-**You must ALWAYS leave the task in one of these three statuses before the session ends. Never leave a task without updating its status.**
+1. **\`dev3 task move --status in-progress\`** — Run this IMMEDIATELY when you begin working on the task (right after \`dev3 --help\` and \`dev3 current\`). Do not write any code or make any changes before setting this status.
+2. **\`dev3 task move --status user-questions\`** — Run this when you are blocked and need human input (ambiguous requirements, missing context, approval needed). Clearly state your questions to the user.
+3. **\`dev3 task move --status review-by-user\`** — Run this when you have fully completed all requested work. This signals the task is done and ready for human review.
+
+### Rules:
+
+- **ALWAYS set \`in-progress\` at session start** — no exceptions.
+- **ALWAYS set a final status before the session ends** — either \`review-by-user\` (work done) or \`user-questions\` (blocked).
+- **NEVER leave a task without a status update.** If the task was already \`in-progress\` when you started, that's fine — skip the move but still set a final status.
+- If \`dev3 task move\` fails because the task is already in the target status, that is OK — just continue working.
 `;
 
 /** Agent skill directories relative to $HOME. */
