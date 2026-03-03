@@ -1,0 +1,1 @@
+Comprehensive test coverage for src/bun/rpc-handlers.ts — expanded from 45 tests to 124, covering all RPC handlers (CRUD, task lifecycle, labels, notes, git operations, updates, system requirements), pure helper functions (isActive, escapeForDoubleQuotes, buildEchoAndRun, buildCmdScript), and error paths. Also fixed a pre-existing shell injection test assertion bug.
