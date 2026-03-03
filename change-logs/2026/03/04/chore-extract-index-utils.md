@@ -1,0 +1,1 @@
+Extracted pure utility functions (getISOWeek, formatDateTime, makeTitle) from src/bun/index.ts into a dedicated src/bun/app-utils.ts module. Added comprehensive unit tests covering ISO week calculation edge cases, date formatting, and title generation.
