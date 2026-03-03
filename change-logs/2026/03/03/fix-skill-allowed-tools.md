@@ -1,0 +1,1 @@
+Remove `allowed-tools: Bash` from the dev3 agent skill template in `agent-skills.ts`. The field was restricting Claude Code to only the Bash tool when the skill was active. Without it, all tools are available per the user's normal permission settings.

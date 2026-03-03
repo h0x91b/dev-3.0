@@ -159,6 +159,12 @@ To work around this, `resolveFilename` in `src/bun/rpc-handlers.ts` uses **macOS
 
 macOS `.app` bundles inherit a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`). We resolve the user's full PATH at startup (`shell-env.ts` → `index.ts`) and patch `process.env.PATH`, but `Bun.spawn` without an explicit `env` option does not pick up the patched value. The `spawn.ts` wrapper always passes `{ ...process.env, ...opts.env }`, ensuring every child process sees the full user PATH (homebrew, nvm, etc.).
 
+### Agent skill injection
+
+The app auto-installs the **dev3 skill** into AI agent config directories (`~/.claude/skills/dev3/`, `~/.codex/skills/dev3/`, etc.) on every startup. The skill file is **generated from source** — the template lives in `src/bun/agent-skills.ts` (`SKILL_CONTENT` constant). **Never edit the generated `SKILL.md` files directly** — they are overwritten on each app launch. To change the skill content, edit `agent-skills.ts`.
+
+The skill uses the Claude Code `allowed-tools` frontmatter field to control which tools are auto-permitted when the skill is active. Omitting `allowed-tools` entirely means the skill imposes no tool restrictions (the user's normal permission settings apply). Adding `allowed-tools: Bash` would restrict the skill to only the Bash tool.
+
 ## Styling & design tokens
 
 All colors in the UI are defined as **CSS custom properties** (design tokens) in `src/mainview/index.css` and mapped to Tailwind via `tailwind.config.js`. Two themes exist: `dark` (default) and `light` (via `[data-theme="light"]` on `<html>`).
