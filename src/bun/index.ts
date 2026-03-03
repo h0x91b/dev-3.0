@@ -15,6 +15,7 @@ import { resolveShellEnv } from "./shell-env";
 import { spawn } from "./spawn";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { installAgentSkills } from "./agent-skills";
+import { formatDateTime, makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 
@@ -43,30 +44,6 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const APP_VERSION = electrobunConfig.app.version;
-
-const getISOWeek = (d: Date): number => {
-	const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-	date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
-	const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-	return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-};
-
-const formatDateTime = (d: Date) => {
-	const date = d.toLocaleDateString("en-GB", {
-		weekday: "short",
-		day: "numeric",
-		month: "short",
-		year: "numeric",
-	});
-	const time = d.toLocaleTimeString("en-GB", {
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-	});
-	return `${date} · W${String(getISOWeek(d)).padStart(2, "0")} · ${time}`;
-};
-
-const makeTitle = (dt: string) => `dev-3.0 v${APP_VERSION} [${dt}]`;
 
 let lastBuildTime = BUILD_TIME;
 
@@ -257,7 +234,7 @@ ApplicationMenu.setApplicationMenu([
 // --- Main Window ---
 
 const mainWindow = new BrowserWindow({
-	title: makeTitle(lastBuildTime),
+	title: makeTitle(APP_VERSION, lastBuildTime),
 	url,
 	rpc,
 	frame: {
@@ -355,7 +332,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 
 		lastBuildTime = formatDateTime(new Date());
 		log.info(`Rebuild done, reloading [${lastBuildTime}]`);
-		mainWindow.setTitle(makeTitle(lastBuildTime));
+		mainWindow.setTitle(makeTitle(APP_VERSION, lastBuildTime));
 		mainWindow.webview.loadURL(url);
 	} else if (e.data.action === "about") {
 		Utils.showMessageBox({
