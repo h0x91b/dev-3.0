@@ -1,0 +1,1 @@
+Added unit tests for TerminalView component covering rendering (dark/light themes, container attributes), terminal initialization (font preload, Terminal/FitAddon creation, theme config, fallback on font failure, early unmount guard), and drag-and-drop (dragover preventDefault).
