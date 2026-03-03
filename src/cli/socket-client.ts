@@ -14,17 +14,20 @@ export async function sendRequest(
 
 	return new Promise((resolve, reject) => {
 		const socket = connect({ path: socketPath });
-		let buffer = "";
+		// Accumulate raw buffers to avoid corrupting multi-byte UTF-8
+		// characters that may be split across data events.
+		const chunks: Buffer[] = [];
 
 		socket.on("connect", () => {
 			socket.write(JSON.stringify(req) + "\n");
 		});
 
 		socket.on("data", (data) => {
-			buffer += data.toString();
+			chunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
 		});
 
 		socket.on("end", () => {
+			const buffer = Buffer.concat(chunks).toString("utf-8");
 			const lines = buffer.split("\n").filter((l) => l.trim());
 			if (lines.length === 0) {
 				reject(new Error("Empty response from server"));

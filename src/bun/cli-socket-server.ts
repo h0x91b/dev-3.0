@@ -7,6 +7,7 @@ import * as pty from "./pty-server";
 import { isActive, launchTaskPty, runCleanupScript, getPushMessage } from "./rpc-handlers";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
 
 const log = createLogger("cli-socket");
 
@@ -343,7 +344,9 @@ export function startSocketServer(): string {
 			async data(socket, raw) {
 				const text = typeof raw === "string" ? raw : Buffer.from(raw).toString("utf-8");
 
-				// Handle multiple NDJSON messages in one chunk
+				// Handle multiple NDJSON messages in one chunk — accumulate all
+				// responses first, then flush once to avoid interleaved partial writes.
+				let responseData = "";
 				for (const line of text.split("\n")) {
 					if (!line.trim()) continue;
 
@@ -352,17 +355,21 @@ export function startSocketServer(): string {
 						req = JSON.parse(line);
 					} catch {
 						const errResp: CliResponse = { id: "unknown", ok: false, error: "Invalid JSON" };
-						socket.write(JSON.stringify(errResp) + "\n");
+						responseData += JSON.stringify(errResp) + "\n";
 						continue;
 					}
 
 					const resp = await handleRequest(req);
-					socket.write(JSON.stringify(resp) + "\n");
+					responseData += JSON.stringify(resp) + "\n";
 				}
 
-				socket.end();
+				flushAndEnd(socket, responseData);
 			},
-			close() {
+			drain(socket) {
+				drainSocket(socket);
+			},
+			close(socket) {
+				pendingWrites.delete(socket);
 				log.debug("CLI client disconnected");
 			},
 			error(_socket, error) {
