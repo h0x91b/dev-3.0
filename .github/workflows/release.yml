@@ -49,10 +49,11 @@ jobs:
           ]}
           EOF
           else
-            # v* tag: ARM64 macOS only (self-hosted, free)
+            # v* tag: ARM64 macOS + Linux (both cheap/free)
             cat <<'EOF' > /tmp/matrix.json
           {"include":[
-            {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true}
+            {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true},
+            {"os":"linux","arch":"x64","runner":"\"ubuntu-22.04\"","sign":false}
           ]}
           EOF
           fi

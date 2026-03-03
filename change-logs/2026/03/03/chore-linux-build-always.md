@@ -1,0 +1,1 @@
+Include Linux x64 build in regular (v*) releases, not just full releases. Only macOS Intel (x64) remains full-release-only. This makes Linux artifacts available on every tagged release at minimal cost (ubuntu-22.04 GitHub runner).
