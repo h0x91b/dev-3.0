@@ -97,10 +97,10 @@ describe("Shift+key integration (ghostty-web InputHandler)", () => {
 		expect(sent).toEqual(["\x1b[Z"]);
 	});
 
-	it("Shift+Enter sends CSI u Shift+Enter", () => {
+	it("Shift+Enter sends modifyOtherKeys Shift+Enter", () => {
 		const { sent, fire } = setup();
 		fire(keyEvent("Enter", "Enter", SHIFT));
-		expect(sent).toEqual(["\x1b[13;2u"]);
+		expect(sent).toEqual(["\x1b[27;2;13~"]);
 	});
 
 	it("Shift+Home sends modified Home sequence", () => {

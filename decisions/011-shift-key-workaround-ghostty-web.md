@@ -49,20 +49,30 @@ Two changes:
 We use `attachCustomKeyEventHandler()` (ghostty-web's official API for intercepting keys) to catch all Shift-only functional keys BEFORE the buggy shortcut fires. The handler sends correct escape sequences directly to the WebSocket:
 
 - Shift+Tab → `\x1b[Z` (standard back-tab)
-- Shift+Enter → `\x1b[13;2u` (CSI u format)
+- Shift+Enter → `\x1b[27;2;13~` (xterm modifyOtherKeys format — see below)
 - Shift+Home → `\x1b[1;2H`, Shift+End → `\x1b[1;2F`, etc. (xterm-style `;2` modifier)
 - Shift+F1-F12 → xterm-style modified function key sequences
 
 The handler returns `true` to stop ghostty-web from processing the event further.
 
-### 2. tmux config: `set -s extended-keys always`
+### 2. Why modifyOtherKeys for Shift+Enter (not CSI u)
 
-Added to the `TMUX_CONFIG` in `pty-server.ts`. This tells tmux to always forward extended key sequences (CSI u format) to inner applications. The `always` variant was chosen over `on` because `on` requires the outer terminal to respond to capability queries — and ghostty-web running through a Bun PTY may not respond correctly to tmux's `\x1b[?u` probe.
+Initially we used CSI u format (`\x1b[13;2u`), but Shift+Enter didn't work through tmux while Shift+Tab did. The reason: all other Shift+key sequences use standard xterm final bytes (`Z`, `H`, `F`, `~`, `P`, `Q`, `R`, `S`) that tmux's CSI parser handles natively. CSI u uses the `u` final byte, which tmux only recognizes when its CSI u input parser is explicitly enabled. Without that, tmux silently discards `\x1b[13;2u`.
+
+The modifyOtherKeys format `\x1b[27;2;13~` uses the standard `~` final byte. tmux has parsed modifyOtherKeys (parameter 27 in CSI `~` sequences) since version 2.4 — no special configuration needed. Claude Code 2.1.0+ recognizes both formats.
+
+### 3. tmux config: `extended-keys always` + `terminal-features`
+
+Added to the `TMUX_CONFIG` in `pty-server.ts`:
+- `set -s extended-keys always` — always forward CSI u format to inner applications
+- `set -as terminal-features 'xterm-256color:extkeys'` — tell tmux the outer terminal (TERM=xterm-256color, set by our PTY spawn) supports extended keys, enabling CSI u input parsing
+
+The `always` variant was chosen over `on` because `on` requires the outer terminal to respond to capability queries — and ghostty-web running through a Bun PTY may not respond correctly to tmux's `\x1b[?u` probe. The `terminal-features` line is belt-and-suspenders: it ensures tmux can also parse CSI u sequences on input, even though we currently use modifyOtherKeys for Enter.
 
 ## Risks
 
 - **`extended-keys always`** makes tmux send extended key sequences to ALL inner applications, even if they didn't request them. Modern CLI tools (Claude Code, vim, etc.) handle this fine. Very old tools that don't understand CSI u sequences might display garbage, but this is unlikely in practice.
-- **CSI u vs modifyOtherKeys for Shift+Enter**: We send `\x1b[13;2u` (CSI u). Native Ghostty sends `\x1b[27;2;13~` (modifyOtherKeys). Claude Code 2.1.0+ recognizes both. If an inner app only recognizes one format, Shift+Enter might not work for that specific app.
+- **modifyOtherKeys for Shift+Enter**: We send `\x1b[27;2;13~` (modifyOtherKeys). Native Ghostty also sends this format. Claude Code 2.1.0+ recognizes both modifyOtherKeys and CSI u. If an inner app only recognizes CSI u, Shift+Enter might not work — but modifyOtherKeys has broader support.
 - **If ghostty-web fixes the bug upstream**, our handler is harmless — it fires first and sends the same sequences the fixed encoder would produce. No conflict.
 
 ## Alternatives considered
@@ -73,8 +83,9 @@ Added to the `TMUX_CONFIG` in `pty-server.ts`. This tells tmux to always forward
 
 ## Key files
 
-- `src/mainview/TerminalView.tsx` — `SHIFT_KEY_SEQUENCES` map + `attachCustomKeyEventHandler`
-- `src/bun/pty-server.ts` — `TMUX_CONFIG` constant (`extended-keys always`)
+- `src/mainview/shift-key-sequences.ts` — `SHIFT_KEY_SEQUENCES` map + `getShiftKeySequence()` helper
+- `src/mainview/TerminalView.tsx` — `attachCustomKeyEventHandler` using the shared module
+- `src/bun/pty-server.ts` — `TMUX_CONFIG` constant (`extended-keys always` + `terminal-features`)
 
 ## References
 

@@ -60,6 +60,9 @@ setw -g monitor-bell on
 # to inner applications so tools like Claude Code can receive
 # Shift+Enter, Shift+Tab, etc.
 set -s extended-keys always
+# Tell tmux the outer terminal supports extended keys so it can parse
+# CSI u sequences on input (without this, tmux discards them).
+set -as terminal-features 'xterm-256color:extkeys'
 `;
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);

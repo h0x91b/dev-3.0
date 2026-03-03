@@ -12,7 +12,7 @@
  */
 export const SHIFT_KEY_SEQUENCES: Record<string, string> = {
 	Tab:      "\x1b[Z",       // Back-tab (CBT)
-	Enter:    "\x1b[13;2u",   // CSI u: Shift+Enter
+	Enter:    "\x1b[27;2;13~", // modifyOtherKeys: Shift+Enter
 	Home:     "\x1b[1;2H",
 	End:      "\x1b[1;2F",
 	Insert:   "\x1b[2;2~",
