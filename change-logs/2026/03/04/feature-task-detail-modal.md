@@ -1,0 +1,1 @@
+Add task detail modal for viewing and editing full task descriptions. TODO cards open the modal on title click (replacing inline edit). Non-TODO cards with truncated descriptions show a "Show full description" link. The modal displays the complete description text and allows editing for TODO tasks.

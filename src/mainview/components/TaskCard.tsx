@@ -10,6 +10,7 @@ import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import TaskDetailModal from "./TaskDetailModal";
 
 interface TaskCardProps {
 	task: Task;
@@ -30,14 +31,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 	const [menuVisible, setMenuVisible] = useState(false);
-	const [isEditing, setIsEditing] = useState(false);
-	const [editValue, setEditValue] = useState("");
-	const [saving, setSaving] = useState(false);
+	const [detailOpen, setDetailOpen] = useState(false);
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
-	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	// Terminal preview state
 	const [previewOpen, setPreviewOpen] = useState(false);
@@ -218,48 +216,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	function handleTitleClick(e: React.MouseEvent) {
-		if (!isTodo || isEditing) return;
+		if (isTodo) {
+			e.stopPropagation();
+			setDetailOpen(true);
+		}
+	}
+
+	const hasLongDescription = task.description !== task.title;
+
+	function handleShowDescription(e: React.MouseEvent) {
 		e.stopPropagation();
-		setEditValue(task.description);
-		setIsEditing(true);
-		// autofocus after state update
-		setTimeout(() => textareaRef.current?.focus(), 0);
-	}
-
-	async function handleEditSave() {
-		const trimmed = editValue.trim();
-		if (!trimmed || trimmed === task.description) {
-			setIsEditing(false);
-			return;
-		}
-		setSaving(true);
-		try {
-			const updated = await api.request.editTask({
-				taskId: task.id,
-				projectId: project.id,
-				description: trimmed,
-			});
-			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_edited", { project_id: project.id });
-			setIsEditing(false);
-		} catch (err) {
-			alert(t("task.failedEdit", { error: String(err) }));
-		}
-		setSaving(false);
-	}
-
-	function handleEditCancel() {
-		setIsEditing(false);
-	}
-
-	function handleEditKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-		if (e.key === "Escape") {
-			e.preventDefault();
-			handleEditCancel();
-		} else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-			e.preventDefault();
-			handleEditSave();
-		}
+		setDetailOpen(true);
 	}
 
 	// --- Terminal preview hover logic ---
@@ -299,7 +266,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}, []);
 
 	function handleCardMouseEnter() {
-		if (!isActive || menuOpen || isEditing) return;
+		if (!isActive || menuOpen) return;
 		cancelPreviewTimers();
 		previewTimerRef.current = setTimeout(async () => {
 			if (!cardRef.current) return;
@@ -380,7 +347,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	return (
 		<div
 			ref={cardRef}
-			draggable={!moving && !isEditing}
+			draggable={!moving && !detailOpen}
 			onDragStart={handleDragStart}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
@@ -443,46 +410,35 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<div className="text-[10px] text-fg-muted font-mono mb-1">#{task.seq}</div>
 			)}
 
-			{/* Title / inline editor */}
-			{isEditing ? (
-				<div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
-					<textarea
-						ref={textareaRef}
-						value={editValue}
-						onChange={(e) => setEditValue(e.target.value)}
-						onKeyDown={handleEditKeyDown}
-						rows={3}
-						className="w-full bg-elevated border border-edge-active rounded-lg px-2.5 py-2 text-sm text-fg leading-relaxed resize-none outline-none focus:border-accent/60 transition-colors"
-						disabled={saving}
-					/>
-					<div className="flex items-center justify-between mt-1.5">
-						<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
-						<div className="flex gap-1.5">
-							<button
-								onClick={handleEditCancel}
-								className="text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
-								disabled={saving}
-							>
-								{t("task.editCancel")}
-							</button>
-							<button
-								onClick={handleEditSave}
-								className="text-xs px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover font-semibold transition-colors disabled:opacity-50"
-								disabled={saving || !editValue.trim()}
-							>
-								{t("task.editSave")}
-							</button>
-						</div>
-					</div>
-				</div>
-			) : (
-				<div
-					className={`text-fg text-sm leading-relaxed break-words font-medium pr-5 ${isTodo ? "cursor-text hover:text-fg-2" : ""}`}
-					onClick={handleTitleClick}
-					title={isTodo ? task.description : undefined}
+			{/* Title + description expand */}
+			<div
+				className={`text-fg text-sm leading-relaxed break-words font-medium pr-5 ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
+				onClick={handleTitleClick}
+				title={isTodo && hasLongDescription ? task.description : undefined}
+			>
+				{task.title}
+			</div>
+			{hasLongDescription && !isTodo && (
+				<button
+					onClick={handleShowDescription}
+					className="mt-1 text-[11px] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
+					title={t("task.showDescription")}
 				>
-					{task.title}
-				</div>
+					<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+					</svg>
+					{t("task.showDescription")}
+				</button>
+			)}
+
+			{/* Task detail modal */}
+			{detailOpen && (
+				<TaskDetailModal
+					task={task}
+					project={project}
+					dispatch={dispatch}
+					onClose={() => setDetailOpen(false)}
+				/>
 			)}
 
 			{/* Label chips row — always rendered so "+" is discoverable on hover */}
