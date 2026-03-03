@@ -170,6 +170,8 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
 								const seq = getShiftKeySequence(event);
 								if (seq) {
+									const hex = Array.from(seq, c => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+									console.log(`[ShiftKey] intercepted ${event.code} → sending ${seq.length}B: ${hex}`);
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
 										wsRef.current.send(seq);
 									}

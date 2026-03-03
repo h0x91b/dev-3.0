@@ -97,10 +97,10 @@ describe("Shift+key integration (ghostty-web InputHandler)", () => {
 		expect(sent).toEqual(["\x1b[Z"]);
 	});
 
-	it("Shift+Enter sends modifyOtherKeys Shift+Enter", () => {
+	it("Shift+Enter sends LF (newline without submit)", () => {
 		const { sent, fire } = setup();
 		fire(keyEvent("Enter", "Enter", SHIFT));
-		expect(sent).toEqual(["\x1b[27;2;13~"]);
+		expect(sent).toEqual(["\n"]);
 	});
 
 	it("Shift+Home sends modified Home sequence", () => {
@@ -213,9 +213,15 @@ describe("Shift+key integration (ghostty-web InputHandler)", () => {
 		}
 	});
 
-	it("all sequences start with ESC[", () => {
+	it("all sequences except Enter start with ESC[", () => {
 		for (const [key, seq] of Object.entries(SHIFT_KEY_SEQUENCES)) {
-			expect(seq.startsWith("\x1b["), `${key}: ${JSON.stringify(seq)} should start with ESC[`).toBe(true);
+			if (key === "Enter") {
+				// Enter sends \n (LF) — not an escape sequence.
+				// Claude Code treats \n as "insert newline", \r as "submit".
+				expect(seq).toBe("\n");
+			} else {
+				expect(seq.startsWith("\x1b["), `${key}: ${JSON.stringify(seq)} should start with ESC[`).toBe(true);
+			}
 		}
 	});
 });

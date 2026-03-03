@@ -58,11 +58,8 @@ setw -g monitor-bell on
 
 # Extended keys: always forward modified key sequences (CSI u format)
 # to inner applications so tools like Claude Code can receive
-# Shift+Enter, Shift+Tab, etc.
+# Shift+Tab, Shift+Home, Shift+F1, etc.
 set -s extended-keys always
-# Tell tmux the outer terminal supports extended keys so it can parse
-# CSI u sequences on input (without this, tmux discards them).
-set -as terminal-features 'xterm-256color:extkeys'
 `;
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
@@ -479,6 +476,11 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
+				// Debug: log escape sequences being written to tmux PTY
+				if (data.includes("\x1b")) {
+					const hex = Array.from(data, (c: string) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+					log.info("PTY write (has ESC)", { len: data.length, hex });
+				}
 				session.proc.terminal.write(data);
 			} catch (err) {
 				log.error("WS message handler error", {

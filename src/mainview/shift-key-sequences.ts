@@ -12,7 +12,7 @@
  */
 export const SHIFT_KEY_SEQUENCES: Record<string, string> = {
 	Tab:      "\x1b[Z",       // Back-tab (CBT)
-	Enter:    "\x1b[27;2;13~", // modifyOtherKeys: Shift+Enter
+	Enter:    "\n",            // LF — Claude Code treats \n as "insert newline", \r as "submit"
 	Home:     "\x1b[1;2H",
 	End:      "\x1b[1;2F",
 	Insert:   "\x1b[2;2~",
