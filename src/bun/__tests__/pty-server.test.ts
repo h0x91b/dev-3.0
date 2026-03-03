@@ -11,10 +11,14 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
-vi.mock("node:fs", () => ({
-	existsSync: vi.fn(() => true),
-	writeFileSync: vi.fn(),
-}));
+vi.mock("node:fs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs")>();
+	return {
+		...actual,
+		existsSync: vi.fn(() => true),
+		writeFileSync: vi.fn(),
+	};
+});
 
 vi.mock("../spawn", () => ({
 	spawn: vi.fn(),

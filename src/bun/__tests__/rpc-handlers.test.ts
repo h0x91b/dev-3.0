@@ -34,6 +34,7 @@ vi.mock("../git", () => ({
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),
 	canRebaseCleanly: vi.fn(),
+	isContentMergedInto: vi.fn(),
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
 }));

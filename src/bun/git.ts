@@ -30,6 +30,26 @@ async function run(
 	return result;
 }
 
+async function runWithInput(
+	cmd: string[],
+	cwd: string,
+	input: string,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+	log.debug(`exec (stdin): ${cmd.join(" ")}`, { cwd });
+	const proc = spawn(cmd, {
+		cwd,
+		stdin: new Blob([input]),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
+	const code = await proc.exited;
+	return { ok: code === 0, stdout: stdout.trim(), stderr: stderr.trim() };
+}
+
 export async function isGitRepo(path: string): Promise<boolean> {
 	log.info("Checking if git repo", { path });
 	const result = await run(
@@ -180,6 +200,72 @@ export async function getUncommittedChanges(
 	}
 
 	return { insertions, deletions };
+}
+
+export async function isContentMergedInto(
+	worktreePath: string,
+	ref: string,
+): Promise<boolean> {
+	// Find common ancestor
+	const mergeBaseResult = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
+	if (!mergeBaseResult.ok) return false;
+	const mergeBase = mergeBaseResult.stdout;
+
+	// Fetch diffs in parallel:
+	// - combined task diff (for squash merge detection)
+	// - individual task commit log (for rebase merge detection)
+	// - all non-merge commits on ref since merge base
+	const [taskDiffResult, taskLogResult, mainLogResult] = await Promise.all([
+		run(["git", "diff", mergeBase, "HEAD"], worktreePath),
+		run(["git", "log", "-p", "--no-merges", `${mergeBase}..HEAD`], worktreePath),
+		run(["git", "log", "-p", "--no-merges", `${mergeBase}..${ref}`], worktreePath),
+	]);
+
+	if (!taskDiffResult.ok || !taskDiffResult.stdout) return true; // no task changes
+	if (!mainLogResult.ok || !mainLogResult.stdout) return false;
+
+	// git patch-id hashes only +/- lines, ignoring context lines and the "before" state.
+	// This makes it robust to squash commits (different merge base) and context drift
+	// from other PRs landing on main after the merge.
+	//
+	// Squash merge: combined task diff patch-id matches a single commit on main.
+	// Rebase merge: every individual task commit patch-id has a counterpart on main.
+	const fakeCommitDiff = `commit ${"0".repeat(40)}\n\n${taskDiffResult.stdout}`;
+	const [combinedPatchIdResult, taskPatchIdsResult, mainPatchIdsResult] = await Promise.all([
+		runWithInput(["git", "patch-id", "--stable"], worktreePath, fakeCommitDiff),
+		runWithInput(["git", "patch-id", "--stable"], worktreePath, taskLogResult.stdout ?? ""),
+		runWithInput(["git", "patch-id", "--stable"], worktreePath, mainLogResult.stdout),
+	]);
+
+	const mainPatchIds = new Set(
+		mainPatchIdsResult.stdout
+			.split("\n")
+			.map((line) => line.split(" ")[0])
+			.filter(Boolean),
+	);
+
+	const combinedPatchId = combinedPatchIdResult.stdout.split(" ")[0];
+	const squashMerged = Boolean(combinedPatchId) && mainPatchIds.has(combinedPatchId);
+
+	const taskIndividualPatchIds = taskPatchIdsResult.stdout
+		.split("\n")
+		.map((line) => line.split(" ")[0])
+		.filter(Boolean);
+	const rebaseMerged =
+		taskIndividualPatchIds.length > 0 && taskIndividualPatchIds.every((id) => mainPatchIds.has(id));
+
+	const merged = squashMerged || rebaseMerged;
+	log.info("isContentMergedInto", {
+		ref,
+		mergeBase,
+		combinedPatchId,
+		taskIndividualCount: taskIndividualPatchIds.length,
+		mainPatchIdCount: mainPatchIds.size,
+		squashMerged,
+		rebaseMerged,
+		merged,
+	});
+	return merged;
 }
 
 export async function canRebaseCleanly(
