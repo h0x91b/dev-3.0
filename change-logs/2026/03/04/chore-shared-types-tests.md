@@ -1,0 +1,1 @@
+Added comprehensive unit tests for src/shared/types.ts covering hexToRgb, titleFromDescription, and all exported constants (ALL_STATUSES, ACTIVE_STATUSES, STATUS_LABELS, STATUS_COLORS, DEFAULT_AGENTS, LABEL_COLORS). 35 test cases total.
