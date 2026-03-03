@@ -1,0 +1,1 @@
+Fixed white strip at the bottom of the window by moving padding-bottom from the shared body/#root rule to #root only. The body's default white background was showing through its 16px padding area below the gradient-covered #root element.

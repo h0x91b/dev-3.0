@@ -142,11 +142,11 @@ body, #root {
 	height: 100%;
 	margin: 0;
 	padding: 0;
-	padding-bottom: 16px;
 	overflow: hidden;
 }
 
 #root {
+	padding-bottom: 16px;
 	background: linear-gradient(
 		var(--bg-grad-angle),
 		var(--bg-grad-from) 0%,
