@@ -53,6 +53,80 @@ describe("reducer", () => {
 		expect(next.route).toEqual({ screen: "project", projectId: "p1" });
 	});
 
+	it("navigate: sets previousRoute to the old route", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "dashboard" },
+		};
+		const next = reducer(state, {
+			type: "navigate",
+			route: { screen: "settings" },
+		});
+		expect(next.previousRoute).toEqual({ screen: "dashboard" });
+	});
+
+	it("navigate: clears bell when opening task terminal", () => {
+		const bellCounts = new Map([["t1", 3]]);
+		const state: AppState = {
+			...initialState,
+			bellCounts,
+		};
+		const next = reducer(state, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		});
+		expect(next.bellCounts.has("t1")).toBe(false);
+	});
+
+	it("navigate: clears bell when opening task in split view", () => {
+		const bellCounts = new Map([["t1", 2]]);
+		const state: AppState = {
+			...initialState,
+			bellCounts,
+		};
+		const next = reducer(state, {
+			type: "navigate",
+			route: { screen: "project", projectId: "p1", activeTaskId: "t1" },
+		});
+		expect(next.bellCounts.has("t1")).toBe(false);
+	});
+
+	it("navigate: does not clear bell for unrelated task", () => {
+		const bellCounts = new Map([["t2", 1]]);
+		const state: AppState = {
+			...initialState,
+			bellCounts,
+		};
+		const next = reducer(state, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		});
+		expect(next.bellCounts.get("t2")).toBe(1);
+	});
+
+	it("navigate: does not modify bellCounts when none exist", () => {
+		const next = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		});
+		expect(next.bellCounts.size).toBe(0);
+		// bellCounts should be the same reference when unchanged
+		expect(next.bellCounts).toBe(initialState.bellCounts);
+	});
+
+	it("navigate: does not clear bell when project route has no activeTaskId", () => {
+		const bellCounts = new Map([["t1", 1]]);
+		const state: AppState = {
+			...initialState,
+			bellCounts,
+		};
+		const next = reducer(state, {
+			type: "navigate",
+			route: { screen: "project", projectId: "p1" },
+		});
+		expect(next.bellCounts.get("t1")).toBe(1);
+	});
+
 	it("setProjects: replaces projects array", () => {
 		const next = reducer(initialState, {
 			type: "setProjects",
@@ -122,6 +196,63 @@ describe("reducer", () => {
 		};
 		const next = reducer(state, { type: "updateTask", task: newTask });
 		expect(next.currentProjectTasks).toHaveLength(0);
+	});
+
+	it("updateTask: adds new task when on task screen for the same project", () => {
+		const newTask: Task = { ...mockTask, id: "t-new", title: "CLI task" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next.currentProjectTasks).toHaveLength(2);
+		expect(next.currentProjectTasks[1].id).toBe("t-new");
+	});
+
+	it("updateTask: adds new task when on project-settings screen for the same project", () => {
+		const newTask: Task = { ...mockTask, id: "t-new", title: "CLI task" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project-settings", projectId: "p1" },
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next.currentProjectTasks).toHaveLength(2);
+		expect(next.currentProjectTasks[1].id).toBe("t-new");
+	});
+
+	it("updateTask: ignores new task when on settings screen (no project context)", () => {
+		const newTask: Task = { ...mockTask, id: "t-new" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "settings" },
+			currentProjectTasks: [],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next.currentProjectTasks).toHaveLength(0);
+	});
+
+	it("updateTask: ignores new task when on changelog screen (no project context)", () => {
+		const newTask: Task = { ...mockTask, id: "t-new" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "changelog" },
+			currentProjectTasks: [],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next.currentProjectTasks).toHaveLength(0);
+	});
+
+	it("updateTask: returns same state when task not found and no project context", () => {
+		const newTask: Task = { ...mockTask, id: "t-new" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "dashboard" },
+			currentProjectTasks: [],
+		};
+		const next = reducer(state, { type: "updateTask", task: newTask });
+		expect(next).toBe(state);
 	});
 
 	it("addTask: appends to currentProjectTasks", () => {
@@ -266,6 +397,86 @@ describe("reducer", () => {
 			loading: false,
 		});
 		expect(next.loading).toBe(false);
+	});
+
+	// ---- addBell ----
+
+	it("addBell: adds bell count for a task", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+	});
+
+	it("addBell: increments existing bell count", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 2]]),
+		};
+		const next = reducer(state, { type: "addBell", taskId: "t1" });
+		expect(next.bellCounts.get("t1")).toBe(3);
+	});
+
+	it("addBell: suppressed when viewing task terminal", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		};
+		const next = reducer(state, { type: "addBell", taskId: "t1" });
+		expect(next).toBe(state);
+		expect(next.bellCounts.size).toBe(0);
+	});
+
+	it("addBell: suppressed when viewing task in split view", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1", activeTaskId: "t1" },
+		};
+		const next = reducer(state, { type: "addBell", taskId: "t1" });
+		expect(next).toBe(state);
+		expect(next.bellCounts.size).toBe(0);
+	});
+
+	it("addBell: not suppressed when viewing a different task", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "task", projectId: "p1", taskId: "t2" },
+		};
+		const next = reducer(state, { type: "addBell", taskId: "t1" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+	});
+
+	it("addBell: not suppressed when project route has no activeTaskId", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1" },
+		};
+		const next = reducer(state, { type: "addBell", taskId: "t1" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+	});
+
+	// ---- clearBell ----
+
+	it("clearBell: removes bell for a task", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 5]]),
+		};
+		const next = reducer(state, { type: "clearBell", taskId: "t1" });
+		expect(next.bellCounts.has("t1")).toBe(false);
+	});
+
+	it("clearBell: no-op when task has no bell", () => {
+		const next = reducer(initialState, { type: "clearBell", taskId: "t1" });
+		expect(next).toBe(initialState);
+	});
+
+	it("clearBell: preserves other bells", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 2], ["t2", 3]]),
+		};
+		const next = reducer(state, { type: "clearBell", taskId: "t1" });
+		expect(next.bellCounts.has("t1")).toBe(false);
+		expect(next.bellCounts.get("t2")).toBe(3);
 	});
 
 	it("unknown action: returns state unchanged", () => {

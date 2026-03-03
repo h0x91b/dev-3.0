@@ -1,0 +1,1 @@
+Added comprehensive test coverage for src/mainview/state.ts reducer — 20 new tests covering navigate (previousRoute, bell clearing on task/split view), updateTask (all route screen types for new task auto-add), addBell (increment, suppression in task/split view), and clearBell (removal, no-op, preservation of unrelated bells). Total: 39 tests (was 19).
