@@ -1,0 +1,1 @@
+Added comprehensive test coverage for the TaskInfoPanel component (60 tests). Covers collapsed/expanded views, status dropdown transitions, notes CRUD, git action buttons (rebase/push/merge/diff), dev server button, branch status display, collapse/expand toggle, full screen navigation, and branch status polling.
