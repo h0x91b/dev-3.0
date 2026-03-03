@@ -1,0 +1,1 @@
+Fixed Homebrew cask SHA-256 mismatch caused by full-v* tags overwriting the ARM64 DMG on GitHub Release without updating the Homebrew formula. The "Update Homebrew Cask" step in the release workflow now runs unconditionally for any build that produces an ARM64 DMG, not just v* tags.
