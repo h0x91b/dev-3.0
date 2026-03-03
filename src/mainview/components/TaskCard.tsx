@@ -431,14 +431,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				</button>
 			)}
 
-			{/* Task detail modal */}
-			{detailOpen && (
+			{/* Task detail modal — portal to body so it's not clipped by card */}
+			{detailOpen && createPortal(
 				<TaskDetailModal
 					task={task}
 					project={project}
 					dispatch={dispatch}
 					onClose={() => setDetailOpen(false)}
-				/>
+				/>,
+				document.body
 			)}
 
 			{/* Label chips row — always rendered so "+" is discoverable on hover */}
