@@ -142,6 +142,13 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.cleanupScript": "Script de limpieza",
 	"projectSettings.cleanupScriptDesc":
 		"Se ejecuta cuando una tarea se mueve a Cancelled (o Archived en el futuro)",
+	"projectSettings.clonePaths": "Rutas para clonar",
+	"projectSettings.clonePathsDesc":
+		"Directorios y archivos para copiar desde la raíz del proyecto a nuevos worktrees usando copy-on-write (ej: node_modules, .venv, build). Se copian antes del script de configuración.",
+	"projectSettings.addClonePath": "+ Agregar ruta",
+	"projectSettings.clonePathRemove": "Eliminar ruta",
+	"projectSettings.noClonePaths":
+		"No hay rutas configuradas. Los archivos solo provienen de git.",
 	"projectSettings.baseBranch": "Rama base",
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",

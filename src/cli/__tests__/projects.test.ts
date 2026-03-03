@@ -26,6 +26,7 @@ const PROJECTS: Project[] = [
 		devScript: "",
 		cleanupScript: "",
 		defaultBaseBranch: "main",
+		clonePaths: [],
 		createdAt: "2026-03-01T10:00:00Z",
 	},
 	{
@@ -36,6 +37,7 @@ const PROJECTS: Project[] = [
 		devScript: "",
 		cleanupScript: "",
 		defaultBaseBranch: "develop",
+		clonePaths: [],
 		createdAt: "2026-03-01T11:00:00Z",
 	},
 ];

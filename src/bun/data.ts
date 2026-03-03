@@ -34,10 +34,13 @@ async function loadAllProjects(): Promise<Project[]> {
 			return [];
 		}
 		const projects: Project[] = await file.json();
-		// Backfill labels for projects created before this field existed
+		// Backfill fields for projects created before these fields existed
 		for (const project of projects) {
 			if ((project as any).labels === undefined) {
 				project.labels = [];
+			}
+			if ((project as any).clonePaths === undefined) {
+				project.clonePaths = [];
 			}
 		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
@@ -75,6 +78,7 @@ export async function addProject(
 		devScript: "",
 		cleanupScript: "",
 		defaultBaseBranch: "main",
+		clonePaths: [],
 		createdAt: new Date().toISOString(),
 		labels: [],
 	};
@@ -98,7 +102,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "labels">>,
+	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "labels" | "clonePaths">>,
 ): Promise<Project> {
 	console.log("[updateProject] updates:", JSON.stringify(updates));
 	log.info("Updating project", { projectId, updates });

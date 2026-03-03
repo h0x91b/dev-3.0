@@ -59,6 +59,7 @@ function makeProject(overrides?: Partial<Project>): Project {
 		devScript: "",
 		cleanupScript: "",
 		defaultBaseBranch: "main",
+		clonePaths: [],
 		createdAt: "2026-01-01",
 		...overrides,
 	};

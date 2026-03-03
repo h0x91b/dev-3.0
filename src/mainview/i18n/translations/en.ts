@@ -140,6 +140,13 @@ const en = {
 	"projectSettings.cleanupScript": "Cleanup Script",
 	"projectSettings.cleanupScriptDesc":
 		"Runs when a task is moved to Cancelled (or Archived in the future)",
+	"projectSettings.clonePaths": "Clone Paths",
+	"projectSettings.clonePathsDesc":
+		"Directories and files to copy from the project root into new worktrees using copy-on-write (e.g., node_modules, .venv, build). Cloned before the setup script runs.",
+	"projectSettings.addClonePath": "+ Add Path",
+	"projectSettings.clonePathRemove": "Remove path",
+	"projectSettings.noClonePaths":
+		"No clone paths configured. Files will only come from git.",
 	"projectSettings.baseBranch": "Base Branch",
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.save": "Save Settings",

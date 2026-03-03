@@ -104,6 +104,8 @@ function ProjectSettings({
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
 		project?.defaultBaseBranch || "main",
 	);
+	const [clonePaths, setClonePaths] = useState<string[]>(project?.clonePaths || []);
+	const [newClonePath, setNewClonePath] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 
@@ -169,6 +171,7 @@ function ProjectSettings({
 				devScript,
 				cleanupScript,
 				defaultBaseBranch,
+				clonePaths,
 			});
 			dispatch({ type: "updateProject", project: updated });
 			navigate({ screen: "project", projectId });
@@ -197,6 +200,63 @@ function ProjectSettings({
 							placeholder="bun install"
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 						/>
+					</div>
+
+					{/* Clone Paths */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("projectSettings.clonePaths")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("projectSettings.clonePathsDesc")}
+						</p>
+						<div className="space-y-2">
+							{clonePaths.map((path, idx) => (
+								<div key={idx} className="flex items-center gap-2 p-2.5 bg-raised rounded-xl border border-edge">
+									<span className="flex-1 text-fg text-sm font-mono truncate">{path}</span>
+									<button
+										type="button"
+										onClick={() => setClonePaths(clonePaths.filter((_, i) => i !== idx))}
+										className="w-6 h-6 flex items-center justify-center rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
+										title={t("projectSettings.clonePathRemove")}
+									>
+										<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+										</svg>
+									</button>
+								</div>
+							))}
+							{clonePaths.length === 0 && (
+								<p className="text-fg-muted text-sm italic">{t("projectSettings.noClonePaths")}</p>
+							)}
+						</div>
+						<div className="flex items-center gap-2 mt-3">
+							<input
+								type="text"
+								value={newClonePath}
+								onChange={(e) => setNewClonePath(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" && newClonePath.trim()) {
+										setClonePaths([...clonePaths, newClonePath.trim()]);
+										setNewClonePath("");
+									}
+								}}
+								placeholder="node_modules"
+								className="flex-1 px-3 py-2 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+							/>
+							<button
+								type="button"
+								onClick={() => {
+									if (newClonePath.trim()) {
+										setClonePaths([...clonePaths, newClonePath.trim()]);
+										setNewClonePath("");
+									}
+								}}
+								className="text-sm text-accent hover:text-accent-hover font-medium transition-colors"
+							>
+								{t("projectSettings.addClonePath")}
+							</button>
+						</div>
 					</div>
 
 					{/* Dev Script */}

@@ -4,6 +4,7 @@ import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Pr
 import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
+import * as clone from "./clone";
 import * as pty from "./pty-server";
 import * as agents from "./agents";
 import * as updater from "./updater";
@@ -416,6 +417,7 @@ export const handlers = {
 		devScript: string;
 		cleanupScript: string;
 		defaultBaseBranch: string;
+		clonePaths: string[];
 	}): Promise<Project> {
 		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
@@ -424,6 +426,7 @@ export const handlers = {
 			devScript: params.devScript,
 			cleanupScript: params.cleanupScript,
 			defaultBaseBranch: params.defaultBaseBranch,
+			clonePaths: params.clonePaths,
 		});
 		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
 		log.info("← updateProjectSettings done");
@@ -474,12 +477,13 @@ export const handlers = {
 		const status = params.status || "todo";
 		const task = await data.addTask(project, params.description, status);
 
-		// If created directly into an active status, set up worktree + PTY
+		// If created directly into an active status, set up worktree + clone paths + PTY
 		if (isActive(status)) {
 			log.info("Created into active status, creating worktree + PTY", {
 				taskId: task.id,
 			});
 			const wt = await git.createWorktree(project, task);
+			await clone.clonePathsToWorktree(project.path, wt.worktreePath, project.clonePaths);
 			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
 
 			const updated = await data.updateTask(project, task.id, {
@@ -509,11 +513,12 @@ export const handlers = {
 
 		log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
 
-		// todo → active: create worktree + PTY session
+		// todo → active: create worktree + clone paths + PTY session
 		if (!isActive(oldStatus) && isActive(newStatus)) {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
 			const wt = await git.createWorktree(project, task);
+			await clone.clonePathsToWorktree(project.path, wt.worktreePath, project.clonePaths);
 			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true);
 
@@ -638,6 +643,7 @@ export const handlers = {
 
 			if (isActive(params.targetStatus)) {
 				const wt = await git.createWorktree(project, task);
+				await clone.clonePathsToWorktree(project.path, wt.worktreePath, project.clonePaths);
 				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 				const updated = await data.updateTask(project, task.id, {

@@ -55,6 +55,10 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
+vi.mock("../clone", () => ({
+	clonePathsToWorktree: vi.fn(() => Promise.resolve([])),
+}));
+
 // Mock node:fs for existsSync
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
@@ -79,6 +83,7 @@ function makeProject(overrides?: Partial<Project>): Project {
 		devScript: "",
 		cleanupScript: "echo cleanup",
 		defaultBaseBranch: "main",
+		clonePaths: [],
 		createdAt: new Date().toISOString(),
 		...overrides,
 	};

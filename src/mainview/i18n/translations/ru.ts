@@ -144,6 +144,13 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.cleanupScript": "Скрипт очистки",
 	"projectSettings.cleanupScriptDesc":
 		"Запускается при переводе таски в статус Cancelled (или Archived в будущем)",
+	"projectSettings.clonePaths": "Клонируемые пути",
+	"projectSettings.clonePathsDesc":
+		"Директории и файлы для копирования из корня проекта в новые worktree через copy-on-write (например, node_modules, .venv, build). Копируются до запуска setup-скрипта.",
+	"projectSettings.addClonePath": "+ Добавить путь",
+	"projectSettings.clonePathRemove": "Удалить путь",
+	"projectSettings.noClonePaths":
+		"Клонируемые пути не настроены. Файлы берутся только из git.",
 	"projectSettings.baseBranch": "Базовая ветка",
 	"projectSettings.baseBranchDesc": "Ветка, от которой создаются worktree",
 	"projectSettings.save": "Сохранить настройки",
