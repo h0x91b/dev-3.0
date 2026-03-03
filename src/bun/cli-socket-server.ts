@@ -310,7 +310,7 @@ const handlers: Record<string, Handler> = {
 	},
 };
 
-async function handleRequest(req: CliRequest): Promise<CliResponse> {
+export async function handleRequest(req: CliRequest): Promise<CliResponse> {
 	const handler = handlers[req.method];
 	if (!handler) {
 		return { id: req.id, ok: false, error: `Unknown method: ${req.method}` };
