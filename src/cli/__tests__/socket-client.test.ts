@@ -110,4 +110,70 @@ describe("sendRequest", () => {
 			server.close();
 		}
 	});
+
+	it("handles large responses without truncation", async () => {
+		// Generate a large payload (~50KB) similar to tasks.list with many tasks
+		const largeTasks = Array.from({ length: 100 }, (_, i) => ({
+			id: crypto.randomUUID(),
+			seq: i + 1,
+			projectId: "proj-001",
+			title: `Task ${i + 1}: ${"Описание задачи на русском языке для проверки ".repeat(3)}`,
+			description: "Подробное описание ".repeat(20),
+			status: "in-progress",
+			baseBranch: "main",
+			branchName: `dev3/task-${i}`,
+			worktreePath: `/tmp/wt-${i}`,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}));
+
+		const server = await createMockServer((data) => {
+			const req = JSON.parse(data);
+			return JSON.stringify({ id: req.id, ok: true, data: largeTasks });
+		});
+
+		try {
+			const resp = await sendRequest(TEST_SOCKET, "tasks.list", { projectId: "proj-001" });
+			expect(resp.ok).toBe(true);
+			expect((resp.data as any[]).length).toBe(100);
+		} finally {
+			server.close();
+		}
+	});
+
+	it("fails with truncated large response (reproduces tasks.list bug)", async () => {
+		// Simulate what happens when Bun's socket.write() does a partial write
+		// on a large response and socket.end() is called immediately after,
+		// truncating the JSON mid-stream.
+		const largeTasks = Array.from({ length: 100 }, (_, i) => ({
+			id: crypto.randomUUID(),
+			seq: i + 1,
+			title: `Задача ${i + 1}: ${"Описание на русском ".repeat(5)}`,
+			status: "in-progress",
+		}));
+
+		cleanSocket();
+		const server = await new Promise<Server>((resolve) => {
+			const srv = createServer((conn) => {
+				conn.on("data", (chunk) => {
+					const req = JSON.parse(chunk.toString().trim());
+					const fullResponse = JSON.stringify({ id: req.id, ok: true, data: largeTasks }) + "\n";
+
+					// Simulate Bun's partial socket.write(): send only ~60% of the response
+					const truncated = fullResponse.slice(0, Math.floor(fullResponse.length * 0.6));
+					conn.write(truncated);
+					conn.end();
+				});
+			});
+			srv.listen(TEST_SOCKET, () => resolve(srv));
+		});
+
+		try {
+			await expect(
+				sendRequest(TEST_SOCKET, "tasks.list", { projectId: "proj-001" }),
+			).rejects.toThrow("Invalid JSON response");
+		} finally {
+			server.close();
+		}
+	});
 });
