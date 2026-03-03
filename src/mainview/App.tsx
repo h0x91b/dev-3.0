@@ -45,6 +45,11 @@ function App() {
 		checkRequirements();
 	}, [checkRequirements]);
 
+	const navigate = useCallback(
+		(route: Route) => dispatch({ type: "navigate", route }),
+		[dispatch],
+	);
+
 	// Cmd+Q / Cmd+, — intercept before ghostty-web terminal can swallow them
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
@@ -66,11 +71,6 @@ function App() {
 		window.addEventListener("keydown", handleKeyDown, { capture: true });
 		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
 	}, [navigate]);
-
-	const navigate = useCallback(
-		(route: Route) => dispatch({ type: "navigate", route }),
-		[dispatch],
-	);
 
 	function handleConfirmQuit() {
 		if (dontShowAgain) {
