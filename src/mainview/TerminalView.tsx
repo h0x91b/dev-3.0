@@ -408,7 +408,14 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				termRef.current = null;
 			}
 		};
-	}, [ptyUrl, taskId, resolvedTheme]);
+	}, [ptyUrl, taskId]);
+
+	useEffect(() => {
+		if (termRef.current) {
+			termRef.current.options.theme =
+				resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+		}
+	}, [resolvedTheme]);
 
 	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();
