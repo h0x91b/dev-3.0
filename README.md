@@ -81,7 +81,7 @@ brew uninstall --cask dev3
 
 Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git` and `tmux` are installed.
 
-macOS (Apple Silicon + Intel) — Linux and Windows coming soon.
+macOS (Apple Silicon + Intel) and Linux — Windows coming soon.
 
 ## Tech stack
 
