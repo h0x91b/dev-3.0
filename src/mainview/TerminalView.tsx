@@ -1,6 +1,52 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
+
+const DARK_TERMINAL_THEME = {
+	background: "#1a1b26",
+	foreground: "#a9b1d6",
+	cursor: "#c0caf5",
+	selectionBackground: "#33467c",
+	black: "#15161e",
+	red: "#f7768e",
+	green: "#9ece6a",
+	yellow: "#e0af68",
+	blue: "#7aa2f7",
+	magenta: "#bb9af7",
+	cyan: "#7dcfff",
+	white: "#a9b1d6",
+	brightBlack: "#414868",
+	brightRed: "#f7768e",
+	brightGreen: "#9ece6a",
+	brightYellow: "#e0af68",
+	brightBlue: "#7aa2f7",
+	brightMagenta: "#bb9af7",
+	brightCyan: "#7dcfff",
+	brightWhite: "#c0caf5",
+};
+
+const LIGHT_TERMINAL_THEME = {
+	background: "#ffffff",
+	foreground: "#24292f",
+	cursor: "#24292f",
+	selectionBackground: "#0366d625",
+	black: "#24292e",
+	red: "#d73a49",
+	green: "#28a745",
+	yellow: "#dbab09",
+	blue: "#005cc5",
+	magenta: "#5a32a3",
+	cyan: "#0598bc",
+	white: "#6a737d",
+	brightBlack: "#959da5",
+	brightRed: "#cb2431",
+	brightGreen: "#22863a",
+	brightYellow: "#f9c513",
+	brightBlue: "#0366d6",
+	brightMagenta: "#6f42c1",
+	brightCyan: "#3192aa",
+	brightWhite: "#d1d5da",
+};
 
 interface TerminalViewProps {
 	ptyUrl: string;
@@ -11,6 +57,17 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
+	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
+		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
+	);
+
+	useEffect(() => {
+		const observer = new MutationObserver(() => {
+			setResolvedTheme((document.documentElement.dataset.theme as "dark" | "light") || "dark");
+		});
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+		return () => observer.disconnect();
+	}, []);
 
 	// ── Terminal reset via app menu (View > Soft/Hard Reset Terminal) ──
 	useEffect(() => {
@@ -99,28 +156,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
-				theme: {
-					background: "#1a1b26",
-					foreground: "#a9b1d6",
-					cursor: "#c0caf5",
-					selectionBackground: "#33467c",
-					black: "#15161e",
-					red: "#f7768e",
-					green: "#9ece6a",
-					yellow: "#e0af68",
-					blue: "#7aa2f7",
-					magenta: "#bb9af7",
-					cyan: "#7dcfff",
-					white: "#a9b1d6",
-					brightBlack: "#414868",
-					brightRed: "#f7768e",
-					brightGreen: "#9ece6a",
-					brightYellow: "#e0af68",
-					brightBlue: "#7aa2f7",
-					brightMagenta: "#bb9af7",
-					brightCyan: "#7dcfff",
-					brightWhite: "#c0caf5",
-				},
+				theme: resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
 			});
 
 			console.log("[TerminalView] Terminal created, loading FitAddon...");
@@ -373,6 +409,13 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			}
 		};
 	}, [ptyUrl, taskId]);
+
+	useEffect(() => {
+		if (termRef.current) {
+			termRef.current.options.theme =
+				resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+		}
+	}, [resolvedTheme]);
 
 	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();

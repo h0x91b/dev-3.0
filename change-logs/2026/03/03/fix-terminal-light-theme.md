@@ -1,0 +1,1 @@
+The terminal was always rendered with a hardcoded dark (Tokyo Night) color scheme regardless of the app theme. Added a light terminal theme and a MutationObserver that watches `data-theme` on `<html>` to switch terminal colors automatically when the user changes the app theme.
