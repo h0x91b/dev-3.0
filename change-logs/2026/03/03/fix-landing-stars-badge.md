@@ -1,0 +1,1 @@
+Fix GitHub stars badge on landing page showing "INVALID" instead of the star count. The shields.io `label=GitHub%20Stars` parameter was causing the issue — removed the custom label so it falls back to the default "STARS" text (the GitHub logo icon already indicates the source).
