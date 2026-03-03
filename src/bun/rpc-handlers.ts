@@ -14,6 +14,31 @@ import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("rpc");
 
+/**
+ * Escape a string for safe use inside a double-quoted shell context.
+ * Handles: ", $, `, \, !
+ */
+export function escapeForDoubleQuotes(s: string): string {
+	return s.replace(/[\\"$`!]/g, "\\$&");
+}
+
+/**
+ * Wrap a resolved shell command with an echo prefix for display.
+ * The echo part uses double-quote escaping to safely display the command.
+ * The actual command is appended verbatim (already properly escaped).
+ */
+export function buildEchoAndRun(tmuxCmd: string): string {
+	return `echo "Starting: ${escapeForDoubleQuotes(tmuxCmd)}" && ${tmuxCmd}`;
+}
+
+/**
+ * Build a bash script that echoes the command and then exec's it.
+ * Used when a setup script is present and the main command runs in a split pane.
+ */
+export function buildCmdScript(tmuxCmd: string): string {
+	return `#!/bin/bash\necho "Starting: ${escapeForDoubleQuotes(tmuxCmd)}" && exec ${tmuxCmd}\n`;
+}
+
 const SYSTEM_REQUIREMENTS = [
 	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install" },
 	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux" },
@@ -253,7 +278,7 @@ export async function launchTaskPty(
 		// to avoid tmux env var propagation issues (tmux server doesn't
 		// inherit custom env vars from the client process)
 		await Bun.write(setupPath, project.setupScript + "\n");
-		await Bun.write(claudePath, `#!/bin/bash\necho "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && exec ${tmuxCmd}\n`);
+		await Bun.write(claudePath, buildCmdScript(tmuxCmd));
 
 		const splitCmd = `tmux split-window -v -c "${worktreePath}" "bash '${claudePath}'"`;
 		const setupFail = [
@@ -287,7 +312,7 @@ export async function launchTaskPty(
 	const currentPath = process.env.PATH || "";
 	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
-	const echoAndRun = `echo "Starting: ${tmuxCmd.replace(/"/g, '\\"')}" && ${tmuxCmd}`;
+	const echoAndRun = buildEchoAndRun(tmuxCmd);
 	log.info("Creating PTY session", {
 		taskId: task.id.slice(0, 8),
 		worktreePath,
