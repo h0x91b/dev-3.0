@@ -11,41 +11,15 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { InputHandler, Ghostty } from "ghostty-web";
-
-// Same map used in TerminalView.tsx — import would be better but it's
-// inline in the component today.  Keep in sync manually (or extract).
-const SHIFT_KEY_SEQUENCES: Record<string, string> = {
-	Tab:      "\x1b[Z",
-	Enter:    "\x1b[13;2u",
-	Home:     "\x1b[1;2H",
-	End:      "\x1b[1;2F",
-	Insert:   "\x1b[2;2~",
-	Delete:   "\x1b[3;2~",
-	PageUp:   "\x1b[5;2~",
-	PageDown: "\x1b[6;2~",
-	F1:       "\x1b[1;2P",
-	F2:       "\x1b[1;2Q",
-	F3:       "\x1b[1;2R",
-	F4:       "\x1b[1;2S",
-	F5:       "\x1b[15;2~",
-	F6:       "\x1b[17;2~",
-	F7:       "\x1b[18;2~",
-	F8:       "\x1b[19;2~",
-	F9:       "\x1b[20;2~",
-	F10:      "\x1b[21;2~",
-	F11:      "\x1b[23;2~",
-	F12:      "\x1b[24;2~",
-};
+import { SHIFT_KEY_SEQUENCES, getShiftKeySequence } from "../shift-key-sequences";
 
 /**
- * The custom key handler — same logic as TerminalView.tsx.
- * In production it sends to ws.send(); here it pushes to `sent`.
+ * Build a custom key handler using the production getShiftKeySequence().
+ * The only difference from TerminalView: sends to `sent[]` instead of ws.
  */
 function makeCustomHandler(sent: string[]) {
 	return (event: KeyboardEvent): boolean => {
-		if (event.type !== "keydown" || !event.shiftKey) return false;
-		if (event.ctrlKey || event.altKey || event.metaKey) return false;
-		const seq = SHIFT_KEY_SEQUENCES[event.code];
+		const seq = getShiftKeySequence(event);
 		if (seq) {
 			sent.push(seq);
 			return true;
@@ -223,5 +197,25 @@ describe("Shift+key integration (ghostty-web InputHandler)", () => {
 		);
 		container.fire(keyEvent("Enter", "Enter", SHIFT));
 		expect(sent).toEqual(["\r"]);
+	});
+
+	// ── SHIFT_KEY_SEQUENCES map sanity checks ────────────────────
+
+	it("map covers all expected functional keys", () => {
+		const expectedKeys = [
+			"Tab", "Enter", "Home", "End", "Insert", "Delete",
+			"PageUp", "PageDown",
+			"F1", "F2", "F3", "F4", "F5", "F6",
+			"F7", "F8", "F9", "F10", "F11", "F12",
+		];
+		for (const key of expectedKeys) {
+			expect(SHIFT_KEY_SEQUENCES).toHaveProperty(key);
+		}
+	});
+
+	it("all sequences start with ESC[", () => {
+		for (const [key, seq] of Object.entries(SHIFT_KEY_SEQUENCES)) {
+			expect(seq.startsWith("\x1b["), `${key}: ${JSON.stringify(seq)} should start with ESC[`).toBe(true);
+		}
 	});
 });
