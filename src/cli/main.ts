@@ -1,4 +1,4 @@
-import { parseArgs } from "./args";
+import { parseArgs, resolveFileArgs } from "./args";
 import { detectContext, resolveSocketPath } from "./context";
 import { exitAppNotRunning, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
@@ -75,6 +75,22 @@ You almost never need to specify them explicitly.
   Note: "completed" and "cancelled" are not available via CLI because
   they destroy the worktree and terminal session.
 
+━━━ @file syntax ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Any flag value or positional argument starting with @ is read from
+  a file. This is useful for large text content like descriptions.
+
+  dev3 task update --description @plan.md
+      Read plan.md and use its contents as the description.
+
+  dev3 task create --title "My task" --description @notes.txt
+      Create a task with description loaded from a file.
+
+  dev3 note add @feedback.txt
+      Add a note with content read from a file.
+
+  To pass a literal @ as the first character, double it: @@literal
+
 ━━━ Options ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   --project <id>    Override auto-detected project
@@ -99,7 +115,7 @@ async function main(): Promise<void> {
 	const command = rawArgs[0];
 	const subcommand = rawArgs[1] && !rawArgs[1].startsWith("--") ? rawArgs[1] : undefined;
 	const restArgs = subcommand ? rawArgs.slice(2) : rawArgs.slice(1);
-	const args = parseArgs(restArgs);
+	const args = resolveFileArgs(parseArgs(restArgs));
 
 	const context = detectContext();
 	const socketPath = resolveSocketPath();

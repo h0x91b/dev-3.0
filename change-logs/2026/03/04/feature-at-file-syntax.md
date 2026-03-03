@@ -1,0 +1,1 @@
+Added @file syntax support to the CLI. Any flag value or positional argument starting with @ is now treated as a file path — the file contents replace the value. This is useful for large text content like task descriptions. Escape with @@ for literal @.
