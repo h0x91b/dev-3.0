@@ -1,0 +1,1 @@
+Removed the "Task movement is currently MANUAL only" caution notice from README and the landing page — automatic AI-driven task management is now implemented. Updated platform availability text to reflect that both Apple Silicon and Intel macOS builds are now available.

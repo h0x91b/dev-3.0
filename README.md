@@ -23,10 +23,6 @@
 
 ---
 
-> [!CAUTION]
-> **Task movement is currently MANUAL only.**
-> Dragging tasks between Kanban columns (status changes) must be done by hand. Automatic AI-driven task management is planned but **not yet implemented** — this is a work in progress.
-
 <p align="center">
   <img src="docs/screenshots/kanban-board.png" width="800" alt="Kanban board with AI agents">
 </p>
@@ -85,7 +81,7 @@ brew uninstall --cask dev3
 
 Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git` and `tmux` are installed.
 
-macOS only for now — Linux and Windows coming soon.
+macOS (Apple Silicon + Intel) — Linux and Windows coming soon.
 
 ## Tech stack
 
