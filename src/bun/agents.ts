@@ -125,9 +125,9 @@ export const DEV3_SYSTEM_PROMPT =
 	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
 	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
 	"TASK STATUS MANAGEMENT IS NON-NEGOTIABLE: " +
-	"(1) Run `dev3 task move --status in-progress` when you START working. " +
-	"(2) Run `dev3 task move --status user-questions` if you are BLOCKED and need human input. " +
-	"(3) Run `dev3 task move --status review-by-user` when you have COMPLETED all work. " +
+	"(1) Run `~/.dev3.0/bin/dev3 task move --status in-progress` when you START working. " +
+	"(2) Run `~/.dev3.0/bin/dev3 task move --status user-questions` if you are BLOCKED and need human input. " +
+	"(3) Run `~/.dev3.0/bin/dev3 task move --status review-by-user` when you have COMPLETED all work. " +
 	"You MUST leave the task in one of these statuses before the session ends. " +
 	"NEVER finish a session without updating the task status.";
 
