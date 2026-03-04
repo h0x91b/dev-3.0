@@ -133,7 +133,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				}
 				onClear={() => setActiveFilters([])}
 			/>
-			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-3 overflow-x-scroll overflow-y-hidden kanban-scroll">
+			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-4 overflow-x-scroll overflow-y-hidden kanban-scroll">
 				{ALL_STATUSES.map((status) => (
 					<KanbanColumn
 						key={status}
