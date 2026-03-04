@@ -569,17 +569,18 @@ export const handlers = {
 			return updated;
 		}
 
-		// active → completed/cancelled: destroy PTY, run cleanup if configured, then remove worktree
-		if (
-			isActive(oldStatus) &&
-			(newStatus === "completed" || newStatus === "cancelled")
-		) {
+		// → completed/cancelled: destroy PTY, run cleanup if configured, then remove worktree
+		if (newStatus === "completed" || newStatus === "cancelled") {
 			if (params.force) {
 				// Force mode: skip PTY destruction, cleanup script, and worktree removal.
 				// The environment is already broken — just update the status.
 				log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
-			} else {
-				log.info("Transition: active → terminal, destroying PTY");
+			} else if (isActive(oldStatus) || task.worktreePath) {
+				// Active task or task that still has a worktree (e.g. moved back to todo)
+				log.info("Transition → terminal, cleaning up PTY + worktree", {
+					oldStatus,
+					hasWorktree: !!task.worktreePath,
+				});
 				try {
 					pty.destroySession(task.id);
 				} catch (err) {

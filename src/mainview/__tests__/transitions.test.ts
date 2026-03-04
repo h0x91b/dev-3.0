@@ -2,17 +2,16 @@ import { getAllowedTransitions } from "../../shared/types";
 import type { TaskStatus } from "../../shared/types";
 
 describe("getAllowedTransitions", () => {
-	it("todo → only in-progress and cancelled", () => {
+	it("todo → in-progress, completed, and cancelled", () => {
 		const allowed = getAllowedTransitions("todo");
-		expect(allowed).toEqual(["in-progress", "cancelled"]);
+		expect(allowed).toEqual(["in-progress", "completed", "cancelled"]);
 	});
 
-	it("todo → does NOT include user-questions, review-by-ai, review-by-user, completed", () => {
+	it("todo → does NOT include user-questions, review-by-ai, review-by-user", () => {
 		const allowed = getAllowedTransitions("todo");
 		expect(allowed).not.toContain("user-questions");
 		expect(allowed).not.toContain("review-by-ai");
 		expect(allowed).not.toContain("review-by-user");
-		expect(allowed).not.toContain("completed");
 	});
 
 	it("in-progress → all except in-progress", () => {

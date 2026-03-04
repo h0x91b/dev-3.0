@@ -120,7 +120,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 		// Warn before completing/cancelling with unpushed changes
 		if (
-			ACTIVE_STATUSES.includes(task.status) &&
+			task.worktreePath &&
 			(newStatus === "completed" || newStatus === "cancelled")
 		) {
 			setMenuOpen(false);

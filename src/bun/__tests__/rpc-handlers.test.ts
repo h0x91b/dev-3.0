@@ -967,6 +967,42 @@ describe("handlers.moveTask", () => {
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 		expect(result.status).toBe("completed");
 	});
+
+	it("todo → completed (with worktree): cleans up PTY and worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: "/tmp/wt" });
+		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
+		expect(result.status).toBe("completed");
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			status: "completed",
+			worktreePath: null,
+			branchName: null,
+		});
+	});
+
+	it("todo → completed (without worktree): just updates status", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
+		expect(result.status).toBe("completed");
+		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+	});
 });
 
 // ================================================================

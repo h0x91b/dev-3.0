@@ -701,7 +701,7 @@ describe("task.move", () => {
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
-	it("errors on disallowed transition (todo can only go to in-progress or cancelled)", async () => {
+	it("errors on disallowed transition (todo cannot go to review-by-user)", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -711,7 +711,7 @@ describe("task.move", () => {
 			makeRequest("task.move", {
 				taskId: task.id,
 				projectId: "proj-1",
-				newStatus: "completed",
+				newStatus: "review-by-user",
 			}),
 		);
 		expect(resp.ok).toBe(false);
