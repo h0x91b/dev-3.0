@@ -236,8 +236,8 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 						links.push({
 							text: fullMatch,
 							range: {
-								start: { x: startX + 1, y: y + 1 },
-								end: { x: startX + fullMatch.length, y: y + 1 },
+								start: { x: startX, y },
+								end: { x: startX + fullMatch.length - 1, y },
 							},
 							activate: () => {
 								api.request.openPath({ path: fullMatch.replace(/:[\d]+$/, "") });
