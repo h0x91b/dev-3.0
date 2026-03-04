@@ -1,6 +1,5 @@
 import { api } from "../rpc";
 import type { Task, Project, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -13,7 +12,6 @@ export async function confirmTaskCompletion(
 	newStatus: TaskStatus,
 	t: TFunction,
 ): Promise<boolean> {
-	if (!ACTIVE_STATUSES.includes(task.status)) return true;
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	if (!task.worktreePath) return true;
 

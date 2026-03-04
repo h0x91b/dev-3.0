@@ -68,7 +68,7 @@ export function hexToRgb(hex: string): string {
 /** Returns the list of statuses a task can transition to from `current`. */
 export function getAllowedTransitions(current: TaskStatus): TaskStatus[] {
 	if (current === "todo") {
-		return ["in-progress", "cancelled"];
+		return ["in-progress", "completed", "cancelled"];
 	}
 	return ALL_STATUSES.filter((s) => s !== current);
 }

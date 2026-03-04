@@ -74,7 +74,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 
 		// Warn before completing/cancelling with unpushed changes
 		if (
-			ACTIVE_STATUSES.includes(task.status) &&
+			task.worktreePath &&
 			(targetStatus === "completed" || targetStatus === "cancelled")
 		) {
 			const proceed = await confirmTaskCompletion(task, project, targetStatus, t);

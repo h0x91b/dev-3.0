@@ -118,7 +118,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	async function handleStatusMove(newStatus: TaskStatus) {
 		// Warn before completing/cancelling with unpushed changes
 		if (
-			ACTIVE_STATUSES.includes(task.status) &&
+			task.worktreePath &&
 			(newStatus === "completed" || newStatus === "cancelled")
 		) {
 			setStatusMenuOpen(false);

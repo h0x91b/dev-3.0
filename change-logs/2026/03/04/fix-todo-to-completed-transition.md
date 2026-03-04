@@ -1,0 +1,1 @@
+Allow tasks in "todo" status to transition directly to "completed". Previously, todo tasks could only move to "in-progress" or "cancelled", which blocked users who accidentally moved a task back to todo from completing it. Also fixed worktree cleanup when completing a task that was moved back to todo but still had a worktree attached.
