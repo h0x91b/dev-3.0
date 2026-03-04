@@ -1,18 +1,86 @@
 import { render, act } from "@testing-library/react";
 
-// ─── Hoisted mock state shared between mock factories and tests ─────
-const m = vi.hoisted(() => ({
+// ─── Mock module registration (bare vi.fn, no implementations) ──
+vi.mock("ghostty-web", () => ({
+	Terminal: vi.fn(),
+	FitAddon: vi.fn(),
+}));
+
+vi.mock("../rpc", () => ({
+	api: { request: { resolveFilename: vi.fn() } },
+}));
+
+// ─── Imports ────────────────────────────────────────────────────
+import TerminalView from "../TerminalView";
+import { Terminal, FitAddon } from "ghostty-web";
+
+const MockedTerminal = vi.mocked(Terminal);
+const MockedFitAddon = vi.mocked(FitAddon);
+
+// ─── Shared mock state ─────────────────────────────────────────
+// Populated by mock implementations in setupMocks(), consumed by tests.
+const m = {
 	term: null as any,
 	fitAddon: null as any,
 	onDataCb: null as ((data: string) => void) | null,
 	onResizeCb: null as ((dims: { cols: number; rows: number }) => void) | null,
 	ws: null as any,
 	roCallback: null as ((entries: any[]) => void) | null,
-}));
+};
 
-// ─── ghostty-web mock ───────────────────────────────────────────────
-vi.mock("ghostty-web", () => ({
-	Terminal: vi.fn().mockImplementation(function () {
+// ─── WebSocket mock (class — unaffected by clearAllMocks) ──────
+class MockWebSocket {
+	static OPEN = 1;
+	static CLOSED = 3;
+	static CONNECTING = 0;
+	static CLOSING = 2;
+	url: string;
+	readyState = 1;
+	send = vi.fn();
+	close = vi.fn();
+	onopen: ((ev: any) => void) | null = null;
+	onmessage: ((ev: any) => void) | null = null;
+	onclose: ((ev: any) => void) | null = null;
+	onerror: ((ev: any) => void) | null = null;
+	constructor(url: string) {
+		this.url = url;
+		m.ws = this;
+	}
+}
+
+// ─── ResizeObserver mock (class) ────────────────────────────────
+class MockResizeObserver {
+	constructor(cb: any) {
+		m.roCallback = cb;
+	}
+	observe = vi.fn();
+	disconnect = vi.fn();
+	unobserve = vi.fn();
+}
+
+// ─── Global overrides (once) ────────────────────────────────────
+const savedWS = globalThis.WebSocket;
+const savedRO = globalThis.ResizeObserver;
+
+beforeAll(() => {
+	(globalThis as any).WebSocket = MockWebSocket;
+	(globalThis as any).ResizeObserver = MockResizeObserver;
+	// document.fonts must exist for the component
+	Object.defineProperty(document, "fonts", {
+		value: { load: vi.fn() },
+		configurable: true,
+		writable: true,
+	});
+});
+
+afterAll(() => {
+	(globalThis as any).WebSocket = savedWS;
+	(globalThis as any).ResizeObserver = savedRO;
+});
+
+// ─── Re-creates all mock implementations (called every beforeEach) ─
+function setupMocks() {
+	MockedTerminal.mockImplementation(function (this: any) {
 		m.onDataCb = null;
 		m.onResizeCb = null;
 		m.term = {
@@ -43,8 +111,9 @@ vi.mock("ghostty-web", () => ({
 			attachCustomWheelEventHandler: vi.fn(),
 		};
 		return m.term;
-	}),
-	FitAddon: vi.fn().mockImplementation(function () {
+	});
+
+	MockedFitAddon.mockImplementation(function (this: any) {
 		m.fitAddon = {
 			fit: vi.fn(),
 			dispose: vi.fn(),
@@ -52,56 +121,61 @@ vi.mock("ghostty-web", () => ({
 			proposeDimensions: vi.fn(() => ({ cols: 80, rows: 24 })),
 		};
 		return m.fitAddon;
-	}),
-}));
+	});
 
-// ─── rpc mock ───────────────────────────────────────────────────────
-vi.mock("../rpc", () => ({
-	api: { request: { resolveFilename: vi.fn() } },
-}));
+	// Synchronous rAF so the ResizeObserver → rAF → connectPty chain completes inline
+	vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(
+		(cb) => {
+			cb(0);
+			return 0;
+		},
+	);
 
-// ─── ResizeObserver mock ────────────────────────────────────────────
-class MockResizeObserver {
-	constructor(cb: any) {
-		m.roCallback = cb;
-	}
-	observe = vi.fn();
-	disconnect = vi.fn();
-	unobserve = vi.fn();
+	// Font preload resolves instantly by default
+	(document.fonts as any).load = vi.fn().mockResolvedValue([]);
 }
 
-// ─── Global setup ───────────────────────────────────────────────────
-const savedRO = globalThis.ResizeObserver;
-
-beforeAll(() => {
-	(globalThis as any).ResizeObserver = MockResizeObserver;
-	Object.defineProperty(document, "fonts", {
-		value: { load: vi.fn() },
-		configurable: true,
-		writable: true,
-	});
-});
-
-afterAll(() => {
-	(globalThis as any).ResizeObserver = savedRO;
-});
-
-// ─── Component under test ───────────────────────────────────────────
-import TerminalView from "../TerminalView";
-
-// ─── Helpers ────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────
 const PROPS = {
 	ptyUrl: "ws://localhost:9999/pty",
 	taskId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 };
 
-function mockFontsLoad() {
-	(document.fonts.load as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+/**
+ * Full terminal init: render → font preload → setup → layout → connectPty.
+ * Returns refs to all major mock objects for assertions.
+ */
+async function init(props = PROPS) {
+	const result = render(<TerminalView {...props} />);
+
+	// Flush font preload promise → setup()
+	await act(async () => {});
+
+	// Give container non-zero dimensions (happy-dom returns 0)
+	const el = result.container.querySelector(
+		"[data-terminal]",
+	)! as HTMLElement;
+	Object.defineProperty(el, "clientWidth", {
+		value: 800,
+		configurable: true,
+	});
+	Object.defineProperty(el, "clientHeight", {
+		value: 600,
+		configurable: true,
+	});
+
+	// Trigger ResizeObserver → rAF (sync) → connectPty → WebSocket created
+	await act(async () => {
+		m.roCallback?.([{ target: el }]);
+	});
+
+	return { result, el, ws: m.ws! as MockWebSocket };
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────
+// ─── Tests ──────────────────────────────────────────────────────
 describe("TerminalView", () => {
 	beforeEach(() => {
+		vi.clearAllMocks();
 		Object.assign(m, {
 			term: null,
 			fitAddon: null,
@@ -110,13 +184,13 @@ describe("TerminalView", () => {
 			ws: null,
 			roCallback: null,
 		});
+		setupMocks();
 		document.documentElement.dataset.theme = "dark";
 	});
 
 	// ── Rendering ────────────────────────────────────────────────
 	describe("rendering", () => {
 		it("renders container with data-terminal attribute", () => {
-			mockFontsLoad();
 			const { container } = render(<TerminalView {...PROPS} />);
 			const el = container.querySelector("[data-terminal]");
 			expect(el).toBeInTheDocument();
@@ -124,7 +198,6 @@ describe("TerminalView", () => {
 		});
 
 		it("applies dark theme background by default", () => {
-			mockFontsLoad();
 			const { container } = render(<TerminalView {...PROPS} />);
 			const el = container.querySelector(
 				"[data-terminal]",
@@ -134,7 +207,6 @@ describe("TerminalView", () => {
 
 		it("applies light theme background", () => {
 			document.documentElement.dataset.theme = "light";
-			mockFontsLoad();
 			const { container } = render(<TerminalView {...PROPS} />);
 			const el = container.querySelector(
 				"[data-terminal]",
@@ -146,7 +218,6 @@ describe("TerminalView", () => {
 	// ── Initialization ──────────────────────────────────────────
 	describe("initialization", () => {
 		it("preloads font before creating Terminal", () => {
-			mockFontsLoad();
 			render(<TerminalView {...PROPS} />);
 			expect(document.fonts.load).toHaveBeenCalledWith(
 				expect.stringContaining("14px"),
@@ -154,11 +225,9 @@ describe("TerminalView", () => {
 		});
 
 		it("creates Terminal with correct options", async () => {
-			mockFontsLoad();
 			render(<TerminalView {...PROPS} />);
 			await act(async () => {});
-			const { Terminal } = await import("ghostty-web");
-			expect(Terminal).toHaveBeenCalledWith(
+			expect(MockedTerminal).toHaveBeenCalledWith(
 				expect.objectContaining({
 					fontSize: 14,
 					cursorBlink: true,
@@ -168,11 +237,9 @@ describe("TerminalView", () => {
 		});
 
 		it("uses dark theme in Terminal config by default", async () => {
-			mockFontsLoad();
 			render(<TerminalView {...PROPS} />);
 			await act(async () => {});
-			const { Terminal } = await import("ghostty-web");
-			expect(Terminal).toHaveBeenCalledWith(
+			expect(MockedTerminal).toHaveBeenCalledWith(
 				expect.objectContaining({
 					theme: expect.objectContaining({ background: "#1a1b26" }),
 				}),
@@ -181,11 +248,9 @@ describe("TerminalView", () => {
 
 		it("uses light theme in Terminal config when theme is light", async () => {
 			document.documentElement.dataset.theme = "light";
-			mockFontsLoad();
 			render(<TerminalView {...PROPS} />);
 			await act(async () => {});
-			const { Terminal } = await import("ghostty-web");
-			expect(Terminal).toHaveBeenCalledWith(
+			expect(MockedTerminal).toHaveBeenCalledWith(
 				expect.objectContaining({
 					theme: expect.objectContaining({ background: "#ffffff" }),
 				}),
@@ -193,26 +258,21 @@ describe("TerminalView", () => {
 		});
 
 		it("still initializes when font preload fails", async () => {
-			(document.fonts.load as ReturnType<typeof vi.fn>).mockRejectedValue(
-				new Error("font fail"),
-			);
+			(document.fonts as any).load = vi
+				.fn()
+				.mockRejectedValue(new Error("font fail"));
 			render(<TerminalView {...PROPS} />);
 			await act(async () => {});
-
-			const { Terminal } = await import("ghostty-web");
-			expect(Terminal).toHaveBeenCalled();
+			expect(MockedTerminal).toHaveBeenCalled();
 		});
 
 		it("does not init if unmounted before font preload resolves", async () => {
 			let resolve!: (v: any) => void;
-			(document.fonts.load as ReturnType<typeof vi.fn>).mockReturnValue(
+			(document.fonts as any).load = vi.fn().mockReturnValue(
 				new Promise((r) => {
 					resolve = r;
 				}),
 			);
-
-			const { Terminal } = await import("ghostty-web");
-			(Terminal as ReturnType<typeof vi.fn>).mockClear();
 
 			const result = render(<TerminalView {...PROPS} />);
 			result.unmount();
@@ -220,14 +280,44 @@ describe("TerminalView", () => {
 				resolve([]);
 			});
 
-			expect(Terminal).not.toHaveBeenCalled();
+			expect(MockedTerminal).not.toHaveBeenCalled();
 		});
 	});
 
-	// ── Drag & drop (dragover only — no init needed) ────────────
+	// ── Full init (proves init() helper works after clearAllMocks) ──
+	describe("full initialization via init()", () => {
+		it("creates WebSocket with correct ptyUrl", async () => {
+			const { ws } = await init();
+			expect(ws.url).toBe("ws://localhost:9999/pty");
+		});
+
+		it("loads FitAddon into Terminal", async () => {
+			await init();
+			expect(m.term.loadAddon).toHaveBeenCalledWith(m.fitAddon);
+		});
+
+		it("opens Terminal in the container DOM element", async () => {
+			await init();
+			expect(m.term.open).toHaveBeenCalledWith(
+				expect.any(HTMLElement),
+			);
+		});
+
+		it("fits terminal and observes resize after layout", async () => {
+			await init();
+			expect(m.fitAddon.fit).toHaveBeenCalled();
+			expect(m.fitAddon.observeResize).toHaveBeenCalled();
+		});
+
+		it("focuses terminal after setup", async () => {
+			await init();
+			expect(m.term.focus).toHaveBeenCalled();
+		});
+	});
+
+	// ── Drag & drop (dragover — no full init needed) ────────────
 	describe("drag and drop", () => {
 		it("prevents default on dragover", () => {
-			mockFontsLoad();
 			const { container } = render(<TerminalView {...PROPS} />);
 			const el = container.querySelector(
 				"[data-terminal]",
