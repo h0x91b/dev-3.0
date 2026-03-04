@@ -195,6 +195,9 @@ function ProjectSettings({
 							onChange={(e) => setSetupScript(e.target.value)}
 							rows={4}
 							placeholder="bun install"
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 						/>
 					</div>
@@ -212,6 +215,9 @@ function ProjectSettings({
 						onChange={(e) => setDevScript(e.target.value)}
 						rows={4}
 						placeholder="bun run dev"
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
 						className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 					/>
 				</div>
@@ -229,6 +235,9 @@ function ProjectSettings({
 						onChange={(e) => setCleanupScript(e.target.value)}
 						rows={4}
 						placeholder="git worktree remove ."
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
 						className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 					/>
 				</div>
@@ -246,6 +255,9 @@ function ProjectSettings({
 							value={defaultBaseBranch}
 							onChange={(e) => setDefaultBaseBranch(e.target.value)}
 							placeholder="main"
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
 						/>
 					</div>

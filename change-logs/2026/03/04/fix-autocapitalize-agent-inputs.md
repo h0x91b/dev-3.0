@@ -1,0 +1,1 @@
+Disable autocapitalize, autocorrect, and spellcheck on all technical input fields (base command, model, base command override, additional args, env vars, scripts, branch name) in GlobalSettings and ProjectSettings. WKWebView was auto-capitalizing commands like "claude" which broke case-sensitive CLI commands. Fixes #51.

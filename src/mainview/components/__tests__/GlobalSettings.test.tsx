@@ -663,6 +663,81 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	describe("autocapitalize disabled on technical inputs", () => {
+		it("base command input has autocapitalize off", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			// Expand Codex
+			const agentHeaders = screen.getAllByRole("button");
+			const codexHeader = agentHeaders.find((b) =>
+				b.textContent?.includes("Codex") && b.textContent?.includes("codex"),
+			)!;
+			await user.click(codexHeader);
+
+			const cmdInput = screen.getByDisplayValue("codex");
+			expect(cmdInput).toHaveAttribute("autocapitalize", "off");
+			expect(cmdInput).toHaveAttribute("autocorrect", "off");
+			expect(cmdInput.getAttribute("spellcheck")).toBe("false");
+		});
+
+		it("model input has autocapitalize off", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			// Expand Claude agent
+			const agentHeaders = screen.getAllByRole("button");
+			const claudeHeader = agentHeaders.find((b) =>
+				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
+			)!;
+			await user.click(claudeHeader);
+
+			// Expand Default config
+			const configButtons = screen.getAllByRole("button");
+			const defaultConfig = configButtons.find(
+				(b) => b.textContent?.includes("Default") && b.textContent?.includes("sonnet"),
+			)!;
+			await user.click(defaultConfig);
+
+			const modelInput = screen.getByDisplayValue("sonnet");
+			expect(modelInput).toHaveAttribute("autocapitalize", "off");
+			expect(modelInput).toHaveAttribute("autocorrect", "off");
+			expect(modelInput.getAttribute("spellcheck")).toBe("false");
+		});
+
+		it("base command override input has autocapitalize off", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			// Expand Claude agent
+			const agentHeaders = screen.getAllByRole("button");
+			const claudeHeader = agentHeaders.find((b) =>
+				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
+			)!;
+			await user.click(claudeHeader);
+
+			// Expand Default config
+			const configButtons = screen.getAllByRole("button");
+			const defaultConfig = configButtons.find(
+				(b) => b.textContent?.includes("Default") && b.textContent?.includes("sonnet"),
+			)!;
+			await user.click(defaultConfig);
+
+			// Find the base command override input (empty by default)
+			const overrideLabel = screen.getByText("Base Command Override");
+			const overrideInput = overrideLabel.closest("div")!.querySelector("input")!;
+			expect(overrideInput).toHaveAttribute("autocapitalize", "off");
+			expect(overrideInput).toHaveAttribute("autocorrect", "off");
+			expect(overrideInput.getAttribute("spellcheck")).toBe("false");
+		});
+	});
+
 	describe("config count display", () => {
 		it("shows correct config count per agent", async () => {
 			setupMocks();
