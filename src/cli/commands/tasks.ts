@@ -35,7 +35,14 @@ export async function handleTasks(
 		const resp = await sendRequest(socketPath, "tasks.list", params);
 		if (!resp.ok) exitError(resp.error || "Failed to list tasks");
 
-		const tasks = resp.data as Task[];
+		let tasks = resp.data as Task[];
+
+		// Client-side label filter (server returns all tasks, we filter here)
+		if (args.flags.label) {
+			const labelId = args.flags.label;
+			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
+		}
+
 		if (tasks.length === 0) {
 			process.stdout.write("No tasks found.\n");
 			return;

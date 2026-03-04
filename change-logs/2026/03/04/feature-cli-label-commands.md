@@ -1,0 +1,1 @@
+Add CLI commands for label management: `label list`, `label create`, `label delete`, `label set`, and `label set --clear`. Also add `--label` filter to `tasks list`. Corresponding CLI socket handlers added to the backend. Agent skill updated with label documentation.

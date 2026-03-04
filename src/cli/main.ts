@@ -6,6 +6,7 @@ import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
+import { handleLabel } from "./commands/label";
 
 const HELP = `dev3 — control the dev-3.0 Kanban UI from the terminal
 
@@ -58,10 +59,21 @@ You almost never need to specify them explicitly.
   dev3 note delete <note-id>
       Delete a note by ID (8-char prefix works).
 
+━━━ Labels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  dev3 label list                  List all labels in your project
+  dev3 label create "bug"          Create a new label (auto-assigns color)
+  dev3 label create "urgent" --color "#ef4444"
+      Create a label with a specific color.
+  dev3 label delete <label-id>     Delete a label (removes from all tasks)
+  dev3 label set <label-id> [...]  Assign label(s) to current task
+  dev3 label set --clear           Remove all labels from current task
+
 ━━━ Browse ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   dev3 tasks list                  List all tasks in your project
   dev3 tasks list --status todo    Filter by status
+  dev3 tasks list --label <id>     Filter by label
   dev3 projects list               List all projects
 
 ━━━ Allowed statuses for "task move" ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -140,6 +152,8 @@ async function main(): Promise<void> {
 				return await handleTask(subcommand, args, socketPath, context);
 			case "note":
 				return await handleNote(subcommand, args, socketPath, context);
+			case "label":
+				return await handleLabel(subcommand, args, socketPath, context);
 			default:
 				exitUsage(`Unknown command: ${command}\nRun "dev3 --help" for usage.`);
 		}

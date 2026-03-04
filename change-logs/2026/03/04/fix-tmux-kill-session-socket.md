@@ -1,0 +1,1 @@
+Fix tmux session Kill button not working. The `killTmuxSession` RPC handler was targeting the default tmux server instead of the `dev3` socket where sessions actually live. Also removed the confirmation dialog from individual session kills for faster, more reliable operation.

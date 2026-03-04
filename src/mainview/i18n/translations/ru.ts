@@ -311,6 +311,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"labels.searchPlaceholder": "Найти или создать...",
 	"labels.addLabel": "+ Добавить метку",
 	"labels.clearFilters": "Сбросить",
+	"labels.searchPlaceholderTasks": "Поиск задач...",
 	"labels.deleteLabel": "Удалить метку",
 	"labels.labelName": "Название метки",
 	"labels.settingsTitle": "Метки",

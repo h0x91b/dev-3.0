@@ -308,6 +308,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"labels.searchPlaceholder": "Buscar o crear...",
 	"labels.addLabel": "+ Agregar etiqueta",
 	"labels.clearFilters": "Limpiar",
+	"labels.searchPlaceholderTasks": "Buscar tareas...",
 	"labels.deleteLabel": "Eliminar etiqueta",
 	"labels.labelName": "Nombre de etiqueta",
 	"labels.settingsTitle": "Etiquetas",

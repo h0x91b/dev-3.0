@@ -2,6 +2,7 @@ import Electrobun, {
 	ApplicationMenu,
 	BrowserView,
 	BrowserWindow,
+	Screen,
 	Updater,
 	Utils,
 } from "electrobun/bun";
@@ -234,15 +235,24 @@ ApplicationMenu.setApplicationMenu([
 
 // --- Main Window ---
 
+// Size the window to ~95% of the primary display's work area, centered
+const primaryDisplay = Screen.getPrimaryDisplay();
+const workArea = primaryDisplay.workArea;
+const WINDOW_RATIO = 0.95;
+const windowWidth = Math.round(workArea.width * WINDOW_RATIO);
+const windowHeight = Math.round(workArea.height * WINDOW_RATIO);
+const windowX = workArea.x + Math.round((workArea.width - windowWidth) / 2);
+const windowY = workArea.y + Math.round((workArea.height - windowHeight) / 2);
+
 const mainWindow = new BrowserWindow({
 	title: makeTitle(APP_VERSION, lastBuildTime),
 	url,
 	rpc,
 	frame: {
-		width: 1100,
-		height: 800,
-		x: 200,
-		y: 200,
+		width: windowWidth,
+		height: windowHeight,
+		x: windowX,
+		y: windowY,
 	},
 });
 

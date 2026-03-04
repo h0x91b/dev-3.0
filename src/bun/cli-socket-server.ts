@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
-import { ALL_STATUSES, getAllowedTransitions, titleFromDescription } from "../shared/types";
+import type { CliRequest, CliResponse, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
+import { ALL_STATUSES, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -232,6 +232,70 @@ const handlers: Record<string, Handler> = {
 		const updated = await data.updateTask(project, task.id, { notes });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
+	},
+
+	"label.list": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		const project = await data.getProject(projectId);
+		return project.labels ?? [];
+	},
+
+	"label.create": async (params) => {
+		const projectId = params.projectId as string;
+		const name = (params.name as string)?.trim();
+		if (!projectId) throw new Error("projectId is required");
+		if (!name) throw new Error("name is required");
+
+		const project = await data.getProject(projectId);
+		const labels = project.labels ?? [];
+		const usedColors = new Set(labels.map((l) => l.color));
+		const color = (params.color as string) ?? LABEL_COLORS.find((c) => !usedColors.has(c)) ?? LABEL_COLORS[labels.length % LABEL_COLORS.length];
+
+		const label: Label = {
+			id: crypto.randomUUID(),
+			name,
+			color,
+		};
+		await data.updateProject(projectId, { labels: [...labels, label] });
+		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
+		return label;
+	},
+
+	"label.delete": async (params) => {
+		const projectId = params.projectId as string;
+		const labelId = params.labelId as string;
+		if (!projectId) throw new Error("projectId is required");
+		if (!labelId) throw new Error("labelId is required");
+
+		const project = await data.getProject(projectId);
+		const labels = project.labels ?? [];
+		const label = labels.find((l) => l.id === labelId || l.id.startsWith(labelId));
+		if (!label) throw new Error(`Label not found: ${labelId}`);
+
+		await data.updateProject(projectId, { labels: labels.filter((l) => l.id !== label.id) });
+		// Remove from all tasks
+		const tasks = await data.loadTasks(project);
+		for (const task of tasks.filter((t) => t.labelIds?.includes(label.id))) {
+			await data.updateTask(project, task.id, {
+				labelIds: (task.labelIds ?? []).filter((id) => id !== label.id),
+			});
+		}
+		return { deleted: label.id };
+	},
+
+	"task.setLabels": async (params) => {
+		const taskId = params.taskId as string;
+		const projectId = params.projectId as string;
+		const labelIds = params.labelIds as string[];
+		if (!taskId) throw new Error("taskId is required");
+		if (!projectId) throw new Error("projectId is required");
+		if (!Array.isArray(labelIds)) throw new Error("labelIds must be an array");
+
+		const project = await data.getProject(projectId);
+		const task = await data.updateTask(project, taskId, { labelIds });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+		return task;
 	},
 
 	"task.move": async (params) => {

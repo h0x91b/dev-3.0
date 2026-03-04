@@ -1,0 +1,1 @@
+Add task search in the Kanban filter bar. Searches by title, description, sequential number (#seq), and UUID (full or short prefix). The search input appears alongside label filters and supports Ctrl/Cmd+F focus shortcut.

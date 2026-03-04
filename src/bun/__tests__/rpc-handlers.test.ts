@@ -37,6 +37,7 @@ vi.mock("../git", () => ({
 	isContentMergedInto: vi.fn(),
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
+	getCurrentBranch: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -1243,6 +1244,7 @@ describe("handlers.getBranchStatus", () => {
 		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
 		vi.mocked(git.fetchOrigin).mockResolvedValue(undefined);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 3, behind: 2 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 10, deletions: 5 });
@@ -1265,6 +1267,7 @@ describe("handlers.getBranchStatus", () => {
 		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
 		vi.mocked(git.fetchOrigin).mockResolvedValue(undefined);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
@@ -1273,6 +1276,42 @@ describe("handlers.getBranchStatus", () => {
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.canRebase).toBe(false);
 		expect(git.canRebaseCleanly).not.toHaveBeenCalled();
+	});
+
+	it("auto-syncs stored branchName when live branch differs", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/task-aaaa" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, branchName: "dev3/fix-login" });
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/fix-login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(undefined);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+
+		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+		// Should have synced the stored branchName
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { branchName: "dev3/fix-login" });
+		// Should pass live branch name to getUnpushedCount
+		expect(git.getUnpushedCount).toHaveBeenCalledWith("/tmp/wt", "dev3/fix-login");
+	});
+
+	it("does not update branchName when live matches stored", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/task-aaaa" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-aaaa");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(undefined);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+
+		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 });
 
@@ -1812,17 +1851,6 @@ describe("handlers.killTmuxSession", () => {
 describe("handlers.mergeTask", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("throws when task has no branch", async () => {
-		const project = makeProject();
-		const task = makeTask({ branchName: null, worktreePath: "/tmp/wt" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-
-		await expect(
-			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
-		).rejects.toThrow("Task has no branch");
-	});
-
 	it("throws when task has no worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ branchName: "dev3/t", worktreePath: null });
@@ -1834,11 +1862,24 @@ describe("handlers.mergeTask", () => {
 		).rejects.toThrow("Task has no worktree");
 	});
 
+	it("throws when task has no branch (both live and stored are null)", async () => {
+		const project = makeProject();
+		const task = makeTask({ branchName: null, worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue(null);
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow("Task has no branch");
+	});
+
 	it("throws when branch is not rebased", async () => {
 		const project = makeProject();
 		const task = makeTask({ branchName: "dev3/t", worktreePath: "/tmp/wt" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 2 });
 
 		await expect(

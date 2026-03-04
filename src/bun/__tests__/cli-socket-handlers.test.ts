@@ -10,6 +10,7 @@ vi.mock("../data", () => ({
 	getTask: vi.fn(),
 	addTask: vi.fn(),
 	updateTask: vi.fn(),
+	updateProject: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -916,6 +917,238 @@ describe("task.move", () => {
 		);
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("Task not found");
+	});
+});
+
+describe("label.list", () => {
+	it("errors when projectId is missing", async () => {
+		const resp = await handleRequest(makeRequest("label.list"));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("projectId is required");
+	});
+
+	it("returns labels from project", async () => {
+		const labels = [
+			{ id: "lbl-1", name: "bug", color: "#ef4444" },
+			{ id: "lbl-2", name: "feature", color: "#14b8a6" },
+		];
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels }));
+
+		const resp = await handleRequest(makeRequest("label.list", { projectId: "proj-1" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual(labels);
+	});
+
+	it("returns empty array when project has no labels", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+
+		const resp = await handleRequest(makeRequest("label.list", { projectId: "proj-1" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual([]);
+	});
+});
+
+describe("label.create", () => {
+	it("errors when projectId is missing", async () => {
+		const resp = await handleRequest(makeRequest("label.create", { name: "bug" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("projectId is required");
+	});
+
+	it("errors when name is missing", async () => {
+		const resp = await handleRequest(makeRequest("label.create", { projectId: "proj-1" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("name is required");
+	});
+
+	it("creates label with auto-assigned color", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
+		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		// Return updated project for the push message
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("label.create", { projectId: "proj-1", name: "bug" }),
+		);
+		expect(resp.ok).toBe(true);
+		const label = resp.data as any;
+		expect(label.name).toBe("bug");
+		expect(label.color).toBe("#ef4444"); // First color from palette
+		expect(label.id).toBeDefined();
+	});
+
+	it("creates label with custom color", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
+		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("label.create", { projectId: "proj-1", name: "urgent", color: "#ff0000" }),
+		);
+		expect(resp.ok).toBe(true);
+		const label = resp.data as any;
+		expect(label.color).toBe("#ff0000");
+	});
+
+	it("skips colors already used by existing labels", async () => {
+		const existing = [{ id: "lbl-1", name: "bug", color: "#ef4444" }];
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: existing }));
+		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("label.create", { projectId: "proj-1", name: "feature" }),
+		);
+		expect(resp.ok).toBe(true);
+		const label = resp.data as any;
+		expect(label.color).toBe("#14b8a6"); // Second color (first was taken)
+	});
+
+	it("trims label name", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
+		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("label.create", { projectId: "proj-1", name: "  bug  " }),
+		);
+		expect(resp.ok).toBe(true);
+		expect((resp.data as any).name).toBe("bug");
+	});
+});
+
+describe("label.delete", () => {
+	it("errors when projectId is missing", async () => {
+		const resp = await handleRequest(makeRequest("label.delete", { labelId: "lbl-1" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("projectId is required");
+	});
+
+	it("errors when labelId is missing", async () => {
+		const resp = await handleRequest(makeRequest("label.delete", { projectId: "proj-1" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("labelId is required");
+	});
+
+	it("deletes label and removes from tasks", async () => {
+		const labels = [
+			{ id: "lbl-full-uuid-1234", name: "bug", color: "#ef4444" },
+			{ id: "lbl-2", name: "feature", color: "#14b8a6" },
+		];
+		const project = makeProject({ labels });
+		const taskWithLabel = makeTask({ id: "t1", labelIds: ["lbl-full-uuid-1234", "lbl-2"] });
+		const taskWithout = makeTask({ id: "t2", labelIds: [] });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		vi.mocked(data.loadTasks).mockResolvedValue([taskWithLabel, taskWithout]);
+		vi.mocked(data.updateTask).mockResolvedValue(taskWithLabel);
+
+		const resp = await handleRequest(
+			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-full-uuid-1234" }),
+		);
+		expect(resp.ok).toBe(true);
+		// Should update project labels (remove the deleted one)
+		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
+			labels: [labels[1]],
+		});
+		// Should update affected task
+		expect(data.updateTask).toHaveBeenCalledWith(project, "t1", {
+			labelIds: ["lbl-2"],
+		});
+		// Should NOT update task that didn't have the label
+		expect(data.updateTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("matches label by prefix", async () => {
+		const labels = [{ id: "lbl-abcd-1234-5678", name: "bug", color: "#ef4444" }];
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels }));
+		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+
+		const resp = await handleRequest(
+			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-abcd" }),
+		);
+		expect(resp.ok).toBe(true);
+	});
+
+	it("errors when label not found", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
+
+		const resp = await handleRequest(
+			makeRequest("label.delete", { projectId: "proj-1", labelId: "nope" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Label not found");
+	});
+});
+
+describe("task.setLabels", () => {
+	it("errors when taskId is missing", async () => {
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", { projectId: "proj-1", labelIds: [] }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("taskId is required");
+	});
+
+	it("errors when projectId is missing", async () => {
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", { taskId: "t1", labelIds: [] }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("projectId is required");
+	});
+
+	it("errors when labelIds is not an array", async () => {
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", { taskId: "t1", projectId: "proj-1", labelIds: "not-array" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("labelIds must be an array");
+	});
+
+	it("sets labels on task", async () => {
+		const project = makeProject();
+		const task = makeTask({ labelIds: [] });
+		const updated = { ...task, labelIds: ["lbl-1", "lbl-2"] };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: task.id,
+				projectId: "proj-1",
+				labelIds: ["lbl-1", "lbl-2"],
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			labelIds: ["lbl-1", "lbl-2"],
+		});
+	});
+
+	it("clears labels when empty array provided", async () => {
+		const project = makeProject();
+		const task = makeTask({ labelIds: ["lbl-1"] });
+		const updated = { ...task, labelIds: [] };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: task.id,
+				projectId: "proj-1",
+				labelIds: [],
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: [] });
 	});
 });
 

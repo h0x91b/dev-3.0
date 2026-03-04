@@ -41,6 +41,17 @@ Then set \`in-progress\` and begin working.
 
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
 
+## Labels
+
+Use labels to categorize tasks. Labels are project-scoped — create them once, apply to many tasks.
+
+- \`dev3 label list\` — list all labels in the project
+- \`dev3 label create "bug"\` — create a new label (auto-assigns a color)
+- \`dev3 label set <label-id>\` — assign label(s) to the current task
+- \`dev3 label set --clear\` — remove all labels from the current task
+- \`dev3 label delete <label-id>\` — delete a label (removes from all tasks)
+- \`dev3 tasks list --label <label-id>\` — filter tasks by label
+
 ## Task title
 
 If the task title is unclear or auto-generated (e.g., a truncated message or a bare link), update it once you understand the task: \`dev3 task update --title "Clear description"\`.

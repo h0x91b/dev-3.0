@@ -869,13 +869,24 @@ export const handlers = {
 		}
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-		log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: task.branchName });
+
+		// Resolve live branch name — it may differ from stored after rename
+		const liveBranch = await git.getCurrentBranch(task.worktreePath);
+		const branchForPush = liveBranch ?? task.branchName ?? "";
+
+		// Auto-sync stored branchName if it drifted
+		if (liveBranch && liveBranch !== task.branchName) {
+			log.info("getBranchStatus: branch renamed, syncing stored name", { old: task.branchName, new: liveBranch });
+			await data.updateTask(project, task.id, { branchName: liveBranch });
+		}
+
+		log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
 		await git.fetchOrigin(project.path);
 		const remoteBase = `origin/${baseBranch}`;
 		const [status, uncommitted, unpushed] = await Promise.all([
 			git.getBranchStatus(task.worktreePath, remoteBase),
 			git.getUncommittedChanges(task.worktreePath),
-			git.getUnpushedCount(task.worktreePath, task.branchName ?? ""),
+			git.getUnpushedCount(task.worktreePath, branchForPush),
 		]);
 		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, remoteBase });
 		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, remoteBase) : false;
@@ -937,8 +948,12 @@ export const handlers = {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 
-		if (!task.branchName) throw new Error("Task has no branch");
 		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		// Resolve live branch name — it may differ from task.branchName after rename
+		const liveBranch = await git.getCurrentBranch(task.worktreePath);
+		const branchForMerge = liveBranch ?? task.branchName;
+		if (!branchForMerge) throw new Error("Task has no branch");
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 		await git.fetchOrigin(project.path);
@@ -957,9 +972,9 @@ export const handlers = {
 		const script = [
 			`#!/bin/bash`,
 			`cd '${escapedPath}'`,
-			`echo "Squash-merging ${task.branchName} into $(git branch --show-current)..."`,
+			`echo "Squash-merging ${branchForMerge} into $(git branch --show-current)..."`,
 			`set -x`,
-			`git merge --squash ${task.branchName}`,
+			`git merge --squash ${branchForMerge}`,
 			`MERGE_CODE=$?`,
 			`set +x`,
 			`if [ $MERGE_CODE -ne 0 ]; then`,
@@ -1433,7 +1448,7 @@ export const handlers = {
 			throw new Error("Can only kill dev3-* sessions");
 		}
 		const proc = spawn(
-			["tmux", "kill-session", "-t", params.sessionName],
+			pty.tmuxArgs("dev3", "kill-session", "-t", params.sessionName),
 			{ stdout: "pipe", stderr: "pipe" },
 		);
 		const stderr = await new Response(proc.stderr).text();
