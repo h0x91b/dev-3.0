@@ -1,0 +1,1 @@
+Add reusable skeuomorphic gauge (dial) component extracted from the mastodont-app financial dashboard. The `<Gauge>` component supports configurable min/max, red zone, scalable size, custom tick labels, and sweep angle. Includes an interactive demo page with presets and live controls accessible from the dashboard.
