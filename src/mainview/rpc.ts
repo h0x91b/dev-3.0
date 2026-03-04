@@ -31,6 +31,11 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:navigateToSettings"),
 				);
 			},
+			navigateToGaugeDemo: () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:navigateToGaugeDemo"),
+				);
+			},
 			terminalSoftReset: () => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:terminalSoftReset"),

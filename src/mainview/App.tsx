@@ -13,6 +13,7 @@ import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import Changelog from "./components/Changelog";
+import GaugeDemo from "./components/gauges/GaugeDemo";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
@@ -134,6 +135,15 @@ function App() {
 		}
 		window.addEventListener("rpc:navigateToSettings", onNavigateToSettings);
 		return () => window.removeEventListener("rpc:navigateToSettings", onNavigateToSettings);
+	}, [navigate]);
+
+	// Listen for View > Gauge Demo menu item
+	useEffect(() => {
+		function onNavigateToGaugeDemo() {
+			navigate({ screen: "gauge-demo" });
+		}
+		window.addEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
+		return () => window.removeEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
 	}, [navigate]);
 
 	// Track page views on route changes
@@ -293,6 +303,8 @@ function App() {
 				return <GlobalSettings />;
 			case "changelog":
 				return <Changelog navigate={navigate} previousRoute={state.previousRoute} />;
+			case "gauge-demo":
+				return <GaugeDemo navigate={navigate} />;
 			default:
 				return null;
 		}

@@ -214,6 +214,8 @@ ApplicationMenu.setApplicationMenu([
 			{ label: "Soft Reset Terminal", action: "terminal-soft-reset" },
 			{ label: "Hard Reset Terminal", action: "terminal-hard-reset" },
 			{ type: "separator" },
+			{ label: "Gauge Demo", action: "gauge-demo" },
+			{ type: "separator" },
 			{ role: "toggleFullScreen" },
 		],
 	},
@@ -348,6 +350,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		});
 	} else if (e.data.action === "open-settings") {
 		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
+	} else if (e.data.action === "gauge-demo") {
+		(mainWindow.webview.rpc as any).send.navigateToGaugeDemo?.({});
 	} else if (e.data.action === "check-for-updates") {
 		try {
 			const settings = await loadSettings();

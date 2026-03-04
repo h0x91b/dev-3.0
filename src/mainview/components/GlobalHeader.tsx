@@ -72,6 +72,8 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 		segments.push({ label: t("header.settings") });
 	} else if (route.screen === "changelog") {
 		segments.push({ label: t("header.changelog") });
+	} else if (route.screen === "gauge-demo") {
+		segments.push({ label: t("gaugeDemo.title") });
 	}
 
 	return (
