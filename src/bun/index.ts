@@ -306,10 +306,6 @@ mainWindow.webview.on("dom-ready", async () => {
 	if (typeof url === "string" && /^https?:\/\//.test(url)) {
 		log.info("Opening external URL", { url });
 		Utils.openExternal(url);
-	} else if (typeof url === "string" && url.startsWith("file:///")) {
-		const filePath = decodeURIComponent(url.slice("file://".length));
-		log.info("Opening file path", { url, filePath });
-		Utils.openPath(filePath);
 	} else {
 		log.warn("Blocked new-window-open with unexpected URL", { data: e.data });
 	}
