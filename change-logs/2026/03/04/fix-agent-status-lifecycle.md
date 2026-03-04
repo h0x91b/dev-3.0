@@ -1,0 +1,1 @@
+Rewrote the dev3 agent skill and system prompt to clarify task status lifecycle. `in-progress` is now explicitly documented as a transient per-turn state — agents MUST move to `user-questions` or `review-by-user` at the end of every response. Also added guidance for notes, task title updates, `@file` syntax, and parallel CLI startup commands.

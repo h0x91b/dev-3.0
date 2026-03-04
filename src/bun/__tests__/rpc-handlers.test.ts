@@ -467,11 +467,11 @@ describe("end-to-end: task description → shell command escaping", () => {
 			"MANDATORY: You are inside a dev-3.0 managed worktree. " +
 			"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
 			"TASK STATUS MANAGEMENT IS NON-NEGOTIABLE: " +
-			"(1) Run `~/.dev3.0/bin/dev3 task move --status in-progress` when you START working. " +
-			"(2) Run `~/.dev3.0/bin/dev3 task move --status user-questions` if you are BLOCKED and need human input. " +
-			"(3) Run `~/.dev3.0/bin/dev3 task move --status review-by-user` when you have COMPLETED all work. " +
-			"You MUST leave the task in one of these statuses before the session ends. " +
-			"NEVER finish a session without updating the task status.";
+			"(1) Run `~/.dev3.0/bin/dev3 task move --status in-progress` at the START of every turn (when you receive a message and begin working). " +
+			"(2) At the END of every turn, you MUST move the task to one of exactly two states: " +
+			"`user-questions` (need user input or task is not yet complete — this is the default) or " +
+			"`review-by-user` (task is fully complete). " +
+			"(3) The task MUST NEVER remain in `in-progress` after you finish responding — it is a transient state only while you are actively working.";
 
 		// 250 repeats produces a ~9250-char description, which with the old inline
 		// approach (buildEchoAndRun) would produce a ~20 000-char tmux argument,
