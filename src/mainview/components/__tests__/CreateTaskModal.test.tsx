@@ -154,4 +154,82 @@ describe("CreateTaskModal", () => {
 		});
 		expect(onCreateAndRun).not.toHaveBeenCalled();
 	});
+
+	it("clicking outside the modal does NOT close it", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const overlay = screen.getByText("New Task").closest(".fixed");
+		if (overlay) await userEvent.click(overlay);
+
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("Cancel with empty description closes immediately", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		await userEvent.click(screen.getByText("Cancel"));
+
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("Cancel with filled description shows inline discard confirmation", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.click(screen.getByText("Cancel"));
+
+		expect(screen.getByText("Discard")).toBeInTheDocument();
+		expect(screen.getByText("Keep editing")).toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("clicking Discard in confirmation closes the modal", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.click(screen.getByText("Cancel"));
+		await userEvent.click(screen.getByText("Discard"));
+
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("clicking Keep editing hides confirmation and stays open", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.click(screen.getByText("Cancel"));
+		await userEvent.click(screen.getByText("Keep editing"));
+
+		expect(screen.queryByText("Discard")).not.toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("Escape with filled description shows inline discard confirmation", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.keyboard("{Escape}");
+
+		expect(screen.getByText("Discard")).toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("Escape with empty description closes immediately", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		await userEvent.keyboard("{Escape}");
+
+		expect(onClose).toHaveBeenCalled();
+	});
 });

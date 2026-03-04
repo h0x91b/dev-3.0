@@ -19,6 +19,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
+	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const projectLabels = project.labels ?? [];
 
@@ -30,13 +31,22 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		textareaRef.current?.focus();
 	}, []);
 
+	function handleRequestClose() {
+		if (description.trim()) {
+			setConfirmDiscard(true);
+		} else {
+			onClose();
+		}
+	}
+
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") onClose();
+			if (e.key === "Escape") handleRequestClose();
 		}
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
-	}, [onClose]);
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [description, onClose]);
 
 	async function handleCreate() {
 		const trimmed = description.trim();
@@ -97,9 +107,6 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
 		>
 			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[520px] p-6 space-y-5">
 				<h2 className="text-fg text-lg font-semibold">
@@ -158,38 +165,60 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 				{/* Actions */}
 				<div className="space-y-2.5 pt-1">
-					<div className="flex items-center justify-end gap-2">
-						<button
-							onClick={onClose}
-							className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
-						>
-							{t("kanban.cancel")}
-						</button>
-						{onCreateAndRun && (
-							<button
-								onClick={handleCreateAndRun}
-								disabled={!description.trim() || creating}
-								className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-							>
-								<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-									<path d="M8 5v14l11-7z" />
-								</svg>
-								{t("createTask.createAndRun")}
-							</button>
-						)}
-						<button
-							onClick={handleCreate}
-							disabled={!description.trim() || creating}
-							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-						>
-							{creating ? t("createTask.creating") : t("createTask.create")}
-						</button>
-					</div>
-					<div className="text-fg-muted text-[11px] text-right">
-						{onCreateAndRun
-							? t("createTask.submitHintRun")
-							: t("createTask.submitHint")}
-					</div>
+					{confirmDiscard ? (
+						<div className="flex items-center justify-between gap-2 bg-danger/10 border border-danger/30 rounded-xl px-3 py-2.5">
+							<span className="text-fg-2 text-sm">{t("createTask.discardConfirm")}</span>
+							<div className="flex gap-2 shrink-0">
+								<button
+									onClick={() => setConfirmDiscard(false)}
+									className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
+								>
+									{t("createTask.keepEditing")}
+								</button>
+								<button
+									onClick={onClose}
+									className="px-3 py-1 bg-danger text-white text-sm font-medium rounded-lg hover:bg-danger/80 transition-colors"
+								>
+									{t("createTask.discard")}
+								</button>
+							</div>
+						</div>
+					) : (
+						<>
+							<div className="flex items-center justify-end gap-2">
+								<button
+									onClick={handleRequestClose}
+									className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
+								>
+									{t("kanban.cancel")}
+								</button>
+								{onCreateAndRun && (
+									<button
+										onClick={handleCreateAndRun}
+										disabled={!description.trim() || creating}
+										className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+									>
+										<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+											<path d="M8 5v14l11-7z" />
+										</svg>
+										{t("createTask.createAndRun")}
+									</button>
+								)}
+								<button
+									onClick={handleCreate}
+									disabled={!description.trim() || creating}
+									className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									{creating ? t("createTask.creating") : t("createTask.create")}
+								</button>
+							</div>
+							<div className="text-fg-muted text-[11px] text-right">
+								{onCreateAndRun
+									? t("createTask.submitHintRun")
+									: t("createTask.submitHint")}
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 		</div>

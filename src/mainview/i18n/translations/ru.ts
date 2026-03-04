@@ -124,6 +124,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"createTask.submitHint": "\u2318Enter для создания",
 	"createTask.createAndRun": "Создать и запустить",
 	"createTask.submitHintRun": "\u2318Enter создать \u00b7 \u2318\u21e7Enter создать и запустить",
+	"createTask.discardConfirm": "Отменить? Введённое описание будет потеряно.",
+	"createTask.keepEditing": "Продолжить редактирование",
+	"createTask.discard": "Отменить",
 
 	// TaskCard
 	"task.moveTo": "Переместить в",

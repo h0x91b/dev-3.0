@@ -122,6 +122,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"createTask.submitHint": "\u2318Enter para crear",
 	"createTask.createAndRun": "Crear y ejecutar",
 	"createTask.submitHintRun": "\u2318Enter crear \u00b7 \u2318\u21e7Enter crear y ejecutar",
+	"createTask.discardConfirm": "¿Descartar cambios? Se perderá la descripción introducida.",
+	"createTask.keepEditing": "Seguir editando",
+	"createTask.discard": "Descartar",
 
 	// TaskCard
 	"task.moveTo": "Mover a",

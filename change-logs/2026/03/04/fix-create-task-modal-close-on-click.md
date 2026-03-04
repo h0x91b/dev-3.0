@@ -1,0 +1,1 @@
+Fixed CreateTaskModal closing when clicking outside the modal area. The modal now closes only via the Cancel button. Added a confirmation dialog when cancelling with unsaved content (also applies to Escape key). Added tests covering the new behavior.

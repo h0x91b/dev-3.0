@@ -120,6 +120,9 @@ const en = {
 	"createTask.submitHint": "\u2318Enter to create",
 	"createTask.createAndRun": "Create & Run",
 	"createTask.submitHintRun": "\u2318Enter create \u00b7 \u2318\u21e7Enter create & run",
+	"createTask.discardConfirm": "Discard changes? Your description will be lost.",
+	"createTask.keepEditing": "Keep editing",
+	"createTask.discard": "Discard",
 
 	// TaskCard
 	"task.moveTo": "Move to",
