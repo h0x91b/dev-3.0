@@ -1,6 +1,7 @@
 import {
 	hexToRgb,
 	titleFromDescription,
+	extractRepoName,
 	ALL_STATUSES,
 	ACTIVE_STATUSES,
 	STATUS_LABELS,
@@ -106,6 +107,42 @@ describe("titleFromDescription", () => {
 		const text = "aaaa bbbbb ccccc ddddd eeeee";
 		const result = titleFromDescription(text, 20);
 		expect(result).toBe("aaaa bbbbb ccccc\u2026");
+	});
+});
+
+// ---- extractRepoName ----
+
+describe("extractRepoName", () => {
+	it("extracts name from HTTPS URL with .git", () => {
+		expect(extractRepoName("https://github.com/user/my-repo.git")).toBe("my-repo");
+	});
+
+	it("extracts name from HTTPS URL without .git", () => {
+		expect(extractRepoName("https://github.com/user/my-repo")).toBe("my-repo");
+	});
+
+	it("extracts name from SSH URL", () => {
+		expect(extractRepoName("git@github.com:user/my-repo.git")).toBe("my-repo");
+	});
+
+	it("handles trailing slashes", () => {
+		expect(extractRepoName("https://github.com/user/my-repo/")).toBe("my-repo");
+	});
+
+	it("handles multiple trailing slashes", () => {
+		expect(extractRepoName("https://github.com/user/my-repo///")).toBe("my-repo");
+	});
+
+	it("handles trailing slash and .git", () => {
+		expect(extractRepoName("https://github.com/user/my-repo.git/")).toBe("my-repo");
+	});
+
+	it("returns fallback for empty input", () => {
+		expect(extractRepoName("")).toBe("cloned-repo");
+	});
+
+	it("extracts from GitLab-style nested URL", () => {
+		expect(extractRepoName("https://gitlab.com/group/subgroup/project.git")).toBe("project");
 	});
 });
 

@@ -139,6 +139,17 @@ export interface GlobalSettings {
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
+	cloneBaseDirectory?: string;
+}
+
+/** Extract repository name from a git URL (HTTPS or SSH). */
+export function extractRepoName(url: string): string {
+	const cleaned = url.replace(/\/+$/, "").replace(/\.git$/, "");
+	const lastSlash = cleaned.lastIndexOf("/");
+	const lastColon = cleaned.lastIndexOf(":");
+	const pos = Math.max(lastSlash, lastColon);
+	const name = pos >= 0 ? cleaned.slice(pos + 1) : cleaned;
+	return name || "cloned-repo";
 }
 
 // ---- Labels ----
@@ -287,6 +298,10 @@ export type AppRPCSchema = {
 			};
 			addProject: {
 				params: { path: string; name: string };
+				response: { ok: true; project: Project } | { ok: false; error: string };
+			};
+			cloneAndAddProject: {
+				params: { url: string; baseDir: string; repoName?: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
 			removeProject: {

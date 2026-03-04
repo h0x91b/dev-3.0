@@ -34,6 +34,8 @@ vi.mock("../git", () => ({
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),
 	canRebaseCleanly: vi.fn(),
+	cloneRepo: vi.fn(),
+	extractRepoName: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -560,6 +562,91 @@ describe("handlers.addProject", () => {
 
 		const result = await handlers.addProject({ path: "/tmp/test", name: "Test" });
 		expect(result).toEqual({ ok: false, error: "Error: disk full" });
+	});
+});
+
+// ================================================================
+// handlers.cloneAndAddProject
+// ================================================================
+
+describe("handlers.cloneAndAddProject", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("clones repo and adds as project on success", async () => {
+		const project = makeProject({ path: "/base/my-repo", name: "my-repo" });
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(git.cloneRepo).mockResolvedValue({ ok: true, path: "/base/my-repo" });
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(data.addProject).mockResolvedValue(project);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(data.updateProject).mockResolvedValue(project);
+
+		const result = await handlers.cloneAndAddProject({
+			url: "https://github.com/user/my-repo.git",
+			baseDir: "/base",
+			repoName: "my-repo",
+		});
+
+		expect(result).toEqual({ ok: true, project });
+		expect(git.cloneRepo).toHaveBeenCalledWith(
+			"https://github.com/user/my-repo.git",
+			"/base/my-repo",
+		);
+		expect(data.addProject).toHaveBeenCalledWith("/base/my-repo", "my-repo");
+	});
+
+	it("returns error when clone fails", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(git.cloneRepo).mockResolvedValue({
+			ok: false,
+			path: "/base/my-repo",
+			error: "fatal: repository not found",
+		});
+
+		const result = await handlers.cloneAndAddProject({
+			url: "https://github.com/user/my-repo.git",
+			baseDir: "/base",
+			repoName: "my-repo",
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			error: "Clone failed: fatal: repository not found",
+		});
+	});
+
+	it("reuses existing directory if it is a git repo", async () => {
+		const project = makeProject({ path: "/base/my-repo" });
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(data.addProject).mockResolvedValue(project);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(data.updateProject).mockResolvedValue(project);
+
+		const result = await handlers.cloneAndAddProject({
+			url: "https://github.com/user/my-repo.git",
+			baseDir: "/base",
+			repoName: "my-repo",
+		});
+
+		expect(result).toEqual({ ok: true, project });
+		expect(git.cloneRepo).not.toHaveBeenCalled();
+	});
+
+	it("returns error when directory exists but is not a git repo", async () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(git.isGitRepo).mockResolvedValue(false);
+
+		const result = await handlers.cloneAndAddProject({
+			url: "https://github.com/user/my-repo.git",
+			baseDir: "/base",
+			repoName: "my-repo",
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			error: "Directory already exists: /base/my-repo",
+		});
 	});
 });
 

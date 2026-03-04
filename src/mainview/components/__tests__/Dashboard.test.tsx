@@ -10,8 +10,16 @@ vi.mock("../../rpc", () => ({
 		request: {
 			pickFolder: vi.fn(),
 			addProject: vi.fn(),
+			cloneAndAddProject: vi.fn(),
 			removeProject: vi.fn(),
 			showConfirm: vi.fn(),
+			getGlobalSettings: vi.fn(() => Promise.resolve({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskDropPosition: "top",
+				updateChannel: "stable",
+			})),
+			saveGlobalSettings: vi.fn(),
 		},
 	},
 }));
@@ -94,7 +102,17 @@ describe("Dashboard", () => {
 	});
 
 	describe("add project flow", () => {
-		it("calls pickFolder and addProject on click", async () => {
+		it("opens AddProjectModal on Add Project click", async () => {
+			const user = userEvent.setup();
+			renderDashboard([], vi.fn());
+			await user.click(screen.getByText("Add Project"));
+
+			// Modal should appear with tabs
+			expect(screen.getByText("Local Folder")).toBeInTheDocument();
+			expect(screen.getByText("Clone from URL")).toBeInTheDocument();
+		});
+
+		it("browses local folder through modal", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 
@@ -111,6 +129,8 @@ describe("Dashboard", () => {
 
 			renderDashboard([], dispatch);
 			await user.click(screen.getByText("Add Project"));
+			// Click Browse in the Local Folder tab
+			await user.click(screen.getByText("Browse..."));
 
 			expect(mockedApi.request.pickFolder).toHaveBeenCalled();
 			expect(mockedApi.request.addProject).toHaveBeenCalledWith({
@@ -121,19 +141,6 @@ describe("Dashboard", () => {
 				type: "addProject",
 				project: expect.objectContaining({ id: "p-new" }),
 			});
-		});
-
-		it("does nothing when pickFolder returns null", async () => {
-			const user = userEvent.setup();
-			const dispatch = vi.fn();
-
-			mockedApi.request.pickFolder.mockResolvedValue(null);
-
-			renderDashboard([], dispatch);
-			await user.click(screen.getByText("Add Project"));
-
-			expect(mockedApi.request.addProject).not.toHaveBeenCalled();
-			expect(dispatch).not.toHaveBeenCalled();
 		});
 	});
 

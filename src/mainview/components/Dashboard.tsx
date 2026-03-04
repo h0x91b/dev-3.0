@@ -1,8 +1,9 @@
-import type { Dispatch } from "react";
+import { useState, type Dispatch } from "react";
 import type { Project } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import AddProjectModal from "./AddProjectModal";
 
 interface DashboardProps {
 	projects: Project[];
@@ -12,24 +13,7 @@ interface DashboardProps {
 
 function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 	const t = useT();
-
-	async function handleAddProject() {
-		try {
-			const folder = await api.request.pickFolder();
-			if (!folder) return;
-
-			const name = folder.split("/").pop() || folder;
-			const result = await api.request.addProject({ path: folder, name });
-
-			if (result.ok) {
-				dispatch({ type: "addProject", project: result.project });
-			} else {
-				alert(result.error);
-			}
-		} catch (err) {
-			alert(t("dashboard.failedAdd", { error: String(err) }));
-		}
-	}
+	const [showAddModal, setShowAddModal] = useState(false);
 
 	async function handleRemoveProject(projectId: string) {
 		const confirmed = await api.request.showConfirm({
@@ -72,7 +56,7 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 							{t("dashboard.noProjectsHint")}
 						</p>
 						<button
-							onClick={handleAddProject}
+							onClick={() => setShowAddModal(true)}
 							className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
 						>
 							{t("dashboard.addProject")}
@@ -85,7 +69,7 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 								{t.plural("dashboard.projectCount", projects.length)}
 							</span>
 							<button
-								onClick={handleAddProject}
+								onClick={() => setShowAddModal(true)}
 								className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
 							>
 								{t("dashboard.addProject")}
@@ -167,6 +151,12 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 					</div>
 				)}
 			</div>
+			{showAddModal && (
+				<AddProjectModal
+					dispatch={dispatch}
+					onClose={() => setShowAddModal(false)}
+				/>
+			)}
 		</div>
 	);
 }

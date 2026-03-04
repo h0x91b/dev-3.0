@@ -248,6 +248,37 @@ function GlobalSettings() {
 						</select>
 					</div>
 
+					{/* Clone Base Directory */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.cloneBaseDir")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.cloneBaseDirDesc")}
+						</p>
+						<div className="flex gap-2">
+							<div className="flex-1 px-4 py-3 bg-raised border border-edge rounded-xl text-sm font-mono truncate">
+								{globalSettings.cloneBaseDirectory ? (
+									<span className="text-fg">{globalSettings.cloneBaseDirectory}</span>
+								) : (
+									<span className="text-fg-muted">{t("settings.cloneBaseDirNotSet")}</span>
+								)}
+							</div>
+							<button
+								onClick={async () => {
+									const folder = await api.request.pickFolder();
+									if (!folder) return;
+									const updated = { ...globalSettings, cloneBaseDirectory: folder };
+									setGlobalSettings(updated);
+									api.request.saveGlobalSettings(updated);
+								}}
+								className="px-4 py-3 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
+							>
+								{t("settings.browse")}
+							</button>
+						</div>
+					</div>
+
 				{/* Default Agent */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">

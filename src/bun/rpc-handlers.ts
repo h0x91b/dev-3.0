@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { Utils } from "electrobun/bun";
 import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription } from "../shared/types";
+import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -411,6 +411,37 @@ export const handlers = {
 			return { ok: true, project };
 		} catch (err) {
 			log.error("addProject failed", { error: String(err), params });
+			return { ok: false, error: String(err) };
+		}
+	},
+
+	async cloneAndAddProject(params: {
+		url: string;
+		baseDir: string;
+		repoName?: string;
+	}): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+		log.info("→ cloneAndAddProject", params);
+		try {
+			const name = params.repoName || extractRepoName(params.url);
+			const targetDir = `${params.baseDir}/${name}`;
+
+			if (existsSync(targetDir)) {
+				const isRepo = await git.isGitRepo(targetDir);
+				if (isRepo) {
+					log.info("Directory already exists and is a git repo, adding as project", { targetDir });
+					return handlers.addProject({ path: targetDir, name });
+				}
+				return { ok: false, error: `Directory already exists: ${targetDir}` };
+			}
+
+			const cloneResult = await git.cloneRepo(params.url, targetDir);
+			if (!cloneResult.ok) {
+				return { ok: false, error: `Clone failed: ${cloneResult.error}` };
+			}
+
+			return handlers.addProject({ path: targetDir, name });
+		} catch (err) {
+			log.error("cloneAndAddProject failed", { error: String(err), params });
 			return { ok: false, error: String(err) };
 		}
 	},

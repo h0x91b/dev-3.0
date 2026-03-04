@@ -10,6 +10,7 @@ export interface GlobalSettings {
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
+	cloneBaseDirectory?: string;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -31,6 +32,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			defaultConfigId: data.defaultConfigId ?? DEFAULT_SETTINGS.defaultConfigId,
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
+			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });

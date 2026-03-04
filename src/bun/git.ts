@@ -1,4 +1,5 @@
 import type { Project, Task } from "../shared/types";
+export { extractRepoName } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
@@ -212,6 +213,20 @@ export async function getUnpushedCount(
 	);
 	if (!result.ok) return 0;
 	return parseInt(result.stdout, 10) || 0;
+}
+
+export async function cloneRepo(
+	url: string,
+	targetDir: string,
+): Promise<{ ok: boolean; path: string; error?: string }> {
+	log.info("Cloning repository", { url, targetDir });
+	const result = await run(["git", "clone", url, targetDir], process.cwd());
+	if (!result.ok) {
+		log.error("Clone failed", { url, stderr: result.stderr });
+		return { ok: false, path: targetDir, error: result.stderr };
+	}
+	log.info("Repository cloned successfully", { url, targetDir });
+	return { ok: true, path: targetDir };
 }
 
 export async function removeWorktree(
