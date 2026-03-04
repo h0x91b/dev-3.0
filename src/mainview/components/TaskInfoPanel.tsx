@@ -330,6 +330,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			await api.request.rebaseTask({
 				taskId: task.id,
 				projectId: project.id,
+				compareRef: compareRef || undefined,
 			});
 		} catch (err) {
 			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
