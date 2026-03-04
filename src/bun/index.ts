@@ -136,7 +136,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 installAgentSkills();
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle } = await import("./pty-server");
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -280,6 +280,19 @@ setOnBell((taskId) => {
 			taskId: taskId.slice(0, 8),
 			error: String(err),
 			stack: (err as Error)?.stack ?? "no stack",
+		});
+	}
+});
+
+// Wire terminal idle notifications (red badge only, no status transition)
+setOnIdle((taskId) => {
+	try {
+		log.debug("Terminal idle, notifying renderer", { taskId: taskId.slice(0, 8) });
+		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
+	} catch (err) {
+		log.error("Failed to handle terminal idle", {
+			taskId: taskId.slice(0, 8),
+			error: String(err),
 		});
 	}
 });

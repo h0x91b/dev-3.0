@@ -84,11 +84,14 @@ interface PtySession {
 	proc: ReturnType<typeof Bun.spawn> | null;
 	ws: any;
 	tmuxSocket: string | null;
+	lastOutputTime: number;
+	idleNotified: boolean;
 }
 
 const sessions = new Map<string, PtySession>();
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
+let onIdleCallback: ((taskId: string) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
 	onPtyDiedCallback = fn;
@@ -96,6 +99,10 @@ export function setOnPtyDied(fn: (taskId: string) => void): void {
 
 export function setOnBell(fn: (taskId: string) => void): void {
 	onBellCallback = fn;
+}
+
+export function setOnIdle(fn: (taskId: string) => void): void {
+	onIdleCallback = fn;
 }
 
 export function createSession(
@@ -116,6 +123,8 @@ export function createSession(
 		proc: null,
 		ws: null,
 		tmuxSocket,
+		lastOutputTime: Date.now(),
+		idleNotified: false,
 	};
 	sessions.set(taskId, session);
 	// Spawn immediately in the background — don't wait for WS connection
@@ -289,6 +298,8 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 								typeof data === "string"
 									? data
 									: new TextDecoder().decode(data);
+							session.lastOutputTime = Date.now();
+							session.idleNotified = false;
 							checkForBell(str, session.taskId);
 							const cleaned = handleOsc52(str);
 							if (cleaned && session.ws) {
@@ -366,6 +377,25 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		}
 	}, 200);
 }
+
+// ── Idle detection ──────────────────────────────────────────────────
+// If a PTY session produces no output for IDLE_THRESHOLD_MS, fire the
+// idle callback once.  The flag resets as soon as new output arrives.
+const IDLE_THRESHOLD_MS = 15_000;
+const IDLE_CHECK_INTERVAL_MS = 5_000;
+
+setInterval(() => {
+	const now = Date.now();
+	for (const session of sessions.values()) {
+		if (!session.proc) continue;
+		if (session.idleNotified) continue;
+		if (now - session.lastOutputTime >= IDLE_THRESHOLD_MS) {
+			session.idleNotified = true;
+			log.info("Terminal idle detected", { taskId: shortId(session.taskId) });
+			onIdleCallback?.(session.taskId);
+		}
+	}
+}, IDLE_CHECK_INTERVAL_MS);
 
 const ptyServer = Bun.serve({
 	port: 0,
