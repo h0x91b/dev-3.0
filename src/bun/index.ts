@@ -6,7 +6,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, handleBellAutoStatus } from "./rpc-handlers";
+import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -285,16 +285,23 @@ setOnBell((taskId) => {
 });
 
 // Wire terminal idle notifications (red badge only, no status transition)
+// Only fires for tasks that are currently "in-progress" — idle terminals
+// in other statuses (review, todo, etc.) are expected and not noteworthy.
 setOnIdle((taskId) => {
-	try {
-		log.debug("Terminal idle, notifying renderer", { taskId: taskId.slice(0, 8) });
-		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
-	} catch (err) {
-		log.error("Failed to handle terminal idle", {
-			taskId: taskId.slice(0, 8),
-			error: String(err),
-		});
-	}
+	isTaskInProgress(taskId).then((inProgress) => {
+		if (!inProgress) return;
+		try {
+			log.debug("Terminal idle, notifying renderer", { taskId: taskId.slice(0, 8) });
+			(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
+		} catch (err) {
+			log.error("Failed to handle terminal idle", {
+				taskId: taskId.slice(0, 8),
+				error: String(err),
+			});
+		}
+	}).catch((err) => {
+		log.error("isTaskInProgress failed in idle handler", { error: String(err) });
+	});
 });
 
 mainWindow.on("close", () => {

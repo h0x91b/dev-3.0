@@ -178,6 +178,21 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	}
 }
 
+/** Check whether a task is currently in "in-progress" status. */
+export async function isTaskInProgress(taskId: string): Promise<boolean> {
+	try {
+		const projects = await data.loadProjects();
+		for (const project of projects) {
+			const tasks = await data.loadTasks(project);
+			const task = tasks.find((t) => t.id === taskId);
+			if (task) return task.status === "in-progress";
+		}
+	} catch (err) {
+		log.error("isTaskInProgress failed", { taskId: taskId.slice(0, 8), error: String(err) });
+	}
+	return false;
+}
+
 const DEFAULT_CLEANUP_SCRIPT = 'say "task finished"';
 
 export async function runCleanupScript(task: Task, project: Project): Promise<void> {
