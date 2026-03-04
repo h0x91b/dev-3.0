@@ -85,10 +85,35 @@ export async function downloadUpdateForChannel(
 
 	// If selected channel matches the build-time channel, use built-in updater
 	if (channel === local.channel) {
-		log.info("Channel matches build-time, using built-in downloadUpdate()");
+		log.info("Channel matches build-time, using built-in updater flow");
 		onProgress?.("downloading", 0);
 
 		try {
+			// Step 1: checkForUpdate() populates Electrobun's internal state
+			// (remote version, hash, download URLs). Without this,
+			// downloadUpdate() has no target and silently does nothing.
+			const checkResult = await Updater.checkForUpdate();
+			log.info("Built-in checkForUpdate result", {
+				updateAvailable: checkResult?.updateAvailable,
+				updateReady: checkResult?.updateReady,
+				version: checkResult?.version,
+				hash: checkResult?.hash?.slice(0, 12),
+			});
+
+			if (checkResult?.updateReady) {
+				// Already downloaded from a previous attempt
+				log.info("Update already downloaded and ready");
+				onProgress?.("complete", 100);
+				return { ok: true };
+			}
+
+			if (!checkResult?.updateAvailable) {
+				const msg = "Built-in updater reports no update available";
+				log.warn(msg);
+				return { ok: false, error: msg };
+			}
+
+			// Step 2: download the update (patch or full bundle)
 			await Updater.downloadUpdate();
 			onProgress?.("complete", 100);
 			return { ok: true };
@@ -137,6 +162,7 @@ export async function downloadUpdateForChannel(
 		// (it will download using its own build-time channel, which should be fine
 		// since the S3 bucket has the flat artifact structure)
 		log.warn("Cross-channel download not yet fully implemented, falling back to built-in updater");
+		await Updater.checkForUpdate();
 		await Updater.downloadUpdate();
 		onProgress?.("complete", 100);
 		return { ok: true };
@@ -149,7 +175,20 @@ export async function downloadUpdateForChannel(
 }
 
 export async function applyUpdate(): Promise<void> {
-	log.info("Applying update...");
+	// Verify the update is actually ready before attempting to apply.
+	// Without this guard, applyUpdate() may just restart the app
+	// without applying anything — causing an infinite update loop.
+	const info = Updater.updateInfo?.();
+	log.info("Applying update...", {
+		updateReady: info?.updateReady,
+		version: info?.version,
+	});
+
+	if (info && !info.updateReady) {
+		log.error("applyUpdate called but updateReady is false — skipping to avoid restart loop");
+		throw new Error("Update not ready to apply");
+	}
+
 	await Updater.applyUpdate();
 }
 

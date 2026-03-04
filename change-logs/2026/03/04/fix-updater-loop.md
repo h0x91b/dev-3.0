@@ -1,0 +1,1 @@
+Fixed infinite update loop caused by missing Updater.checkForUpdate() call before downloadUpdate(). Without populating Electrobun's internal state first, downloads silently did nothing, and applyUpdate() just restarted the app without applying the new version. Added updateReady guard in applyUpdate() to prevent restart loops.
