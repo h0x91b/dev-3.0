@@ -456,6 +456,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; noteId: string };
 				response: Task;
 			};
+			tmuxAction: {
+				params: { taskId: string; action: "splitH" | "splitV" | "zoom" };
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

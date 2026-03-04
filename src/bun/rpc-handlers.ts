@@ -1460,4 +1460,33 @@ export const handlers = {
 		log.info("← deleteTaskNote done", { taskId: params.taskId, noteId: params.noteId });
 		return updated;
 	},
+
+	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" }): Promise<void> {
+		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
+		const socket = pty.getSessionSocket(params.taskId) ?? null;
+		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
+
+		let args: string[];
+		switch (params.action) {
+			case "splitH":
+				args = pty.tmuxArgs(socket, "split-window", "-v", "-c", "#{pane_current_path}", "-t", tmuxSession);
+				break;
+			case "splitV":
+				args = pty.tmuxArgs(socket, "split-window", "-h", "-c", "#{pane_current_path}", "-t", tmuxSession);
+				break;
+			case "zoom":
+				args = pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession);
+				break;
+		}
+
+		const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
+		const stderr = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+
+		if (exitCode !== 0) {
+			log.error("tmuxAction failed", { action: params.action, exitCode, stderr: stderr.trim() });
+			throw new Error(`tmux ${params.action} failed: ${stderr.trim() || "unknown error"}`);
+		}
+		log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
+	},
 };

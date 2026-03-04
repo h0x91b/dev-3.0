@@ -1,0 +1,1 @@
+Made tmux hint buttons (horizontal split, vertical split, zoom) in the task info panel clickable. Clicking them now sends the corresponding tmux command to the active terminal session via a new `tmuxAction` RPC handler.
