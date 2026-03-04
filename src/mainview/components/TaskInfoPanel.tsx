@@ -646,7 +646,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			<button
 				ref={refTriggerRef}
 				onClick={(e) => { e.stopPropagation(); setRefMenuOpen(!refMenuOpen); }}
-				className="text-fg-muted font-normal hover:text-fg-2 transition-colors cursor-pointer"
+				className="text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer"
 				title="Change comparison branch"
 			>
 				vs {displayRef} ▾
@@ -654,7 +654,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			{refMenuOpen && (
 				<div
 					ref={refMenuRef}
-					className="absolute top-full left-0 mt-1 bg-elevated border border-edge rounded-md shadow-lg py-1 z-50 min-w-[160px]"
+					className="absolute top-full left-0 mt-1 bg-elevated border border-edge rounded-md shadow-lg py-1 z-[9999] min-w-[160px]"
 				>
 					{refOptions.map((opt) => (
 						<button
