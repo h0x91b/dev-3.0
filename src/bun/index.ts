@@ -298,6 +298,19 @@ mainWindow.webview.on("dom-ready", async () => {
 	log.info(`DOM ready [${lastBuildTime}]`);
 });
 
+// Open external links in the default browser.
+// ghostty-web's built-in link providers call window.open() on Cmd+Click,
+// which triggers this event in the WKWebView. Redirect to system browser.
+(mainWindow.webview as any).on("new-window-open", (e: any) => {
+	const url = e.data?.url ?? e.detail?.url ?? String(e.data ?? "");
+	if (typeof url === "string" && /^https?:\/\//.test(url)) {
+		log.info("Opening external URL", { url });
+		Utils.openExternal(url);
+	} else {
+		log.warn("Blocked new-window-open with unexpected URL", { url, data: e.data });
+	}
+});
+
 // --- Menu Event Handlers ---
 
 Electrobun.events.on("application-menu-clicked", async (e) => {
