@@ -1,0 +1,1 @@
+Reduced tmux scroll speed by adding a deltaY accumulator with a threshold of 50px. Previously, every single WheelEvent sent one scroll line to tmux, making trackpad/high-resolution scroll feel way too fast. Now scroll events are accumulated and only sent when the threshold is reached, giving proportional but much smoother scrolling.
