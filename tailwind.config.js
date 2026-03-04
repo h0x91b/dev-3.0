@@ -5,8 +5,7 @@ export default {
 		extend: {
 			fontFamily: {
 				mono: [
-					"'JetBrains Mono'",
-					"'Symbols Nerd Font Mono'",
+					"'JetBrainsMono Nerd Font Mono'",
 					"'SF Mono'",
 					"Menlo",
 					"monospace",
