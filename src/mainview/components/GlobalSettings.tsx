@@ -241,7 +241,8 @@ function GlobalSettings() {
 						<select
 							value={globalSettings.updateChannel}
 							onChange={(e) => handleUpdateChannelChange(e.target.value as "stable" | "canary")}
-							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+							disabled
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none cursor-not-allowed opacity-50"
 						>
 							<option value="stable">Stable</option>
 							<option value="canary">Canary</option>
