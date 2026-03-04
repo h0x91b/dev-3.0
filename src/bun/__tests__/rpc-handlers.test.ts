@@ -109,6 +109,8 @@ import { existsSync } from "node:fs";
 const {
 	handlers,
 	escapeForDoubleQuotes,
+	shellQuote,
+	buildEnvExports,
 	buildCmdScript,
 	isActive,
 	handleBellAutoStatus,
@@ -351,6 +353,76 @@ describe("buildCmdScript", () => {
 		expect(echoLine).toBeDefined();
 
 		expect(result).toContain(`&& ${cmd}`);
+	});
+
+	it("includes export lines when env is provided", () => {
+		const env = { MY_VAR: "hello", ANOTHER: "world" };
+		const result = buildCmdScript("claude", env);
+		const lines = result.split("\n");
+		expect(lines[1]).toBe("export MY_VAR='hello'");
+		expect(lines[2]).toBe("export ANOTHER='world'");
+		// Command comes after exports
+		expect(result).toContain("&& claude");
+	});
+
+	it("does not include export lines when env is empty", () => {
+		const result = buildCmdScript("claude", {});
+		expect(result).not.toContain("export ");
+	});
+
+	it("does not include export lines when env is undefined", () => {
+		const result = buildCmdScript("claude");
+		expect(result).not.toContain("export ");
+	});
+
+	it("shell-quotes env values with special characters", () => {
+		const env = { PATH: "/usr/bin:/usr/local/bin", TITLE: "it's a test" };
+		const result = buildCmdScript("claude", env);
+		expect(result).toContain("export PATH='/usr/bin:/usr/local/bin'");
+		expect(result).toContain("export TITLE='it'\\''s a test'");
+	});
+});
+
+// ================================================================
+// shellQuote
+// ================================================================
+
+describe("shellQuote", () => {
+	it("wraps simple values in single quotes", () => {
+		expect(shellQuote("hello")).toBe("'hello'");
+	});
+
+	it("escapes single quotes in values", () => {
+		expect(shellQuote("it's")).toBe("'it'\\''s'");
+	});
+
+	it("handles empty string", () => {
+		expect(shellQuote("")).toBe("''");
+	});
+
+	it("preserves dollar signs (no expansion in single quotes)", () => {
+		expect(shellQuote("$HOME/path")).toBe("'$HOME/path'");
+	});
+});
+
+// ================================================================
+// buildEnvExports
+// ================================================================
+
+describe("buildEnvExports", () => {
+	it("generates export lines for each key-value pair", () => {
+		const lines = buildEnvExports({ A: "1", B: "2" });
+		expect(lines).toEqual(["export A='1'", "export B='2'"]);
+	});
+
+	it("returns empty array for empty env", () => {
+		expect(buildEnvExports({})).toEqual([]);
+	});
+
+	it("handles values with spaces and special chars", () => {
+		const lines = buildEnvExports({ MSG: "hello world", QUOTED: "it's \"fine\"" });
+		expect(lines[0]).toBe("export MSG='hello world'");
+		expect(lines[1]).toBe("export QUOTED='it'\\''s \"fine\"'");
 	});
 });
 

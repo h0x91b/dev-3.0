@@ -22,6 +22,8 @@ import {
 	resolveAgentCommand,
 	buildTaskEnv,
 	isClaudeCommand,
+	getDefaultEnvForAgent,
+	CLAUDE_DEFAULT_ENV,
 } from "../../bun/agents";
 import type { TemplateContext } from "../../bun/agents";
 import type { CodingAgent, AgentConfiguration, Project } from "../../shared/types";
@@ -826,5 +828,76 @@ describe("buildTaskEnv", () => {
 		const env = buildTaskEnv(project, "Task", "t1", "/tmp/wt");
 		const keys = Object.keys(env);
 		expect(keys.every((k) => k.startsWith("DEV3_"))).toBe(true);
+	});
+});
+
+// ---- getDefaultEnvForAgent ----
+
+describe("getDefaultEnvForAgent", () => {
+	it("returns CLAUDE_DEFAULT_ENV for claude-based agents", () => {
+		const agent: CodingAgent = {
+			id: "test-claude",
+			name: "Claude",
+			baseCommand: "claude",
+			configurations: [{ id: "c1", name: "Default" }],
+			defaultConfigId: "c1",
+		};
+		const env = getDefaultEnvForAgent(agent);
+		expect(env).toEqual(CLAUDE_DEFAULT_ENV);
+		expect(env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe("1");
+	});
+
+	it("returns CLAUDE_DEFAULT_ENV for full-path claude command", () => {
+		const agent: CodingAgent = {
+			id: "test-claude-path",
+			name: "Claude",
+			baseCommand: "/usr/local/bin/claude",
+			configurations: [{ id: "c1", name: "Default" }],
+			defaultConfigId: "c1",
+		};
+		expect(getDefaultEnvForAgent(agent)).toEqual(CLAUDE_DEFAULT_ENV);
+	});
+
+	it("returns empty env for non-claude agents", () => {
+		const agent: CodingAgent = {
+			id: "test-codex",
+			name: "Codex",
+			baseCommand: "codex",
+			configurations: [{ id: "c1", name: "Default" }],
+			defaultConfigId: "c1",
+		};
+		expect(getDefaultEnvForAgent(agent)).toEqual({});
+	});
+
+	it("uses config baseCommandOverride when present", () => {
+		const agent: CodingAgent = {
+			id: "test-custom",
+			name: "Custom",
+			baseCommand: "bash",
+			configurations: [{ id: "c1", name: "Default" }],
+			defaultConfigId: "c1",
+		};
+		const config: AgentConfiguration = {
+			id: "c1",
+			name: "Default",
+			baseCommandOverride: "claude",
+		};
+		expect(getDefaultEnvForAgent(agent, config)).toEqual(CLAUDE_DEFAULT_ENV);
+	});
+
+	it("returns empty env when config overrides away from claude", () => {
+		const agent: CodingAgent = {
+			id: "test-claude",
+			name: "Claude",
+			baseCommand: "claude",
+			configurations: [{ id: "c1", name: "Default" }],
+			defaultConfigId: "c1",
+		};
+		const config: AgentConfiguration = {
+			id: "c1",
+			name: "Default",
+			baseCommandOverride: "my-custom-agent",
+		};
+		expect(getDefaultEnvForAgent(agent, config)).toEqual({});
 	});
 });

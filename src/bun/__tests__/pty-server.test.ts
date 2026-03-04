@@ -196,6 +196,57 @@ describe("pty-server", () => {
 			expect(() => createSession(id, "proj-1", "/tmp/cwd", "bash", {})).not.toThrow();
 			expect(diedCb).toHaveBeenCalledWith(id);
 		});
+
+		it("propagates all env vars via tmux set-environment after session starts", async () => {
+			vi.useFakeTimers();
+			const id = track("task-env-prop");
+			const env = {
+				MY_VAR: "hello",
+				CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+				PATH: "/custom/bin:/usr/bin",
+			};
+			createSession(id, "proj-1", "/tmp/cwd", "bash", env, "my-socket");
+			mockSpawn.mockClear();
+
+			// Advance past the 200ms setTimeout
+			vi.advanceTimersByTime(300);
+
+			// Check that set-environment was called for each env var
+			const setEnvCalls = mockSpawn.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+			);
+
+			expect(setEnvCalls.length).toBeGreaterThanOrEqual(3);
+
+			const setEnvArgs = setEnvCalls.map((c) => c[0]);
+			expect(setEnvArgs).toContainEqual(
+				expect.arrayContaining(["set-environment", "-t", expect.stringContaining("dev3-"), "MY_VAR", "hello"]),
+			);
+			expect(setEnvArgs).toContainEqual(
+				expect.arrayContaining(["set-environment", "-t", expect.stringContaining("dev3-"), "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1"]),
+			);
+			expect(setEnvArgs).toContainEqual(
+				expect.arrayContaining(["set-environment", "-t", expect.stringContaining("dev3-"), "PATH", "/custom/bin:/usr/bin"]),
+			);
+
+			vi.useRealTimers();
+		});
+
+		it("does not call tmux set-environment when env is empty", async () => {
+			vi.useFakeTimers();
+			const id = track("task-env-empty");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
+			mockSpawn.mockClear();
+
+			vi.advanceTimersByTime(300);
+
+			const setEnvCalls = mockSpawn.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+			);
+			expect(setEnvCalls).toHaveLength(0);
+
+			vi.useRealTimers();
+		});
 	});
 
 	// ------- destroySession -------

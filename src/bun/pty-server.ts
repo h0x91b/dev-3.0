@@ -359,14 +359,18 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
 
 	// Configure tmux (clipboard + bell pass-through) after session is ready.
-	// Also propagate PATH to session environment so all new panes inherit it
-	// (the env passed to Bun.spawn only affects the initial process).
+	// Propagate ALL custom env vars to the tmux session so that new panes
+	// (split windows) inherit them — the env passed to Bun.spawn only
+	// affects the initial tmux client, not the tmux server's stored env.
 	setTimeout(() => {
 		try {
 			configureTmux(tmuxSessionName, session.tmuxSocket);
-			if (session.env?.PATH) {
-				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "PATH", session.env.PATH));
-				log.info("tmux session PATH set", { tmuxSession: tmuxSessionName });
+			const envKeys = Object.keys(session.env);
+			for (const [key, value] of Object.entries(session.env)) {
+				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));
+			}
+			if (envKeys.length > 0) {
+				log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
 			}
 		} catch (err) {
 			log.error("configureTmux failed", {

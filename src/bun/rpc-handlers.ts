@@ -22,14 +22,35 @@ export function escapeForDoubleQuotes(s: string): string {
 	return s.replace(/[\\"$`!]/g, "\\$&");
 }
 
+/** Single-quote a value for safe use in shell `export` statements. */
+export function shellQuote(s: string): string {
+	return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Build `export KEY='value'` lines for a set of environment variables.
+ * These are placed at the top of wrapper scripts so that the agent command
+ * running inside a shared tmux server always sees the correct env vars,
+ * regardless of when the server was originally started.
+ */
+export function buildEnvExports(env: Record<string, string>): string[] {
+	return Object.entries(env).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+}
+
 /**
  * Build a bash script that echoes the command and then exec's it.
  * Used when a setup script is present and the main command runs in a split pane.
+ *
+ * When `env` is provided, `export` statements are written before the command
+ * so the process sees config-level environment variables even when the tmux
+ * server was started by a different task.
  */
-export function buildCmdScript(tmuxCmd: string): string {
+export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): string {
 	const escaped = escapeForDoubleQuotes(tmuxCmd);
+	const exportLines = env && Object.keys(env).length > 0 ? buildEnvExports(env) : [];
 	return [
 		"#!/bin/bash",
+		...exportLines,
 		`echo "Starting: ${escaped}" && ${tmuxCmd}`,
 		"__EC=$?",
 		"if [ $__EC -ne 0 ]; then",
@@ -301,6 +322,13 @@ export async function launchTaskPty(
 		});
 	}
 
+	// Build env early so both setup and normal paths can embed exports
+	// in their wrapper scripts (tmux server doesn't propagate client env).
+	const dev3Bin = `${DEV3_HOME}/bin`;
+	const currentPath = process.env.PATH || "";
+	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
+	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+
 	if (runSetup && project.setupScript.trim()) {
 		const prefix = `/tmp/dev3-${task.id}`;
 		const setupPath = `${prefix}-setup.sh`;
@@ -311,7 +339,7 @@ export async function launchTaskPty(
 		// to avoid tmux env var propagation issues (tmux server doesn't
 		// inherit custom env vars from the client process)
 		await Bun.write(setupPath, project.setupScript + "\n");
-		await Bun.write(claudePath, buildCmdScript(tmuxCmd));
+		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env));
 
 		const splitCmd = `tmux split-window -v -c "${worktreePath}" "bash '${claudePath}'"`;
 		const setupFail = [
@@ -340,17 +368,11 @@ export async function launchTaskPty(
 		tmuxCmd = `bash "${startupPath}"`;
 	}
 
-	// Prepend ~/.dev3.0/bin to PATH so `dev3` CLI is available inside the worktree
-	const dev3Bin = `${DEV3_HOME}/bin`;
-	const currentPath = process.env.PATH || "";
-	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
-	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
-
 	// Write the command to a temp script instead of passing inline.
 	// tmux 3.x limits the shell-command for new-session to ~16 KB;
 	// inline commands with long task descriptions easily exceed that.
 	const runScriptPath = `/tmp/dev3-${task.id}-run.sh`;
-	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd));
+	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env));
 	const wrapperCmd = `bash "${runScriptPath}"`;
 
 	log.info("Creating PTY session", {

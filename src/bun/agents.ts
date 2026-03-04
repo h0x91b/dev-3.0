@@ -208,6 +208,20 @@ export function findConfig(
 	);
 }
 
+/** Default env vars injected for Claude-based agents. */
+export const CLAUDE_DEFAULT_ENV: Record<string, string> = {
+	CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+};
+
+/** Build default env vars for an agent based on its base command. */
+export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfiguration): Record<string, string> {
+	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
+	if (isClaudeCommand(baseCmd)) {
+		return { ...CLAUDE_DEFAULT_ENV };
+	}
+	return {};
+}
+
 export async function resolveCommandForAgent(
 	agentId: string,
 	configId: string | null,
@@ -220,7 +234,8 @@ export async function resolveCommandForAgent(
 	}
 	const config = findConfig(agent, configId);
 	const command = resolveAgentCommand(agent, config, ctx);
-	const extraEnv: Record<string, string> = {};
+	// Agent-type defaults first, then config envVars override
+	const extraEnv: Record<string, string> = { ...getDefaultEnvForAgent(agent, config) };
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
@@ -250,7 +265,9 @@ export async function resolveCommandForProject(
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
 		const command = resolveAgentCommand(agent, config, ctx);
-		const extraEnv = buildTaskEnv(project, taskTitle, "", worktreePath, config);
+		// Agent-type defaults first, then buildTaskEnv (which includes config envVars) overrides
+		const agentDefaults = getDefaultEnvForAgent(agent, config);
+		const extraEnv = { ...agentDefaults, ...buildTaskEnv(project, taskTitle, "", worktreePath, config) };
 		return { command, agent, config, extraEnv };
 	}
 
