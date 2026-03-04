@@ -47,8 +47,8 @@ export async function confirmTaskCompletion(
 		warnings.push(t("task.warnUnpushed", { count: String(status.unpushed) }));
 	}
 
-	// Pushed but unmerged
-	if (status.unpushed >= 0 && status.ahead > 0) {
+	// Pushed but unmerged (skip if content is already in base branch, e.g. squash/rebase merge)
+	if (status.unpushed >= 0 && status.ahead > 0 && !status.mergedByContent) {
 		warnings.push(
 			t("task.warnUnmerged", {
 				count: String(status.ahead),

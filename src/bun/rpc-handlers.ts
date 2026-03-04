@@ -813,19 +813,23 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 
 		if (!task.worktreePath) {
-			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0 };
+			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false };
 		}
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-		const [, status, uncommitted, unpushed] = await Promise.all([
-			git.fetchOrigin(project.path),
-			git.getBranchStatus(task.worktreePath, baseBranch),
+		log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: task.branchName });
+		await git.fetchOrigin(project.path);
+		const remoteBase = `origin/${baseBranch}`;
+		const [status, uncommitted, unpushed] = await Promise.all([
+			git.getBranchStatus(task.worktreePath, remoteBase),
 			git.getUncommittedChanges(task.worktreePath),
 			git.getUnpushedCount(task.worktreePath, task.branchName ?? ""),
 		]);
-		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, baseBranch) : false;
+		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, remoteBase });
+		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, remoteBase) : false;
+		const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, remoteBase) : false;
 
-		const result = { ...status, canRebase, ...uncommitted, unpushed };
+		const result = { ...status, canRebase, ...uncommitted, unpushed, mergedByContent };
 		log.info("← getBranchStatus", result);
 		return result;
 	},
@@ -885,7 +889,8 @@ export const handlers = {
 		if (!task.worktreePath) throw new Error("Task has no worktree");
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-		const status = await git.getBranchStatus(task.worktreePath, baseBranch);
+		await git.fetchOrigin(project.path);
+		const status = await git.getBranchStatus(task.worktreePath, `origin/${baseBranch}`);
 		if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
