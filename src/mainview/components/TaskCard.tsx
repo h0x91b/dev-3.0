@@ -193,6 +193,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		}
 	}
 
+	const isCompleted = task.status === "completed";
+
 	function handleClick() {
 		if (isActive && !menuOpen) {
 			closePreview();
@@ -206,6 +208,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					activeTaskId: task.id,
 				});
 			}
+		} else if ((isCompleted || isCancelled) && !menuOpen) {
+			setDetailOpen(true);
 		}
 	}
 
@@ -352,7 +356,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
 			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-l-[3px] ${isActiveInSplit ? "border-accent/50 ring-2 ring-accent/30" : "border-transparent"} ${
-				isActive
+				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 			} ${moving ? "opacity-50 pointer-events-none" : ""}`}

@@ -143,6 +143,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"task.edit": "Editar",
 	"task.close": "Cerrar",
 	"task.showDescription": "Mostrar descripción completa",
+	"task.reopenTo": "Reabrir como",
 	"task.bellTooltip": "Requiere atención",
 	"task.warnCompletionTitle": "Cambios sin guardar",
 	"task.warnUncommitted": "Cambios sin confirmar: +{insertions} / -{deletions} líneas",
@@ -234,6 +235,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.devServerFailed": "Error al iniciar el servidor de desarrollo: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Actualizar estado de la rama",
+	"infoPanel.movedAt": "Movido",
+	"infoPanel.baseBranch": "Rama base",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-div",

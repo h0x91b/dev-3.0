@@ -145,6 +145,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"task.edit": "Редактировать",
 	"task.close": "Закрыть",
 	"task.showDescription": "Показать полное описание",
+	"task.reopenTo": "Переоткрыть как",
 	"task.bellTooltip": "Требует внимания",
 	"task.warnCompletionTitle": "Несохранённые изменения",
 	"task.warnUncommitted": "Незакоммиченные изменения: +{insertions} / -{deletions} строк",
@@ -235,6 +236,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"infoPanel.devServerFailed": "Не удалось запустить dev-сервер: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Обновить статус ветки",
+	"infoPanel.movedAt": "Перемещено",
+	"infoPanel.baseBranch": "Базовая ветка",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",

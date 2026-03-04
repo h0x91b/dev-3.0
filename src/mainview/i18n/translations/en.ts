@@ -141,6 +141,7 @@ const en = {
 	"task.edit": "Edit",
 	"task.close": "Close",
 	"task.showDescription": "Show full description",
+	"task.reopenTo": "Reopen as",
 	"task.bellTooltip": "Needs attention",
 	"task.warnCompletionTitle": "Unsaved Changes",
 	"task.warnUncommitted": "Uncommitted changes: +{insertions} / -{deletions} lines",
@@ -231,6 +232,8 @@ const en = {
 	"infoPanel.devServerFailed": "Failed to start dev server: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Refresh branch status",
+	"infoPanel.movedAt": "Moved",
+	"infoPanel.baseBranch": "Base Branch",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-split",

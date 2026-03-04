@@ -1,0 +1,1 @@
+Clicking on completed or cancelled task cards now opens a full-screen modal showing all task details: description, notes (with full CRUD), labels, branch info, and timestamps. The modal also includes a status dropdown to reopen/move the task back to any other status. Previously, completed/cancelled cards were unresponsive to clicks.

@@ -446,6 +446,32 @@ describe("TaskCard", () => {
 
 			expect(navigate).not.toHaveBeenCalled();
 		});
+
+		it("clicking completed task opens detail modal", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "completed" });
+			renderCard(task, { navigate });
+
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			await user.click(card);
+
+			expect(navigate).not.toHaveBeenCalled();
+			expect(screen.getByTestId("task-detail-modal")).toBeInTheDocument();
+		});
+
+		it("clicking cancelled task opens detail modal", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "cancelled" });
+			renderCard(task, { navigate });
+
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			await user.click(card);
+
+			expect(navigate).not.toHaveBeenCalled();
+			expect(screen.getByTestId("task-detail-modal")).toBeInTheDocument();
+		});
 	});
 
 	describe("drag and drop", () => {
