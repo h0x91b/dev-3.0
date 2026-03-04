@@ -315,6 +315,120 @@ describe("TerminalView", () => {
 		});
 	});
 
+	// ── WebSocket communication ─────────────────────────────────
+	describe("WebSocket communication", () => {
+		// -- onopen: resize dance --
+		it("sends resize nudge then correct dimensions on open", async () => {
+			const { ws } = await init();
+			ws.send.mockClear();
+
+			vi.useFakeTimers();
+			ws.onopen!({});
+
+			// First: nudge with cols - 1
+			expect(ws.send).toHaveBeenCalledWith("\x1b]resize;79;24\x07");
+
+			// After 50ms: correct dimensions
+			vi.advanceTimersByTime(50);
+			expect(ws.send).toHaveBeenCalledWith("\x1b]resize;80;24\x07");
+			vi.useRealTimers();
+		});
+
+		it("skips resize dance when proposeDimensions returns null", async () => {
+			const { ws } = await init();
+			m.fitAddon.proposeDimensions.mockReturnValue(null);
+			ws.send.mockClear();
+
+			ws.onopen!({});
+			expect(ws.send).not.toHaveBeenCalled();
+		});
+
+		// -- onmessage: string data --
+		it("writes string data to terminal", async () => {
+			const { ws } = await init();
+			ws.onmessage!({ data: "hello world" });
+			expect(m.term.write).toHaveBeenCalledWith("hello world");
+		});
+
+		it("strips OSC52 sequences with BEL terminator", async () => {
+			const { ws } = await init();
+			ws.onmessage!({ data: "a\x1b]52;c;SGVsbG8=\x07b" });
+			expect(m.term.write).toHaveBeenCalledWith("ab");
+		});
+
+		it("strips OSC52 sequences with ST terminator", async () => {
+			const { ws } = await init();
+			ws.onmessage!({ data: "x\x1b]52;c;SGVsbG8=\x1b\\y" });
+			expect(m.term.write).toHaveBeenCalledWith("xy");
+		});
+
+		it("does not write empty string after full OSC52 strip", async () => {
+			const { ws } = await init();
+			ws.onmessage!({ data: "\x1b]52;c;SGVsbG8=\x07" });
+			expect(m.term.write).not.toHaveBeenCalled();
+		});
+
+		// -- onmessage: binary data --
+		it("writes binary data as Uint8Array", async () => {
+			const { ws } = await init();
+			ws.onmessage!({ data: new ArrayBuffer(4) });
+			expect(m.term.write).toHaveBeenCalledWith(
+				expect.any(Uint8Array),
+			);
+		});
+
+		// -- onclose / onerror --
+		it("shows session ended on close", async () => {
+			const { ws } = await init();
+			ws.onclose!({ code: 1000, reason: "", wasClean: true });
+			expect(m.term.writeln).toHaveBeenCalledWith(
+				expect.stringContaining("session ended"),
+			);
+		});
+
+		it("shows error message on WebSocket failure", async () => {
+			const { ws } = await init();
+			ws.onerror!({});
+			expect(m.term.writeln).toHaveBeenCalledWith(
+				expect.stringContaining("Failed to connect"),
+			);
+		});
+
+		// -- terminal input → WebSocket --
+		it("forwards terminal input to WebSocket", async () => {
+			const { ws } = await init();
+			ws.send.mockClear();
+			m.onDataCb!("ls -la\n");
+			expect(ws.send).toHaveBeenCalledWith("ls -la\n");
+		});
+
+		it("does not forward input when WebSocket is closed", async () => {
+			const { ws } = await init();
+			ws.readyState = MockWebSocket.CLOSED;
+			ws.send.mockClear();
+			m.onDataCb!("ignored");
+			expect(ws.send).not.toHaveBeenCalled();
+		});
+
+		// -- terminal resize → WebSocket --
+		it("forwards terminal resize to WebSocket", async () => {
+			const { ws } = await init();
+			ws.send.mockClear();
+			m.onResizeCb!({ cols: 120, rows: 40 });
+			expect(ws.send).toHaveBeenCalledWith(
+				"\x1b]resize;120;40\x07",
+			);
+		});
+
+		it("does not forward resize when WebSocket is closed", async () => {
+			const { ws } = await init();
+			ws.readyState = MockWebSocket.CLOSED;
+			ws.send.mockClear();
+			m.onResizeCb!({ cols: 100, rows: 30 });
+			expect(ws.send).not.toHaveBeenCalled();
+		});
+	});
+
 	// ── Drag & drop (dragover — no full init needed) ────────────
 	describe("drag and drop", () => {
 		it("prevents default on dragover", () => {
