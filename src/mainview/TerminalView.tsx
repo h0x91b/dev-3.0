@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
+import { getShiftKeySequence } from "./shift-key-sequences";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -199,6 +200,23 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							fitAddon!.observeResize();
 							term.focus();
 							mouseCleanup = setupMouseTracking(term);
+
+							// Fix Shift+functional keys — intercept before
+							// ghostty-web's buggy shortcut swallows the modifier.
+							// https://github.com/coder/ghostty-web/issues/109
+							term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+								const seq = getShiftKeySequence(event);
+								if (seq) {
+									const hex = Array.from(seq, c => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+									console.log(`[ShiftKey] intercepted ${event.code} → sending ${seq.length}B: ${hex}`);
+									if (wsRef.current?.readyState === WebSocket.OPEN) {
+										wsRef.current.send(seq);
+									}
+									return true;
+								}
+								return false;
+							});
+
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");
 							connectPty(term, fitAddon!);
 						} catch (err) {

@@ -55,6 +55,7 @@ bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy
 set -g visual-bell off
 set -g bell-action any
 setw -g monitor-bell on
+
 `;
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
@@ -501,6 +502,11 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
+				// Debug: log escape sequences being written to tmux PTY
+				if (data.includes("\x1b")) {
+					const hex = Array.from(data, (c: string) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+					log.info("PTY write (has ESC)", { len: data.length, hex });
+				}
 				session.proc.terminal.write(data);
 			} catch (err) {
 				log.error("WS message handler error", {
