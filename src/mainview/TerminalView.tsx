@@ -288,10 +288,23 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			});
 			document.addEventListener("mouseup", onMouseUp);
 
+			let scrollAccumulator = 0;
+			const SCROLL_THRESHOLD = 50;
+
 			term.attachCustomWheelEventHandler((e: WheelEvent) => {
 				if (!term.hasMouseTracking()) return false;
 				const [col, row] = cellCoords(e);
-				sgrMouse(e.deltaY < 0 ? 64 : 65, col, row, true);
+
+				scrollAccumulator += e.deltaY;
+				const lines = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
+				if (lines !== 0) {
+					scrollAccumulator -= lines * SCROLL_THRESHOLD;
+					const code = lines < 0 ? 64 : 65;
+					const count = Math.abs(lines);
+					for (let i = 0; i < count; i++) {
+						sgrMouse(code, col, row, true);
+					}
+				}
 				return true;
 			});
 
