@@ -281,18 +281,30 @@ const handlers: Record<string, Handler> = {
 				labelIds: (task.labelIds ?? []).filter((id) => id !== label.id),
 			});
 		}
+		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
 		return { deleted: label.id };
 	},
 
 	"task.setLabels": async (params) => {
 		const taskId = params.taskId as string;
 		const projectId = params.projectId as string;
-		const labelIds = params.labelIds as string[];
+		const rawLabelIds = params.labelIds as string[];
 		if (!taskId) throw new Error("taskId is required");
 		if (!projectId) throw new Error("projectId is required");
-		if (!Array.isArray(labelIds)) throw new Error("labelIds must be an array");
+		if (!Array.isArray(rawLabelIds)) throw new Error("labelIds must be an array");
 
 		const project = await data.getProject(projectId);
+		const projectLabels = project.labels ?? [];
+
+		// Resolve short label ID prefixes to full UUIDs
+		const labelIds = rawLabelIds.map((raw) => {
+			const exact = projectLabels.find((l) => l.id === raw);
+			if (exact) return exact.id;
+			const byPrefix = projectLabels.find((l) => l.id.startsWith(raw));
+			if (byPrefix) return byPrefix.id;
+			return raw; // pass through if not found — validation is caller's job
+		});
+
 		const task = await data.updateTask(project, taskId, { labelIds });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 		return task;

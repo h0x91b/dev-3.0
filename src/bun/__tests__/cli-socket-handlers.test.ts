@@ -1131,6 +1131,36 @@ describe("task.setLabels", () => {
 		});
 	});
 
+	it("resolves short label ID prefixes to full UUIDs", async () => {
+		const labels = [
+			{ id: "aaaa1111-2222-3333-4444-555555555555", name: "bug", color: "#ef4444" },
+			{ id: "bbbb1111-2222-3333-4444-555555555555", name: "feature", color: "#14b8a6" },
+		];
+		const project = makeProject({ labels });
+		const task = makeTask({ labelIds: [] });
+		const updated = { ...task, labelIds: labels.map((l) => l.id) };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: task.id,
+				projectId: "proj-1",
+				labelIds: ["aaaa1111", "bbbb1111"], // short prefixes
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		// Should resolve to full UUIDs
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			labelIds: [
+				"aaaa1111-2222-3333-4444-555555555555",
+				"bbbb1111-2222-3333-4444-555555555555",
+			],
+		});
+	});
+
 	it("clears labels when empty array provided", async () => {
 		const project = makeProject();
 		const task = makeTask({ labelIds: ["lbl-1"] });

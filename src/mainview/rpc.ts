@@ -11,6 +11,11 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:taskUpdated", { detail: payload }),
 				);
 			},
+			projectUpdated: (payload: any) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:projectUpdated", { detail: payload }),
+				);
+			},
 			ptyDied: (payload: any) => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:ptyDied", { detail: payload }),
