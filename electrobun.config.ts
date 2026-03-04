@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "dev-3.0",
 		identifier: "dev3.electrobun.dev",
-		version: "0.3.8",
+		version: "0.3.9",
 	},
 	release: {
 		baseUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0",
