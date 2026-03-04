@@ -835,8 +835,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</button>
 	);
 
-	const tmuxKbd = "px-1 py-0.5 rounded bg-base border border-edge/50 font-mono text-[10px] text-fg-3";
-	const tmuxBtn = "flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg-2 transition-colors cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-elevated";
+	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 flex items-center gap-1";
 
 	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom") => (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -846,20 +845,28 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const tmuxHintsInline = (
 		<div
 			ref={hintsTriggerRef}
-			className="flex items-center gap-1.5 flex-shrink-0"
+			className="flex items-center gap-1 flex-shrink-0"
 			onMouseEnter={showHints}
 			onMouseLeave={hideHints}
 		>
-			<button className={tmuxBtn} onClick={handleTmuxAction("splitH")} title={t("tmux.splitHDesc")}>
-				<kbd className={tmuxKbd}>⌃B -</kbd>{t("tmux.hSplit")}
+			<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} title={t("tmux.splitHDesc")}>
+				<svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+					<rect x="1.5" y="1.5" width="13" height="13" rx="1.5" />
+					<line x1="1.5" y1="8" x2="14.5" y2="8" />
+				</svg>
 			</button>
-			<span className="text-fg-muted/30">·</span>
-			<button className={tmuxBtn} onClick={handleTmuxAction("splitV")} title={t("tmux.splitVDesc")}>
-				<kbd className={tmuxKbd}>⌃B |</kbd>{t("tmux.vSplit")}
+			<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} title={t("tmux.splitVDesc")}>
+				<svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+					<rect x="1.5" y="1.5" width="13" height="13" rx="1.5" />
+					<line x1="8" y1="1.5" x2="8" y2="14.5" />
+				</svg>
 			</button>
-			<span className="text-fg-muted/30">·</span>
-			<button className={tmuxBtn} onClick={handleTmuxAction("zoom")} title={t("tmux.zoomDesc")}>
-				<kbd className={tmuxKbd}>⌃B z</kbd>{t("tmux.zoom")}
+			<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} title={t("tmux.zoomDesc")}>
+				<svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+					<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+					<polyline points="6,2.5 2.5,2.5 2.5,6" />
+					<polyline points="10,13.5 13.5,13.5 13.5,10" />
+				</svg>
 			</button>
 			<button
 				className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
