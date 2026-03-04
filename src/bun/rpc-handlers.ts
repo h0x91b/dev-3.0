@@ -812,7 +812,7 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 
 		if (!task.worktreePath) {
-			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0 };
+			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false };
 		}
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
