@@ -199,6 +199,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 							fitAddon!.observeResize();
 							term.focus();
 							mouseCleanup = setupMouseTracking(term);
+							registerFilePathLinkProvider(term);
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");
 							connectPty(term, fitAddon!);
 						} catch (err) {
@@ -212,6 +213,41 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				}
 			});
 			layoutObserver.observe(containerRef.current);
+		}
+
+		// Detect absolute file paths (e.g. /Users/foo/bar.ts) and make them
+		// Cmd+Clickable, opening via Utils.openPath() in the main process.
+		const FILE_PATH_RE = /(?:^|\s)(\/[\w.+-]+(?:\/[\w.@+-]+)+(?::[\d]+)?)/g;
+
+		function registerFilePathLinkProvider(term: Terminal) {
+			term.registerLinkProvider({
+				provideLinks(y: number, callback: (links: any[] | undefined) => void) {
+					const line = term.buffer.active.getLine(y);
+					if (!line) { callback(undefined); return; }
+
+					const text = line.translateToString();
+					const links: any[] = [];
+					let match: RegExpExecArray | null;
+
+					FILE_PATH_RE.lastIndex = 0;
+					while ((match = FILE_PATH_RE.exec(text)) !== null) {
+						const fullMatch = match[1];
+						const startX = match.index + (match[0].length - fullMatch.length);
+						links.push({
+							text: fullMatch,
+							range: {
+								start: { x: startX + 1, y: y + 1 },
+								end: { x: startX + fullMatch.length, y: y + 1 },
+							},
+							activate: () => {
+								api.request.openPath({ path: fullMatch.replace(/:[\d]+$/, "") });
+							},
+						});
+					}
+
+					callback(links.length > 0 ? links : undefined);
+				},
+			});
 		}
 
 		function setupMouseTracking(term: Terminal): () => void {

@@ -1535,4 +1535,9 @@ export const handlers = {
 		}
 		log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 	},
+
+	openPath(params: { path: string }): boolean {
+		log.info("→ openPath", { path: params.path });
+		return Utils.openPath(params.path);
+	},
 };

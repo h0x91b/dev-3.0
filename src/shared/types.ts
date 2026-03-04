@@ -479,6 +479,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; action: "splitH" | "splitV" | "zoom" };
 				response: void;
 			};
+			openPath: {
+				params: { path: string };
+				response: boolean;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
