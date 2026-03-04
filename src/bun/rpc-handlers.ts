@@ -23,16 +23,6 @@ export function escapeForDoubleQuotes(s: string): string {
 }
 
 /**
- * Wrap a resolved shell command with an echo prefix for display.
- * The echo part uses double-quote escaping to safely display the command.
- * The actual command is appended verbatim (already properly escaped).
- */
-export function buildEchoAndRun(tmuxCmd: string): string {
-	const escaped = escapeForDoubleQuotes(tmuxCmd);
-	return `echo "Starting: ${escaped}" && ${tmuxCmd}; __EC=$?; if [ $__EC -ne 0 ]; then printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"; exec bash; fi`;
-}
-
-/**
  * Build a bash script that echoes the command and then exec's it.
  * Used when a setup script is present and the main command runs in a split pane.
  */
@@ -323,15 +313,23 @@ export async function launchTaskPty(
 	const currentPath = process.env.PATH || "";
 	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
-	const echoAndRun = buildEchoAndRun(tmuxCmd);
+
+	// Write the command to a temp script instead of passing inline.
+	// tmux 3.x limits the shell-command for new-session to ~16 KB;
+	// inline commands with long task descriptions easily exceed that.
+	const runScriptPath = `/tmp/dev3-${task.id}-run.sh`;
+	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd));
+	const wrapperCmd = `bash "${runScriptPath}"`;
+
 	log.info("Creating PTY session", {
 		taskId: task.id.slice(0, 8),
 		worktreePath,
-		command: echoAndRun.slice(0, 200),
+		command: tmuxCmd.slice(0, 200),
+		scriptPath: runScriptPath,
 		envKeys: Object.keys(env),
 	});
 	try {
-		pty.createSession(task.id, project.id, worktreePath, echoAndRun, env, task.tmuxSocket ?? null);
+		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? null);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 	} catch (err) {
 		log.error("pty.createSession FAILED", {

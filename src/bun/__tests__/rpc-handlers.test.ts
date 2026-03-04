@@ -108,7 +108,6 @@ import { existsSync } from "node:fs";
 const {
 	handlers,
 	escapeForDoubleQuotes,
-	buildEchoAndRun,
 	buildCmdScript,
 	isActive,
 	handleBellAutoStatus,
@@ -258,88 +257,6 @@ describe("escapeForDoubleQuotes", () => {
 });
 
 // ================================================================
-// buildEchoAndRun
-// ================================================================
-
-describe("buildEchoAndRun", () => {
-	const EXIT_HANDLER_SUFFIX = "; __EC=$?; if [ $__EC -ne 0 ]; then printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' \"$__EC\"; exec bash; fi";
-
-	it("wraps simple command with echo prefix and exit handler", () => {
-		const result = buildEchoAndRun("claude");
-		expect(result).toBe(`echo "Starting: claude" && claude${EXIT_HANDLER_SUFFIX}`);
-	});
-
-	it("preserves the actual command verbatim after &&", () => {
-		const cmd = "claude --model opus 'Fix the bug'";
-		const result = buildEchoAndRun(cmd);
-		expect(result).toContain(`&& ${cmd}`);
-	});
-
-	it("includes exit code handler that keeps shell alive on failure", () => {
-		const result = buildEchoAndRun("claude");
-		expect(result).toContain("__EC=$?");
-		expect(result).toContain("if [ $__EC -ne 0 ]");
-		expect(result).toContain("exec bash");
-	});
-
-	it("escapes double quotes in echo portion", () => {
-		const cmd = 'claude "quoted arg"';
-		const result = buildEchoAndRun(cmd);
-		expect(result).toBe(`echo "Starting: claude \\"quoted arg\\"" && claude "quoted arg"${EXIT_HANDLER_SUFFIX}`);
-	});
-
-	it("escapes dollar signs in echo portion", () => {
-		const cmd = "claude '$HOME/path'";
-		const result = buildEchoAndRun(cmd);
-		expect(result.startsWith('echo "Starting: claude ')).toBe(true);
-		expect(result).toContain("\\$HOME");
-		expect(result).toContain(`&& claude '$HOME/path'`);
-	});
-
-	it("escapes backticks in echo portion", () => {
-		const cmd = "claude 'run `whoami`'";
-		const result = buildEchoAndRun(cmd);
-		expect(result).toContain("\\`whoami\\`");
-		expect(result).toContain("&& claude 'run `whoami`'");
-	});
-
-	it("escapes backslashes in echo portion", () => {
-		const cmd = "claude 'it'\\''s a test'";
-		const result = buildEchoAndRun(cmd);
-		expect(result).toContain("\\\\");
-		expect(result).toContain(`&& ${cmd}`);
-	});
-
-	it("handles command with single-quoted shellEscape output", () => {
-		const cmd = "claude --append-system-prompt 'MANDATORY: ...' 'Fix the login bug'";
-		const result = buildEchoAndRun(cmd);
-		expect(result.startsWith('echo "Starting: ')).toBe(true);
-		expect(result).toContain(`&& ${cmd}`);
-	});
-
-	it("handles real-world command with special chars in task description", () => {
-		const escaped = "'Fix the \"login\" bug (it'\\''s broken); check $PATH & `env`'";
-		const cmd = `claude --append-system-prompt 'MANDATORY' ${escaped}`;
-		const result = buildEchoAndRun(cmd);
-
-		// Extract echo portion (everything before first " && ")
-		const echoPart = result.split(" && ")[0];
-		const echoContent = echoPart.slice('echo "Starting: '.length, -1);
-		expect(echoContent).not.toMatch(/(?<!\\)"/);
-		expect(echoContent).not.toMatch(/(?<!\\)\$/);
-		expect(echoContent).not.toMatch(/(?<!\\)`/);
-
-		expect(result).toContain(`&& ${cmd}`);
-	});
-
-	it("handles command with empty string argument", () => {
-		const cmd = "claude ''";
-		const result = buildEchoAndRun(cmd);
-		expect(result).toBe(`echo "Starting: claude ''" && claude ''${EXIT_HANDLER_SUFFIX}`);
-	});
-});
-
-// ================================================================
 // buildCmdScript
 // ================================================================
 
@@ -409,62 +326,66 @@ describe("end-to-end: task description → shell command escaping", () => {
 	function simulatePipeline(taskDescription: string): {
 		shellEscaped: string;
 		agentCmd: string;
-		echoAndRun: string;
 		cmdScript: string;
 	} {
 		const shellEscaped = shellEscape(taskDescription);
 		const agentCmd = `claude --append-system-prompt 'MANDATORY' ${shellEscaped}`;
-		const echoAndRun = buildEchoAndRun(agentCmd);
 		const cmdScript = buildCmdScript(agentCmd);
-		return { shellEscaped, agentCmd, echoAndRun, cmdScript };
+		return { shellEscaped, agentCmd, cmdScript };
+	}
+
+	/** Extract the echo line from a buildCmdScript output */
+	function extractEchoLine(script: string): string {
+		const line = script.split("\n").find((l) => l.startsWith("echo "));
+		if (!line) throw new Error("No echo line found in script");
+		return line;
 	}
 
 	it("handles plain text task", () => {
-		const { echoAndRun, agentCmd } = simulatePipeline("Fix the login bug");
-		expect(echoAndRun).toContain(`&& ${agentCmd}`);
+		const { cmdScript, agentCmd } = simulatePipeline("Fix the login bug");
+		expect(cmdScript).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles task with single quotes", () => {
-		const { agentCmd, echoAndRun } = simulatePipeline("Fix it's broken auth");
+		const { agentCmd, cmdScript } = simulatePipeline("Fix it's broken auth");
 		expect(agentCmd).toContain("'Fix it'\\''s broken auth'");
-		expect(echoAndRun).toContain(`&& ${agentCmd}`);
+		expect(cmdScript).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles task with double quotes", () => {
-		const { agentCmd, echoAndRun } = simulatePipeline('Fix the "broken" auth');
+		const { agentCmd, cmdScript } = simulatePipeline('Fix the "broken" auth');
 		expect(agentCmd).toContain("'Fix the \"broken\" auth'");
-		const echoPart = echoAndRun.split(" && ")[0];
+		const echoPart = extractEchoLine(cmdScript).split(" && ")[0];
 		expect(echoPart).toContain('\\"broken\\"');
 	});
 
 	it("handles task with dollar signs", () => {
-		const { agentCmd, echoAndRun } = simulatePipeline("Fix $HOME expansion");
+		const { agentCmd, cmdScript } = simulatePipeline("Fix $HOME expansion");
 		expect(agentCmd).toContain("'Fix $HOME expansion'");
-		const echoPart = echoAndRun.split(" && ")[0];
+		const echoPart = extractEchoLine(cmdScript).split(" && ")[0];
 		expect(echoPart).toContain("\\$HOME");
 	});
 
 	it("handles task with backticks", () => {
-		const { agentCmd, echoAndRun } = simulatePipeline("Run `test` command");
+		const { agentCmd, cmdScript } = simulatePipeline("Run `test` command");
 		expect(agentCmd).toContain("'Run `test` command'");
-		const echoPart = echoAndRun.split(" && ")[0];
+		const echoPart = extractEchoLine(cmdScript).split(" && ")[0];
 		expect(echoPart).toContain("\\`test\\`");
 	});
 
 	it("handles task with shell injection attempt", () => {
-		const { agentCmd, echoAndRun } = simulatePipeline("'; rm -rf / #");
+		const { agentCmd, cmdScript } = simulatePipeline("'; rm -rf / #");
 		expect(agentCmd).toContain("''\\''; rm -rf / #'");
-		expect(echoAndRun).toContain(`&& ${agentCmd}`);
+		expect(cmdScript).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles task with all dangerous chars combined", () => {
 		const desc = "Fix \"login\" (it's broken); $HOME `env` > /tmp/out & rm -rf / | cat";
-		const { agentCmd, echoAndRun, cmdScript } = simulatePipeline(desc);
+		const { agentCmd, cmdScript } = simulatePipeline(desc);
 
-		expect(echoAndRun).toContain(`&& ${agentCmd}`);
 		expect(cmdScript).toContain(`&& ${agentCmd}`);
 
-		const echoPart = echoAndRun.split(" && ")[0];
+		const echoPart = extractEchoLine(cmdScript).split(" && ")[0];
 		const echoContent = echoPart.slice('echo "Starting: '.length, -1);
 		expect(echoContent).not.toMatch(/(?<!\\)"/);
 		expect(echoContent).not.toMatch(/(?<!\\)\$/);
@@ -473,24 +394,65 @@ describe("end-to-end: task description → shell command escaping", () => {
 
 	it("handles Russian text with special chars", () => {
 		const desc = "Исправь баг \"авторизации\" и проверь $PATH";
-		const { agentCmd, echoAndRun } = simulatePipeline(desc);
+		const { agentCmd, cmdScript } = simulatePipeline(desc);
 		expect(agentCmd).toContain("Исправь баг");
-		expect(echoAndRun).toContain(`&& ${agentCmd}`);
-		const echoPart = echoAndRun.split(" && ")[0];
+		expect(cmdScript).toContain(`&& ${agentCmd}`);
+		const echoPart = extractEchoLine(cmdScript).split(" && ")[0];
 		expect(echoPart).toContain("\\$PATH");
 		expect(echoPart).toContain('\\"авторизации\\"');
 	});
 
 	it("handles newlines in task description", () => {
 		const desc = "Step 1: do this\nStep 2: do that\nStep 3: profit";
-		const { agentCmd, echoAndRun } = simulatePipeline(desc);
+		const { agentCmd, cmdScript } = simulatePipeline(desc);
 		expect(agentCmd).toContain("Step 1: do this\nStep 2: do that");
-		expect(echoAndRun).toContain(`&& ${agentCmd}`);
+		expect(cmdScript).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles empty task description", () => {
 		const { shellEscaped } = simulatePipeline("");
 		expect(shellEscaped).toBe("''");
+	});
+
+	// tmux 3.x limits the shell-command passed to `new-session` to ~16 320 bytes.
+	// The fix writes the full command to a temp script file, so the tmux argument
+	// is just `bash "/tmp/dev3-{taskId}-run.sh"` regardless of description length.
+	const TMUX_CMD_LIMIT = 16_320;
+
+	it("keeps tmux command under the tmux limit for long task descriptions", () => {
+		// Simulate a realistic long description (user pasted a bug report / log).
+		// With the real DEV3_SYSTEM_PROMPT (~590 chars) the effective agent
+		// command is already ~700+ chars before the description.
+		const realSystemPrompt =
+			"MANDATORY: You are inside a dev-3.0 managed worktree. " +
+			"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
+			"TASK STATUS MANAGEMENT IS NON-NEGOTIABLE: " +
+			"(1) Run `~/.dev3.0/bin/dev3 task move --status in-progress` when you START working. " +
+			"(2) Run `~/.dev3.0/bin/dev3 task move --status user-questions` if you are BLOCKED and need human input. " +
+			"(3) Run `~/.dev3.0/bin/dev3 task move --status review-by-user` when you have COMPLETED all work. " +
+			"You MUST leave the task in one of these statuses before the session ends. " +
+			"NEVER finish a session without updating the task status.";
+
+		// 250 repeats produces a ~9250-char description, which with the old inline
+		// approach (buildEchoAndRun) would produce a ~20 000-char tmux argument,
+		// well over the ~16 320-byte tmux limit.
+		const longDesc = "Описание бага с полным логом ошибки: ".repeat(250);
+		const shellEscaped = shellEscape(longDesc);
+		const agentCmd = `claude --model claude-sonnet-4-6 --permission-mode unrestricted --append-system-prompt ${shellEscape(realSystemPrompt)} ${shellEscaped}`;
+
+		// The fix: write the full command to a temp script file.
+		// The tmux argument is just `bash "/tmp/dev3-{taskId}-run.sh"`.
+		const taskId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+		const wrapperCmd = `bash "/tmp/dev3-${taskId}-run.sh"`;
+
+		// Script file can be arbitrarily long — no tmux limit
+		const scriptContent = buildCmdScript(agentCmd);
+		expect(scriptContent).toContain(`&& ${agentCmd}`);
+		expect(scriptContent.length).toBeGreaterThan(TMUX_CMD_LIMIT);
+
+		// But the wrapper command passed to tmux stays tiny
+		expect(wrapperCmd.length).toBeLessThan(100);
+		expect(wrapperCmd.length).toBeLessThan(TMUX_CMD_LIMIT);
 	});
 });
 
