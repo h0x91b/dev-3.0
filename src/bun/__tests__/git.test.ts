@@ -127,15 +127,14 @@ function makeTaskCommits(local: string): void {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("isContentMergedInto", () => {
-	let repo: TestRepo | undefined;
+	let repo: TestRepo;
 
 	beforeEach(() => {
 		repo = createTestRepo();
 	});
 
 	afterEach(() => {
-		if (repo) cleanup(repo);
-		repo = undefined;
+		cleanup(repo);
 	});
 
 	it("returns false when task branch has not been merged", async () => {

@@ -85,6 +85,7 @@ const defaultBranchStatus: BranchStatus = {
 	insertions: 0,
 	deletions: 0,
 	unpushed: 0,
+	mergedByContent: false,
 };
 
 function renderPanel(
