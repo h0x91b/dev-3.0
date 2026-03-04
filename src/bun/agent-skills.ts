@@ -16,24 +16,38 @@ You are working inside a **dev-3.0 managed worktree** with a Kanban board task a
 
 ## On session start
 
-Run \`~/.dev3.0/bin/dev3 --help\` to learn all available CLI commands. Then proceed with your task.
+Run these two commands **in parallel** (two Bash tool calls in one message) to save time:
+
+- \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
+- \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
+
+Then set \`in-progress\` and begin working.
 
 ## Task status management (CRITICAL — NON-NEGOTIABLE)
 
-You MUST update the task status at every phase transition. This is NOT optional — failing to update statuses breaks the Kanban workflow for the entire team.
+### Status transitions — every turn:
 
-### Required status transitions:
-
-1. **\`~/.dev3.0/bin/dev3 task move --status in-progress\`** — Run this IMMEDIATELY when you begin working on the task (right after \`~/.dev3.0/bin/dev3 --help\` and \`~/.dev3.0/bin/dev3 current\`). Do not write any code or make any changes before setting this status.
-2. **\`~/.dev3.0/bin/dev3 task move --status user-questions\`** — Run this when you are blocked and need human input (ambiguous requirements, missing context, approval needed). Clearly state your questions to the user.
-3. **\`~/.dev3.0/bin/dev3 task move --status review-by-user\`** — Run this when you have fully completed all requested work. This signals the task is done and ready for human review.
+1. **Start of every turn** — run \`~/.dev3.0/bin/dev3 task move --status in-progress\` when you receive a message and begin working.
+2. **End of every turn** — before your final response, you MUST move the task to one of exactly two states:
+   - **\`user-questions\`** — you need user input, clarification, or the ball is on the user's side for any reason. **This is the default if the task is not yet complete.**
+   - **\`review-by-user\`** — you believe the task is fully complete from your side.
+3. **\`in-progress\` is transient** — it MUST NEVER remain after you finish responding. It only exists while you are actively working.
 
 ### Rules:
 
-- **ALWAYS set \`in-progress\` at session start** — no exceptions.
-- **ALWAYS set a final status before the session ends** — either \`review-by-user\` (work done) or \`user-questions\` (blocked).
-- **NEVER leave a task without a status update.** If the task was already \`in-progress\` when you started, that's fine — skip the move but still set a final status.
-- If \`~/.dev3.0/bin/dev3 task move\` fails because the task is already in the target status, that is OK — just continue working.
+- If \`task move\` fails because the task is already in the target status, that is OK — just continue.
+
+## Notes (per-task scratchpad)
+
+Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
+
+## Task title
+
+If the task title is unclear or auto-generated (e.g., a truncated message or a bare link), update it once you understand the task: \`dev3 task update --title "Clear description"\`.
+
+## @file syntax
+
+For long content (descriptions, notes), use \`@path\` to read from a file: \`dev3 note add @findings.md\`.
 `;
 
 /** Agent skill directories relative to $HOME. */
