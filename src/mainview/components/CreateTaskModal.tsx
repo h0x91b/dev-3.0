@@ -146,47 +146,47 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				</h2>
 
 				{/* Description textarea + drop zone */}
-				<div
-					className="space-y-1.5 relative"
-					onDragOver={handleDragOver}
-					onDragEnter={handleDragEnter}
-					onDragLeave={handleDragLeave}
-					onDrop={handleDrop}
-				>
+				<div className="space-y-1.5">
 					<label className="text-fg-2 text-sm font-medium">
 						{t("createTask.descriptionLabel")}
 					</label>
 
-					{/* Drop zone overlay */}
-					{isDragging && (
-						<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent/10 pointer-events-none">
-							<div className="flex items-center gap-2 text-accent font-medium text-sm">
-								<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-								</svg>
-								{t("images.dropHere")}
+					<div
+						className="relative"
+						onDragOver={handleDragOver}
+						onDragEnter={handleDragEnter}
+						onDragLeave={handleDragLeave}
+						onDrop={handleDrop}
+					>
+						{isDragging && (
+							<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent/10 pointer-events-none">
+								<div className="flex items-center gap-2 text-accent font-medium text-sm">
+									<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+									</svg>
+									{t("images.dropHere")}
+								</div>
 							</div>
-						</div>
-					)}
-
-					<textarea
-						ref={textareaRef}
-						value={description}
-						onChange={(e) => setDescription(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-								if (e.shiftKey && onCreateAndRun) {
-									handleCreateAndRun();
-								} else {
-									handleCreate();
+						)}
+							<textarea
+							ref={textareaRef}
+							value={description}
+							onChange={(e) => setDescription(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+									if (e.shiftKey && onCreateAndRun) {
+										handleCreateAndRun();
+									} else {
+										handleCreate();
+									}
 								}
-							}
-						}}
-						onPaste={handlePaste}
-						placeholder={t("createTask.descriptionPlaceholder")}
-						rows={4}
-						className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[80px] max-h-[300px]"
-					/>
+							}}
+							onPaste={handlePaste}
+							placeholder={t("createTask.descriptionPlaceholder")}
+							rows={4}
+							className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[80px] max-h-[300px]"
+						/>
+					</div>
 					{isPasting && (
 						<span className="text-[11px] text-accent animate-pulse">{t("images.pasting")}</span>
 					)}
