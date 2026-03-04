@@ -378,6 +378,11 @@ const ru: TranslationRecord & Record<string, string> = {
 	"gaugeDemo.presetExpense": "Расходы",
 	"gaugeDemo.presetLimit": "Лимит",
 	"gaugeDemo.back": "Назад",
+
+	// Zoom
+	"settings.zoom": "Масштаб",
+	"settings.zoomDesc": "Масштабирование всего интерфейса",
+	"settings.zoomReset": "Сбросить",
 	"gaugeDemo.themeAuto": "Авто",
 	"gaugeDemo.themeDark": "Тёмная",
 	"gaugeDemo.themeLight": "Светлая",

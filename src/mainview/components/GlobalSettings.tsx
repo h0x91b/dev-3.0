@@ -14,6 +14,25 @@ function GlobalSettings() {
 		() => (localStorage.getItem("dev3-theme") as Theme) || "dark",
 	);
 
+	const zoomApi = (window as any).__dev3Zoom as {
+		applyZoom: (level: number) => void;
+		getZoom: () => number;
+		adjustZoom: (delta: number) => void;
+		ZOOM_STEP: number;
+		DEFAULT_ZOOM: number;
+		MIN_ZOOM: number;
+		MAX_ZOOM: number;
+	};
+	const [zoomLevel, setZoomLevel] = useState(() => zoomApi.getZoom());
+
+	useEffect(() => {
+		function onZoomChanged(e: Event) {
+			setZoomLevel((e as CustomEvent).detail);
+		}
+		window.addEventListener("zoom-changed", onZoomChanged);
+		return () => window.removeEventListener("zoom-changed", onZoomChanged);
+	}, []);
+
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
 	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
@@ -204,7 +223,45 @@ function GlobalSettings() {
 						</div>
 					</div>
 
-					{/* Task Drop Position */}
+					{/* Zoom */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.zoom")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.zoomDesc")}
+						</p>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={() => zoomApi.adjustZoom(-zoomApi.ZOOM_STEP)}
+								disabled={zoomLevel <= zoomApi.MIN_ZOOM}
+								className="w-10 h-10 flex items-center justify-center rounded-lg bg-raised border border-edge text-fg text-lg font-bold hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+							>
+								−
+							</button>
+							<div className="flex-1 text-center">
+								<span className="text-fg text-lg font-semibold tabular-nums">
+									{Math.round(zoomLevel * 100)}%
+								</span>
+							</div>
+							<button
+								onClick={() => zoomApi.adjustZoom(zoomApi.ZOOM_STEP)}
+								disabled={zoomLevel >= zoomApi.MAX_ZOOM}
+								className="w-10 h-10 flex items-center justify-center rounded-lg bg-raised border border-edge text-fg text-lg font-bold hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+							>
+								+
+							</button>
+							<button
+								onClick={() => zoomApi.applyZoom(zoomApi.DEFAULT_ZOOM)}
+								disabled={zoomLevel === zoomApi.DEFAULT_ZOOM}
+								className="px-3 h-10 rounded-lg bg-raised border border-edge text-fg-2 text-sm hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+							>
+								{t("settings.zoomReset")}
+							</button>
+						</div>
+					</div>
+
+				{/* Task Drop Position */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("settings.taskDropPosition")}

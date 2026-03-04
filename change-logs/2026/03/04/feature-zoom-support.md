@@ -1,0 +1,1 @@
+Add zoom in/out support for the app UI. Users can zoom with Cmd+=/Cmd-/Cmd+0 keyboard shortcuts, via the View menu, or through the zoom control in Global Settings. Zoom level is persisted across sessions in localStorage.

@@ -54,9 +54,19 @@ function App() {
 		[dispatch],
 	);
 
-	// Cmd+Q / Cmd+, — capture phase so ghostty-web terminal can't swallow them
+	// Zoom helpers from main.tsx bootstrap
+	const zoom = (window as any).__dev3Zoom as {
+		applyZoom: (level: number) => void;
+		getZoom: () => number;
+		adjustZoom: (delta: number) => void;
+		ZOOM_STEP: number;
+		DEFAULT_ZOOM: number;
+	};
+
+	// Cmd+Q / Cmd+, / Cmd+=/- (zoom) — capture phase so ghostty-web terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
+			const mod = e.metaKey || e.ctrlKey;
 			if (e.metaKey && e.key === "q") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -69,6 +79,18 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				navigate({ screen: "settings" });
+			} else if (mod && (e.key === "=" || e.key === "+")) {
+				e.preventDefault();
+				e.stopPropagation();
+				zoom.adjustZoom(zoom.ZOOM_STEP);
+			} else if (mod && e.key === "-") {
+				e.preventDefault();
+				e.stopPropagation();
+				zoom.adjustZoom(-zoom.ZOOM_STEP);
+			} else if (mod && e.key === "0") {
+				e.preventDefault();
+				e.stopPropagation();
+				zoom.applyZoom(zoom.DEFAULT_ZOOM);
 			}
 		},
 		[navigate],
@@ -145,6 +167,21 @@ function App() {
 		window.addEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
 		return () => window.removeEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
 	}, [navigate]);
+
+	// Listen for View > Zoom menu items
+	useEffect(() => {
+		const onZoomIn = () => zoom.adjustZoom(zoom.ZOOM_STEP);
+		const onZoomOut = () => zoom.adjustZoom(-zoom.ZOOM_STEP);
+		const onZoomReset = () => zoom.applyZoom(zoom.DEFAULT_ZOOM);
+		window.addEventListener("rpc:zoomIn", onZoomIn);
+		window.addEventListener("rpc:zoomOut", onZoomOut);
+		window.addEventListener("rpc:zoomReset", onZoomReset);
+		return () => {
+			window.removeEventListener("rpc:zoomIn", onZoomIn);
+			window.removeEventListener("rpc:zoomOut", onZoomOut);
+			window.removeEventListener("rpc:zoomReset", onZoomReset);
+		};
+	}, []);
 
 	// Track page views on route changes
 	useEffect(() => {

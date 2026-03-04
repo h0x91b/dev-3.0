@@ -372,6 +372,11 @@ const en = {
 	"gaugeDemo.presetExpense": "Expense",
 	"gaugeDemo.presetLimit": "Limit",
 	"gaugeDemo.back": "Back",
+
+	// Zoom
+	"settings.zoom": "Zoom",
+	"settings.zoomDesc": "Scale the entire UI",
+	"settings.zoomReset": "Reset",
 	"gaugeDemo.themeAuto": "Auto",
 	"gaugeDemo.themeDark": "Dark",
 	"gaugeDemo.themeLight": "Light",

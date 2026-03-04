@@ -375,6 +375,11 @@ const es: TranslationRecord & Record<string, string> = {
 	"gaugeDemo.presetExpense": "Gastos",
 	"gaugeDemo.presetLimit": "Límite",
 	"gaugeDemo.back": "Volver",
+
+	// Zoom
+	"settings.zoom": "Zoom",
+	"settings.zoomDesc": "Escalar toda la interfaz",
+	"settings.zoomReset": "Restablecer",
 	"gaugeDemo.themeAuto": "Auto",
 	"gaugeDemo.themeDark": "Oscuro",
 	"gaugeDemo.themeLight": "Claro",

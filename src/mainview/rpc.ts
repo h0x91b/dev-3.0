@@ -46,6 +46,15 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:terminalHardReset"),
 				);
 			},
+		zoomIn: () => {
+				window.dispatchEvent(new CustomEvent("rpc:zoomIn"));
+			},
+			zoomOut: () => {
+				window.dispatchEvent(new CustomEvent("rpc:zoomOut"));
+			},
+			zoomReset: () => {
+				window.dispatchEvent(new CustomEvent("rpc:zoomReset"));
+			},
 		} as any,
 	},
 });
