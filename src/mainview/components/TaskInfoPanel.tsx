@@ -1062,6 +1062,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 								</>
 							)}
 
+							{(() => {
+								const projectLabels = project.labels ?? [];
+								const assignedLabels = (task.labelIds ?? [])
+									.map((id) => projectLabels.find((l) => l.id === id))
+									.filter(Boolean) as typeof projectLabels;
+								return assignedLabels.length > 0 ? (
+									<>
+										<span className="text-fg-3">{t("labels.taskLabels")}</span>
+										<div className="flex items-center flex-wrap gap-1">
+											{assignedLabels.map((label) => (
+												<LabelChip key={label.id} label={label} size="xs" />
+											))}
+										</div>
+									</>
+								) : null;
+							})()}
+
 							{task.description && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.description")}</span>
