@@ -108,19 +108,29 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 					<ImageAttachmentsStrip text={note.content} />
 				</>
 			) : (
-				<>
+				<div
+					className="relative"
+					onDragOver={projectId ? handleDragOver : undefined}
+					onDragEnter={projectId ? handleDragEnter : undefined}
+					onDragLeave={projectId ? handleDragLeave : undefined}
+					onDrop={projectId ? handleDrop : undefined}
+				>
+					{isDragging && (
+						<div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-accent bg-accent/10 pointer-events-none">
+							<div className="flex items-center gap-1.5 text-accent font-medium text-xs">
+								<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+								</svg>
+								{t("images.dropHere")}
+							</div>
+						</div>
+					)}
 					<textarea
 						ref={textareaRef}
 						value={value}
 						onChange={handleChange}
 						onPaste={projectId ? handlePaste : undefined}
-						onDragOver={projectId ? handleDragOver : undefined}
-						onDragEnter={projectId ? handleDragEnter : undefined}
-						onDragLeave={projectId ? handleDragLeave : undefined}
-						onDrop={projectId ? handleDrop : undefined}
-						className={`w-full bg-transparent text-xs text-fg-2 resize-none outline-none min-h-[40px] rounded transition-colors ${
-							isDragging ? "border border-accent border-dashed bg-accent/5" : ""
-						}`}
+						className="w-full bg-transparent text-xs text-fg-2 resize-none outline-none min-h-[40px] rounded"
 						placeholder={t("notes.placeholder")}
 						autoFocus={note.content === ""}
 					/>
@@ -128,7 +138,7 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 						<span className="text-[10px] text-accent animate-pulse">{t("images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={value} onRemovePath={handleRemovePath} />
-				</>
+				</div>
 			)}
 		</div>
 	);

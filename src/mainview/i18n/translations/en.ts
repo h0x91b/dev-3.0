@@ -334,6 +334,7 @@ const en = {
 	"images.openInPreview": "Open in Preview",
 	"images.close": "Close",
 	"images.remove": "Remove image",
+	"images.dropHere": "Drop file here",
 
 	// Quit dialog
 	"quit.dialogTitle": "Sessions keep running",

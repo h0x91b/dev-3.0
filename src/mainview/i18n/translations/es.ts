@@ -337,6 +337,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"images.openInPreview": "Abrir en Preview",
 	"images.close": "Cerrar",
 	"images.remove": "Eliminar imagen",
+	"images.dropHere": "Suelta el archivo aquí",
 
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",

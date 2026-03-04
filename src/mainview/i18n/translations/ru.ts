@@ -340,6 +340,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"images.openInPreview": "Открыть в Preview",
 	"images.close": "Закрыть",
 	"images.remove": "Удалить изображение",
+	"images.dropHere": "Перетащите файл сюда",
 
 	// Quit dialog
 	"quit.dialogTitle": "Сессии продолжают работать",
