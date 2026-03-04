@@ -281,6 +281,7 @@ const handlers: Record<string, Handler> = {
 				labelIds: (task.labelIds ?? []).filter((id) => id !== label.id),
 			});
 		}
+		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
 		return { deleted: label.id };
 	},
 

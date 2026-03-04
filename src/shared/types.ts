@@ -495,6 +495,7 @@ export type AppRPCSchema = {
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
+			projectUpdated: { project: Project };
 			ptyDied: { taskId: string };
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };

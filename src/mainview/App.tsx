@@ -120,6 +120,15 @@ function App() {
 	}, [dispatch]);
 
 	useEffect(() => {
+		function onProjectUpdated(e: Event) {
+			const { project } = (e as CustomEvent).detail;
+			dispatch({ type: "updateProject", project });
+		}
+		window.addEventListener("rpc:projectUpdated", onProjectUpdated);
+		return () => window.removeEventListener("rpc:projectUpdated", onProjectUpdated);
+	}, [dispatch]);
+
+	useEffect(() => {
 		function onTerminalBell(e: Event) {
 			const { taskId } = (e as CustomEvent).detail;
 			dispatch({ type: "addBell", taskId });
