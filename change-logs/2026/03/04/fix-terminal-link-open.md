@@ -1,0 +1,1 @@
+Handle `new-window-open` event on the Electrobun webview so that Cmd+Click on URLs in the terminal opens them in the default browser via `Utils.openExternal()`. Previously, ghostty-web's built-in link providers called `window.open()` which silently failed in the WKWebView context.
