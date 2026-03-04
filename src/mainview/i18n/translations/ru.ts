@@ -85,6 +85,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.cloneBaseDirDesc": "Директория по умолчанию для клонирования репозиториев",
 	"settings.cloneBaseDirNotSet": "Не задана",
 	"settings.browse": "Обзор...",
+	"settings.zoom": "Масштаб",
+	"settings.zoomDesc": "Масштабирование всего интерфейса",
+	"settings.zoomReset": "Сбросить",
 
 	// AddProjectModal
 	"addProject.title": "Добавить проект",
@@ -378,11 +381,6 @@ const ru: TranslationRecord & Record<string, string> = {
 	"gaugeDemo.presetExpense": "Расходы",
 	"gaugeDemo.presetLimit": "Лимит",
 	"gaugeDemo.back": "Назад",
-
-	// Zoom
-	"settings.zoom": "Масштаб",
-	"settings.zoomDesc": "Масштабирование всего интерфейса",
-	"settings.zoomReset": "Сбросить",
 	"gaugeDemo.themeAuto": "Авто",
 	"gaugeDemo.themeDark": "Тёмная",
 	"gaugeDemo.themeLight": "Светлая",

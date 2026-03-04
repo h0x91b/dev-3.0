@@ -3,6 +3,7 @@ import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
 import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel } from "../../shared/types";
 import { api } from "../rpc";
+import { getZoomApi } from "../zoom";
 
 type Theme = "dark" | "light" | "system";
 
@@ -14,15 +15,7 @@ function GlobalSettings() {
 		() => (localStorage.getItem("dev3-theme") as Theme) || "dark",
 	);
 
-	const zoomApi = (window as any).__dev3Zoom as {
-		applyZoom: (level: number) => void;
-		getZoom: () => number;
-		adjustZoom: (delta: number) => void;
-		ZOOM_STEP: number;
-		DEFAULT_ZOOM: number;
-		MIN_ZOOM: number;
-		MAX_ZOOM: number;
-	};
+	const zoomApi = getZoomApi();
 	const [zoomLevel, setZoomLevel] = useState(() => zoomApi.getZoom());
 
 	useEffect(() => {

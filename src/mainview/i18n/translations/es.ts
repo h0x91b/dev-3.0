@@ -83,6 +83,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.cloneBaseDirDesc": "Directorio predeterminado para clonar repositorios",
 	"settings.cloneBaseDirNotSet": "No establecido",
 	"settings.browse": "Explorar...",
+	"settings.zoom": "Zoom",
+	"settings.zoomDesc": "Escalar toda la interfaz",
+	"settings.zoomReset": "Restablecer",
 
 	// AddProjectModal
 	"addProject.title": "Agregar proyecto",
@@ -375,11 +378,6 @@ const es: TranslationRecord & Record<string, string> = {
 	"gaugeDemo.presetExpense": "Gastos",
 	"gaugeDemo.presetLimit": "Límite",
 	"gaugeDemo.back": "Volver",
-
-	// Zoom
-	"settings.zoom": "Zoom",
-	"settings.zoomDesc": "Escalar toda la interfaz",
-	"settings.zoomReset": "Restablecer",
 	"gaugeDemo.themeAuto": "Auto",
 	"gaugeDemo.themeDark": "Oscuro",
 	"gaugeDemo.themeLight": "Claro",

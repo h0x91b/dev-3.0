@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { trackPageView } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
+import { getZoomApi } from "./zoom";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
@@ -55,13 +56,7 @@ function App() {
 	);
 
 	// Zoom helpers from main.tsx bootstrap
-	const zoom = (window as any).__dev3Zoom as {
-		applyZoom: (level: number) => void;
-		getZoom: () => number;
-		adjustZoom: (delta: number) => void;
-		ZOOM_STEP: number;
-		DEFAULT_ZOOM: number;
-	};
+	const zoom = getZoomApi();
 
 	// Cmd+Q / Cmd+, / Cmd+=/- (zoom) — capture phase so ghostty-web terminal can't swallow them
 	useGlobalShortcut(
