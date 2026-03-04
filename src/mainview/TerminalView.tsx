@@ -178,12 +178,26 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 
-			// ghostty-web bug workaround: Shift+Tab sends \t instead of \x1b[Z.
-			// The InputHandler treats SHIFT+TAB the same as plain TAB in its
-			// fallback path. Intercept it here and send the correct CSI Z sequence.
+			// ghostty-web bug workaround (https://github.com/coder/ghostty-web/issues/109):
+			// The InputHandler fallback path treats SHIFT+key the same as unmodified
+			// key for functional keys (Tab, Enter, etc.). Intercept here and send
+			// the correct escape sequences.
 			term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-				if (event.type === "keydown" && event.key === "Tab" && event.shiftKey) {
-					term.input("\x1b[Z", true);
+				if (event.type !== "keydown" || !event.shiftKey) return false;
+				// Only intercept when Shift is the sole modifier
+				if (event.ctrlKey || event.altKey || event.metaKey) return false;
+
+				let seq: string | null = null;
+				switch (event.key) {
+					case "Tab":
+						seq = "\x1b[Z"; // CSI Z — standard backtab
+						break;
+					case "Enter":
+						seq = "\n"; // LF — Claude Code treats \n as "insert newline"
+						break;
+				}
+				if (seq) {
+					term.input(seq, true);
 					return true;
 				}
 				return false;
