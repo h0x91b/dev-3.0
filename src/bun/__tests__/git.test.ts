@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import type { Project, Task } from "../../shared/types";
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -60,7 +61,15 @@ vi.mock("../spawn", async () => {
 	};
 });
 
-import { isContentMergedInto } from "../git";
+import {
+	isContentMergedInto,
+	getCurrentBranch,
+	getUnpushedCount,
+	getBranchStatus,
+	canRebaseCleanly,
+	removeWorktree,
+	getUncommittedChanges,
+} from "../git";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -257,5 +266,497 @@ describe("isContentMergedInto", () => {
 
 		const result = await isContentMergedInto(repo.local, "origin/main");
 		expect(result).toBe(false);
+	});
+});
+
+// ─── getCurrentBranch ────────────────────────────────────────────────────────
+
+describe("getCurrentBranch", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns current branch name on main", async () => {
+		const result = await getCurrentBranch(repo.local);
+		expect(result).toBe("main");
+	});
+
+	it("returns new name after git branch -m", async () => {
+		g("git checkout -b dev3/task-aaaaaaaa", repo.local);
+		makeTaskCommits(repo.local);
+
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-login-bug", repo.local);
+
+		const result = await getCurrentBranch(repo.local);
+		expect(result).toBe("dev3/fix-login-bug");
+	});
+
+	it("returns new name after git checkout -b (new branch from existing)", async () => {
+		g("git checkout -b dev3/task-aaaaaaaa", repo.local);
+		makeTaskCommits(repo.local);
+
+		// Simulate agent creating a new branch from current position
+		g("git checkout -b dev3/better-name", repo.local);
+
+		const result = await getCurrentBranch(repo.local);
+		expect(result).toBe("dev3/better-name");
+	});
+
+	it("returns null on detached HEAD", async () => {
+		const sha = g("git rev-parse HEAD", repo.local).trim();
+		g(`git checkout ${sha}`, repo.local);
+
+		const result = await getCurrentBranch(repo.local);
+		expect(result).toBeNull();
+	});
+});
+
+// ─── getUnpushedCount ────────────────────────────────────────────────────────
+
+describe("getUnpushedCount", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns -1 when branch was never pushed", async () => {
+		g("git checkout -b dev3/task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const result = await getUnpushedCount(repo.local, "dev3/task-branch");
+		expect(result).toBe(-1);
+	});
+
+	it("returns 0 when all commits are pushed", async () => {
+		g("git checkout -b dev3/task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin dev3/task-branch", repo.local);
+
+		const result = await getUnpushedCount(repo.local, "dev3/task-branch");
+		expect(result).toBe(0);
+	});
+
+	it("returns N for N unpushed commits", async () => {
+		g("git checkout -b dev3/task-branch", repo.local);
+		makeTaskCommits(repo.local); // 2 commits
+		g("git push -u origin dev3/task-branch", repo.local);
+
+		// Add one more commit after push
+		writeFileSync(join(repo.local, "extra.ts"), "export const x = 1;\n");
+		g("git add extra.ts", repo.local);
+		g('git commit -m "feat: extra"', repo.local);
+
+		const result = await getUnpushedCount(repo.local, "dev3/task-branch");
+		expect(result).toBe(1);
+	});
+
+	it("returns 0 for empty branch name", async () => {
+		const result = await getUnpushedCount(repo.local, "");
+		expect(result).toBe(0);
+	});
+
+	it("works correctly with live branch name after rename", async () => {
+		g("git checkout -b dev3/task-aaaaaaaa", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin dev3/task-aaaaaaaa", repo.local);
+
+		// Rename the branch
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-login", repo.local);
+
+		// Push under new name
+		g("git push -u origin dev3/fix-login", repo.local);
+
+		// Add an unpushed commit
+		writeFileSync(join(repo.local, "extra.ts"), "export const x = 1;\n");
+		g("git add extra.ts", repo.local);
+		g('git commit -m "feat: extra"', repo.local);
+
+		// Using LIVE name should work correctly
+		const liveBranch = await getCurrentBranch(repo.local);
+		expect(liveBranch).toBe("dev3/fix-login");
+
+		const result = await getUnpushedCount(repo.local, liveBranch!);
+		expect(result).toBe(1);
+
+		// Using OLD stored name still returns correct count
+		// (because origin/dev3/task-aaaaaaaa still exists from old push)
+		const resultOld = await getUnpushedCount(repo.local, "dev3/task-aaaaaaaa");
+		expect(resultOld).toBe(1);
+	});
+
+	it("returns -1 for renamed branch that was never pushed under new name", async () => {
+		g("git checkout -b dev3/task-aaaaaaaa", repo.local);
+		makeTaskCommits(repo.local);
+		// Do NOT push before rename
+
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-login", repo.local);
+
+		// Using live name — never pushed
+		const result = await getUnpushedCount(repo.local, "dev3/fix-login");
+		expect(result).toBe(-1);
+	});
+});
+
+// ─── getBranchStatus ─────────────────────────────────────────────────────────
+
+describe("getBranchStatus", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns ahead count for new commits", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const result = await getBranchStatus(repo.local, "origin/main");
+		expect(result.ahead).toBe(2);
+		expect(result.behind).toBe(0);
+	});
+
+	it("returns behind count when base has new commits", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		// Add a commit to main and push
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "const z = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "main: new feature"', repo.local);
+		g("git push origin main", repo.local);
+
+		g("git checkout task-branch", repo.local);
+
+		const result = await getBranchStatus(repo.local, "origin/main");
+		expect(result.ahead).toBe(2);
+		expect(result.behind).toBe(1);
+	});
+
+	it("returns zero for fresh branch with no changes", async () => {
+		g("git checkout -b task-branch", repo.local);
+
+		const result = await getBranchStatus(repo.local, "origin/main");
+		expect(result.ahead).toBe(0);
+		expect(result.behind).toBe(0);
+	});
+});
+
+// ─── canRebaseCleanly ────────────────────────────────────────────────────────
+
+describe("canRebaseCleanly", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns true when rebase would succeed without conflicts", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		// Add a non-conflicting commit to main
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "const z = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "main: other file"', repo.local);
+		g("git push origin main", repo.local);
+
+		g("git checkout task-branch", repo.local);
+		g("git fetch origin", repo.local);
+
+		const result = await canRebaseCleanly(repo.local, "origin/main");
+		expect(result).toBe(true);
+	});
+
+	it("returns false when rebase would have conflicts", async () => {
+		g("git checkout -b task-branch", repo.local);
+		// Modify app.ts on task branch
+		writeFileSync(join(repo.local, "app.ts"), "const a = 999;\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "task: change a"', repo.local);
+
+		// Create conflicting change on main
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 777;\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "main: also change a"', repo.local);
+		g("git push origin main", repo.local);
+
+		g("git checkout task-branch", repo.local);
+		g("git fetch origin", repo.local);
+
+		const result = await canRebaseCleanly(repo.local, "origin/main");
+		expect(result).toBe(false);
+	});
+});
+
+// ─── getUncommittedChanges ───────────────────────────────────────────────────
+
+describe("getUncommittedChanges", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns zero for clean working tree", async () => {
+		const result = await getUncommittedChanges(repo.local);
+		expect(result.insertions).toBe(0);
+		expect(result.deletions).toBe(0);
+	});
+
+	it("counts insertions and deletions in tracked files", async () => {
+		// Modify existing file: change 1 line (1 insert + 1 delete)
+		writeFileSync(join(repo.local, "app.ts"), "const a = 999;\nconst b = 2;\nconst c = 3;\n");
+
+		const result = await getUncommittedChanges(repo.local);
+		expect(result.insertions).toBe(1);
+		expect(result.deletions).toBe(1);
+	});
+
+	// Untracked file counting relies on Bun.file() which is not available in vitest (Node).
+	// Skipping this test — untracked counting is exercised in e2e tests.
+	it.skip("counts untracked file lines as insertions (requires Bun runtime)", async () => {
+		writeFileSync(join(repo.local, "new-file.ts"), "line1\nline2\nline3\n");
+
+		const result = await getUncommittedChanges(repo.local);
+		expect(result.insertions).toBe(3);
+		expect(result.deletions).toBe(0);
+	});
+});
+
+// ─── removeWorktree ──────────────────────────────────────────────────────────
+
+describe("removeWorktree", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	function makeProject(path: string): Project {
+		return {
+			id: "proj-1",
+			name: "Test",
+			path,
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+			defaultBaseBranch: "main",
+			createdAt: new Date().toISOString(),
+		};
+	}
+
+	function makeTask(overrides: Partial<Task> = {}): Task {
+		return {
+			id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			seq: 1,
+			projectId: "proj-1",
+			title: "Test task",
+			description: "",
+			status: "in-progress",
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+			groupId: null,
+			variantIndex: null,
+			agentId: null,
+			configId: null,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			...overrides,
+		};
+	}
+
+	it("does nothing when worktreePath is null", async () => {
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: null });
+
+		// Should not throw
+		await removeWorktree(project, task);
+	});
+
+	it("removes worktree and deletes branch with original name", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "dev3/task-aaaaaaaa",
+		});
+
+		await removeWorktree(project, task);
+
+		// Worktree should be gone
+		expect(existsSync(wtPath)).toBe(false);
+		// Branch should be gone
+		const branches = g("git branch", repo.local);
+		expect(branches).not.toContain("dev3/task-aaaaaaaa");
+	});
+
+	it("removes worktree and deletes RENAMED branch correctly", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Rename the branch inside the worktree
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-critical-bug", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "dev3/task-aaaaaaaa", // stored name is STALE
+		});
+
+		await removeWorktree(project, task);
+
+		// Worktree should be gone
+		expect(existsSync(wtPath)).toBe(false);
+		// The RENAMED branch should be deleted
+		const branches = g("git branch", repo.local);
+		expect(branches).not.toContain("dev3/fix-critical-bug");
+		expect(branches).not.toContain("dev3/task-aaaaaaaa");
+	});
+});
+
+// ─── Branch rename integration scenarios ─────────────────────────────────────
+
+describe("branch rename integration", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("getCurrentBranch returns new name in a worktree after rename", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Verify initial name
+		const before = await getCurrentBranch(wtPath);
+		expect(before).toBe("dev3/task-aaaaaaaa");
+
+		// Rename via git branch -m (common agent pattern)
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-auth-flow", wtPath);
+
+		const after = await getCurrentBranch(wtPath);
+		expect(after).toBe("dev3/fix-auth-flow");
+
+		// Cleanup
+		g(`git worktree remove --force "${wtPath}"`, repo.local);
+		g("git branch -D dev3/fix-auth-flow", repo.local);
+	});
+
+	it("getUnpushedCount works with live branch name after rename and push", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Make commits in worktree
+		writeFileSync(join(wtPath, "feature.ts"), "export const x = 1;\n");
+		g("git add feature.ts", wtPath);
+		g('git commit -m "feat: x"', wtPath);
+
+		// Rename the branch
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-login", wtPath);
+
+		// Push under new name
+		g("git push -u origin dev3/fix-login", wtPath);
+
+		// Add unpushed commit
+		writeFileSync(join(wtPath, "feature.ts"), "export const x = 2;\n");
+		g("git add feature.ts", wtPath);
+		g('git commit -m "feat: update x"', wtPath);
+
+		// Live name should give correct count
+		const liveBranch = await getCurrentBranch(wtPath);
+		expect(liveBranch).toBe("dev3/fix-login");
+
+		const count = await getUnpushedCount(wtPath, liveBranch!);
+		expect(count).toBe(1);
+
+		// Cleanup
+		g(`git worktree remove --force "${wtPath}"`, repo.local);
+		g("git branch -D dev3/fix-login", repo.local);
+	});
+
+	it("getBranchStatus works correctly in a worktree after rename", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Make commits
+		writeFileSync(join(wtPath, "feature.ts"), "export const x = 1;\n");
+		g("git add feature.ts", wtPath);
+		g('git commit -m "feat: x"', wtPath);
+
+		// Rename
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-ui", wtPath);
+
+		// getBranchStatus still works (it uses HEAD, not branchName)
+		const status = await getBranchStatus(wtPath, "origin/main");
+		expect(status.ahead).toBe(1);
+		expect(status.behind).toBe(0);
+
+		// Cleanup
+		g(`git worktree remove --force "${wtPath}"`, repo.local);
+		g("git branch -D dev3/fix-ui", repo.local);
+	});
+
+	it("canRebaseCleanly works in worktree after rename", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Make a non-conflicting commit in worktree
+		writeFileSync(join(wtPath, "feature.ts"), "export const x = 1;\n");
+		g("git add feature.ts", wtPath);
+		g('git commit -m "feat: x"', wtPath);
+
+		// Add commit to main
+		writeFileSync(join(repo.local, "other.ts"), "export const z = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "main: other"', repo.local);
+		g("git push origin main", repo.local);
+
+		// Rename worktree branch
+		g("git branch -m dev3/task-aaaaaaaa dev3/fix-stuff", wtPath);
+
+		g("git fetch origin", wtPath);
+		const result = await canRebaseCleanly(wtPath, "origin/main");
+		expect(result).toBe(true);
+
+		// Cleanup
+		g(`git worktree remove --force "${wtPath}"`, repo.local);
+		g("git branch -D dev3/fix-stuff", repo.local);
 	});
 });

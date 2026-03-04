@@ -134,6 +134,12 @@ export async function createWorktree(
 	return { worktreePath: wtPath, branchName: branch };
 }
 
+export async function getCurrentBranch(worktreePath: string): Promise<string | null> {
+	const result = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath);
+	if (!result.ok || result.stdout === "HEAD") return null; // detached HEAD
+	return result.stdout;
+}
+
 export async function fetchOrigin(projectPath: string): Promise<void> {
 	log.debug("Fetching origin", { projectPath });
 	await run(["git", "fetch", "origin", "--quiet"], projectPath);
@@ -323,15 +329,20 @@ export async function removeWorktree(
 
 	log.info("Removing worktree", { path: task.worktreePath, taskId: task.id });
 
+	// Read live branch name before removing — it may differ from task.branchName
+	// if the agent renamed the branch (e.g. `git branch -m dev3/task-xxx dev3/fix-login`).
+	const liveBranch = await getCurrentBranch(task.worktreePath);
+	const branchToDelete = liveBranch ?? task.branchName;
+
 	await run(
 		["git", "worktree", "remove", "--force", task.worktreePath],
 		project.path,
 	);
 
-	if (task.branchName) {
-		log.info("Deleting branch", { branch: task.branchName });
+	if (branchToDelete) {
+		log.info("Deleting branch", { branch: branchToDelete });
 		await run(
-			["git", "branch", "-D", task.branchName],
+			["git", "branch", "-D", branchToDelete],
 			project.path,
 		);
 	}
