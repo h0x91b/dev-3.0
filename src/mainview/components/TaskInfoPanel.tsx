@@ -284,6 +284,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const [compareRef, setCompareRef] = useState<string>(""); // "" = origin/<baseBranch> (default)
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
+	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
 	const refTriggerRef = useRef<HTMLButtonElement>(null);
 	const refMenuRef = useRef<HTMLDivElement>(null);
 	const fetchStatusRef = useRef<(() => Promise<void>) | null>(null);
@@ -641,36 +642,45 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		{ value: baseBranch, label: `${baseBranch} (local)` },
 	];
 
-	const refDropdown = branchStatus ? (
-		<span className="relative text-[11px] flex-shrink-0">
-			<button
-				ref={refTriggerRef}
-				onClick={(e) => { e.stopPropagation(); setRefMenuOpen(!refMenuOpen); }}
-				className="text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer"
-				title="Change comparison branch"
-			>
-				vs {displayRef} ▾
-			</button>
-			{refMenuOpen && (
-				<div
-					ref={refMenuRef}
-					className="absolute top-full left-0 mt-1 bg-elevated border border-edge rounded-md shadow-lg py-1 z-[9999] min-w-[160px]"
-				>
-					{refOptions.map((opt) => (
-						<button
-							key={opt.value}
-							onClick={(e) => { e.stopPropagation(); handleRefSelect(opt.value); }}
-							className={`block w-full text-left px-3 py-1 text-[11px] hover:bg-raised-hover transition-colors cursor-pointer ${
-								compareRef === opt.value ? "text-accent font-medium" : "text-fg-2"
-							}`}
-						>
-							{opt.label}
-						</button>
-					))}
-				</div>
-			)}
-		</span>
+	const refDropdownButton = branchStatus ? (
+		<button
+			ref={refTriggerRef}
+			onClick={(e) => {
+				e.stopPropagation();
+				if (!refMenuOpen && refTriggerRef.current) {
+					const rect = refTriggerRef.current.getBoundingClientRect();
+					setRefMenuPos({ top: rect.bottom + 4, left: rect.left });
+				}
+				setRefMenuOpen(!refMenuOpen);
+			}}
+			className="text-[11px] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
+			title="Change comparison branch"
+		>
+			vs {displayRef} ▾
+		</button>
 	) : null;
+
+	const refDropdownPortal = refMenuOpen && createPortal(
+		<div
+			ref={refMenuRef}
+			className="fixed bg-overlay border border-edge-active rounded-md shadow-2xl shadow-black/40 py-1 min-w-[160px]"
+			style={{ top: refMenuPos.top, left: refMenuPos.left, zIndex: 9999 }}
+			onClick={(e) => e.stopPropagation()}
+		>
+			{refOptions.map((opt) => (
+				<button
+					key={opt.value}
+					onClick={(e) => { e.stopPropagation(); handleRefSelect(opt.value); }}
+					className={`block w-full text-left px-3 py-1.5 text-[11px] hover:bg-elevated-hover transition-colors cursor-pointer ${
+						compareRef === opt.value ? "text-accent font-medium" : "text-fg-2"
+					}`}
+				>
+					{opt.label}
+				</button>
+			))}
+		</div>,
+		document.body,
+	);
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-[11px] flex-shrink-0">
@@ -916,6 +926,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					<div className="flex items-center gap-1.5 min-w-0 pt-1">
 						{statusDropdownButton}
 						{statusDropdownPortal}
+						{refDropdownPortal}
 						{(task.labelIds ?? []).map((id) => {
 							const label = (project.labels ?? []).find((l) => l.id === id);
 							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
@@ -950,11 +961,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 								{task.branchName}
 							</span>
 						)}
-						{(branchStatusBadge || refDropdown || branchStatusLoading) && (
+						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
 							<>
 								{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 								{branchStatusBadge || branchStatusLoading}
-								{refDropdown}
+								{refDropdownButton}
 							</>
 						)}
 						{uncommittedBadge && (
@@ -980,6 +991,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
 							{statusDropdownButton}
 							{statusDropdownPortal}
+						{refDropdownPortal}
 							{(task.labelIds ?? []).map((id) => {
 								const label = (project.labels ?? []).find((l) => l.id === id);
 								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
@@ -1014,11 +1026,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 									{task.branchName}
 								</span>
 							)}
-							{(branchStatusBadge || refDropdown) && (
+							{(branchStatusBadge || refDropdownButton) && (
 								<>
 									{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 									{branchStatusBadge}
-									{refDropdown}
+									{refDropdownButton}
 								</>
 							)}
 							{uncommittedBadge && (
