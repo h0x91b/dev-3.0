@@ -305,6 +305,7 @@ const en = {
 	"labels.searchPlaceholder": "Search or create...",
 	"labels.addLabel": "+ Add Label",
 	"labels.clearFilters": "Clear",
+	"labels.searchPlaceholderTasks": "Search tasks...",
 	"labels.deleteLabel": "Delete label",
 	"labels.labelName": "Label name",
 	"labels.settingsTitle": "Labels",
