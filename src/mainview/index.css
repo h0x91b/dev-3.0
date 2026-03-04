@@ -18,6 +18,15 @@
 	font-display: swap;
 }
 
+/* ---- Nerd Font symbols (icons, powerline, devicons) ---- */
+@font-face {
+	font-family: 'Symbols Nerd Font Mono';
+	src: url('./assets/fonts/SymbolsNerdFontMono-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
 /* ---- Theme tokens (space-separated RGB for Tailwind alpha support) ---- */
 :root,
 [data-theme="dark"] {

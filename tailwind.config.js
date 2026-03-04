@@ -3,6 +3,15 @@ export default {
 	content: ["./src/mainview/**/*.{html,js,ts,jsx,tsx}"],
 	theme: {
 		extend: {
+			fontFamily: {
+				mono: [
+					"'JetBrains Mono'",
+					"'Symbols Nerd Font Mono'",
+					"'SF Mono'",
+					"Menlo",
+					"monospace",
+				],
+			},
 			colors: {
 				base: "rgb(var(--surface-base) / <alpha-value>)",
 				raised: "rgb(var(--surface-raised) / <alpha-value>)",

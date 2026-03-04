@@ -1,0 +1,1 @@
+Bundle Symbols Nerd Font Mono (woff2) as a fallback font for terminal and monospace UI elements. This adds support for Nerd Font glyphs (powerline symbols, devicons, etc.) alongside the existing JetBrains Mono font. Updated the terminal font chain, CSS @font-face declarations, and Tailwind mono font stack.
