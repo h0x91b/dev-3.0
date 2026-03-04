@@ -836,6 +836,12 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	);
 
 	const tmuxKbd = "px-1 py-0.5 rounded bg-base border border-edge/50 font-mono text-[10px] text-fg-3";
+	const tmuxBtn = "flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg-2 transition-colors cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-elevated";
+
+	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom") => (e: React.MouseEvent) => {
+		e.stopPropagation();
+		api.request.tmuxAction({ taskId: task.id, action }).catch(() => {});
+	};
 
 	const tmuxHintsInline = (
 		<div
@@ -844,17 +850,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			onMouseEnter={showHints}
 			onMouseLeave={hideHints}
 		>
-			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
+			<button className={tmuxBtn} onClick={handleTmuxAction("splitH")} title={t("tmux.splitHDesc")}>
 				<kbd className={tmuxKbd}>⌃B -</kbd>{t("tmux.hSplit")}
-			</span>
+			</button>
 			<span className="text-fg-muted/30">·</span>
-			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
+			<button className={tmuxBtn} onClick={handleTmuxAction("splitV")} title={t("tmux.splitVDesc")}>
 				<kbd className={tmuxKbd}>⌃B |</kbd>{t("tmux.vSplit")}
-			</span>
+			</button>
 			<span className="text-fg-muted/30">·</span>
-			<span className="flex items-center gap-1 text-[10px] text-fg-muted">
+			<button className={tmuxBtn} onClick={handleTmuxAction("zoom")} title={t("tmux.zoomDesc")}>
 				<kbd className={tmuxKbd}>⌃B z</kbd>{t("tmux.zoom")}
-			</span>
+			</button>
 			<button
 				className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
 				onClick={(e) => { e.stopPropagation(); setHintsOpen((o) => !o); }}

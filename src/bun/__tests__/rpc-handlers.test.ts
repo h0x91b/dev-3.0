@@ -42,6 +42,7 @@ vi.mock("../pty-server", () => ({
 	hasSession: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
+	getSessionSocket: vi.fn(() => null),
 	capturePane: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string | null, ...args: string[]) => ["tmux", ...args]),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
@@ -1732,5 +1733,67 @@ describe("handlers.runDevServer", () => {
 		await expect(
 			handlers.runDevServer({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Task has no worktree");
+	});
+});
+
+// ================================================================
+// handlers.tmuxAction
+// ================================================================
+
+describe("handlers.tmuxAction", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("sends split-window -v for splitH action", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			stdout: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			expect.any(Object),
+		);
+	});
+
+	it("sends split-window -h for splitV action", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			stdout: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			expect.any(Object),
+		);
+	});
+
+	it("sends resize-pane -Z for zoom action", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			stdout: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "resize-pane", "-Z", "-t", "dev3-abcd1234"],
+			expect.any(Object),
+		);
+	});
+
+	it("throws when tmux command fails", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response("no session"),
+			stdout: new Response(""),
+			exited: Promise.resolve(1),
+		});
+
+		await expect(
+			handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" }),
+		).rejects.toThrow("tmux zoom failed");
 	});
 });
