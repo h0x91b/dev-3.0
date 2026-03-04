@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { Utils } from "electrobun/bun";
+import { PATHS, Utils } from "electrobun/bun";
 import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
@@ -1336,7 +1336,10 @@ export const handlers = {
 		const changeLogsDir = join(root, "change-logs");
 		if (!existsSync(changeLogsDir)) {
 			// Production fallback: read baked JSON from the app bundle
-			const jsonPath = join(import.meta.dir, "..", "changelog.json");
+			// Try production path first (PATHS.VIEWS_FOLDER), then dev fallback (import.meta.dir)
+			const prodJson = join(PATHS.VIEWS_FOLDER, "..", "changelog.json");
+			const devJson = join(import.meta.dir, "..", "changelog.json");
+			const jsonPath = existsSync(prodJson) ? prodJson : devJson;
 			if (existsSync(jsonPath)) {
 				const entries: ChangelogEntry[] = JSON.parse(await Bun.file(jsonPath).text());
 				log.info("<- getChangelogs (from bundled JSON)", { count: entries.length });

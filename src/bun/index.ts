@@ -2,6 +2,7 @@ import Electrobun, {
 	ApplicationMenu,
 	BrowserView,
 	BrowserWindow,
+	PATHS,
 	Screen,
 	Updater,
 	Utils,
@@ -51,6 +52,62 @@ log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
+// ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
+// These must run before resolveShellEnv() because existing tmux sessions
+// (from a previous app instance) may already have agents trying to use the CLI.
+// resolveShellEnv() can take 5-30s on machines with heavy .zshrc — installing
+// the CLI after it means agents hit "no such file or directory" on startup.
+{
+	const { existsSync: fExists, mkdirSync: fMkdir, copyFileSync: fCopy, chmodSync: fChmod,
+		readFileSync: fRead, appendFileSync: fAppend } = await import("node:fs");
+	const { resolve: fResolve } = await import("node:path");
+
+	// Copy the compiled CLI binary from app bundle to ~/.dev3.0/bin/dev3.
+	// Overwritten on every start to ensure it matches the running app version.
+	// Production: PATHS.VIEWS_FOLDER (<bundle>/Resources/app/views/) → ../cli/dev3
+	// Dev fallback: import.meta.dir (src/bun/) → ../cli/dev3
+	const cliBinDir = `${DEV3_HOME}/bin`;
+	const cliDest = `${cliBinDir}/dev3`;
+	const prodCli = fResolve(PATHS.VIEWS_FOLDER, "..", "cli", "dev3");
+	const devCli = fResolve(import.meta.dir, "..", "cli", "dev3");
+	const bundledCli = fExists(prodCli) ? prodCli : devCli;
+
+	try {
+		fMkdir(cliBinDir, { recursive: true });
+		if (fExists(bundledCli)) {
+			fCopy(bundledCli, cliDest);
+			fChmod(cliDest, 0o755);
+			log.info("CLI binary installed", { from: bundledCli, to: cliDest });
+		} else {
+			log.warn("CLI binary not found in bundle (skip)", { prodCli, devCli });
+		}
+	} catch (err) {
+		log.warn("CLI setup failed (non-fatal)", { error: String(err) });
+	}
+
+	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
+	// Overwritten on every start to match the running app version (same pattern as CLI binary).
+	installAgentSkills();
+
+	// Append ~/.dev3.0/bin to the user's shell RC file (idempotent).
+	// This makes `dev3` available in all terminals, not just worktree tmux sessions.
+	const shell = process.env.SHELL || "/bin/zsh";
+	const home = process.env.HOME || "/tmp";
+	const rcFile = shell.endsWith("bash") ? `${home}/.bashrc` : `${home}/.zshrc`;
+	const marker = ".dev3.0/bin";
+	try {
+		const content = fExists(rcFile) ? fRead(rcFile, "utf-8") : "";
+		if (!content.includes(marker)) {
+			fAppend(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
+			log.info("Shell profile updated with dev3 PATH", { rcFile });
+		} else {
+			log.info("Shell profile already contains dev3 PATH", { rcFile });
+		}
+	} catch (err) {
+		log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
+	}
+}
+
 // ── Resolve user's shell environment (PATH + LANG) ──
 // macOS .app bundles inherit a minimal env: PATH=/usr/bin:/bin:/usr/sbin:/sbin,
 // no LANG. Without LANG, tmux replaces non-ASCII chars (Cyrillic, etc.) with
@@ -83,58 +140,6 @@ if (shellEnv.lang) {
 // Start Unix domain socket server for CLI tool communication.
 const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
-
-// ── CLI binary ──
-// Copy the compiled CLI binary from app bundle to ~/.dev3.0/bin/dev3.
-// Overwritten on every start to ensure it matches the running app version.
-{
-	const { existsSync: fExists, mkdirSync: fMkdir, copyFileSync: fCopy, chmodSync: fChmod } = await import("node:fs");
-	const { resolve: fResolve } = await import("node:path");
-
-	const cliBinDir = `${DEV3_HOME}/bin`;
-	const cliDest = `${cliBinDir}/dev3`;
-	const bundledCli = fResolve(import.meta.dir, "..", "cli", "dev3");
-
-	try {
-		fMkdir(cliBinDir, { recursive: true });
-		if (fExists(bundledCli)) {
-			fCopy(bundledCli, cliDest);
-			fChmod(cliDest, 0o755);
-			log.info("CLI binary installed", { from: bundledCli, to: cliDest });
-		} else {
-			log.warn("CLI binary not found in bundle (skip)", { expected: bundledCli });
-		}
-	} catch (err) {
-		log.warn("CLI setup failed (non-fatal)", { error: String(err) });
-	}
-}
-
-// ── Shell profile PATH injection ──
-// Append ~/.dev3.0/bin to the user's shell RC file (idempotent).
-// This makes `dev3` available in all terminals, not just worktree tmux sessions.
-{
-	const { existsSync: fExistsRc, readFileSync: fReadRc, appendFileSync: fAppendRc } = await import("node:fs");
-	const shell = process.env.SHELL || "/bin/zsh";
-	const home = process.env.HOME || "/tmp";
-	const rcFile = shell.endsWith("bash") ? `${home}/.bashrc` : `${home}/.zshrc`;
-	const marker = ".dev3.0/bin";
-	try {
-		const content = fExistsRc(rcFile) ? fReadRc(rcFile, "utf-8") : "";
-		if (!content.includes(marker)) {
-			fAppendRc(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
-			log.info("Shell profile updated with dev3 PATH", { rcFile });
-		} else {
-			log.info("Shell profile already contains dev3 PATH", { rcFile });
-		}
-	} catch (err) {
-		log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
-	}
-}
-
-// ── Agent skill files ──
-// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
-// Overwritten on every start to match the running app version (same pattern as CLI binary).
-installAgentSkills();
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle } = await import("./pty-server");
