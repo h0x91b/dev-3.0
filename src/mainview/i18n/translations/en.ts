@@ -161,6 +161,9 @@ const en = {
 	"terminal.errorPath": "Worktree not found:",
 	"terminal.complete": "Complete",
 	"terminal.cancelTask": "Cancel Task",
+	"terminal.sessionEnded": "Terminal session ended",
+	"terminal.sessionEndedDesc": "The terminal process has exited. The worktree and all files are still intact.",
+	"terminal.restart": "Restart Terminal",
 
 	// TaskInfoPanel
 	"infoPanel.taskNumber": "Task #",

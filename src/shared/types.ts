@@ -392,6 +392,10 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: string | null;
 			};
+			checkWorktreeExists: {
+				params: { path: string };
+				response: boolean;
+			};
 			checkForUpdate: {
 				params: void;
 				response: { updateAvailable: boolean; version: string; error?: string };

@@ -19,14 +19,31 @@ interface TaskTerminalProps {
 
 const PTY_CONNECT_TIMEOUT_MS = 10_000;
 
+type ErrorKind = "worktree-gone" | "session-ended";
+
 function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, hideInfoPanel }: TaskTerminalProps) {
 	const t = useT();
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
+	const [restarting, setRestarting] = useState(false);
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const task = tasks.find((t) => t.id === taskId);
 	const project = projects.find((p) => p.id === projectId);
+
+	async function classifyAndSetError() {
+		const worktreePath = task?.worktreePath;
+		if (!worktreePath) {
+			setError({ kind: "worktree-gone", path: taskId });
+			return;
+		}
+		try {
+			const exists = await api.request.checkWorktreeExists({ path: worktreePath });
+			setError({ kind: exists ? "session-ended" : "worktree-gone", path: worktreePath });
+		} catch {
+			setError({ kind: "worktree-gone", path: worktreePath });
+		}
+	}
 
 	useEffect(() => {
 		(async () => {
@@ -43,7 +60,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					taskId,
 					worktreePath: task?.worktreePath,
 				});
-				setError(task?.worktreePath ?? taskId);
+				await classifyAndSetError();
 			}
 		})();
 	}, [taskId]);
@@ -58,7 +75,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				matches: detail?.taskId === taskId,
 			});
 			if (detail?.taskId === taskId) {
-				setError(task?.worktreePath ?? taskId);
+				classifyAndSetError();
 			}
 		}
 		window.addEventListener("rpc:ptyDied", onPtyDied);
@@ -89,25 +106,53 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		});
 	}
 
+	async function handleRestart() {
+		setRestarting(true);
+		try {
+			const url = await api.request.getPtyUrl({ taskId });
+			setPtyUrl(url);
+			setError(null);
+		} catch (err) {
+			console.error("[TaskTerminal] Restart failed:", err);
+			await classifyAndSetError();
+		} finally {
+			setRestarting(false);
+		}
+	}
+
 	if (error) {
+		const isSessionEnded = error.kind === "session-ended";
 		return (
 			<div className="flex items-center justify-center h-full">
 				<div className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4">
-					<div className="flex items-center gap-2 text-danger font-medium">
-						<span className="text-lg">&#9888;</span>
-						<span>{t("terminal.envError")}</span>
+					<div className={`flex items-center gap-2 font-medium ${isSessionEnded ? "text-fg" : "text-danger"}`}>
+						<span className="text-lg">{isSessionEnded ? "\u23F9" : "\u26A0"}</span>
+						<span>{isSessionEnded ? t("terminal.sessionEnded") : t("terminal.envError")}</span>
 					</div>
-					<div className="space-y-2">
-						<p className="text-fg-2 text-sm">{t("terminal.errorPath")}</p>
-						<code className="block bg-base text-fg-3 text-xs px-3 py-2 rounded border border-edge select-all break-all">
-							{error}
-						</code>
-					</div>
-					<p className="text-fg-3 text-sm">{t("terminal.worktreeNotFound")}</p>
+					{!isSessionEnded && (
+						<div className="space-y-2">
+							<p className="text-fg-2 text-sm">{t("terminal.errorPath")}</p>
+							<code className="block bg-base text-fg-3 text-xs px-3 py-2 rounded border border-edge select-all break-all">
+								{error.path}
+							</code>
+						</div>
+					)}
+					<p className="text-fg-3 text-sm">
+						{isSessionEnded ? t("terminal.sessionEndedDesc") : t("terminal.worktreeNotFound")}
+					</p>
 					<div className="flex gap-3 pt-2">
+						{isSessionEnded && (
+							<button
+								onClick={handleRestart}
+								disabled={restarting}
+								className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+							>
+								{restarting ? t("terminal.connecting") : t("terminal.restart")}
+							</button>
+						)}
 						<button
 							onClick={() => handleMove("completed")}
-							className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors"
+							className={`flex-1 px-4 py-2 ${isSessionEnded ? "bg-elevated text-fg-2 hover:bg-elevated-hover" : "bg-accent text-white hover:bg-accent-hover"} rounded text-sm font-medium transition-colors`}
 						>
 							{t("terminal.complete")}
 						</button>

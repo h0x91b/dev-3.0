@@ -260,21 +260,30 @@ describe("escapeForDoubleQuotes", () => {
 // ================================================================
 
 describe("buildEchoAndRun", () => {
-	it("wraps simple command with echo prefix", () => {
+	const EXIT_HANDLER_SUFFIX = "; __EC=$?; if [ $__EC -ne 0 ]; then printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' \"$__EC\"; exec bash; fi";
+
+	it("wraps simple command with echo prefix and exit handler", () => {
 		const result = buildEchoAndRun("claude");
-		expect(result).toBe('echo "Starting: claude" && claude');
+		expect(result).toBe(`echo "Starting: claude" && claude${EXIT_HANDLER_SUFFIX}`);
 	});
 
 	it("preserves the actual command verbatim after &&", () => {
 		const cmd = "claude --model opus 'Fix the bug'";
 		const result = buildEchoAndRun(cmd);
-		expect(result.endsWith(`&& ${cmd}`)).toBe(true);
+		expect(result).toContain(`&& ${cmd}`);
+	});
+
+	it("includes exit code handler that keeps shell alive on failure", () => {
+		const result = buildEchoAndRun("claude");
+		expect(result).toContain("__EC=$?");
+		expect(result).toContain("if [ $__EC -ne 0 ]");
+		expect(result).toContain("exec bash");
 	});
 
 	it("escapes double quotes in echo portion", () => {
 		const cmd = 'claude "quoted arg"';
 		const result = buildEchoAndRun(cmd);
-		expect(result).toBe('echo "Starting: claude \\"quoted arg\\"" && claude "quoted arg"');
+		expect(result).toBe(`echo "Starting: claude \\"quoted arg\\"" && claude "quoted arg"${EXIT_HANDLER_SUFFIX}`);
 	});
 
 	it("escapes dollar signs in echo portion", () => {
@@ -282,28 +291,28 @@ describe("buildEchoAndRun", () => {
 		const result = buildEchoAndRun(cmd);
 		expect(result.startsWith('echo "Starting: claude ')).toBe(true);
 		expect(result).toContain("\\$HOME");
-		expect(result.endsWith("&& claude '$HOME/path'")).toBe(true);
+		expect(result).toContain(`&& claude '$HOME/path'`);
 	});
 
 	it("escapes backticks in echo portion", () => {
 		const cmd = "claude 'run `whoami`'";
 		const result = buildEchoAndRun(cmd);
 		expect(result).toContain("\\`whoami\\`");
-		expect(result.endsWith("&& claude 'run `whoami`'")).toBe(true);
+		expect(result).toContain("&& claude 'run `whoami`'");
 	});
 
 	it("escapes backslashes in echo portion", () => {
 		const cmd = "claude 'it'\\''s a test'";
 		const result = buildEchoAndRun(cmd);
 		expect(result).toContain("\\\\");
-		expect(result.endsWith(`&& ${cmd}`)).toBe(true);
+		expect(result).toContain(`&& ${cmd}`);
 	});
 
 	it("handles command with single-quoted shellEscape output", () => {
 		const cmd = "claude --append-system-prompt 'MANDATORY: ...' 'Fix the login bug'";
 		const result = buildEchoAndRun(cmd);
 		expect(result.startsWith('echo "Starting: ')).toBe(true);
-		expect(result.endsWith(`&& ${cmd}`)).toBe(true);
+		expect(result).toContain(`&& ${cmd}`);
 	});
 
 	it("handles real-world command with special chars in task description", () => {
@@ -311,19 +320,20 @@ describe("buildEchoAndRun", () => {
 		const cmd = `claude --append-system-prompt 'MANDATORY' ${escaped}`;
 		const result = buildEchoAndRun(cmd);
 
+		// Extract echo portion (everything before first " && ")
 		const echoPart = result.split(" && ")[0];
 		const echoContent = echoPart.slice('echo "Starting: '.length, -1);
 		expect(echoContent).not.toMatch(/(?<!\\)"/);
 		expect(echoContent).not.toMatch(/(?<!\\)\$/);
 		expect(echoContent).not.toMatch(/(?<!\\)`/);
 
-		expect(result.endsWith(`&& ${cmd}`)).toBe(true);
+		expect(result).toContain(`&& ${cmd}`);
 	});
 
 	it("handles command with empty string argument", () => {
 		const cmd = "claude ''";
 		const result = buildEchoAndRun(cmd);
-		expect(result).toBe("echo \"Starting: claude ''\" && claude ''");
+		expect(result).toBe(`echo "Starting: claude ''" && claude ''${EXIT_HANDLER_SUFFIX}`);
 	});
 });
 
@@ -337,11 +347,20 @@ describe("buildCmdScript", () => {
 		expect(result.startsWith("#!/bin/bash\n")).toBe(true);
 	});
 
-	it("includes echo and exec of the command", () => {
+	it("includes echo and the command (without exec)", () => {
 		const cmd = "claude 'Fix bug'";
 		const result = buildCmdScript(cmd);
-		expect(result).toContain(`exec ${cmd}`);
+		expect(result).toContain(`&& ${cmd}`);
 		expect(result).toContain("echo \"Starting:");
+		// Should NOT exec the agent command (only exec bash on failure)
+		expect(result).not.toContain(`exec ${cmd}`);
+	});
+
+	it("includes exit code handler that keeps shell alive on failure", () => {
+		const result = buildCmdScript("claude");
+		expect(result).toContain("__EC=$?");
+		expect(result).toContain("if [ $__EC -ne 0 ]; then");
+		expect(result).toContain("exec bash");
 	});
 
 	it("ends with a newline", () => {
@@ -349,18 +368,18 @@ describe("buildCmdScript", () => {
 		expect(result.endsWith("\n")).toBe(true);
 	});
 
-	it("escapes double quotes in echo but preserves command in exec", () => {
+	it("escapes double quotes in echo but preserves command verbatim", () => {
 		const cmd = 'claude "arg"';
 		const result = buildCmdScript(cmd);
 		expect(result).toContain('\\"arg\\"');
-		expect(result).toContain(`exec claude "arg"`);
+		expect(result).toContain(`&& claude "arg"`);
 	});
 
-	it("escapes dollar signs in echo but preserves command in exec", () => {
+	it("escapes dollar signs in echo but preserves command verbatim", () => {
 		const cmd = "claude '$HOME'";
 		const result = buildCmdScript(cmd);
 		expect(result).toContain("\\$HOME");
-		expect(result).toContain("exec claude '$HOME'");
+		expect(result).toContain(`&& claude '$HOME'`);
 	});
 
 	it("handles complex command with all special chars", () => {
@@ -372,7 +391,7 @@ describe("buildCmdScript", () => {
 		const echoLine = lines.find((l) => l.startsWith("echo"));
 		expect(echoLine).toBeDefined();
 
-		expect(result).toContain(`exec ${cmd}`);
+		expect(result).toContain(`&& ${cmd}`);
 	});
 });
 
@@ -400,13 +419,13 @@ describe("end-to-end: task description → shell command escaping", () => {
 
 	it("handles plain text task", () => {
 		const { echoAndRun, agentCmd } = simulatePipeline("Fix the login bug");
-		expect(echoAndRun.endsWith(`&& ${agentCmd}`)).toBe(true);
+		expect(echoAndRun).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles task with single quotes", () => {
 		const { agentCmd, echoAndRun } = simulatePipeline("Fix it's broken auth");
 		expect(agentCmd).toContain("'Fix it'\\''s broken auth'");
-		expect(echoAndRun.endsWith(`&& ${agentCmd}`)).toBe(true);
+		expect(echoAndRun).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles task with double quotes", () => {
@@ -421,7 +440,6 @@ describe("end-to-end: task description → shell command escaping", () => {
 		expect(agentCmd).toContain("'Fix $HOME expansion'");
 		const echoPart = echoAndRun.split(" && ")[0];
 		expect(echoPart).toContain("\\$HOME");
-		expect(echoAndRun.endsWith("&& claude '$HOME/path'")).toBe(false);
 	});
 
 	it("handles task with backticks", () => {
@@ -433,18 +451,16 @@ describe("end-to-end: task description → shell command escaping", () => {
 
 	it("handles task with shell injection attempt", () => {
 		const { agentCmd, echoAndRun } = simulatePipeline("'; rm -rf / #");
-		// shellEscape wraps the whole string in single quotes, escaping inner single quotes
-		// Input: '; rm -rf / # → escaped: ''\''; rm -rf / #'
 		expect(agentCmd).toContain("''\\''; rm -rf / #'");
-		expect(echoAndRun.endsWith(`&& ${agentCmd}`)).toBe(true);
+		expect(echoAndRun).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles task with all dangerous chars combined", () => {
 		const desc = "Fix \"login\" (it's broken); $HOME `env` > /tmp/out & rm -rf / | cat";
 		const { agentCmd, echoAndRun, cmdScript } = simulatePipeline(desc);
 
-		expect(echoAndRun.endsWith(`&& ${agentCmd}`)).toBe(true);
-		expect(cmdScript).toContain(`exec ${agentCmd}`);
+		expect(echoAndRun).toContain(`&& ${agentCmd}`);
+		expect(cmdScript).toContain(`&& ${agentCmd}`);
 
 		const echoPart = echoAndRun.split(" && ")[0];
 		const echoContent = echoPart.slice('echo "Starting: '.length, -1);
@@ -457,7 +473,7 @@ describe("end-to-end: task description → shell command escaping", () => {
 		const desc = "Исправь баг \"авторизации\" и проверь $PATH";
 		const { agentCmd, echoAndRun } = simulatePipeline(desc);
 		expect(agentCmd).toContain("Исправь баг");
-		expect(echoAndRun.endsWith(`&& ${agentCmd}`)).toBe(true);
+		expect(echoAndRun).toContain(`&& ${agentCmd}`);
 		const echoPart = echoAndRun.split(" && ")[0];
 		expect(echoPart).toContain("\\$PATH");
 		expect(echoPart).toContain('\\"авторизации\\"');
@@ -467,7 +483,7 @@ describe("end-to-end: task description → shell command escaping", () => {
 		const desc = "Step 1: do this\nStep 2: do that\nStep 3: profit";
 		const { agentCmd, echoAndRun } = simulatePipeline(desc);
 		expect(agentCmd).toContain("Step 1: do this\nStep 2: do that");
-		expect(echoAndRun.endsWith(`&& ${agentCmd}`)).toBe(true);
+		expect(echoAndRun).toContain(`&& ${agentCmd}`);
 	});
 
 	it("handles empty task description", () => {

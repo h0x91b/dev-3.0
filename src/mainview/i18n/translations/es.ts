@@ -164,6 +164,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"terminal.errorPath": "Worktree no encontrado:",
 	"terminal.complete": "Completar",
 	"terminal.cancelTask": "Cancelar tarea",
+	"terminal.sessionEnded": "Sesión de terminal finalizada",
+	"terminal.sessionEndedDesc": "El proceso del terminal ha finalizado. El worktree y todos los archivos están intactos.",
+	"terminal.restart": "Reiniciar terminal",
 
 	// TaskInfoPanel
 	"infoPanel.taskNumber": "Tarea #",
