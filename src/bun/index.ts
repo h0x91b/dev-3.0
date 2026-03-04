@@ -272,8 +272,10 @@ setOnBell((taskId) => {
 	try {
 		log.debug("Terminal bell, notifying renderer", { taskId: taskId.slice(0, 8) });
 		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
-		// Auto-move task to "user-questions" on first bell
-		handleBellAutoStatus(taskId);
+		// Auto-move task from "in-progress" to "user-questions" on bell
+		handleBellAutoStatus(taskId).catch((err) => {
+			log.error("handleBellAutoStatus unhandled error", { error: String(err) });
+		});
 	} catch (err) {
 		log.error("Failed to handle terminal bell", {
 			taskId: taskId.slice(0, 8),

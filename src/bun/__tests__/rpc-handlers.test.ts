@@ -176,8 +176,47 @@ describe("isActive", () => {
 });
 
 describe("handleBellAutoStatus", () => {
-	it("is a noop and does not throw", () => {
-		expect(() => handleBellAutoStatus("task-1")).not.toThrow();
+	beforeEach(() => {
+		vi.mocked(data.loadProjects).mockReset();
+		vi.mocked(data.loadTasks).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+	});
+
+	it("moves in-progress task to user-questions", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" });
+		expect(push).toHaveBeenCalledWith("taskUpdated", {
+			projectId: "proj-1",
+			task: expect.objectContaining({ status: "user-questions" }),
+		});
+	});
+
+	it("does not move task when status is not in-progress", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "user-questions" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("does not throw when task is not found", async () => {
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+
+		await expect(handleBellAutoStatus("unknown-task")).resolves.toBeUndefined();
 	});
 });
 
