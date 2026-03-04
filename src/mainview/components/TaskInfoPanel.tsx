@@ -9,6 +9,7 @@ import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 import { trackEvent } from "../analytics";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -986,7 +987,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							{task.description && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.description")}</span>
-									<span className="text-fg-2 whitespace-pre-wrap">{task.description}</span>
+									<div>
+										<span className="text-fg-2 whitespace-pre-wrap">{task.description}</span>
+										<ImageAttachmentsStrip text={task.description} />
+									</div>
 								</>
 							)}
 
@@ -1026,6 +1030,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 									note={note}
 									onSave={(content) => handleUpdateNote(note.id, content)}
 									onDelete={() => handleDeleteNote(note.id)}
+									projectId={project.id}
 								/>
 							))}
 						</div>

@@ -480,6 +480,18 @@ export type AppRPCSchema = {
 				params: { taskId: string; action: "splitH" | "splitV" | "zoom" };
 				response: void;
 			};
+			pasteClipboardImage: {
+				params: { projectId: string };
+				response: { path: string } | null;
+			};
+			readImageBase64: {
+				params: { path: string };
+				response: { dataUrl: string } | null;
+			};
+			openImageFile: {
+				params: { path: string };
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

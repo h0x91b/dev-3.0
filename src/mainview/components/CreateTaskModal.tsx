@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import type { Label, Project, Task } from "../../shared/types";
 import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
@@ -6,6 +6,9 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
+import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
+import { useImagePaste } from "../hooks/useImagePaste";
+import { useFileDrop } from "../hooks/useFileDrop";
 
 interface CreateTaskModalProps {
 	project: Project;
@@ -22,6 +25,30 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const projectLabels = project.labels ?? [];
+
+	const insertPathAtCursor = useCallback((path: string) => {
+		const el = textareaRef.current;
+		if (!el) {
+			setDescription((prev) => prev + (prev && !prev.endsWith("\n") ? "\n" : "") + path + "\n");
+			return;
+		}
+		const start = el.selectionStart;
+		const end = el.selectionEnd;
+		const val = el.value;
+		const prefix = start > 0 && val[start - 1] !== "\n" ? "\n" : "";
+		const insert = prefix + path + "\n";
+		const next = val.slice(0, start) + insert + val.slice(end);
+		setDescription(next);
+		requestAnimationFrame(() => {
+			const pos = start + insert.length;
+			el.selectionStart = pos;
+			el.selectionEnd = pos;
+			el.focus();
+		});
+	}, []);
+
+	const { handlePaste, isPasting } = useImagePaste(project.id, insertPathAtCursor);
+	const { handleDragOver, handleDrop } = useFileDrop(insertPathAtCursor);
 
 	const generatedTitle = description.trim()
 		? titleFromDescription(description)
@@ -133,8 +160,15 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						}}
 						placeholder={t("createTask.descriptionPlaceholder")}
 						rows={4}
+						onPaste={handlePaste}
+						onDragOver={handleDragOver}
+						onDrop={handleDrop}
 						className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[80px] max-h-[300px]"
 					/>
+					{isPasting && (
+						<span className="text-[11px] text-accent animate-pulse">{t("images.pasting")}</span>
+					)}
+					<ImageAttachmentsStrip text={description} />
 					{generatedTitle && (
 						<div className="text-fg-3 text-xs">
 							{t("createTask.generatedTitle")}{" "}

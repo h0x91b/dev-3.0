@@ -1,0 +1,1 @@
+Add image paste (Cmd+V) and drag-and-drop attach support for task descriptions and notes. Pasted/dropped images are saved to a project-level uploads directory, their paths are inserted into text, and any image paths found in text render as clickable thumbnails with a fullscreen lightbox preview. Images are loaded via base64 RPC to work around WKWebView file:// restrictions.

@@ -1572,4 +1572,64 @@ export const handlers = {
 		log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 	},
 
+	async pasteClipboardImage(params: { projectId: string }): Promise<{ path: string } | null> {
+		log.info("→ pasteClipboardImage", { projectId: params.projectId.slice(0, 8) });
+		const formats = Utils.clipboardAvailableFormats();
+		if (!formats.includes("image")) {
+			log.info("← pasteClipboardImage: no image in clipboard");
+			return null;
+		}
+		const pngData = Utils.clipboardReadImage();
+		if (!pngData || pngData.length === 0) {
+			log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
+			return null;
+		}
+		const project = await data.getProject(params.projectId);
+		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+		const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
+		const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
+		await mkdirProc.exited;
+		const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
+		const filename = `img-${Date.now()}-${hex}.png`;
+		const fullPath = `${uploadsDir}/${filename}`;
+		await Bun.write(fullPath, pngData);
+		log.info("← pasteClipboardImage", { path: fullPath, size: pngData.length });
+		return { path: fullPath };
+	},
+
+	async readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {
+		log.info("→ readImageBase64", { path: params.path });
+		if (!params.path.includes("/.dev3.0/")) {
+			log.warn("← readImageBase64: path outside DEV3_HOME, rejected");
+			return null;
+		}
+		try {
+			const file = Bun.file(params.path);
+			if (!(await file.exists())) {
+				log.warn("← readImageBase64: file not found");
+				return null;
+			}
+			const buffer = await file.arrayBuffer();
+			const base64 = Buffer.from(buffer).toString("base64");
+			const ext = params.path.split(".").pop()?.toLowerCase() ?? "png";
+			const mimeMap: Record<string, string> = {
+				png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+				gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml",
+			};
+			const mime = mimeMap[ext] ?? "image/png";
+			return { dataUrl: `data:${mime};base64,${base64}` };
+		} catch (err) {
+			log.error("readImageBase64 failed", { error: String(err) });
+			return null;
+		}
+	},
+
+	async openImageFile(params: { path: string }): Promise<void> {
+		log.info("→ openImageFile", { path: params.path });
+		if (!params.path.includes("/.dev3.0/")) {
+			throw new Error("Cannot open files outside dev3 data directory");
+		}
+		Utils.openPath(params.path);
+	},
+
 };
