@@ -339,6 +339,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"images.loadFailed": "Ошибка загрузки",
 	"images.openInPreview": "Открыть в Preview",
 	"images.close": "Закрыть",
+	"images.remove": "Удалить изображение",
 
 	// Quit dialog
 	"quit.dialogTitle": "Сессии продолжают работать",

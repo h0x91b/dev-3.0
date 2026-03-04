@@ -1599,8 +1599,8 @@ export const handlers = {
 
 	async readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {
 		log.info("→ readImageBase64", { path: params.path });
-		if (!params.path.includes("/.dev3.0/")) {
-			log.warn("← readImageBase64: path outside DEV3_HOME, rejected");
+		if (!params.path.startsWith("/") || params.path.includes("..")) {
+			log.warn("← readImageBase64: invalid path, rejected");
 			return null;
 		}
 		try {
@@ -1626,8 +1626,8 @@ export const handlers = {
 
 	async openImageFile(params: { path: string }): Promise<void> {
 		log.info("→ openImageFile", { path: params.path });
-		if (!params.path.includes("/.dev3.0/")) {
-			throw new Error("Cannot open files outside dev3 data directory");
+		if (!params.path.startsWith("/") || params.path.includes("..")) {
+			throw new Error("Invalid file path");
 		}
 		Utils.openPath(params.path);
 	},

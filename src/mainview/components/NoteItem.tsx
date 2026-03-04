@@ -5,6 +5,7 @@ import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useImagePaste } from "../hooks/useImagePaste";
 import { useFileDrop } from "../hooks/useFileDrop";
+import { removeImagePath } from "../utils/imageAttachments";
 
 export function formatDate(iso: string): string {
 	try {
@@ -57,7 +58,13 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 	}, [value, onSave]);
 
 	const { handlePaste, isPasting } = useImagePaste(projectId ?? "", insertPath);
-	const { handleDragOver, handleDrop } = useFileDrop(insertPath);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(insertPath);
+
+	const handleRemovePath = useCallback((pathToRemove: string) => {
+		const next = removeImagePath(value, pathToRemove);
+		setValue(next);
+		onSave(next);
+	}, [value, onSave]);
 
 	const debouncedSave = useDebouncedCallback((content: string) => {
 		onSave(content);
@@ -108,15 +115,19 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 						onChange={handleChange}
 						onPaste={projectId ? handlePaste : undefined}
 						onDragOver={projectId ? handleDragOver : undefined}
+						onDragEnter={projectId ? handleDragEnter : undefined}
+						onDragLeave={projectId ? handleDragLeave : undefined}
 						onDrop={projectId ? handleDrop : undefined}
-						className="w-full bg-transparent text-xs text-fg-2 resize-none outline-none min-h-[40px]"
+						className={`w-full bg-transparent text-xs text-fg-2 resize-none outline-none min-h-[40px] rounded transition-colors ${
+							isDragging ? "border border-accent border-dashed bg-accent/5" : ""
+						}`}
 						placeholder={t("notes.placeholder")}
 						autoFocus={note.content === ""}
 					/>
 					{isPasting && (
 						<span className="text-[10px] text-accent animate-pulse">{t("images.pasting")}</span>
 					)}
-					<ImageAttachmentsStrip text={value} />
+					<ImageAttachmentsStrip text={value} onRemovePath={handleRemovePath} />
 				</>
 			)}
 		</div>

@@ -9,6 +9,7 @@ import LabelChip from "./LabelChip";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useImagePaste } from "../hooks/useImagePaste";
 import { useFileDrop } from "../hooks/useFileDrop";
+import { removeImagePath } from "../utils/imageAttachments";
 
 interface CreateTaskModalProps {
 	project: Project;
@@ -48,7 +49,11 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	}, []);
 
 	const { handlePaste, isPasting } = useImagePaste(project.id, insertPathAtCursor);
-	const { handleDragOver, handleDrop } = useFileDrop(insertPathAtCursor);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(insertPathAtCursor);
+
+	const handleRemovePath = useCallback((path: string) => {
+		setDescription((prev) => removeImagePath(prev, path));
+	}, []);
 
 	const generatedTitle = description.trim()
 		? titleFromDescription(description)
@@ -162,13 +167,19 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						rows={4}
 						onPaste={handlePaste}
 						onDragOver={handleDragOver}
+						onDragEnter={handleDragEnter}
+						onDragLeave={handleDragLeave}
 						onDrop={handleDrop}
-						className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[80px] max-h-[300px]"
+						className={`w-full px-3 py-2.5 bg-elevated border rounded-xl text-fg text-sm placeholder-fg-muted outline-none transition-colors resize-y min-h-[80px] max-h-[300px] ${
+							isDragging
+								? "border-accent border-dashed bg-accent/5"
+								: "border-edge-active focus:border-accent/50"
+						}`}
 					/>
 					{isPasting && (
 						<span className="text-[11px] text-accent animate-pulse">{t("images.pasting")}</span>
 					)}
-					<ImageAttachmentsStrip text={description} />
+					<ImageAttachmentsStrip text={description} onRemovePath={handleRemovePath} />
 					{generatedTitle && (
 						<div className="text-fg-3 text-xs">
 							{t("createTask.generatedTitle")}{" "}

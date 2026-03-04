@@ -336,6 +336,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"images.loadFailed": "Error al cargar",
 	"images.openInPreview": "Abrir en Preview",
 	"images.close": "Cerrar",
+	"images.remove": "Eliminar imagen",
 
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",

@@ -333,6 +333,7 @@ const en = {
 	"images.loadFailed": "Load failed",
 	"images.openInPreview": "Open in Preview",
 	"images.close": "Close",
+	"images.remove": "Remove image",
 
 	// Quit dialog
 	"quit.dialogTitle": "Sessions keep running",

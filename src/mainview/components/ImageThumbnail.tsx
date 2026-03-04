@@ -8,9 +8,10 @@ const dataUrlCache = new Map<string, string>();
 interface ImageThumbnailProps {
 	path: string;
 	onClick: () => void;
+	onRemove?: () => void;
 }
 
-export function ImageThumbnail({ path, onClick }: ImageThumbnailProps) {
+export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps) {
 	const t = useT();
 	const [dataUrl, setDataUrl] = useState<string | null>(dataUrlCache.get(path) ?? null);
 	const [error, setError] = useState(false);
@@ -58,24 +59,48 @@ export function ImageThumbnail({ path, onClick }: ImageThumbnailProps) {
 
 	if (error || !dataUrl) {
 		return (
-			<div className="flex-shrink-0 w-[100px] h-[80px] rounded-lg bg-elevated border border-danger/30 flex items-center justify-center">
+			<div className="relative flex-shrink-0 w-[100px] h-[80px] rounded-lg bg-elevated border border-danger/30 flex items-center justify-center group">
 				<span className="text-[10px] text-danger">{t("images.loadFailed")}</span>
+				{onRemove && (
+					<button
+						onClick={(e) => { e.stopPropagation(); onRemove(); }}
+						className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+						title={t("images.remove")}
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				)}
 			</div>
 		);
 	}
 
 	return (
-		<button
-			onClick={onClick}
-			className="flex-shrink-0 flex flex-col items-center gap-0.5 group cursor-pointer"
-			title={filename}
-		>
-			<img
-				src={dataUrl}
-				alt={filename}
-				className="max-h-[80px] max-w-[120px] rounded-lg border border-edge group-hover:border-accent/50 transition-colors object-contain"
-			/>
-			<span className="text-[9px] text-fg-muted truncate max-w-[120px]">{filename}</span>
-		</button>
+		<div className="relative flex-shrink-0 group">
+			<button
+				onClick={onClick}
+				className="flex flex-col items-center gap-0.5 cursor-pointer"
+				title={filename}
+			>
+				<img
+					src={dataUrl}
+					alt={filename}
+					className="max-h-[80px] max-w-[120px] rounded-lg border border-edge group-hover:border-accent/50 transition-colors object-contain"
+				/>
+				<span className="text-[9px] text-fg-muted truncate max-w-[120px]">{filename}</span>
+			</button>
+			{onRemove && (
+				<button
+					onClick={(e) => { e.stopPropagation(); onRemove(); }}
+					className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+					title={t("images.remove")}
+				>
+					<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			)}
+		</div>
 	);
 }

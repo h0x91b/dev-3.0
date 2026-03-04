@@ -5,9 +5,10 @@ import { ImageLightbox } from "./ImageLightbox";
 
 interface ImageAttachmentsStripProps {
 	text: string;
+	onRemovePath?: (path: string) => void;
 }
 
-export function ImageAttachmentsStrip({ text }: ImageAttachmentsStripProps) {
+export function ImageAttachmentsStrip({ text, onRemovePath }: ImageAttachmentsStripProps) {
 	const paths = extractImagePaths(text);
 	const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
@@ -21,6 +22,7 @@ export function ImageAttachmentsStrip({ text }: ImageAttachmentsStripProps) {
 						key={path}
 						path={path}
 						onClick={() => setLightboxIndex(i)}
+						onRemove={onRemovePath ? () => onRemovePath(path) : undefined}
 					/>
 				))}
 			</div>
