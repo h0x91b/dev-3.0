@@ -302,12 +302,12 @@ mainWindow.webview.on("dom-ready", async () => {
 // ghostty-web's built-in link providers call window.open() on Cmd+Click,
 // which triggers this event in the WKWebView. Redirect to system browser.
 (mainWindow.webview as any).on("new-window-open", (e: any) => {
-	const url = e.data?.url ?? e.detail?.url ?? String(e.data ?? "");
+	const url = e.data?.detail?.url;
 	if (typeof url === "string" && /^https?:\/\//.test(url)) {
 		log.info("Opening external URL", { url });
 		Utils.openExternal(url);
 	} else {
-		log.warn("Blocked new-window-open with unexpected URL", { url, data: e.data });
+		log.warn("Blocked new-window-open with unexpected URL", { data: e.data });
 	}
 });
 
