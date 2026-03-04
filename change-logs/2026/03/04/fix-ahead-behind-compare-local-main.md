@@ -1,0 +1,1 @@
+Add a dropdown to the branch status bar allowing users to switch the comparison ref between origin/<baseBranch> (default) and local <baseBranch>. The dropdown appears on the "vs origin/main" text. This lets users see ahead/behind relative to either the remote tracking branch or their local base branch, which is useful when local main has diverged from origin.

@@ -859,7 +859,7 @@ export const handlers = {
 		}
 	},
 
-	async getBranchStatus(params: { taskId: string; projectId: string }) {
+	async getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
 		log.info("→ getBranchStatus", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -882,22 +882,23 @@ export const handlers = {
 
 		log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
 		await git.fetchOrigin(project.path);
-		const remoteBase = `origin/${baseBranch}`;
+		// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
+		const ref = params.compareRef || `origin/${baseBranch}`;
 		const [status, uncommitted, unpushed] = await Promise.all([
-			git.getBranchStatus(task.worktreePath, remoteBase),
+			git.getBranchStatus(task.worktreePath, ref),
 			git.getUncommittedChanges(task.worktreePath),
 			git.getUnpushedCount(task.worktreePath, branchForPush),
 		]);
-		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, remoteBase });
-		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, remoteBase) : false;
-		const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, remoteBase) : false;
+		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, ref });
+		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
+		const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
 
 		const result = { ...status, canRebase, ...uncommitted, unpushed, mergedByContent };
 		log.info("← getBranchStatus", result);
 		return result;
 	},
 
-	async rebaseTask(params: { taskId: string; projectId: string }): Promise<void> {
+	async rebaseTask(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {
 		log.info("→ rebaseTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -905,6 +906,7 @@ export const handlers = {
 		if (!task.worktreePath) throw new Error("Task has no worktree");
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-rebase.sh`;
 
@@ -915,9 +917,9 @@ export const handlers = {
 			`#!/bin/bash`,
 			`echo "Fetching origin..."`,
 			`git fetch origin --quiet`,
-			`echo "Rebasing on ${baseBranch}..."`,
+			`echo "Rebasing on ${rebaseTarget}..."`,
 			`set -x`,
-			`git rebase ${baseBranch}`,
+			`git rebase ${rebaseTarget}`,
 			`EXIT_CODE=$?`,
 			`set +x`,
 			`echo $EXIT_CODE > "${scriptPath}.exit"`,

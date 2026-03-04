@@ -282,6 +282,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const [merging, setMerging] = useState(false);
 	const [pushing, setPushing] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
+	const [compareRef, setCompareRef] = useState<string>(""); // "" = origin/<baseBranch> (default)
+	const [refMenuOpen, setRefMenuOpen] = useState(false);
+	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
+	const refTriggerRef = useRef<HTMLButtonElement>(null);
+	const refMenuRef = useRef<HTMLDivElement>(null);
 	const fetchStatusRef = useRef<(() => Promise<void>) | null>(null);
 
 	useEffect(() => {
@@ -294,6 +299,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				const status = await api.request.getBranchStatus({
 					taskId: task.id,
 					projectId: project.id,
+					compareRef: compareRef || undefined,
 				});
 				if (!cancelled) setBranchStatus(status);
 			} catch (err) {
@@ -308,7 +314,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			cancelled = true;
 			clearInterval(interval);
 		};
-	}, [task.id, project.id, isTaskActive, task.worktreePath]);
+	}, [task.id, project.id, isTaskActive, task.worktreePath, compareRef]);
 
 	async function handleRefreshStatus() {
 		if (refreshingStatus || !fetchStatusRef.current) return;
@@ -324,6 +330,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			await api.request.rebaseTask({
 				taskId: task.id,
 				projectId: project.id,
+				compareRef: compareRef || undefined,
 			});
 		} catch (err) {
 			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
@@ -397,6 +404,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				const status = await api.request.getBranchStatus({
 					taskId: task.id,
 					projectId: project.id,
+					compareRef: compareRef || undefined,
 				});
 				setBranchStatus(status);
 			} catch { /* silently ignore */ }
@@ -598,7 +606,29 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</span>
 	) : null;
 
-	const comparisonBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const displayRef = compareRef || `origin/${baseBranch}`;
+
+	// Close ref menu on click outside
+	useEffect(() => {
+		if (!refMenuOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (
+				refMenuRef.current && !refMenuRef.current.contains(e.target as Node) &&
+				refTriggerRef.current && !refTriggerRef.current.contains(e.target as Node)
+			) {
+				setRefMenuOpen(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [refMenuOpen]);
+
+	function handleRefSelect(ref: string) {
+		setCompareRef(ref);
+		setRefMenuOpen(false);
+		setBranchStatus(null); // clear stale data while re-fetching
+	}
 
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
 		<span className="flex items-center gap-1 text-[11px] font-medium text-danger flex-shrink-0">
@@ -607,6 +637,51 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			<span>−{branchStatus.deletions}</span>
 		</span>
 	) : null;
+
+	const refOptions = [
+		{ value: "", label: `origin/${baseBranch}` },
+		{ value: baseBranch, label: `${baseBranch} (local)` },
+	];
+
+	const refDropdownButton = branchStatus ? (
+		<button
+			ref={refTriggerRef}
+			onClick={(e) => {
+				e.stopPropagation();
+				if (!refMenuOpen && refTriggerRef.current) {
+					const rect = refTriggerRef.current.getBoundingClientRect();
+					setRefMenuPos({ top: rect.bottom + 4, left: rect.left });
+				}
+				setRefMenuOpen(!refMenuOpen);
+			}}
+			className="text-[11px] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
+			title="Change comparison branch"
+		>
+			vs {displayRef} ▾
+		</button>
+	) : null;
+
+	const refDropdownPortal = refMenuOpen && createPortal(
+		<div
+			ref={refMenuRef}
+			className="fixed bg-overlay border border-edge-active rounded-md shadow-2xl shadow-black/40 py-1 min-w-[160px]"
+			style={{ top: refMenuPos.top, left: refMenuPos.left, zIndex: 9999 }}
+			onClick={(e) => e.stopPropagation()}
+		>
+			{refOptions.map((opt) => (
+				<button
+					key={opt.value}
+					onClick={(e) => { e.stopPropagation(); handleRefSelect(opt.value); }}
+					className={`block w-full text-left px-3 py-1.5 text-[11px] hover:bg-elevated-hover transition-colors cursor-pointer ${
+						compareRef === opt.value ? "text-accent font-medium" : "text-fg-2"
+					}`}
+				>
+					{opt.label}
+				</button>
+			))}
+		</div>,
+		document.body,
+	);
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-[11px] flex-shrink-0">
@@ -625,7 +700,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
 				</span>
 			)}
-			<span className="text-fg-muted font-normal">vs {comparisonBranch}</span>
 		</span>
 	) : null;
 
@@ -658,7 +732,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const showDiffDisabled = !branchStatus;
 	const showDiffTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
-		: t("infoPanel.showDiffTooltip", { branch: comparisonBranch });
+		: t("infoPanel.showDiffTooltip", { branch: displayRef });
 
 	const hasUncommitted = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
 	const uncommittedDiffDisabled = !branchStatus || !hasUncommitted;
@@ -853,6 +927,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					<div className="flex items-center gap-1.5 min-w-0 pt-1">
 						{statusDropdownButton}
 						{statusDropdownPortal}
+						{refDropdownPortal}
 						{(task.labelIds ?? []).map((id) => {
 							const label = (project.labels ?? []).find((l) => l.id === id);
 							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
@@ -887,10 +962,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 								{task.branchName}
 							</span>
 						)}
-						{(branchStatusBadge || branchStatusLoading) && (
+						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
 							<>
 								{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 								{branchStatusBadge || branchStatusLoading}
+								{refDropdownButton}
 							</>
 						)}
 						{uncommittedBadge && (
@@ -916,6 +992,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
 							{statusDropdownButton}
 							{statusDropdownPortal}
+						{refDropdownPortal}
 							{(task.labelIds ?? []).map((id) => {
 								const label = (project.labels ?? []).find((l) => l.id === id);
 								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
@@ -950,10 +1027,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 									{task.branchName}
 								</span>
 							)}
-							{branchStatusBadge && (
+							{(branchStatusBadge || refDropdownButton) && (
 								<>
 									{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 									{branchStatusBadge}
+									{refDropdownButton}
 								</>
 							)}
 							{uncommittedBadge && (
