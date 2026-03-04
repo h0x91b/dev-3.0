@@ -32,6 +32,10 @@ function printTask(task: Task): void {
 	if (task.branchName) fields.push(["Branch:", task.branchName]);
 	if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 
+	if (task.labelIds && task.labelIds.length > 0) {
+		fields.push(["Labels:", task.labelIds.map((id) => id.slice(0, 8)).join(", ")]);
+	}
+
 	fields.push(["Created:", formatDate(task.createdAt)]);
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
