@@ -102,21 +102,14 @@ function TmuxSessionManager() {
 	}
 
 	async function handleKill(sessionName: string) {
-		const confirmed = await api.request.showConfirm({
-			title: t("tmuxSessions.killConfirmTitle"),
-			message: t("tmuxSessions.killConfirmMessage", { name: sessionName }),
-		});
-		if (!confirmed) return;
 		try {
 			await api.request.killTmuxSession({ sessionName });
-			setSessions((prev) => prev.filter((s) => s.name !== sessionName));
-		} catch (err) {
-			// Best effort — refresh list
-			api.request
-				.listTmuxSessions()
-				.then(setSessions)
-				.catch(() => {});
+		} catch {
+			/* best effort */
 		}
+		// Always remove from UI — if the kill failed, the session will
+		// reappear on the next refresh/poll anyway.
+		setSessions((prev) => prev.filter((s) => s.name !== sessionName));
 	}
 
 	async function handleKillAll() {

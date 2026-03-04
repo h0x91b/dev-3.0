@@ -1433,7 +1433,7 @@ export const handlers = {
 			throw new Error("Can only kill dev3-* sessions");
 		}
 		const proc = spawn(
-			["tmux", "kill-session", "-t", params.sessionName],
+			pty.tmuxArgs("dev3", "kill-session", "-t", params.sessionName),
 			{ stdout: "pipe", stderr: "pipe" },
 		);
 		const stderr = await new Response(proc.stderr).text();
