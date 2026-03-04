@@ -438,6 +438,53 @@ describe("TaskInfoPanel", () => {
 			}));
 		});
 
+		it("sets movedAt when moving to completed via fast-path", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "in-progress" });
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Completed"));
+
+			const dispatchedTask = dispatch.mock.calls.find(
+				(c: unknown[]) => (c[0] as AppAction).type === "updateTask",
+			)?.[0] as { type: string; task: Task } | undefined;
+			expect(dispatchedTask).toBeDefined();
+			expect(dispatchedTask!.task.movedAt).toBeDefined();
+			expect(typeof dispatchedTask!.task.movedAt).toBe("string");
+			// movedAt should be a recent ISO timestamp
+			const movedAtMs = new Date(dispatchedTask!.task.movedAt!).getTime();
+			expect(movedAtMs).toBeGreaterThan(Date.now() - 5000);
+		});
+
+		it("sets movedAt when moving to cancelled via fast-path", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "in-progress" });
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "cancelled" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Cancelled"));
+
+			const dispatchedTask = dispatch.mock.calls.find(
+				(c: unknown[]) => (c[0] as AppAction).type === "updateTask",
+			)?.[0] as { type: string; task: Task } | undefined;
+			expect(dispatchedTask).toBeDefined();
+			expect(dispatchedTask!.task.movedAt).toBeDefined();
+			expect(dispatchedTask!.task.status).toBe("cancelled");
+		});
+
 		it("asks for confirmation before completing active task", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedConfirmTaskCompletion.mockResolvedValue(false);
@@ -1054,6 +1101,49 @@ describe("TaskInfoPanel", () => {
 			});
 
 			expect(mockedApi.request.getBranchStatus).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("post-merge auto-complete", () => {
+		it("sets movedAt when auto-completing after merge", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "in-progress" });
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			// Simulate the gitOpCompleted event for a successful merge
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:gitOpCompleted", {
+						detail: { taskId: "t1", operation: "merge", ok: true },
+					}),
+				);
+			});
+
+			// Wait for the confirm dialog to resolve
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			});
+
+			await waitFor(() => {
+				const updateCall = dispatch.mock.calls.find(
+					(c: unknown[]) => (c[0] as AppAction).type === "updateTask"
+						&& ((c[0] as { task: Task }).task).status === "completed",
+				);
+				expect(updateCall).toBeDefined();
+				const dispatchedTask = (updateCall![0] as { task: Task }).task;
+				expect(dispatchedTask.movedAt).toBeDefined();
+				expect(typeof dispatchedTask.movedAt).toBe("string");
+				expect(dispatchedTask.worktreePath).toBeNull();
+				expect(dispatchedTask.branchName).toBeNull();
+			});
+
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
 		});
 	});
 });

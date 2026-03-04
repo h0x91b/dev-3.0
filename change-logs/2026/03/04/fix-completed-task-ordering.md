@@ -1,0 +1,1 @@
+Fixed task ordering in completed/cancelled columns for fire-and-forget status transitions. TaskInfoPanel (status menu + post-merge auto-complete) and TaskTerminal were dispatching tasks with stale movedAt timestamps, causing sortTasksForColumn to place them incorrectly relative to the taskDropPosition setting. Now all paths set movedAt to current time before dispatching.

@@ -97,7 +97,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	function handleMove(newStatus: "completed" | "cancelled") {
 		const fromStatus = task?.status ?? "unknown";
 		if (task) {
-			dispatch({ type: "updateTask", task: { ...task, status: newStatus, worktreePath: null, branchName: null } });
+			dispatch({ type: "updateTask", task: { ...task, status: newStatus, worktreePath: null, branchName: null, movedAt: new Date().toISOString() } });
 		}
 		trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 		navigate({ screen: "project", projectId });
