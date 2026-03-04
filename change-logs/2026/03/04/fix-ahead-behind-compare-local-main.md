@@ -1,0 +1,1 @@
+Fix branch ahead/behind comparison to use local baseBranch instead of origin/<baseBranch>. Worktrees are created from local main and rebase targets local main, so the ahead/behind display and merge guard must compare against local main for consistency. Previously, comparing against origin/main caused "behind" to always show 0 when local main was ahead of origin.

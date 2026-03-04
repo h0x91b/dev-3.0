@@ -882,15 +882,17 @@ export const handlers = {
 
 		log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
 		await git.fetchOrigin(project.path);
-		const remoteBase = `origin/${baseBranch}`;
+		// Compare against LOCAL baseBranch, not origin/<baseBranch>.
+		// Worktrees are created from local main, rebase targets local main,
+		// and merge lands on local main — so ahead/behind must reflect that.
 		const [status, uncommitted, unpushed] = await Promise.all([
-			git.getBranchStatus(task.worktreePath, remoteBase),
+			git.getBranchStatus(task.worktreePath, baseBranch),
 			git.getUncommittedChanges(task.worktreePath),
 			git.getUnpushedCount(task.worktreePath, branchForPush),
 		]);
-		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, remoteBase });
-		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, remoteBase) : false;
-		const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, remoteBase) : false;
+		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, baseBranch });
+		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, baseBranch) : false;
+		const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, baseBranch) : false;
 
 		const result = { ...status, canRebase, ...uncommitted, unpushed, mergedByContent };
 		log.info("← getBranchStatus", result);
@@ -957,7 +959,7 @@ export const handlers = {
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 		await git.fetchOrigin(project.path);
-		const status = await git.getBranchStatus(task.worktreePath, `origin/${baseBranch}`);
+		const status = await git.getBranchStatus(task.worktreePath, baseBranch);
 		if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
