@@ -12,10 +12,9 @@ import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
-import { spawn } from "./spawn";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { installAgentSkills } from "./agent-skills";
-import { formatDateTime, makeTitle } from "./app-utils";
+import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 
@@ -209,7 +208,7 @@ ApplicationMenu.setApplicationMenu([
 	{
 		label: "View",
 		submenu: [
-			{ label: "Rebuild", action: "rebuild", accelerator: "r" },
+			{ label: "Hard Refresh", action: "hard-refresh", accelerator: "r" },
 			{ label: "Toggle Developer Tools", action: "toggle-devtools" },
 			{ type: "separator" },
 			{ label: "Soft Reset Terminal", action: "terminal-soft-reset" },
@@ -301,38 +300,8 @@ mainWindow.webview.on("dom-ready", async () => {
 // --- Menu Event Handlers ---
 
 Electrobun.events.on("application-menu-clicked", async (e) => {
-	if (e.data.action === "rebuild") {
-		const { existsSync, cpSync, rmSync } = await import("fs");
-		const { dirname, join } = await import("path");
-
-		// Find project root by walking up from the bundle until we hit vite.config.ts
-		let projectRoot = import.meta.dir;
-		for (let i = 0; i < 20; i++) {
-			if (existsSync(join(projectRoot, "vite.config.ts"))) break;
-			const parent = dirname(projectRoot);
-			if (parent === projectRoot) break;
-			projectRoot = parent;
-		}
-
-		log.info("Rebuilding frontend...", { cwd: projectRoot });
-		const proc = spawn(["bunx", "vite", "build"], {
-			cwd: projectRoot,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		await proc.exited;
-
-		// Copy dist/ into the app bundle's views/ (mirrors electrobun.config.ts copy rules)
-		const viewsDir = join(import.meta.dir, "..", "views", "mainview");
-		const distDir = join(projectRoot, "dist");
-		log.info("Copying dist to app bundle", { from: distDir, to: viewsDir });
-		cpSync(join(distDir, "index.html"), join(viewsDir, "index.html"));
-		rmSync(join(viewsDir, "assets"), { recursive: true, force: true });
-		cpSync(join(distDir, "assets"), join(viewsDir, "assets"), { recursive: true });
-
-		lastBuildTime = formatDateTime(new Date());
-		log.info(`Rebuild done, reloading [${lastBuildTime}]`);
-		mainWindow.setTitle(makeTitle(APP_VERSION, lastBuildTime));
+	if (e.data.action === "hard-refresh") {
+		log.info("Hard refresh — navigating to home page");
 		mainWindow.webview.loadURL(url);
 	} else if (e.data.action === "about") {
 		Utils.showMessageBox({

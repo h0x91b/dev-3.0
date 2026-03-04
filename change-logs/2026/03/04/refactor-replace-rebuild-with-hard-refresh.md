@@ -1,0 +1,1 @@
+Replaced "Rebuild" menu item (which ran vite build + copy + reload) with "Hard Refresh" that simply reloads the webview to the home page. Removed the now-unused spawn import and formatDateTime import from index.ts.
