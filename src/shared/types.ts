@@ -381,7 +381,7 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			getBranchStatus: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; compareRef?: string };
 				response: BranchStatus;
 			};
 			rebaseTask: {

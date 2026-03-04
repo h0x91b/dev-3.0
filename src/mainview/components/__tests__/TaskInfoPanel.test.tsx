@@ -749,7 +749,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask({ baseBranch: "develop" }));
 			});
 
-			expect(screen.getAllByText(/vs develop/).length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText(/vs origin\/develop/).length).toBeGreaterThanOrEqual(1);
 		});
 	});
 
