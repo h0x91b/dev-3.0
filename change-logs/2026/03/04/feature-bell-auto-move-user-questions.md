@@ -1,0 +1,1 @@
+Auto-move tasks from "in-progress" to "user-questions" when a terminal bell (BEL) is detected. Previously `handleBellAutoStatus` was a noop; now it looks up the task, checks if it's in-progress, and transitions it so the Kanban board reflects that the agent is waiting for human input.
