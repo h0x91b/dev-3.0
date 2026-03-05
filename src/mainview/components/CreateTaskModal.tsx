@@ -140,7 +140,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[520px] p-6 space-y-5">
+			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5">
 				<h2 className="text-fg text-lg font-semibold">
 					{t("createTask.title")}
 				</h2>
@@ -184,11 +184,11 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 							onPaste={handlePaste}
 							placeholder={t("createTask.descriptionPlaceholder")}
 							rows={4}
-							className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[80px] max-h-[300px]"
+							className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[5rem] max-h-[18.75rem]"
 						/>
 					</div>
 					{isPasting && (
-						<span className="text-[11px] text-accent animate-pulse">{t("images.pasting")}</span>
+						<span className="text-[0.6875rem] text-accent animate-pulse">{t("images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={description} onRemovePath={handleRemovePath} />
 					{generatedTitle && (
@@ -268,7 +268,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 									{creating ? t("createTask.creating") : t("createTask.create")}
 								</button>
 							</div>
-							<div className="text-fg-muted text-[11px] text-right">
+							<div className="text-fg-muted text-[0.6875rem] text-right">
 								{onCreateAndRun
 									? t("createTask.submitHintRun")
 									: t("createTask.submitHint")}

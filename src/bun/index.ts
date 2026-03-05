@@ -222,6 +222,10 @@ ApplicationMenu.setApplicationMenu([
 			{ type: "separator" },
 			{ label: "Gauge Demo", action: "gauge-demo" },
 			{ type: "separator" },
+			{ label: "Zoom In", action: "zoom-in", accelerator: "=" },
+			{ label: "Zoom Out", action: "zoom-out", accelerator: "-" },
+			{ label: "Reset Zoom", action: "zoom-reset", accelerator: "0" },
+			{ type: "separator" },
 			{ role: "toggleFullScreen" },
 		],
 	},
@@ -440,6 +444,12 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		(mainWindow.webview.rpc as any).send.terminalHardReset?.({});
 	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
+	} else if (e.data.action === "zoom-in") {
+		(mainWindow.webview.rpc as any).send.zoomIn?.({});
+	} else if (e.data.action === "zoom-out") {
+		(mainWindow.webview.rpc as any).send.zoomOut?.({});
+	} else if (e.data.action === "zoom-reset") {
+		(mainWindow.webview.rpc as any).send.zoomReset?.({});
 	}
 });
 

@@ -51,16 +51,16 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 
 	if (loading) {
 		return (
-			<div className="flex-shrink-0 w-[100px] h-[80px] rounded-lg bg-elevated animate-pulse flex items-center justify-center">
-				<span className="text-[10px] text-fg-muted">{t("images.loading")}</span>
+			<div className="flex-shrink-0 w-[6.25rem] h-[5rem] rounded-lg bg-elevated animate-pulse flex items-center justify-center">
+				<span className="text-[0.625rem] text-fg-muted">{t("images.loading")}</span>
 			</div>
 		);
 	}
 
 	if (error || !dataUrl) {
 		return (
-			<div className="relative flex-shrink-0 w-[100px] h-[80px] rounded-lg bg-elevated border border-danger/30 flex items-center justify-center group">
-				<span className="text-[10px] text-danger">{t("images.loadFailed")}</span>
+			<div className="relative flex-shrink-0 w-[6.25rem] h-[5rem] rounded-lg bg-elevated border border-danger/30 flex items-center justify-center group">
+				<span className="text-[0.625rem] text-danger">{t("images.loadFailed")}</span>
 				{onRemove && (
 					<button
 						onClick={(e) => { e.stopPropagation(); onRemove(); }}
@@ -86,9 +86,9 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 				<img
 					src={dataUrl}
 					alt={filename}
-					className="max-h-[80px] max-w-[120px] rounded-lg border border-edge group-hover:border-accent/50 transition-colors object-contain"
+					className="max-h-[5rem] max-w-[7.5rem] rounded-lg border border-edge group-hover:border-accent/50 transition-colors object-contain"
 				/>
-				<span className="text-[9px] text-fg-muted truncate max-w-[120px]">{filename}</span>
+				<span className="text-[0.5625rem] text-fg-muted truncate max-w-[7.5rem]">{filename}</span>
 			</button>
 			{onRemove && (
 				<button

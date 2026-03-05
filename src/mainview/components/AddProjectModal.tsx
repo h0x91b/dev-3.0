@@ -110,7 +110,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[520px] p-6 space-y-5">
+			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5">
 				<h2 className="text-fg text-lg font-semibold">
 					{t("addProject.title")}
 				</h2>

@@ -91,7 +91,7 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 										className="flex items-baseline gap-2 py-1 px-2 rounded-md"
 									>
 										<span
-											className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium leading-none flex-shrink-0 ${TYPE_STYLES[entry.type] ?? "bg-elevated text-fg-3"}`}
+											className={`inline-block px-1.5 py-0.5 rounded text-[0.625rem] font-medium leading-none flex-shrink-0 ${TYPE_STYLES[entry.type] ?? "bg-elevated text-fg-3"}`}
 										>
 											{t(`changelog.${entry.type}` as any) || entry.type}
 										</span>

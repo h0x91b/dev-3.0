@@ -7,6 +7,7 @@ import App from "./App";
 import { I18nProvider } from "./i18n";
 import { initAnalytics } from "./analytics";
 import { api } from "./rpc";
+import { bootstrapZoom } from "./zoom";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page.
@@ -39,6 +40,9 @@ function applySavedTheme() {
 
 applySavedTheme();
 systemThemeMq.addEventListener("change", applySavedTheme);
+
+// Apply saved zoom before React mounts (see zoom.ts for implementation)
+bootstrapZoom();
 
 // Apply saved locale before React mounts
 const savedLocale = localStorage.getItem("dev3-locale") || "en";

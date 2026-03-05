@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
+import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -49,6 +50,8 @@ const LIGHT_TERMINAL_THEME = {
 	brightWhite: "#d1d5da",
 };
 
+const TERMINAL_BASE_FONT_SIZE = 14;
+
 interface TerminalViewProps {
 	ptyUrl: string;
 	taskId: string;
@@ -57,6 +60,7 @@ interface TerminalViewProps {
 function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
+	const fitAddonRef = useRef<FitAddon | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
@@ -134,7 +138,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
 		// font must be ready before ghostty-web measures it for cell metrics.
 		const TERMINAL_FONT = "'JetBrainsMono Nerd Font Mono', 'SF Mono', 'Menlo', monospace";
-		document.fonts.load(`14px ${TERMINAL_FONT}`).then(() => {
+		document.fonts.load(`${TERMINAL_BASE_FONT_SIZE}px ${TERMINAL_FONT}`).then(() => {
 			console.log("[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
 		}).catch(() => {
@@ -152,8 +156,9 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			}
 
 			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
+			const zoomLevel = getZoom();
 			const term = new Terminal({
-				fontSize: 14,
+				fontSize: Math.round(TERMINAL_BASE_FONT_SIZE * zoomLevel),
 				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
@@ -162,6 +167,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 
 			console.log("[TerminalView] Terminal created, loading FitAddon...");
 			fitAddon = new FitAddon();
+			fitAddonRef.current = fitAddon;
 			term.loadAddon(fitAddon);
 
 			console.log("[TerminalView] Opening terminal in DOM...");
@@ -430,6 +436,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			} catch (err) {
 				console.error("[TerminalView] fitAddon.dispose() failed:", err);
 			}
+			fitAddonRef.current = null;
 			if (termRef.current) {
 				try {
 					termRef.current.dispose();
@@ -447,6 +454,22 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 				resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
 		}
 	}, [resolvedTheme]);
+
+	// Scale terminal font size with app zoom level.
+	// Font-size scaling (not CSS zoom) is used for the app, so canvas isn't
+	// bitmap-scaled — we just adjust the terminal's own fontSize.
+	// Initial size is set at Terminal construction; this handles live changes.
+	useEffect(() => {
+		function onZoomChanged(e: Event) {
+			const term = termRef.current;
+			if (term) {
+				term.options.fontSize = Math.round(TERMINAL_BASE_FONT_SIZE * (e as CustomEvent).detail);
+				fitAddonRef.current?.fit();
+			}
+		}
+		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+	}, []);
 
 	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();

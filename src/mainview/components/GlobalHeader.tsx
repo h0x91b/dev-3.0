@@ -118,7 +118,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 						) : (
 							<span className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
 								{seg.badge && (
-									<span className="font-mono text-[11px] text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
+									<span className="font-mono text-[0.6875rem] text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
 								)}
 								<span className="text-fg font-semibold truncate">{seg.label}</span>
 							</span>
@@ -140,7 +140,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 						title={t("header.changelogTooltip")}
 					>
 						<svg
-							className="w-[18px] h-[18px]"
+							className="w-[1.125rem] h-[1.125rem]"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -153,7 +153,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 								d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
 							/>
 						</svg>
-						<span className="text-[11px] font-medium">{t("header.changelogLabel")}</span>
+						<span className="text-[0.6875rem] font-medium">{t("header.changelogLabel")}</span>
 					</button>
 				)}
 
@@ -170,7 +170,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 						title={t("header.projectSettings")}
 					>
 						<svg
-							className="w-[18px] h-[18px]"
+							className="w-[1.125rem] h-[1.125rem]"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -183,7 +183,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 								d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"
 							/>
 						</svg>
-						<span className="text-[11px] font-medium">{t("header.projLabel")}</span>
+						<span className="text-[0.6875rem] font-medium">{t("header.projLabel")}</span>
 					</button>
 				)}
 
@@ -195,7 +195,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 						title={t("header.globalSettingsTooltip")}
 					>
 						<svg
-							className="w-[18px] h-[18px]"
+							className="w-[1.125rem] h-[1.125rem]"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -208,7 +208,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 								d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
 							/>
 						</svg>
-						<span className="text-[11px] font-medium">{t("header.globalLabel")}</span>
+						<span className="text-[0.6875rem] font-medium">{t("header.globalLabel")}</span>
 					</button>
 				)}
 			</div>

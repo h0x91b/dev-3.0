@@ -85,6 +85,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.cloneBaseDirDesc": "Директория по умолчанию для клонирования репозиториев",
 	"settings.cloneBaseDirNotSet": "Не задана",
 	"settings.browse": "Обзор...",
+	"settings.zoom": "Масштаб",
+	"settings.zoomDesc": "Масштабирование всего интерфейса",
+	"settings.zoomReset": "Сбросить",
 
 	// AddProjectModal
 	"addProject.title": "Добавить проект",

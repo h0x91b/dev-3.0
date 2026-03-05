@@ -14,7 +14,7 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 	return (
 		<span
 			className={`group/chip inline-flex items-center rounded-full transition-all ${
-				isSmall ? "text-[10px]" : "text-xs"
+				isSmall ? "text-[0.625rem]" : "text-xs"
 			}`}
 			style={
 				active
@@ -45,7 +45,7 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 						background: active ? "rgba(255,255,255,0.8)" : label.color,
 					}}
 				/>
-				<span className="font-medium leading-none truncate max-w-[80px]">{label.name}</span>
+				<span className="font-medium leading-none truncate max-w-[5rem]">{label.name}</span>
 			</button>
 
 			{/* Remove button — only rendered when onRemove is provided */}

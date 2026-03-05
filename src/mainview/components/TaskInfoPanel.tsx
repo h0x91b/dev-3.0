@@ -18,7 +18,7 @@ interface TaskInfoPanelProps {
 	navigate: (route: Route) => void;
 }
 
-const COLLAPSED_HEIGHT = 62;
+const COLLAPSED_HEIGHT_REM = 3.875; // 62px at 1× zoom – scales with root font-size
 const DEFAULT_HEIGHT = 200;
 const MIN_HEIGHT = 80;
 const MAX_RATIO = 0.33;
@@ -544,7 +544,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	// ---- Shared elements ----
 
 	const statusColor = STATUS_COLORS[task.status];
-	const height = collapsed ? COLLAPSED_HEIGHT : panelHeight;
+	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
 
 	const statusDropdownButton = (
 		<button
@@ -557,7 +557,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				className="w-2 h-2 rounded-full flex-shrink-0"
 				style={{ background: statusColor }}
 			/>
-			<span className="text-[11px] font-medium text-fg-2">
+			<span className="text-[0.6875rem] font-medium text-fg-2">
 				{t(statusKey(task.status))}
 			</span>
 			<svg className="w-3 h-3 text-fg-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -569,7 +569,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const statusDropdownPortal = statusMenuOpen && createPortal(
 		<div
 			ref={statusMenuRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[180px]"
+			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
 			style={{
 				top: statusMenuPos.top,
 				left: statusMenuPos.left,
@@ -598,7 +598,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	);
 
 	const branchStatusLoading = isTaskActive && task.worktreePath && !branchStatus ? (
-		<span className="flex items-center gap-1 text-[11px] text-fg-muted flex-shrink-0">
+		<span className="flex items-center gap-1 text-[0.6875rem] text-fg-muted flex-shrink-0">
 			<svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
 				<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
 				<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -631,7 +631,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	}
 
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
-		<span className="flex items-center gap-1 text-[11px] font-medium text-danger flex-shrink-0">
+		<span className="flex items-center gap-1 text-[0.6875rem] font-medium text-danger flex-shrink-0">
 			<span>+{branchStatus.insertions}</span>
 			<span>/</span>
 			<span>−{branchStatus.deletions}</span>
@@ -654,7 +654,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				}
 				setRefMenuOpen(!refMenuOpen);
 			}}
-			className="text-[11px] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
+			className="text-[0.6875rem] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
 			title="Change comparison branch"
 		>
 			vs {displayRef} ▾
@@ -664,7 +664,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const refDropdownPortal = refMenuOpen && createPortal(
 		<div
 			ref={refMenuRef}
-			className="fixed bg-overlay border border-edge-active rounded-md shadow-2xl shadow-black/40 py-1 min-w-[160px]"
+			className="fixed bg-overlay border border-edge-active rounded-md shadow-2xl shadow-black/40 py-1 min-w-[10rem]"
 			style={{ top: refMenuPos.top, left: refMenuPos.left, zIndex: 9999 }}
 			onClick={(e) => e.stopPropagation()}
 		>
@@ -672,7 +672,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				<button
 					key={opt.value}
 					onClick={(e) => { e.stopPropagation(); handleRefSelect(opt.value); }}
-					className={`block w-full text-left px-3 py-1.5 text-[11px] hover:bg-elevated-hover transition-colors cursor-pointer ${
+					className={`block w-full text-left px-3 py-1.5 text-[0.6875rem] hover:bg-elevated-hover transition-colors cursor-pointer ${
 						compareRef === opt.value ? "text-accent font-medium" : "text-fg-2"
 					}`}
 				>
@@ -684,7 +684,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	);
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
-		<span className="flex items-center gap-1.5 text-[11px] flex-shrink-0">
+		<span className="flex items-center gap-1.5 text-[0.6875rem] flex-shrink-0">
 			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
 				<span className="font-medium">
 					<span className="text-[#34d399]">{branchStatus.ahead} ahead</span>
@@ -746,11 +746,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10";
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
-		<span className="flex items-center gap-1 text-[11px] flex-shrink-0">
+		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
 			<button
 				onClick={handleShowDiff}
 				disabled={showDiffDisabled}
-				className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+				className={`px-2 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
 					showDiffDisabled
 						? disabledBtnClass
 						: "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
@@ -762,7 +762,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			<button
 				onClick={handleShowUncommittedDiff}
 				disabled={uncommittedDiffDisabled}
-				className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					uncommittedDiffDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={uncommittedDiffTooltip}
@@ -772,7 +772,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			<button
 				onClick={handleRebase}
 				disabled={rebaseDisabled}
-				className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					rebaseDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={rebaseTooltip}
@@ -782,7 +782,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			<button
 				onClick={handlePush}
 				disabled={pushDisabled}
-				className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					pushDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={pushTooltip}
@@ -792,7 +792,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			<button
 				onClick={handleMerge}
 				disabled={mergeDisabled}
-				className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					mergeDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={mergeTooltip}
@@ -829,15 +829,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			}`}
 			title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
 		>
-			<svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
 					d="M5 12h14M12 5l7 7-7 7" />
 			</svg>
-			<span className="text-[11px] font-semibold">{t("header.devServer")}</span>
+			<span className="text-[0.6875rem] font-semibold">{t("header.devServer")}</span>
 		</button>
 	);
 
-	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 flex items-center gap-1";
+	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 flex items-center gap-1";
 
 	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom") => (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -882,14 +882,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</div>
 	);
 
-	const popoverKbd = "font-mono text-xs text-fg-2 min-w-[56px]";
+	const popoverKbd = "font-mono text-xs text-fg-2 min-w-[3.5rem]";
 	const popoverDesc = "text-xs text-fg-3";
-	const popoverSection = "text-[10px] text-fg-muted uppercase tracking-wider font-semibold mb-1.5";
+	const popoverSection = "text-[0.625rem] text-fg-muted uppercase tracking-wider font-semibold mb-1.5";
 
 	const tmuxHintsPopover = hintsOpen && createPortal(
 		<div
 			ref={hintsPopoverRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-4 min-w-[300px]"
+			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-4 min-w-[18.75rem]"
 			style={{
 				top: hintsPos.top,
 				left: hintsPos.left,
@@ -958,7 +958,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					{/* Bottom row: git (full width) */}
 					<div className="flex items-center gap-1.5 min-w-0 pb-1">
 						{task.branchName && (
-							<span className="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[200px]">
+							<span className="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]">
 								{task.branchName}
 							</span>
 						)}
@@ -1023,7 +1023,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						{/* Bottom row: git (full width) */}
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
 							{task.branchName && (
-								<span className="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[200px]">
+								<span className="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]">
 									{task.branchName}
 								</span>
 							)}

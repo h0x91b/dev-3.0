@@ -84,13 +84,13 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 	return (
 		<div className="mb-2 rounded-lg bg-base border border-edge p-2 group">
 			<div className="flex items-center justify-between mb-1">
-				<span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+				<span className={`text-[0.625rem] font-medium px-1.5 py-0.5 rounded ${
 					isAi ? "bg-accent/10 text-accent" : "bg-raised text-fg-3"
 				}`}>
 					{isAi ? t("notes.sourceAi") : t("notes.sourceUser")}
 				</span>
 				<div className="flex items-center gap-1.5">
-					<span className="text-[10px] text-fg-muted">{formatDate(note.updatedAt)}</span>
+					<span className="text-[0.625rem] text-fg-muted">{formatDate(note.updatedAt)}</span>
 					<button
 						onClick={onDelete}
 						className="opacity-0 group-hover:opacity-100 text-fg-muted hover:text-danger transition-opacity p-0.5"
@@ -130,12 +130,12 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 						value={value}
 						onChange={handleChange}
 						onPaste={projectId ? handlePaste : undefined}
-						className="w-full bg-transparent text-xs text-fg-2 resize-none outline-none min-h-[40px] rounded"
+						className="w-full bg-transparent text-xs text-fg-2 resize-none outline-none min-h-[2.5rem] rounded"
 						placeholder={t("notes.placeholder")}
 						autoFocus={note.content === ""}
 					/>
 					{isPasting && (
-						<span className="text-[10px] text-accent animate-pulse">{t("images.pasting")}</span>
+						<span className="text-[0.625rem] text-accent animate-pulse">{t("images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={value} onRemovePath={handleRemovePath} />
 				</div>

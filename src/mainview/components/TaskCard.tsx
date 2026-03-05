@@ -380,10 +380,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{/* Bell badge — macOS Dock style, peeking outside the card */}
 			{bellCount > 0 && (
 				<div
-					className="absolute -top-1.5 -right-1.5 z-10 min-w-[20px] h-5 flex items-center justify-center px-1.5 rounded-full bg-red-500 shadow-lg shadow-red-500/40"
+					className="absolute -top-1.5 -right-1.5 z-10 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 rounded-full bg-red-500 shadow-lg shadow-red-500/40"
 					title={t("task.bellTooltip")}
 				>
-					<span className="text-[11px] font-bold text-white leading-none">
+					<span className="text-[0.6875rem] font-bold text-white leading-none">
 						{bellCount > 9 ? "9+" : bellCount}
 					</span>
 				</div>
@@ -411,7 +411,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</div>
 				);
 			})() : (
-				<div className="text-[10px] text-fg-muted font-mono mb-1">#{task.seq}</div>
+				<div className="text-[0.625rem] text-fg-muted font-mono mb-1">#{task.seq}</div>
 			)}
 
 			{/* Title + description expand */}
@@ -425,7 +425,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{hasLongDescription && !isTodo && (
 				<button
 					onClick={handleShowDescription}
-					className="mt-1 text-[11px] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
+					className="mt-1 text-[0.6875rem] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
 					title={t("task.showDescription")}
 				>
 					<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -468,7 +468,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				}
 
 				return (
-					<div className="flex items-center flex-wrap gap-1 mt-2 min-h-[18px]">
+					<div className="flex items-center flex-wrap gap-1 mt-2 min-h-[1.125rem]">
 						{assignedLabels.map((label) => (
 							<LabelChip
 								key={label.id}
@@ -496,7 +496,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
 								<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 							</svg>
-							<span className="text-[10px] font-medium leading-none">Add label</span>
+							<span className="text-[0.625rem] font-medium leading-none">Add label</span>
 						</button>
 						{pickerOpen && pickerAnchorRef.current && (
 							<LabelPicker
@@ -553,7 +553,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{menuOpen && createPortal(
 				<div
 					ref={menuRef}
-					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[180px]"
+					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
 					style={{
 						top: menuPos.top,
 						left: menuPos.left,

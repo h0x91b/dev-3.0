@@ -91,7 +91,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 
 				{/* Image */}
 				{loading ? (
-					<div className="w-[300px] h-[200px] rounded-xl bg-elevated animate-pulse flex items-center justify-center">
+					<div className="w-[18.75rem] h-[12.5rem] rounded-xl bg-elevated animate-pulse flex items-center justify-center">
 						<span className="text-sm text-fg-muted">{t("images.loading")}</span>
 					</div>
 				) : dataUrl ? (
@@ -101,7 +101,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 						className="max-w-[90vw] max-h-[80vh] rounded-xl object-contain"
 					/>
 				) : (
-					<div className="w-[300px] h-[200px] rounded-xl bg-elevated flex items-center justify-center">
+					<div className="w-[18.75rem] h-[12.5rem] rounded-xl bg-elevated flex items-center justify-center">
 						<span className="text-sm text-danger">{t("images.loadFailed")}</span>
 					</div>
 				)}

@@ -217,7 +217,7 @@ export function GaugeDemo({ navigate }: GaugeDemoProps) {
 				</h2>
 				<div className="flex flex-col lg:flex-row gap-8">
 					{/* Live gauge */}
-					<div className="flex-1 flex items-center justify-center p-8 bg-raised rounded-2xl border border-edge min-h-[400px]">
+					<div className="flex-1 flex items-center justify-center p-8 bg-raised rounded-2xl border border-edge min-h-[25rem]">
 						<Gauge
 							value={pg.value}
 							min={pg.min}

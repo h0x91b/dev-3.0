@@ -150,7 +150,7 @@ function TmuxSessionManager() {
 				title={t("tmuxSessions.title")}
 			>
 				<svg
-					className="w-[18px] h-[18px]"
+					className="w-[1.125rem] h-[1.125rem]"
 					fill="none"
 					stroke="currentColor"
 					viewBox="0 0 24 24"
@@ -176,7 +176,7 @@ function TmuxSessionManager() {
 					/>
 				</svg>
 				{count > 0 && (
-					<span className="min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold bg-accent/20 text-accent rounded-full px-1">
+					<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-[0.625rem] font-bold bg-accent/20 text-accent rounded-full px-1">
 						{count}
 					</span>
 				)}
@@ -186,7 +186,7 @@ function TmuxSessionManager() {
 				createPortal(
 					<div
 						ref={popoverRef}
-						className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[360px] max-w-[480px] max-h-[400px] flex flex-col"
+						className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[22.5rem] max-w-[30rem] max-h-[25rem] flex flex-col"
 						style={{
 							top: popoverPos.top,
 							left: popoverPos.left,
@@ -228,7 +228,7 @@ function TmuxSessionManager() {
 								{count > 0 && (
 									<button
 										onClick={handleKillAll}
-										className="text-[10px] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+										className="text-[0.625rem] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
 									>
 										{t("tmuxSessions.killAll")}
 									</button>
@@ -255,7 +255,7 @@ function TmuxSessionManager() {
 													{session.taskTitle || session.name}
 												</span>
 												{session.isCleanup && (
-													<span className="text-[9px] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+													<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 														{t(
 															"tmuxSessions.cleanup",
 														)}
@@ -266,7 +266,7 @@ function TmuxSessionManager() {
 												onClick={() =>
 													handleKill(session.name)
 												}
-												className="flex-shrink-0 text-[10px] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+												className="flex-shrink-0 text-[0.625rem] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
 											>
 												{t("tmuxSessions.kill")}
 											</button>
@@ -275,7 +275,7 @@ function TmuxSessionManager() {
 										{/* Working directory */}
 										{session.cwd && (
 											<div
-												className="text-[11px] text-fg-3 font-mono truncate mt-1"
+												className="text-[0.6875rem] text-fg-3 font-mono truncate mt-1"
 												title={session.cwd}
 											>
 												{session.cwd}
@@ -287,7 +287,7 @@ function TmuxSessionManager() {
 											onClick={() =>
 												handleCopy(session.name)
 											}
-											className="mt-1.5 flex items-center gap-1.5 text-[10px] text-accent hover:text-accent-hover transition-colors"
+											className="mt-1.5 flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-hover transition-colors"
 										>
 											<svg
 												className="w-3 h-3 flex-shrink-0"

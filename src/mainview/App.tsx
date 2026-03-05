@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { trackPageView } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
+import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
@@ -54,7 +55,7 @@ function App() {
 		[dispatch],
 	);
 
-	// Cmd+Q / Cmd+, — capture phase so ghostty-web terminal can't swallow them
+	// Cmd+Q / Cmd+, / Cmd+=/- (zoom) — capture phase so ghostty-web terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
 			if (e.metaKey && e.key === "q") {
@@ -69,6 +70,18 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				navigate({ screen: "settings" });
+			} else if (e.metaKey && (e.key === "=" || e.key === "+")) {
+				e.preventDefault();
+				e.stopPropagation();
+				adjustZoom(ZOOM_STEP);
+			} else if (e.metaKey && e.key === "-") {
+				e.preventDefault();
+				e.stopPropagation();
+				adjustZoom(-ZOOM_STEP);
+			} else if (e.metaKey && e.key === "0") {
+				e.preventDefault();
+				e.stopPropagation();
+				applyZoom(DEFAULT_ZOOM);
 			}
 		},
 		[navigate],
@@ -226,7 +239,7 @@ function App() {
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
 			/>
-			<div className="flex-1 min-h-0 flex flex-col">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
 			{showQuitDialog && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -234,7 +247,7 @@ function App() {
 						if (e.target === e.currentTarget) setShowQuitDialog(false);
 					}}
 				>
-					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[420px] p-6 space-y-4">
+					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4">
 						<h2 className="text-fg text-lg font-semibold">{t("quit.dialogTitle")}</h2>
 						<p className="text-fg-2 text-sm leading-relaxed">{t("quit.dialogMessage")}</p>
 						<label className="flex items-center gap-2.5 cursor-pointer select-none">

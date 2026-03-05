@@ -82,7 +82,7 @@ function KanbanColumn({
 
 	return (
 		<div
-			className={`flex flex-col flex-shrink-0 w-[280px] glass-column column-glow rounded-2xl border transition-colors ${
+			className={`flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
 					: isValidTarget && dragFromStatus

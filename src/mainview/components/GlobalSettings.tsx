@@ -3,6 +3,7 @@ import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
 import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel } from "../../shared/types";
 import { api } from "../rpc";
+import { getZoom, adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_CHANGED_EVENT } from "../zoom";
 
 type Theme = "dark" | "light" | "system";
 
@@ -13,6 +14,16 @@ function GlobalSettings() {
 	const [theme, setTheme] = useState<Theme>(
 		() => (localStorage.getItem("dev3-theme") as Theme) || "dark",
 	);
+
+	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
+
+	useEffect(() => {
+		function onZoomChanged(e: Event) {
+			setZoomLevel((e as CustomEvent).detail);
+		}
+		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+	}, []);
 
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
@@ -204,6 +215,44 @@ function GlobalSettings() {
 						</div>
 					</div>
 
+					{/* Zoom */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.zoom")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.zoomDesc")}
+						</p>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={() => adjustZoom(-ZOOM_STEP)}
+								disabled={zoomLevel <= MIN_ZOOM}
+								className="w-10 h-10 flex items-center justify-center rounded-lg bg-raised border border-edge text-fg text-lg font-bold hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+							>
+								−
+							</button>
+							<div className="flex-1 text-center">
+								<span className="text-fg text-lg font-semibold tabular-nums">
+									{Math.round(zoomLevel * 100)}%
+								</span>
+							</div>
+							<button
+								onClick={() => adjustZoom(ZOOM_STEP)}
+								disabled={zoomLevel >= MAX_ZOOM}
+								className="w-10 h-10 flex items-center justify-center rounded-lg bg-raised border border-edge text-fg text-lg font-bold hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+							>
+								+
+							</button>
+							<button
+								onClick={() => applyZoom(DEFAULT_ZOOM)}
+								disabled={zoomLevel === DEFAULT_ZOOM}
+								className="px-3 h-10 rounded-lg bg-raised border border-edge text-fg-2 text-sm hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+							>
+								{t("settings.zoomReset")}
+							</button>
+						</div>
+					</div>
+
 					{/* Task Drop Position */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
@@ -230,7 +279,7 @@ function GlobalSettings() {
 						</div>
 					</div>
 
-				{/* Update Channel */}
+					{/* Update Channel */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("settings.updateChannel")}
@@ -280,7 +329,7 @@ function GlobalSettings() {
 						</div>
 					</div>
 
-				{/* Default Agent */}
+					{/* Default Agent */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("settings.defaultAgent")}

@@ -186,7 +186,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 				if (e.target === e.currentTarget && !isEditing) onClose();
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[560px] max-h-[80vh] flex flex-col">
+			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[35rem] max-h-[80vh] flex flex-col">
 				{/* Header */}
 				<div className="flex items-center justify-between px-6 pt-5 pb-3">
 					<div className="flex items-center gap-3">
@@ -243,7 +243,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 									onChange={(e) => setEditValue(e.target.value)}
 									onKeyDown={handleEditKeyDown}
 									rows={8}
-									className="w-full bg-elevated border border-edge-active rounded-xl px-3 py-2.5 text-sm text-fg leading-relaxed resize-y outline-none focus:border-accent/60 transition-colors min-h-[120px] max-h-[400px]"
+									className="w-full bg-elevated border border-edge-active rounded-xl px-3 py-2.5 text-sm text-fg leading-relaxed resize-y outline-none focus:border-accent/60 transition-colors min-h-[7.5rem] max-h-[25rem]"
 									disabled={saving}
 								/>
 								{generatedTitle && generatedTitle !== editValue.trim() && (
@@ -361,7 +361,7 @@ function ArchivedView({
 							</button>
 
 							{statusMenuOpen && (
-								<div className="absolute top-full left-0 mt-1 z-10 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[180px]">
+								<div className="absolute top-full left-0 mt-1 z-10 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]">
 									<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
 										{t("task.reopenTo")}
 									</div>
