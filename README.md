@@ -1,5 +1,6 @@
 <p align="center">
   <img src="docs/icon.png" width="128" height="128" alt="dev-3.0">
+  test
 </p>
 
 <h1 align="center">dev-3.0</h1>
