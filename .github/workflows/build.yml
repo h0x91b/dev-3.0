@@ -32,4 +32,4 @@ jobs:
         run: bun run test
 
       - name: Build check
-        run: bunx vite build
+        run: bunx vite build && bun run build:cli

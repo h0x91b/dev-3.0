@@ -1,0 +1,1 @@
+Fix dev3 CLI binary missing from production builds. The CI release workflow was missing the `bun run build:cli` step, so `dist/dev3` was never compiled and Electrobun silently skipped the missing file during bundling. Added the build step to both release.yml and build.yml workflows.
