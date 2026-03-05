@@ -117,21 +117,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		defaultConfigId: "claude-default",
 	},
 	{
-		id: "builtin-cursor",
-		name: "Cursor Agent",
-		baseCommand: "agent",
-		isDefault: true,
-		configurations: [
-			{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
-			{ id: "cursor-plan", name: "Plan (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan" },
-			{ id: "cursor-yolo", name: "YOLO (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "bypassPermissions" },
-			{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex-high" },
-			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.3 Codex", model: "gpt-5.3-codex-high", permissionMode: "bypassPermissions" },
-			{ id: "cursor-gemini", name: "Gemini 3.1 Pro", model: "gemini-3.1-pro" },
-		],
-		defaultConfigId: "cursor-default",
-	},
-	{
 		id: "builtin-codex",
 		name: "Codex",
 		baseCommand: "codex",
@@ -146,6 +131,21 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		isDefault: true,
 		configurations: [{ id: "gemini-default", name: "Default" }],
 		defaultConfigId: "gemini-default",
+	},
+	{
+		id: "builtin-cursor",
+		name: "Cursor Agent",
+		baseCommand: "agent",
+		isDefault: true,
+		configurations: [
+			{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
+			{ id: "cursor-plan", name: "Plan (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan" },
+			{ id: "cursor-yolo", name: "YOLO (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "bypassPermissions" },
+			{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex-high" },
+			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.3 Codex", model: "gpt-5.3-codex-high", permissionMode: "bypassPermissions" },
+			{ id: "cursor-gemini", name: "Gemini 3.1 Pro", model: "gemini-3.1-pro" },
+		],
+		defaultConfigId: "cursor-default",
 	},
 ];
 
