@@ -1,9 +1,10 @@
-import { useState, type Dispatch } from "react";
+import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { Label, Project } from "../../shared/types";
 import { LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { ListEditor } from "./ListEditor";
 
 interface LabelRowProps {
 	label: Label;
@@ -101,11 +102,44 @@ function ProjectSettings({
 	const [setupScript, setSetupScript] = useState(project?.setupScript || "");
 	const [devScript, setDevScript] = useState(project?.devScript || "");
 	const [cleanupScript, setCleanupScript] = useState(project?.cleanupScript || "");
+	const [clonePaths, setClonePaths] = useState<string[]>(project?.clonePaths || []);
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
 		project?.defaultBaseBranch || "main",
 	);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
+	const [detecting, setDetecting] = useState(false);
+	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
+	const autoDetectRan = useRef(false);
+
+	async function runAutoDetect() {
+		if (!project) return;
+		setDetecting(true);
+		setDetectFeedback(null);
+		try {
+			const detected = await api.request.detectClonePaths({ projectId });
+			if (detected.length > 0) {
+				// Merge with existing paths (no duplicates)
+				const existing = new Set(clonePaths);
+				const merged = [...clonePaths, ...detected.filter((p) => !existing.has(p))];
+				setClonePaths(merged);
+				setDetectFeedback(t.plural("projectSettings.autoDetectFound", detected.length));
+			} else {
+				setDetectFeedback(t("projectSettings.autoDetectNone"));
+			}
+		} catch {
+			setDetectFeedback(t("projectSettings.autoDetectNone"));
+		}
+		setDetecting(false);
+	}
+
+	// Auto-run detect when clone paths are empty (e.g. project added before this feature)
+	useEffect(() => {
+		if (!autoDetectRan.current && project && clonePaths.length === 0) {
+			autoDetectRan.current = true;
+			runAutoDetect();
+		}
+	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	if (!project) {
 		return (
@@ -169,6 +203,7 @@ function ProjectSettings({
 				devScript,
 				cleanupScript,
 				defaultBaseBranch,
+				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
 			});
 			dispatch({ type: "updateProject", project: updated });
 			navigate({ screen: "project", projectId });
@@ -199,6 +234,38 @@ function ProjectSettings({
 							autoCorrect="off"
 							spellCheck={false}
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+						/>
+					</div>
+
+					{/* Clone Paths (CoW) */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("projectSettings.clonePaths")}
+						</label>
+						<div className="flex items-start gap-3 mb-3">
+							<p className="text-fg-3 text-sm flex-1">
+								{t("projectSettings.clonePathsDesc")}
+							</p>
+							<button
+								type="button"
+								onClick={runAutoDetect}
+								disabled={detecting}
+								className="flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 hover:border-accent/50 transition-all disabled:opacity-50"
+							>
+								{detecting ? t("projectSettings.autoDetecting") : t("projectSettings.autoDetect")}
+							</button>
+						</div>
+						{detectFeedback && (
+							<p className="text-fg-3 text-xs mb-2">{detectFeedback}</p>
+						)}
+						<ListEditor
+							items={clonePaths}
+							onChange={(items) => {
+								setClonePaths(items);
+								setDetectFeedback(null);
+							}}
+							placeholder="node_modules"
+							addLabel={t("projectSettings.addClonePath")}
 						/>
 					</div>
 

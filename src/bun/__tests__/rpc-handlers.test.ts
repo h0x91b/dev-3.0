@@ -756,6 +756,7 @@ describe("handlers.updateProjectSettings", () => {
 			devScript: "",
 			cleanupScript: "echo done",
 			defaultBaseBranch: "main",
+			clonePaths: ["node_modules"],
 		});
 
 		expect(result).toEqual(updated);
@@ -764,6 +765,7 @@ describe("handlers.updateProjectSettings", () => {
 			devScript: "",
 			cleanupScript: "echo done",
 			defaultBaseBranch: "main",
+			clonePaths: ["node_modules"],
 		});
 	});
 });
