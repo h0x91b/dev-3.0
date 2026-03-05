@@ -1,0 +1,1 @@
+Add vertical drag-and-drop reordering within Kanban columns. Tasks can now be dragged up and down within the same status column, and the new order persists across page reloads via a new `columnOrder` field on the Task type. A visual drop indicator (accent-colored line) shows the insertion point during drag. Variant groups move as a unit when reordered.

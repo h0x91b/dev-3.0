@@ -306,3 +306,67 @@ export async function setLastPickedFolder(folder: string): Promise<void> {
 	prefs.lastPickedFolder = folder;
 	await savePreferences(prefs);
 }
+
+/**
+ * Reorder a task (or its variant group) within its current status column.
+ * Assigns sequential columnOrder (0, 1, 2, ...) to all tasks in the column.
+ * Returns the updated column tasks.
+ */
+export async function reorderTasksInColumn(
+	project: Project,
+	taskId: string,
+	targetIndex: number,
+): Promise<Task[]> {
+	log.info("Reordering task in column", { taskId, targetIndex, projectId: project.id });
+	const tasks = await loadTasks(project);
+	const task = tasks.find((t) => t.id === taskId);
+	if (!task) throw new Error(`Task not found: ${taskId}`);
+
+	const columnStatus = task.status;
+
+	// Get all tasks in this column, sorted by existing columnOrder (or createdAt fallback)
+	const columnTasks = tasks
+		.filter((t) => t.status === columnStatus)
+		.sort((a, b) => {
+			if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
+				return a.columnOrder - b.columnOrder;
+			}
+			if (a.columnOrder !== undefined) return -1;
+			if (b.columnOrder !== undefined) return 1;
+			return a.createdAt < b.createdAt ? -1 : 1;
+		});
+
+	// Determine which task IDs to move (variant group moves as a unit)
+	const movingIds = new Set<string>();
+	if (task.groupId) {
+		for (const t of columnTasks) {
+			if (t.groupId === task.groupId) movingIds.add(t.id);
+		}
+	} else {
+		movingIds.add(taskId);
+	}
+
+	// Split into moving items and remaining items
+	const movingItems = columnTasks.filter((t) => movingIds.has(t.id));
+	const remaining = columnTasks.filter((t) => !movingIds.has(t.id));
+
+	// Clamp targetIndex
+	const clampedIndex = Math.max(0, Math.min(targetIndex, remaining.length));
+
+	// Insert at target position
+	remaining.splice(clampedIndex, 0, ...movingItems);
+
+	// Assign sequential columnOrder
+	const now = new Date().toISOString();
+	const updatedColumnTasks: Task[] = [];
+	for (let i = 0; i < remaining.length; i++) {
+		const t = remaining[i];
+		t.columnOrder = i;
+		t.updatedAt = now;
+		updatedColumnTasks.push(t);
+	}
+
+	await saveTasks(project, tasks);
+	log.info("Task reordered", { taskId, targetIndex: clampedIndex, columnTaskCount: updatedColumnTasks.length });
+	return updatedColumnTasks;
+}

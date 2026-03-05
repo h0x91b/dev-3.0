@@ -53,14 +53,20 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	useEffect(() => {
 		function handleDragEnd() {
 			setDragFromStatus(null);
+			setDraggedTaskId(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
 		return () => window.removeEventListener("dragend", handleDragEnd);
 	}, []);
 
+	const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+
 	function handleDragStart(taskId: string) {
 		const task = tasks.find((t) => t.id === taskId);
-		if (task) setDragFromStatus(task.status);
+		if (task) {
+			setDragFromStatus(task.status);
+			setDraggedTaskId(taskId);
+		}
 	}
 
 	async function handleTaskDrop(taskId: string, targetStatus: TaskStatus) {
@@ -96,6 +102,27 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 			trackEvent("task_moved", { from_status: fromStatus, to_status: targetStatus });
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
+		}
+	}
+
+	async function handleReorderTask(taskId: string, targetIndex: number) {
+		try {
+			const updatedTasks = await api.request.reorderTask({
+				taskId,
+				projectId: project.id,
+				targetIndex,
+			});
+			for (const task of updatedTasks) {
+				dispatch({ type: "updateTask", task });
+			}
+			// Clear in-session move order so persisted columnOrder takes effect
+			setMoveOrderMap((prev) => {
+				const next = new Map(prev);
+				next.delete(taskId);
+				return next;
+			});
+		} catch (err) {
+			console.error("Failed to reorder task:", err);
 		}
 	}
 
@@ -156,11 +183,13 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 							setLaunchModal({ task, targetStatus })
 						}
 						onTaskDrop={handleTaskDrop}
+						onReorderTask={handleReorderTask}
 						dragFromStatus={dragFromStatus}
 						onDragStart={handleDragStart}
-					onTaskMoved={recordMove}
+						onTaskMoved={recordMove}
 						bellCounts={bellCounts}
-					activeTaskId={activeTaskId}
+						activeTaskId={activeTaskId}
+						draggedTaskId={draggedTaskId}
 					/>
 				))}
 			</div>

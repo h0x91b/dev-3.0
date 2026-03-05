@@ -711,6 +711,17 @@ export const handlers = {
 		return updated;
 	},
 
+	async reorderTask(params: { taskId: string; projectId: string; targetIndex: number }): Promise<Task[]> {
+		log.info("→ reorderTask", params);
+		const project = await data.getProject(params.projectId);
+		const updatedColumnTasks = await data.reorderTasksInColumn(project, params.taskId, params.targetIndex);
+		for (const task of updatedColumnTasks) {
+			pushMessage?.("taskUpdated", { projectId: project.id, task });
+		}
+		log.info("← reorderTask done", { count: updatedColumnTasks.length });
+		return updatedColumnTasks;
+	},
+
 	async deleteTask(params: { taskId: string; projectId: string }): Promise<void> {
 		log.info("→ deleteTask", params);
 		const project = await data.getProject(params.projectId);

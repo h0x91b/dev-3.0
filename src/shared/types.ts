@@ -223,6 +223,7 @@ export interface Task {
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;
+	columnOrder?: number;
 	tmuxSocket?: string | null;
 	labelIds?: string[];
 	notes?: TaskNote[];
@@ -367,6 +368,10 @@ export type AppRPCSchema = {
 			moveTask: {
 				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean };
 				response: Task;
+			};
+			reorderTask: {
+				params: { taskId: string; projectId: string; targetIndex: number };
+				response: Task[];
 			};
 			deleteTask: {
 				params: { taskId: string; projectId: string };

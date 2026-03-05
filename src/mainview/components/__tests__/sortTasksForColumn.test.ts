@@ -342,3 +342,71 @@ describe("sortTasksForColumn — user scenario: insert at bottom", () => {
 		expect(ids(result)).toEqual(["V1", "V2", "V3", "V4"]);
 	});
 });
+
+// ============================================================
+// columnOrder — persisted within-column reordering
+// ============================================================
+
+describe("sortTasksForColumn — columnOrder (persisted reorder)", () => {
+	it("columnOrder sorts tasks in ascending order", () => {
+		const tasks = [
+			makeTask({ id: "A", columnOrder: 2, createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 0, createdAt: "2025-01-02T00:00:00Z" }),
+			makeTask({ id: "C", columnOrder: 1, createdAt: "2025-01-03T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["B", "C", "A"]);
+	});
+
+	it("columnOrder takes priority over movedAt and createdAt", () => {
+		const tasks = [
+			makeTask({ id: "A", columnOrder: 1, movedAt: "2026-01-01T00:00:00Z", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 0, movedAt: "2025-01-01T00:00:00Z", createdAt: "2025-06-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		// B has lower columnOrder → goes first despite older movedAt
+		expect(ids(result)).toEqual(["B", "A"]);
+	});
+
+	it("tasks with columnOrder come before tasks without", () => {
+		const tasks = [
+			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 0, createdAt: "2025-06-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["B", "A"]);
+	});
+
+	it("moveOrderMap overrides columnOrder", () => {
+		const tasks = [
+			makeTask({ id: "A", columnOrder: 0, createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 1, createdAt: "2025-01-02T00:00:00Z" }),
+		];
+		const moveOrder = new Map([["B", 1]]);
+		const result = sortTasksForColumn(tasks, "top", moveOrder);
+		// B has moveOrderMap entry → goes to top despite columnOrder=1
+		expect(ids(result)).toEqual(["B", "A"]);
+	});
+
+	it("mixed: some with columnOrder, some without — columnOrder group first", () => {
+		const tasks = [
+			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 1, createdAt: "2025-01-02T00:00:00Z" }),
+			makeTask({ id: "C", columnOrder: 0, createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "D", createdAt: "2025-01-04T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		// C(0), B(1) first (by columnOrder), then A, D (by createdAt)
+		expect(ids(result)).toEqual(["C", "B", "A", "D"]);
+	});
+
+	it("columnOrder works the same in bottom mode", () => {
+		const tasks = [
+			makeTask({ id: "A", columnOrder: 2 }),
+			makeTask({ id: "B", columnOrder: 0 }),
+			makeTask({ id: "C", columnOrder: 1 }),
+		];
+		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
+		expect(ids(result)).toEqual(["B", "C", "A"]);
+	});
+});
