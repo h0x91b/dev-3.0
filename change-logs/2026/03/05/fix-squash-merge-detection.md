@@ -1,0 +1,1 @@
+Fix false "changes will be lost" warning when completing a task whose PR was squash-merged while main had overlapping file changes before the merge. Added merge-tree comparison as primary detection strategy, falling back to patch-id matching for post-merge divergence cases.

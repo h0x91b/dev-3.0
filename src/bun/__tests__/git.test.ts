@@ -251,6 +251,40 @@ describe("isContentMergedInto", () => {
 		expect(result).toBe(true);
 	});
 
+	it("returns true after squash merge when main had overlapping commits BEFORE the squash (the real-world bug)", async () => {
+		// The task branch modifies app.ts line
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "task: change a"', repo.local);
+		makeTaskCommits(repo.local); // adds feature.ts
+		g("git push -u origin task-branch", repo.local);
+
+		// Another PR on main modifies the SAME line of app.ts (different value).
+		// This creates the scenario where the merge-base has "const a = 1;",
+		// main has "const a = 'other';", and task has "const a = 'task';".
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'other';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "other PR: also change a"', repo.local);
+
+		// Squash merge — will conflict on app.ts. Resolve by taking task's value.
+		try { g("git merge --squash task-branch", repo.local); } catch { /* conflict expected */ }
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add .", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		g("git push origin main", repo.local);
+
+		// Back on task branch — patch-id detection fails because:
+		// - Task combined diff: -"const a = 1;" +"const a = 'task';"  (base=merge-base)
+		// - Squash commit diff: -"const a = 'other';" +"const a = 'task';" (base=squash parent)
+		// Different `-` lines → different patch-ids
+		g("git checkout task-branch", repo.local);
+
+		const result = await isContentMergedInto(repo.local, "origin/main");
+		expect(result).toBe(true);
+	});
+
 	it("returns false when only some task commits are present in main (partial merge)", async () => {
 		g("git checkout -b task-branch", repo.local);
 		makeTaskCommits(repo.local);

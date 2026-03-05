@@ -212,15 +212,30 @@ export async function isContentMergedInto(
 	worktreePath: string,
 	ref: string,
 ): Promise<boolean> {
-	// Find common ancestor
+	// Strategy 1: merge-tree comparison.
+	// Compute a hypothetical merge of ref and HEAD. If the resulting tree
+	// matches ref's tree, all of HEAD's changes are already incorporated —
+	// regardless of how they got there (squash, rebase, cherry-pick, etc.).
+	// This handles cases where main diverged BEFORE the squash merge with
+	// overlapping changes to the same files (which breaks patch-id matching).
+	const [mergeTreeResult, refTreeResult] = await Promise.all([
+		run(["git", "merge-tree", "--write-tree", ref, "HEAD"], worktreePath),
+		run(["git", "rev-parse", `${ref}^{tree}`], worktreePath),
+	]);
+
+	if (mergeTreeResult.ok && refTreeResult.ok && mergeTreeResult.stdout === refTreeResult.stdout) {
+		log.info("isContentMergedInto", { ref, method: "merge-tree", merged: true });
+		return true;
+	}
+
+	// Strategy 2: patch-id comparison (fallback).
+	// merge-tree can report conflicts when main has additional changes to the
+	// same files AFTER the squash merge (add/add conflicts). In that case,
+	// fall back to patch-id matching which handles post-merge divergence well.
 	const mergeBaseResult = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
 	if (!mergeBaseResult.ok) return false;
 	const mergeBase = mergeBaseResult.stdout;
 
-	// Fetch diffs in parallel:
-	// - combined task diff (for squash merge detection)
-	// - individual task commit log (for rebase merge detection)
-	// - all non-merge commits on ref since merge base
 	const [taskDiffResult, taskLogResult, mainLogResult] = await Promise.all([
 		run(["git", "diff", mergeBase, "HEAD"], worktreePath),
 		run(["git", "log", "-p", "--no-merges", `${mergeBase}..HEAD`], worktreePath),
@@ -230,12 +245,6 @@ export async function isContentMergedInto(
 	if (!taskDiffResult.ok || !taskDiffResult.stdout) return true; // no task changes
 	if (!mainLogResult.ok || !mainLogResult.stdout) return false;
 
-	// git patch-id hashes only +/- lines, ignoring context lines and the "before" state.
-	// This makes it robust to squash commits (different merge base) and context drift
-	// from other PRs landing on main after the merge.
-	//
-	// Squash merge: combined task diff patch-id matches a single commit on main.
-	// Rebase merge: every individual task commit patch-id has a counterpart on main.
 	const fakeCommitDiff = `commit ${"0".repeat(40)}\n\n${taskDiffResult.stdout}`;
 	const [combinedPatchIdResult, taskPatchIdsResult, mainPatchIdsResult] = await Promise.all([
 		runWithInput(["git", "patch-id", "--stable"], worktreePath, fakeCommitDiff),
@@ -264,9 +273,7 @@ export async function isContentMergedInto(
 	log.info("isContentMergedInto", {
 		ref,
 		mergeBase,
-		combinedPatchId,
-		taskIndividualCount: taskIndividualPatchIds.length,
-		mainPatchIdCount: mainPatchIds.size,
+		method: "patch-id",
 		squashMerged,
 		rebaseMerged,
 		merged,
