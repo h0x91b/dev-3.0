@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
@@ -430,14 +432,22 @@ export const handlers = {
 	async pickFolder(): Promise<string | null> {
 		log.info("→ pickFolder (opening native dialog)");
 		try {
+			const lastFolder = await data.getLastPickedFolder();
+			const startingFolder = lastFolder ?? homedir();
+			log.info("pickFolder starting from", { startingFolder });
+
 			const paths = await Utils.openFileDialog({
+				startingFolder,
 				canChooseFiles: false,
 				canChooseDirectory: true,
 				allowsMultipleSelection: false,
 			});
 			log.info("← pickFolder", { paths });
 			if (!paths || paths.length === 0) return null;
-			return paths[0];
+
+			const picked = paths[0];
+			await data.setLastPickedFolder(dirname(picked));
+			return picked;
 		} catch (err) {
 			log.error("pickFolder failed", { error: String(err) });
 			throw err;

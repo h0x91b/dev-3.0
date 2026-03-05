@@ -22,6 +22,8 @@ vi.mock("../data", () => ({
 	deleteTask: vi.fn(),
 	removeProject: vi.fn(),
 	updateProject: vi.fn(),
+	getLastPickedFolder: vi.fn(),
+	setLastPickedFolder: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -1431,22 +1433,46 @@ describe("handlers.showConfirm", () => {
 describe("handlers.pickFolder", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("returns the selected path", async () => {
+	it("returns the selected path and saves parent folder", async () => {
+		vi.mocked(data.getLastPickedFolder).mockResolvedValue(undefined);
 		vi.mocked(Utils.openFileDialog).mockResolvedValue(["/Users/test/project"] as any);
 		const result = await handlers.pickFolder();
 		expect(result).toBe("/Users/test/project");
+		expect(data.setLastPickedFolder).toHaveBeenCalledWith("/Users/test");
+	});
+
+	it("uses last picked folder as starting directory", async () => {
+		vi.mocked(data.getLastPickedFolder).mockResolvedValue("/Users/saved/dir");
+		vi.mocked(Utils.openFileDialog).mockResolvedValue(["/Users/saved/dir/app"] as any);
+		await handlers.pickFolder();
+		expect(Utils.openFileDialog).toHaveBeenCalledWith(
+			expect.objectContaining({ startingFolder: "/Users/saved/dir" }),
+		);
+	});
+
+	it("defaults to home directory when no last folder saved", async () => {
+		vi.mocked(data.getLastPickedFolder).mockResolvedValue(undefined);
+		vi.mocked(Utils.openFileDialog).mockResolvedValue(["/some/path"] as any);
+		await handlers.pickFolder();
+		const call = vi.mocked(Utils.openFileDialog).mock.calls[0][0] as any;
+		expect(call.startingFolder).toBeTruthy();
+		expect(typeof call.startingFolder).toBe("string");
 	});
 
 	it("returns null when dialog is cancelled (empty array)", async () => {
+		vi.mocked(data.getLastPickedFolder).mockResolvedValue(undefined);
 		vi.mocked(Utils.openFileDialog).mockResolvedValue([] as any);
 		const result = await handlers.pickFolder();
 		expect(result).toBeNull();
+		expect(data.setLastPickedFolder).not.toHaveBeenCalled();
 	});
 
 	it("returns null when dialog returns null", async () => {
+		vi.mocked(data.getLastPickedFolder).mockResolvedValue(undefined);
 		vi.mocked(Utils.openFileDialog).mockResolvedValue(null as any);
 		const result = await handlers.pickFolder();
 		expect(result).toBeNull();
+		expect(data.setLastPickedFolder).not.toHaveBeenCalled();
 	});
 });
 
