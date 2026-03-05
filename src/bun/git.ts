@@ -295,65 +295,8 @@ export async function isContentMergedInto(
 		}
 	}
 
-	// Strategy 4: content containment check (offline fallback).
-	// If gh CLI is unavailable or the repo isn't on GitHub, check if all
-	// non-trivial lines ADDED by the task are present in ref's version of
-	// each changed file.
-	const changedFilesResult = await run(
-		["git", "diff", "--name-only", mergeBase, "HEAD"],
-		worktreePath,
-	);
-
-	if (changedFilesResult.ok && changedFilesResult.stdout) {
-		const files = changedFilesResult.stdout.split("\n").filter(Boolean);
-		if (files.length > 0) {
-			const allContained = await filesContentContainedIn(worktreePath, mergeBase, ref, files);
-			if (allContained) {
-				log.info("isContentMergedInto", { ref, mergeBase, method: "content-containment", fileCount: files.length, merged: true });
-				return true;
-			}
-		}
-	}
-
 	log.info("isContentMergedInto", { ref, mergeBase, merged: false });
 	return false;
-}
-
-/** Check if all non-trivial lines added by the task are present in ref's version of each file. */
-async function filesContentContainedIn(
-	worktreePath: string,
-	mergeBase: string,
-	ref: string,
-	files: string[],
-): Promise<boolean> {
-	const results = await Promise.all(
-		files.map(async (file) => {
-			const [taskDiffResult, refContentResult] = await Promise.all([
-				run(["git", "diff", mergeBase, "HEAD", "--", file], worktreePath),
-				run(["git", "show", `${ref}:${file}`], worktreePath),
-			]);
-
-			// No diff for this file — nothing to check
-			if (!taskDiffResult.ok || !taskDiffResult.stdout) return true;
-
-			// Extract non-trivial added lines
-			const addedLines = taskDiffResult.stdout
-				.split("\n")
-				.filter((line) => line.startsWith("+") && !line.startsWith("+++"))
-				.map((line) => line.substring(1))
-				.filter((line) => line.trim().length > 1); // skip blank / single-char lines like "}" or "{"
-
-			if (addedLines.length === 0) return true;
-
-			// File must exist on ref
-			if (!refContentResult.ok) return false;
-
-			const refLines = new Set(refContentResult.stdout.split("\n"));
-			return addedLines.every((line) => refLines.has(line));
-		}),
-	);
-
-	return results.every(Boolean);
 }
 
 export async function canRebaseCleanly(

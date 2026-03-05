@@ -18,12 +18,48 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/dev3-test",
 }));
 
+// Mock gh CLI response. Tests set this to control what `gh pr list` returns.
+let ghPrListResponse: string = "[]";
+
 // Replace Bun.spawn with a real Node.js child_process implementation so
 // git.ts functions run actual git commands in integration tests.
+// Intercepts `gh` calls and returns mock responses.
 vi.mock("../spawn", async () => {
 	const { spawn: cpSpawn } = await import("child_process");
+
+	const toWebStream = (readable: NodeJS.ReadableStream) =>
+		new ReadableStream({
+			start(controller) {
+				readable.on("data", (chunk: Buffer) =>
+					controller.enqueue(new Uint8Array(chunk)),
+				);
+				readable.on("end", () => controller.close());
+				readable.on("error", (err: Error) => controller.error(err));
+			},
+		});
+
+	/** Create a fake process that immediately resolves with given stdout/exit code */
+	function fakeProc(stdout: string, exitCode: number) {
+		const encoder = new TextEncoder();
+		return {
+			exited: Promise.resolve(exitCode),
+			stdout: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(stdout));
+					controller.close();
+				},
+			}),
+			stderr: new ReadableStream({ start(c) { c.close(); } }),
+		};
+	}
+
 	return {
 		spawn: (cmd: string[], opts?: Record<string, unknown>) => {
+			// Intercept gh CLI calls
+			if (cmd[0] === "gh") {
+				return fakeProc(ghPrListResponse, 0);
+			}
+
 			const child = cpSpawn(cmd[0], cmd.slice(1), {
 				cwd: opts?.cwd as string | undefined,
 				env: (opts?.env as NodeJS.ProcessEnv | undefined) ?? process.env,
@@ -38,17 +74,6 @@ vi.mock("../spawn", async () => {
 			} else {
 				child.stdin?.end();
 			}
-
-			const toWebStream = (readable: NodeJS.ReadableStream) =>
-				new ReadableStream({
-					start(controller) {
-						readable.on("data", (chunk: Buffer) =>
-							controller.enqueue(new Uint8Array(chunk)),
-						);
-						readable.on("end", () => controller.close());
-						readable.on("error", (err: Error) => controller.error(err));
-					},
-				});
 
 			return {
 				exited: new Promise<number>((resolve) =>
@@ -140,6 +165,7 @@ describe("isContentMergedInto", () => {
 
 	beforeEach(() => {
 		repo = createTestRepo();
+		ghPrListResponse = "[]"; // default: no merged PRs
 	});
 
 	afterEach(() => {
@@ -321,7 +347,8 @@ describe("isContentMergedInto", () => {
 
 		// merge-tree fails (conflict on feature.ts add/add + app.ts overlap)
 		// patch-id fails (different `-` lines due to pre-squash divergence on app.ts)
-		// new-files check succeeds: feature.ts exists on origin/main
+		// gh PR check confirms the branch was merged
+		ghPrListResponse = JSON.stringify([{ number: 42 }]);
 		const result = await isContentMergedInto(repo.local, "origin/main");
 		expect(result).toBe(true);
 	});
