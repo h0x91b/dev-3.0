@@ -157,6 +157,110 @@ async function cloneSingle(
 }
 
 /**
+ * Well-known paths that are typically gitignored but needed in worktrees.
+ * Covers most popular ecosystems. Only paths that actually exist in the
+ * project root will be auto-detected.
+ */
+export const WELL_KNOWN_CLONE_PATHS = [
+	// JavaScript / TypeScript (npm, yarn, pnpm, bun)
+	"node_modules",
+	".yarn/cache",
+	".pnp.cjs",
+	".pnp.loader.mjs",
+
+	// Python
+	".venv",
+	"venv",
+	".tox",
+	"__pycache__",
+	".mypy_cache",
+	".pytest_cache",
+	".ruff_cache",
+
+	// Ruby
+	"vendor/bundle",
+	".bundle",
+
+	// Go
+	"vendor",
+
+	// Rust
+	"target",
+
+	// Java / Kotlin / Gradle / Maven
+	".gradle",
+	"build",
+	".m2/repository",
+
+	// C / C++
+	"build",
+	"cmake-build-debug",
+	"cmake-build-release",
+
+	// .NET / C#
+	"bin",
+	"obj",
+	"packages",
+
+	// PHP (Composer)
+	"vendor",
+
+	// Elixir
+	"_build",
+	"deps",
+
+	// Dart / Flutter
+	".dart_tool",
+	".pub-cache",
+
+	// iOS / macOS
+	"Pods",
+	".build",
+
+	// Environment & secrets
+	".env",
+	".env.local",
+	".env.development.local",
+	".env.production.local",
+
+	// Build outputs
+	"dist",
+	"out",
+	".next",
+	".nuxt",
+	".output",
+	".svelte-kit",
+	".parcel-cache",
+	".turbo",
+	".cache",
+
+	// IDE / tooling caches
+	".eslintcache",
+	".stylelintcache",
+	".prettiercache",
+];
+
+/**
+ * Scan a project directory and return the subset of WELL_KNOWN_CLONE_PATHS
+ * that actually exist. Used to auto-populate clonePaths when adding a project.
+ */
+export async function detectClonePaths(projectPath: string): Promise<string[]> {
+	// Deduplicate the well-known list (some entries appear for multiple ecosystems)
+	const unique = [...new Set(WELL_KNOWN_CLONE_PATHS)];
+
+	const checks = await Promise.all(
+		unique.map(async (p) => {
+			const exists = await pathExists(`${projectPath}/${p}`);
+			return { path: p, exists };
+		}),
+	);
+
+	const detected = checks.filter((c) => c.exists).map((c) => c.path);
+	log.info("Auto-detected clone paths", { projectPath, detected });
+	return detected;
+}
+
+/**
  * Clone multiple paths from sourceRoot to destRoot using CoW when available.
  * All paths are processed in parallel.
  */

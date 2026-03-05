@@ -16,7 +16,7 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
-import { clonePaths } from "../cow-clone";
+import { clonePaths, detectClonePaths, WELL_KNOWN_CLONE_PATHS } from "../cow-clone";
 
 function makeProc(exitCode: number) {
 	return { exited: Promise.resolve(exitCode) };
@@ -172,5 +172,77 @@ describe("cow-clone", () => {
 		);
 		expect(mkdirCall).toBeDefined();
 		expect((mkdirCall![0] as string[]).join(" ")).toContain("/dst/frontend");
+	});
+});
+
+describe("WELL_KNOWN_CLONE_PATHS", () => {
+	it("contains common dependency directories", () => {
+		expect(WELL_KNOWN_CLONE_PATHS).toContain("node_modules");
+		expect(WELL_KNOWN_CLONE_PATHS).toContain(".venv");
+		expect(WELL_KNOWN_CLONE_PATHS).toContain("vendor/bundle");
+		expect(WELL_KNOWN_CLONE_PATHS).toContain("target");
+		expect(WELL_KNOWN_CLONE_PATHS).toContain(".env");
+	});
+
+	it("contains no absolute paths", () => {
+		for (const p of WELL_KNOWN_CLONE_PATHS) {
+			expect(p.startsWith("/")).toBe(false);
+		}
+	});
+
+	it("contains no path traversal", () => {
+		for (const p of WELL_KNOWN_CLONE_PATHS) {
+			expect(p.split("/")).not.toContain("..");
+		}
+	});
+});
+
+describe("detectClonePaths", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("returns only paths that exist in the project", async () => {
+		const existingPaths = new Set([
+			"/proj/node_modules",
+			"/proj/.env",
+			"/proj/.venv",
+		]);
+
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "test" && cmd[1] === "-e") {
+				const path = cmd[2];
+				return makeProc(existingPaths.has(path) ? 0 : 1);
+			}
+			return makeProc(0);
+		});
+
+		const detected = await detectClonePaths("/proj");
+		expect(detected).toContain("node_modules");
+		expect(detected).toContain(".env");
+		expect(detected).toContain(".venv");
+		// Something that doesn't exist should not be included
+		expect(detected).not.toContain("Pods");
+		expect(detected).not.toContain(".gradle");
+	});
+
+	it("returns empty array when nothing exists", async () => {
+		mockSpawn.mockImplementation(() => makeProc(1));
+
+		const detected = await detectClonePaths("/empty-proj");
+		expect(detected).toEqual([]);
+	});
+
+	it("deduplicates well-known paths", async () => {
+		// "vendor" and "build" appear for multiple ecosystems
+		// detectClonePaths should deduplicate
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "test" && cmd[2] === "/proj/vendor") return makeProc(0);
+			return makeProc(1);
+		});
+
+		const detected = await detectClonePaths("/proj");
+		const vendorCount = detected.filter((p) => p === "vendor").length;
+		expect(vendorCount).toBe(1);
 	});
 });

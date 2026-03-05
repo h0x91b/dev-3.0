@@ -3,6 +3,7 @@ import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
+import { detectClonePaths } from "./cow-clone";
 
 const log = createLogger("data");
 
@@ -67,6 +68,7 @@ export async function addProject(
 ): Promise<Project> {
 	log.info("Adding project", { name, path });
 	const projects = await loadAllProjects();
+	const autoClonePaths = await detectClonePaths(path);
 	const project: Project = {
 		id: crypto.randomUUID(),
 		name,
@@ -75,7 +77,7 @@ export async function addProject(
 		devScript: "",
 		cleanupScript: "",
 		defaultBaseBranch: "main",
-		clonePaths: [],
+		clonePaths: autoClonePaths,
 		createdAt: new Date().toISOString(),
 		labels: [],
 	};
