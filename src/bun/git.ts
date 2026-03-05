@@ -274,26 +274,23 @@ export async function isContentMergedInto(
 		return true;
 	}
 
-	// Strategy 3: new-files existence check.
-	// When main diverged both BEFORE the squash (breaking patch-id) AND AFTER
-	// with changes to the same files (breaking merge-tree), check if all files
-	// CREATED by the task exist on ref. If the task introduced new files (e.g.
-	// changelog, decision records) and they all exist on ref, the task content
-	// was merged — ref just evolved further on the same modified files.
-	const newFilesResult = await run(
-		["git", "diff", "--diff-filter=A", "--name-only", mergeBase, "HEAD"],
+	// Strategy 3: content containment check.
+	// When both merge-tree and patch-id fail (main diverged both before AND
+	// after the squash on the same files), check if all non-trivial lines
+	// ADDED by the task are present in ref's version of each changed file.
+	// This directly answers "did the task's content make it into ref?" without
+	// relying on diff structure or merge mechanics.
+	const changedFilesResult = await run(
+		["git", "diff", "--name-only", mergeBase, "HEAD"],
 		worktreePath,
 	);
 
-	if (newFilesResult.ok && newFilesResult.stdout) {
-		const newFiles = newFilesResult.stdout.split("\n").filter(Boolean);
-		if (newFiles.length > 0) {
-			const checks = await Promise.all(
-				newFiles.map((f) => run(["git", "cat-file", "-e", `${ref}:${f}`], worktreePath)),
-			);
-			const allExist = checks.every((c) => c.ok);
-			if (allExist) {
-				log.info("isContentMergedInto", { ref, mergeBase, method: "new-files", fileCount: newFiles.length, merged: true });
+	if (changedFilesResult.ok && changedFilesResult.stdout) {
+		const files = changedFilesResult.stdout.split("\n").filter(Boolean);
+		if (files.length > 0) {
+			const allContained = await filesContentContainedIn(worktreePath, mergeBase, ref, files);
+			if (allContained) {
+				log.info("isContentMergedInto", { ref, mergeBase, method: "content-containment", fileCount: files.length, merged: true });
 				return true;
 			}
 		}
@@ -301,6 +298,43 @@ export async function isContentMergedInto(
 
 	log.info("isContentMergedInto", { ref, mergeBase, merged: false });
 	return false;
+}
+
+/** Check if all non-trivial lines added by the task are present in ref's version of each file. */
+async function filesContentContainedIn(
+	worktreePath: string,
+	mergeBase: string,
+	ref: string,
+	files: string[],
+): Promise<boolean> {
+	const results = await Promise.all(
+		files.map(async (file) => {
+			const [taskDiffResult, refContentResult] = await Promise.all([
+				run(["git", "diff", mergeBase, "HEAD", "--", file], worktreePath),
+				run(["git", "show", `${ref}:${file}`], worktreePath),
+			]);
+
+			// No diff for this file — nothing to check
+			if (!taskDiffResult.ok || !taskDiffResult.stdout) return true;
+
+			// Extract non-trivial added lines
+			const addedLines = taskDiffResult.stdout
+				.split("\n")
+				.filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+				.map((line) => line.substring(1))
+				.filter((line) => line.trim().length > 1); // skip blank / single-char lines like "}" or "{"
+
+			if (addedLines.length === 0) return true;
+
+			// File must exist on ref
+			if (!refContentResult.ok) return false;
+
+			const refLines = new Set(refContentResult.stdout.split("\n"));
+			return addedLines.every((line) => refLines.has(line));
+		}),
+	);
+
+	return results.every(Boolean);
 }
 
 export async function canRebaseCleanly(
