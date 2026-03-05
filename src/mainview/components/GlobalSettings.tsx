@@ -508,24 +508,32 @@ function buildCommandPreview(
 		parts.push("--model", config.model);
 	}
 
+	const cmdName = baseCmd.split("/").pop() ?? "";
+	const isCursor = cmdName === "agent";
+
 	if (config.permissionMode && config.permissionMode !== "default") {
-		parts.push("--permission-mode", config.permissionMode);
+		if (isCursor) {
+			if (config.permissionMode === "plan") {
+				parts.push("--mode", "plan");
+			} else if (config.permissionMode === "bypassPermissions") {
+				parts.push("--force");
+			}
+		} else {
+			parts.push("--permission-mode", config.permissionMode);
+		}
 	}
 
-	if (config.effort) {
+	if (config.effort && !isCursor) {
 		parts.push("--effort", config.effort);
 	}
 
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
+	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor) {
 		parts.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
 	// Mirror --append-system-prompt injection for Claude-based agents
-	{
-		const name = baseCmd.split("/").pop() ?? "";
-		if (name === "claude") {
-			parts.push("--append-system-prompt", "'…dev3 prompt…'");
-		}
+	if (cmdName === "claude") {
+		parts.push("--append-system-prompt", "'…dev3 prompt…'");
 	}
 
 	if (config.additionalArgs) {

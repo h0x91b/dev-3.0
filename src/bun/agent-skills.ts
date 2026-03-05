@@ -64,6 +64,7 @@ For long content (descriptions, notes), use \`@path\` to read from a file: \`dev
 /** Agent skill directories relative to $HOME. */
 const SKILL_DIRS = [
 	".claude/skills/dev3",
+	".cursor/skills/dev3",
 	".codex/skills/dev3",
 	".gemini/skills/dev3",
 	".opencode/skills/dev3",

@@ -1,0 +1,1 @@
+Added Cursor Agent (`agent` CLI) as a built-in coding agent with six presets: Default/Plan/YOLO with Opus 4.6 Thinking, GPT-5.3 Codex High, YOLO GPT-5.3 Codex, and Gemini 3.1 Pro. The dev3 skill is now also installed into `~/.cursor/skills/dev3/`. Command resolution correctly maps Cursor-specific flags (`--mode plan`, `--force`) instead of Claude-specific ones.

@@ -137,6 +137,12 @@ export function isClaudeCommand(baseCmd: string): boolean {
 	return name === "claude";
 }
 
+/** Returns true when the resolved base command is the Cursor Agent CLI. */
+export function isCursorCommand(baseCmd: string): boolean {
+	const name = baseCmd.split("/").pop() ?? "";
+	return name === "agent";
+}
+
 export function shellEscape(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
 }
@@ -153,15 +159,27 @@ export function resolveAgentCommand(
 		args.push("--model", config.model);
 	}
 
+	const cursorAgent = isCursorCommand(baseCmd);
+
 	if (config?.permissionMode && config.permissionMode !== "default") {
-		args.push("--permission-mode", config.permissionMode);
+		if (cursorAgent) {
+			// Cursor Agent uses different flags for modes
+			if (config.permissionMode === "plan") {
+				args.push("--mode", "plan");
+			} else if (config.permissionMode === "bypassPermissions") {
+				args.push("--force");
+			}
+			// "acceptEdits" and "dontAsk" have no cursor equivalent — skip
+		} else {
+			args.push("--permission-mode", config.permissionMode);
+		}
 	}
 
-	if (config?.effort) {
+	if (config?.effort && !cursorAgent) {
 		args.push("--effort", config.effort);
 	}
 
-	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
+	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent) {
 		args.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
