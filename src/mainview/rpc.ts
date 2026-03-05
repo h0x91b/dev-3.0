@@ -1,6 +1,6 @@
 import { Electroview } from "electrobun/view";
 import type { AppRPCSchema } from "../shared/types";
-import { adjustZoom, applyZoom, ZOOM_STEP } from "./zoom";
+import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 
 const rpc = Electroview.defineRPC<AppRPCSchema>({
 	maxRequestTime: 120_000, // 2 min — covers native dialogs and git operations
@@ -59,7 +59,7 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 				adjustZoom(-ZOOM_STEP);
 			},
 			zoomReset: () => {
-				applyZoom(1.0);
+				applyZoom(DEFAULT_ZOOM);
 			},
 		} as any,
 	},

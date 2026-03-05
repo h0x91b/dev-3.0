@@ -4,16 +4,16 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 
-// Mock zoom API that main.tsx normally sets up
-(window as any).__dev3Zoom = {
-	applyZoom: vi.fn(),
+vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
 	adjustZoom: vi.fn(),
+	applyZoom: vi.fn(),
 	ZOOM_STEP: 0.1,
 	DEFAULT_ZOOM: 1.0,
 	MIN_ZOOM: 0.5,
 	MAX_ZOOM: 2.0,
-};
+	ZOOM_CHANGED_EVENT: "zoom-changed",
+}));
 
 vi.mock("../../rpc", () => ({
 	api: {
