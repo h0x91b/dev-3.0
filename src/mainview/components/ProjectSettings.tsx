@@ -242,9 +242,22 @@ function ProjectSettings({
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("projectSettings.clonePaths")}
 						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("projectSettings.clonePathsDesc")}
-						</p>
+						<div className="flex items-start gap-3 mb-3">
+							<p className="text-fg-3 text-sm flex-1">
+								{t("projectSettings.clonePathsDesc")}
+							</p>
+							<button
+								type="button"
+								onClick={runAutoDetect}
+								disabled={detecting}
+								className="flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 hover:border-accent/50 transition-all disabled:opacity-50"
+							>
+								{detecting ? t("projectSettings.autoDetecting") : t("projectSettings.autoDetect")}
+							</button>
+						</div>
+						{detectFeedback && (
+							<p className="text-fg-3 text-xs mb-2">{detectFeedback}</p>
+						)}
 						<ListEditor
 							items={clonePaths}
 							onChange={(items) => {
@@ -254,19 +267,6 @@ function ProjectSettings({
 							placeholder="node_modules"
 							addLabel={t("projectSettings.addClonePath")}
 						/>
-						<div className="mt-2 flex items-center gap-3">
-							<button
-								type="button"
-								onClick={runAutoDetect}
-								disabled={detecting}
-								className="text-accent text-xs font-medium hover:text-accent-hover transition-colors disabled:opacity-50"
-							>
-								{detecting ? t("projectSettings.autoDetecting") : t("projectSettings.autoDetect")}
-							</button>
-							{detectFeedback && (
-								<span className="text-fg-3 text-xs">{detectFeedback}</span>
-							)}
-						</div>
 					</div>
 
 					{/* Dev Script */}
