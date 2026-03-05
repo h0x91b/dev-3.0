@@ -547,6 +547,9 @@ function buildCommandPreview(
 	if (config.appendPrompt) {
 		prompt += "\\n\\n" + config.appendPrompt;
 	}
+	if (isCursor) {
+		prompt += "\\n\\n…dev3 prompt…";
+	}
 	parts.push(`'${prompt}'`);
 
 	// Env vars line

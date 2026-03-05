@@ -201,6 +201,11 @@ export function resolveAgentCommand(
 		}
 	}
 
+	// Cursor Agent has no --append-system-prompt, so inject via prompt argument
+	if (cursorAgent) {
+		prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT}` : DEV3_SYSTEM_PROMPT;
+	}
+
 	const parts = [baseCmd, ...args];
 	if (prompt) {
 		parts.push(shellEscape(prompt));
