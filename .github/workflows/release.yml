@@ -153,6 +153,7 @@ jobs:
           bun scripts/generate-build-info.ts
           bun scripts/generate-changelog.ts
           bunx vite build
+          bun run build:cli
           bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
 
       - name: Debug build output
