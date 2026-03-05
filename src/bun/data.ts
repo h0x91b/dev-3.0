@@ -272,3 +272,37 @@ export async function getTask(
 	if (!task) throw new Error(`Task not found: ${taskId}`);
 	return task;
 }
+
+// ---- Preferences ----
+
+const PREFERENCES_FILE = `${DEV3_HOME}/preferences.json`;
+
+interface Preferences {
+	lastPickedFolder?: string;
+}
+
+async function loadPreferences(): Promise<Preferences> {
+	try {
+		const file = Bun.file(PREFERENCES_FILE);
+		if (!(await file.exists())) return {};
+		return await file.json();
+	} catch {
+		return {};
+	}
+}
+
+async function savePreferences(prefs: Preferences): Promise<void> {
+	await ensureDir(PREFERENCES_FILE);
+	await Bun.write(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
+}
+
+export async function getLastPickedFolder(): Promise<string | undefined> {
+	const prefs = await loadPreferences();
+	return prefs.lastPickedFolder;
+}
+
+export async function setLastPickedFolder(folder: string): Promise<void> {
+	const prefs = await loadPreferences();
+	prefs.lastPickedFolder = folder;
+	await savePreferences(prefs);
+}

@@ -1,0 +1,1 @@
+The folder picker dialog now starts from the user's home directory by default and remembers the parent of the last picked folder for subsequent uses. The preference is persisted in `preferences.json` so it survives app restarts.
