@@ -533,6 +533,15 @@ export const handlers = {
 		return project;
 	},
 
+	async detectClonePaths(params: { projectId: string }): Promise<string[]> {
+		log.info("→ detectClonePaths", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const { detectClonePaths: detect } = await import("./cow-clone");
+		const paths = await detect(project.path);
+		log.info("← detectClonePaths", { count: paths.length });
+		return paths;
+	},
+
 	async getGlobalSettings(): Promise<GlobalSettings> {
 		log.info("→ getGlobalSettings");
 		const settings = await loadSettings();

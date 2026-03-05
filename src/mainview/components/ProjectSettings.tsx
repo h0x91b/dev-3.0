@@ -1,4 +1,4 @@
-import { useState, type Dispatch } from "react";
+import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { Label, Project } from "../../shared/types";
 import { LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -108,6 +108,38 @@ function ProjectSettings({
 	);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
+	const [detecting, setDetecting] = useState(false);
+	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
+	const autoDetectRan = useRef(false);
+
+	async function runAutoDetect() {
+		if (!project) return;
+		setDetecting(true);
+		setDetectFeedback(null);
+		try {
+			const detected = await api.request.detectClonePaths({ projectId });
+			if (detected.length > 0) {
+				// Merge with existing paths (no duplicates)
+				const existing = new Set(clonePaths);
+				const merged = [...clonePaths, ...detected.filter((p) => !existing.has(p))];
+				setClonePaths(merged);
+				setDetectFeedback(t.plural("projectSettings.autoDetectFound", detected.length));
+			} else {
+				setDetectFeedback(t("projectSettings.autoDetectNone"));
+			}
+		} catch {
+			setDetectFeedback(t("projectSettings.autoDetectNone"));
+		}
+		setDetecting(false);
+	}
+
+	// Auto-run detect when clone paths are empty (e.g. project added before this feature)
+	useEffect(() => {
+		if (!autoDetectRan.current && project && clonePaths.length === 0) {
+			autoDetectRan.current = true;
+			runAutoDetect();
+		}
+	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	if (!project) {
 		return (
@@ -215,10 +247,26 @@ function ProjectSettings({
 						</p>
 						<ListEditor
 							items={clonePaths}
-							onChange={setClonePaths}
+							onChange={(items) => {
+								setClonePaths(items);
+								setDetectFeedback(null);
+							}}
 							placeholder="node_modules"
 							addLabel={t("projectSettings.addClonePath")}
 						/>
+						<div className="mt-2 flex items-center gap-3">
+							<button
+								type="button"
+								onClick={runAutoDetect}
+								disabled={detecting}
+								className="text-accent text-xs font-medium hover:text-accent-hover transition-colors disabled:opacity-50"
+							>
+								{detecting ? t("projectSettings.autoDetecting") : t("projectSettings.autoDetect")}
+							</button>
+							{detectFeedback && (
+								<span className="text-fg-3 text-xs">{detectFeedback}</span>
+							)}
+						</div>
 					</div>
 
 					{/* Dev Script */}

@@ -197,6 +197,86 @@ describe("WELL_KNOWN_CLONE_PATHS", () => {
 	});
 });
 
+describe("glob patterns", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("rejects glob paths with traversal", async () => {
+		await expect(
+			clonePaths("/src", "/dst", ["../*.cache"]),
+		).rejects.toThrow("Path traversal not allowed");
+	});
+
+	it("allows valid glob patterns", async () => {
+		// Non-glob paths that exist → normal flow
+		// Glob patterns → expandGlob is called (which uses Bun.Glob)
+		// In vitest env, Bun.Glob doesn't exist, so expandGlob returns []
+		// That means no expanded paths → nothing to clone → empty results for the glob
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "test") return makeProc(1); // nothing exists
+			return makeProc(0);
+		});
+
+		// Should not throw for valid glob patterns
+		const results = await clonePaths("/src", "/dst", ["*.cache"]);
+		// Glob expansion fails gracefully in vitest (no Bun.Glob) → empty results
+		expect(results).toHaveLength(0);
+	});
+
+	it("allows glob with directory prefix", async () => {
+		mockSpawn.mockImplementation(() => makeProc(1));
+		// Should not throw
+		const results = await clonePaths("/src", "/dst", ["src/**/node_modules"]);
+		expect(results).toHaveLength(0);
+	});
+
+	it("rejects absolute path even with glob characters", async () => {
+		await expect(
+			clonePaths("/src", "/dst", ["/*.cache"]),
+		).rejects.toThrow("Absolute path not allowed");
+	});
+
+	it("deduplicates expanded paths", async () => {
+		// If two globs expand to the same path, it should be cloned only once
+		// Can't fully test with Bun.Glob in vitest, but we can test the non-glob dedup
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "test") return makeProc(0);
+			if (cmd[0] === "mkdir") return makeProc(0);
+			if (cmd[0] === "rm") return makeProc(0);
+			if (cmd[0] === "cp") {
+				if (cmd.includes("-cR") || cmd.includes("--reflink=always")) return makeProc(1);
+				return makeProc(0);
+			}
+			return makeProc(0);
+		});
+
+		// Same path listed twice — should only clone once
+		const results = await clonePaths("/src", "/dst", ["node_modules", "node_modules"]);
+		expect(results).toHaveLength(1);
+		expect(results[0].path).toBe("node_modules");
+	});
+
+	it("mixes globs and literal paths", async () => {
+		mockSpawn.mockImplementation((cmd: string[]) => {
+			if (cmd[0] === "test") return makeProc(0);
+			if (cmd[0] === "mkdir") return makeProc(0);
+			if (cmd[0] === "rm") return makeProc(0);
+			if (cmd[0] === "cp") {
+				if (cmd.includes("-cR") || cmd.includes("--reflink=always")) return makeProc(1);
+				return makeProc(0);
+			}
+			return makeProc(0);
+		});
+
+		// Literal path works, glob silently returns empty in vitest
+		const results = await clonePaths("/src", "/dst", ["node_modules", "*.cache"]);
+		// node_modules is literal → cloned; *.cache is glob → Bun.Glob fails gracefully → 0 expanded
+		expect(results.length).toBeGreaterThanOrEqual(1);
+		expect(results.find((r) => r.path === "node_modules")).toBeDefined();
+	});
+});
+
 describe("detectClonePaths", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

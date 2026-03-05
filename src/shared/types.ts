@@ -336,6 +336,10 @@ export type AppRPCSchema = {
 				};
 				response: Project;
 			};
+			detectClonePaths: {
+				params: { projectId: string };
+				response: string[];
+			};
 			getGlobalSettings: {
 				params: void;
 				response: GlobalSettings;

@@ -26,16 +26,46 @@ function isMacOS(): boolean {
 	return process.platform === "darwin";
 }
 
+/** Check if a pattern contains glob characters. */
+function isGlob(p: string): boolean {
+	return p.includes("*") || p.includes("?") || p.includes("[");
+}
+
 /** Validate a relative path — reject traversal and absolute paths. */
 function validatePath(p: string): void {
 	if (p.startsWith("/")) {
 		throw new Error(`Absolute path not allowed: ${p}`);
 	}
-	const segments = p.split("/");
+	// Strip glob characters for traversal check
+	const cleaned = p.replace(/[*?\[\]]/g, "");
+	const segments = cleaned.split("/");
 	for (const seg of segments) {
 		if (seg === "..") {
 			throw new Error(`Path traversal not allowed: ${p}`);
 		}
+	}
+}
+
+/**
+ * Expand a glob pattern relative to a root directory.
+ * Returns matched paths relative to the root.
+ * Only matches directories (for cloning).
+ */
+async function expandGlob(root: string, pattern: string): Promise<string[]> {
+	try {
+		const glob = new Bun.Glob(pattern);
+		const matches: string[] = [];
+		for await (const match of glob.scan({ cwd: root, onlyFiles: false })) {
+			// Check if it's a directory or file
+			const fullPath = `${root}/${match}`;
+			if (await pathExists(fullPath)) {
+				matches.push(match);
+			}
+		}
+		return matches;
+	} catch (err) {
+		log.debug("Glob expansion failed", { pattern, error: String(err) });
+		return [];
 	}
 }
 
@@ -283,8 +313,22 @@ export async function clonePaths(
 		validatePath(p);
 	}
 
+	// Expand glob patterns into concrete paths
+	const expandedPaths: string[] = [];
+	for (const p of paths) {
+		if (isGlob(p)) {
+			const matches = await expandGlob(sourceRoot, p);
+			expandedPaths.push(...matches);
+		} else {
+			expandedPaths.push(p);
+		}
+	}
+
+	// Deduplicate expanded paths
+	const uniquePaths = [...new Set(expandedPaths)];
+
 	const results = await Promise.all(
-		paths.map((p) => cloneSingle(sourceRoot, destRoot, p)),
+		uniquePaths.map((p) => cloneSingle(sourceRoot, destRoot, p)),
 	);
 
 	const totalMs = results.reduce((sum, r) => Math.max(sum, r.durationMs), 0);

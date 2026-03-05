@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			createLabel: vi.fn(),
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
+			detectClonePaths: vi.fn().mockResolvedValue([]),
 		},
 	},
 }));
@@ -150,6 +151,72 @@ describe("ProjectSettings", () => {
 					clonePaths: ["node_modules"],
 				}),
 			);
+		});
+
+		it("renders auto-detect button", () => {
+			const projectWithPaths: Project = {
+				...mockProject,
+				clonePaths: ["node_modules"],
+			};
+			renderProjectSettings(projectWithPaths);
+			expect(screen.getByText("Auto-detect")).toBeInTheDocument();
+		});
+
+		it("auto-runs detect when clonePaths is empty", async () => {
+			const { api } = await import("../../rpc");
+			const mockDetect = api.request.detectClonePaths as ReturnType<typeof vi.fn>;
+			mockDetect.mockResolvedValueOnce(["node_modules", ".env"]);
+
+			const emptyProject: Project = {
+				...mockProject,
+				clonePaths: [],
+			};
+			renderProjectSettings(emptyProject);
+
+			// Auto-detect should have been called
+			await vi.waitFor(() => {
+				expect(mockDetect).toHaveBeenCalledWith({ projectId: "proj-1" });
+			});
+		});
+
+		it("shows feedback after manual auto-detect", async () => {
+			const { api } = await import("../../rpc");
+			const mockDetect = api.request.detectClonePaths as ReturnType<typeof vi.fn>;
+			mockDetect.mockResolvedValue(["node_modules", ".venv"]);
+
+			const user = userEvent.setup();
+			const projectWithPaths: Project = {
+				...mockProject,
+				clonePaths: ["existing"],
+			};
+			renderProjectSettings(projectWithPaths);
+
+			const detectButton = screen.getByText("Auto-detect");
+			await user.click(detectButton);
+
+			await vi.waitFor(() => {
+				expect(screen.getByText("Found 2 paths")).toBeInTheDocument();
+			});
+		});
+
+		it("shows 'no paths found' feedback when detect returns empty", async () => {
+			const { api } = await import("../../rpc");
+			const mockDetect = api.request.detectClonePaths as ReturnType<typeof vi.fn>;
+			mockDetect.mockResolvedValue([]);
+
+			const user = userEvent.setup();
+			const projectWithPaths: Project = {
+				...mockProject,
+				clonePaths: ["existing"],
+			};
+			renderProjectSettings(projectWithPaths);
+
+			const detectButton = screen.getByText("Auto-detect");
+			await user.click(detectButton);
+
+			await vi.waitFor(() => {
+				expect(screen.getByText("No common paths found")).toBeInTheDocument();
+			});
 		});
 	});
 });
