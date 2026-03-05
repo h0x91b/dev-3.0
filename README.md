@@ -52,7 +52,7 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Terminal bell alerts** — red badges on cards when an agent needs your attention
 - **Multi-agent attempts** — run the same task with different agents/configs and compare results
 - **Automated setup** — configure a setup script per project that runs for every new task
-- **Copy-on-Write clone paths** — clone `node_modules`, `.venv`, `build`, and other heavy directories into worktrees instantly using APFS `clonefile(2)` on macOS or `--reflink` on Linux — near-zero disk overhead. Auto-detect scans your project for well-known paths across 12+ language ecosystems
+- **Copy-on-Write clone paths** — clone `node_modules`, `.venv`, `build`, and other heavy directories into worktrees instantly with near-zero disk overhead. Auto-detect finds well-known paths across 12+ language ecosystems
 - **Works with any CLI agent** — Claude Code, Codex, Gemini CLI, Aider, or any terminal tool
 
 <p align="center">
