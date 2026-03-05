@@ -52,10 +52,15 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Terminal bell alerts** — red badges on cards when an agent needs your attention
 - **Multi-agent attempts** — run the same task with different agents/configs and compare results
 - **Automated setup** — configure a setup script per project that runs for every new task
+- **Copy-on-Write clone paths** — clone `node_modules`, `.venv`, `build`, and other heavy directories into worktrees instantly with near-zero disk overhead. Auto-detect finds well-known paths across 12+ language ecosystems
 - **Works with any CLI agent** — Claude Code, Codex, Gemini CLI, Aider, or any terminal tool
 
 <p align="center">
   <img src="docs/screenshots/terminal-view.png" width="800" alt="Terminal with Claude Code and tmux">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/cow-clone-paths.jpg" width="600" alt="Copy-on-Write clone paths in Project Settings">
 </p>
 
 ## Install

@@ -1397,6 +1397,15 @@ footer {
         <h3>Automated setup</h3>
         <p>Configure a setup script per project. Install deps, seed data, start services &mdash; runs automatically for each new task.</p>
       </div>
+
+      <!-- Feature: Copy-on-Write Clone Paths -->
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--orange);">
+        <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h2"/></svg>
+        </div>
+        <h3>Copy-on-Write cloning</h3>
+        <p>Clone <code>node_modules</code>, <code>.venv</code>, and other heavy directories into worktrees instantly with near-zero disk usage. Auto-detect finds well-known paths across 12+ ecosystems.</p>
+      </div>
     </div>
   </div>
 </section>
