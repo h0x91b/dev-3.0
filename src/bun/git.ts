@@ -274,12 +274,31 @@ export async function isContentMergedInto(
 		return true;
 	}
 
-	// Strategy 3: content containment check.
-	// When both merge-tree and patch-id fail (main diverged both before AND
-	// after the squash on the same files), check if all non-trivial lines
-	// ADDED by the task are present in ref's version of each changed file.
-	// This directly answers "did the task's content make it into ref?" without
-	// relying on diff structure or merge mechanics.
+	// Strategy 3: GitHub PR status check.
+	// When both local strategies fail (main diverged before AND after the squash
+	// on the same files), ask GitHub directly if a merged PR exists for this branch.
+	// This is the definitive source of truth for GitHub-hosted repos.
+	const branchResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath);
+	if (branchResult.ok && branchResult.stdout) {
+		const ghResult = await run(
+			["gh", "pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number", "--limit", "1"],
+			worktreePath,
+		);
+		if (ghResult.ok && ghResult.stdout) {
+			try {
+				const prs = JSON.parse(ghResult.stdout);
+				if (Array.isArray(prs) && prs.length > 0) {
+					log.info("isContentMergedInto", { ref, method: "github-pr", pr: prs[0].number, merged: true });
+					return true;
+				}
+			} catch { /* ignore parse errors */ }
+		}
+	}
+
+	// Strategy 4: content containment check (offline fallback).
+	// If gh CLI is unavailable or the repo isn't on GitHub, check if all
+	// non-trivial lines ADDED by the task are present in ref's version of
+	// each changed file.
 	const changedFilesResult = await run(
 		["git", "diff", "--name-only", mergeBase, "HEAD"],
 		worktreePath,
