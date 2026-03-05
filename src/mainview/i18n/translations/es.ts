@@ -20,6 +20,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"header.settings": "Configuración",
 	"header.projectSettings": "Configuración del proyecto",
 	"header.globalSettingsTooltip": "Configuración global (\u2318,)",
+	"header.openFolderTooltip": "Abrir carpeta del proyecto",
 	"header.projLabel": "Proy",
 	"header.globalLabel": "Global",
 	"header.devServer": "Servidor Dev",

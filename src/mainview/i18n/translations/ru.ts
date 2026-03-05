@@ -22,6 +22,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"header.settings": "Настройки",
 	"header.projectSettings": "Настройки проекта",
 	"header.globalSettingsTooltip": "Глобальные настройки (\u2318,)",
+	"header.openFolderTooltip": "Открыть папку проекта",
 	"header.projLabel": "Проект",
 	"header.globalLabel": "Общие",
 	"header.devServer": "Dev-сервер",

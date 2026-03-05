@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
+import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 
 interface GlobalHeaderProps {
@@ -181,6 +182,32 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 						<span className="text-[0.6875rem] font-medium">{t("header.changelogLabel")}</span>
 					</button>
 				)}
+
+				{/* Open project folder in Finder/Explorer */}
+				{"projectId" in route && (() => {
+					const proj = projects.find((p) => p.id === route.projectId);
+					return proj ? (
+						<button
+							onClick={() => api.request.openFolder({ path: proj.path })}
+							className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+							title={t("header.openFolderTooltip")}
+						>
+							<svg
+								className="w-[1.125rem] h-[1.125rem]"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={1.5}
+									d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+								/>
+							</svg>
+						</button>
+					) : null;
+				})()}
 
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
 				{"projectId" in route && route.screen !== "project-settings" && (

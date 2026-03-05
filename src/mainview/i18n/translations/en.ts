@@ -18,6 +18,7 @@ const en = {
 	"header.settings": "Settings",
 	"header.projectSettings": "Project Settings",
 	"header.globalSettingsTooltip": "Global Settings (\u2318,)",
+	"header.openFolderTooltip": "Open project folder",
 	"header.projLabel": "Proj",
 	"header.globalLabel": "Global",
 	"header.devServer": "Dev Server",

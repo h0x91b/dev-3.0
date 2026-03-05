@@ -513,6 +513,10 @@ export type AppRPCSchema = {
 				params: { path: string };
 				response: void;
 			};
+			openFolder: {
+				params: { path: string };
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

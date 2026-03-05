@@ -1,0 +1,1 @@
+Added "Open project folder" button to the global header that appears when inside a project. Clicking it opens the project root directory in Finder (macOS) or the native file manager on other platforms.

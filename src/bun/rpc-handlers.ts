@@ -1705,4 +1705,12 @@ export const handlers = {
 		Utils.openPath(params.path);
 	},
 
+	async openFolder(params: { path: string }): Promise<void> {
+		log.info("→ openFolder", { path: params.path });
+		if (!params.path.startsWith("/") || params.path.includes("..")) {
+			throw new Error("Invalid folder path");
+		}
+		Utils.openPath(params.path);
+	},
+
 };
