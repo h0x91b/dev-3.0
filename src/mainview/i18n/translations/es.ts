@@ -288,6 +288,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"header.changelog": "Registro de cambios",
 	"header.changelogLabel": "Log",
 	"header.changelogTooltip": "Ver registro de cambios",
+	"header.githubTooltip": "Sitio web",
+	"header.reportBugTooltip": "Reportar un error",
 	"changelog.loading": "Cargando...",
 	"changelog.empty": "Aún no hay entradas",
 	"changelog.feature": "feature",

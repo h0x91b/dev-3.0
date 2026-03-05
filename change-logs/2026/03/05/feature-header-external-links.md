@@ -1,0 +1,1 @@
+Add GitHub website and Report Bug buttons to the global header. The GitHub icon opens the project landing page; the bug icon opens the GitHub Issues page for bug reporting. Both open in the system browser.
