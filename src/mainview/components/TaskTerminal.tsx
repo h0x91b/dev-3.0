@@ -169,7 +169,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	return (
-		<div className="h-full w-full flex flex-col">
+		<div className="h-full w-full flex flex-col overflow-hidden">
 			{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} />}
 			<div className="flex-1 min-h-0 overflow-hidden">
 				{ptyUrl ? (

@@ -153,8 +153,9 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			}
 
 			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
+			const zoomLevel = getZoomApi()?.getZoom?.() ?? 1;
 			const term = new Terminal({
-				fontSize: 14,
+				fontSize: Math.round(14 * zoomLevel),
 				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
