@@ -269,16 +269,38 @@ export async function isContentMergedInto(
 	const rebaseMerged =
 		taskIndividualPatchIds.length > 0 && taskIndividualPatchIds.every((id) => mainPatchIds.has(id));
 
-	const merged = squashMerged || rebaseMerged;
-	log.info("isContentMergedInto", {
-		ref,
-		mergeBase,
-		method: "patch-id",
-		squashMerged,
-		rebaseMerged,
-		merged,
-	});
-	return merged;
+	if (squashMerged || rebaseMerged) {
+		log.info("isContentMergedInto", { ref, mergeBase, method: "patch-id", squashMerged, rebaseMerged, merged: true });
+		return true;
+	}
+
+	// Strategy 3: new-files existence check.
+	// When main diverged both BEFORE the squash (breaking patch-id) AND AFTER
+	// with changes to the same files (breaking merge-tree), check if all files
+	// CREATED by the task exist on ref. If the task introduced new files (e.g.
+	// changelog, decision records) and they all exist on ref, the task content
+	// was merged — ref just evolved further on the same modified files.
+	const newFilesResult = await run(
+		["git", "diff", "--diff-filter=A", "--name-only", mergeBase, "HEAD"],
+		worktreePath,
+	);
+
+	if (newFilesResult.ok && newFilesResult.stdout) {
+		const newFiles = newFilesResult.stdout.split("\n").filter(Boolean);
+		if (newFiles.length > 0) {
+			const checks = await Promise.all(
+				newFiles.map((f) => run(["git", "cat-file", "-e", `${ref}:${f}`], worktreePath)),
+			);
+			const allExist = checks.every((c) => c.ok);
+			if (allExist) {
+				log.info("isContentMergedInto", { ref, mergeBase, method: "new-files", fileCount: newFiles.length, merged: true });
+				return true;
+			}
+		}
+	}
+
+	log.info("isContentMergedInto", { ref, mergeBase, merged: false });
+	return false;
 }
 
 export async function canRebaseCleanly(

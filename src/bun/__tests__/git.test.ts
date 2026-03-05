@@ -285,6 +285,47 @@ describe("isContentMergedInto", () => {
 		expect(result).toBe(true);
 	});
 
+	it("returns true after squash merge when main diverged BOTH before AND after the squash on the same files", async () => {
+		// Task modifies app.ts (conflicting with main) and creates feature.ts
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "task: change a"', repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		// Another PR on main modifies app.ts BEFORE the squash
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'other';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "other PR: also change a"', repo.local);
+
+		// Squash merge (resolve conflict)
+		try { g("git merge --squash task-branch", repo.local); } catch { /* conflict */ }
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add .", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+
+		// ANOTHER PR on main AFTER the squash also touches feature.ts
+		writeFileSync(
+			join(repo.local, "feature.ts"),
+			"export const add = (a: number, b: number) => a + b;\n" +
+				"export const sub = (a: number, b: number) => a - b;\n" +
+				"export const mul = (a: number, b: number) => a * b;\n",
+		);
+		g("git add feature.ts", repo.local);
+		g('git commit -m "unrelated PR: add mul to feature.ts"', repo.local);
+		g("git push origin main", repo.local);
+
+		g("git checkout task-branch", repo.local);
+
+		// merge-tree fails (conflict on feature.ts add/add + app.ts overlap)
+		// patch-id fails (different `-` lines due to pre-squash divergence on app.ts)
+		// new-files check succeeds: feature.ts exists on origin/main
+		const result = await isContentMergedInto(repo.local, "origin/main");
+		expect(result).toBe(true);
+	});
+
 	it("returns false when only some task commits are present in main (partial merge)", async () => {
 		g("git checkout -b task-branch", repo.local);
 		makeTaskCommits(repo.local);
