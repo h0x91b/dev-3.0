@@ -1,0 +1,1 @@
+Pre-sign the CLI binary (dist/dev3) with the Developer ID certificate before Electrobun copies it into the app bundle. Electrobun only signs binaries in Contents/MacOS/, but the CLI lives in Contents/Resources/app/cli/ — Apple notarization rejected the unsigned binary.

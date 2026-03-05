@@ -154,6 +154,16 @@ jobs:
           bun scripts/generate-changelog.ts
           bunx vite build
           bun run build:cli
+          # Sign the CLI binary before electrobun copies it into the app bundle.
+          # Electrobun only signs Contents/MacOS/* — cli/dev3 lives in Resources/app/
+          # and must be pre-signed to pass Apple notarization.
+          if [ -n "$ELECTROBUN_DEVELOPER_ID" ] && [ -f dist/dev3 ]; then
+            echo "Signing dist/dev3 with Developer ID..."
+            codesign --force --verbose --timestamp \
+              --sign "$ELECTROBUN_DEVELOPER_ID" \
+              --options runtime \
+              dist/dev3
+          fi
           bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
 
       - name: Debug build output
