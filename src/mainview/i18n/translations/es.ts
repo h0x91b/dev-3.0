@@ -8,6 +8,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"dashboard.noProjects": "Aún no hay proyectos",
 	"dashboard.noProjectsHint": "Agrega un repositorio git para comenzar",
 	"dashboard.addProject": "Agregar proyecto",
+	"dashboard.openInFinder": "Abrir en Finder",
 	"dashboard.remove": "Eliminar",
 	"dashboard.confirmRemove": "¿Eliminar este proyecto de la lista?",
 	"dashboard.failedAdd": "Error al agregar proyecto: {error}",

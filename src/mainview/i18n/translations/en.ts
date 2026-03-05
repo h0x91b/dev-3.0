@@ -6,6 +6,7 @@ const en = {
 	"dashboard.noProjects": "No projects yet",
 	"dashboard.noProjectsHint": "Add a git repository to get started",
 	"dashboard.addProject": "Add Project",
+	"dashboard.openInFinder": "Open in Finder",
 	"dashboard.remove": "Remove",
 	"dashboard.confirmRemove": "Remove this project from the list?",
 	"dashboard.failedAdd": "Failed to add project: {error}",

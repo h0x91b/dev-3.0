@@ -8,6 +8,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"dashboard.noProjects": "Пока нет проектов",
 	"dashboard.noProjectsHint": "Добавьте git-репозиторий, чтобы начать",
 	"dashboard.addProject": "Добавить проект",
+	"dashboard.openInFinder": "Открыть в Finder",
 	"dashboard.remove": "Удалить",
 	"dashboard.confirmRemove": "Убрать этот проект из списка?",
 	"dashboard.failedAdd": "Не удалось добавить проект: {error}",
