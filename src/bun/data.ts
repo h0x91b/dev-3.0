@@ -75,6 +75,7 @@ export async function addProject(
 		devScript: "",
 		cleanupScript: "",
 		defaultBaseBranch: "main",
+		clonePaths: [],
 		createdAt: new Date().toISOString(),
 		labels: [],
 	};
@@ -98,7 +99,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "labels">>,
+	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels">>,
 ): Promise<Project> {
 	console.log("[updateProject] updates:", JSON.stringify(updates));
 	log.info("Updating project", { projectId, updates });

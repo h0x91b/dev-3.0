@@ -11,6 +11,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
+import { clonePaths } from "./cow-clone";
 
 const log = createLogger("rpc");
 
@@ -172,6 +173,12 @@ export function getPushMessage(): ((name: string, payload: any) => void) | null 
 
 export function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
+}
+
+/** Run CoW clones for configured paths after worktree creation. */
+async function runCowClones(project: Project, worktreePath: string): Promise<void> {
+	if (!project.clonePaths?.length) return;
+	await clonePaths(project.path, worktreePath, project.clonePaths);
 }
 
 /**
@@ -510,6 +517,7 @@ export const handlers = {
 		devScript: string;
 		cleanupScript: string;
 		defaultBaseBranch: string;
+		clonePaths: string[];
 	}): Promise<Project> {
 		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
@@ -518,6 +526,7 @@ export const handlers = {
 			devScript: params.devScript,
 			cleanupScript: params.cleanupScript,
 			defaultBaseBranch: params.defaultBaseBranch,
+			clonePaths: params.clonePaths,
 		});
 		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
 		log.info("← updateProjectSettings done");
@@ -574,6 +583,7 @@ export const handlers = {
 				taskId: task.id,
 			});
 			const wt = await git.createWorktree(project, task);
+			await runCowClones(project, wt.worktreePath);
 			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
 
 			const updated = await data.updateTask(project, task.id, {
@@ -608,6 +618,7 @@ export const handlers = {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
 			const wt = await git.createWorktree(project, task);
+			await runCowClones(project, wt.worktreePath);
 			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true);
 
@@ -733,6 +744,7 @@ export const handlers = {
 
 			if (isActive(params.targetStatus)) {
 				const wt = await git.createWorktree(project, task);
+				await runCowClones(project, wt.worktreePath);
 				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 				const updated = await data.updateTask(project, task.id, {

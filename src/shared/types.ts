@@ -200,6 +200,7 @@ export interface Project {
 	devScript: string;
 	cleanupScript: string;
 	defaultBaseBranch: string;
+	clonePaths?: string[];
 	createdAt: string;
 	deleted?: boolean;
 	labels?: Label[];
@@ -331,6 +332,7 @@ export type AppRPCSchema = {
 					devScript: string;
 					cleanupScript: string;
 					defaultBaseBranch: string;
+					clonePaths: string[];
 				};
 				response: Project;
 			};

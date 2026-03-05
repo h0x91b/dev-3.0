@@ -4,6 +4,7 @@ import { LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { ListEditor } from "./ListEditor";
 
 interface LabelRowProps {
 	label: Label;
@@ -101,6 +102,7 @@ function ProjectSettings({
 	const [setupScript, setSetupScript] = useState(project?.setupScript || "");
 	const [devScript, setDevScript] = useState(project?.devScript || "");
 	const [cleanupScript, setCleanupScript] = useState(project?.cleanupScript || "");
+	const [clonePaths, setClonePaths] = useState<string[]>(project?.clonePaths || []);
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
 		project?.defaultBaseBranch || "main",
 	);
@@ -169,6 +171,7 @@ function ProjectSettings({
 				devScript,
 				cleanupScript,
 				defaultBaseBranch,
+				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
 			});
 			dispatch({ type: "updateProject", project: updated });
 			navigate({ screen: "project", projectId });
@@ -199,6 +202,22 @@ function ProjectSettings({
 							autoCorrect="off"
 							spellCheck={false}
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+						/>
+					</div>
+
+					{/* Clone Paths (CoW) */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("projectSettings.clonePaths")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("projectSettings.clonePathsDesc")}
+						</p>
+						<ListEditor
+							items={clonePaths}
+							onChange={setClonePaths}
+							placeholder="node_modules"
+							addLabel={t("projectSettings.addClonePath")}
 						/>
 					</div>
 

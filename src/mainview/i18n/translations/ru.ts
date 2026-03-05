@@ -180,6 +180,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.cleanupScript": "Скрипт очистки",
 	"projectSettings.cleanupScriptDesc":
 		"Запускается при переводе таски в статус Cancelled (или Archived в будущем)",
+	"projectSettings.clonePaths": "Clone-пути (Copy-on-Write)",
+	"projectSettings.clonePathsDesc": "Директории и файлы, которые клонируются из корневого проекта в каждый worktree через Copy-on-Write (мгновенно, без дублирования на APFS/btrfs). На неподдерживаемых ФС делается обычная копия.",
+	"projectSettings.addClonePath": "Добавить путь",
 	"projectSettings.baseBranch": "Базовая ветка",
 	"projectSettings.baseBranchDesc": "Ветка, от которой создаются worktree",
 	"projectSettings.save": "Сохранить настройки",

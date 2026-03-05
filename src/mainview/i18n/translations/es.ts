@@ -178,6 +178,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.cleanupScript": "Script de limpieza",
 	"projectSettings.cleanupScriptDesc":
 		"Se ejecuta cuando una tarea se mueve a Cancelled (o Archived en el futuro)",
+	"projectSettings.clonePaths": "Rutas de clonación (Copy-on-Write)",
+	"projectSettings.clonePathsDesc": "Directorios y archivos que se clonan del proyecto raíz a cada worktree usando Copy-on-Write (instantáneo, sin duplicar espacio en APFS/btrfs). En sistemas de archivos no compatibles se hace una copia normal.",
+	"projectSettings.addClonePath": "Agregar ruta",
 	"projectSettings.baseBranch": "Rama base",
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",
