@@ -153,20 +153,8 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 					className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
 					title={t("header.reportBugTooltip")}
 				>
-					<svg
-						className="w-[1.125rem] h-[1.125rem]"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						{/* Bug icon */}
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={1.5}
-							d="M12 12c2.21 0 4-1.79 4-4V7c0-2.21-1.79-4-4-4S8 4.79 8 7v1c0 2.21 1.79 4 4 4zm0 0c-2.21 0-4 1.79-4 4v1c0 2.21 1.79 4 4 4s4-1.79 4-4v-1c0-2.21-1.79-4-4-4zm-6-4h2m10 0h2M6 16h2m8 0h2M9 6L7 4m8 2l2-2M9 18l-2 2m8-2l2 2"
-						/>
-					</svg>
+					<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf188"}</span>
+					<span className="text-[0.6875rem] font-medium">{t("header.reportLabel")}</span>
 				</button>
 
 				{/* Changelog */}

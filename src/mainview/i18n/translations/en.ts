@@ -287,6 +287,7 @@ const en = {
 	"header.changelogTooltip": "View changelog",
 	"header.githubTooltip": "Website",
 	"header.reportBugTooltip": "Report a bug",
+	"header.reportLabel": "Report",
 	"changelog.loading": "Loading...",
 	"changelog.empty": "No changelog entries yet",
 	"changelog.feature": "feature",

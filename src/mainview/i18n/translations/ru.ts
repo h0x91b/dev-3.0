@@ -293,6 +293,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"header.changelogTooltip": "Журнал изменений",
 	"header.githubTooltip": "Сайт проекта",
 	"header.reportBugTooltip": "Сообщить об ошибке",
+	"header.reportLabel": "Report",
 	"changelog.loading": "Загрузка...",
 	"changelog.empty": "Записей пока нет",
 	"changelog.feature": "фича",
