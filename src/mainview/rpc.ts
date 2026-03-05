@@ -47,19 +47,15 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 				);
 			},
 			zoomIn: () => {
-				window.dispatchEvent(
-					new CustomEvent("rpc:zoomIn"),
-				);
+				const z = (window as any).__dev3Zoom;
+				z?.adjustZoom(z.ZOOM_STEP);
 			},
 			zoomOut: () => {
-				window.dispatchEvent(
-					new CustomEvent("rpc:zoomOut"),
-				);
+				const z = (window as any).__dev3Zoom;
+				z?.adjustZoom(-z.ZOOM_STEP);
 			},
 			zoomReset: () => {
-				window.dispatchEvent(
-					new CustomEvent("rpc:zoomReset"),
-				);
+				(window as any).__dev3Zoom?.applyZoom(1.0);
 			},
 		} as any,
 	},

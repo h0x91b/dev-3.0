@@ -5,7 +5,7 @@ import { useT } from "./i18n";
 import { trackPageView } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
-import { getZoomApi } from "./zoom";
+import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
@@ -55,9 +55,6 @@ function App() {
 		[dispatch],
 	);
 
-	// Zoom helpers from main.tsx bootstrap
-	const zoom = getZoomApi();
-
 	// Cmd+Q / Cmd+, / Cmd+=/- (zoom) — capture phase so ghostty-web terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
@@ -77,15 +74,15 @@ function App() {
 			} else if (mod && (e.key === "=" || e.key === "+")) {
 				e.preventDefault();
 				e.stopPropagation();
-				zoom.adjustZoom(zoom.ZOOM_STEP);
+				adjustZoom(ZOOM_STEP);
 			} else if (mod && e.key === "-") {
 				e.preventDefault();
 				e.stopPropagation();
-				zoom.adjustZoom(-zoom.ZOOM_STEP);
+				adjustZoom(-ZOOM_STEP);
 			} else if (mod && e.key === "0") {
 				e.preventDefault();
 				e.stopPropagation();
-				zoom.applyZoom(zoom.DEFAULT_ZOOM);
+				applyZoom(DEFAULT_ZOOM);
 			}
 		},
 		[navigate],
@@ -162,21 +159,6 @@ function App() {
 		window.addEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
 		return () => window.removeEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
 	}, [navigate]);
-
-	// Listen for View > Zoom menu items
-	useEffect(() => {
-		const onZoomIn = () => zoom.adjustZoom(zoom.ZOOM_STEP);
-		const onZoomOut = () => zoom.adjustZoom(-zoom.ZOOM_STEP);
-		const onZoomReset = () => zoom.applyZoom(zoom.DEFAULT_ZOOM);
-		window.addEventListener("rpc:zoomIn", onZoomIn);
-		window.addEventListener("rpc:zoomOut", onZoomOut);
-		window.addEventListener("rpc:zoomReset", onZoomReset);
-		return () => {
-			window.removeEventListener("rpc:zoomIn", onZoomIn);
-			window.removeEventListener("rpc:zoomOut", onZoomOut);
-			window.removeEventListener("rpc:zoomReset", onZoomReset);
-		};
-	}, []);
 
 	// Track page views on route changes
 	useEffect(() => {

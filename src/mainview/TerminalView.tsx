@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
-import { getZoomApi } from "./zoom";
+import { getZoomApi, ZOOM_CHANGED_EVENT } from "./zoom";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -49,6 +49,8 @@ const LIGHT_TERMINAL_THEME = {
 	brightCyan: "#3192aa",
 	brightWhite: "#d1d5da",
 };
+
+const TERMINAL_BASE_FONT_SIZE = 14;
 
 interface TerminalViewProps {
 	ptyUrl: string;
@@ -135,7 +137,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
 		// font must be ready before ghostty-web measures it for cell metrics.
 		const TERMINAL_FONT = "'JetBrains Mono', 'SF Mono', 'Menlo', monospace";
-		document.fonts.load(`14px ${TERMINAL_FONT}`).then(() => {
+		document.fonts.load(`${TERMINAL_BASE_FONT_SIZE}px ${TERMINAL_FONT}`).then(() => {
 			console.log("[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
 		}).catch(() => {
@@ -155,7 +157,7 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
 			const zoomLevel = getZoomApi()?.getZoom?.() ?? 1;
 			const term = new Terminal({
-				fontSize: Math.round(14 * zoomLevel),
+				fontSize: Math.round(TERMINAL_BASE_FONT_SIZE * zoomLevel),
 				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
@@ -453,23 +455,16 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 	// Scale terminal font size with app zoom level.
 	// Font-size scaling (not CSS zoom) is used for the app, so canvas isn't
 	// bitmap-scaled — we just adjust the terminal's own fontSize.
-	const BASE_FONT_SIZE = 14;
+	// Initial size is set at Terminal construction; this handles live changes.
 	useEffect(() => {
-		function applyTerminalZoom(zoomLevel: number) {
+		function onZoomChanged(e: Event) {
 			const term = termRef.current;
 			if (term) {
-				term.options.fontSize = Math.round(BASE_FONT_SIZE * zoomLevel);
+				term.options.fontSize = Math.round(TERMINAL_BASE_FONT_SIZE * (e as CustomEvent).detail);
 			}
 		}
-
-		const zoom = getZoomApi();
-		applyTerminalZoom(zoom.getZoom());
-
-		function onZoomChanged(e: Event) {
-			applyTerminalZoom((e as CustomEvent).detail);
-		}
-		window.addEventListener("zoom-changed", onZoomChanged);
-		return () => window.removeEventListener("zoom-changed", onZoomChanged);
+		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
 
 	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {

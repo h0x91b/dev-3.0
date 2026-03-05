@@ -3,7 +3,7 @@ import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
 import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel } from "../../shared/types";
 import { api } from "../rpc";
-import { getZoomApi } from "../zoom";
+import { getZoomApi, ZOOM_CHANGED_EVENT } from "../zoom";
 
 type Theme = "dark" | "light" | "system";
 
@@ -22,8 +22,8 @@ function GlobalSettings() {
 		function onZoomChanged(e: Event) {
 			setZoomLevel((e as CustomEvent).detail);
 		}
-		window.addEventListener("zoom-changed", onZoomChanged);
-		return () => window.removeEventListener("zoom-changed", onZoomChanged);
+		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
 
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
