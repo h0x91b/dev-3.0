@@ -40,6 +40,7 @@ vi.mock("../git", () => ({
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
+	listBranches: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -893,6 +894,78 @@ describe("handlers.createTask", () => {
 
 		await handlers.createTask({ projectId: "proj-1", description: "task" });
 		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
+	});
+
+	it("passes existingBranch to addTask and createWorktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: null, existingBranch: "feature/login" });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feature/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.createTask({
+			projectId: "proj-1",
+			description: "Continue login work",
+			status: "in-progress",
+			existingBranch: "feature/login",
+		});
+		expect(data.addTask).toHaveBeenCalledWith(project, "Continue login work", "in-progress", { existingBranch: "feature/login" });
+		expect(git.createWorktree).toHaveBeenCalledWith(project, task, "feature/login");
+	});
+
+	it("does not pass existingBranch when not provided", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+
+		await handlers.createTask({ projectId: "proj-1", description: "task" });
+		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
+		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// handlers.listBranches / fetchBranches
+// ================================================================
+
+describe("handlers.listBranches", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("returns branches from git.listBranches", async () => {
+		const project = makeProject();
+		const branches = [
+			{ name: "main", isRemote: false },
+			{ name: "origin/main", isRemote: true },
+		];
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.listBranches).mockResolvedValue(branches);
+
+		const result = await handlers.listBranches({ projectId: "proj-1" });
+		expect(result).toEqual(branches);
+		expect(git.listBranches).toHaveBeenCalledWith(project.path);
+	});
+});
+
+describe("handlers.fetchBranches", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("fetches origin then returns branches", async () => {
+		const project = makeProject();
+		const branches = [
+			{ name: "main", isRemote: false },
+			{ name: "origin/feature", isRemote: true },
+		];
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.listBranches).mockResolvedValue(branches);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(undefined);
+
+		const result = await handlers.fetchBranches({ projectId: "proj-1" });
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path);
+		expect(git.listBranches).toHaveBeenCalledWith(project.path);
+		expect(result).toEqual(branches);
 	});
 });
 

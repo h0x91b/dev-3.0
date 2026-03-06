@@ -24,7 +24,7 @@ interface BranchInfo {
 }
 
 /** Split a branch name into words on /, -, _, ., and camelCase boundaries. */
-function splitBranchWords(name: string): string[] {
+export function splitBranchWords(name: string): string[] {
 	return name
 		// insert a split before uppercase letters in camelCase: "myBranch" → "my Branch"
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -34,7 +34,7 @@ function splitBranchWords(name: string): string[] {
 }
 
 /** Check if any word in the branch name starts with any query token. */
-function matchesBranchQuery(branchName: string, query: string): boolean {
+export function matchesBranchQuery(branchName: string, query: string): boolean {
 	if (!query) return true;
 	const words = splitBranchWords(branchName);
 	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -378,7 +378,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 								setBranchSectionOpen(true);
 								loadBranches();
 							}}
-							className="text-fg-3 text-xs hover:text-fg-2 transition-colors flex items-center gap-1"
+							className="px-3 py-1.5 bg-elevated border border-edge rounded-lg text-fg-2 text-xs hover:bg-elevated-hover hover:border-edge-active transition-colors flex items-center gap-1.5"
 						>
 							<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
