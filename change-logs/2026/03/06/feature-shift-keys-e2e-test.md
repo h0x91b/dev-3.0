@@ -1,0 +1,1 @@
+Add end-to-end tests verifying that all 20 Shift+key sequences survive the full terminal pipeline: ghostty-web WASM handler → bytes → real PTY → tmux (with production config) → inner pane capture → assertion. Uses a Python PTY bridge helper and FIFO-based synchronization (no polling). Includes canary tests that document the ghostty-web upstream bug so we know when it gets fixed.
