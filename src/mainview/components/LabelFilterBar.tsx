@@ -49,6 +49,13 @@ function LabelFilterBar({ labels, activeFilters, onToggle, onClear, searchQuery,
 					type="text"
 					value={searchQuery}
 					onChange={(e) => onSearchChange(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") {
+							e.stopPropagation();
+							onSearchChange("");
+							inputRef.current?.blur();
+						}
+					}}
 					placeholder={t("labels.searchPlaceholderTasks")}
 					className="w-44 pl-7 pr-2 py-1 text-xs bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:outline-none focus:border-edge-active transition-colors"
 				/>

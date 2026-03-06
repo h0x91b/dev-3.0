@@ -55,10 +55,10 @@ function App() {
 		[dispatch],
 	);
 
-	// Cmd+Q / Cmd+, / Cmd+=/- (zoom) — capture phase so ghostty-web terminal can't swallow them
+	// Cmd/Ctrl+Q, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
-			if (e.metaKey && e.key === "q") {
+			if ((e.metaKey || e.ctrlKey) && e.key === "q") {
 				e.preventDefault();
 				e.stopPropagation();
 				if (localStorage.getItem(SKIP_QUIT_DIALOG_KEY) === "true") {
@@ -66,19 +66,19 @@ function App() {
 				} else {
 					setShowQuitDialog(true);
 				}
-			} else if (e.metaKey && e.key === ",") {
+			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
 				navigate({ screen: "settings" });
-			} else if (e.metaKey && (e.key === "=" || e.key === "+")) {
+			} else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(ZOOM_STEP);
-			} else if (e.metaKey && e.key === "-") {
+			} else if ((e.metaKey || e.ctrlKey) && e.key === "-") {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(-ZOOM_STEP);
-			} else if (e.metaKey && e.key === "0") {
+			} else if ((e.metaKey || e.ctrlKey) && e.key === "0") {
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);

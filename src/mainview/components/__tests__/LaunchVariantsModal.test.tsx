@@ -487,4 +487,40 @@ describe("LaunchVariantsModal", () => {
 			expect(onClose).toHaveBeenCalled();
 		});
 	});
+
+	describe("keyboard shortcuts", () => {
+		it("Escape closes the modal", async () => {
+			const onClose = vi.fn();
+			renderModal(makeProject(), { onClose });
+			await userEvent.keyboard("{Escape}");
+			expect(onClose).toHaveBeenCalled();
+		});
+
+		it("Enter triggers launch", async () => {
+			const onClose = vi.fn();
+			const dispatch = vi.fn();
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject(), { onClose, dispatch });
+			await userEvent.keyboard("{Enter}");
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnVariants).toHaveBeenCalled();
+			});
+		});
+
+		it("Enter does not trigger launch when an input is focused", async () => {
+			const onClose = vi.fn();
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject(), { onClose });
+
+			// The URL input in AddProjectModal isn't here, but we can simulate
+			// by focusing a regular input via jsdom
+			const input = document.createElement("input");
+			document.body.appendChild(input);
+			input.focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+			document.body.removeChild(input);
+		});
+	});
 });
