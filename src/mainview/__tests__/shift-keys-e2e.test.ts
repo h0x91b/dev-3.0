@@ -223,8 +223,10 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 
 			// Give the attach-session client time to complete its handshake with
 			// tmux and set up the PTY in raw mode before tests start sending bytes.
-			await new Promise<void>((resolve) => setTimeout(resolve, 500));
-		}, 15_000);
+			// 1000ms is conservative but necessary on loaded CI machines where
+			// the default 500ms can leave the bridge not yet connected.
+			await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+		}, 20_000);
 
 		afterAll(() => {
 			cpSpawnSync("tmux", ["-L", tmuxSocket, "kill-server"], {
