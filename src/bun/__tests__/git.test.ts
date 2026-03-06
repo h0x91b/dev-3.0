@@ -18,12 +18,48 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/dev3-test",
 }));
 
+// Mock gh CLI response. Tests set this to control what `gh pr list` returns.
+let ghPrListResponse: string = "[]";
+
 // Replace Bun.spawn with a real Node.js child_process implementation so
 // git.ts functions run actual git commands in integration tests.
+// Intercepts `gh` calls and returns mock responses.
 vi.mock("../spawn", async () => {
 	const { spawn: cpSpawn } = await import("child_process");
+
+	const toWebStream = (readable: NodeJS.ReadableStream) =>
+		new ReadableStream({
+			start(controller) {
+				readable.on("data", (chunk: Buffer) =>
+					controller.enqueue(new Uint8Array(chunk)),
+				);
+				readable.on("end", () => controller.close());
+				readable.on("error", (err: Error) => controller.error(err));
+			},
+		});
+
+	/** Create a fake process that immediately resolves with given stdout/exit code */
+	function fakeProc(stdout: string, exitCode: number) {
+		const encoder = new TextEncoder();
+		return {
+			exited: Promise.resolve(exitCode),
+			stdout: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(stdout));
+					controller.close();
+				},
+			}),
+			stderr: new ReadableStream({ start(c) { c.close(); } }),
+		};
+	}
+
 	return {
 		spawn: (cmd: string[], opts?: Record<string, unknown>) => {
+			// Intercept gh CLI calls
+			if (cmd[0] === "gh") {
+				return fakeProc(ghPrListResponse, 0);
+			}
+
 			const child = cpSpawn(cmd[0], cmd.slice(1), {
 				cwd: opts?.cwd as string | undefined,
 				env: (opts?.env as NodeJS.ProcessEnv | undefined) ?? process.env,
@@ -38,17 +74,6 @@ vi.mock("../spawn", async () => {
 			} else {
 				child.stdin?.end();
 			}
-
-			const toWebStream = (readable: NodeJS.ReadableStream) =>
-				new ReadableStream({
-					start(controller) {
-						readable.on("data", (chunk: Buffer) =>
-							controller.enqueue(new Uint8Array(chunk)),
-						);
-						readable.on("end", () => controller.close());
-						readable.on("error", (err: Error) => controller.error(err));
-					},
-				});
 
 			return {
 				exited: new Promise<number>((resolve) =>
@@ -140,6 +165,7 @@ describe("isContentMergedInto", () => {
 
 	beforeEach(() => {
 		repo = createTestRepo();
+		ghPrListResponse = "[]"; // default: no merged PRs
 	});
 
 	afterEach(() => {
@@ -247,6 +273,82 @@ describe("isContentMergedInto", () => {
 		// task-branch still has original commits
 		g("git checkout task-branch", repo.local);
 
+		const result = await isContentMergedInto(repo.local, "origin/main");
+		expect(result).toBe(true);
+	});
+
+	it("returns true after squash merge when main had overlapping commits BEFORE the squash (the real-world bug)", async () => {
+		// The task branch modifies app.ts line
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "task: change a"', repo.local);
+		makeTaskCommits(repo.local); // adds feature.ts
+		g("git push -u origin task-branch", repo.local);
+
+		// Another PR on main modifies the SAME line of app.ts (different value).
+		// This creates the scenario where the merge-base has "const a = 1;",
+		// main has "const a = 'other';", and task has "const a = 'task';".
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'other';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "other PR: also change a"', repo.local);
+
+		// Squash merge — will conflict on app.ts. Resolve by taking task's value.
+		try { g("git merge --squash task-branch", repo.local); } catch { /* conflict expected */ }
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add .", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		g("git push origin main", repo.local);
+
+		// Back on task branch — patch-id detection fails because:
+		// - Task combined diff: -"const a = 1;" +"const a = 'task';"  (base=merge-base)
+		// - Squash commit diff: -"const a = 'other';" +"const a = 'task';" (base=squash parent)
+		// Different `-` lines → different patch-ids
+		g("git checkout task-branch", repo.local);
+
+		const result = await isContentMergedInto(repo.local, "origin/main");
+		expect(result).toBe(true);
+	});
+
+	it("returns true after squash merge when main diverged BOTH before AND after the squash on the same files", async () => {
+		// Task modifies app.ts (conflicting with main) and creates feature.ts
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "task: change a"', repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		// Another PR on main modifies app.ts BEFORE the squash
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'other';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "other PR: also change a"', repo.local);
+
+		// Squash merge (resolve conflict)
+		try { g("git merge --squash task-branch", repo.local); } catch { /* conflict */ }
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add .", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+
+		// ANOTHER PR on main AFTER the squash also touches feature.ts
+		writeFileSync(
+			join(repo.local, "feature.ts"),
+			"export const add = (a: number, b: number) => a + b;\n" +
+				"export const sub = (a: number, b: number) => a - b;\n" +
+				"export const mul = (a: number, b: number) => a * b;\n",
+		);
+		g("git add feature.ts", repo.local);
+		g('git commit -m "unrelated PR: add mul to feature.ts"', repo.local);
+		g("git push origin main", repo.local);
+
+		g("git checkout task-branch", repo.local);
+
+		// merge-tree fails (conflict on feature.ts add/add + app.ts overlap)
+		// patch-id fails (different `-` lines due to pre-squash divergence on app.ts)
+		// gh PR check confirms the branch was merged
+		ghPrListResponse = JSON.stringify([{ number: 42 }]);
 		const result = await isContentMergedInto(repo.local, "origin/main");
 		expect(result).toBe(true);
 	});

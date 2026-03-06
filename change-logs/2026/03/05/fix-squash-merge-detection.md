@@ -1,0 +1,1 @@
+Fix false "changes will be lost" warning when completing a task whose PR was squash-merged while main had overlapping file changes. Added merge-tree comparison as primary strategy, patch-id as secondary, GitHub PR status check as tertiary (definitive), and content containment as offline fallback.
