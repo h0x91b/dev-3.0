@@ -772,11 +772,12 @@ export const handlers = {
 					agentId: variant.agentId,
 					configId: variant.configId,
 					seq: sharedSeq,
+					existingBranch: sourceTask.existingBranch ?? undefined,
 				},
 			);
 
 			if (isActive(params.targetStatus)) {
-				const wt = await git.createWorktree(project, task);
+				const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
 				await runCowClones(project, wt.worktreePath);
 				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
