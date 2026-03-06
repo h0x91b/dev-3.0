@@ -9,6 +9,7 @@ import { ansiToHtml } from "../utils/ansi-to-html";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import SiblingPopover from "./SiblingPopover";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import TaskDetailModal from "./TaskDetailModal";
 
@@ -24,9 +25,10 @@ interface TaskCardProps {
 	bellCount?: number;
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
+	siblingMap?: Map<string, Task[]>;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, siblingMap }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -37,6 +39,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
+
+	// Sibling popover state
+	const [siblingPopoverOpen, setSiblingPopoverOpen] = useState(false);
+	const siblingAnchorRef = useRef<HTMLButtonElement>(null);
+	const groupMembers = task.groupId && siblingMap
+		? (siblingMap.get(task.groupId) ?? [])
+		: [];
+	const hasSiblings = groupMembers.length > 1;
+	const siblings = groupMembers.filter((s) => s.id !== task.id);
 
 	// Terminal preview state
 	const [previewOpen, setPreviewOpen] = useState(false);
@@ -456,6 +467,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				document.body
 			)}
 
+			{/* Sibling popover */}
+			{siblingPopoverOpen && siblingAnchorRef.current && siblings.length > 0 && (
+				<SiblingPopover
+					siblings={siblings}
+					agents={agents}
+					navigate={navigate}
+					onClose={() => setSiblingPopoverOpen(false)}
+					anchorEl={siblingAnchorRef.current}
+					projectId={project.id}
+				/>
+			)}
+
 			{/* Label chips row — always rendered so "+" is discoverable on hover */}
 			{(() => {
 				const projectLabels = project.labels ?? [];
@@ -538,6 +561,24 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{t(statusKey(task.status))}
 					</span>
 				</button>
+
+				{/* Sibling variant dots */}
+				{hasSiblings && (
+					<button
+						ref={siblingAnchorRef}
+						onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+						className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-fg/5 transition-colors"
+						title={t.plural("task.siblingsCount", siblings.length)}
+					>
+						{groupMembers.map((s) => (
+							<span
+								key={s.id}
+								className={`w-2 h-2 rounded-full flex-shrink-0 ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
+								style={{ background: STATUS_COLORS[s.status] }}
+							/>
+						))}
+					</button>
+				)}
 
 				{/* Right side actions */}
 				{isTodo ? (

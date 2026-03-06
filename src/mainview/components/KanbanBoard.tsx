@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -154,6 +154,22 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 	}
 
+	// Build sibling map: groupId → all tasks with that groupId (from full tasks list, not filtered)
+	const siblingMap = useMemo(() => {
+		const map = new Map<string, Task[]>();
+		for (const task of tasks) {
+			if (task.groupId) {
+				const existing = map.get(task.groupId);
+				if (existing) {
+					existing.push(task);
+				} else {
+					map.set(task.groupId, [task]);
+				}
+			}
+		}
+		return map;
+	}, [tasks]);
+
 	const projectLabels = project.labels ?? [];
 
 	// Apply label filters + search
@@ -219,6 +235,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						activeTaskId={activeTaskId}
 						draggedTaskId={draggedTaskId}
 						movingTaskIds={movingTaskIds}
+						siblingMap={siblingMap}
 					/>
 				))}
 			</div>
