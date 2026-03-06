@@ -1076,7 +1076,7 @@ export const handlers = {
 			`echo ""`,
 			`if [ $EXIT_CODE -eq 0 ]; then`,
 			`  printf '\\033[1;32m✓ Push complete\\033[0m\\n'`,
-			`  sleep 5`,
+			`  sleep 2`,
 			`else`,
 			`  printf '\\033[1;31m✗ Push failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
 			`  echo "Press any key to close."`,
