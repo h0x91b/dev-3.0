@@ -130,8 +130,6 @@ bun run build
 bun run build:prod
 ```
 
-**Build-info workaround:** In a fresh worktree, `bun run lint` may fail with `Cannot find module '../shared/build-info.generated'`. This file is generated during the build step. Run `bun run build` once to create it, then `bun run lint` will pass.
-
 No linter is configured.
 
 ## Architecture
