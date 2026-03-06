@@ -14,7 +14,7 @@ export async function sendRequest(
 
 	return new Promise((resolve, reject) => {
 		const socket = connect({ path: socketPath });
-		// Accumulate raw buffers to avoid corrupting multi-byte UTF-8
+		// Accumulate raw buffers to avoid corrupting multi-byte UTF-
 		// characters that may be split across data events.
 		const chunks: Buffer[] = [];
 
