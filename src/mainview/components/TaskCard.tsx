@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, type Dispatch } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
+import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -163,7 +163,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setMenuOpen(false);
 		const confirmed = await api.request.showConfirm({
 			title: t("task.delete"),
-			message: t("task.confirmDelete", { title: task.title }),
+			message: t("task.confirmDelete", { title: displayTitle }),
 		});
 		if (!confirmed) return;
 		try {
@@ -184,7 +184,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		if (isTodo) {
 			const confirmed = await api.request.showConfirm({
 				title: t("task.cancel"),
-				message: t("task.confirmCancel", { title: task.title }),
+				message: t("task.confirmCancel", { title: displayTitle }),
 			});
 			if (!confirmed) return;
 			handleMove("cancelled");
@@ -226,7 +226,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		}
 	}
 
-	const hasLongDescription = task.description !== task.title;
+	const displayTitle = getTaskTitle(task);
+	const hasLongDescription = task.description !== displayTitle;
 
 	function handleShowDescription(e: React.MouseEvent) {
 		e.stopPropagation();
@@ -420,7 +421,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				onClick={handleTitleClick}
 				title={isTodo && hasLongDescription ? task.description : undefined}
 			>
-				{task.title}
+				{displayTitle}
 			</div>
 			{hasLongDescription && !isTodo && (
 				<button

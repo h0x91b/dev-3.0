@@ -349,7 +349,7 @@ describe("task.update", () => {
 	it("updates title with projectId", async () => {
 		const project = makeProject();
 		const task = makeTask();
-		const updated = { ...task, title: "Updated" };
+		const updated = { ...task, customTitle: "Updated" };
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
@@ -359,7 +359,7 @@ describe("task.update", () => {
 			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "Updated" }),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { title: "Updated" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Updated" });
 	});
 
 	it("auto-generates title from description", async () => {
@@ -385,7 +385,7 @@ describe("task.update", () => {
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, title: "Explicit", description: "Desc" });
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: "Explicit", description: "Desc" });
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		await handleRequest(
@@ -397,7 +397,7 @@ describe("task.update", () => {
 			}),
 		);
 		const call = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(call.title).toBe("Explicit");
+		expect(call.customTitle).toBe("Explicit");
 	});
 
 	it("resolves task across projects when no projectId", async () => {

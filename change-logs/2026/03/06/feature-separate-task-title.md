@@ -1,0 +1,1 @@
+Tasks now support a custom title independent of the auto-generated one. By default, titles are still derived from the description, but users can rename a task via the detail modal (pencil icon on hover) or the CLI (`dev3 task update --title`). A "Reset to auto" option reverts to the auto-generated title. Addresses #70.

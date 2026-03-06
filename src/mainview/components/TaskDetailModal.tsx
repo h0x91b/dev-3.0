@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { STATUS_COLORS, titleFromDescription, getAllowedTransitions } from "../../shared/types";
+import { STATUS_COLORS, titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
 import type { AppAction } from "../state";
@@ -24,13 +24,19 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 	const [saving, setSaving] = useState(false);
 	const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 	const [movingStatus, setMovingStatus] = useState(false);
+	const [isRenaming, setIsRenaming] = useState(false);
+	const [renameValue, setRenameValue] = useState("");
+	const [renameSaving, setRenameSaving] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const renameInputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				if (statusMenuOpen) {
 					setStatusMenuOpen(false);
+				} else if (isRenaming) {
+					setIsRenaming(false);
 				} else if (isEditing) {
 					setIsEditing(false);
 				} else {
@@ -40,7 +46,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 		}
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
-	}, [onClose, isEditing, statusMenuOpen]);
+	}, [onClose, isEditing, isRenaming, statusMenuOpen]);
 
 	useEffect(() => {
 		if (isEditing) {
@@ -73,6 +79,60 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			alert(t("task.failedEdit", { error: String(err) }));
 		}
 		setSaving(false);
+	}
+
+	function handleStartRename() {
+		setRenameValue(getTaskTitle(task));
+		setIsRenaming(true);
+		setTimeout(() => renameInputRef.current?.focus(), 0);
+	}
+
+	async function handleRenameSave() {
+		const trimmed = renameValue.trim();
+		if (!trimmed || trimmed === getTaskTitle(task)) {
+			setIsRenaming(false);
+			return;
+		}
+		setRenameSaving(true);
+		try {
+			const updated = await api.request.renameTask({
+				taskId: task.id,
+				projectId: project.id,
+				customTitle: trimmed,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_renamed", { project_id: project.id });
+			setIsRenaming(false);
+		} catch (err) {
+			alert(t("task.failedRename", { error: String(err) }));
+		}
+		setRenameSaving(false);
+	}
+
+	async function handleResetTitle() {
+		setRenameSaving(true);
+		try {
+			const updated = await api.request.renameTask({
+				taskId: task.id,
+				projectId: project.id,
+				customTitle: null,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			setIsRenaming(false);
+		} catch (err) {
+			alert(t("task.failedRename", { error: String(err) }));
+		}
+		setRenameSaving(false);
+	}
+
+	function handleRenameKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === "Escape") {
+			e.preventDefault();
+			setIsRenaming(false);
+		} else if (e.key === "Enter") {
+			e.preventDefault();
+			handleRenameSave();
+		}
 	}
 
 	function handleEditKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -214,10 +274,65 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 
 				{/* Content */}
 				<div className="px-6 pb-5 overflow-y-auto flex-1">
-					{/* Title preview */}
-					<div className="text-fg text-base font-semibold leading-relaxed mb-4">
-						{isEditing ? (generatedTitle || task.title) : task.title}
-					</div>
+					{/* Title with rename */}
+					{isRenaming ? (
+						<div className="mb-4 space-y-1.5">
+							<input
+								ref={renameInputRef}
+								type="text"
+								value={renameValue}
+								onChange={(e) => setRenameValue(e.target.value)}
+								onKeyDown={handleRenameKeyDown}
+								className="w-full bg-elevated border border-edge-active rounded-lg px-3 py-2 text-base text-fg font-semibold leading-relaxed outline-none focus:border-accent/60 transition-colors"
+								disabled={renameSaving}
+							/>
+							<div className="flex items-center justify-between">
+								<span className="text-xs text-fg-muted">Enter to save · Esc to cancel</span>
+								<div className="flex gap-1.5">
+									{task.customTitle && (
+										<button
+											onClick={handleResetTitle}
+											className="text-xs px-2.5 py-1 rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors"
+											disabled={renameSaving}
+										>
+											{t("task.resetTitle")}
+										</button>
+									)}
+									<button
+										onClick={() => setIsRenaming(false)}
+										className="text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
+										disabled={renameSaving}
+									>
+										{t("task.editCancel")}
+									</button>
+									<button
+										onClick={handleRenameSave}
+										className="text-xs px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover font-semibold transition-colors disabled:opacity-50"
+										disabled={renameSaving || !renameValue.trim()}
+									>
+										{t("task.editSave")}
+									</button>
+								</div>
+							</div>
+						</div>
+					) : (
+						<div className="group/title flex items-start gap-2 mb-4">
+							<div className="text-fg text-base font-semibold leading-relaxed flex-1">
+								{isEditing ? (generatedTitle || getTaskTitle(task)) : getTaskTitle(task)}
+							</div>
+							{!isEditing && (
+								<button
+									onClick={handleStartRename}
+									className="flex-shrink-0 mt-0.5 opacity-0 group-hover/title:opacity-100 p-1 rounded-md text-fg-3 hover:text-fg hover:bg-fg/8 transition-all"
+									title={t("task.renameTitle")}
+								>
+									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+									</svg>
+								</button>
+							)}
+						</div>
+					)}
 
 					{/* Description */}
 					<div className="space-y-2">
@@ -405,10 +520,10 @@ function ArchivedView({
 						{/* Left: title + description + notes */}
 						<div className="flex-1 px-6 py-5 min-w-0">
 							<div className="text-fg text-lg font-semibold leading-relaxed mb-4">
-								{task.title}
+								{getTaskTitle(task)}
 							</div>
 
-							{task.description && task.description !== task.title && (
+							{task.description && task.description !== getTaskTitle(task) && (
 								<div className="mb-6">
 									<label className="text-fg-3 text-xs font-medium uppercase tracking-wider mb-2 block">
 										{t("task.descriptionLabel")}

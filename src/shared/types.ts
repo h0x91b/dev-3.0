@@ -212,6 +212,7 @@ export interface Task {
 	projectId: string;
 	title: string;
 	description: string;
+	customTitle?: string | null;
 	status: TaskStatus;
 	baseBranch: string;
 	worktreePath: string | null;
@@ -227,6 +228,11 @@ export interface Task {
 	tmuxSocket?: string | null;
 	labelIds?: string[];
 	notes?: TaskNote[];
+}
+
+/** Returns the display title: custom override if set, otherwise auto-generated. */
+export function getTaskTitle(task: Task): string {
+	return task.customTitle || task.title;
 }
 
 export type NoteSource = "user" | "ai";
@@ -379,6 +385,10 @@ export type AppRPCSchema = {
 			};
 			editTask: {
 				params: { taskId: string; projectId: string; description: string };
+				response: Task;
+			};
+			renameTask: {
+				params: { taskId: string; projectId: string; customTitle: string | null };
 				response: Task;
 			};
 			spawnVariants: {

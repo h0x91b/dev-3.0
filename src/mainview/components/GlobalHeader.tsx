@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import type { Project, Task } from "../../shared/types";
+import { getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import TmuxSessionManager from "./TmuxSessionManager";
@@ -53,7 +54,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 		const task = tasks.find((t) => t.id === route.activeTaskId);
 		if (task) {
 			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
-			segments.push({ badge, label: task.title });
+			segments.push({ badge, label: getTaskTitle(task) });
 		}
 	}
 
@@ -62,7 +63,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 		const task = tasks.find((t) => t.id === route.taskId);
 		if (task) {
 			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
-			segments.push({ badge, label: task.title });
+			segments.push({ badge, label: getTaskTitle(task) });
 		} else {
 			segments.push({ label: t("header.task") });
 		}

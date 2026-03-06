@@ -1,5 +1,5 @@
 import type { Task, TaskStatus } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES } from "../../shared/types";
+import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -25,7 +25,7 @@ function printTask(task: Task): void {
 	const fields: Array<[string, string]> = [
 		["ID:", task.id],
 		["Seq:", String(task.seq)],
-		["Title:", task.title],
+		["Title:", getTaskTitle(task)],
 		["Status:", STATUS_LABELS[task.status] || task.status],
 	];
 
@@ -95,7 +95,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (!resp.ok) exitError(resp.error || "Failed to create task");
 
 	const task = resp.data as Task;
-	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${task.title}\n`);
+	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
@@ -120,7 +120,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (!resp.ok) exitError(resp.error || "Failed to update task");
 
 	const task = resp.data as Task;
-	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${task.title}\n`);
+	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
 }
 
 async function moveTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
