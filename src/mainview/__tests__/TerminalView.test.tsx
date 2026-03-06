@@ -137,7 +137,7 @@ beforeEach(() => {
 async function renderAndSetup() {
 	let result!: ReturnType<typeof render>;
 	await act(async () => {
-		result = render(<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" />);
+		result = render(<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" />);
 		// Flush the microtask queue so the fonts.load() .then() runs → setup()
 		await Promise.resolve();
 		await Promise.resolve();
