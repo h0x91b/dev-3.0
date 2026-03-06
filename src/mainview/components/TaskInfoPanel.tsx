@@ -281,6 +281,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const [rebasing, setRebasing] = useState(false);
 	const [merging, setMerging] = useState(false);
 	const [pushing, setPushing] = useState(false);
+	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const [compareRef, setCompareRef] = useState<string>(""); // "" = origin/<baseBranch> (default)
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
@@ -364,6 +365,20 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			alert(t("infoPanel.pushFailed", { error: String(err) }));
 		}
 		setPushing(false);
+	}
+
+	async function handleCreatePR() {
+		if (creatingPR) return;
+		setCreatingPR(true);
+		try {
+			await api.request.createPullRequest({
+				taskId: task.id,
+				projectId: project.id,
+			});
+		} catch (err) {
+			alert(t("infoPanel.createPRFailed", { error: String(err) }));
+		}
+		setCreatingPR(false);
 	}
 
 	async function handleShowDiff() {
@@ -720,6 +735,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			? t("infoPanel.pushDisabled")
 			: t("infoPanel.push");
 
+	const createPRDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.unpushed !== 0 || creatingPR;
+	const createPRTooltip = !branchStatus
+		? t("infoPanel.statusLoading")
+		: branchStatus.ahead === 0
+			? t("infoPanel.createPRDisabledNoCommits")
+			: branchStatus.unpushed !== 0
+				? t("infoPanel.createPRDisabledNotPushed")
+				: t("infoPanel.createPR");
+
 	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.behind > 0 || merging;
 	const mergeTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
@@ -788,6 +812,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				title={pushTooltip}
 			>
 				{pushing ? t("infoPanel.pushing") : t("infoPanel.push")}
+			</button>
+			<button
+				onClick={handleCreatePR}
+				disabled={createPRDisabled}
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+					createPRDisabled ? disabledBtnClass : enabledBtnClass
+				}`}
+				title={createPRTooltip}
+			>
+				{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPR")}
 			</button>
 			<button
 				onClick={handleMerge}

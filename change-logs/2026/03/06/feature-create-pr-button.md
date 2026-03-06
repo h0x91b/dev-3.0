@@ -1,0 +1,1 @@
+Add "Create PR" button to git operations bar in TaskInfoPanel. After pushing a branch, users can create a GitHub Pull Request directly from the app — it opens in the browser via `gh pr create --fill --web`. If a PR already exists, it falls back to opening it with `gh pr view --web`.

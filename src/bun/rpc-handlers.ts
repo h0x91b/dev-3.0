@@ -1092,6 +1092,55 @@ export const handlers = {
 		log.info("← pushTask (pane opened)", { paneId });
 	},
 
+	async createPullRequest(params: { taskId: string; projectId: string }): Promise<void> {
+		log.info("→ createPullRequest", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const scriptPath = `/tmp/dev3-${task.id}-git-createPR.sh`;
+
+		const socket = task.tmuxSocket ?? null;
+		await killExistingGitPane(task.id, tmuxSession, socket);
+
+		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+
+		const script = [
+			`#!/bin/bash`,
+			`set -x`,
+			`gh pr create --base "${baseBranch}" --fill --web 2>&1`,
+			`EXIT_CODE=$?`,
+			`set +x`,
+			`if [ $EXIT_CODE -ne 0 ]; then`,
+			`  echo ""`,
+			`  printf '\\033[1;33m⚠ PR may already exist — trying to open it...\\033[0m\\n'`,
+			`  set -x`,
+			`  gh pr view --web 2>&1`,
+			`  EXIT_CODE=$?`,
+			`  set +x`,
+			`fi`,
+			`echo $EXIT_CODE > "${scriptPath}.exit"`,
+			`echo ""`,
+			`if [ $EXIT_CODE -eq 0 ]; then`,
+			`  printf '\\033[1;32m✓ PR opened in browser\\033[0m\\n'`,
+			`  sleep 5`,
+			`else`,
+			`  printf '\\033[1;31m✗ Failed to create or open PR (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
+			`  echo "Press any key to close."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(scriptPath, script);
+
+		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		monitorGitPane(paneId, task.id, params.projectId, "createPR", socket);
+
+		log.info("← createPullRequest (pane opened)", { paneId });
+	},
+
 	async showDiff(params: { taskId: string; projectId: string }): Promise<void> {
 		log.info("→ showDiff", params);
 		const project = await data.getProject(params.projectId);

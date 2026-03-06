@@ -422,6 +422,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
+			createPullRequest: {
+				params: { taskId: string; projectId: string };
+				response: void;
+			};
 			showDiff: {
 				params: { taskId: string; projectId: string };
 				response: void;
