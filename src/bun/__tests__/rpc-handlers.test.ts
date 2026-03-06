@@ -862,7 +862,7 @@ describe("handlers.createTask", () => {
 			description: "New task",
 		});
 		expect(result).toEqual(task);
-		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo");
+		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo", undefined);
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
@@ -881,7 +881,7 @@ describe("handlers.createTask", () => {
 			status: "in-progress",
 		});
 		expect(result).toEqual(updatedTask);
-		expect(git.createWorktree).toHaveBeenCalledWith(project, task);
+		expect(git.createWorktree).toHaveBeenCalledWith(project, task, undefined);
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
@@ -892,7 +892,7 @@ describe("handlers.createTask", () => {
 		vi.mocked(data.addTask).mockResolvedValue(task);
 
 		await handlers.createTask({ projectId: "proj-1", description: "task" });
-		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo");
+		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
 	});
 });
 

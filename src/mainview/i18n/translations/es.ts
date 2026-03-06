@@ -130,6 +130,13 @@ const es: TranslationRecord & Record<string, string> = {
 	"createTask.discardConfirm": "¿Descartar cambios? Se perderá la descripción introducida.",
 	"createTask.keepEditing": "Seguir editando",
 	"createTask.discard": "Descartar",
+	"createTask.branchLabel": "Rama",
+	"createTask.branchPlaceholder": "Escriba para buscar ramas...",
+	"createTask.branchNewAuto": "Nueva rama (autogenerada)",
+	"createTask.branchFetch": "Actualizar",
+	"createTask.branchFetching": "Actualizando...",
+	"createTask.branchLocal": "Locales",
+	"createTask.branchRemote": "Remotas",
 
 	// TaskCard
 	"task.moveTo": "Mover a",

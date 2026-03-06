@@ -1,0 +1,1 @@
+Add optional branch selector to the Create Task modal. Users can now choose an existing local or remote branch instead of always creating a new one. Includes autocomplete filtering and a Fetch button to refresh remote branches from origin.

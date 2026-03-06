@@ -132,6 +132,13 @@ const ru: TranslationRecord & Record<string, string> = {
 	"createTask.discardConfirm": "Отменить? Введённое описание будет потеряно.",
 	"createTask.keepEditing": "Продолжить редактирование",
 	"createTask.discard": "Отменить",
+	"createTask.branchLabel": "Ветка",
+	"createTask.branchPlaceholder": "Введите для поиска веток...",
+	"createTask.branchNewAuto": "Новая ветка (автоматически)",
+	"createTask.branchFetch": "Обновить",
+	"createTask.branchFetching": "Обновление...",
+	"createTask.branchLocal": "Локальные",
+	"createTask.branchRemote": "Удалённые",
 
 	// TaskCard
 	"task.moveTo": "Переместить в",

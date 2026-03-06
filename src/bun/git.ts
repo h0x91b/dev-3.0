@@ -106,18 +106,53 @@ function branchName(task: Task): string {
 export async function createWorktree(
 	project: Project,
 	task: Task,
+	existingBranch?: string,
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const wtPath = worktreePath(project, task);
-	const branch = branchName(task);
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-
 	const tDir = taskDir(project, task);
-
-	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id, taskDir: tDir });
 
 	// Create the task container directory (with logs/ subfolder)
 	const mkdirProc = spawn(["mkdir", "-p", `${tDir}/logs`]);
 	await mkdirProc.exited;
+
+	if (existingBranch) {
+		// Use an existing branch — no -b flag
+		const resolvedBranch = existingBranch.replace(/^origin\//, "");
+		log.info("Creating worktree from existing branch", { wtPath, existingBranch: resolvedBranch, taskId: task.id });
+
+		const result = await run(
+			["git", "worktree", "add", wtPath, resolvedBranch],
+			project.path,
+		);
+
+		if (!result.ok) {
+			// If it's a remote branch that doesn't have a local tracking branch yet,
+			// try creating a local tracking branch
+			if (existingBranch.startsWith("origin/")) {
+				log.info("Retrying with tracking branch creation", { existingBranch });
+				const trackResult = await run(
+					["git", "worktree", "add", "--track", "-b", resolvedBranch, wtPath, existingBranch],
+					project.path,
+				);
+				if (!trackResult.ok) {
+					log.error("Failed to create worktree from existing branch", { stderr: trackResult.stderr, taskId: task.id });
+					throw new Error(`Failed to create worktree: ${trackResult.stderr}`);
+				}
+			} else {
+				log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
+				throw new Error(`Failed to create worktree: ${result.stderr}`);
+			}
+		}
+
+		log.info("Worktree created from existing branch", { wtPath, branch: resolvedBranch });
+		return { worktreePath: wtPath, branchName: resolvedBranch };
+	}
+
+	// Default: create a new branch
+	const branch = branchName(task);
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+
+	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id, taskDir: tDir });
 
 	const result = await run(
 		["git", "worktree", "add", "-b", branch, wtPath, baseBranch],
@@ -132,6 +167,36 @@ export async function createWorktree(
 	log.info("Worktree created", { wtPath, branch });
 
 	return { worktreePath: wtPath, branchName: branch };
+}
+
+export interface BranchInfo {
+	name: string;
+	isRemote: boolean;
+}
+
+export async function listBranches(projectPath: string): Promise<BranchInfo[]> {
+	const [localResult, remoteResult] = await Promise.all([
+		run(["git", "branch", "--format=%(refname:short)"], projectPath),
+		run(["git", "branch", "-r", "--format=%(refname:short)"], projectPath),
+	]);
+
+	const branches: BranchInfo[] = [];
+
+	if (localResult.ok && localResult.stdout) {
+		for (const name of localResult.stdout.split("\n")) {
+			if (name) branches.push({ name, isRemote: false });
+		}
+	}
+
+	if (remoteResult.ok && remoteResult.stdout) {
+		for (const name of remoteResult.stdout.split("\n")) {
+			if (name && !name.endsWith("/HEAD")) {
+				branches.push({ name, isRemote: true });
+			}
+		}
+	}
+
+	return branches;
 }
 
 export async function getCurrentBranch(worktreePath: string): Promise<string | null> {
