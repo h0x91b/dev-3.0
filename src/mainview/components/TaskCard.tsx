@@ -23,11 +23,13 @@ interface TaskCardProps {
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
 	isActiveInSplit?: boolean;
+	externalMoving?: boolean;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, externalMoving = false }: TaskCardProps) {
 	const t = useT();
-	const [moving, setMoving] = useState(false);
+	const [internalMoving, setMoving] = useState(false);
+	const moving = internalMoving || externalMoving;
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 	const [menuVisible, setMenuVisible] = useState(false);
@@ -360,10 +362,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${moving ? "opacity-50 pointer-events-none" : ""}`}
+			} ${moving ? "pointer-events-none" : ""}`}
 			style={{ borderLeftColor: color }}
 			onClick={handleClick}
 		>
+			{/* Loading overlay */}
+			{moving && (
+				<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-base/60 backdrop-blur-[1px]">
+					<div className="w-5 h-5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+				</div>
+			)}
+
 			{/* Dismiss button — top-right, visible on hover */}
 			{showDismissButton && (
 				<button

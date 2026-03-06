@@ -34,6 +34,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
+	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
 	const [activeFilters, setActiveFilters] = useState<string[]>([]);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -91,6 +92,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 
 		const fromStatus = task.status;
 		// Direct move for all other transitions
+		setMovingTaskIds((prev) => new Set(prev).add(task.id));
 		try {
 			const updated = await api.request.moveTask({
 				taskId: task.id,
@@ -103,6 +105,11 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		} catch (err) {
 			alert(t("task.failedMove", { error: String(err) }));
 		}
+		setMovingTaskIds((prev) => {
+			const next = new Set(prev);
+			next.delete(task.id);
+			return next;
+		});
 	}
 
 	async function handleReorderTask(taskId: string, targetIndex: number) {
@@ -190,6 +197,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						bellCounts={bellCounts}
 						activeTaskId={activeTaskId}
 						draggedTaskId={draggedTaskId}
+						movingTaskIds={movingTaskIds}
 					/>
 				))}
 			</div>

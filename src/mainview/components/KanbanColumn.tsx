@@ -23,6 +23,7 @@ interface KanbanColumnProps {
 	bellCounts: Map<string, number>;
 	activeTaskId?: string;
 	draggedTaskId: string | null;
+	movingTaskIds: Set<string>;
 }
 
 function KanbanColumn({
@@ -43,6 +44,7 @@ function KanbanColumn({
 	bellCounts,
 	activeTaskId,
 	draggedTaskId,
+	movingTaskIds,
 }: KanbanColumnProps) {
 	const t = useT();
 	const color = STATUS_COLORS[status];
@@ -189,7 +191,8 @@ function KanbanColumn({
 							onTaskMoved={onTaskMoved}
 							bellCount={bellCounts.get(task.id) ?? 0}
 							isActiveInSplit={task.id === activeTaskId}
-						/>
+						externalMoving={movingTaskIds.has(task.id)}
+					/>
 					</div>
 				))}
 				{isSameColumnDrag && dropIndex === tasks.length && (

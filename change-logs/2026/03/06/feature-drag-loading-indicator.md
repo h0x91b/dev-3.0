@@ -1,0 +1,1 @@
+Added a loading spinner overlay on task cards when moving via drag-and-drop to Completed or other columns. Previously only context-menu moves showed visual feedback; now drag-drop transitions also display a spinner with a semi-transparent backdrop while the backend processes the move (PTY teardown, cleanup script, worktree removal).
