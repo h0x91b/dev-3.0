@@ -1,0 +1,1 @@
+Add clipboard image paste support in the terminal. When the user presses Cmd+V with an image in the clipboard, the image is saved to disk and its file path is injected into the PTY — enabling seamless image sharing with AI agents like Claude Code running inside tmux.

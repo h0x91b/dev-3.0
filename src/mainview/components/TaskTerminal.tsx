@@ -173,7 +173,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} />}
 			<div className="flex-1 min-h-0 overflow-hidden">
 				{ptyUrl ? (
-					<TerminalView ptyUrl={ptyUrl} taskId={taskId} />
+					<TerminalView ptyUrl={ptyUrl} taskId={taskId} projectId={projectId} />
 				) : (
 					<div className="flex items-center justify-center h-full">
 						<div className="flex items-center gap-3">
