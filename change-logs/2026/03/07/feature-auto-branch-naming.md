@@ -1,0 +1,1 @@
+Updated agent prompts (AGENTS.md and dev3 skill) to auto-rename opaque `dev3/task-<hash>` branches to meaningful names derived from the task description. Agents no longer ask for permission — they rename automatically on session start.

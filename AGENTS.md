@@ -50,7 +50,14 @@ If you are in a worktree, your working directory will be different (e.g., a temp
 
 ### Branch naming
 
-Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the user is actually working on, **ask them** if they'd like to rename the branch to something descriptive (e.g., `dev3/fix-login-race-condition`). Do not rename silently — always confirm first. Example prompt: "Хочешь, переименую ветку в `dev3/<suggested-name>`? Сейчас она называется `dev3/task-...`, не очень информативно." If the user agrees, run `git branch -m <old> <new>` (and update the remote if already pushed).
+Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the task is about, **rename the branch automatically** to something descriptive using `git branch -m <old> dev3/<slug>`. Do not ask for permission — just do it on session start.
+
+**Rules:**
+- Always keep the `dev3/` prefix.
+- Use lowercase kebab-case: `dev3/fix-auth-race-condition`, `dev3/add-drag-reorder`, `dev3/refactor-rpc-handlers`.
+- Derive the slug from the task description/title — 3-5 words max.
+- If the branch already has a meaningful name (doesn't match `dev3/task-*`), skip renaming.
+- If the branch was already pushed to the remote, also update the remote: `git push origin :<old-branch> && git push -u origin <new-branch>`.
 
 ## Changelog policy
 

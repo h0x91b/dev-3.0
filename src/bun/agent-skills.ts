@@ -25,6 +25,24 @@ Run these two commands **in parallel** (two Bash tool calls in one message) to s
 
 Then set \`in-progress\` and begin working.
 
+## Branch naming
+
+After running \`dev3 current\`, check if the branch matches \`dev3/task-*\` (opaque auto-generated name).
+If it does, **rename it immediately** to something meaningful based on the task description:
+
+\`\`\`bash
+git branch -m dev3/task-XXXXXXXX dev3/<slug>
+\`\`\`
+
+**Rules:**
+- Always keep the \`dev3/\` prefix.
+- Use lowercase kebab-case, 3-5 words: \`dev3/fix-auth-race-condition\`, \`dev3/add-drag-reorder\`.
+- Derive the slug from the task description/title — be concise but descriptive.
+- If the branch already has a meaningful name (does NOT match \`dev3/task-*\`), skip renaming.
+- If the branch was already pushed, also update the remote: \`git push origin :<old> && git push -u origin <new>\`.
+
+Run this ONCE at session start, right after setting \`in-progress\`.
+
 ## Title generation
 
 The task title is auto-generated from the first 80 characters of the description.
