@@ -758,6 +758,11 @@ export const handlers = {
 		const groupId = crypto.randomUUID();
 		const sharedSeq = sourceTask.seq;
 		const resultTasks: Task[] = [];
+		// Only use existingBranch for single-variant spawns — git allows only
+		// one worktree per branch, so multiple variants each need their own.
+		const useExistingBranch = params.variants.length === 1
+			? (sourceTask.existingBranch ?? undefined)
+			: undefined;
 
 		for (let i = 0; i < params.variants.length; i++) {
 			const variant = params.variants[i];
@@ -772,7 +777,7 @@ export const handlers = {
 					agentId: variant.agentId,
 					configId: variant.configId,
 					seq: sharedSeq,
-					existingBranch: sourceTask.existingBranch ?? undefined,
+					existingBranch: useExistingBranch,
 				},
 			);
 
