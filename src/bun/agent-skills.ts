@@ -8,6 +8,7 @@ const SKILL_CONTENT = `---
 name: dev3
 description: "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside a .dev3.0/worktrees/ path. This means you are a dev-3.0 managed AI agent with a Kanban task assigned. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command."
 user-invocable: true
+allowed-tools: Bash
 ---
 
 # dev3 — Task Lifecycle Protocol
@@ -16,9 +17,10 @@ You are working inside a **dev-3.0 managed worktree** with a Kanban board task a
 
 ## On session start
 
-Run this command to see your current project, task, and status:
+Run these two commands **in parallel** (two Bash tool calls in one message) to save time:
 
-  \`~/.dev3.0/bin/dev3 current\`
+- \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
+- \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
 
 Then set \`in-progress\` and begin working.
 
