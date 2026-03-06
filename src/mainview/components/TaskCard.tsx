@@ -43,9 +43,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Sibling popover state
 	const [siblingPopoverOpen, setSiblingPopoverOpen] = useState(false);
 	const siblingAnchorRef = useRef<HTMLButtonElement>(null);
-	const siblings = task.groupId && siblingMap
-		? (siblingMap.get(task.groupId) ?? []).filter((s) => s.id !== task.id)
+	const groupMembers = task.groupId && siblingMap
+		? (siblingMap.get(task.groupId) ?? [])
 		: [];
+	const hasSiblings = groupMembers.length > 1;
+	const siblings = groupMembers.filter((s) => s.id !== task.id);
 
 	// Terminal preview state
 	const [previewOpen, setPreviewOpen] = useState(false);
@@ -427,44 +429,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				return (
 					<div className="text-xs text-accent font-semibold mb-1.5 flex items-center gap-1.5">
 						<span className="bg-accent/15 px-2 py-0.5 rounded-md">{label}</span>
-						{siblings.length > 0 && (
-							<button
-								ref={siblingAnchorRef}
-								onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
-								className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-fg/5 hover:bg-fg/10 transition-colors"
-								title={t.plural("task.siblingsCount", siblings.length)}
-							>
-								{siblings.map((s) => (
-									<span
-										key={s.id}
-										className="w-2 h-2 rounded-full flex-shrink-0"
-										style={{ background: STATUS_COLORS[s.status] }}
-									/>
-								))}
-							</button>
-						)}
 					</div>
 				);
 			})() : (
-				<div className="text-[0.625rem] text-fg-muted font-mono mb-1 flex items-center gap-1.5">
-					<span>#{task.seq}</span>
-					{siblings.length > 0 && (
-						<button
-							ref={siblingAnchorRef}
-							onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
-							className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-fg/5 hover:bg-fg/10 transition-colors"
-							title={t.plural("task.siblingsCount", siblings.length)}
-						>
-							{siblings.map((s) => (
-								<span
-									key={s.id}
-									className="w-2 h-2 rounded-full flex-shrink-0"
-									style={{ background: STATUS_COLORS[s.status] }}
-								/>
-							))}
-						</button>
-					)}
-				</div>
+				<div className="text-[0.625rem] text-fg-muted font-mono mb-1">#{task.seq}</div>
 			)}
 
 			{/* Title + description expand */}
@@ -593,6 +561,24 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{t(statusKey(task.status))}
 					</span>
 				</button>
+
+				{/* Sibling variant dots */}
+				{hasSiblings && (
+					<button
+						ref={siblingAnchorRef}
+						onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+						className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-fg/5 transition-colors"
+						title={t.plural("task.siblingsCount", siblings.length)}
+					>
+						{groupMembers.map((s) => (
+							<span
+								key={s.id}
+								className={`w-2 h-2 rounded-full flex-shrink-0 ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
+								style={{ background: STATUS_COLORS[s.status] }}
+							/>
+						))}
+					</button>
+				)}
 
 				{/* Right side actions */}
 				{isTodo ? (
