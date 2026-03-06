@@ -1,0 +1,1 @@
+Narrowed the dev3 skill trigger condition to explicitly require `~/.dev3.0/worktrees/` (the dev-3.0 managed directory under $HOME) instead of matching any path containing `.dev3.0/worktrees/`. This prevents the skill from incorrectly activating when agents work in regular git worktrees or other paths that happen to contain "worktrees". Fixes #73.
