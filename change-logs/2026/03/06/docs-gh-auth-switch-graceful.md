@@ -1,0 +1,1 @@
+Make `gh auth switch --user h0x91b` graceful for collaborators by appending `2>/dev/null || true`. The command now silently no-ops when the `h0x91b` account is not configured, allowing collaborators to use their own `gh` account without errors.
