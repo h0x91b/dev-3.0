@@ -992,6 +992,20 @@ describe("handlers.moveTask", () => {
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
+	it("todo → in-progress with existingBranch: passes it to createWorktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null, existingBranch: "feature/login" });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feature/login" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		expect(git.createWorktree).toHaveBeenCalledWith(project, task, "feature/login");
+	});
+
 	it("completed → in-progress (reopen): clears description for launch", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "completed", worktreePath: null });

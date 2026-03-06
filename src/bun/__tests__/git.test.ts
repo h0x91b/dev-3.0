@@ -748,6 +748,49 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("dev3/fix-critical-bug");
 		expect(branches).not.toContain("dev3/task-aaaaaaaa");
 	});
+	it("preserves user-owned branch (non-dev3) on removal", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b feature/login "${wtPath}" main`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "feature/login",
+			existingBranch: "feature/login",
+		});
+
+		await removeWorktree(project, task);
+
+		// Worktree should be gone
+		expect(existsSync(wtPath)).toBe(false);
+		// Branch should be PRESERVED
+		const branches = g("git branch", repo.local);
+		expect(branches).toContain("feature/login");
+	});
+
+	it("deletes variant branch (feature/login-v1) on removal", async () => {
+		// Create the base branch first
+		g("git branch feature/login", repo.local);
+
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b feature/login-v1 "${wtPath}" feature/login`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "feature/login-v1",
+			existingBranch: "feature/login",
+		});
+
+		await removeWorktree(project, task);
+
+		expect(existsSync(wtPath)).toBe(false);
+		const branches = g("git branch", repo.local);
+		// Variant branch should be deleted
+		expect(branches).not.toContain("feature/login-v1");
+		// Original branch should be preserved
+		expect(branches).toContain("feature/login");
+	});
 });
 
 // ─── Branch rename integration scenarios ─────────────────────────────────────
