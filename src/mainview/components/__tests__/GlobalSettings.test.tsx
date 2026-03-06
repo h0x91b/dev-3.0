@@ -252,6 +252,29 @@ describe("GlobalSettings", () => {
 			expect(screen.getByText("Default Configuration")).toBeInTheDocument();
 		});
 
+		it("shows config preview card with model info", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			// Default config is "Default" with model "sonnet"
+			expect(screen.getByText("Model:")).toBeInTheDocument();
+			expect(screen.getByText("sonnet")).toBeInTheDocument();
+		});
+
+		it("shows permission mode in preview when selecting non-default config", async () => {
+			setupMocks(mockAgents, {
+				...mockGlobalSettings,
+				defaultConfigId: "cfg-2",
+			});
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(screen.getByText("opus")).toBeInTheDocument();
+			expect(screen.getByText("Permission Mode:")).toBeInTheDocument();
+			expect(screen.getByText("Plan Mode")).toBeInTheDocument();
+		});
+
 		it("changes default config and saves", async () => {
 			setupMocks();
 			const user = userEvent.setup();

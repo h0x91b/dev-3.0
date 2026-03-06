@@ -370,6 +370,19 @@ function GlobalSettings() {
 										</option>
 									))}
 								</select>
+								{(() => {
+									const selectedConfig = defaultAgentConfigs.find(
+										(c) => c.id === globalSettings.defaultConfigId,
+									) ?? defaultAgentConfigs[0];
+									if (!selectedConfig) return null;
+									return (
+										<ConfigPreviewCard
+											config={selectedConfig}
+											agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
+											t={t}
+										/>
+									);
+								})()}
 							</div>
 						)}
 					</div>
@@ -541,6 +554,74 @@ function GlobalSettings() {
 					</div>
 				</div>
 			</div>
+		</div>
+	);
+}
+
+// ---- Config Preview Card (shown below Default Configuration dropdown) ----
+
+function ConfigPreviewCard({
+	config,
+	agentBaseCommand,
+	t,
+}: {
+	config: AgentConfiguration;
+	agentBaseCommand: string;
+	t: ReturnType<typeof useT>;
+}) {
+	const tags: { label: string; value: string }[] = [];
+
+	if (config.model) {
+		tags.push({ label: t("settings.configModel"), value: config.model });
+	}
+	if (config.permissionMode && config.permissionMode !== "default") {
+		const modeLabels: Record<string, string> = {
+			plan: t("settings.permPlan"),
+			acceptEdits: t("settings.permAcceptEdits"),
+			dontAsk: t("settings.permDontAsk"),
+			bypassPermissions: t("settings.permBypass"),
+		};
+		tags.push({
+			label: t("settings.configPermissionMode"),
+			value: modeLabels[config.permissionMode] ?? config.permissionMode,
+		});
+	}
+	if (config.effort) {
+		const effortLabels: Record<string, string> = {
+			low: t("settings.effortLow"),
+			medium: t("settings.effortMedium"),
+			high: t("settings.effortHigh"),
+		};
+		tags.push({
+			label: t("settings.configEffort"),
+			value: effortLabels[config.effort] ?? config.effort,
+		});
+	}
+	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
+		tags.push({
+			label: t("settings.configMaxBudget"),
+			value: `$${config.maxBudgetUsd}`,
+		});
+	}
+
+	const { command, envLine } = buildCommandPreview(agentBaseCommand, config);
+
+	return (
+		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
+			{tags.length > 0 && (
+				<div className="flex flex-wrap gap-2">
+					{tags.map((tag) => (
+						<span
+							key={tag.label}
+							className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-raised rounded-lg text-xs"
+						>
+							<span className="text-fg-3">{tag.label}:</span>
+							<span className="text-fg font-medium">{tag.value}</span>
+						</span>
+					))}
+				</div>
+			)}
+			<CommandPreview command={command} envLine={envLine} />
 		</div>
 	);
 }
