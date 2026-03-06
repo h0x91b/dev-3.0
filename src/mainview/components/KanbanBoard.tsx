@@ -37,6 +37,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
 	const [activeFilters, setActiveFilters] = useState<string[]>([]);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const moveCounterRef = useRef(0);
 
 	function recordMove(taskId: string) {
@@ -90,7 +91,13 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 
 		const fromStatus = task.status;
-		// Direct move for all other transitions
+
+		// Optimistic update: move card to target column immediately and mark as moving
+		const optimisticTask = { ...task, status: targetStatus };
+		dispatch({ type: "updateTask", task: optimisticTask });
+		recordMove(task.id);
+		setMovingTaskIds((prev) => new Set(prev).add(task.id));
+
 		try {
 			const updated = await api.request.moveTask({
 				taskId: task.id,
@@ -98,10 +105,17 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				newStatus: targetStatus,
 			});
 			dispatch({ type: "updateTask", task: updated });
-			recordMove(task.id);
 			trackEvent("task_moved", { from_status: fromStatus, to_status: targetStatus });
 		} catch (err) {
+			// Revert optimistic update on failure
+			dispatch({ type: "updateTask", task });
 			alert(t("task.failedMove", { error: String(err) }));
+		} finally {
+			setMovingTaskIds((prev) => {
+				const next = new Set(prev);
+				next.delete(task.id);
+				return next;
+			});
 		}
 	}
 
@@ -190,6 +204,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						bellCounts={bellCounts}
 						activeTaskId={activeTaskId}
 						draggedTaskId={draggedTaskId}
+						movingTaskIds={movingTaskIds}
 					/>
 				))}
 			</div>
