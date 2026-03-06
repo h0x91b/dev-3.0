@@ -1,0 +1,1 @@
+Reduced drag-to-completed latency by applying optimistic UI updates: the card now moves to the target column immediately upon drop, showing a spinner overlay and disabled state while the backend processes worktree cleanup. On failure, the card reverts to its original position.

@@ -23,9 +23,10 @@ interface TaskCardProps {
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
 	isActiveInSplit?: boolean;
+	isMoving?: boolean;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -48,6 +49,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const cardRef = useRef<HTMLDivElement>(null);
 
+	const isDisabled = moving || isMovingProp;
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
@@ -352,7 +354,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	return (
 		<div
 			ref={cardRef}
-			draggable={!moving && !detailOpen}
+			draggable={!isDisabled && !detailOpen}
 			onDragStart={handleDragStart}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
@@ -360,17 +362,24 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${moving ? "opacity-50 pointer-events-none" : ""}`}
+			} ${isDisabled ? "opacity-50 pointer-events-none" : ""}`}
 			style={{ borderLeftColor: color }}
 			onClick={handleClick}
 		>
+			{/* Moving spinner overlay */}
+			{isMovingProp && (
+				<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-base/40">
+					<div className="w-4 h-4 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+				</div>
+			)}
+
 			{/* Dismiss button — top-right, visible on hover */}
 			{showDismissButton && (
 				<button
 					onClick={handleDismiss}
 					className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-all"
 					title={isCancelled ? t("task.delete") : t("task.cancel")}
-					disabled={moving}
+					disabled={isDisabled}
 				>
 					<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -519,7 +528,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					ref={triggerRef}
 					onClick={toggleMenu}
 					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors flex-shrink-0"
-					disabled={moving}
+					disabled={isDisabled}
 				>
 					<div
 						className="w-2 h-2 rounded-full flex-shrink-0"
@@ -540,7 +549,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						}}
 						className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white shadow-sm shadow-green-900/30 transition-colors"
 						title={t("task.run")}
-						disabled={moving}
+						disabled={isDisabled}
 					>
 						<svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
 							<path d="M8 5v14l11-7z" />
