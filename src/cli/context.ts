@@ -88,19 +88,29 @@ export function detectContext(cwd: string = process.cwd()): CliContext | null {
 export function discoverSocket(): string | null {
 	if (!existsSync(SOCKETS_DIR)) return null;
 
+	const candidates: string[] = [];
 	for (const file of readdirSync(SOCKETS_DIR)) {
 		if (!file.endsWith(".sock")) continue;
 		const pid = parseInt(file.replace(".sock", ""), 10);
 		if (isNaN(pid)) continue;
 
+		const socketPath = `${SOCKETS_DIR}/${file}`;
 		try {
 			process.kill(pid, 0); // Check if alive
-			return `${SOCKETS_DIR}/${file}`;
-		} catch {
-			// Dead process, skip
+			return socketPath;
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException).code;
+			if (code === "EPERM") {
+				// Sandboxed environment (e.g. Codex seatbelt) blocks signals
+				// to processes outside the sandbox. The app may still be alive —
+				// keep as candidate and let the caller try to connect.
+				candidates.push(socketPath);
+			}
+			// ESRCH = process doesn't exist — skip stale socket
 		}
 	}
-	return null;
+	// Return first candidate from sandboxed fallback (if any).
+	return candidates.length > 0 ? candidates[0] : null;
 }
 
 /**

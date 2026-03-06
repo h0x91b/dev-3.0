@@ -41,14 +41,15 @@ function printTask(task: Task): void {
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
 
-	if (task.description) {
+	const showDescription = task.description && task.description !== task.title;
+	if (showDescription) {
 		fields.push(["", ""]);
 		fields.push(["Description:", ""]);
 	}
 
 	printDetail(fields);
 
-	if (task.description) {
+	if (showDescription) {
 		for (const line of task.description.split("\n")) {
 			process.stdout.write(`  ${line}\n`);
 		}
