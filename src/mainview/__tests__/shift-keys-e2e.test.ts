@@ -89,10 +89,13 @@ set -g remain-on-exit on
 `;
 
 // ── Availability check (runs at module load time / test-collection time) ──────
+// Also skip in CI: the PTY bridge requires an interactive terminal context
+// that GitHub Actions runners don't provide reliably.
 const tmuxAvailable =
 	cpSpawnSync("which", ["tmux"], { stdio: "ignore" }).status === 0;
 const python3Available =
 	cpSpawnSync("which", ["python3"], { stdio: "ignore" }).status === 0;
+const isCI = !!process.env.CI;
 
 // ── Shared test helpers ───────────────────────────────────────────────────────
 // Mirrors the helpers in shift-keys.test.ts so the e2e suite is self-contained.
@@ -152,7 +155,7 @@ function waitForExit(proc: ChildProcess): Promise<void> {
 }
 
 // ── E2E suite ─────────────────────────────────────────────────────────────────
-describe.skipIf(!tmuxAvailable || !python3Available)(
+describe.skipIf(!tmuxAvailable || !python3Available || isCI)(
 	"Shift+key e2e (ghostty-web → PTY → tmux → inner pane)",
 	() => {
 		let ghostty: InstanceType<typeof Ghostty>;
