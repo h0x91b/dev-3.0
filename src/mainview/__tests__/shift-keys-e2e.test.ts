@@ -167,12 +167,8 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		// import.meta.url is http://localhost/... in happy-dom (browser simulation),
 		// so new URL(..., import.meta.url) gives the wrong path.
 		// Use import.meta.dir (Bun-specific, gives the real filesystem directory of this
-		// file) or fall back to a project-root-relative resolve().
+		// file) if available, or fall back to a project-root-relative resolve().
 		const helperScript = (() => {
-			// import.meta.url is http://localhost/... in happy-dom (browser simulation),
-			// so new URL(..., import.meta.url) gives the wrong path.
-			// Use import.meta.dir (Bun-specific, gives the real filesystem directory of this
-			// file) if available, or fall back to a project-root-relative resolve().
 			const bunMeta = import.meta as unknown as { dir?: string };
 			return bunMeta.dir
 				? join(bunMeta.dir, "helpers", "pty-tmux-bridge.py")
@@ -188,8 +184,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			readyFifo = join(tmpDir, "ready");
 			doneFifo = join(tmpDir, "done");
 			captureFile = join(tmpDir, "capture");
-			cpSpawnSync("mkfifo", [readyFifo]);
-			cpSpawnSync("mkfifo", [doneFifo]);
+			cpSpawnSync("mkfifo", [readyFifo, doneFifo]);
 
 			// Write the production tmux config to a temp file
 			const tmuxConfigPath = join(tmpDir, "tmux.conf");
@@ -241,8 +236,8 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 
 		// ── Ghostty-web byte generators ───────────────────────────────────────
 
-		/** Fire a Shift+code event through the InputHandler with our custom fix. */
-		function getBytesWithHandler(code: string): string {
+		/** Fire a Shift+code event through the InputHandler. Pass withFix=true to enable our custom handler. */
+		function getBytes(code: string, withFix: boolean): string {
 			const sent: string[] = [];
 			const container = makeContainer();
 			new InputHandler(
@@ -251,24 +246,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 				(data: string) => sent.push(data),
 				() => {},
 				null as never,
-				makeCustomHandler(sent),
-				null as never,
-			);
-			container.fire(keyEvent(code, code, SHIFT));
-			return sent.join("");
-		}
-
-		/** Fire a Shift+code event through the InputHandler WITHOUT our fix. */
-		function getBytesWithoutHandler(code: string): string {
-			const sent: string[] = [];
-			const container = makeContainer();
-			new InputHandler(
-				ghostty,
-				container.obj as never,
-				(data: string) => sent.push(data),
-				() => {},
-				null as never,
-				null as never, // NO custom handler
+				withFix ? makeCustomHandler(sent) : (null as never),
 				null as never,
 			);
 			container.fire(keyEvent(code, code, SHIFT));
@@ -325,7 +303,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			const doneDone = waitForExit(doneProc);
 
 			// Write bytes to the Python helper's stdin → PTY master → tmux → pane.
-			pythonProc!.stdin!.write(Buffer.from(bytes, "utf8"));
+			pythonProc!.stdin!.write(bytes, "utf8");
 
 			// Wait until head -c N captured all bytes and wrote the done signal.
 			await doneDone;
@@ -339,7 +317,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			it(
 				`Shift+${code} passes through tmux unchanged`,
 				async () => {
-					const bytes = getBytesWithHandler(code);
+					const bytes = getBytes(code, true);
 					// Sanity-check: our handler produced the expected sequence.
 					expect(bytes).toBe(expectedSeq);
 
@@ -355,7 +333,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		it(
 			"Shift+Enter: 0x0a (LF) arrives as LF, not CR (0x0d)",
 			async () => {
-				const bytes = getBytesWithHandler("Enter");
+				const bytes = getBytes("Enter", true);
 				expect(bytes.charCodeAt(0)).toBe(0x0a); // must be LF
 
 				const captured = await runPipelineTest(bytes);
@@ -374,7 +352,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		it(
 			"CANARY: without fix, Shift+Tab goes through tmux as plain \\t",
 			async () => {
-				const bytes = getBytesWithoutHandler("Tab");
+				const bytes = getBytes("Tab", false);
 				expect(bytes).toBe("\t"); // confirms the ghostty-web bug is present
 
 				const captured = await runPipelineTest(bytes);
@@ -386,7 +364,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		it(
 			"CANARY: without fix, Shift+Enter goes through tmux as plain \\r",
 			async () => {
-				const bytes = getBytesWithoutHandler("Enter");
+				const bytes = getBytes("Enter", false);
 				expect(bytes).toBe("\r"); // confirms the ghostty-web bug is present
 
 				const captured = await runPipelineTest(bytes);
