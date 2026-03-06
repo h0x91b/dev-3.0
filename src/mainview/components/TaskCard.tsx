@@ -9,6 +9,7 @@ import { ansiToHtml } from "../utils/ansi-to-html";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import SiblingPopover from "./SiblingPopover";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import TaskDetailModal from "./TaskDetailModal";
 
@@ -24,9 +25,10 @@ interface TaskCardProps {
 	bellCount?: number;
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
+	siblingMap?: Map<string, Task[]>;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, siblingMap }: TaskCardProps) {
 	const t = useT();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -37,6 +39,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
+
+	// Sibling popover state
+	const [siblingPopoverOpen, setSiblingPopoverOpen] = useState(false);
+	const siblingAnchorRef = useRef<HTMLButtonElement>(null);
+	const siblings = task.groupId && siblingMap
+		? (siblingMap.get(task.groupId) ?? []).filter((s) => s.id !== task.id)
+		: [];
 
 	// Terminal preview state
 	const [previewOpen, setPreviewOpen] = useState(false);
@@ -418,10 +427,44 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				return (
 					<div className="text-xs text-accent font-semibold mb-1.5 flex items-center gap-1.5">
 						<span className="bg-accent/15 px-2 py-0.5 rounded-md">{label}</span>
+						{siblings.length > 0 && (
+							<button
+								ref={siblingAnchorRef}
+								onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+								className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-fg/5 hover:bg-fg/10 transition-colors"
+								title={t.plural("task.siblingsCount", siblings.length)}
+							>
+								{siblings.map((s) => (
+									<span
+										key={s.id}
+										className="w-2 h-2 rounded-full flex-shrink-0"
+										style={{ background: STATUS_COLORS[s.status] }}
+									/>
+								))}
+							</button>
+						)}
 					</div>
 				);
 			})() : (
-				<div className="text-[0.625rem] text-fg-muted font-mono mb-1">#{task.seq}</div>
+				<div className="text-[0.625rem] text-fg-muted font-mono mb-1 flex items-center gap-1.5">
+					<span>#{task.seq}</span>
+					{siblings.length > 0 && (
+						<button
+							ref={siblingAnchorRef}
+							onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+							className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-fg/5 hover:bg-fg/10 transition-colors"
+							title={t.plural("task.siblingsCount", siblings.length)}
+						>
+							{siblings.map((s) => (
+								<span
+									key={s.id}
+									className="w-2 h-2 rounded-full flex-shrink-0"
+									style={{ background: STATUS_COLORS[s.status] }}
+								/>
+							))}
+						</button>
+					)}
+				</div>
 			)}
 
 			{/* Title + description expand */}
@@ -454,6 +497,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					onClose={() => setDetailOpen(false)}
 				/>,
 				document.body
+			)}
+
+			{/* Sibling popover */}
+			{siblingPopoverOpen && siblingAnchorRef.current && siblings.length > 0 && (
+				<SiblingPopover
+					siblings={siblings}
+					agents={agents}
+					navigate={navigate}
+					onClose={() => setSiblingPopoverOpen(false)}
+					anchorEl={siblingAnchorRef.current}
+					projectId={project.id}
+				/>
 			)}
 
 			{/* Label chips row — always rendered so "+" is discoverable on hover */}

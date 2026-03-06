@@ -1,0 +1,1 @@
+Added sibling variant visibility on the Kanban board. When task variants (same groupId) are spread across different status columns, each card now shows colored status dots indicating where its siblings are. Clicking the dots opens a popover listing all sibling variants with their status, agent, and a navigate action to jump to them in split view.
