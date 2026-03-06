@@ -271,6 +271,7 @@ export async function launchTaskPty(
 	agentId?: string | null,
 	configId?: string | null,
 	runSetup = false,
+	resume = false,
 ): Promise<void> {
 	log.info("launchTaskPty START", {
 		taskId: task.id.slice(0, 8),
@@ -279,6 +280,7 @@ export async function launchTaskPty(
 		agentId: agentId ?? "none",
 		configId: configId ?? "none",
 		runSetup,
+		resume,
 	});
 
 	const ctx: agents.TemplateContext = {
@@ -293,9 +295,10 @@ export async function launchTaskPty(
 	let extraEnv: Record<string, string>;
 
 	try {
+		const cmdOptions = resume ? { resume } : undefined;
 		if (agentId) {
 			log.info("Resolving command for agent", { agentId, configId });
-			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx);
+			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx, cmdOptions);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
 		} else {
@@ -305,6 +308,8 @@ export async function launchTaskPty(
 				task.title,
 				task.description,
 				worktreePath,
+				undefined,
+				cmdOptions,
 			);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
@@ -639,7 +644,7 @@ export const handlers = {
 			const wt = await git.createWorktree(project, task);
 			await runCowClones(project, wt.worktreePath);
 			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true);
+			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,

@@ -1,0 +1,1 @@
+When reopening a completed or cancelled task, Claude Code now resumes the previous conversation using `--continue` instead of starting a fresh session. The worktree path is deterministic, so Claude's conversation history persists across task lifecycle transitions.

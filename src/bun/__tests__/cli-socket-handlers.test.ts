@@ -771,6 +771,7 @@ describe("task.move", () => {
 			undefined,
 			undefined,
 			true,
+			false, // resume=false for non-reopen
 		);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
 			status: "in-progress",
@@ -802,9 +803,10 @@ describe("task.move", () => {
 			}),
 		);
 
-		// Should pass task with empty description for reopen
+		// Should pass task with empty description and resume=true for reopen
 		const launchCall = vi.mocked(launchTaskPty).mock.calls[0];
 		expect(launchCall[1].description).toBe("");
+		expect(launchCall[6]).toBe(true); // resume flag
 	});
 
 	it("active → completed: destroys PTY, runs cleanup, removes worktree", async () => {

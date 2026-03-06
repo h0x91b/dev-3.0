@@ -354,7 +354,7 @@ const handlers: Record<string, Handler> = {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			const wt = await git.createWorktree(project, task);
 			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true);
+			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,
