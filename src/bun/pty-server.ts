@@ -513,11 +513,6 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
-				// Debug: log escape sequences being written to tmux PTY
-				if (data.includes("\x1b")) {
-					const hex = Array.from(data, (c: string) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
-					log.info("PTY write (has ESC)", { len: data.length, hex });
-				}
 				session.proc.terminal.write(data);
 			} catch (err) {
 				log.error("WS message handler error", {
