@@ -24,7 +24,10 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
+	const [customTitle, setCustomTitle] = useState<string | null>(null);
+	const [editingTitle, setEditingTitle] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const titleInputRef = useRef<HTMLInputElement>(null);
 	const projectLabels = project.labels ?? [];
 
 	const insertPathAtCursor = useCallback((path: string) => {
@@ -89,6 +92,13 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				projectId: project.id,
 				description: trimmed,
 			});
+			if (customTitle) {
+				task = await api.request.renameTask({
+					taskId: task.id,
+					projectId: project.id,
+					customTitle,
+				});
+			}
 			if (selectedLabelIds.length > 0) {
 				task = await api.request.setTaskLabels({
 					taskId: task.id,
@@ -114,6 +124,13 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				projectId: project.id,
 				description: trimmed,
 			});
+			if (customTitle) {
+				task = await api.request.renameTask({
+					taskId: task.id,
+					projectId: project.id,
+					customTitle,
+				});
+			}
 			if (selectedLabelIds.length > 0) {
 				task = await api.request.setTaskLabels({
 					taskId: task.id,
@@ -192,9 +209,64 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 					)}
 					<ImageAttachmentsStrip text={description} onRemovePath={handleRemovePath} />
 					{generatedTitle && (
-						<div className="text-fg-3 text-xs">
-							{t("createTask.generatedTitle")}{" "}
-							<span className="text-fg-2 font-medium">{generatedTitle}</span>
+						<div className="text-xs">
+							{editingTitle ? (
+								<div className="flex items-center gap-1.5">
+									<span className="text-fg-3 flex-shrink-0">{t("createTask.generatedTitle")}</span>
+									<input
+										ref={titleInputRef}
+										type="text"
+										value={customTitle ?? generatedTitle}
+										onChange={(e) => {
+											const val = e.target.value;
+											// If user clears or matches auto-generated, revert to auto
+											if (!val.trim() || val.trim() === generatedTitle) {
+												setCustomTitle(null);
+											} else {
+												setCustomTitle(val);
+											}
+										}}
+										onKeyDown={(e) => {
+											if (e.key === "Escape") {
+												setEditingTitle(false);
+											} else if (e.key === "Enter") {
+												setEditingTitle(false);
+											}
+										}}
+										onBlur={() => setEditingTitle(false)}
+										className="flex-1 bg-elevated border border-edge-active rounded-md px-2 py-0.5 text-xs text-fg font-medium outline-none focus:border-accent/60 transition-colors"
+									/>
+									{customTitle && (
+										<button
+											onMouseDown={(e) => {
+												e.preventDefault();
+												setCustomTitle(null);
+												setEditingTitle(false);
+											}}
+											className="text-fg-muted hover:text-danger text-[0.625rem] flex-shrink-0 transition-colors"
+											title={t("task.resetTitle")}
+										>
+											✕
+										</button>
+									)}
+								</div>
+							) : (
+								<div
+									className="group/title flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 -mx-1.5 hover:bg-fg/5 transition-colors"
+									onClick={() => {
+										setEditingTitle(true);
+										setTimeout(() => titleInputRef.current?.focus(), 0);
+									}}
+								>
+									<span className="text-fg-3">{t("createTask.generatedTitle")}</span>
+									<span className={`font-medium group-hover/title:underline ${customTitle ? "text-accent" : "text-fg-2"}`}>
+										{customTitle ?? generatedTitle}
+									</span>
+									<svg className="w-3 h-3 text-fg-muted opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+									</svg>
+								</div>
+							)}
 						</div>
 					)}
 				</div>
