@@ -1,0 +1,1 @@
+Add standard keyboard shortcuts: Cmd+N to open create-task modal from the kanban board, Cmd+W to navigate back (mirrors Escape), Escape/Enter on LaunchVariantsModal, and Escape on the search input to clear and blur (with stopPropagation to prevent accidental navigation).

@@ -88,6 +88,31 @@ function App() {
 		{ capture: true },
 	);
 
+	// Cmd+W — navigate back (standard macOS close/back), capture phase so terminal can't swallow it
+	useGlobalShortcut(
+		(e) => {
+			if (!e.metaKey || e.key !== "w") return;
+			e.preventDefault();
+			e.stopPropagation();
+			if (showQuitDialog) {
+				setShowQuitDialog(false);
+				return;
+			}
+			const { route } = state;
+			if (route.screen === "settings") {
+				navigate({ screen: "dashboard" });
+			} else if (route.screen === "project-settings") {
+				navigate({ screen: "project", projectId: route.projectId });
+			} else if (route.screen === "project" && route.activeTaskId) {
+				navigate({ screen: "project", projectId: route.projectId });
+			} else if (route.screen === "changelog") {
+				navigate({ screen: "dashboard" });
+			}
+		},
+		[state, navigate, showQuitDialog],
+		{ capture: true },
+	);
+
 	function handleConfirmQuit() {
 		if (dontShowAgain) {
 			localStorage.setItem(SKIP_QUIT_DIALOG_KEY, "true");

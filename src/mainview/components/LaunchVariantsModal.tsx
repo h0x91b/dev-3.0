@@ -159,6 +159,22 @@ function LaunchVariantsModal({
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	// Escape → close; Enter → launch (when no text input is focused)
+	useEffect(() => {
+		function handleKey(e: KeyboardEvent) {
+			if (e.key === "Escape") {
+				onClose();
+			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+				const tag = (document.activeElement as HTMLElement | null)?.tagName;
+				if (tag === "INPUT" || tag === "TEXTAREA") return;
+				if (!launching && variants.length > 0) handleLaunch();
+			}
+		}
+		window.addEventListener("keydown", handleKey);
+		return () => window.removeEventListener("keydown", handleKey);
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [onClose, launching, variants]);
+
 	function addVariant() {
 		setVariants((prev) => [...prev, makeDefaultVariant()]);
 	}

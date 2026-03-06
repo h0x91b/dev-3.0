@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -38,6 +38,20 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	const [activeFilters, setActiveFilters] = useState<string[]>([]);
 	const [searchQuery, setSearchQuery] = useState("");
 	const moveCounterRef = useRef(0);
+
+	// Cmd+N — open create task modal (capture phase to intercept before terminal)
+	const handleCmdN = useCallback((e: KeyboardEvent) => {
+		if (!((e.metaKey || e.ctrlKey) && e.key === "n")) return;
+		if (showCreateModal || launchModal !== null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		setShowCreateModal(true);
+	}, [showCreateModal, launchModal]);
+
+	useEffect(() => {
+		window.addEventListener("keydown", handleCmdN, { capture: true });
+		return () => window.removeEventListener("keydown", handleCmdN, { capture: true });
+	}, [handleCmdN]);
 
 	function recordMove(taskId: string) {
 		moveCounterRef.current += 1;
