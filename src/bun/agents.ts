@@ -143,13 +143,32 @@ export function isCursorCommand(baseCmd: string): boolean {
 	return name === "agent";
 }
 
+/** Returns true when the resolved base command is the Codex CLI. */
+export function isCodexCommand(baseCmd: string): boolean {
+	const name = baseCmd.split("/").pop() ?? "";
+	return name === "codex";
+}
+
+/** Returns true when the resolved base command is the Gemini CLI. */
+export function isGeminiCommand(baseCmd: string): boolean {
+	const name = baseCmd.split("/").pop() ?? "";
+	return name === "gemini";
+}
+
 export function shellEscape(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
 export interface CommandOptions {
-	/** When true, add --continue for Claude agents and skip the prompt. */
+	/** When true, resume the previous session instead of starting a new one.
+	 *  Supported agents: Claude (--continue), Codex (resume --last),
+	 *  Gemini (--resume latest), Cursor Agent (--continue). */
 	resume?: boolean;
+}
+
+/** Returns true when the agent CLI supports session resumption. */
+export function supportsResume(baseCmd: string): boolean {
+	return isClaudeCommand(baseCmd) || isCodexCommand(baseCmd) || isGeminiCommand(baseCmd) || isCursorCommand(baseCmd);
 }
 
 export function resolveAgentCommand(
@@ -160,10 +179,16 @@ export function resolveAgentCommand(
 ): string {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const args: string[] = [];
-	const resume = options?.resume && isClaudeCommand(baseCmd);
+	const shouldResume = options?.resume && supportsResume(baseCmd);
 
-	if (resume) {
-		args.push("--continue");
+	// Resume flags per agent (Codex uses a subcommand, handled at the end)
+	if (shouldResume) {
+		if (isClaudeCommand(baseCmd) || isCursorCommand(baseCmd)) {
+			args.push("--continue");
+		} else if (isGeminiCommand(baseCmd)) {
+			args.push("--resume", "latest");
+		}
+		// Codex: handled below when building the final command
 	}
 
 	if (config?.model) {
@@ -205,7 +230,7 @@ export function resolveAgentCommand(
 
 	// When resuming, skip the prompt — we don't want to inject a new
 	// message into the continued conversation.
-	if (!resume) {
+	if (!shouldResume) {
 		// Build prompt: task description + interpolated append prompt
 		let prompt = ctx.taskDescription;
 		if (config?.appendPrompt) {
@@ -223,6 +248,11 @@ export function resolveAgentCommand(
 		if (prompt) {
 			args.push(shellEscape(prompt));
 		}
+	}
+
+	// Codex uses a subcommand for resume: `codex resume --last [args]`
+	if (shouldResume && isCodexCommand(baseCmd)) {
+		return [baseCmd, "resume", "--last", ...args].join(" ");
 	}
 
 	return [baseCmd, ...args].join(" ");
