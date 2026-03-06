@@ -1,0 +1,1 @@
+The lint script now auto-generates `build-info.generated.ts` if it's missing, so `bun run lint` works in fresh worktrees without running a full build first. Removed the build-info workaround note from AGENTS.md.
