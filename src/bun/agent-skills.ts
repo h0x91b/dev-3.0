@@ -23,6 +23,18 @@ Run these two commands **in parallel** (two Bash tool calls in one message) to s
 
 Then set \`in-progress\` and begin working.
 
+## Title generation
+
+The task title is auto-generated from the first 80 characters of the description.
+After running \`dev3 current\`, if the title looks truncated (ends with "…") or is
+longer than ~6 words, synthesize a concise title and update it:
+
+  dev3 task update --title "Short imperative phrase"
+
+Good titles: "Fix auth race condition", "Map missing keyboard bindings", "Add drag-to-reorder support"
+Bad titles: copies of the description, vague summaries, titles with ellipsis
+Run this ONCE at session start, before doing any other work.
+
 ## Task status management (CRITICAL — NON-NEGOTIABLE)
 
 ### Status transitions — every turn:

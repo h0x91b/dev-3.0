@@ -1,0 +1,1 @@
+Add title generation instructions to the dev3 agent skill. After running `dev3 current` at session start, agents now synthesize a concise 5–8 word title and call `dev3 task update --title "..."` when the auto-generated title looks truncated or too long.
