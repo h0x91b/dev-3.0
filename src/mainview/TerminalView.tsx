@@ -456,6 +456,26 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		}
 	}, [resolvedTheme]);
 
+	// When the user starts typing printable characters but nothing has focus
+	// (activeElement === body), steal focus to the terminal and forward the key.
+	// This handles the case where clicking a kanban card removes terminal focus
+	// and the user immediately starts typing without clicking the terminal first.
+	useEffect(() => {
+		function handleKeydown(e: KeyboardEvent) {
+			const active = document.activeElement;
+			if (active && active !== document.body) return;
+			if (e.ctrlKey || e.altKey || e.metaKey) return;
+			if (e.key.length !== 1) return;
+			const term = termRef.current;
+			if (!term) return;
+			term.focus();
+			term.input(e.key, true);
+			e.preventDefault();
+		}
+		document.addEventListener("keydown", handleKeydown);
+		return () => document.removeEventListener("keydown", handleKeydown);
+	}, []);
+
 	// Scale terminal font size with app zoom level.
 	// Font-size scaling (not CSS zoom) is used for the app, so canvas isn't
 	// bitmap-scaled — we just adjust the terminal's own fontSize.
