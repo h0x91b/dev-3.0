@@ -197,4 +197,69 @@ describe("AddProjectModal", () => {
 
 		expect(onClose).toHaveBeenCalled();
 	});
+
+	it("Escape closes the modal", async () => {
+		const onClose = vi.fn();
+		renderModal(vi.fn(), onClose);
+		await userEvent.keyboard("{Escape}");
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("Cmd+Enter submits clone when URL and base dir are set", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+
+		mockedApi.request.getGlobalSettings.mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			cloneBaseDirectory: "/base",
+		});
+		mockedApi.request.cloneAndAddProject.mockResolvedValue({
+			ok: true as const,
+			project: mockProject,
+		});
+
+		renderModal(dispatch, onClose);
+		await user.click(screen.getByText("Clone from URL"));
+
+		const urlInput = screen.getByPlaceholderText("https://github.com/user/repo.git");
+		await user.type(urlInput, "https://github.com/user/my-repo.git");
+		await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+
+		await vi.waitFor(() => {
+			expect(mockedApi.request.cloneAndAddProject).toHaveBeenCalled();
+		});
+	});
+
+	it("Ctrl+Enter submits clone (Linux/Windows)", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+
+		mockedApi.request.getGlobalSettings.mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			cloneBaseDirectory: "/base",
+		});
+		mockedApi.request.cloneAndAddProject.mockResolvedValue({
+			ok: true as const,
+			project: mockProject,
+		});
+
+		renderModal(dispatch, onClose);
+		await user.click(screen.getByText("Clone from URL"));
+
+		const urlInput = screen.getByPlaceholderText("https://github.com/user/repo.git");
+		await user.type(urlInput, "https://github.com/user/my-repo.git");
+		await userEvent.keyboard("{Control>}{Enter}{/Control}");
+
+		await vi.waitFor(() => {
+			expect(mockedApi.request.cloneAndAddProject).toHaveBeenCalled();
+		});
+	});
 });

@@ -155,6 +155,32 @@ describe("CreateTaskModal", () => {
 		expect(onCreateAndRun).not.toHaveBeenCalled();
 	});
 
+	it("Ctrl+Enter triggers plain Create (Linux/Windows)", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "My new task");
+		await userEvent.keyboard("{Control>}{Enter}{/Control}");
+
+		await waitFor(() => {
+			expect(onClose).toHaveBeenCalled();
+		});
+	});
+
+	it("Ctrl+Shift+Enter triggers Create & Run (Linux/Windows)", async () => {
+		const onCreateAndRun = vi.fn();
+		renderModal({ onCreateAndRun });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "My new task");
+		await userEvent.keyboard("{Control>}{Shift>}{Enter}{/Shift}{/Control}");
+
+		await waitFor(() => {
+			expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
+		});
+	});
+
 	it("clicking outside the modal does NOT close it", async () => {
 		const onClose = vi.fn();
 		renderModal({ onClose });
