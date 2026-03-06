@@ -595,18 +595,21 @@ export const handlers = {
 		projectId: string;
 		description: string;
 		status?: TaskStatus;
+		existingBranch?: string;
 	}): Promise<Task> {
 		log.info("→ createTask", params);
 		const project = await data.getProject(params.projectId);
 		const status = params.status || "todo";
-		const task = await data.addTask(project, params.description, status);
+		const task = await data.addTask(project, params.description, status,
+			params.existingBranch ? { existingBranch: params.existingBranch } : undefined,
+		);
 
 		// If created directly into an active status, set up worktree + PTY
 		if (isActive(status)) {
 			log.info("Created into active status, creating worktree + PTY", {
 				taskId: task.id,
 			});
-			const wt = await git.createWorktree(project, task);
+			const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
 			await runCowClones(project, wt.worktreePath);
 			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
 
@@ -641,7 +644,7 @@ export const handlers = {
 		if (!isActive(oldStatus) && isActive(newStatus)) {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
-			const wt = await git.createWorktree(project, task);
+			const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
 			await runCowClones(project, wt.worktreePath);
 			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
@@ -760,6 +763,8 @@ export const handlers = {
 		const groupId = crypto.randomUUID();
 		const sharedSeq = sourceTask.seq;
 		const resultTasks: Task[] = [];
+		const srcBranch = sourceTask.existingBranch ?? undefined;
+		const isMultiVariant = params.variants.length > 1;
 
 		for (let i = 0; i < params.variants.length; i++) {
 			const variant = params.variants[i];
@@ -774,11 +779,18 @@ export const handlers = {
 					agentId: variant.agentId,
 					configId: variant.configId,
 					seq: sharedSeq,
+					existingBranch: srcBranch,
 				},
 			);
 
 			if (isActive(params.targetStatus)) {
-				const wt = await git.createWorktree(project, task);
+				// Multi-variant with existingBranch: create per-variant branches
+				// (e.g. feature/login-v1, feature/login-v2) from the existing branch's HEAD.
+				// Single variant: check out the existing branch directly.
+				const variantBranchName = (isMultiVariant && srcBranch)
+					? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+					: undefined;
+				const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
 				await runCowClones(project, wt.worktreePath);
 				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
@@ -1788,6 +1800,17 @@ export const handlers = {
 			throw new Error("Invalid folder path");
 		}
 		Utils.openPath(params.path);
+	},
+
+	async listBranches(params: { projectId: string }): Promise<Array<{ name: string; isRemote: boolean }>> {
+		const project = await data.getProject(params.projectId);
+		return git.listBranches(project.path);
+	},
+
+	async fetchBranches(params: { projectId: string }): Promise<Array<{ name: string; isRemote: boolean }>> {
+		const project = await data.getProject(params.projectId);
+		await git.fetchOrigin(project.path);
+		return git.listBranches(project.path);
 	},
 
 };

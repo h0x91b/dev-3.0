@@ -94,6 +94,7 @@ import {
 	canRebaseCleanly,
 	removeWorktree,
 	getUncommittedChanges,
+	listBranches,
 } from "../git";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -747,6 +748,49 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("dev3/fix-critical-bug");
 		expect(branches).not.toContain("dev3/task-aaaaaaaa");
 	});
+	it("preserves user-owned branch (non-dev3) on removal", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b feature/login "${wtPath}" main`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "feature/login",
+			existingBranch: "feature/login",
+		});
+
+		await removeWorktree(project, task);
+
+		// Worktree should be gone
+		expect(existsSync(wtPath)).toBe(false);
+		// Branch should be PRESERVED
+		const branches = g("git branch", repo.local);
+		expect(branches).toContain("feature/login");
+	});
+
+	it("deletes variant branch (feature/login-v1) on removal", async () => {
+		// Create the base branch first
+		g("git branch feature/login", repo.local);
+
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b feature/login-v1 "${wtPath}" feature/login`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "feature/login-v1",
+			existingBranch: "feature/login",
+		});
+
+		await removeWorktree(project, task);
+
+		expect(existsSync(wtPath)).toBe(false);
+		const branches = g("git branch", repo.local);
+		// Variant branch should be deleted
+		expect(branches).not.toContain("feature/login-v1");
+		// Original branch should be preserved
+		expect(branches).toContain("feature/login");
+	});
 });
 
 // ─── Branch rename integration scenarios ─────────────────────────────────────
@@ -860,5 +904,54 @@ describe("branch rename integration", () => {
 		// Cleanup
 		g(`git worktree remove --force "${wtPath}"`, repo.local);
 		g("git branch -D dev3/fix-stuff", repo.local);
+	});
+});
+
+// ─── listBranches ────────────────────────────────────────────────────────────
+
+describe("listBranches", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => cleanup(repo));
+
+	it("returns local and remote branches", async () => {
+		g("git checkout -b feature/login", repo.local);
+		g("git checkout main", repo.local);
+
+		const branches = await listBranches(repo.local);
+		const localNames = branches.filter((b) => !b.isRemote).map((b) => b.name);
+		const remoteNames = branches.filter((b) => b.isRemote).map((b) => b.name);
+
+		expect(localNames).toContain("main");
+		expect(localNames).toContain("feature/login");
+		expect(remoteNames).toContain("origin/main");
+	});
+
+	it("filters out origin/HEAD from remote branches", async () => {
+		const branches = await listBranches(repo.local);
+		const remoteNames = branches.filter((b) => b.isRemote).map((b) => b.name);
+		expect(remoteNames.some((n) => n.endsWith("/HEAD"))).toBe(false);
+	});
+
+	it("includes remote-only branches not checked out locally", async () => {
+		// Create a branch, push it, then delete the local copy
+		g("git checkout -b temp-branch", repo.local);
+		writeFileSync(join(repo.local, "temp.ts"), "export const t = 1;\n");
+		g("git add temp.ts", repo.local);
+		g('git commit -m "temp"', repo.local);
+		g("git push origin temp-branch", repo.local);
+		g("git checkout main", repo.local);
+		g("git branch -D temp-branch", repo.local);
+
+		const branches = await listBranches(repo.local);
+		const localNames = branches.filter((b) => !b.isRemote).map((b) => b.name);
+		const remoteNames = branches.filter((b) => b.isRemote).map((b) => b.name);
+
+		expect(localNames).not.toContain("temp-branch");
+		expect(remoteNames).toContain("origin/temp-branch");
 	});
 });

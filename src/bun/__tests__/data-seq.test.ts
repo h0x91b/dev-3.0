@@ -218,6 +218,27 @@ describe("addTask — seq assignment", () => {
 		expect(t3.seq).toBe(3);
 	});
 
+	it("addTask persists existingBranch and loadTasks reads it back", async () => {
+		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+
+		const task = await addTask(testProject, "Continue on branch", "todo", { existingBranch: "feature/login" });
+		expect(task.existingBranch).toBe("feature/login");
+
+		// Read back from disk
+		const loaded = await loadTasks(testProject);
+		expect(loaded[0].existingBranch).toBe("feature/login");
+	});
+
+	it("addTask without existingBranch does not set the field", async () => {
+		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+
+		const task = await addTask(testProject, "Normal task");
+		expect(task.existingBranch).toBeUndefined();
+
+		const loaded = await loadTasks(testProject);
+		expect(loaded[0].existingBranch).toBeUndefined();
+	});
+
 	it("addTask after backfill continues from correct seq", async () => {
 		// Old tasks without seq
 		const tasks = [

@@ -207,7 +207,7 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
-	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number },
+	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; existingBranch?: string },
 ): Promise<Task> {
 	const title = titleFromDescription(description);
 	log.info("Creating task", { projectId: project.id, title, status });
@@ -231,6 +231,7 @@ export async function addTask(
 		updatedAt: now,
 		tmuxSocket: "dev3",
 		labelIds: [],
+		...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
 	};
 	tasks.push(task);
 	await saveTasks(project, tasks);

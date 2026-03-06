@@ -10,6 +10,7 @@ import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useImagePaste } from "../hooks/useImagePaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
+import BranchSelector from "./BranchSelector";
 
 interface CreateTaskModalProps {
 	project: Project;
@@ -26,6 +27,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const [customTitle, setCustomTitle] = useState<string | null>(null);
 	const [editingTitle, setEditingTitle] = useState(false);
+	const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const projectLabels = project.labels ?? [];
@@ -91,6 +93,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			let task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
+				...(selectedBranch ? { existingBranch: selectedBranch } : {}),
 			});
 			if (customTitle) {
 				task = await api.request.renameTask({
@@ -123,6 +126,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			let task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
+				...(selectedBranch ? { existingBranch: selectedBranch } : {}),
 			});
 			if (customTitle) {
 				task = await api.request.renameTask({
@@ -291,7 +295,14 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 					</div>
 				)}
 
-				{/* Actions */}
+				{/* Branch selector — collapsible */}
+				<BranchSelector
+					projectId={project.id}
+					selectedBranch={selectedBranch}
+					onSelectBranch={setSelectedBranch}
+				/>
+
+			{/* Actions */}
 				<div className="space-y-2.5 pt-1">
 					{confirmDiscard ? (
 						<div className="flex items-center justify-between gap-2 bg-danger/10 border border-danger/30 rounded-xl px-3 py-2.5">

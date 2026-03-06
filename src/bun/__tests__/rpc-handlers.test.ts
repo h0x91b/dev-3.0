@@ -40,6 +40,7 @@ vi.mock("../git", () => ({
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
+	listBranches: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -862,7 +863,7 @@ describe("handlers.createTask", () => {
 			description: "New task",
 		});
 		expect(result).toEqual(task);
-		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo");
+		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo", undefined);
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
@@ -881,7 +882,7 @@ describe("handlers.createTask", () => {
 			status: "in-progress",
 		});
 		expect(result).toEqual(updatedTask);
-		expect(git.createWorktree).toHaveBeenCalledWith(project, task);
+		expect(git.createWorktree).toHaveBeenCalledWith(project, task, undefined);
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
@@ -892,7 +893,79 @@ describe("handlers.createTask", () => {
 		vi.mocked(data.addTask).mockResolvedValue(task);
 
 		await handlers.createTask({ projectId: "proj-1", description: "task" });
-		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo");
+		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
+	});
+
+	it("passes existingBranch to addTask and createWorktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: null, existingBranch: "feature/login" });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feature/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.createTask({
+			projectId: "proj-1",
+			description: "Continue login work",
+			status: "in-progress",
+			existingBranch: "feature/login",
+		});
+		expect(data.addTask).toHaveBeenCalledWith(project, "Continue login work", "in-progress", { existingBranch: "feature/login" });
+		expect(git.createWorktree).toHaveBeenCalledWith(project, task, "feature/login");
+	});
+
+	it("does not pass existingBranch when not provided", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+
+		await handlers.createTask({ projectId: "proj-1", description: "task" });
+		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
+		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// handlers.listBranches / fetchBranches
+// ================================================================
+
+describe("handlers.listBranches", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("returns branches from git.listBranches", async () => {
+		const project = makeProject();
+		const branches = [
+			{ name: "main", isRemote: false },
+			{ name: "origin/main", isRemote: true },
+		];
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.listBranches).mockResolvedValue(branches);
+
+		const result = await handlers.listBranches({ projectId: "proj-1" });
+		expect(result).toEqual(branches);
+		expect(git.listBranches).toHaveBeenCalledWith(project.path);
+	});
+});
+
+describe("handlers.fetchBranches", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("fetches origin then returns branches", async () => {
+		const project = makeProject();
+		const branches = [
+			{ name: "main", isRemote: false },
+			{ name: "origin/feature", isRemote: true },
+		];
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.listBranches).mockResolvedValue(branches);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(undefined);
+
+		const result = await handlers.fetchBranches({ projectId: "proj-1" });
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path);
+		expect(git.listBranches).toHaveBeenCalledWith(project.path);
+		expect(result).toEqual(branches);
 	});
 });
 
@@ -917,6 +990,20 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("in-progress");
 		expect(git.createWorktree).toHaveBeenCalled();
 		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("todo → in-progress with existingBranch: passes it to createWorktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null, existingBranch: "feature/login" });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feature/login" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		expect(git.createWorktree).toHaveBeenCalledWith(project, task, "feature/login");
 	});
 
 	it("completed → in-progress (reopen): clears description for launch", async () => {
@@ -1223,6 +1310,71 @@ describe("handlers.spawnVariants", () => {
 		expect(result).toHaveLength(2);
 		expect(data.addTask).toHaveBeenCalledTimes(2);
 		expect(git.createWorktree).toHaveBeenCalledTimes(2);
+	});
+
+	it("inherits existingBranch from source task into single variant", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, existingBranch: "feature/login" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", existingBranch: "feature/login" });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", branchName: "feature/login" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: null, configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ existingBranch: "feature/login" }),
+		);
+		// Single variant: use existing branch directly, no variantBranchName
+		expect(git.createWorktree).toHaveBeenCalledWith(project, variantTask, "feature/login", undefined);
+	});
+
+	it("creates per-variant branches when spawning multiple variants with existingBranch", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, existingBranch: "feature/login" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", existingBranch: "feature/login" });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "feature/login-v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [
+				{ agentId: "agent-1", configId: null },
+				{ agentId: "agent-2", configId: null },
+			],
+		});
+
+		// Both variants store existingBranch for reference
+		const addTaskCalls = vi.mocked(data.addTask).mock.calls;
+		expect(addTaskCalls).toHaveLength(2);
+		expect(addTaskCalls[0][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login" }));
+		expect(addTaskCalls[1][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login" }));
+
+		// Each variant gets its own branch name derived from the existing branch
+		const createWtCalls = vi.mocked(git.createWorktree).mock.calls;
+		expect(createWtCalls[0][2]).toBe("feature/login");
+		expect(createWtCalls[0][3]).toBe("feature/login-v1");
+		expect(createWtCalls[1][2]).toBe("feature/login");
+		expect(createWtCalls[1][3]).toBe("feature/login-v2");
 	});
 });
 

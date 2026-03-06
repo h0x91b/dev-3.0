@@ -227,6 +227,7 @@ export interface Task {
 	columnOrder?: number;
 	tmuxSocket?: string | null;
 	labelIds?: string[];
+	existingBranch?: string | null;
 	notes?: TaskNote[];
 }
 
@@ -368,7 +369,7 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus };
+				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string };
 				response: Task;
 			};
 			moveTask: {
@@ -535,6 +536,14 @@ export type AppRPCSchema = {
 			openFolder: {
 				params: { path: string };
 				response: void;
+			};
+			listBranches: {
+				params: { projectId: string };
+				response: Array<{ name: string; isRemote: boolean }>;
+			};
+			fetchBranches: {
+				params: { projectId: string };
+				response: Array<{ name: string; isRemote: boolean }>;
 			};
 		};
 		messages: {

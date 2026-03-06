@@ -128,6 +128,14 @@ const en = {
 	"createTask.discardConfirm": "Discard changes? Your description will be lost.",
 	"createTask.keepEditing": "Keep editing",
 	"createTask.discard": "Discard",
+	"createTask.branchLabel": "Branch",
+	"createTask.branchPlaceholder": "Type to search branches...",
+	"createTask.branchNewAuto": "New branch (auto-generated)",
+	"createTask.branchFetch": "Fetch",
+	"createTask.branchFetching": "Fetching...",
+	"createTask.branchLocal": "Local",
+	"createTask.branchRemote": "Remote",
+	"createTask.useExistingBranch": "Use existing branch",
 
 	// TaskCard
 	"task.moveTo": "Move to",
