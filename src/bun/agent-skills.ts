@@ -16,10 +16,9 @@ You are working inside a **dev-3.0 managed worktree** with a Kanban board task a
 
 ## On session start
 
-Run these two commands **in parallel** (two Bash tool calls in one message) to save time:
+Run this command to see your current project, task, and status:
 
-- \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
-- \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
+  \`~/.dev3.0/bin/dev3 current\`
 
 Then set \`in-progress\` and begin working.
 
