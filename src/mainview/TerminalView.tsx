@@ -55,9 +55,10 @@ const TERMINAL_BASE_FONT_SIZE = 14;
 interface TerminalViewProps {
 	ptyUrl: string;
 	taskId: string;
+	projectId: string;
 }
 
-function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -470,6 +471,43 @@ function TerminalView({ ptyUrl, taskId }: TerminalViewProps) {
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
+
+	// Intercept paste events containing images (clipboard → save to disk → inject path into PTY).
+	// Normal text paste is unaffected — event propagates to ghostty-web as usual.
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!container) return;
+
+		function onPaste(e: ClipboardEvent) {
+			const items = e.clipboardData?.items;
+			if (!items) return;
+
+			let hasImage = false;
+			for (let i = 0; i < items.length; i++) {
+				if (items[i].type.startsWith("image/")) {
+					hasImage = true;
+					break;
+				}
+			}
+			if (!hasImage) return;
+
+			e.preventDefault();
+			e.stopPropagation();
+
+			api.request.pasteClipboardImage({ projectId }).then((result) => {
+				if (result && wsRef.current?.readyState === WebSocket.OPEN) {
+					const escaped = result.path.replace(/ /g, "\\ ");
+					wsRef.current.send(escaped);
+				}
+				termRef.current?.focus();
+			}).catch((err) => {
+				console.error("[TerminalView] Image paste failed:", err);
+			});
+		}
+
+		container.addEventListener("paste", onPaste, { capture: true });
+		return () => container.removeEventListener("paste", onPaste, { capture: true });
+	}, [projectId]);
 
 	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();
