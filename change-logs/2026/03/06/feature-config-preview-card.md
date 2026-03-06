@@ -1,0 +1,1 @@
+Added a configuration preview card below the Default Configuration dropdown in Global Settings. When a user selects a configuration, the card shows key properties (model, permission mode, effort level, max budget) as tag pills plus a full command preview. This addresses issue #62 by making it clear what each configuration actually does at runtime.
