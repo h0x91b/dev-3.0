@@ -139,6 +139,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"createTask.branchFetching": "Обновление...",
 	"createTask.branchLocal": "Локальные",
 	"createTask.branchRemote": "Удалённые",
+	"createTask.useExistingBranch": "Использовать существующую ветку",
 
 	// TaskCard
 	"task.moveTo": "Переместить в",

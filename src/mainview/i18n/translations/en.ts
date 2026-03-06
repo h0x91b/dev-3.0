@@ -135,6 +135,7 @@ const en = {
 	"createTask.branchFetching": "Fetching...",
 	"createTask.branchLocal": "Local",
 	"createTask.branchRemote": "Remote",
+	"createTask.useExistingBranch": "Use existing branch",
 
 	// TaskCard
 	"task.moveTo": "Move to",

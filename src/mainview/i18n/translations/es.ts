@@ -137,6 +137,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"createTask.branchFetching": "Actualizando...",
 	"createTask.branchLocal": "Locales",
 	"createTask.branchRemote": "Remotas",
+	"createTask.useExistingBranch": "Usar rama existente",
 
 	// TaskCard
 	"task.moveTo": "Mover a",
