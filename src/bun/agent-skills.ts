@@ -6,7 +6,7 @@ const log = createLogger("agent-skills");
 
 const SKILL_CONTENT = `---
 name: dev3
-description: "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside a .dev3.0/worktrees/ path. This means you are a dev-3.0 managed AI agent with a Kanban task assigned. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command."
+description: "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command."
 user-invocable: true
 ---
 
@@ -79,7 +79,7 @@ const AGENTS_MD_MARKER_END = "<!-- dev3:end -->";
 const AGENTS_MD_BLOCK = `${AGENTS_MD_MARKER_START}
 ## dev-3.0 Managed Worktree
 
-If your working directory (PWD) is inside a \`.dev3.0/worktrees/\` path, you are a **dev-3.0 managed AI agent** with a Kanban task assigned.
+If your working directory (PWD) is inside \`~/.dev3.0/worktrees/\` (i.e. \`$HOME/.dev3.0/worktrees/\`), you are a **dev-3.0 managed AI agent** with a Kanban task assigned. Regular git worktrees or other paths containing "worktrees" do **NOT** qualify — only the dev-3.0 managed directory under the user's home.
 
 **MANDATORY — do this BEFORE any other work:**
 
