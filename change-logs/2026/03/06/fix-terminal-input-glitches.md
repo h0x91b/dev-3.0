@@ -1,0 +1,1 @@
+Fix terminal input glitches: use streaming TextDecoder in PTY data callback to prevent U+FFFD replacement characters from split multi-byte UTF-8 sequences, and add automatic resize dance on page visibility change to fix row offset / duplicated text issues when returning to the terminal.

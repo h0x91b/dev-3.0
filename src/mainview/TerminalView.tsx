@@ -476,6 +476,34 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		return () => document.removeEventListener("keydown", handleKeydown);
 	}, []);
 
+	// When the page becomes visible again (e.g. user returns from another
+	// app or switches back to this tab), trigger a resize dance to force
+	// tmux to fully redraw. This fixes display glitches (row offsets,
+	// stuck/duplicated text) that accumulate while the terminal was hidden.
+	useEffect(() => {
+		function onVisibilityChange() {
+			if (document.hidden) return;
+			const ws = wsRef.current;
+			const term = termRef.current;
+			const fit = fitAddonRef.current;
+			if (!ws || ws.readyState !== WebSocket.OPEN || !term || !fit) return;
+
+			const dims = fit.proposeDimensions();
+			if (!dims) return;
+
+			const nudgeCols = Math.max(2, dims.cols - 1);
+			ws.send(`\x1b]resize;${nudgeCols};${dims.rows}\x07`);
+			setTimeout(() => {
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send(`\x1b]resize;${dims.cols};${dims.rows}\x07`);
+				}
+			}, 50);
+		}
+
+		document.addEventListener("visibilitychange", onVisibilityChange);
+		return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+	}, []);
+
 	// Scale terminal font size with app zoom level.
 	// Font-size scaling (not CSS zoom) is used for the app, so canvas isn't
 	// bitmap-scaled — we just adjust the terminal's own fontSize.
