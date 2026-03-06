@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import CreateTaskModal, { splitBranchWords, matchesBranchQuery } from "../CreateTaskModal";
+import CreateTaskModal from "../CreateTaskModal";
+import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction } from "../../state";
