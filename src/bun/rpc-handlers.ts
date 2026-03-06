@@ -758,11 +758,8 @@ export const handlers = {
 		const groupId = crypto.randomUUID();
 		const sharedSeq = sourceTask.seq;
 		const resultTasks: Task[] = [];
-		// Only use existingBranch for single-variant spawns — git allows only
-		// one worktree per branch, so multiple variants each need their own.
-		const useExistingBranch = params.variants.length === 1
-			? (sourceTask.existingBranch ?? undefined)
-			: undefined;
+		const srcBranch = sourceTask.existingBranch ?? undefined;
+		const isMultiVariant = params.variants.length > 1;
 
 		for (let i = 0; i < params.variants.length; i++) {
 			const variant = params.variants[i];
@@ -777,12 +774,18 @@ export const handlers = {
 					agentId: variant.agentId,
 					configId: variant.configId,
 					seq: sharedSeq,
-					existingBranch: useExistingBranch,
+					existingBranch: srcBranch,
 				},
 			);
 
 			if (isActive(params.targetStatus)) {
-				const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
+				// Multi-variant with existingBranch: create per-variant branches
+				// (e.g. feature/login-v1, feature/login-v2) from the existing branch's HEAD.
+				// Single variant: check out the existing branch directly.
+				const variantBranchName = (isMultiVariant && srcBranch)
+					? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+					: undefined;
+				const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
 				await runCowClones(project, wt.worktreePath);
 				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 

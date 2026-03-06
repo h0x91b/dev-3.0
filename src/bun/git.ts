@@ -107,6 +107,7 @@ export async function createWorktree(
 	project: Project,
 	task: Task,
 	existingBranch?: string,
+	variantBranchName?: string,
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const wtPath = worktreePath(project, task);
 	const tDir = taskDir(project, task);
@@ -114,6 +115,27 @@ export async function createWorktree(
 	// Create the task container directory (with logs/ subfolder)
 	const mkdirProc = spawn(["mkdir", "-p", `${tDir}/logs`]);
 	await mkdirProc.exited;
+
+	if (existingBranch && variantBranchName) {
+		// Multi-variant mode: create a new branch from the existing branch's HEAD
+		const resolvedBase = existingBranch.startsWith("origin/") ? existingBranch : existingBranch;
+		log.info("Creating variant worktree from existing branch", {
+			wtPath, variantBranchName, base: resolvedBase, taskId: task.id,
+		});
+
+		const result = await run(
+			["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase],
+			project.path,
+		);
+
+		if (!result.ok) {
+			log.error("Failed to create variant worktree", { stderr: result.stderr, taskId: task.id });
+			throw new Error(`Failed to create worktree: ${result.stderr}`);
+		}
+
+		log.info("Variant worktree created", { wtPath, branch: variantBranchName });
+		return { worktreePath: wtPath, branchName: variantBranchName };
+	}
 
 	if (existingBranch) {
 		// Use an existing branch — no -b flag
@@ -430,10 +452,19 @@ export async function removeWorktree(
 	);
 
 	if (branchToDelete) {
-		log.info("Deleting branch", { branch: branchToDelete });
-		await run(
-			["git", "branch", "-D", branchToDelete],
-			project.path,
-		);
+		// Only delete branches that dev3 created (dev3/task-* or variant suffixes like feature/login-v1).
+		// User-owned branches (e.g. feature/login chosen via branch selector) should be preserved.
+		const isDevBranch = branchToDelete.startsWith("dev3/");
+		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
+			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
+		if (isDevBranch || isVariantBranch) {
+			log.info("Deleting branch", { branch: branchToDelete });
+			await run(
+				["git", "branch", "-D", branchToDelete],
+				project.path,
+			);
+		} else {
+			log.info("Preserving user branch", { branch: branchToDelete });
+		}
 	}
 }
