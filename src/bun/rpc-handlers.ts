@@ -802,12 +802,24 @@ export const handlers = {
 		if (task.status !== "todo") {
 			throw new Error(`Can only edit tasks in todo status (got ${task.status})`);
 		}
-		const title = titleFromDescription(params.description);
-		const updated = await data.updateTask(project, task.id, {
-			description: params.description,
-			title,
-		});
+		const updates: Partial<Task> = { description: params.description };
+		// Only recompute auto-title if there's no custom override
+		if (!task.customTitle) {
+			updates.title = titleFromDescription(params.description);
+		}
+		const updated = await data.updateTask(project, task.id, updates);
 		log.info("← editTask done", { taskId: task.id });
+		return updated;
+	},
+
+	async renameTask(params: { taskId: string; projectId: string; customTitle: string | null }): Promise<Task> {
+		log.info("→ renameTask", { taskId: params.taskId, customTitle: params.customTitle });
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		const trimmed = params.customTitle?.trim() || null;
+		const updated = await data.updateTask(project, task.id, { customTitle: trimmed });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		log.info("← renameTask done", { taskId: task.id });
 		return updated;
 	},
 

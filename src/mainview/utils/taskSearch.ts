@@ -1,4 +1,5 @@
 import type { Task } from "../../shared/types";
+import { getTaskTitle } from "../../shared/types";
 
 /**
  * Check if a task matches a search query.
@@ -12,8 +13,8 @@ export function matchesSearchQuery(task: Task, query: string): boolean {
 	// Strip leading # for numeric ID search
 	const qNormalized = q.startsWith("#") ? q.slice(1) : q;
 
-	// Match against title
-	if (task.title.toLowerCase().includes(q)) return true;
+	// Match against title (custom or auto-generated)
+	if (getTaskTitle(task).toLowerCase().includes(q)) return true;
 
 	// Match against description
 	if (task.description.toLowerCase().includes(q)) return true;

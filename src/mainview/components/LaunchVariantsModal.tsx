@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
+import { getTaskTitle } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -211,7 +212,7 @@ function LaunchVariantsModal({
 				{/* Header */}
 				<div className="px-6 py-4 border-b border-edge">
 					<h2 className="text-fg text-lg font-semibold">{t("launch.title")}</h2>
-					<p className="text-fg-3 text-sm mt-1 truncate">{task.title}</p>
+					<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 				</div>
 
 				{/* Variant rows */}

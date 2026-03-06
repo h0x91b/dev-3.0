@@ -130,11 +130,12 @@ const handlers: Record<string, Handler> = {
 
 		const updates: Partial<Task> = {};
 		if (params.title !== undefined) {
-			updates.title = params.title as string;
+			updates.customTitle = (params.title as string) || null;
 		}
 		if (params.description !== undefined) {
 			updates.description = params.description as string;
-			if (!updates.title) {
+			// Only recompute auto-title if there's no custom override
+			if (!task.customTitle && !updates.customTitle) {
 				updates.title = titleFromDescription(params.description as string);
 			}
 		}
