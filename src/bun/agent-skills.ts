@@ -90,6 +90,10 @@ user-invocable: true
 ---
 
 ${SKILL_BODY}
+## Skill loaded at
+
+!\`date '+%Y-%m-%d %H:%M:%S %Z'\`
+
 ## Status (auto-set on skill load)
 
 !\`~/.dev3.0/bin/dev3 task move --status in-progress 2>&1\`
