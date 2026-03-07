@@ -8,106 +8,33 @@ import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
 import { handleLabel } from "./commands/label";
 
-const HELP = `dev3 — control the dev-3.0 Kanban UI from the terminal
+const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
+Auto-detects project and task from the worktree context.
 
-You are running inside a dev-3.0 managed worktree. This CLI lets you
-communicate with the desktop app: update your task status, change the
-title, create follow-up tasks, and more. Changes appear in the Kanban
-board instantly.
+Commands:
+  dev3 current                          Show current project, task, status
+  dev3 task show                        Full task details
+  dev3 task move --status <status>      Change task status
+  dev3 task update --title "..." [--description "..."]  Update title/description
+  dev3 task create --title "..."        Create a new task (To Do)
+  dev3 note add "..." [--source user]   Add note to current task
+  dev3 note list                        List notes
+  dev3 note delete <id>                 Delete note (8-char prefix works)
+  dev3 label list                       List project labels
+  dev3 label create "name" [--color "#hex"]  Create label
+  dev3 label delete <id>                Delete label
+  dev3 label set <id> [<id>...]         Assign labels to current task
+  dev3 label set --clear                Remove all labels from task
+  dev3 tasks list [--status <s>] [--label <id>]  List/filter tasks
+  dev3 projects list                    List all projects
 
-When run from a worktree, --project and task <id> are auto-detected.
-You almost never need to specify them explicitly.
+Statuses: todo, in-progress, user-questions, review-by-ai, review-by-user
+  ("completed" and "cancelled" are UI-only — they destroy the worktree)
 
-━━━ Quick start (run these first) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@file syntax: any argument starting with @ reads from file (e.g. @plan.md).
+  Double @@ for literal @.
 
-  dev3 current                     Show your current project, task, and status
-  dev3 task show                   Show full details of your current task
-
-━━━ Update your task ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  dev3 task move --status review-by-ai
-      Signal that your work is done and ready for AI review.
-
-  dev3 task move --status user-questions
-      You have questions for the user / need human input.
-
-  dev3 task update --title "Fix auth race condition"
-      Change the task title (shown on the Kanban card).
-
-  dev3 task update --description "Refactored the login flow to..."
-      Set a longer description (title auto-generated if omitted).
-
-  dev3 task update --title "Fix auth" --description "Details here..."
-      Update both at once.
-
-━━━ Create follow-up tasks ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  dev3 task create --title "Add unit tests for auth module"
-      Create a new task in To Do (same project, auto-detected).
-
-━━━ Notes (per-task scratchpad) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  dev3 note add "Found a race condition in auth"
-      Add a note to the current task (source defaults to "ai").
-
-  dev3 note add "User feedback" --source user
-      Add a note with explicit source (user or ai).
-
-  dev3 note list
-      List all notes on the current task.
-
-  dev3 note delete <note-id>
-      Delete a note by ID (8-char prefix works).
-
-━━━ Labels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  dev3 label list                  List all labels in your project
-  dev3 label create "bug"          Create a new label (auto-assigns color)
-  dev3 label create "urgent" --color "#ef4444"
-      Create a label with a specific color.
-  dev3 label delete <label-id>     Delete a label (removes from all tasks)
-  dev3 label set <label-id> [...]  Assign label(s) to current task
-  dev3 label set --clear           Remove all labels from current task
-
-━━━ Browse ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  dev3 tasks list                  List all tasks in your project
-  dev3 tasks list --status todo    Filter by status
-  dev3 tasks list --label <id>     Filter by label
-  dev3 projects list               List all projects
-
-━━━ Allowed statuses for "task move" ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  todo              Move back to backlog
-  in-progress       Actively working on it
-  user-questions    Need human input / blocked on a question
-  review-by-ai      Done, ready for automated review
-  review-by-user    Done, ready for human review
-
-  Note: "completed" and "cancelled" are not available via CLI because
-  they destroy the worktree and terminal session.
-
-━━━ @file syntax ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Any flag value or positional argument starting with @ is read from
-  a file. This is useful for large text content like descriptions.
-
-  dev3 task update --description @plan.md
-      Read plan.md and use its contents as the description.
-
-  dev3 task create --title "My task" --description @notes.txt
-      Create a task with description loaded from a file.
-
-  dev3 note add @feedback.txt
-      Add a note with content read from a file.
-
-  To pass a literal @ as the first character, double it: @@literal
-
-━━━ Options ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  --project <id>    Override auto-detected project
-  --help            Show this help
-  --version         Show CLI version
+Options: --project <id> (override auto-detect), --help, --version
 `;
 
 
