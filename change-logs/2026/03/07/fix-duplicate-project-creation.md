@@ -1,0 +1,1 @@
+Prevent duplicate project creation when the same folder path is added multiple times. Server-side dedup in `data.addProject()` returns the existing project instead of creating a new one (or reactivates a soft-deleted project). Client-side loading state disables the Browse button while the file dialog and addProject request are in flight.

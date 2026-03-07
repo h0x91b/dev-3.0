@@ -16,6 +16,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	const [repoName, setRepoName] = useState("");
 	const [cloneBaseDir, setCloneBaseDir] = useState<string | null>(null);
 	const [cloning, setCloning] = useState(false);
+	const [browsing, setBrowsing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +47,8 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	const targetPath = cloneBaseDir && displayName ? `${cloneBaseDir}/${displayName}` : "";
 
 	async function handleBrowseLocal() {
+		if (browsing) return;
+		setBrowsing(true);
 		try {
 			const folder = await api.request.pickFolder();
 			if (!folder) return;
@@ -61,6 +64,8 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			}
 		} catch (err) {
 			setError(String(err));
+		} finally {
+			setBrowsing(false);
 		}
 	}
 
@@ -147,9 +152,10 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						</p>
 						<button
 							onClick={handleBrowseLocal}
-							className="w-full px-4 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors"
+							disabled={browsing}
+							className="w-full px-4 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
-							{t("addProject.browseBtn")}
+							{browsing ? t("addProject.adding") : t("addProject.browseBtn")}
 						</button>
 					</div>
 				) : (

@@ -102,6 +102,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"addProject.targetPath": "Se clonará en:",
 	"addProject.cloneBtn": "Clonar",
 	"addProject.cloning": "Clonando...",
+	"addProject.adding": "Agregando...",
 	"addProject.cloneBaseDir": "Directorio de clonación",
 	"addProject.cloneBaseDirNotSet": "No establecido — elige un directorio",
 	"addProject.pickCloneDir": "Elegir directorio",

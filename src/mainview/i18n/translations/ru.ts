@@ -104,6 +104,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"addProject.targetPath": "Будет клонирован в:",
 	"addProject.cloneBtn": "Клонировать",
 	"addProject.cloning": "Клонирование...",
+	"addProject.adding": "Добавление...",
 	"addProject.cloneBaseDir": "Директория клонирования",
 	"addProject.cloneBaseDirNotSet": "Не задана — выберите директорию",
 	"addProject.pickCloneDir": "Выбрать директорию",

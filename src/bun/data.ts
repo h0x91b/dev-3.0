@@ -68,6 +68,30 @@ export async function addProject(
 ): Promise<Project> {
 	log.info("Adding project", { name, path });
 	const projects = await loadAllProjects();
+	const normalizedPath = path.replace(/\/+$/, "");
+
+	const existingIdx = projects.findIndex(
+		(p) => p.path.replace(/\/+$/, "") === normalizedPath,
+	);
+
+	if (existingIdx !== -1) {
+		const existing = projects[existingIdx];
+		if (existing.deleted) {
+			log.info("Reactivating soft-deleted project", {
+				id: existing.id,
+				path,
+			});
+			projects[existingIdx] = { ...existing, deleted: undefined, name };
+			await saveProjects(projects);
+			return projects[existingIdx];
+		}
+		log.info("Project already exists, returning existing", {
+			id: existing.id,
+			path,
+		});
+		return existing;
+	}
+
 	const autoClonePaths = await detectClonePaths(path);
 	const project: Project = {
 		id: crypto.randomUUID(),

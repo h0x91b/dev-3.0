@@ -234,6 +234,28 @@ describe("AddProjectModal", () => {
 		});
 	});
 
+	it("Browse button is disabled while addProject is pending", async () => {
+		const user = userEvent.setup();
+		let resolveAddProject!: (v: any) => void;
+		mockedApi.request.pickFolder.mockResolvedValue("/new/path");
+		mockedApi.request.addProject.mockImplementation(
+			() => new Promise((resolve) => { resolveAddProject = resolve; }),
+		);
+
+		renderModal();
+		await user.click(screen.getByText("Browse..."));
+
+		// After pickFolder resolves but addProject is still pending
+		const btn = screen.getByRole("button", { name: "Adding..." });
+		expect(btn).toBeDisabled();
+
+		// Resolve addProject
+		resolveAddProject({ ok: true, project: { ...mockProject, path: "/new/path" } });
+		await vi.waitFor(() => {
+			expect(screen.getByText("Browse...")).toBeInTheDocument();
+		});
+	});
+
 	it("Ctrl+Enter submits clone (Linux/Windows)", async () => {
 		const user = userEvent.setup();
 		const dispatch = vi.fn();

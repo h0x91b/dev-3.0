@@ -100,6 +100,7 @@ const en = {
 	"addProject.targetPath": "Will clone to:",
 	"addProject.cloneBtn": "Clone",
 	"addProject.cloning": "Cloning...",
+	"addProject.adding": "Adding...",
 	"addProject.cloneBaseDir": "Clone Directory",
 	"addProject.cloneBaseDirNotSet": "Not set — choose a directory",
 	"addProject.pickCloneDir": "Choose Directory",
