@@ -1,22 +1,39 @@
 import { useState, useCallback } from "react";
 import type { RequirementCheckResult } from "../../shared/types";
 import { useT } from "../i18n";
+import { api } from "../rpc";
 
 interface Props {
 	results: RequirementCheckResult[];
 	checking: boolean;
 	onRefresh: () => void;
+	onRefreshResults: () => Promise<void>;
 }
 
-export default function RequirementsCheck({ results, checking, onRefresh }: Props) {
+export default function RequirementsCheck({ results, checking, onRefresh, onRefreshResults }: Props) {
 	const t = useT();
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
+	const [savingId, setSavingId] = useState<string | null>(null);
 
 	const handleCopy = useCallback((id: string, command: string) => {
 		navigator.clipboard.writeText(command);
 		setCopiedId(id);
 		setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000);
 	}, []);
+
+	const handleSetCustomPath = useCallback(async (reqId: string) => {
+		const path = customPaths[reqId]?.trim();
+		if (!path) return;
+		setSavingId(reqId);
+		try {
+			await api.request.setCustomBinaryPath({ requirementId: reqId, path });
+			await onRefreshResults();
+		} catch (err) {
+			console.error("Failed to save custom binary path:", err);
+		}
+		setSavingId(null);
+	}, [customPaths, onRefresh]);
 
 	return (
 		<div className="h-full w-full flex items-center justify-center bg-base">
@@ -28,7 +45,7 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 					{t("requirements.subtitle")}
 				</p>
 
-				<div className="space-y-3 mb-8">
+				<div className="space-y-3 mb-6">
 					{results.map((req) => (
 						<div
 							key={req.id}
@@ -56,6 +73,11 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 											: t("requirements.missing")}
 									</span>
 								</div>
+								{req.installed && req.resolvedPath && (
+									<p className="text-fg-muted text-xs mt-1 font-mono truncate">
+										{req.resolvedPath}
+									</p>
+								)}
 								{!req.installed && (
 									<div className="mt-2">
 										<p className="text-fg-muted text-xs mb-1.5">
@@ -87,6 +109,33 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 													{t("requirements.copied")}
 												</span>
 											)}
+										</div>
+										<div className="mt-2.5 pt-2.5 border-t border-edge/50">
+											<p className="text-fg-3 text-xs mb-1.5">
+												{t("requirements.customPathHint")}
+											</p>
+											{req.customPathError && (
+												<p className="text-danger text-xs mb-1.5">
+													{t("requirements.pathNotFound")}
+												</p>
+											)}
+											<div className="flex items-center gap-1.5">
+												<input
+													type="text"
+													value={customPaths[req.id] ?? ""}
+													onChange={(e) => setCustomPaths((prev) => ({ ...prev, [req.id]: e.target.value }))}
+													placeholder={`/path/to/${req.name.toLowerCase()}`}
+													className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${req.customPathError ? "border-danger" : "border-edge"}`}
+												/>
+												<button
+													type="button"
+													onClick={() => handleSetCustomPath(req.id)}
+													disabled={!customPaths[req.id]?.trim() || savingId === req.id}
+													className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+												>
+													{t("requirements.setPath")}
+												</button>
+											</div>
 										</div>
 									</div>
 								)}

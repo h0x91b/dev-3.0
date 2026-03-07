@@ -11,6 +11,7 @@ export interface GlobalSettings {
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
 	cloneBaseDirectory?: string;
+	customBinaryPaths?: Record<string, string>;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -33,6 +34,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
+			customBinaryPaths: data.customBinaryPaths ?? undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });

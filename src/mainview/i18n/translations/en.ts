@@ -305,6 +305,9 @@ const en = {
 	"requirements.copied": "Copied!",
 	"requirements.installGit": "Install via Xcode CLI tools:",
 	"requirements.installTmux": "Install via Homebrew:",
+	"requirements.customPathHint": "Or specify the full path to the binary:",
+	"requirements.pathNotFound": "File not found at this path",
+	"requirements.setPath": "Set path",
 
 	// Changelog
 	"header.changelog": "Changelog",

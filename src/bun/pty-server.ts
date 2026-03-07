@@ -60,6 +60,18 @@ setw -g monitor-bell on
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
 
+// Resolved tmux binary path. Defaults to "tmux" (relies on PATH).
+// Updated by setTmuxBinary() after requirements check finds a custom or fallback path.
+let tmuxBinary = "tmux";
+
+export function setTmuxBinary(path: string) {
+	tmuxBinary = path;
+}
+
+export function getTmuxBinary(): string {
+	return tmuxBinary;
+}
+
 /**
  * Build a tmux command array with our custom socket.
  * All tmux invocations in the app MUST use this helper to ensure
@@ -67,9 +79,9 @@ writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
  */
 export function tmuxArgs(socket: string | null | undefined, ...args: string[]): string[] {
 	if (socket) {
-		return ["tmux", "-L", socket, ...args];
+		return [tmuxBinary, "-L", socket, ...args];
 	}
-	return ["tmux", ...args];
+	return [tmuxBinary, ...args];
 }
 
 const log = createLogger("pty");

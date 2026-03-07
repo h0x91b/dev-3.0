@@ -313,6 +313,9 @@ const ru: TranslationRecord & Record<string, string> = {
 	"requirements.copied": "Скопировано!",
 	"requirements.installGit": "Установить через Xcode CLI tools:",
 	"requirements.installTmux": "Установить через Homebrew:",
+	"requirements.customPathHint": "Или укажите полный путь к бинарнику:",
+	"requirements.pathNotFound": "Файл не найден по этому пути",
+	"requirements.setPath": "Указать путь",
 
 	// Changelog
 	"header.changelog": "Журнал изменений",

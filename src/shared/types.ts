@@ -165,6 +165,7 @@ export interface GlobalSettings {
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
 	cloneBaseDirectory?: string;
+	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
@@ -300,6 +301,9 @@ export interface RequirementCheckResult {
 	installed: boolean;
 	installHint: string; // i18n key
 	installCommand: string;
+	resolvedPath?: string; // full path to the binary (if found)
+	brewInstallable: boolean;
+	customPathError?: boolean; // true if custom path was set but file doesn't exist
 }
 
 // ---- CLI socket protocol ----
@@ -482,6 +486,10 @@ export type AppRPCSchema = {
 			checkSystemRequirements: {
 				params: void;
 				response: RequirementCheckResult[];
+			};
+			setCustomBinaryPath: {
+				params: { requirementId: string; path: string };
+				response: void;
 			};
 			getChangelogs: {
 				params: void;
