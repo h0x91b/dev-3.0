@@ -1,4 +1,4 @@
-import type { Task } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 import { STATUS_LABELS } from "../../shared/types";
 import { detectContext, readProjectDirect, readTaskDirect } from "../context";
 import { sendRequest } from "../socket-client";
@@ -30,14 +30,19 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				const task = resp.data as Task;
 				const project = readProjectDirect(context.projectId);
 
+				const statusDisplay = task.customColumnId
+					? `${STATUS_LABELS[task.status] || task.status} (in custom column)`
+					: (STATUS_LABELS[task.status] || task.status);
+
 				const fields: Array<[string, string]> = [
 					["Project:", project?.name || context.projectId.slice(0, 8)],
 					["Project ID:", context.projectId],
 					["Task ID:", task.id],
 					["Seq:", String(task.seq)],
 					["Title:", task.title],
-					["Status:", STATUS_LABELS[task.status] || task.status],
+					["Status:", statusDisplay],
 				];
+				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 
@@ -53,6 +58,20 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 						process.stdout.write(`  ${line}\n`);
 					}
 				}
+
+				// Show custom columns for this project
+				const customColumns = (project as Project | null)?.customColumns ?? [];
+				if (customColumns.length > 0) {
+					process.stdout.write("\n");
+					process.stdout.write("Custom columns (use with `dev3 task move --status <id>`):\n");
+					for (const col of customColumns) {
+						const instruction = col.llmInstruction
+							? `  → "${col.llmInstruction}"`
+							: "";
+						process.stdout.write(`  ${col.id.slice(0, 8)}   ${col.name}${instruction}\n`);
+					}
+				}
+
 				return;
 			}
 		} catch {

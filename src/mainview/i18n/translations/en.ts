@@ -371,6 +371,20 @@ const en = {
 	"tmuxSessions.killAllConfirmMessage": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
 	"tmuxSessions.refresh": "Refresh",
 
+	// Custom Columns
+	"customColumns.settingsTitle": "Custom Columns",
+	"customColumns.settingsDesc": "Add columns to the Kanban board. Each column can include a short instruction for the AI agent explaining when to move a task there.",
+	"customColumns.addColumn": "+ Add Column",
+	"customColumns.noColumns": "No custom columns yet.",
+	"customColumns.columnName": "Column name",
+	"customColumns.llmInstruction": "LLM instruction (when to move here)",
+	"customColumns.llmInstructionPlaceholder": "e.g. Move here when waiting for external feedback",
+	"customColumns.deleteColumn": "Delete column",
+	"customColumns.failedCreate": "Failed to create column: {error}",
+	"customColumns.failedUpdate": "Failed to update column: {error}",
+	"customColumns.failedDelete": "Failed to delete column: {error}",
+	"customColumns.charCount": "{count}/{max}",
+
 	// Labels
 	"labels.filterTitle": "Labels",
 	"labels.noLabels": "No labels yet. Type a name to create one.",

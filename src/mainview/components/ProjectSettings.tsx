@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
-import type { Label, Project } from "../../shared/types";
-import { LABEL_COLORS } from "../../shared/types";
+import type { CustomColumn, Label, Project } from "../../shared/types";
+import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -83,6 +83,98 @@ function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel }:
 	);
 }
 
+interface CustomColumnRowProps {
+	column: CustomColumn;
+	saving: boolean;
+	onUpdate: (name: string, color: string, llmInstruction: string) => void;
+	onDelete: () => void;
+}
+
+function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRowProps) {
+	const t = useT();
+	const [name, setName] = useState(column.name);
+	const [color, setColor] = useState(column.color);
+	const [llmInstruction, setLlmInstruction] = useState(column.llmInstruction);
+
+	function commitUpdate(newName = name, newColor = color, newInstruction = llmInstruction) {
+		const trimmedName = newName.trim();
+		if (
+			trimmedName &&
+			(trimmedName !== column.name || newColor !== column.color || newInstruction !== column.llmInstruction)
+		) {
+			onUpdate(trimmedName, newColor, newInstruction);
+		}
+	}
+
+	const isOverLimit = llmInstruction.length > CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS;
+
+	return (
+		<div className="p-3 bg-raised rounded-xl border border-edge space-y-2.5">
+			{/* Name + color + delete */}
+			<div className="flex items-center gap-2">
+				<div
+					className="w-4 h-4 rounded-full flex-shrink-0 border border-edge-active"
+					style={{ background: color }}
+				/>
+				<input
+					type="text"
+					value={name}
+					onChange={(e) => setName(e.target.value)}
+					onBlur={() => commitUpdate()}
+					onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+					aria-label={t("customColumns.columnName")}
+					placeholder={t("customColumns.columnName")}
+					disabled={saving}
+					className="flex-1 bg-transparent text-fg text-sm outline-none placeholder-fg-muted min-w-0"
+				/>
+				{/* Color palette */}
+				<div className="flex items-center gap-1 flex-shrink-0">
+					{LABEL_COLORS.map((c) => (
+						<button
+							key={c}
+							type="button"
+							onClick={() => { setColor(c); commitUpdate(name, c, llmInstruction); }}
+							disabled={saving}
+							className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""}`}
+							style={{ background: c }}
+							title={c}
+						/>
+					))}
+				</div>
+				<button
+					type="button"
+					onClick={onDelete}
+					disabled={saving}
+					className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
+					title={t("customColumns.deleteColumn")}
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			{/* LLM instruction */}
+			<div>
+				<textarea
+					value={llmInstruction}
+					onChange={(e) => setLlmInstruction(e.target.value)}
+					onBlur={() => commitUpdate()}
+					placeholder={t("customColumns.llmInstructionPlaceholder")}
+					disabled={saving}
+					rows={2}
+					autoCapitalize="off"
+					autoCorrect="off"
+					spellCheck={false}
+					className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-none"
+				/>
+				<div className={`text-right text-xs mt-0.5 ${isOverLimit ? "text-danger" : "text-fg-muted"}`}>
+					{t("customColumns.charCount", { count: String(llmInstruction.length), max: String(CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS) })}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 interface ProjectSettingsProps {
 	projectId: string;
 	projects: Project[];
@@ -108,6 +200,7 @@ function ProjectSettings({
 	);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
+	const [columnSaving, setColumnSaving] = useState<string | null>(null);
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
 	const autoDetectRan = useRef(false);
@@ -192,6 +285,51 @@ function ProjectSettings({
 			alert(t("labels.failedDelete", { error: String(err) }));
 		}
 		setLabelSaving(null);
+	}
+
+	async function handleAddColumn() {
+		if (!project) return;
+		setColumnSaving("new");
+		try {
+			const column = await api.request.createCustomColumn({ projectId, name: "New Column" });
+			const updated: Project = { ...project, customColumns: [...(project.customColumns ?? []), column] };
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			alert(t("customColumns.failedCreate", { error: String(err) }));
+		}
+		setColumnSaving(null);
+	}
+
+	async function handleUpdateColumn(columnId: string, name: string, color: string, llmInstruction: string) {
+		if (!project) return;
+		setColumnSaving(columnId);
+		try {
+			const column = await api.request.updateCustomColumn({ projectId, columnId, name, color, llmInstruction });
+			const updated: Project = {
+				...project,
+				customColumns: (project.customColumns ?? []).map((c) => (c.id === columnId ? column : c)),
+			};
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			alert(t("customColumns.failedUpdate", { error: String(err) }));
+		}
+		setColumnSaving(null);
+	}
+
+	async function handleDeleteColumn(columnId: string) {
+		if (!project) return;
+		setColumnSaving(columnId);
+		try {
+			await api.request.deleteCustomColumn({ projectId, columnId });
+			const updated: Project = {
+				...project,
+				customColumns: (project.customColumns ?? []).filter((c) => c.id !== columnId),
+			};
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			alert(t("customColumns.failedDelete", { error: String(err) }));
+		}
+		setColumnSaving(null);
 	}
 
 	async function handleSave() {
@@ -327,6 +465,38 @@ function ProjectSettings({
 							spellCheck={false}
 							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
 						/>
+					</div>
+
+					{/* Custom Columns */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("customColumns.settingsTitle")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("customColumns.settingsDesc")}
+						</p>
+						<div className="space-y-2">
+							{(project.customColumns ?? []).map((col: CustomColumn) => (
+								<CustomColumnRow
+									key={col.id}
+									column={col}
+									saving={columnSaving === col.id}
+									onUpdate={(name, color, llmInstruction) => handleUpdateColumn(col.id, name, color, llmInstruction)}
+									onDelete={() => handleDeleteColumn(col.id)}
+								/>
+							))}
+							{(project.customColumns ?? []).length === 0 && (
+								<p className="text-fg-muted text-sm italic">{t("customColumns.noColumns")}</p>
+							)}
+						</div>
+						<button
+							type="button"
+							onClick={handleAddColumn}
+							disabled={columnSaving !== null}
+							className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
+						>
+							{t("customColumns.addColumn")}
+						</button>
 					</div>
 
 					{/* Labels */}

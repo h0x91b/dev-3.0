@@ -1086,7 +1086,7 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("review-by-user");
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "review-by-user" }, { dropPosition: "top" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "review-by-user", customColumnId: null }, { dropPosition: "top" });
 	});
 
 	it("should NOT throw when worktree directory is missing (completed)", async () => {
@@ -1160,6 +1160,7 @@ describe("handlers.moveTask", () => {
 			status: "completed",
 			worktreePath: null,
 			branchName: null,
+			customColumnId: null,
 		}, { dropPosition: "top" });
 	});
 

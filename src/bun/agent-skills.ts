@@ -55,6 +55,16 @@ Run this ONCE at session start, before doing any other work.
 
 - If \`task move\` fails because the task is already in the target status, that is OK — just continue.
 
+### Custom columns
+
+If the project defines custom columns (visible in \`dev3 current\` output), you can move tasks there:
+
+  dev3 task move --status <custom-column-id>
+
+Each custom column has an 8-char ID prefix and a description of when to use it.
+Moving to a custom column does not affect the worktree or terminal session.
+To move a task back to a built-in status, use the regular \`dev3 task move\` command.
+
 ## Notes (per-task scratchpad)
 
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.

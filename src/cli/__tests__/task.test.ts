@@ -539,24 +539,24 @@ describe("task create --description", () => {
 });
 
 // ─── task move: status validation ────────────────────────────────────────────
-// CLI only blocks "completed" and "cancelled" but doesn't validate that the
-// status is actually in the allowed list. "garbage" passes CLI validation and
-// hits the server, which is wasteful and confusing.
+// The CLI blocks "completed" and "cancelled" only. Unknown values (potential
+// custom column IDs) are forwarded to the server, which validates them.
 
 describe("task move status validation", () => {
-	it("rejects unknown status values before hitting the server", async () => {
+	it("forwards unknown status values to the server (may be a custom column ID)", async () => {
+		mockSend.mockResolvedValue({ id: "r", ok: false, error: "Invalid status: \"garbage\"" });
 		await expect(
 			handleTask("move", args(["aaaaaaaa"], { status: "garbage" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("Valid:");
-		expect(mockSend).not.toHaveBeenCalled();
+		).rejects.toThrow("EXIT_1");
+		expect(mockSend).toHaveBeenCalled();
 	});
 
-	it("rejects typo'd status (e.g. 'in_progress' instead of 'in-progress')", async () => {
+	it("forwards typo'd status to the server (e.g. 'in_progress' instead of 'in-progress')", async () => {
+		mockSend.mockResolvedValue({ id: "r", ok: false, error: "Invalid status: \"in_progress\"" });
 		await expect(
 			handleTask("move", args(["aaaaaaaa"], { status: "in_progress" }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
+		).rejects.toThrow("EXIT_1");
+		expect(mockSend).toHaveBeenCalled();
 	});
 
 	it("rejects empty string status", async () => {

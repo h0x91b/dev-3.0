@@ -132,7 +132,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const newStatus = args.flags.status;
 	if (!newStatus) {
-		exitUsage(`--status is required. Valid: ${CLI_ALLOWED_STATUSES.join(", ")}`);
+		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; or a custom column ID (see \`dev3 current\`)`);
 	}
 	if (DESTRUCTIVE_STATUSES.includes(newStatus as TaskStatus)) {
 		exitError(
@@ -140,9 +140,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 			`This status destroys the worktree and terminal session.\nUse the desktop app UI to mark tasks as ${newStatus}.`,
 		);
 	}
-	if (!CLI_ALLOWED_STATUSES.includes(newStatus as TaskStatus)) {
-		exitUsage(`Invalid status: "${newStatus}". Valid: ${CLI_ALLOWED_STATUSES.join(", ")}`);
-	}
+	// Non-built-in values may be custom column IDs — let the server validate
 
 	const params: Record<string, unknown> = { taskId, newStatus };
 	if (args.flags.project) params.projectId = args.flags.project;
@@ -152,7 +150,10 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	if (!resp.ok) exitError(resp.error || "Failed to move task");
 
 	const task = resp.data as Task;
-	process.stdout.write(`Moved task ${task.id.slice(0, 8)} → ${STATUS_LABELS[task.status] || task.status}\n`);
+	const displayStatus = task.customColumnId
+		? `custom column ${task.customColumnId.slice(0, 8)}`
+		: (STATUS_LABELS[task.status] || task.status);
+	process.stdout.write(`Moved task ${task.id.slice(0, 8)} → ${displayStatus}\n`);
 }
 
 export async function handleTask(

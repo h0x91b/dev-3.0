@@ -381,6 +381,20 @@ const ru: TranslationRecord & Record<string, string> = {
 	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",
 	"tmuxSessions.refresh": "Обновить",
 
+	// Custom Columns
+	"customColumns.settingsTitle": "Пользовательские колонки",
+	"customColumns.settingsDesc": "Добавьте колонки на доску Kanban. Каждая колонка может содержать краткую инструкцию для ИИ-агента о том, когда перемещать туда задачу.",
+	"customColumns.addColumn": "+ Добавить колонку",
+	"customColumns.noColumns": "Пользовательских колонок пока нет.",
+	"customColumns.columnName": "Название колонки",
+	"customColumns.llmInstruction": "Инструкция для LLM (когда перемещать сюда)",
+	"customColumns.llmInstructionPlaceholder": "напр. Переместить сюда, когда ожидается внешний отклик",
+	"customColumns.deleteColumn": "Удалить колонку",
+	"customColumns.failedCreate": "Ошибка создания колонки: {error}",
+	"customColumns.failedUpdate": "Ошибка обновления колонки: {error}",
+	"customColumns.failedDelete": "Ошибка удаления колонки: {error}",
+	"customColumns.charCount": "{count}/{max}",
+
 	// Labels
 	"labels.filterTitle": "Метки",
 	"labels.noLabels": "Меток пока нет. Введите название для создания.",

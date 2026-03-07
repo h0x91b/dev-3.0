@@ -740,11 +740,16 @@ describe("task.move", () => {
 	});
 
 	it("errors on invalid status", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
 		const resp = await handleRequest(
-			makeRequest("task.move", { taskId: "t1", newStatus: "bogus" }),
+			makeRequest("task.move", { taskId: task.id, projectId: "proj-1", newStatus: "bogus" }),
 		);
 		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Invalid status: bogus");
+		expect(resp.error).toContain("Invalid status: \"bogus\"");
 	});
 
 	it("returns task unchanged when same status", async () => {
@@ -800,7 +805,7 @@ describe("task.move", () => {
 			}),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-user" }, { dropPosition: "top" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-user", customColumnId: null }, { dropPosition: "top" });
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
 	});
@@ -840,6 +845,7 @@ describe("task.move", () => {
 			status: "in-progress",
 			worktreePath: "/tmp/new-wt",
 			branchName: "dev3/task-new",
+			customColumnId: null,
 		}, { dropPosition: "top" });
 	});
 
@@ -926,6 +932,7 @@ describe("task.move", () => {
 			status: "completed",
 			worktreePath: null,
 			branchName: null,
+			customColumnId: null,
 		}, { dropPosition: "top" });
 	});
 

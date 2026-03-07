@@ -41,6 +41,9 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 			if ((project as any).labels === undefined) {
 				project.labels = [];
 			}
+			if ((project as any).customColumns === undefined) {
+				project.customColumns = [];
+			}
 			// Migrate away from legacy `say` cleanup scripts (was the old default)
 			if (project.cleanupScript && /^\s*say\s+/i.test(project.cleanupScript)) {
 				project.cleanupScript = "";
@@ -145,7 +148,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels">>,
+	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns">>,
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		console.log("[updateProject] updates:", JSON.stringify(updates));
@@ -200,6 +203,7 @@ async function rawLoadTasks(project: Project): Promise<Task[]> {
 			if ((task as any).labelIds === undefined) task.labelIds = [];
 			if ((task as any).notes === undefined) task.notes = [];
 			if ((task as any).customTitle === undefined) task.customTitle = null;
+			if ((task as any).customColumnId === undefined) task.customColumnId = null;
 		}
 
 		// Backfill seq for tasks created before seq existed

@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, CustomColumn, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -768,6 +768,7 @@ export const handlers = {
 				status: newStatus,
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
+				customColumnId: null,
 			}, dropOpts);
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("← moveTask done (worktree created)", { taskId: task.id });
@@ -821,6 +822,7 @@ export const handlers = {
 				status: newStatus,
 				worktreePath: null,
 				branchName: null,
+				customColumnId: null,
 			}, dropOpts);
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("← moveTask done (worktree destroyed)", { taskId: task.id });
@@ -830,6 +832,7 @@ export const handlers = {
 		// active → active or todo → todo/completed/cancelled (no worktree changes)
 		const updated = await data.updateTask(project, task.id, {
 			status: newStatus,
+			customColumnId: null,
 		}, dropOpts);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 		log.info("← moveTask done (status only)", { taskId: task.id });
@@ -1951,6 +1954,73 @@ export const handlers = {
 			});
 		}
 		log.info("← deleteLabel done", { removed_from_tasks: affectedTasks.length });
+	},
+
+	async createCustomColumn(params: { projectId: string; name: string; color?: string }): Promise<CustomColumn> {
+		log.info("→ createCustomColumn", { projectId: params.projectId, name: params.name });
+		const project = await data.getProject(params.projectId);
+		const columns = project.customColumns ?? [];
+		const usedColors = new Set(columns.map((c) => c.color));
+		const color = params.color ?? LABEL_COLORS.find((c) => !usedColors.has(c)) ?? LABEL_COLORS[columns.length % LABEL_COLORS.length];
+		const column: CustomColumn = {
+			id: crypto.randomUUID(),
+			name: params.name.trim(),
+			color,
+			llmInstruction: "",
+		};
+		await data.updateProject(params.projectId, { customColumns: [...columns, column] });
+		pushMessage?.("projectUpdated", { project: await data.getProject(params.projectId) });
+		log.info("← createCustomColumn done", { columnId: column.id });
+		return column;
+	},
+
+	async updateCustomColumn(params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string }): Promise<CustomColumn> {
+		log.info("→ updateCustomColumn", { projectId: params.projectId, columnId: params.columnId });
+		const project = await data.getProject(params.projectId);
+		const columns = project.customColumns ?? [];
+		const idx = columns.findIndex((c) => c.id === params.columnId);
+		if (idx === -1) throw new Error(`Custom column not found: ${params.columnId}`);
+		const updated: CustomColumn = {
+			...columns[idx],
+			...(params.name !== undefined ? { name: params.name.trim() } : {}),
+			...(params.color !== undefined ? { color: params.color } : {}),
+			...(params.llmInstruction !== undefined ? { llmInstruction: params.llmInstruction } : {}),
+		};
+		const newColumns = [...columns];
+		newColumns[idx] = updated;
+		await data.updateProject(params.projectId, { customColumns: newColumns });
+		pushMessage?.("projectUpdated", { project: await data.getProject(params.projectId) });
+		log.info("← updateCustomColumn done", { columnId: updated.id });
+		return updated;
+	},
+
+	async deleteCustomColumn(params: { projectId: string; columnId: string }): Promise<void> {
+		log.info("→ deleteCustomColumn", { projectId: params.projectId, columnId: params.columnId });
+		const project = await data.getProject(params.projectId);
+		const newColumns = (project.customColumns ?? []).filter((c) => c.id !== params.columnId);
+		await data.updateProject(params.projectId, { customColumns: newColumns });
+		// Move tasks out of this custom column back to their built-in status
+		const tasks = await data.loadTasks(project);
+		const affectedTasks = tasks.filter((t) => t.customColumnId === params.columnId);
+		for (const task of affectedTasks) {
+			const updated = await data.updateTask(project, task.id, { customColumnId: null });
+			pushMessage?.("taskUpdated", { projectId: params.projectId, task: updated });
+		}
+		pushMessage?.("projectUpdated", { project: await data.getProject(params.projectId) });
+		log.info("← deleteCustomColumn done", { removed_from_tasks: affectedTasks.length });
+	},
+
+	async moveTaskToCustomColumn(params: { taskId: string; projectId: string; customColumnId: string | null }): Promise<Task> {
+		log.info("→ moveTaskToCustomColumn", params);
+		const project = await data.getProject(params.projectId);
+		if (params.customColumnId !== null) {
+			const column = (project.customColumns ?? []).find((c) => c.id === params.customColumnId);
+			if (!column) throw new Error(`Custom column not found: ${params.customColumnId}`);
+		}
+		const updated = await data.updateTask(project, params.taskId, { customColumnId: params.customColumnId });
+		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		log.info("← moveTaskToCustomColumn done", { taskId: params.taskId, customColumnId: params.customColumnId });
+		return updated;
 	},
 
 	async setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {

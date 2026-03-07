@@ -190,6 +190,18 @@ export interface Label {
 	color: string; // hex color from LABEL_COLORS palette
 }
 
+// ---- Custom Columns ----
+
+/** Soft character cap for the LLM instruction field. Not enforced server-side. */
+export const CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS = 500;
+
+export interface CustomColumn {
+	id: string;
+	name: string;
+	color: string; // hex color
+	llmInstruction: string; // guidance for LLM on when to move tasks here
+}
+
 // Colors ordered to maximize perceptual distance between consecutive picks
 // (each step jumps ~150° around the color wheel: warm→cool→warm→cool…)
 export const LABEL_COLORS = [
@@ -219,6 +231,7 @@ export interface Project {
 	createdAt: string;
 	deleted?: boolean;
 	labels?: Label[];
+	customColumns?: CustomColumn[];
 }
 
 export interface Task {
@@ -244,6 +257,7 @@ export interface Task {
 	labelIds?: string[];
 	existingBranch?: string | null;
 	notes?: TaskNote[];
+	customColumnId?: string | null;
 }
 
 /** Returns the display title: custom override if set, otherwise auto-generated. */
@@ -339,6 +353,22 @@ export type AppRPCSchema = {
 			pickFolder: {
 				params: void;
 				response: string | null;
+			};
+			createCustomColumn: {
+				params: { projectId: string; name: string; color?: string };
+				response: CustomColumn;
+			};
+			updateCustomColumn: {
+				params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string };
+				response: CustomColumn;
+			};
+			deleteCustomColumn: {
+				params: { projectId: string; columnId: string };
+				response: void;
+			};
+			moveTaskToCustomColumn: {
+				params: { taskId: string; projectId: string; customColumnId: string | null };
+				response: Task;
 			};
 			addProject: {
 				params: { path: string; name: string };

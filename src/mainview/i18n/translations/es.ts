@@ -374,6 +374,20 @@ const es: TranslationRecord & Record<string, string> = {
 	"tmuxSessions.killAllConfirmMessage": "¿Terminar las {count} sesiones dev3? Esto cerrará todos los procesos.",
 	"tmuxSessions.refresh": "Actualizar",
 
+	// Custom Columns
+	"customColumns.settingsTitle": "Columnas personalizadas",
+	"customColumns.settingsDesc": "Añade columnas al tablero Kanban. Cada columna puede incluir una breve instrucción para el agente IA sobre cuándo mover una tarea allí.",
+	"customColumns.addColumn": "+ Añadir columna",
+	"customColumns.noColumns": "Aún no hay columnas personalizadas.",
+	"customColumns.columnName": "Nombre de la columna",
+	"customColumns.llmInstruction": "Instrucción para LLM (cuándo mover aquí)",
+	"customColumns.llmInstructionPlaceholder": "ej. Mover aquí cuando se espera retroalimentación externa",
+	"customColumns.deleteColumn": "Eliminar columna",
+	"customColumns.failedCreate": "Error al crear columna: {error}",
+	"customColumns.failedUpdate": "Error al actualizar columna: {error}",
+	"customColumns.failedDelete": "Error al eliminar columna: {error}",
+	"customColumns.charCount": "{count}/{max}",
+
 	// Labels
 	"labels.filterTitle": "Etiquetas",
 	"labels.noLabels": "Aún no hay etiquetas. Escribe un nombre para crear una.",

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
+import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
 import { ALL_STATUSES, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -322,12 +322,9 @@ const handlers: Record<string, Handler> = {
 
 	"task.move": async (params) => {
 		const taskId = params.taskId as string;
-		const newStatus = params.newStatus as TaskStatus;
+		const newStatus = params.newStatus as string;
 		if (!taskId) throw new Error("taskId is required");
 		if (!newStatus) throw new Error("newStatus is required");
-		if (!ALL_STATUSES.includes(newStatus)) {
-			throw new Error(`Invalid status: ${newStatus}. Valid: ${ALL_STATUSES.join(", ")}`);
-		}
 
 		let project: Project;
 		let task: Task;
@@ -345,55 +342,80 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		if (task.status === newStatus) {
+		// Check if this is a custom column ID
+		const customColumns = project.customColumns ?? [];
+		const customColumn = customColumns.find((c: CustomColumn) => c.id === newStatus || c.id.startsWith(newStatus));
+		if (customColumn) {
+			// Move to custom column (no status change, no worktree lifecycle)
+			const updated = await data.updateTask(project, task.id, { customColumnId: customColumn.id });
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			return updated;
+		}
+
+		// Validate as a built-in status
+		const builtinStatus = newStatus as TaskStatus;
+		if (!ALL_STATUSES.includes(builtinStatus)) {
+			const validCustomIds = customColumns.length > 0
+				? `, or one of these custom column IDs: ${customColumns.map((c: CustomColumn) => `${c.id.slice(0, 8)} (${c.name})`).join(", ")}`
+				: "";
+			throw new Error(`Invalid status: "${newStatus}". Valid built-in statuses: ${ALL_STATUSES.join(", ")}${validCustomIds}`);
+		}
+
+		if (task.status === builtinStatus && !task.customColumnId) {
 			return task;
 		}
 
-		const allowed = getAllowedTransitions(task.status);
-		if (!allowed.includes(newStatus)) {
-			throw new Error(
-				`Cannot move task from "${task.status}" to "${newStatus}". Allowed: ${allowed.join(", ")}`,
-			);
+		// If moving from a custom column to a built-in status, allow any transition from the task's current status
+		const effectiveOldStatus = task.status;
+		if (!task.customColumnId) {
+			const allowed = getAllowedTransitions(effectiveOldStatus);
+			if (!allowed.includes(builtinStatus)) {
+				throw new Error(
+					`Cannot move task from "${effectiveOldStatus}" to "${builtinStatus}". Allowed: ${allowed.join(", ")}`,
+				);
+			}
 		}
 
-		const oldStatus = task.status;
+		const oldStatus = effectiveOldStatus;
 		const settings = await loadSettings();
 		const dropOpts = { dropPosition: settings.taskDropPosition } as const;
 
 		// inactive → active: create worktree + PTY
-		if (!isActive(oldStatus) && isActive(newStatus)) {
+		if (!isActive(oldStatus) && isActive(builtinStatus)) {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			const wt = await git.createWorktree(project, task);
 			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 
 			const updated = await data.updateTask(project, task.id, {
-				status: newStatus,
+				status: builtinStatus,
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
+				customColumnId: null,
 			}, dropOpts);
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			return updated;
 		}
 
 		// active → completed/cancelled: destroy PTY, cleanup, remove worktree
-		if (isActive(oldStatus) && (newStatus === "completed" || newStatus === "cancelled")) {
+		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
 			try { pty.destroySession(task.id); } catch {}
 			try { await runCleanupScript(task, project); } catch {}
 			playTaskCompleteSound();
 			try { await git.removeWorktree(project, task); } catch {}
 
 			const updated = await data.updateTask(project, task.id, {
-				status: newStatus,
+				status: builtinStatus,
 				worktreePath: null,
 				branchName: null,
+				customColumnId: null,
 			}, dropOpts);
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			return updated;
 		}
 
 		// active → active or status-only change
-		const updated = await data.updateTask(project, task.id, { status: newStatus }, dropOpts);
+		const updated = await data.updateTask(project, task.id, { status: builtinStatus, customColumnId: null }, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
 	},

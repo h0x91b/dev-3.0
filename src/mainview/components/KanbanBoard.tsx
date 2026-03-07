@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
-import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
@@ -35,6 +35,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
+	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
 	const [activeFilters, setActiveFilters] = useState<string[]>([]);
 	const [searchQuery, setSearchQuery] = useState("");
@@ -78,6 +79,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	useEffect(() => {
 		function handleDragEnd() {
 			setDragFromStatus(null);
+			setDragFromCustomColumnId(null);
 			setDraggedTaskId(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
@@ -90,17 +92,22 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		const task = tasks.find((t) => t.id === taskId);
 		if (task) {
 			setDragFromStatus(task.status);
+			setDragFromCustomColumnId(task.customColumnId ?? null);
 			setDraggedTaskId(taskId);
 		}
 	}
 
 	async function handleTaskDrop(taskId: string, targetStatus: TaskStatus) {
 		setDragFromStatus(null);
+		setDragFromCustomColumnId(null);
 		const task = tasks.find((t) => t.id === taskId);
-		if (!task || task.status === targetStatus) return;
+		if (!task) return;
+
+		// If already in target status and no custom column, nothing to do
+		if (task.status === targetStatus && !task.customColumnId) return;
 
 		// todo → active: open LaunchVariantsModal
-		if (task.status === "todo" && ACTIVE_STATUSES.includes(targetStatus)) {
+		if (task.status === "todo" && ACTIVE_STATUSES.includes(targetStatus) && !task.worktreePath) {
 			setLaunchModal({ task, targetStatus });
 			return;
 		}
@@ -116,8 +123,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 
 		const fromStatus = task.status;
 
-		// Optimistic update: move card to target column immediately and mark as moving
-		const optimisticTask = { ...task, status: targetStatus };
+		// Optimistic update: move card immediately and clear customColumnId
+		const optimisticTask = { ...task, status: targetStatus, customColumnId: null };
 		dispatch({ type: "updateTask", task: optimisticTask });
 		if (targetStatus === "completed" || targetStatus === "cancelled") {
 			dispatch({ type: "clearBell", taskId: task.id });
@@ -135,6 +142,37 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 			trackEvent("task_moved", { from_status: fromStatus, to_status: targetStatus });
 		} catch (err) {
 			// Revert optimistic update on failure
+			dispatch({ type: "updateTask", task });
+			alert(t("task.failedMove", { error: String(err) }));
+		} finally {
+			setMovingTaskIds((prev) => {
+				const next = new Set(prev);
+				next.delete(task.id);
+				return next;
+			});
+		}
+	}
+
+	async function handleTaskDropToCustomColumn(taskId: string, customColumnId: string) {
+		setDragFromStatus(null);
+		setDragFromCustomColumnId(null);
+		const task = tasks.find((t) => t.id === taskId);
+		if (!task || task.customColumnId === customColumnId) return;
+
+		// Optimistic update
+		const optimisticTask = { ...task, customColumnId };
+		dispatch({ type: "updateTask", task: optimisticTask });
+		recordMove(task.id);
+		setMovingTaskIds((prev) => new Set(prev).add(task.id));
+
+		try {
+			const updated = await api.request.moveTaskToCustomColumn({
+				taskId: task.id,
+				projectId: project.id,
+				customColumnId,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
 			dispatch({ type: "updateTask", task });
 			alert(t("task.failedMove", { error: String(err) }));
 		} finally {
@@ -184,6 +222,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	}, [tasks]);
 
 	const projectLabels = project.labels ?? [];
+	const customColumns: CustomColumn[] = project.customColumns ?? [];
 
 	// Apply label filters + search
 	let displayTasks = tasks;
@@ -194,19 +233,33 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		displayTasks = displayTasks.filter((t) => matchesSearchQuery(t, searchQuery));
 	}
 
+	// Built-in column tasks (exclude tasks in custom columns)
 	const tasksByStatus = new Map<TaskStatus, Task[]>();
 	for (const status of ALL_STATUSES) {
 		tasksByStatus.set(status, []);
 	}
 	for (const task of displayTasks) {
-		tasksByStatus.get(task.status)?.push(task);
+		if (!task.customColumnId) {
+			tasksByStatus.get(task.status)?.push(task);
+		}
 	}
 
-	// Sort tasks within each column for variant grouping
+	// Sort tasks within each built-in column for variant grouping
 	for (const status of ALL_STATUSES) {
 		const columnTasks = tasksByStatus.get(status);
 		if (columnTasks && columnTasks.length > 1) {
 			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskDropPosition, moveOrderMap));
+		}
+	}
+
+	// Custom column tasks
+	const tasksByCustomColumn = new Map<string, Task[]>();
+	for (const col of customColumns) {
+		tasksByCustomColumn.set(col.id, []);
+	}
+	for (const task of displayTasks) {
+		if (task.customColumnId) {
+			tasksByCustomColumn.get(task.customColumnId)?.push(task);
 		}
 	}
 
@@ -255,6 +308,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						onTaskDrop={handleTaskDrop}
 						onReorderTask={handleReorderTask}
 						dragFromStatus={dragFromStatus}
+						dragFromCustomColumnId={dragFromCustomColumnId}
 						onDragStart={handleDragStart}
 						onTaskMoved={recordMove}
 						bellCounts={bellCounts}
@@ -263,6 +317,39 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						movingTaskIds={movingTaskIds}
 						onSetMoving={handleSetMoving}
 						siblingMap={siblingMap}
+					/>
+				))}
+
+				{/* Custom columns */}
+				{customColumns.map((col) => (
+					<KanbanColumn
+						key={col.id}
+						status="todo"
+						label={col.name}
+						tasks={tasksByCustomColumn.get(col.id) || []}
+						project={project}
+						dispatch={dispatch}
+						navigate={navigate}
+						onAddTask={() => setShowCreateModal(true)}
+						agents={agents}
+						onLaunchVariants={(task, targetStatus) =>
+							setLaunchModal({ task, targetStatus })
+						}
+						onTaskDrop={handleTaskDrop}
+						onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
+						onReorderTask={handleReorderTask}
+						dragFromStatus={dragFromStatus}
+						dragFromCustomColumnId={dragFromCustomColumnId}
+						onDragStart={handleDragStart}
+						onTaskMoved={recordMove}
+						bellCounts={bellCounts}
+						activeTaskId={activeTaskId}
+						draggedTaskId={draggedTaskId}
+						movingTaskIds={movingTaskIds}
+						siblingMap={siblingMap}
+						isCustomColumn
+						customColumnId={col.id}
+						colorOverride={col.color}
 					/>
 				))}
 			</div>

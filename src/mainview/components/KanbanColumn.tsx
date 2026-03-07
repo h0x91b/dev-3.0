@@ -17,8 +17,10 @@ interface KanbanColumnProps {
 	agents: CodingAgent[];
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 	onTaskDrop: (taskId: string, targetStatus: TaskStatus) => void;
+	onTaskDropToCustomColumn?: (taskId: string, customColumnId: string) => void;
 	onReorderTask: (taskId: string, targetIndex: number) => void;
 	dragFromStatus: TaskStatus | null;
+	dragFromCustomColumnId?: string | null;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
@@ -27,6 +29,10 @@ interface KanbanColumnProps {
 	movingTaskIds: Set<string>;
 	onSetMoving: (taskId: string, isMoving: boolean) => void;
 	siblingMap: Map<string, Task[]>;
+	// Custom column support
+	isCustomColumn?: boolean;
+	customColumnId?: string;
+	colorOverride?: string;
 }
 
 function KanbanColumn({
@@ -40,8 +46,10 @@ function KanbanColumn({
 	agents,
 	onLaunchVariants,
 	onTaskDrop,
+	onTaskDropToCustomColumn,
 	onReorderTask,
 	dragFromStatus,
+	dragFromCustomColumnId,
 	onDragStart,
 	onTaskMoved,
 	bellCounts,
@@ -50,22 +58,28 @@ function KanbanColumn({
 	movingTaskIds,
 	onSetMoving,
 	siblingMap,
+	isCustomColumn,
+	customColumnId,
+	colorOverride,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
-	const color = statusColors[status];
+	const color = colorOverride ?? statusColors[status];
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
 
 	// Is this a same-column reorder drag?
-	const isSameColumnDrag = dragFromStatus === status;
+	const isSameColumnDrag = isCustomColumn
+		? customColumnId !== undefined && dragFromCustomColumnId === customColumnId
+		: dragFromStatus === status && (dragFromCustomColumnId === null || dragFromCustomColumnId === undefined);
 
 	// Can this column accept a cross-column drop?
-	const isCrossColumnTarget =
-		dragFromStatus !== null &&
-		dragFromStatus !== status &&
-		getAllowedTransitions(dragFromStatus).includes(status);
+	const isCrossColumnTarget = isCustomColumn
+		// Custom columns accept drops from any column except themselves
+		? (dragFromStatus !== null || dragFromCustomColumnId !== null) && dragFromCustomColumnId !== customColumnId
+		// Built-in columns use transition logic; also accept from custom columns (underlying status governs)
+		: dragFromStatus !== null && getAllowedTransitions(dragFromStatus).includes(status);
 
 	// Clear dropIndex when drag ends globally
 	useEffect(() => {
@@ -81,8 +95,8 @@ function KanbanColumn({
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "move";
 
-		// Calculate drop index for same-column reorder
-		if (isSameColumnDrag && taskListRef.current) {
+		// Calculate drop index for same-column reorder (built-in columns only)
+		if (isSameColumnDrag && !isCustomColumn && taskListRef.current) {
 			const taskElements = taskListRef.current.querySelectorAll("[data-task-id]");
 			let newDropIndex = tasks.length;
 			for (let i = 0; i < taskElements.length; i++) {
@@ -118,8 +132,11 @@ function KanbanColumn({
 			return;
 		}
 
-		if (isSameColumnDrag && dropIndex !== null) {
-			// Same-column reorder — adjust index if dragging down
+		if (isCustomColumn && customColumnId) {
+			// Drop into a custom column
+			onTaskDropToCustomColumn?.(taskId, customColumnId);
+		} else if (isSameColumnDrag && dropIndex !== null) {
+			// Same-column reorder
 			const currentIndex = tasks.findIndex((t) => t.id === taskId);
 			const adjustedIndex = currentIndex !== -1 && currentIndex < dropIndex
 				? dropIndex - 1
@@ -140,7 +157,7 @@ function KanbanColumn({
 			className={`flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
-					: isCrossColumnTarget && dragFromStatus
+					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
 						? "border-edge-active"
 						: "border-transparent"
 			}`}
@@ -214,8 +231,8 @@ function KanbanColumn({
 				)}
 			</div>
 
-			{/* Add task button (only in To Do column) */}
-			{status === "todo" && (
+			{/* Add task button (only in To Do column, not custom columns) */}
+			{!isCustomColumn && status === "todo" && (
 				<div className="px-3 pb-3 flex-shrink-0">
 					<button
 						onClick={onAddTask}
