@@ -93,7 +93,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.terminalKeymap": "Раскладка клавиш терминала",
 	"settings.terminalKeymapDesc": "Горячие клавиши, активные когда терминал в фокусе",
 	"settings.keymapDev3": "Удобный",
-	"settings.keymapDev3Desc": "Cmd+W закрывает панель",
+	"settings.keymapDev3Desc": "Без горячих клавиш — кнопки интерфейса или Ctrl+B",
 	"settings.keymapIterm2": "iTerm2",
 	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
 	"settings.keymapTmuxNative": "Нативный tmux",

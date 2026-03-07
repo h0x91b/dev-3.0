@@ -490,7 +490,11 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			const preset = getKeymapPreset();
 			const bindings = TERMINAL_KEYMAPS[preset] ?? [];
 			const binding = bindings.find(
-				(b) => b.key === e.key && !!b.meta === e.metaKey && !!b.ctrl === e.ctrlKey,
+				(b) =>
+					b.code === e.code &&
+					!!b.meta === e.metaKey &&
+					!!b.ctrl === e.ctrlKey &&
+					(b.shift === undefined || b.shift === e.shiftKey),
 			);
 			if (!binding) return;
 

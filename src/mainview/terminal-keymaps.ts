@@ -3,28 +3,30 @@ import type { TerminalKeymapPreset } from "../shared/types";
 export type TmuxAction = "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow";
 
 export interface KeyBinding {
-	/** Matches KeyboardEvent.key exactly (case-sensitive). */
-	key: string;
+	/**
+	 * Matches KeyboardEvent.code (e.g. "KeyW", "KeyD", "BracketLeft").
+	 * Using code instead of key ensures stability across modifier combinations
+	 * and WKWebView's key normalization quirks.
+	 */
+	code: string;
 	meta?: boolean;
 	ctrl?: boolean;
+	shift?: boolean;
 	action: TmuxAction;
 }
 
 export const TERMINAL_KEYMAPS: Record<TerminalKeymapPreset, KeyBinding[]> = {
-	// Convenient default: only Cmd+W to kill pane; splits/zoom via UI buttons.
-	"dev3": [
-		{ key: "w", meta: true, action: "killPane" },
-	],
+	// No app-level shortcuts — matches the state before this feature was added.
+	"dev3": [],
 
 	// Mirrors iTerm2's standard pane & tab shortcuts.
-	// Note: Cmd+Shift+D produces e.key="D" (uppercase).
 	"iterm2": [
-		{ key: "w", meta: true, action: "killPane" },
-		{ key: "d", meta: true, action: "splitV" },
-		{ key: "D", meta: true, action: "splitH" },
-		{ key: "t", meta: true, action: "newWindow" },
-		{ key: "]", meta: true, action: "nextPane" },
-		{ key: "[", meta: true, action: "prevPane" },
+		{ code: "KeyW", meta: true, action: "killPane" },
+		{ code: "KeyD", meta: true, shift: false, action: "splitV" },
+		{ code: "KeyD", meta: true, shift: true, action: "splitH" },
+		{ code: "KeyT", meta: true, action: "newWindow" },
+		{ code: "BracketRight", meta: true, action: "nextPane" },
+		{ code: "BracketLeft", meta: true, action: "prevPane" },
 	],
 
 	// No app-level shortcuts — everything via Ctrl+B prefix inside tmux.
