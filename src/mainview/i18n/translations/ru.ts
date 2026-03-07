@@ -392,8 +392,8 @@ const ru: TranslationRecord & Record<string, string> = {
 
 	// Status labels
 	"status.todo": "К выполнению",
-	"status.inProgress": "В работе",
-	"status.userQuestions": "Вопросы пользователя",
+	"status.inProgress": "Агент работает",
+	"status.userQuestions": "Ждём вас",
 	"status.reviewByAi": "Ревью ИИ (unimplemented)",
 	"status.reviewByUser": "Ревью пользователя",
 	"status.completed": "Завершено",

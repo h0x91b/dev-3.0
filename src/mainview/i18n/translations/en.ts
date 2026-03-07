@@ -382,8 +382,8 @@ const en = {
 
 	// Status labels
 	"status.todo": "To Do",
-	"status.inProgress": "In Progress",
-	"status.userQuestions": "User Questions",
+	"status.inProgress": "Agent is Working",
+	"status.userQuestions": "Waiting for You",
 	"status.reviewByAi": "Review by AI (unimplemented)",
 	"status.reviewByUser": "Review by User",
 	"status.completed": "Completed",

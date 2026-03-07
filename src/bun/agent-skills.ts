@@ -47,9 +47,9 @@ Run this ONCE at session start, before doing any other work.
 
 1. **Start of every turn** — run \`~/.dev3.0/bin/dev3 task move --status in-progress\` when you receive a message and begin working.
 2. **End of every turn** — before your final response, you MUST move the task to one of exactly two states:
-   - **\`user-questions\`** — you need user input, clarification, or the ball is on the user's side for any reason. **This is the default if the task is not yet complete.**
+   - **\`user-questions\`** — you need user input, clarification, or the ball is on the user's side for any reason. **This is the default if the task is not yet complete.** (shown in UI as "Waiting for You")
    - **\`review-by-user\`** — you believe the task is fully complete from your side.
-3. **\`in-progress\` is transient** — it MUST NEVER remain after you finish responding. It only exists while you are actively working.
+3. **\`in-progress\` is transient** — it MUST NEVER remain after you finish responding. It only exists while you are actively working. (shown in UI as "Agent is Working")
 
 ### Rules:
 

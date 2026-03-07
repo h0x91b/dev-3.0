@@ -39,8 +39,8 @@ export const ALL_STATUSES: TaskStatus[] = [
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
 	todo: "To Do",
-	"in-progress": "In Progress",
-	"user-questions": "User Questions",
+	"in-progress": "Agent is Working",
+	"user-questions": "Waiting for You",
 	"review-by-ai": "Review by AI",
 	"review-by-user": "Review by User",
 	completed: "Completed",

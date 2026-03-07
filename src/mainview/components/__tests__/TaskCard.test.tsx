@@ -314,7 +314,7 @@ describe("TaskCard", () => {
 
 			await user.click(screen.getByText("To Do"));
 
-			expect(screen.getByText("In Progress")).toBeInTheDocument();
+			expect(screen.getByText("Agent is Working")).toBeInTheDocument();
 			expect(screen.getByText("Cancelled")).toBeInTheDocument();
 		});
 
@@ -325,7 +325,7 @@ describe("TaskCard", () => {
 			renderCard(task, { onLaunchVariants });
 
 			await user.click(screen.getByText("To Do"));
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
 		});
@@ -380,12 +380,12 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 
 			expect(screen.getByText("To Do")).toBeInTheDocument();
 			expect(screen.getByText("Completed")).toBeInTheDocument();
 			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("User Questions")).toBeInTheDocument();
+			expect(screen.getByText("Waiting for You")).toBeInTheDocument();
 		});
 
 		it("in-progress task does not show Run button", () => {
@@ -398,10 +398,10 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			expect(screen.getByText("Move to")).toBeInTheDocument();
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			expect(screen.queryByText("Move to")).not.toBeInTheDocument();
 		});
 	});
@@ -660,7 +660,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch, onTaskMoved });
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Completed"));
 
 			await waitFor(() => {
@@ -693,7 +693,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch });
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Cancelled"));
 
 			await waitFor(() => {
@@ -717,8 +717,8 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch, onTaskMoved });
 
-			await user.click(screen.getByText("User Questions"));
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Waiting for You"));
+			await user.click(screen.getByText("Agent is Working"));
 
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
@@ -749,8 +749,8 @@ describe("TaskCard", () => {
 
 			renderCard(task);
 
-			await user.click(screen.getByText("User Questions"));
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Waiting for You"));
+			await user.click(screen.getByText("Agent is Working"));
 
 			await waitFor(() => {
 				expect(window.alert).toHaveBeenCalledWith(expect.stringContaining("second"));
@@ -905,7 +905,7 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			expect(screen.getByText("Move to")).toBeInTheDocument();
 
 			// Click outside the menu
