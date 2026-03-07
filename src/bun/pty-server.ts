@@ -175,6 +175,12 @@ export function hasSession(taskId: string): boolean {
 	return sessions.has(taskId);
 }
 
+/** Returns true if the session is registered but its process has exited. */
+export function hasDeadSession(taskId: string): boolean {
+	const session = sessions.get(taskId);
+	return !!session && session.proc === null;
+}
+
 export function capturePane(taskId: string): string | null {
 	const session = sessions.get(taskId);
 	const socket = session?.tmuxSocket ?? null;

@@ -1282,6 +1282,15 @@ export const handlers = {
 			ptyPort: pty.getPtyPort(),
 		});
 
+		// If resuming and the session is dead (proc exited but still in map),
+		// destroy it so launchTaskPty recreates it with the resume flag.
+		if (params.resume && pty.hasDeadSession(params.taskId)) {
+			log.info("Resume requested on dead session — destroying to force recreation", {
+				taskId: params.taskId.slice(0, 8),
+			});
+			pty.destroySession(params.taskId);
+		}
+
 		// If no PTY session in memory, try to recreate it from persisted task data
 		if (!pty.hasSession(params.taskId)) {
 			log.info("No PTY session in memory, attempting to restore", {
