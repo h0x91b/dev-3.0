@@ -476,6 +476,23 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		return () => document.removeEventListener("keydown", handleKeydown);
 	}, []);
 
+	// Cmd+W (macOS) / Ctrl+W (Linux/Windows): kill the active tmux pane.
+	// Uses capture phase so ghostty-web can't swallow the event.
+	// Only fires when the terminal container (or something inside it) has focus,
+	// to avoid accidental kills while the user is typing in other UI fields.
+	useEffect(() => {
+		function handleKeydown(e: KeyboardEvent) {
+			if (!((e.metaKey || e.ctrlKey) && e.key === "w")) return;
+			const container = containerRef.current;
+			if (!container || !container.contains(document.activeElement) && document.activeElement !== container) return;
+			e.preventDefault();
+			e.stopPropagation();
+			api.request.tmuxAction({ taskId, action: "killPane" }).catch(() => {});
+		}
+		window.addEventListener("keydown", handleKeydown, { capture: true });
+		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });
+	}, [taskId]);
+
 	// When the page becomes visible again (e.g. user returns from another
 	// app or switches back to this tab), trigger a resize dance to force
 	// tmux to fully redraw. This fixes display glitches (row offsets,

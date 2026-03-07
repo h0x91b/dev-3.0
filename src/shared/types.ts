@@ -518,7 +518,7 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			tmuxAction: {
-				params: { taskId: string; action: "splitH" | "splitV" | "zoom" };
+				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" };
 				response: void;
 			};
 			pasteClipboardImage: {

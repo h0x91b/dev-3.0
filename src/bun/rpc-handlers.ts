@@ -1705,7 +1705,7 @@ export const handlers = {
 		return updated;
 	},
 
-	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" }): Promise<void> {
+	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
 		const socket = pty.getSessionSocket(params.taskId) ?? null;
 		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
@@ -1720,6 +1720,9 @@ export const handlers = {
 				break;
 			case "zoom":
 				args = pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession);
+				break;
+			case "killPane":
+				args = pty.tmuxArgs(socket, "kill-pane", "-t", tmuxSession);
 				break;
 		}
 
