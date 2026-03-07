@@ -313,7 +313,7 @@ const ru: TranslationRecord & Record<string, string> = {
 
 	// Changelog
 	"header.changelog": "Журнал изменений",
-	"header.changelogLabel": "Лог",
+	"header.changelogLabel": "Change Log",
 	"header.changelogTooltip": "Журнал изменений",
 	"header.githubTooltip": "Сайт проекта",
 	"header.reportBugTooltip": "Сообщить об ошибке",
