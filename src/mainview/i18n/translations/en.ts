@@ -388,7 +388,7 @@ const en = {
 	"status.inProgress": "Agent is Working",
 	"status.userQuestions": "Waiting for You",
 	"status.reviewByAi": "Review by AI (unimplemented)",
-	"status.reviewByUser": "Review by User",
+	"status.reviewByUser": "Review by You",
 	"status.completed": "Completed",
 	"status.cancelled": "Cancelled",
 

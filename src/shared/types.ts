@@ -23,16 +23,16 @@ export type TaskStatus =
 export const ACTIVE_STATUSES: TaskStatus[] = [
 	"in-progress",
 	"user-questions",
-	"review-by-user",
 	"review-by-ai",
+	"review-by-user",
 ];
 
 export const ALL_STATUSES: TaskStatus[] = [
 	"todo",
 	"in-progress",
 	"user-questions",
-	"review-by-user",
 	"review-by-ai",
+	"review-by-user",
 	"completed",
 	"cancelled",
 ];
@@ -42,7 +42,7 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 	"in-progress": "Agent is Working",
 	"user-questions": "Waiting for You",
 	"review-by-ai": "Review by AI",
-	"review-by-user": "Review by User",
+	"review-by-user": "Review by You",
 	completed: "Completed",
 	cancelled: "Cancelled",
 };
