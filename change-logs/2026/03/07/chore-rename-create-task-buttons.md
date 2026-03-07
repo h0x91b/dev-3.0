@@ -1,0 +1,1 @@
+Renamed "Create" / "Create & Run" buttons in the task creation modal to "Save" / "Save & Start" across all three locales (en, ru, es). Updated keyboard shortcut hints and test descriptions accordingly.
