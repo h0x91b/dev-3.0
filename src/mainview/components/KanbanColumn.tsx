@@ -33,6 +33,9 @@ interface KanbanColumnProps {
 	isCustomColumn?: boolean;
 	customColumnId?: string;
 	colorOverride?: string;
+	isDraggedColumn?: boolean;
+	onColumnDragStart?: () => void;
+	onColumnDragEnd?: () => void;
 }
 
 function KanbanColumn({
@@ -61,6 +64,9 @@ function KanbanColumn({
 	isCustomColumn,
 	customColumnId,
 	colorOverride,
+	isDraggedColumn,
+	onColumnDragStart,
+	onColumnDragEnd,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -160,7 +166,7 @@ function KanbanColumn({
 					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
 						? "border-edge-active"
 						: "border-transparent"
-			}`}
+			} ${isDraggedColumn ? "opacity-40" : ""}`}
 			style={{ "--col-rgb": hexToRgb(color) } as React.CSSProperties}
 			onDragOver={handleDragOver}
 			onDragEnter={handleDragEnter}
@@ -174,6 +180,32 @@ function KanbanColumn({
 			>
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2.5">
+						{isCustomColumn && (
+							<div
+								className="cursor-grab active:cursor-grabbing text-fg-muted hover:text-fg-3 flex-shrink-0 select-none"
+								draggable
+								onDragStart={(e) => {
+									e.stopPropagation();
+									e.dataTransfer.setData("dev3/column", customColumnId ?? "");
+									e.dataTransfer.effectAllowed = "move";
+									onColumnDragStart?.();
+								}}
+								onDragEnd={(e) => {
+									e.stopPropagation();
+									onColumnDragEnd?.();
+								}}
+								title="Drag to reorder"
+							>
+								<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+									<circle cx="4" cy="3" r="1.2" />
+									<circle cx="8" cy="3" r="1.2" />
+									<circle cx="4" cy="6" r="1.2" />
+									<circle cx="8" cy="6" r="1.2" />
+									<circle cx="4" cy="9" r="1.2" />
+									<circle cx="8" cy="9" r="1.2" />
+								</svg>
+							</div>
+						)}
 						<div
 							className="w-3 h-3 rounded-full flex-shrink-0"
 							style={{ background: color }}

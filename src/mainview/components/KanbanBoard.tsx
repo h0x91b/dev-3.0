@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
+
+// Built-in statuses before custom columns
+const STATUSES_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
+// Built-in statuses after custom columns
+const STATUSES_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled"];
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
 import { api } from "../rpc";
@@ -41,6 +46,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	const [searchQuery, setSearchQuery] = useState("");
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const moveCounterRef = useRef(0);
+	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
+	const [columnDropIndex, setColumnDropIndex] = useState<number | null>(null);
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
@@ -252,6 +259,40 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 	}
 
+	function handleColumnDragStart(colId: string) {
+		setDraggedColumnId(colId);
+	}
+
+	function handleColumnDragOver(e: React.DragEvent, index: number) {
+		if (!draggedColumnId) return;
+		e.preventDefault();
+		e.stopPropagation();
+		setColumnDropIndex(index);
+	}
+
+	function handleColumnDrop(index: number) {
+		if (!draggedColumnId) return;
+		const cols = [...customColumns];
+		const fromIndex = cols.findIndex((c) => c.id === draggedColumnId);
+		if (fromIndex === -1) return;
+		const [moved] = cols.splice(fromIndex, 1);
+		const insertAt = index > fromIndex ? index - 1 : index;
+		cols.splice(insertAt, 0, moved);
+		setDraggedColumnId(null);
+		setColumnDropIndex(null);
+		const reordered = cols.map((c) => c.id);
+		// Optimistic update via dispatch
+		dispatch({ type: "updateProject", project: { ...project, customColumns: cols } });
+		api.request.reorderCustomColumns({ projectId: project.id, columnIds: reordered }).catch((err) => {
+			alert(`Failed to reorder columns: ${String(err)}`);
+		});
+	}
+
+	function handleColumnDragEnd() {
+		setDraggedColumnId(null);
+		setColumnDropIndex(null);
+	}
+
 	// Custom column tasks
 	const tasksByCustomColumn = new Map<string, Task[]>();
 	for (const col of customColumns) {
@@ -291,7 +332,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				onSearchChange={setSearchQuery}
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-8 overflow-x-scroll overflow-y-hidden kanban-scroll">
-				{ALL_STATUSES.map((status) => (
+				{STATUSES_BEFORE_CUSTOM.map((status) => (
 					<KanbanColumn
 						key={status}
 						status={status}
@@ -320,13 +361,72 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 					/>
 				))}
 
-				{/* Custom columns */}
-				{customColumns.map((col) => (
+				{/* Custom columns with drop zones for reordering */}
+				{customColumns.map((col, index) => (
+					<div key={col.id} className="flex items-stretch">
+						{/* Drop zone before this column */}
+						<div
+							className={`rounded transition-all duration-150 self-stretch ${
+								columnDropIndex === index && draggedColumnId && draggedColumnId !== col.id
+									? "w-2 mx-1 bg-accent/60"
+									: "w-0"
+							}`}
+							onDragOver={(e) => handleColumnDragOver(e, index)}
+							onDrop={() => handleColumnDrop(index)}
+						/>
+						<KanbanColumn
+							status="todo"
+							label={col.name}
+							tasks={tasksByCustomColumn.get(col.id) || []}
+							project={project}
+							dispatch={dispatch}
+							navigate={navigate}
+							onAddTask={() => setShowCreateModal(true)}
+							agents={agents}
+							onLaunchVariants={(task, targetStatus) =>
+								setLaunchModal({ task, targetStatus })
+							}
+							onTaskDrop={handleTaskDrop}
+							onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
+							onReorderTask={handleReorderTask}
+							dragFromStatus={dragFromStatus}
+							dragFromCustomColumnId={dragFromCustomColumnId}
+							onDragStart={handleDragStart}
+							onTaskMoved={recordMove}
+							bellCounts={bellCounts}
+							activeTaskId={activeTaskId}
+							draggedTaskId={draggedTaskId}
+							movingTaskIds={movingTaskIds}
+							siblingMap={siblingMap}
+							isCustomColumn
+							customColumnId={col.id}
+							colorOverride={col.color}
+							isDraggedColumn={draggedColumnId === col.id}
+							onColumnDragStart={() => handleColumnDragStart(col.id)}
+							onColumnDragEnd={handleColumnDragEnd}
+						/>
+					</div>
+				))}
+
+				{/* Drop zone after the last custom column (before completed) */}
+				{customColumns.length > 0 && (
+					<div
+						className={`rounded transition-all duration-150 self-stretch ${
+							columnDropIndex === customColumns.length && draggedColumnId
+								? "w-2 bg-accent/60"
+								: "w-0"
+						}`}
+						onDragOver={(e) => handleColumnDragOver(e, customColumns.length)}
+						onDrop={() => handleColumnDrop(customColumns.length)}
+					/>
+				)}
+
+				{STATUSES_AFTER_CUSTOM.map((status) => (
 					<KanbanColumn
-						key={col.id}
-						status="todo"
-						label={col.name}
-						tasks={tasksByCustomColumn.get(col.id) || []}
+						key={status}
+						status={status}
+						label={t(statusKey(status))}
+						tasks={tasksByStatus.get(status) || []}
 						project={project}
 						dispatch={dispatch}
 						navigate={navigate}
@@ -336,7 +436,6 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 							setLaunchModal({ task, targetStatus })
 						}
 						onTaskDrop={handleTaskDrop}
-						onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
 						onReorderTask={handleReorderTask}
 						dragFromStatus={dragFromStatus}
 						dragFromCustomColumnId={dragFromCustomColumnId}
@@ -347,9 +446,6 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						draggedTaskId={draggedTaskId}
 						movingTaskIds={movingTaskIds}
 						siblingMap={siblingMap}
-						isCustomColumn
-						customColumnId={col.id}
-						colorOverride={col.color}
 					/>
 				))}
 			</div>

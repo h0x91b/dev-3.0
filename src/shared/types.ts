@@ -370,6 +370,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; customColumnId: string | null };
 				response: Task;
 			};
+			reorderCustomColumns: {
+				params: { projectId: string; columnIds: string[] };
+				response: Project;
+			};
 			addProject: {
 				params: { path: string; name: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };

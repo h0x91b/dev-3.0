@@ -2017,9 +2017,41 @@ export const handlers = {
 			const column = (project.customColumns ?? []).find((c) => c.id === params.customColumnId);
 			if (!column) throw new Error(`Custom column not found: ${params.customColumnId}`);
 		}
+		const task = await data.getTask(project, params.taskId);
+
+		// Moving from completed/cancelled into a custom column resumes the task (same as reopening to an active status)
+		if (params.customColumnId !== null && (task.status === "completed" || task.status === "cancelled")) {
+			log.info("Reopening task into custom column, creating worktree + PTY", { taskId: task.id });
+			const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
+			await runCowClones(project, wt.worktreePath);
+			await launchTaskPty(project, { ...task, description: "" }, wt.worktreePath, undefined, undefined, true, true);
+			const updated = await data.updateTask(project, task.id, {
+				status: "in-progress",
+				worktreePath: wt.worktreePath,
+				branchName: wt.branchName,
+				customColumnId: params.customColumnId,
+			});
+			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("← moveTaskToCustomColumn done (reopened)", { taskId: params.taskId });
+			return updated;
+		}
+
 		const updated = await data.updateTask(project, params.taskId, { customColumnId: params.customColumnId });
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 		log.info("← moveTaskToCustomColumn done", { taskId: params.taskId, customColumnId: params.customColumnId });
+		return updated;
+	},
+
+	async reorderCustomColumns(params: { projectId: string; columnIds: string[] }): Promise<Project> {
+		log.info("→ reorderCustomColumns", { projectId: params.projectId, columnIds: params.columnIds });
+		const project = await data.getProject(params.projectId);
+		const existing = project.customColumns ?? [];
+		const reordered = params.columnIds
+			.map((id) => existing.find((c) => c.id === id))
+			.filter((c): c is CustomColumn => c !== undefined);
+		const updated = await data.updateProject(params.projectId, { customColumns: reordered });
+		pushMessage?.("projectUpdated", { project: updated });
+		log.info("← reorderCustomColumns done", { count: reordered.length });
 		return updated;
 	},
 

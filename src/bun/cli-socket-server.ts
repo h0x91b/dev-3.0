@@ -346,7 +346,19 @@ const handlers: Record<string, Handler> = {
 		const customColumns = project.customColumns ?? [];
 		const customColumn = customColumns.find((c: CustomColumn) => c.id === newStatus || c.id.startsWith(newStatus));
 		if (customColumn) {
-			// Move to custom column (no status change, no worktree lifecycle)
+			// Moving from completed/cancelled into a custom column resumes the task
+			if (task.status === "completed" || task.status === "cancelled") {
+				const wt = await git.createWorktree(project, task);
+				await launchTaskPty(project, { ...task, description: "" }, wt.worktreePath, undefined, undefined, true, true);
+				const updated = await data.updateTask(project, task.id, {
+					status: "in-progress",
+					worktreePath: wt.worktreePath,
+					branchName: wt.branchName,
+					customColumnId: customColumn.id,
+				});
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				return updated;
+			}
 			const updated = await data.updateTask(project, task.id, { customColumnId: customColumn.id });
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			return updated;
