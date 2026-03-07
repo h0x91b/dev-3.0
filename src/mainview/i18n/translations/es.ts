@@ -88,6 +88,14 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.zoom": "Zoom",
 	"settings.zoomDesc": "Escalar toda la interfaz",
 	"settings.zoomReset": "Restablecer",
+	"settings.terminalKeymap": "Mapa de teclas del terminal",
+	"settings.terminalKeymapDesc": "Atajos activos cuando el terminal tiene el foco",
+	"settings.keymapDev3": "Conveniente",
+	"settings.keymapDev3Desc": "Sin atajos — usa los botones UI o Ctrl+B",
+	"settings.keymapIterm2": "iTerm2",
+	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
+	"settings.keymapTmuxNative": "tmux nativo",
+	"settings.keymapTmuxNativeDesc": "Sin atajos, usa Ctrl+B",
 
 	// AddProjectModal
 	"addProject.title": "Agregar proyecto",

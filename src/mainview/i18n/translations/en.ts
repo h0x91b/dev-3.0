@@ -86,6 +86,14 @@ const en = {
 	"settings.zoom": "Zoom",
 	"settings.zoomDesc": "Scale the entire UI",
 	"settings.zoomReset": "Reset",
+	"settings.terminalKeymap": "Terminal Keymap",
+	"settings.terminalKeymapDesc": "Keyboard shortcuts active when the terminal has focus",
+	"settings.keymapDev3": "Convenient",
+	"settings.keymapDev3Desc": "No shortcuts — use UI buttons or Ctrl+B",
+	"settings.keymapIterm2": "iTerm2",
+	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
+	"settings.keymapTmuxNative": "Native tmux",
+	"settings.keymapTmuxNativeDesc": "No shortcuts, use Ctrl+B",
 
 	// AddProjectModal
 	"addProject.title": "Add Project",
