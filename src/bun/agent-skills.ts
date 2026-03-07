@@ -58,25 +58,6 @@ Run this ONCE at session start, before doing any other work.
 ## Notes (per-task scratchpad)
 
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
-
-## Labels
-
-Use labels to categorize tasks. Labels are project-scoped — create them once, apply to many tasks.
-
-- \`dev3 label list\` — list all labels in the project
-- \`dev3 label create "bug"\` — create a new label (auto-assigns a color)
-- \`dev3 label set <label-id>\` — assign label(s) to the current task
-- \`dev3 label set --clear\` — remove all labels from the current task
-- \`dev3 label delete <label-id>\` — delete a label (removes from all tasks)
-- \`dev3 tasks list --label <label-id>\` — filter tasks by label
-
-## Task title
-
-If the task title is unclear or auto-generated (e.g., a truncated message or a bare link), update it once you understand the task: \`dev3 task update --title "Clear description"\`.
-
-## @file syntax
-
-For long content (descriptions, notes), use \`@path\` to read from a file: \`dev3 note add @findings.md\`.
 `;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
@@ -90,10 +71,6 @@ user-invocable: true
 ---
 
 ${SKILL_BODY}
-## Skill loaded at
-
-!\`date '+%Y-%m-%d %H:%M:%S %Z'\`
-
 ## Status (auto-set on skill load)
 
 !\`~/.dev3.0/bin/dev3 task move --status in-progress 2>&1\`
