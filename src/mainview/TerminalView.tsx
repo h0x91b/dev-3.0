@@ -3,6 +3,7 @@ import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
+import { TERMINAL_KEYMAPS, getKeymapPreset } from "./terminal-keymaps";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -476,18 +477,26 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		return () => document.removeEventListener("keydown", handleKeydown);
 	}, []);
 
-	// Cmd+W (macOS) / Ctrl+W (Linux/Windows): kill the active tmux pane.
-	// Uses capture phase so ghostty-web can't swallow the event.
-	// Only fires when the terminal container (or something inside it) has focus,
-	// to avoid accidental kills while the user is typing in other UI fields.
+	// Terminal keymap shortcuts (configurable preset).
+	// Uses capture phase so ghostty-web can't swallow the events.
+	// Only fires when the terminal container has focus, to avoid
+	// accidental triggers while typing in other UI fields.
 	useEffect(() => {
 		function handleKeydown(e: KeyboardEvent) {
-			if (!((e.metaKey || e.ctrlKey) && e.key === "w")) return;
 			const container = containerRef.current;
-			if (!container || !container.contains(document.activeElement) && document.activeElement !== container) return;
+			if (!container) return;
+			if (!container.contains(document.activeElement) && document.activeElement !== container) return;
+
+			const preset = getKeymapPreset();
+			const bindings = TERMINAL_KEYMAPS[preset] ?? [];
+			const binding = bindings.find(
+				(b) => b.key === e.key && !!b.meta === e.metaKey && !!b.ctrl === e.ctrlKey,
+			);
+			if (!binding) return;
+
 			e.preventDefault();
 			e.stopPropagation();
-			api.request.tmuxAction({ taskId, action: "killPane" }).catch(() => {});
+			api.request.tmuxAction({ taskId, action: binding.action }).catch(() => {});
 		}
 		window.addEventListener("keydown", handleKeydown, { capture: true });
 		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });

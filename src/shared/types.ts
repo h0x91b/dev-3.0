@@ -149,12 +149,15 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 	},
 ];
 
+export type TerminalKeymapPreset = "dev3" | "iterm2" | "tmux-native";
+
 export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
 	cloneBaseDirectory?: string;
+	terminalKeymap?: TerminalKeymapPreset;
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
@@ -518,7 +521,7 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			tmuxAction: {
-				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" };
+				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" };
 				response: void;
 			};
 			pasteClipboardImage: {
