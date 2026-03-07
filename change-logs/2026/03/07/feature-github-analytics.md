@@ -1,0 +1,1 @@
+Added Google Analytics (gtag.js) to the GitHub Pages landing page using the same GA4 measurement ID as the desktop app. Added a visitor counter badge (hits.seeyoufarm.com) to the bottom of README.md for basic view tracking on the GitHub repo page.

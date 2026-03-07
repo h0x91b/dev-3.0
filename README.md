@@ -118,3 +118,9 @@ See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.
 ## License
 
 [Apache 2.0](LICENSE) — © 2026 Arseny Pavlenko
+
+---
+
+<p align="center">
+  <img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Fh0x91b%2Fdev-3.0&count_bg=%234496ff&title_bg=%23555555&icon=github.svg&icon_color=%23E7E7E7&title=views&edge_flat=true" alt="Views">
+</p>
