@@ -207,4 +207,58 @@ describe("TaskTerminal", () => {
 			});
 		});
 	});
+
+	describe("Resume Session button", () => {
+		it("shows Resume Session button on session-ended error", async () => {
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeExists.mockResolvedValue(true);
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			});
+		});
+
+		it("calls getPtyUrl with resume: true when clicking Resume Session", async () => {
+			const user = userEvent.setup();
+			// Both calls fail — we only care that the second call has resume: true
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeExists.mockResolvedValue(true);
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await user.click(screen.getByText("Resume Session"));
+			});
+
+			expect(mockedApi.request.getPtyUrl).toHaveBeenLastCalledWith({
+				taskId: "t1",
+				resume: true,
+			});
+		});
+
+		it("does not show Resume Session button when worktree is gone", async () => {
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeExists.mockResolvedValue(false);
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText(/Cancel Task/i)).toBeInTheDocument();
+			});
+
+			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
+		});
+	});
 });

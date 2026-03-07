@@ -219,7 +219,7 @@ const en = {
 	"terminal.cancelTask": "Cancel Task",
 	"terminal.sessionEnded": "Terminal session ended",
 	"terminal.sessionEndedDesc": "The terminal process has exited. The worktree and all files are still intact.",
-	"terminal.resumeAgentSession": "Resume Agent Session",
+	"terminal.resumeAgentSession": "Resume Session",
 
 	// TaskInfoPanel
 	"infoPanel.taskNumber": "Task #",

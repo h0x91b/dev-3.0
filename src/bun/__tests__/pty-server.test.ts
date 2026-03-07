@@ -34,6 +34,7 @@ import {
 	createSession,
 	destroySession,
 	hasSession,
+	hasDeadSession,
 	capturePane,
 	getSessionProjectId,
 	getSessionSocket,
@@ -326,7 +327,41 @@ describe("pty-server", () => {
 		});
 	});
 
-	// ------- getSessionProjectId -------
+	// ------- hasDeadSession -------
+
+	describe("hasDeadSession", () => {
+		it("returns false for non-existing session", () => {
+			expect(hasDeadSession("nonexistent")).toBe(false);
+		});
+
+		it("returns false for a session with a live proc", () => {
+			const id = track("task-dead-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			// Proc was spawned immediately — should not be dead yet
+			expect(hasDeadSession(id)).toBe(false);
+		});
+
+		it("returns true after the proc exits", async () => {
+			let exitResolve!: (code: number) => void;
+			const exitPromise = new Promise<number>((resolve) => {
+				exitResolve = resolve;
+			});
+			mockSpawn.mockReturnValue(defaultSpawnReturn({ exited: exitPromise }) as any);
+
+			const id = track("task-dead-02");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+
+			expect(hasDeadSession(id)).toBe(false);
+
+			exitResolve(0);
+			await new Promise((r) => setTimeout(r, 10));
+
+			expect(hasSession(id)).toBe(true); // still in map
+			expect(hasDeadSession(id)).toBe(true); // but proc is gone
+		});
+	});
+
+		// ------- getSessionProjectId -------
 
 	describe("getSessionProjectId", () => {
 		it("returns project ID for existing session", () => {

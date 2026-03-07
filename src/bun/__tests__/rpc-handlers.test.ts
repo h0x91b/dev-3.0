@@ -47,6 +47,7 @@ vi.mock("../pty-server", () => ({
 	createSession: vi.fn(),
 	destroySession: vi.fn(),
 	hasSession: vi.fn(),
+	hasDeadSession: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
 	getSessionSocket: vi.fn(() => null),
@@ -1534,6 +1535,50 @@ describe("handlers.getPtyUrl", () => {
 		expect(url).toContain("session=task-1");
 		// Should not attempt launchTaskPty for completed task
 		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("destroys dead session and relaunches with resume flag", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+
+		// Session exists in map but proc is dead; after destroySession, hasSession returns false
+		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
+		vi.mocked(pty.hasSession).mockReturnValue(false); // reflects state after destroy
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const url = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
+
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(url).toContain("session=task-1");
+		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("does not destroy session when resume=true but session is alive", async () => {
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+
+		const url = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
+
+		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(url).toBe("ws://localhost:9999?session=task-1");
+	});
+
+	it("does not destroy dead session when resume is not set", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+
+		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(pty.destroySession).not.toHaveBeenCalled();
 	});
 });
 

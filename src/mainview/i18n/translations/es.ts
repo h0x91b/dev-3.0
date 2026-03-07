@@ -222,7 +222,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"terminal.cancelTask": "Cancelar tarea",
 	"terminal.sessionEnded": "Sesión de terminal finalizada",
 	"terminal.sessionEndedDesc": "El proceso del terminal ha finalizado. El worktree y todos los archivos están intactos.",
-	"terminal.resumeAgentSession": "Reanudar sesión del agente",
+	"terminal.resumeAgentSession": "Reanudar sesión",
 
 	// TaskInfoPanel
 	"infoPanel.taskNumber": "Tarea #",
