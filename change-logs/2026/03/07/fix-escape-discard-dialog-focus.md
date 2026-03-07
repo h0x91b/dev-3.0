@@ -1,0 +1,1 @@
+Pressing Escape when the discard confirmation is visible in CreateTaskModal now dismisses the confirmation (keep editing) instead of re-triggering it. Focus is automatically moved to the "Keep Editing" button when the confirmation appears, with a visible focus ring, so users can confirm or discard entirely with the keyboard.
