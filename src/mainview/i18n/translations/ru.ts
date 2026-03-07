@@ -398,7 +398,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"status.inProgress": "Агент работает",
 	"status.userQuestions": "Ждём вас",
 	"status.reviewByAi": "Ревью ИИ (unimplemented)",
-	"status.reviewByUser": "Ревью пользователя",
+	"status.reviewByUser": "Ревью вами",
 	"status.completed": "Завершено",
 	"status.cancelled": "Отменено",
 

@@ -382,7 +382,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Review by User"));
+			await user.click(screen.getByText("Review by You"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
 			expect(mockedApi.request.moveTask).toHaveBeenLastCalledWith({
@@ -411,7 +411,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Review by User"));
+			await user.click(screen.getByText("Review by You"));
 
 			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 			// alertSpy cleanup handled by clearAllMocks
