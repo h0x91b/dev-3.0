@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
@@ -1359,15 +1359,31 @@ export const handlers = {
 	async resolveFilename(params: { filename: string; size: number; lastModified: number }): Promise<string | null> {
 		// WKWebView doesn't expose native file paths via drag-and-drop.
 		// Use Spotlight (mdfind) to find the full path by filename.
-		const proc = spawnSync([
-			"mdfind",
-			"-onlyin", "/",
-			`kMDItemFSName == "${params.filename}"`,
-		]);
-		const output = proc.stdout.toString().trim();
-		if (!output) return null;
+		// Search only common user directories to avoid triggering macOS TCC
+		// permission prompts for protected folders (Music, Photos, etc.).
+		const home = homedir();
+		const searchDirs = [
+			`${home}/Desktop`,
+			`${home}/Downloads`,
+			`${home}/Documents`,
+			`${home}/Projects`,
+			`${home}/src`,
+			`${home}/dev`,
+			`${home}/work`,
+			`${home}/code`,
+			"/tmp",
+		].filter((d) => {
+			try { return statSync(d).isDirectory(); } catch { return false; }
+		});
 
-		const candidates = output.split("\n");
+		const query = `kMDItemFSName == "${params.filename}"`;
+		const candidates: string[] = [];
+		for (const dir of searchDirs) {
+			const proc = spawnSync(["mdfind", "-onlyin", dir, query]);
+			const out = proc.stdout.toString().trim();
+			if (out) candidates.push(...out.split("\n"));
+		}
+		if (candidates.length === 0) return null;
 		if (candidates.length === 1) return candidates[0];
 
 		// Multiple candidates — verify by size and lastModified

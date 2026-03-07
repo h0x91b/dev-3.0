@@ -1,0 +1,1 @@
+Limit mdfind search scope to common user directories (Desktop, Downloads, Documents, etc.) instead of scanning the entire filesystem, reducing unwanted macOS TCC permission prompts for protected folders like Music and Photos. Also added Info.plist usage description strings for Desktop, Downloads, and Documents access via Electrobun entitlements.
