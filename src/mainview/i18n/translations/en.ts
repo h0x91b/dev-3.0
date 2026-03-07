@@ -89,7 +89,7 @@ const en = {
 	"settings.terminalKeymap": "Terminal Keymap",
 	"settings.terminalKeymapDesc": "Keyboard shortcuts active when the terminal has focus",
 	"settings.keymapDev3": "Convenient",
-	"settings.keymapDev3Desc": "Cmd+W closes pane",
+	"settings.keymapDev3Desc": "No shortcuts — use UI buttons or Ctrl+B",
 	"settings.keymapIterm2": "iTerm2",
 	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
 	"settings.keymapTmuxNative": "Native tmux",

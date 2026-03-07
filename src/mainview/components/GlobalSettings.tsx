@@ -310,7 +310,7 @@ function GlobalSettings() {
 								description={t("settings.keymapDev3Desc")}
 								active={keymapPreset === "dev3"}
 								onClick={() => handleKeymapChange("dev3")}
-								icon="⌘W"
+								icon="—"
 							/>
 							<DropPositionCard
 								label={t("settings.keymapIterm2")}
