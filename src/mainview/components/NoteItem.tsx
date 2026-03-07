@@ -35,27 +35,28 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const insertPath = useCallback((path: string) => {
-		const el = textareaRef.current;
-		if (!el) {
-			const next = value + (value && !value.endsWith("\n") ? "\n" : "") + path + "\n";
-			setValue(next);
+		setValue((prev) => {
+			const el = textareaRef.current;
+			if (!el) {
+				const next = prev + (prev && !prev.endsWith("\n") ? "\n" : "") + path + "\n";
+				onSave(next);
+				return next;
+			}
+			const start = el.selectionStart;
+			const end = el.selectionEnd;
+			const prefix = start > 0 && prev[start - 1] !== "\n" ? "\n" : "";
+			const insert = prefix + path + "\n";
+			const next = prev.slice(0, start) + insert + prev.slice(end);
 			onSave(next);
-			return;
-		}
-		const start = el.selectionStart;
-		const end = el.selectionEnd;
-		const prefix = start > 0 && el.value[start - 1] !== "\n" ? "\n" : "";
-		const insert = prefix + path + "\n";
-		const next = el.value.slice(0, start) + insert + el.value.slice(end);
-		setValue(next);
-		onSave(next);
-		requestAnimationFrame(() => {
-			const pos = start + insert.length;
-			el.selectionStart = pos;
-			el.selectionEnd = pos;
-			el.focus();
+			requestAnimationFrame(() => {
+				const pos = start + insert.length;
+				el.selectionStart = pos;
+				el.selectionEnd = pos;
+				el.focus();
+			});
+			return next;
 		});
-	}, [value, onSave]);
+	}, [onSave]);
 
 	const { handlePaste, isPasting } = useImagePaste(projectId ?? "", insertPath);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(insertPath);

@@ -33,23 +33,23 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const projectLabels = project.labels ?? [];
 
 	const insertPathAtCursor = useCallback((path: string) => {
-		const el = textareaRef.current;
-		if (!el) {
-			setDescription((prev) => prev + (prev && !prev.endsWith("\n") ? "\n" : "") + path + "\n");
-			return;
-		}
-		const start = el.selectionStart;
-		const end = el.selectionEnd;
-		const val = el.value;
-		const prefix = start > 0 && val[start - 1] !== "\n" ? "\n" : "";
-		const insert = prefix + path + "\n";
-		const next = val.slice(0, start) + insert + val.slice(end);
-		setDescription(next);
-		requestAnimationFrame(() => {
-			const pos = start + insert.length;
-			el.selectionStart = pos;
-			el.selectionEnd = pos;
-			el.focus();
+		setDescription((prev) => {
+			const el = textareaRef.current;
+			if (!el) {
+				return prev + (prev && !prev.endsWith("\n") ? "\n" : "") + path + "\n";
+			}
+			const start = el.selectionStart;
+			const end = el.selectionEnd;
+			const prefix = start > 0 && prev[start - 1] !== "\n" ? "\n" : "";
+			const insert = prefix + path + "\n";
+			const next = prev.slice(0, start) + insert + prev.slice(end);
+			requestAnimationFrame(() => {
+				const pos = start + insert.length;
+				el.selectionStart = pos;
+				el.selectionEnd = pos;
+				el.focus();
+			});
+			return next;
 		});
 	}, []);
 
