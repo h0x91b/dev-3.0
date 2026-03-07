@@ -15,12 +15,12 @@ interface ActiveTasksSidebarProps {
 	onSwitchToBoard: () => void;
 }
 
-/** Status display order in the sidebar */
+/** Status display order: most actionable for the user first */
 const STATUS_ORDER: TaskStatus[] = [
-	"in-progress",
-	"user-questions",
-	"review-by-ai",
 	"review-by-user",
+	"user-questions",
+	"in-progress",
+	"review-by-ai",
 ];
 
 function ActiveTasksSidebar({
@@ -70,10 +70,8 @@ function ActiveTasksSidebar({
 					className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5"
 					title={t("sidebar.switchToBoard")}
 				>
-					{/* Kanban columns icon — three vertical bars of different heights */}
-					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h4v15H3zM10 4.5h4v10h-4zM17 4.5h4v13h-4z" />
-					</svg>
+					{/* Nerd Font: fa-columns (U+F0DB) */}
+					<span className="text-sm font-mono leading-none">{"\uF0DB"}</span>
 				</button>
 			</div>
 
