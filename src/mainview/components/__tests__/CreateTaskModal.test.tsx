@@ -77,14 +77,14 @@ describe("CreateTaskModal", () => {
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
 	});
 
-	it("shows Create & Run button when onCreateAndRun is provided", () => {
+	it("shows Save & Start button when onCreateAndRun is provided", () => {
 		renderModal({ onCreateAndRun: vi.fn() });
-		expect(screen.getByText("Create & Run")).toBeInTheDocument();
+		expect(screen.getByText("Save & Start")).toBeInTheDocument();
 	});
 
-	it("does not show Create & Run button when onCreateAndRun is omitted", () => {
+	it("does not show Save & Start button when onCreateAndRun is omitted", () => {
 		renderModal();
-		expect(screen.queryByText("Create & Run")).not.toBeInTheDocument();
+		expect(screen.queryByText("Save & Start")).not.toBeInTheDocument();
 	});
 
 	it("shows dual hint text when onCreateAndRun is provided", () => {
@@ -94,17 +94,17 @@ describe("CreateTaskModal", () => {
 
 	it("shows simple hint text when onCreateAndRun is omitted", () => {
 		renderModal();
-		expect(screen.getByText("\u2318Enter to create")).toBeInTheDocument();
+		expect(screen.getByText("\u2318Enter to save")).toBeInTheDocument();
 	});
 
-	it("Create & Run creates task and calls onCreateAndRun", async () => {
+	it("Save & Start creates task and calls onCreateAndRun", async () => {
 		const onCreateAndRun = vi.fn();
 		const dispatch = vi.fn();
 		renderModal({ onCreateAndRun, dispatch });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "My new task");
-		await userEvent.click(screen.getByText("Create & Run"));
+		await userEvent.click(screen.getByText("Save & Start"));
 
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
@@ -116,14 +116,14 @@ describe("CreateTaskModal", () => {
 		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
 	});
 
-	it("plain Create still calls onClose", async () => {
+	it("plain Save still calls onClose", async () => {
 		const onClose = vi.fn();
 		const onCreateAndRun = vi.fn();
 		renderModal({ onClose, onCreateAndRun });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "My new task");
-		await userEvent.click(screen.getByText("Create"));
+		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
 			expect(onClose).toHaveBeenCalled();
@@ -131,7 +131,7 @@ describe("CreateTaskModal", () => {
 		expect(onCreateAndRun).not.toHaveBeenCalled();
 	});
 
-	it("Cmd+Shift+Enter triggers Create & Run", async () => {
+	it("Cmd+Shift+Enter triggers Save & Start", async () => {
 		const onCreateAndRun = vi.fn();
 		renderModal({ onCreateAndRun });
 
@@ -144,7 +144,7 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("Cmd+Enter triggers plain Create, not Create & Run", async () => {
+	it("Cmd+Enter triggers plain Save, not Save & Start", async () => {
 		const onClose = vi.fn();
 		const onCreateAndRun = vi.fn();
 		renderModal({ onClose, onCreateAndRun });
@@ -172,7 +172,7 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("Ctrl+Shift+Enter triggers Create & Run (Linux/Windows)", async () => {
+	it("Ctrl+Shift+Enter triggers Save & Start (Linux/Windows)", async () => {
 		const onCreateAndRun = vi.fn();
 		renderModal({ onCreateAndRun });
 
@@ -344,7 +344,7 @@ describe("CreateTaskModal", () => {
 		// Type description and create
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "Continue login");
-		await userEvent.click(screen.getByText("Create"));
+		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
@@ -361,7 +361,7 @@ describe("CreateTaskModal", () => {
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "New task");
-		await userEvent.click(screen.getByText("Create"));
+		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
