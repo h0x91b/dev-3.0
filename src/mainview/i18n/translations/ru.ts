@@ -261,6 +261,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"infoPanel.createPRFailed": "Не удалось создать PR: {error}",
 	"infoPanel.createPRDisabledNoCommits": "Нет коммитов для создания PR",
 	"infoPanel.createPRDisabledNotPushed": "Сначала сделайте Push",
+	"infoPanel.pushAndCreatePR": "Push & Create PR",
+	"infoPanel.pushingAndCreatingPR": "Пушим...",
 	"infoPanel.showDiff": "Show Diff",
 	"infoPanel.showDiffFailed": "Ошибка показа diff: {error}",
 	"infoPanel.showDiffTooltip": "Показать diff vs {branch}",

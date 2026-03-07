@@ -253,6 +253,8 @@ const en = {
 	"infoPanel.createPRFailed": "Create PR failed: {error}",
 	"infoPanel.createPRDisabledNoCommits": "No commits to create PR for",
 	"infoPanel.createPRDisabledNotPushed": "Push first before creating a PR",
+	"infoPanel.pushAndCreatePR": "Push & Create PR",
+	"infoPanel.pushingAndCreatingPR": "Pushing...",
 	"infoPanel.showDiff": "Show Diff",
 	"infoPanel.showDiffFailed": "Show diff failed: {error}",
 	"infoPanel.showDiffTooltip": "Show diff vs {branch}",
