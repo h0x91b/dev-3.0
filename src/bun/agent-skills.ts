@@ -9,7 +9,7 @@ const SKILL_CONTENT = `---
 name: dev3
 description: "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command."
 user-invocable: true
-allowed-tools: Bash(~/.dev3.0/bin/dev3*)
+allowed-tools: Bash(~/.dev3.0/bin/dev3 *)
 ---
 
 # dev3 — Task Lifecycle Protocol
@@ -162,6 +162,43 @@ function installAgentsMd(): void {
 	}
 }
 
+const CLAUDE_BASH_PERMISSION = "Bash(~/.dev3.0/bin/dev3 *)";
+
+/**
+ * Ensure ~/.claude/settings.json has the dev3 CLI in permissions.allow
+ * so Claude Code never prompts for approval on dev3 commands.
+ */
+function ensureClaudePermission(): void {
+	const settingsPath = `${homedir()}/.claude/settings.json`;
+	try {
+		let settings: Record<string, unknown> = {};
+		try {
+			const raw = readFileSync(settingsPath, "utf-8");
+			settings = JSON.parse(raw);
+		} catch {
+			// File doesn't exist or is invalid — start fresh
+		}
+
+		const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
+		const allow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
+
+		if (allow.includes(CLAUDE_BASH_PERMISSION)) {
+			return; // Already present
+		}
+
+		allow.push(CLAUDE_BASH_PERMISSION);
+		permissions.allow = allow;
+		settings.permissions = permissions;
+
+		writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+		log.info("Claude permission added", { pattern: CLAUDE_BASH_PERMISSION });
+	} catch (err) {
+		log.warn("Failed to update Claude settings (non-fatal)", {
+			error: String(err),
+		});
+	}
+}
+
 /**
  * Install the dev3 skill into all supported AI agent directories
  * and update ~/.agents/AGENTS.md.
@@ -185,5 +222,6 @@ export function installAgentSkills(): void {
 	}
 
 	installAgentsMd();
+	ensureClaudePermission();
 	ensureCodexConfigFile(home);
 }

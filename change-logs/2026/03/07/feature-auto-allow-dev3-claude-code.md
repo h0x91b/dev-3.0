@@ -1,0 +1,1 @@
+Auto-allow dev3 CLI commands in Claude Code. The app now injects `Bash(~/.dev3.0/bin/dev3 *)` into `~/.claude/settings.json` permissions on startup, so Claude Code never prompts for approval on dev3 commands. Also fixed the skill frontmatter pattern to include a space before the wildcard.
