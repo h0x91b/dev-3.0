@@ -90,6 +90,14 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.zoom": "Масштаб",
 	"settings.zoomDesc": "Масштабирование всего интерфейса",
 	"settings.zoomReset": "Сбросить",
+	"settings.terminalKeymap": "Раскладка клавиш терминала",
+	"settings.terminalKeymapDesc": "Горячие клавиши, активные когда терминал в фокусе",
+	"settings.keymapDev3": "Удобный",
+	"settings.keymapDev3Desc": "Cmd+W закрывает панель",
+	"settings.keymapIterm2": "iTerm2",
+	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
+	"settings.keymapTmuxNative": "Нативный tmux",
+	"settings.keymapTmuxNativeDesc": "Без шорткатов, используйте Ctrl+B",
 
 	// AddProjectModal
 	"addProject.title": "Добавить проект",
