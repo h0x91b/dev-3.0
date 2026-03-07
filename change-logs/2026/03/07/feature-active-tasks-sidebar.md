@@ -1,0 +1,1 @@
+Add Active Tasks sidebar for split terminal view. When viewing a terminal in split mode, the left panel now shows a focused list of active tasks (in-progress, user-questions, review-by-ai, review-by-user) instead of the full 7-column Kanban board. Users can toggle between the compact sidebar and the full board view. The preference is persisted to localStorage.

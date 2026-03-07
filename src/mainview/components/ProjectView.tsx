@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch } from "react";
+import { useEffect, useState, useCallback, type Dispatch } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -7,6 +7,18 @@ import KanbanBoard from "./KanbanBoard";
 import TaskTerminal from "./TaskTerminal";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
+import ActiveTasksSidebar from "./ActiveTasksSidebar";
+
+type SidebarMode = "sidebar" | "board";
+const LS_SIDEBAR_MODE = "dev3-split-sidebar-mode";
+
+function readSidebarMode(): SidebarMode {
+	try {
+		const v = localStorage.getItem(LS_SIDEBAR_MODE);
+		if (v === "board" || v === "sidebar") return v;
+	} catch { /* ignore */ }
+	return "sidebar";
+}
 
 interface ProjectViewProps {
 	projectId: string;
@@ -29,6 +41,14 @@ function ProjectView({
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
+	const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readSidebarMode);
+
+	const toggleSidebarMode = useCallback((mode: SidebarMode) => {
+		setSidebarMode(mode);
+		try {
+			localStorage.setItem(LS_SIDEBAR_MODE, mode);
+		} catch { /* ignore */ }
+	}, []);
 
 	useEffect(() => {
 		(async () => {
@@ -51,20 +71,34 @@ function ProjectView({
 
 	if (activeTaskId) {
 		const activeTask = tasks.find((t) => t.id === activeTaskId);
+
+		const leftContent = sidebarMode === "sidebar" ? (
+			<ActiveTasksSidebar
+				project={project}
+				tasks={tasks}
+				activeTaskId={activeTaskId}
+				dispatch={dispatch}
+				navigate={navigate}
+				bellCounts={bellCounts}
+				onSwitchToBoard={() => toggleSidebarMode("board")}
+			/>
+		) : (
+			<KanbanBoard
+				project={project}
+				tasks={tasks}
+				dispatch={dispatch}
+				navigate={navigate}
+				bellCounts={bellCounts}
+				activeTaskId={activeTaskId}
+				onSwitchToSidebar={() => toggleSidebarMode("sidebar")}
+			/>
+		);
+
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
 				{activeTask && <TaskInfoPanel task={activeTask} project={project} dispatch={dispatch} navigate={navigate} />}
 				<SplitLayout
-					kanbanContent={
-						<KanbanBoard
-							project={project}
-							tasks={tasks}
-							dispatch={dispatch}
-							navigate={navigate}
-							bellCounts={bellCounts}
-							activeTaskId={activeTaskId}
-						/>
-					}
+					kanbanContent={leftContent}
 					terminalContent={
 						<TaskTerminal
 							projectId={projectId}
@@ -76,6 +110,7 @@ function ProjectView({
 							hideInfoPanel
 						/>
 					}
+					mode={sidebarMode}
 				/>
 			</div>
 		);

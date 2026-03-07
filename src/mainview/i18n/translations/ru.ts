@@ -399,6 +399,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	"status.completed": "Завершено",
 	"status.cancelled": "Отменено",
 
+	// ActiveTasksSidebar
+	"sidebar.activeTasks": "Активные задачи",
+	"sidebar.noActiveTasks": "Нет активных задач",
+	"sidebar.switchToBoard": "Показать доску",
+	"sidebar.switchToSidebar": "Показать панель",
+
 	// Gauge Demo
 	"gaugeDemo.title": "Компоненты-циферблаты",
 	"gaugeDemo.playground": "Песочница",

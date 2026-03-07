@@ -392,6 +392,12 @@ const es: TranslationRecord & Record<string, string> = {
 	"status.completed": "Completado",
 	"status.cancelled": "Cancelado",
 
+	// ActiveTasksSidebar
+	"sidebar.activeTasks": "Tareas activas",
+	"sidebar.noActiveTasks": "Sin tareas activas",
+	"sidebar.switchToBoard": "Mostrar tablero",
+	"sidebar.switchToSidebar": "Mostrar panel",
+
 	// Gauge Demo
 	"gaugeDemo.title": "Componentes de indicadores",
 	"gaugeDemo.playground": "Zona de pruebas",

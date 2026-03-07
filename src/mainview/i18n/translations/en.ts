@@ -389,6 +389,12 @@ const en = {
 	"status.completed": "Completed",
 	"status.cancelled": "Cancelled",
 
+	// ActiveTasksSidebar
+	"sidebar.activeTasks": "Active Tasks",
+	"sidebar.noActiveTasks": "No active tasks",
+	"sidebar.switchToBoard": "Show board",
+	"sidebar.switchToSidebar": "Show sidebar",
+
 	// Gauge Demo
 	"gaugeDemo.title": "Gauge Components",
 	"gaugeDemo.playground": "Playground",

@@ -1,37 +1,48 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 
-const DEFAULT_KANBAN_WIDTH = 320;
-const MIN_KANBAN_WIDTH = 300;
+const DEFAULT_BOARD_WIDTH = 320;
+const DEFAULT_SIDEBAR_WIDTH = 240;
+const MIN_KANBAN_WIDTH = 200;
 const MAX_KANBAN_RATIO = 0.6;
-const LS_KEY = "dev3-split-kanban-width";
+const LS_KEY_BOARD = "dev3-split-kanban-width";
+const LS_KEY_SIDEBAR = "dev3-split-sidebar-width";
 
-function readStoredWidth(): number {
+function readStoredWidth(key: string, fallback: number): number {
 	try {
-		const v = localStorage.getItem(LS_KEY);
+		const v = localStorage.getItem(key);
 		if (v) {
 			const n = Number(v);
 			if (Number.isFinite(n) && n >= MIN_KANBAN_WIDTH) return n;
 		}
 	} catch { /* ignore */ }
-	return DEFAULT_KANBAN_WIDTH;
+	return fallback;
 }
 
 interface SplitLayoutProps {
 	kanbanContent: ReactNode;
 	terminalContent: ReactNode;
+	mode?: "sidebar" | "board";
 }
 
-function SplitLayout({ kanbanContent, terminalContent }: SplitLayoutProps) {
-	const [kanbanWidth, setKanbanWidth] = useState(readStoredWidth);
+function SplitLayout({ kanbanContent, terminalContent, mode = "board" }: SplitLayoutProps) {
+	const lsKey = mode === "sidebar" ? LS_KEY_SIDEBAR : LS_KEY_BOARD;
+	const defaultWidth = mode === "sidebar" ? DEFAULT_SIDEBAR_WIDTH : DEFAULT_BOARD_WIDTH;
+
+	const [kanbanWidth, setKanbanWidth] = useState(() => readStoredWidth(lsKey, defaultWidth));
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
+
+	// Reset width when mode changes
+	useEffect(() => {
+		setKanbanWidth(readStoredWidth(lsKey, defaultWidth));
+	}, [lsKey, defaultWidth]);
 
 	// Persist width to localStorage
 	useEffect(() => {
 		try {
-			localStorage.setItem(LS_KEY, String(Math.round(kanbanWidth)));
+			localStorage.setItem(lsKey, String(Math.round(kanbanWidth)));
 		} catch { /* ignore */ }
-	}, [kanbanWidth]);
+	}, [kanbanWidth, lsKey]);
 
 	// Clamp width on window resize
 	useEffect(() => {
@@ -75,15 +86,15 @@ function SplitLayout({ kanbanContent, terminalContent }: SplitLayoutProps) {
 	}, [kanbanWidth]);
 
 	function handleDoubleClick() {
-		setKanbanWidth(DEFAULT_KANBAN_WIDTH);
+		setKanbanWidth(defaultWidth);
 		if (panelRef.current) {
-			panelRef.current.style.width = `${DEFAULT_KANBAN_WIDTH}px`;
+			panelRef.current.style.width = `${defaultWidth}px`;
 		}
 	}
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-row w-full">
-			{/* Left: Kanban */}
+			{/* Left: Kanban / Sidebar */}
 			<div
 				ref={panelRef}
 				className="flex-shrink-0 flex flex-col overflow-hidden transition-[width] duration-200"
