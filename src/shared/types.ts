@@ -165,6 +165,7 @@ export interface GlobalSettings {
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
 	cloneBaseDirectory?: string;
+	tmuxPath?: string; // custom path to tmux binary
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
@@ -300,6 +301,8 @@ export interface RequirementCheckResult {
 	installed: boolean;
 	installHint: string; // i18n key
 	installCommand: string;
+	resolvedPath?: string; // full path to the binary (if found)
+	brewInstallable: boolean;
 }
 
 // ---- CLI socket protocol ----

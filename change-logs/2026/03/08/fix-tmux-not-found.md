@@ -1,0 +1,1 @@
+Fix tmux not being detected on fresh installs where Homebrew PATH is not in the app's environment. The requirements check now falls back to common Homebrew paths (`/opt/homebrew/bin`, `/usr/local/bin`) when `which` fails, and allows users to set a custom tmux binary path directly from the requirements screen.

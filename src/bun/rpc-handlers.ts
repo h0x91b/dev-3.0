@@ -64,8 +64,16 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): s
 }
 
 const SYSTEM_REQUIREMENTS = [
-	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install" },
-	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux" },
+	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install", brewInstallable: false },
+	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux", brewInstallable: true },
+];
+
+// Common paths where Homebrew installs binaries (Apple Silicon + Intel)
+const HOMEBREW_FALLBACK_PATHS = [
+	"/opt/homebrew/bin",
+	"/usr/local/bin",
+	"/opt/homebrew/sbin",
+	"/usr/local/sbin",
 ];
 
 // Will be set by index.ts after window creation
@@ -1609,20 +1617,71 @@ export const handlers = {
 	},
 
 	async checkSystemRequirements(): Promise<RequirementCheckResult[]> {
-		log.info("-> checkSystemRequirements");
+		log.info("-> checkSystemRequirements", { PATH: process.env.PATH });
+		const settings = await loadSettings();
 		const results: RequirementCheckResult[] = SYSTEM_REQUIREMENTS.map((req) => {
-			const proc = spawnSync(["which", req.checkCommand]);
-			const installed = proc.exitCode === 0;
-			log.info(`  ${req.id}: ${installed ? "found" : "NOT found"}`);
+			let resolvedPath: string | undefined;
+
+			// 1. Check custom path from settings (tmux only for now)
+			if (req.id === "tmux" && settings.tmuxPath) {
+				if (existsSync(settings.tmuxPath)) {
+					resolvedPath = settings.tmuxPath;
+					log.info(`  ${req.id}: found via custom settings path`, { path: resolvedPath });
+				} else {
+					log.warn(`  ${req.id}: custom path from settings does not exist`, { path: settings.tmuxPath });
+				}
+			}
+
+			// 2. Try `which` (uses current PATH)
+			if (!resolvedPath) {
+				const proc = spawnSync(["which", req.checkCommand]);
+				if (proc.exitCode === 0) {
+					const whichOutput = proc.stdout ? new TextDecoder().decode(proc.stdout).trim() : "";
+					resolvedPath = whichOutput || req.checkCommand;
+					log.info(`  ${req.id}: found via which`, { path: resolvedPath });
+				}
+			}
+
+			// 3. Fallback: check common Homebrew paths
+			if (!resolvedPath) {
+				for (const dir of HOMEBREW_FALLBACK_PATHS) {
+					const candidate = `${dir}/${req.checkCommand}`;
+					if (existsSync(candidate)) {
+						resolvedPath = candidate;
+						// Patch PATH so all future spawns can find it
+						if (!process.env.PATH?.includes(dir)) {
+							process.env.PATH = `${dir}:${process.env.PATH}`;
+							log.info(`  Patched PATH with ${dir}`);
+						}
+						log.info(`  ${req.id}: found via fallback path`, { path: resolvedPath });
+						break;
+					}
+				}
+			}
+
+			if (!resolvedPath) {
+				log.warn(`  ${req.id}: NOT found anywhere`);
+			}
+
 			return {
 				id: req.id,
 				name: req.name,
-				installed,
+				installed: !!resolvedPath,
+				resolvedPath,
 				installHint: req.installHint,
 				installCommand: req.installCommand,
+				brewInstallable: req.brewInstallable,
 			};
 		});
-		log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}`) });
+
+		// Update tmux binary path in PTY server if found
+		const tmuxResult = results.find((r) => r.id === "tmux");
+		if (tmuxResult?.resolvedPath) {
+			pty.setTmuxBinary(tmuxResult.resolvedPath);
+			log.info("tmux binary set to", { path: tmuxResult.resolvedPath });
+		}
+
+		log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}:${r.resolvedPath ?? "none"}`) });
 		return results;
 	},
 

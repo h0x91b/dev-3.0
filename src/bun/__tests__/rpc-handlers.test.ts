@@ -53,6 +53,8 @@ vi.mock("../pty-server", () => ({
 	getSessionSocket: vi.fn(() => null),
 	capturePane: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string | null, ...args: string[]) => ["tmux", ...args]),
+	setTmuxBinary: vi.fn(),
+	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 }));
 
@@ -1675,10 +1677,13 @@ describe("handlers.quitApp", () => {
 // ================================================================
 
 describe("handlers.checkSystemRequirements", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as any);
+	});
 
 	it("returns installed status for each requirement", async () => {
-		mockSpawnSync.mockReturnValue({ exitCode: 0 });
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") });
 
 		const results = await handlers.checkSystemRequirements();
 		expect(results).toHaveLength(2);
@@ -1688,15 +1693,37 @@ describe("handlers.checkSystemRequirements", () => {
 		expect(results[1].installed).toBe(true);
 	});
 
-	it("marks missing requirements correctly", async () => {
+	it("marks missing requirements when which fails and no fallback paths exist", async () => {
 		mockSpawnSync
-			.mockReturnValueOnce({ exitCode: 0 })  // git found
-			.mockReturnValueOnce({ exitCode: 1 });  // tmux not found
+			.mockReturnValueOnce({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") })  // git found
+			.mockReturnValueOnce({ exitCode: 1 });  // tmux not found via which
+		vi.mocked(existsSync).mockReturnValue(false);  // no fallback paths exist
 
 		const results = await handlers.checkSystemRequirements();
 		expect(results[0].installed).toBe(true);
 		expect(results[1].installed).toBe(false);
 		expect(results[1].installHint).toBe("requirements.installTmux");
+	});
+
+	it("finds tmux via fallback homebrew path when which fails", async () => {
+		mockSpawnSync
+			.mockReturnValueOnce({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") })
+			.mockReturnValueOnce({ exitCode: 1 });  // tmux not found via which
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/opt/homebrew/bin/tmux");
+
+		const results = await handlers.checkSystemRequirements();
+		expect(results[1].installed).toBe(true);
+		expect(results[1].resolvedPath).toBe("/opt/homebrew/bin/tmux");
+	});
+
+	it("uses custom tmux path from settings", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ tmuxPath: "/custom/path/tmux" } as any);
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") });
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/custom/path/tmux");
+
+		const results = await handlers.checkSystemRequirements();
+		expect(results[1].installed).toBe(true);
+		expect(results[1].resolvedPath).toBe("/custom/path/tmux");
 	});
 });
 

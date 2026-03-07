@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import type { RequirementCheckResult } from "../../shared/types";
 import { useT } from "../i18n";
+import { api } from "../rpc";
 
 interface Props {
 	results: RequirementCheckResult[];
@@ -11,12 +12,29 @@ interface Props {
 export default function RequirementsCheck({ results, checking, onRefresh }: Props) {
 	const t = useT();
 	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const [customPath, setCustomPath] = useState("");
+	const [saving, setSaving] = useState(false);
 
 	const handleCopy = useCallback((id: string, command: string) => {
 		navigator.clipboard.writeText(command);
 		setCopiedId(id);
 		setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000);
 	}, []);
+
+	const handleSetCustomPath = useCallback(async () => {
+		if (!customPath.trim()) return;
+		setSaving(true);
+		try {
+			const settings = await api.request.getGlobalSettings();
+			await api.request.saveGlobalSettings({ ...settings, tmuxPath: customPath.trim() });
+			onRefresh();
+		} catch (err) {
+			console.error("Failed to save custom tmux path:", err);
+		}
+		setSaving(false);
+	}, [customPath, onRefresh]);
+
+	const tmuxMissing = results.some((r) => r.id === "tmux" && !r.installed);
 
 	return (
 		<div className="h-full w-full flex items-center justify-center bg-base">
@@ -28,7 +46,7 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 					{t("requirements.subtitle")}
 				</p>
 
-				<div className="space-y-3 mb-8">
+				<div className="space-y-3 mb-6">
 					{results.map((req) => (
 						<div
 							key={req.id}
@@ -56,6 +74,11 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 											: t("requirements.missing")}
 									</span>
 								</div>
+								{req.installed && req.resolvedPath && (
+									<p className="text-fg-muted text-xs mt-1 font-mono truncate">
+										{req.resolvedPath}
+									</p>
+								)}
 								{!req.installed && (
 									<div className="mt-2">
 										<p className="text-fg-muted text-xs mb-1.5">
@@ -94,6 +117,31 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 						</div>
 					))}
 				</div>
+
+				{tmuxMissing && (
+					<div className="mb-6 p-3 rounded-lg bg-raised border border-edge">
+						<p className="text-fg-2 text-xs mb-2">
+							{t("requirements.customPathHint")}
+						</p>
+						<div className="flex items-center gap-2">
+							<input
+								type="text"
+								value={customPath}
+								onChange={(e) => setCustomPath(e.target.value)}
+								placeholder="/opt/homebrew/bin/tmux"
+								className="flex-1 bg-base border border-edge rounded px-2 py-1.5 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
+							/>
+							<button
+								type="button"
+								onClick={handleSetCustomPath}
+								disabled={!customPath.trim() || saving}
+								className="px-3 py-1.5 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+							>
+								{t("requirements.setPath")}
+							</button>
+						</div>
+					</div>
+				)}
 
 				<button
 					type="button"
