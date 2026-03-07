@@ -209,6 +209,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const isCompleted = task.status === "completed";
 
 	function handleClick() {
+		if (isDisabled) return;
 		if (isActive && !menuOpen) {
 			closePreview();
 			if (isActiveInSplit) {

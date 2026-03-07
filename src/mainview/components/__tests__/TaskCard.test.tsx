@@ -127,6 +127,7 @@ function renderCard(
 		onTaskMoved?: (taskId: string) => void;
 		bellCount?: number;
 		isActiveInSplit?: boolean;
+		isMoving?: boolean;
 		projectOverride?: Project;
 	},
 ) {
@@ -143,6 +144,7 @@ function renderCard(
 				onTaskMoved={opts?.onTaskMoved ?? vi.fn()}
 				bellCount={opts?.bellCount}
 				isActiveInSplit={opts?.isActiveInSplit}
+				isMoving={opts?.isMoving}
 			/>
 		</I18nProvider>,
 	);
@@ -471,6 +473,31 @@ describe("TaskCard", () => {
 
 			expect(navigate).not.toHaveBeenCalled();
 			expect(screen.getByTestId("task-detail-modal")).toBeInTheDocument();
+		});
+
+		it("clicking active task while moving does not navigate", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" });
+			renderCard(task, { navigate, isMoving: true });
+
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			await user.click(card);
+
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
+		it("clicking completed task while moving does not open detail", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "completed" });
+			renderCard(task, { navigate, isMoving: true });
+
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			await user.click(card);
+
+			expect(navigate).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("task-detail-modal")).not.toBeInTheDocument();
 		});
 	});
 

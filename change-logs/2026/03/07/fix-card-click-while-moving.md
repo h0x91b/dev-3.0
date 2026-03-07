@@ -1,0 +1,1 @@
+Prevent opening a task card (navigation or detail modal) while it is being moved to completed/cancelled. Added an `isDisabled` guard at the top of `handleClick()` in TaskCard to block interactions during async status transitions.
