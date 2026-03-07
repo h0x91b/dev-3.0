@@ -20,9 +20,10 @@ interface KanbanBoardProps {
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	activeTaskId?: string;
+	onSwitchToSidebar?: () => void;
 }
 
-function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTaskId }: KanbanBoardProps) {
+function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTaskId, onSwitchToSidebar }: KanbanBoardProps) {
 	const t = useT();
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -199,6 +200,21 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 
 	return (
 		<>
+			{onSwitchToSidebar && (
+				<div className="flex items-center px-3 pt-2">
+					<button
+						onClick={onSwitchToSidebar}
+						className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5 flex items-center gap-1"
+						title={t("sidebar.switchToSidebar")}
+					>
+						{/* List icon */}
+						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+						</svg>
+						<span>{t("sidebar.switchToSidebar")}</span>
+					</button>
+				</div>
+			)}
 			<LabelFilterBar
 				labels={projectLabels}
 				activeFilters={activeFilters}

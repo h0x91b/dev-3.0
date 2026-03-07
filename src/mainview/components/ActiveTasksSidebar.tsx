@@ -1,0 +1,170 @@
+import type { Dispatch } from "react";
+import type { Project, Task, TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, STATUS_COLORS, getTaskTitle } from "../../shared/types";
+import type { AppAction, Route } from "../state";
+import { useT, statusKey } from "../i18n";
+import LabelChip from "./LabelChip";
+
+interface ActiveTasksSidebarProps {
+	project: Project;
+	tasks: Task[];
+	activeTaskId?: string;
+	dispatch: Dispatch<AppAction>;
+	navigate: (route: Route) => void;
+	bellCounts: Map<string, number>;
+	onSwitchToBoard: () => void;
+}
+
+/** Status display order in the sidebar */
+const STATUS_ORDER: TaskStatus[] = [
+	"in-progress",
+	"user-questions",
+	"review-by-ai",
+	"review-by-user",
+];
+
+function ActiveTasksSidebar({
+	project,
+	tasks,
+	activeTaskId,
+	navigate,
+	bellCounts,
+	onSwitchToBoard,
+}: ActiveTasksSidebarProps) {
+	const t = useT();
+
+	const activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+
+	// Group by status in display order
+	const grouped = STATUS_ORDER
+		.map((status) => ({
+			status,
+			tasks: activeTasks.filter((task) => task.status === status),
+		}))
+		.filter((g) => g.tasks.length > 0);
+
+	function handleTaskClick(task: Task) {
+		if (task.id === activeTaskId) {
+			// Toggle: clicking active task closes split
+			navigate({ screen: "project", projectId: project.id });
+		} else {
+			navigate({
+				screen: "project",
+				projectId: project.id,
+				activeTaskId: task.id,
+			});
+		}
+	}
+
+	const projectLabels = project.labels ?? [];
+
+	return (
+		<div className="h-full flex flex-col bg-base">
+			{/* Header */}
+			<div className="flex items-center justify-between px-3 py-2.5 border-b border-edge flex-shrink-0">
+				<span className="text-xs font-semibold text-fg-2 uppercase tracking-wider">
+					{t("sidebar.activeTasks")}
+				</span>
+				<button
+					onClick={onSwitchToBoard}
+					className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5"
+					title={t("sidebar.switchToBoard")}
+				>
+					{/* Grid icon */}
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+					</svg>
+				</button>
+			</div>
+
+			{/* Task list */}
+			<div className="flex-1 overflow-y-auto overflow-x-hidden">
+				{grouped.length === 0 ? (
+					<div className="px-3 py-6 text-center text-xs text-fg-muted">
+						{t("sidebar.noActiveTasks")}
+					</div>
+				) : (
+					grouped.map(({ status, tasks: groupTasks }) => (
+						<div key={status}>
+							{/* Status group header */}
+							<div className="px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+								<div
+									className="w-2 h-2 rounded-full flex-shrink-0"
+									style={{ background: STATUS_COLORS[status] }}
+								/>
+								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
+									{t(statusKey(status))}
+								</span>
+								<span className="text-[0.625rem] text-fg-muted">
+									{groupTasks.length}
+								</span>
+							</div>
+
+							{/* Tasks in this status */}
+							{groupTasks.map((task) => {
+								const isActive = task.id === activeTaskId;
+								const bellCount = bellCounts.get(task.id) ?? 0;
+								const displayTitle = getTaskTitle(task);
+								const taskLabelIds = task.labelIds ?? [];
+								const assignedLabels = taskLabelIds
+									.map((id) => projectLabels.find((l) => l.id === id))
+									.filter(Boolean) as typeof projectLabels;
+
+								return (
+									<button
+										key={task.id}
+										onClick={() => handleTaskClick(task)}
+										className={`w-full text-left px-3 py-2 transition-all border-l-2 relative ${
+											isActive
+												? "bg-accent/10 border-accent"
+												: "border-transparent hover:bg-elevated-hover"
+										}`}
+									>
+										{/* Bell badge */}
+										{bellCount > 0 && (
+											<div
+												className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 shadow-sm shadow-red-500/40"
+												title={t("task.bellTooltip")}
+											>
+												<span className="text-[0.5625rem] font-bold text-white leading-none">
+													{bellCount > 9 ? "9+" : bellCount}
+												</span>
+											</div>
+										)}
+
+										{/* Seq number */}
+										<div className="text-[0.5625rem] text-fg-muted font-mono mb-0.5">
+											#{task.seq}
+										</div>
+
+										{/* Title */}
+										<div className={`text-xs leading-snug break-words ${
+											isActive ? "text-fg font-medium" : "text-fg-2"
+										}`}>
+											{displayTitle}
+										</div>
+
+										{/* Labels */}
+										{assignedLabels.length > 0 && (
+											<div className="flex flex-wrap gap-0.5 mt-1">
+												{assignedLabels.map((label) => (
+													<LabelChip
+														key={label.id}
+														label={label}
+														size="xs"
+													/>
+												))}
+											</div>
+										)}
+									</button>
+								);
+							})}
+						</div>
+					))
+				)}
+			</div>
+		</div>
+	);
+}
+
+export default ActiveTasksSidebar;
