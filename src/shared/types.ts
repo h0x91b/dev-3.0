@@ -61,8 +61,8 @@ export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	todo: "#0284c7",
 	"in-progress": "#7c3aed",
 	"user-questions": "#ea580c",
-	"review-by-ai": "#db2777",
-	"review-by-user": "#ca8a04",
+	"review-by-ai": "#a21caf",
+	"review-by-user": "#4d7c0f",
 	completed: "#16a34a",
 	cancelled: "#dc2626",
 };
