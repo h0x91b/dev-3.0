@@ -9,7 +9,6 @@ const SKILL_CONTENT = `---
 name: dev3
 description: "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command."
 user-invocable: true
-allowed-tools: Bash(~/.dev3.0/bin/dev3 *)
 ---
 
 # dev3 — Task Lifecycle Protocol
