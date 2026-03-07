@@ -370,6 +370,89 @@ nav.scrolled {
     0 25px 80px -20px rgba(0, 0, 0, 0.6),
     0 0 60px -10px var(--accent-glow);
 }
+
+/* Hero carousel */
+.carousel-track {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 9.5;
+  background: linear-gradient(135deg, #0a0f1f, #13182a);
+}
+.carousel-track img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: linear-gradient(135deg, #0a0f1f, #13182a);
+  opacity: 0;
+  transform: scale(1.04) translateX(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+.carousel-track img.active {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+  pointer-events: auto;
+}
+.carousel-track img.leaving {
+  opacity: 0;
+  transform: scale(0.97) translateX(-20px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.carousel-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+  background: rgba(4, 7, 18, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 20px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+}
+.carousel-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  opacity: 0.35;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.3s ease;
+}
+.carousel-dot.active {
+  opacity: 1;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  transform: scale(1.25);
+}
+.carousel-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+.carousel-btn:hover { color: var(--text-1); }
+.carousel-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  z-index: 10;
+  transition: width linear;
+  opacity: 0.6;
+}
 .hero-screenshot-frame::before {
   content: '';
   position: absolute;
@@ -1153,9 +1236,23 @@ footer {
         <div class="window-dot window-dot-green"></div>
         <div class="window-title">dev-3.0</div>
       </div>
-      <!-- Replace this placeholder with: screenshots/kanban-board.png -->
-      <img src="screenshots/kanban-board.png" alt="dev-3.0 Kanban Board with multiple AI agents running in parallel" class="screenshot-img"
-           onerror="this.outerHTML='<div class=\'screenshot-placeholder\'><svg width=\'48\' height=\'48\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/kanban-board.png</span><span style=\'font-size:11px;opacity:0.5\'>Kanban board with tasks in multiple columns</span></div>'">
+      <div class="carousel-track" id="heroCarousel">
+        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000">
+        <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" data-duration="3000">
+        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000">
+        <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000">
+        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000">
+      </div>
+      <div class="carousel-controls" id="heroControls">
+        <button class="carousel-btn" id="carouselPrev" aria-label="Previous">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div id="carouselDots"></div>
+        <button class="carousel-btn" id="carouselNext" aria-label="Next">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      <div class="carousel-progress" id="carouselProgress"></div>
     </div>
   </div>
 </section>
@@ -1260,9 +1357,9 @@ footer {
             <div class="window-dot window-dot-green"></div>
             <div class="window-title">Kanban Board</div>
           </div>
-          <!-- Replace with: screenshots/kanban-overview.png -->
-          <img src="screenshots/kanban-overview.png" alt="Kanban board overview" class="step-screenshot"
-               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/kanban-overview.png</span></div>'">
+          <!-- Kanban board with siblings popup -->
+          <img src="screenshots/light-theme-kanban.jpg" alt="Kanban board in light theme" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/light-theme-kanban.jpg</span></div>'">
         </div>
       </div>
 
@@ -1270,11 +1367,11 @@ footer {
       <div class="step reveal">
         <div class="step-content">
           <div class="step-number step-number-purple">2</div>
-          <h3>Each task = isolated git worktree</h3>
+          <h3>Launch multiple agents at once</h3>
           <p>
-            When you start a task, dev-3.0 creates a fresh git worktree.
-            Every agent works in its own copy of the repo &mdash;
-            zero conflicts, full isolation. Your setup script runs automatically.
+            Pick any combination of agents &mdash; Claude, Cursor, Codex, Gemini &mdash;
+            each with its own config. dev-3.0 creates isolated git worktrees
+            and launches them all in parallel. Zero conflicts, full isolation.
           </p>
         </div>
         <div class="step-visual">
@@ -1282,11 +1379,11 @@ footer {
             <div class="window-dot window-dot-red"></div>
             <div class="window-dot window-dot-yellow"></div>
             <div class="window-dot window-dot-green"></div>
-            <div class="window-title">Parallel agents in progress</div>
+            <div class="window-title">Launch Task &mdash; Multi-agent</div>
           </div>
-          <!-- Replace with: screenshots/parallel-agents.png -->
-          <img src="screenshots/parallel-agents.png" alt="Multiple agents working in parallel" class="step-screenshot"
-               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><circle cx=\'12\' cy=\'12\' r=\'3\'/><path d=\'M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4\'/></svg><span>screenshots/parallel-agents.png</span></div>'">
+          <!-- Multi-agent launch: Claude, Cursor, Codex, Gemini -->
+          <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with multiple AI agents" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><circle cx=\'12\' cy=\'12\' r=\'3\'/><path d=\'M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4\'/></svg><span>screenshots/multi-agent-launch.jpg</span></div>'">
         </div>
       </div>
 
@@ -1309,9 +1406,9 @@ footer {
             <div class="window-dot window-dot-green"></div>
             <div class="window-title">Terminal &mdash; Claude Code session</div>
           </div>
-          <!-- Replace with: screenshots/terminal-view.png -->
-          <img src="screenshots/terminal-view.png" alt="Terminal with Claude Code running" class="step-screenshot"
-               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.png</span></div>'">
+          <!-- Agent working on code with diff view -->
+          <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.jpg</span></div>'">
         </div>
       </div>
     </div>
@@ -1388,8 +1485,17 @@ footer {
         <p>Move tasks between status columns with drag-and-drop. Visual feedback, smooth animations, intuitive flow.</p>
       </div>
 
+      <!-- Feature: Labels & Search -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--orange);">
+        <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        </div>
+        <h3>Labels &amp; instant search</h3>
+        <p>Organize tasks with colored labels (Bug, Feature, Refactor&hellip;) and find anything instantly with full-text search across all tasks.</p>
+      </div>
+
       <!-- Feature: Multi-variant -->
-      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--purple);">
         <div class="feature-icon fi-purple">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg>
         </div>
@@ -1406,8 +1512,17 @@ footer {
         <p>Configure a setup script per project. Install deps, seed data, start services &mdash; runs automatically for each new task.</p>
       </div>
 
+      <!-- Feature: Dark & Light Themes -->
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </div>
+        <h3>Dark &amp; light themes</h3>
+        <p>Full theme support. Switch between dark and light modes to match your environment and preference.</p>
+      </div>
+
       <!-- Feature: Copy-on-Write Clone Paths -->
-      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--orange);">
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--orange);">
         <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h2"/></svg>
         </div>
@@ -1660,6 +1775,77 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
+
+// Hero carousel
+(function() {
+  const track = document.getElementById('heroCarousel');
+  const dotsContainer = document.getElementById('carouselDots');
+  const progress = document.getElementById('carouselProgress');
+  const slides = track.querySelectorAll('img');
+  const count = slides.length;
+  let current = 0;
+  let timer = null;
+  let progressTimer = null;
+
+  // Build dots
+  for (let i = 0; i < count; i++) {
+    const dot = document.createElement('button');
+    dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+    dot.setAttribute('aria-label', 'Slide ' + (i + 1));
+    dot.addEventListener('click', () => goTo(i));
+    dotsContainer.appendChild(dot);
+  }
+  dotsContainer.style.cssText = 'display:flex;gap:6px;align-items:center;';
+
+  function getDuration(index) {
+    return parseInt(slides[index].dataset.duration) || 4000;
+  }
+
+  function goTo(index) {
+    var prev = current;
+    current = ((index % count) + count) % count;
+    if (prev === current) return;
+    // Animate out
+    slides[prev].classList.remove('active');
+    slides[prev].classList.add('leaving');
+    dotsContainer.children[prev].classList.remove('active');
+    // Animate in
+    slides[current].classList.add('active');
+    dotsContainer.children[current].classList.add('active');
+    // Clean up leaving class after transition
+    setTimeout(function() { slides[prev].classList.remove('leaving'); }, 500);
+    startAutoplay();
+  }
+
+  function startAutoplay() {
+    clearTimeout(timer);
+    clearInterval(progressTimer);
+    const duration = getDuration(current);
+    // Progress bar animation
+    progress.style.transition = 'none';
+    progress.style.width = '0%';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        progress.style.transition = 'width ' + duration + 'ms linear';
+        progress.style.width = '100%';
+      });
+    });
+    timer = setTimeout(() => goTo(current + 1), duration);
+  }
+
+  document.getElementById('carouselPrev').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('carouselNext').addEventListener('click', () => goTo(current + 1));
+
+  // Pause on hover
+  const frame = track.closest('.hero-screenshot-frame');
+  frame.addEventListener('mouseenter', () => {
+    clearTimeout(timer);
+    progress.style.transition = 'none';
+  });
+  frame.addEventListener('mouseleave', () => startAutoplay());
+
+  startAutoplay();
+})();
 </script>
 
 </body>
