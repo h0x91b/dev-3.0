@@ -102,7 +102,7 @@ describe("tasks list", () => {
 		expect(stdoutOutput).toContain("SEQ");
 		expect(stdoutOutput).toContain("First task");
 		expect(stdoutOutput).toContain("To Do");
-		expect(stdoutOutput).toContain("In Progress");
+		expect(stdoutOutput).toContain("Agent is Working");
 	});
 
 	it("auto-detects projectId from context", async () => {
@@ -207,15 +207,32 @@ describe("tasks list status validation", () => {
 // ─── tasks list: --limit support ─────────────────────────────────────────────
 
 describe("tasks list --limit", () => {
-	it("passes --limit to server request", async () => {
+	it("does not send limit to server (applied client-side)", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 
 		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "10" } }, SOCKET, null);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", {
 			projectId: "proj-001",
-			limit: 10,
 		});
+	});
+
+	it("truncates results to --limit count", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "1" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("First task");
+		expect(stdoutOutput).not.toContain("Second task");
+	});
+
+	it("shows all tasks when --limit exceeds task count", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "100" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("First task");
+		expect(stdoutOutput).toContain("bbbbbbbb");
 	});
 });
 
