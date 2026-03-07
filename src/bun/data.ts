@@ -273,7 +273,8 @@ export async function updateTask(
 	const idx = tasks.findIndex((t) => t.id === taskId);
 	if (idx === -1) throw new Error(`Task not found: ${taskId}`);
 	const now = new Date().toISOString();
-	const movedAtUpdate = updates.status && updates.status !== tasks[idx].status ? { movedAt: now } : {};
+	const statusChanged = updates.status && updates.status !== tasks[idx].status;
+	const movedAtUpdate = statusChanged ? { movedAt: now, columnOrder: undefined } : {};
 	tasks[idx] = { ...tasks[idx], ...updates, ...movedAtUpdate, updatedAt: now };
 	await saveTasks(project, tasks);
 	return tasks[idx];

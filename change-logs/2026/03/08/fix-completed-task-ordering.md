@@ -1,0 +1,1 @@
+Fix: tasks moved to Completed/Cancelled from the terminal view (or after merge) now respect the "Task Drop Position" global setting. The root cause was stale `columnOrder` from a previous column persisting after status change, which overrode the `movedAt`-based positioning. columnOrder is now cleared on every status transition.
