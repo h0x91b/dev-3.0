@@ -263,6 +263,33 @@ describe("CreateTaskModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it("Escape on discard confirmation dismisses it without closing", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.keyboard("{Escape}");
+
+		expect(screen.getByText("Discard")).toBeInTheDocument();
+
+		await userEvent.keyboard("{Escape}");
+
+		expect(screen.queryByText("Discard")).not.toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("Keep editing button receives focus when discard confirmation appears", async () => {
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.click(screen.getByText("Cancel"));
+
+		const keepEditingBtn = screen.getByText("Keep editing");
+		expect(document.activeElement).toBe(keepEditingBtn);
+	});
+
 	// ---- Branch selector ----
 
 	it("branch section starts collapsed", () => {

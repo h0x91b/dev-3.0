@@ -30,6 +30,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
+	const keepEditingRef = useRef<HTMLButtonElement>(null);
 	const projectLabels = project.labels ?? [];
 
 	const insertPathAtCursor = useCallback((path: string) => {
@@ -77,13 +78,25 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	}
 
 	useEffect(() => {
+		if (confirmDiscard) {
+			keepEditingRef.current?.focus();
+		}
+	}, [confirmDiscard]);
+
+	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") handleRequestClose();
+			if (e.key === "Escape") {
+				if (confirmDiscard) {
+					setConfirmDiscard(false);
+				} else {
+					handleRequestClose();
+				}
+			}
 		}
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [description, onClose]);
+	}, [description, onClose, confirmDiscard]);
 
 	async function handleCreate() {
 		const trimmed = description.trim();
@@ -309,8 +322,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 							<span className="text-fg-2 text-sm">{t("createTask.discardConfirm")}</span>
 							<div className="flex gap-2 shrink-0">
 								<button
+									ref={keepEditingRef}
 									onClick={() => setConfirmDiscard(false)}
-									className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
+									className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-edge-active focus:text-fg"
 								>
 									{t("createTask.keepEditing")}
 								</button>
