@@ -778,7 +778,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			: t("infoPanel.uncommittedDiffTooltip");
 
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
-	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10";
+	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
@@ -877,7 +877,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 				devServerDisabled
 					? "text-fg-muted/50 cursor-not-allowed"
-					: "text-[#34d399] hover:text-[#6ee7b7] hover:bg-[#34d399]/10 border border-[#34d399]/30"
+					: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
 			}`}
 			title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
 		>
@@ -889,7 +889,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</button>
 	);
 
-	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 flex items-center gap-1";
+	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 
 	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom") => (e: React.MouseEvent) => {
 		e.stopPropagation();

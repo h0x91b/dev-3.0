@@ -170,7 +170,7 @@ function GlobalSettings() {
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-xl space-y-8">
+				<div className="max-w-xl mx-auto space-y-8">
 					{/* Theme */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-3">
