@@ -1275,7 +1275,7 @@ export const handlers = {
 		return existsSync(params.path);
 	},
 
-	async getPtyUrl(params: { taskId: string }): Promise<string> {
+	async getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
 		log.info("→ getPtyUrl", {
 			taskId: params.taskId,
 			hasExistingSession: pty.hasSession(params.taskId),
@@ -1325,7 +1325,7 @@ export const handlers = {
 						status: foundTask.status,
 						worktreePath: foundTask.worktreePath,
 					});
-					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath);
+					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath, null, null, false, params.resume ?? false);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
 						worktreePath: foundTask.worktreePath,

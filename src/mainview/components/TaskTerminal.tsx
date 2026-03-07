@@ -109,7 +109,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	async function handleRestart() {
 		setRestarting(true);
 		try {
-			const url = await api.request.getPtyUrl({ taskId });
+			const url = await api.request.getPtyUrl({ taskId, resume: true });
 			setPtyUrl(url);
 			setError(null);
 		} catch (err) {
@@ -147,7 +147,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								disabled={restarting}
 								className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
 							>
-								{restarting ? t("terminal.connecting") : t("terminal.restart")}
+								{restarting ? t("terminal.connecting") : t("terminal.resumeAgentSession")}
 							</button>
 						)}
 						<button

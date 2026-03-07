@@ -227,7 +227,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"terminal.cancelTask": "Отменить задачу",
 	"terminal.sessionEnded": "Терминальная сессия завершена",
 	"terminal.sessionEndedDesc": "Процесс терминала завершился. Worktree и все файлы на месте.",
-	"terminal.restart": "Перезапустить терминал",
+	"terminal.resumeAgentSession": "Возобновить сессию агента",
 
 	// TaskInfoPanel
 	"infoPanel.taskNumber": "Задача #",

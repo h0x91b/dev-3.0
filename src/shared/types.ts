@@ -406,7 +406,7 @@ export type AppRPCSchema = {
 				response: boolean;
 			};
 			getPtyUrl: {
-				params: { taskId: string };
+				params: { taskId: string; resume?: boolean };
 				response: string;
 			};
 			resolveFilename: {

@@ -1,0 +1,1 @@
+The "Restart Terminal" button shown when a tmux session dies (but the worktree is intact) now launches the agent with the resume flag (`claude --continue`, `codex resume --last`, etc.) and is renamed to "Resume Agent Session". This aligns it with the existing "resume last" convention used when reopening completed/cancelled tasks.
