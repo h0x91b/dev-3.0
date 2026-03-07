@@ -283,6 +283,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const [pushing, setPushing] = useState(false);
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
+	const pushThenCreatePRRef = useRef(false);
 	const [compareRef, setCompareRef] = useState<string>(""); // "" = origin/<baseBranch> (default)
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
@@ -423,6 +424,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				});
 				setBranchStatus(status);
 			} catch { /* silently ignore */ }
+
+			// Post-push: auto-create PR if triggered by "Push & Create PR"
+			if (detail.operation === "push" && detail.ok && pushThenCreatePRRef.current) {
+				pushThenCreatePRRef.current = false;
+				setPushing(false);
+				handleCreatePR();
+			}
 
 			// Post-merge: show "complete task?" dialog
 			if (detail.operation === "merge" && detail.ok) {
@@ -735,13 +743,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			? t("infoPanel.pushDisabled")
 			: t("infoPanel.push");
 
-	const createPRDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.unpushed !== 0 || creatingPR;
+	const needsPushBeforePR = branchStatus && branchStatus.ahead > 0 && branchStatus.unpushed !== 0;
+	const createPRDisabled = !branchStatus || branchStatus.ahead === 0 || creatingPR || pushing;
 	const createPRTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: branchStatus.ahead === 0
 			? t("infoPanel.createPRDisabledNoCommits")
-			: branchStatus.unpushed !== 0
-				? t("infoPanel.createPRDisabledNotPushed")
+			: needsPushBeforePR
+				? t("infoPanel.pushAndCreatePR")
 				: t("infoPanel.createPR");
 
 	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.behind > 0 || merging;
@@ -814,14 +823,21 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				{pushing ? t("infoPanel.pushing") : t("infoPanel.push")}
 			</button>
 			<button
-				onClick={handleCreatePR}
+				onClick={() => {
+					if (needsPushBeforePR) {
+						pushThenCreatePRRef.current = true;
+						handlePush();
+					} else {
+						handleCreatePR();
+					}
+				}}
 				disabled={createPRDisabled}
 				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					createPRDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={createPRTooltip}
 			>
-				{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPR")}
+				{creatingPR ? t("infoPanel.creatingPR") : pushing && pushThenCreatePRRef.current ? t("infoPanel.pushingAndCreatingPR") : needsPushBeforePR ? t("infoPanel.pushAndCreatePR") : t("infoPanel.createPR")}
 			</button>
 			<button
 				onClick={handleMerge}

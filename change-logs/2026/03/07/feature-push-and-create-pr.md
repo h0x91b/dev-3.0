@@ -1,0 +1,1 @@
+Replace disabled "Create PR" button with an active "Push & Create PR" button when the branch has unpushed commits. Clicking it pushes first, then automatically creates a PR on success — combining two steps into one click.

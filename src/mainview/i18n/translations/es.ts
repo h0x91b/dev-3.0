@@ -256,6 +256,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.createPRFailed": "Error al crear PR: {error}",
 	"infoPanel.createPRDisabledNoCommits": "No hay commits para crear PR",
 	"infoPanel.createPRDisabledNotPushed": "Primero haga Push antes de crear PR",
+	"infoPanel.pushAndCreatePR": "Push & Create PR",
+	"infoPanel.pushingAndCreatingPR": "Pusheando...",
 	"infoPanel.showDiff": "Show Diff",
 	"infoPanel.showDiffFailed": "Error al mostrar diff: {error}",
 	"infoPanel.showDiffTooltip": "Mostrar diff vs {branch}",
