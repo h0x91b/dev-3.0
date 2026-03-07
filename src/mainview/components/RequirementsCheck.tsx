@@ -7,13 +7,14 @@ interface Props {
 	results: RequirementCheckResult[];
 	checking: boolean;
 	onRefresh: () => void;
+	onRefreshResults: () => Promise<void>;
 }
 
-export default function RequirementsCheck({ results, checking, onRefresh }: Props) {
+export default function RequirementsCheck({ results, checking, onRefresh, onRefreshResults }: Props) {
 	const t = useT();
 	const [copiedId, setCopiedId] = useState<string | null>(null);
-	const [customPath, setCustomPath] = useState("");
-	const [saving, setSaving] = useState(false);
+	const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
+	const [savingId, setSavingId] = useState<string | null>(null);
 
 	const handleCopy = useCallback((id: string, command: string) => {
 		navigator.clipboard.writeText(command);
@@ -21,20 +22,18 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 		setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 2000);
 	}, []);
 
-	const handleSetCustomPath = useCallback(async () => {
-		if (!customPath.trim()) return;
-		setSaving(true);
+	const handleSetCustomPath = useCallback(async (reqId: string) => {
+		const path = customPaths[reqId]?.trim();
+		if (!path) return;
+		setSavingId(reqId);
 		try {
-			const settings = await api.request.getGlobalSettings();
-			await api.request.saveGlobalSettings({ ...settings, tmuxPath: customPath.trim() });
-			onRefresh();
+			await api.request.setCustomBinaryPath({ requirementId: reqId, path });
+			await onRefreshResults();
 		} catch (err) {
-			console.error("Failed to save custom tmux path:", err);
+			console.error("Failed to save custom binary path:", err);
 		}
-		setSaving(false);
-	}, [customPath, onRefresh]);
-
-	const tmuxMissing = results.some((r) => r.id === "tmux" && !r.installed);
+		setSavingId(null);
+	}, [customPaths, onRefresh]);
 
 	return (
 		<div className="h-full w-full flex items-center justify-center bg-base">
@@ -111,37 +110,39 @@ export default function RequirementsCheck({ results, checking, onRefresh }: Prop
 												</span>
 											)}
 										</div>
+										<div className="mt-2.5 pt-2.5 border-t border-edge/50">
+											<p className="text-fg-3 text-xs mb-1.5">
+												{t("requirements.customPathHint")}
+											</p>
+											{req.customPathError && (
+												<p className="text-danger text-xs mb-1.5">
+													{t("requirements.pathNotFound")}
+												</p>
+											)}
+											<div className="flex items-center gap-1.5">
+												<input
+													type="text"
+													value={customPaths[req.id] ?? ""}
+													onChange={(e) => setCustomPaths((prev) => ({ ...prev, [req.id]: e.target.value }))}
+													placeholder={`/path/to/${req.name.toLowerCase()}`}
+													className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${req.customPathError ? "border-danger" : "border-edge"}`}
+												/>
+												<button
+													type="button"
+													onClick={() => handleSetCustomPath(req.id)}
+													disabled={!customPaths[req.id]?.trim() || savingId === req.id}
+													className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+												>
+													{t("requirements.setPath")}
+												</button>
+											</div>
+										</div>
 									</div>
 								)}
 							</div>
 						</div>
 					))}
 				</div>
-
-				{tmuxMissing && (
-					<div className="mb-6 p-3 rounded-lg bg-raised border border-edge">
-						<p className="text-fg-2 text-xs mb-2">
-							{t("requirements.customPathHint")}
-						</p>
-						<div className="flex items-center gap-2">
-							<input
-								type="text"
-								value={customPath}
-								onChange={(e) => setCustomPath(e.target.value)}
-								placeholder="/opt/homebrew/bin/tmux"
-								className="flex-1 bg-base border border-edge rounded px-2 py-1.5 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
-							/>
-							<button
-								type="button"
-								onClick={handleSetCustomPath}
-								disabled={!customPath.trim() || saving}
-								className="px-3 py-1.5 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
-							>
-								{t("requirements.setPath")}
-							</button>
-						</div>
-					</div>
-				)}
 
 				<button
 					type="button"

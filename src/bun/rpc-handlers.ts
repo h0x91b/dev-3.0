@@ -1622,13 +1622,16 @@ export const handlers = {
 		const results: RequirementCheckResult[] = SYSTEM_REQUIREMENTS.map((req) => {
 			let resolvedPath: string | undefined;
 
-			// 1. Check custom path from settings (tmux only for now)
-			if (req.id === "tmux" && settings.tmuxPath) {
-				if (existsSync(settings.tmuxPath)) {
-					resolvedPath = settings.tmuxPath;
+			// 1. Check custom path from settings
+			let customPathError = false;
+			const customPath = settings.customBinaryPaths?.[req.id];
+			if (customPath) {
+				if (existsSync(customPath)) {
+					resolvedPath = customPath;
 					log.info(`  ${req.id}: found via custom settings path`, { path: resolvedPath });
 				} else {
-					log.warn(`  ${req.id}: custom path from settings does not exist`, { path: settings.tmuxPath });
+					customPathError = true;
+					log.warn(`  ${req.id}: custom path from settings does not exist`, { path: customPath });
 				}
 			}
 
@@ -1671,6 +1674,7 @@ export const handlers = {
 				installHint: req.installHint,
 				installCommand: req.installCommand,
 				brewInstallable: req.brewInstallable,
+				customPathError,
 			};
 		});
 
@@ -1683,6 +1687,15 @@ export const handlers = {
 
 		log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}:${r.resolvedPath ?? "none"}`) });
 		return results;
+	},
+
+	async setCustomBinaryPath(params: { requirementId: string; path: string }): Promise<void> {
+		log.info("-> setCustomBinaryPath", params);
+		const settings = await loadSettings();
+		const paths = settings.customBinaryPaths ?? {};
+		paths[params.requirementId] = params.path;
+		await saveSettings({ ...settings, customBinaryPaths: paths });
+		log.info("<- setCustomBinaryPath saved");
 	},
 
 	async createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {

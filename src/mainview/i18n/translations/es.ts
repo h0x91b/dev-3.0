@@ -308,7 +308,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"requirements.copied": "Copiado!",
 	"requirements.installGit": "Instalar con Xcode CLI tools:",
 	"requirements.installTmux": "Instalar con Homebrew:",
-	"requirements.customPathHint": "Si tmux está instalado pero no se detecta, ingrese la ruta completa al binario:",
+	"requirements.customPathHint": "O especifique la ruta completa al binario:",
+	"requirements.pathNotFound": "Archivo no encontrado en esta ruta",
 	"requirements.setPath": "Establecer ruta",
 
 	// Changelog

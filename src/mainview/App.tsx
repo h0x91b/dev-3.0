@@ -46,6 +46,16 @@ function App() {
 		setReqChecking(false);
 	}, []);
 
+	// Refresh results without dismissing the screen (used after Set path)
+	const refreshResults = useCallback(async () => {
+		try {
+			const results = await api.request.checkSystemRequirements();
+			setReqResults(results);
+		} catch (err) {
+			console.error("Failed to refresh requirements:", err);
+		}
+	}, []);
+
 	useEffect(() => {
 		checkRequirements();
 	}, [checkRequirements]);
@@ -214,6 +224,7 @@ function App() {
 				results={reqResults}
 				checking={reqChecking}
 				onRefresh={checkRequirements}
+				onRefreshResults={refreshResults}
 			/>
 		);
 	}

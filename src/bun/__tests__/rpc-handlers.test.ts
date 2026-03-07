@@ -1716,8 +1716,8 @@ describe("handlers.checkSystemRequirements", () => {
 		expect(results[1].resolvedPath).toBe("/opt/homebrew/bin/tmux");
 	});
 
-	it("uses custom tmux path from settings", async () => {
-		vi.mocked(loadSettings).mockResolvedValue({ tmuxPath: "/custom/path/tmux" } as any);
+	it("uses custom binary path from settings", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ customBinaryPaths: { tmux: "/custom/path/tmux" } } as any);
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") });
 		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/custom/path/tmux");
 
