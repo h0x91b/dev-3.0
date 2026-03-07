@@ -1,0 +1,1 @@
+Fixed a bug where `dev3 task create --title "..." --description @file` would silently discard the description. The CLI socket handler for `task.create` was passing the title as the description to `data.addTask()` and ignoring the actual description parameter. Now the full description is stored as the task body, and the title is saved as `customTitle`.

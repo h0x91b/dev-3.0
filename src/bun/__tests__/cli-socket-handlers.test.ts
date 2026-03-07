@@ -295,7 +295,7 @@ describe("task.create", () => {
 		expect(resp.error).toContain("title is required");
 	});
 
-	it("creates task and pushes message", async () => {
+	it("creates task with title only (no description) and pushes message", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo" });
 		const pushFn = vi.fn();
@@ -310,6 +310,30 @@ describe("task.create", () => {
 		expect(resp.ok).toBe(true);
 		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo");
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task });
+	});
+
+	it("creates task with description and sets customTitle", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo" });
+		const updatedTask = makeTask({ status: "todo", customTitle: "Short title" });
+		const pushFn = vi.fn();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(
+			makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Short title",
+				description: "Long detailed description\nwith multiple lines",
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.addTask).toHaveBeenCalledWith(project, "Long detailed description\nwith multiple lines", "todo");
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Short title" });
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: updatedTask });
 	});
 
 	it("does not crash when pushMessage is null", async () => {

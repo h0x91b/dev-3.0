@@ -99,11 +99,19 @@ const handlers: Record<string, Handler> = {
 	"task.create": async (params) => {
 		const projectId = params.projectId as string;
 		const title = params.title as string;
+		const description = (params.description as string | undefined)?.trim() || "";
 		if (!projectId) throw new Error("projectId is required");
 		if (!title) throw new Error("title is required");
 
 		const project = await data.getProject(projectId);
-		const task = await data.addTask(project, title, "todo");
+		// Use description as the task body if provided, otherwise fall back to title
+		const task = await data.addTask(project, description || title, "todo");
+		// If a separate title was given alongside a description, store it as customTitle
+		if (description && title) {
+			const updated = await data.updateTask(project, task.id, { customTitle: title });
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			return updated;
+		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 		return task;
 	},
