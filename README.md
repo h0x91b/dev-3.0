@@ -13,6 +13,7 @@
   <a href="https://github.com/h0x91b/dev-3.0/releases"><img src="https://img.shields.io/github/v/release/h0x91b/dev-3.0?style=flat-square&color=4496ff" alt="Release"></a>
   <a href="https://github.com/h0x91b/dev-3.0/stargazers"><img src="https://img.shields.io/github/stars/h0x91b/dev-3.0?style=flat-square&color=4496ff" alt="Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-4496ff?style=flat-square" alt="License"></a>
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=h0x91b.dev-3.0" alt="visitors">
 </p>
 
 <p align="center">
@@ -119,8 +120,3 @@ See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.
 
 [Apache 2.0](LICENSE) — © 2026 Arseny Pavlenko
 
----
-
-<p align="center">
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=h0x91b.dev-3.0" alt="visitors">
-</p>
