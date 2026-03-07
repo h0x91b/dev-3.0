@@ -128,7 +128,7 @@ describe("TaskInfoPanel", () => {
 			await act(async () => {
 				renderPanel(makeTask({ status: "in-progress" }));
 			});
-			expect(screen.getByText("In Progress")).toBeInTheDocument();
+			expect(screen.getByText("Agent is Working")).toBeInTheDocument();
 		});
 
 		it("renders labels when present", async () => {
@@ -329,13 +329,13 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask({ status: "in-progress" }));
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 
 			// in-progress can go to all other statuses
 			expect(screen.getByText("To Do")).toBeInTheDocument();
 			expect(screen.getByText("Completed")).toBeInTheDocument();
 			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("User Questions")).toBeInTheDocument();
+			expect(screen.getByText("Waiting for You")).toBeInTheDocument();
 		});
 
 		it("moves task to new status on selection", async () => {
@@ -349,8 +349,8 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch });
 			});
 
-			await user.click(screen.getByText("In Progress"));
-			await user.click(screen.getByText("User Questions"));
+			await user.click(screen.getByText("Agent is Working"));
+			await user.click(screen.getByText("Waiting for You"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -381,7 +381,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch });
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Review by User"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
@@ -410,7 +410,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task);
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Review by User"));
 
 			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
@@ -428,7 +428,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch, navigate });
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Completed"));
 
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
@@ -449,7 +449,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch, navigate });
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Completed"));
 
 			const dispatchedTask = dispatch.mock.calls.find(
@@ -474,7 +474,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch, navigate });
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Cancelled"));
 
 			const dispatchedTask = dispatch.mock.calls.find(
@@ -494,7 +494,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task);
 			});
 
-			await user.click(screen.getByText("In Progress"));
+			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Completed"));
 
 			expect(mockedConfirmTaskCompletion).toHaveBeenCalledWith(

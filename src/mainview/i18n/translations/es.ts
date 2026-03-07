@@ -385,8 +385,8 @@ const es: TranslationRecord & Record<string, string> = {
 
 	// Status labels
 	"status.todo": "Por hacer",
-	"status.inProgress": "En progreso",
-	"status.userQuestions": "Preguntas del usuario",
+	"status.inProgress": "Agente trabajando",
+	"status.userQuestions": "Esperando tu respuesta",
 	"status.reviewByAi": "Revisión por IA (unimplemented)",
 	"status.reviewByUser": "Revisión por usuario",
 	"status.completed": "Completado",
