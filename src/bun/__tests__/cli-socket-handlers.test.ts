@@ -295,7 +295,7 @@ describe("task.create", () => {
 		expect(resp.error).toContain("title is required");
 	});
 
-	it("creates task and pushes message", async () => {
+	it("creates task with title only (no description) and pushes message", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo" });
 		const pushFn = vi.fn();
@@ -310,6 +310,30 @@ describe("task.create", () => {
 		expect(resp.ok).toBe(true);
 		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo");
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task });
+	});
+
+	it("creates task with description and sets customTitle", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo" });
+		const updatedTask = makeTask({ status: "todo", customTitle: "Short title" });
+		const pushFn = vi.fn();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(
+			makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Short title",
+				description: "Long detailed description\nwith multiple lines",
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.addTask).toHaveBeenCalledWith(project, "Long detailed description\nwith multiple lines", "todo");
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Short title" });
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: updatedTask });
 	});
 
 	it("does not crash when pushMessage is null", async () => {
@@ -424,6 +448,39 @@ describe("task.update", () => {
 		);
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("Task not found");
+	});
+
+	it("clears customTitle when title is empty string", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "Old custom" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: null });
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "" }),
+		);
+		expect(resp.ok).toBe(true);
+		const call = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(call.customTitle).toBeNull();
+	});
+
+	it("does not recompute auto-title from description when task has customTitle", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "My custom title" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, description: "New desc" });
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", description: "New desc" }),
+		);
+		expect(resp.ok).toBe(true);
+		const call = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(call.description).toBe("New desc");
+		expect(call.title).toBeUndefined();
 	});
 });
 
@@ -804,6 +861,34 @@ describe("task.move", () => {
 		);
 
 		// Should pass task with empty description and resume=true for reopen
+		const launchCall = vi.mocked(launchTaskPty).mock.calls[0];
+		expect(launchCall[1].description).toBe("");
+		expect(launchCall[6]).toBe(true); // resume flag
+	});
+
+	it("reopen (cancelled → in-progress): launches with empty description", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "cancelled", description: "Cancelled desc" });
+		const wtResult = { worktreePath: "/tmp/reopen-wt", branchName: "dev3/reopen" };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.createWorktree).mockResolvedValue(wtResult);
+		vi.mocked(data.updateTask).mockResolvedValue({
+			...task,
+			status: "in-progress",
+			...wtResult,
+		});
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		await handleRequest(
+			makeRequest("task.move", {
+				taskId: task.id,
+				projectId: "proj-1",
+				newStatus: "in-progress",
+			}),
+		);
+
 		const launchCall = vi.mocked(launchTaskPty).mock.calls[0];
 		expect(launchCall[1].description).toBe("");
 		expect(launchCall[6]).toBe(true); // resume flag

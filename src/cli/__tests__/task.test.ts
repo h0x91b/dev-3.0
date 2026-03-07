@@ -92,7 +92,7 @@ describe("task show", () => {
 			taskId: "aaaaaaaa",
 		});
 		expect(stdoutOutput).toContain("Fix the login bug");
-		expect(stdoutOutput).toContain("In Progress");
+		expect(stdoutOutput).toContain("Agent is Working");
 	});
 
 	it("auto-detects taskId from context when no ID given", async () => {

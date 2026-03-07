@@ -29,7 +29,6 @@ export async function handleTasks(
 			if (!Number.isInteger(limit) || limit <= 0) {
 				exitUsage(`Invalid --limit: "${args.flags.limit}". Must be a positive integer.`);
 			}
-			params.limit = limit;
 		}
 
 		const resp = await sendRequest(socketPath, "tasks.list", params);
@@ -41,6 +40,14 @@ export async function handleTasks(
 		if (args.flags.label) {
 			const labelId = args.flags.label;
 			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
+		}
+
+		// Client-side limit (server returns all tasks matching status filter)
+		if (args.flags.limit) {
+			const limit = Number(args.flags.limit);
+			if (limit > 0 && limit < tasks.length) {
+				tasks = tasks.slice(0, limit);
+			}
 		}
 
 		if (tasks.length === 0) {

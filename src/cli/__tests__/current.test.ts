@@ -105,7 +105,7 @@ describe("handleCurrent", () => {
 			});
 			expect(stdoutOutput).toContain("My Project");
 			expect(stdoutOutput).toContain("Implement auth");
-			expect(stdoutOutput).toContain("In Progress");
+			expect(stdoutOutput).toContain("Agent is Working");
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
@@ -199,7 +199,7 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("My Project");
 			expect(stdoutOutput).toContain("Implement auth");
-			expect(stdoutOutput).toContain("In Progress");
+			expect(stdoutOutput).toContain("Agent is Working");
 			expect(stdoutOutput).toContain("(offline)");
 			// Should NOT call sendRequest
 			expect(mockSend).not.toHaveBeenCalled();
