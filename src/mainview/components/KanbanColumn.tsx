@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
 import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
-import { STATUS_COLORS, hexToRgb, getAllowedTransitions } from "../../shared/types";
+import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
+import { useStatusColors } from "../hooks/useStatusColors";
 import TaskCard from "./TaskCard";
 
 interface KanbanColumnProps {
@@ -49,7 +50,8 @@ function KanbanColumn({
 	siblingMap,
 }: KanbanColumnProps) {
 	const t = useT();
-	const color = STATUS_COLORS[status];
+	const statusColors = useStatusColors();
+	const color = statusColors[status];
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);

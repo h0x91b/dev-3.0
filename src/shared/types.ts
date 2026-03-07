@@ -57,6 +57,16 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	cancelled: "#ff8282",
 };
 
+export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
+	todo: "#0891b2",
+	"in-progress": "#4f46e5",
+	"user-questions": "#ea580c",
+	"review-by-ai": "#a21caf",
+	"review-by-user": "#b45309",
+	completed: "#059669",
+	cancelled: "#dc2626",
+};
+
 /** Convert "#rrggbb" → "R G B" for use as CSS variable value */
 export function hexToRgb(hex: string): string {
 	const r = parseInt(hex.slice(1, 3), 16);

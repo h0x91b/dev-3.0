@@ -6,6 +6,7 @@ import {
 	ACTIVE_STATUSES,
 	STATUS_LABELS,
 	STATUS_COLORS,
+	STATUS_COLORS_LIGHT,
 	DEFAULT_AGENTS,
 	LABEL_COLORS,
 } from "../../shared/types";
@@ -220,6 +221,28 @@ describe("STATUS_COLORS", () => {
 	it("all colors are valid hex format", () => {
 		for (const s of ALL_STATUSES) {
 			expect(STATUS_COLORS[s]).toMatch(/^#[0-9a-fA-F]{6}$/);
+		}
+	});
+});
+
+// ---- Constants: STATUS_COLORS_LIGHT ----
+
+describe("STATUS_COLORS_LIGHT", () => {
+	it("has a color for every status in ALL_STATUSES", () => {
+		for (const s of ALL_STATUSES) {
+			expect(STATUS_COLORS_LIGHT[s]).toBeDefined();
+		}
+	});
+
+	it("all colors are valid hex format", () => {
+		for (const s of ALL_STATUSES) {
+			expect(STATUS_COLORS_LIGHT[s]).toMatch(/^#[0-9a-fA-F]{6}$/);
+		}
+	});
+
+	it("has different colors from dark theme", () => {
+		for (const s of ALL_STATUSES) {
+			expect(STATUS_COLORS_LIGHT[s]).not.toBe(STATUS_COLORS[s]);
 		}
 	});
 });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { STATUS_COLORS, titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
 import type { AppAction } from "../state";
@@ -17,6 +18,7 @@ interface TaskDetailModalProps {
 
 function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalProps) {
 	const t = useT();
+	const statusColors = useStatusColors();
 	const isTodo = task.status === "todo";
 	const isArchived = task.status === "completed" || task.status === "cancelled";
 	const [isEditing, setIsEditing] = useState(false);
@@ -219,7 +221,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 		}
 	}
 
-	const color = STATUS_COLORS[task.status];
+	const color = statusColors[task.status];
 	const generatedTitle = editValue.trim() ? titleFromDescription(editValue) : "";
 
 	if (isArchived) {
@@ -423,6 +425,7 @@ function ArchivedView({
 	onClose,
 }: ArchivedViewProps) {
 	const t = useT();
+	const statusColors = useStatusColors();
 	const menuRef = useRef<HTMLDivElement>(null);
 
 	// Close status menu on click outside
@@ -488,7 +491,7 @@ function ArchivedView({
 										>
 											<div
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-												style={{ background: STATUS_COLORS[s] }}
+												style={{ background: statusColors[s] }}
 											/>
 											{t(statusKey(s))}
 										</button>

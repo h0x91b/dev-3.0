@@ -80,54 +80,62 @@
 }
 
 [data-theme="light"] {
-	--surface-base: 245 246 250;
+	/* ---- Surfaces ---- */
+	--surface-base: 240 242 250;
 	--surface-raised: 255 255 255;
-	--surface-raised-hover: 238 239 245;
-	--surface-elevated: 237 238 244;
-	--surface-elevated-hover: 226 228 236;
+	--surface-raised-hover: 240 241 248;
+	--surface-elevated: 237 239 247;
+	--surface-elevated-hover: 226 229 240;
 	--surface-overlay: 255 255 255;
-	--text-primary: 26 29 46;
-	--text-secondary: 80 85 110;
-	--text-tertiary: 120 126 158;
-	--text-muted: 160 164 190;
-	--border-default: 218 220 232;
-	--border-active: 195 198 214;
-	--accent: 94 158 255;
-	--accent-hover: 70 135 245;
-	--danger: 224 82 82;
 
-	/* Background: pastel gradient (blue-lavender → lavender → pink) */
-	--bg-grad-from: #e8ecf4;
-	--bg-grad-mid: #ede8f4;
-	--bg-grad-to: #f4e8ef;
+	/* ---- Text (slate-based, never pure black) ---- */
+	--text-primary: 15 23 42;
+	--text-secondary: 71 85 105;
+	--text-tertiary: 100 116 139;
+	--text-muted: 148 163 184;
 
-	/* Glass: semi-transparent white (frosted glass on pastel gradient) */
+	/* ---- Borders (visible but refined) ---- */
+	--border-default: 203 213 225;
+	--border-active: 165 180 202;
+
+	/* ---- Accent / Danger ---- */
+	--accent: 59 130 246;
+	--accent-hover: 37 99 235;
+	--danger: 220 38 38;
+
+	/* ---- Background gradient (saturated cool tones — the canvas) ---- */
+	--bg-grad-angle: 135deg;
+	--bg-grad-from: #dbe4f8;
+	--bg-grad-mid: #e4dbf4;
+	--bg-grad-to: #f4dbe9;
+
+	/* ---- Glass surfaces (frosted white on colored canvas) ---- */
 	--glass-column-rgb: 255 255 255;
-	--glass-column-alpha: 0.55;
+	--glass-column-alpha: 0.52;
 	--glass-card-rgb: 255 255 255;
-	--glass-card-alpha: 0.45;
-	--glass-card-hover-alpha: 0.65;
+	--glass-card-alpha: 0.72;
+	--glass-card-hover-alpha: 0.88;
 	--glass-header-rgb: 255 255 255;
-	--glass-header-alpha: 0.5;
+	--glass-header-alpha: 0.6;
 
-	/* Blur enabled */
-	--glass-blur-column: 12px;
-	--glass-blur-header: 16px;
+	/* ---- Glass blur ---- */
+	--glass-blur-column: 18px;
+	--glass-blur-header: 22px;
 
-	/* Borders: dark at low alpha (inverse of dark theme's white borders) */
+	/* ---- Glass borders (subtle dark outlines) ---- */
 	--glass-border-rgb: 0 0 0;
-	--glass-border-column-alpha: 0.06;
-	--glass-border-card-alpha: 0.08;
-	--glass-border-card-hover-alpha: 0.15;
+	--glass-border-column-alpha: 0.05;
+	--glass-border-card-alpha: 0.06;
+	--glass-border-card-hover-alpha: 0.13;
 
-	/* Column glow: subtle */
-	--glow-start-alpha: 0.08;
-	--glow-mid-alpha: 0.02;
-	--glow-line-alpha: 0.2;
+	/* ---- Column glow (stronger than before — jewel tones need presence) ---- */
+	--glow-start-alpha: 0.14;
+	--glow-mid-alpha: 0.04;
+	--glow-line-alpha: 0.35;
 
-	/* Shadows: more prominent for depth */
-	--shadow-column: 0 8px 24px -8px rgb(0 0 0 / 0.12);
-	--shadow-card-hover: 0 8px 20px -6px rgb(0 0 0 / 0.12);
+	/* ---- Shadows (blue-tinted, layered for depth) ---- */
+	--shadow-column: 0 8px 30px -8px rgb(80 100 140 / 0.13), 0 2px 8px -2px rgb(80 100 140 / 0.06);
+	--shadow-card-hover: 0 8px 24px -6px rgb(80 100 140 / 0.14);
 }
 
 html {

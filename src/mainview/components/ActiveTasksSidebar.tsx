@@ -1,6 +1,7 @@
 import type { Dispatch } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, STATUS_COLORS, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
+import { useStatusColors } from "../hooks/useStatusColors";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
 import LabelChip from "./LabelChip";
@@ -32,6 +33,7 @@ function ActiveTasksSidebar({
 	onSwitchToBoard,
 }: ActiveTasksSidebarProps) {
 	const t = useT();
+	const statusColors = useStatusColors();
 
 	const activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 
@@ -93,7 +95,7 @@ function ActiveTasksSidebar({
 							<div className="px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								<div
 									className="w-2 h-2 rounded-full flex-shrink-0"
-									style={{ background: STATUS_COLORS[status] }}
+									style={{ background: statusColors[status] }}
 								/>
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
 									{t(statusKey(status))}

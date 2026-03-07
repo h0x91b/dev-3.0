@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, type Dispatch } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -11,6 +11,7 @@ import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import SiblingPopover from "./SiblingPopover";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import { useStatusColors } from "../hooks/useStatusColors";
 import TaskDetailModal from "./TaskDetailModal";
 
 interface TaskCardProps {
@@ -30,6 +31,7 @@ interface TaskCardProps {
 
 function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, siblingMap }: TaskCardProps) {
 	const t = useT();
+	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -64,7 +66,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
-	const color = STATUS_COLORS[task.status];
+	const color = statusColors[task.status];
 
 	// Close menu on click outside
 	useEffect(() => {
@@ -575,7 +577,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<span
 								key={s.id}
 								className={`w-2 h-2 rounded-full flex-shrink-0 ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
-								style={{ background: STATUS_COLORS[s.status] }}
+								style={{ background: statusColors[s.status] }}
 							/>
 						))}
 					</button>
@@ -624,7 +626,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						>
 							<div
 								className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-								style={{ background: STATUS_COLORS[s] }}
+								style={{ background: statusColors[s] }}
 							/>
 							{t(statusKey(s))}
 						</button>

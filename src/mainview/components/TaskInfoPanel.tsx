@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, BranchStatus } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, STATUS_COLORS, getAllowedTransitions } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions } from "../../shared/types";
+import { useStatusColors } from "../hooks/useStatusColors";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -49,6 +50,7 @@ function readNumber(key: string, fallback: number): number {
 
 function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps) {
 	const t = useT();
+	const statusColors = useStatusColors();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 
@@ -566,7 +568,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 
 	// ---- Shared elements ----
 
-	const statusColor = STATUS_COLORS[task.status];
+	const statusColor = statusColors[task.status];
 	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
 
 	const statusDropdownButton = (
@@ -611,7 +613,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				>
 					<div
 						className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-						style={{ background: STATUS_COLORS[s] }}
+						style={{ background: statusColors[s] }}
 					/>
 					{t(statusKey(s))}
 				</button>

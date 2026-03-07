@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, Task } from "../../shared/types";
-import { ACTIVE_STATUSES, STATUS_COLORS } from "../../shared/types";
+import { ACTIVE_STATUSES } from "../../shared/types";
+import { useStatusColors } from "../hooks/useStatusColors";
 import type { Route } from "../state";
 import { useT, statusKey } from "../i18n";
 
@@ -16,6 +17,7 @@ interface SiblingPopoverProps {
 
 function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, projectId }: SiblingPopoverProps) {
 	const t = useT();
+	const statusColors = useStatusColors();
 	const popoverRef = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState({ top: 0, left: 0 });
 	const [visible, setVisible] = useState(false);
@@ -112,7 +114,7 @@ function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, project
 						>
 							<span
 								className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-								style={{ background: STATUS_COLORS[sibling.status] }}
+								style={{ background: statusColors[sibling.status] }}
 							/>
 							<div className="flex-1 min-w-0">
 								<div className="text-xs text-fg truncate">
