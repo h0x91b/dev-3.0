@@ -24,7 +24,7 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/kanban-board.jpg" width="800" alt="Kanban board with AI agents">
+  <img src="docs/screenshots/kanban-hover-preview.jpg" width="800" alt="Kanban board with live terminal preview">
 </p>
 
 ## The problem
@@ -52,6 +52,7 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Live terminal preview** — hover any card to see what the agent is doing right now
 - **Terminal bell alerts** — red badges on cards when an agent needs your attention
 - **Labels & search** — organize tasks with colored labels and instant full-text search
+- **Dark & light themes** — full theme support for both dark and light environments
 - **Automated setup** — configure a setup script per project that runs for every new task
 - **Copy-on-Write clone paths** — clone `node_modules`, `.venv`, `build`, and other heavy directories into worktrees instantly with near-zero disk overhead
 
@@ -60,7 +61,11 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/project-settings.jpg" width="600" alt="Project settings with labels and color pickers">
+  <img src="docs/screenshots/light-theme-kanban.jpg" width="800" alt="Light theme — Kanban board">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/global-settings.jpg" width="600" alt="Global settings — agents, configs, languages">
 </p>
 
 ## Install

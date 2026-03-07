@@ -1237,11 +1237,11 @@ footer {
         <div class="window-title">dev-3.0</div>
       </div>
       <div class="carousel-track" id="heroCarousel">
-        <img src="screenshots/kanban-board.jpg" alt="Kanban board with labels, search, and AI agents" class="active" data-duration="5000">
+        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000">
         <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" data-duration="3000">
+        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000">
         <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000">
-        <img src="screenshots/project-settings.jpg" alt="Project settings with labels and color pickers" data-duration="3000">
-        <img src="screenshots/new-task-modal.jpg" alt="New task dialog with labels" data-duration="3000">
+        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000">
       </div>
       <div class="carousel-controls" id="heroControls">
         <button class="carousel-btn" id="carouselPrev" aria-label="Previous">
@@ -1358,8 +1358,8 @@ footer {
             <div class="window-title">Kanban Board</div>
           </div>
           <!-- Kanban board with siblings popup -->
-          <img src="screenshots/kanban-overview.jpg" alt="Kanban board overview with siblings popup" class="step-screenshot"
-               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/kanban-overview.jpg</span></div>'">
+          <img src="screenshots/light-theme-kanban.jpg" alt="Kanban board in light theme" class="step-screenshot"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/light-theme-kanban.jpg</span></div>'">
         </div>
       </div>
 
@@ -1512,8 +1512,17 @@ footer {
         <p>Configure a setup script per project. Install deps, seed data, start services &mdash; runs automatically for each new task.</p>
       </div>
 
+      <!-- Feature: Dark & Light Themes -->
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </div>
+        <h3>Dark &amp; light themes</h3>
+        <p>Full theme support. Switch between dark and light modes to match your environment and preference.</p>
+      </div>
+
       <!-- Feature: Copy-on-Write Clone Paths -->
-      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--orange);">
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--orange);">
         <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H5a2 2 0 00-2 2v9a2 2 0 002 2h2"/></svg>
         </div>
