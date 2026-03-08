@@ -13,6 +13,7 @@ let sessionId = "";
 let userProperties: Record<string, { value: string }> = {};
 let currentScreen = "dashboard";
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let errorTrackingSetup = false;
 let sessionStartTime = 0;
 let previousAppVersion = "";
 
@@ -171,6 +172,9 @@ export function trackEvent(
 // ── Error tracking ──
 
 function setupErrorTracking(): void {
+	if (errorTrackingSetup) return;
+	errorTrackingSetup = true;
+
 	window.addEventListener("error", (event) => {
 		trackEvent("app_exception", {
 			description: `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,

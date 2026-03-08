@@ -1,0 +1,1 @@
+Add a guard flag to `setupErrorTracking()` in analytics to prevent duplicate window error/unhandledrejection listeners from accumulating when `initAnalytics()` is called multiple times (e.g. during HMR).
