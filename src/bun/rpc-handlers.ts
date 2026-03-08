@@ -91,6 +91,9 @@ const gitOpPaneIds = new Map<string, string>();
 // Track tasks whose merge was already detected (avoid repeated popups)
 const mergeNotifiedTasks = new Set<string>();
 
+// Dedup in-flight getBranchStatus requests per task to prevent stampedes
+const branchStatusInFlight = new Map<string, Promise<any>>();
+
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
 	if (existingPane) {
@@ -1138,6 +1141,26 @@ export const handlers = {
 
 	async getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
 		log.info("→ getBranchStatus", params);
+
+		// Dedup: reuse in-flight request for the same task to prevent stampedes
+		// (renderer can fire dozens of duplicate calls on reconnect/wake).
+		const dedupKey = `${params.taskId}:${params.compareRef ?? ""}`;
+		const existing = branchStatusInFlight.get(dedupKey);
+		if (existing) {
+			log.debug("getBranchStatus: reusing in-flight request", { taskId: params.taskId });
+			return existing;
+		}
+
+		const promise = this._getBranchStatusImpl(params);
+		branchStatusInFlight.set(dedupKey, promise);
+		try {
+			return await promise;
+		} finally {
+			branchStatusInFlight.delete(dedupKey);
+		}
+	},
+
+	async _getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }) {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 

@@ -30,25 +30,6 @@ async function run(
 	return result;
 }
 
-async function runWithInput(
-	cmd: string[],
-	cwd: string,
-	input: string,
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-	log.debug(`exec (stdin): ${cmd.join(" ")}`, { cwd });
-	const proc = spawn(cmd, {
-		cwd,
-		stdin: new Blob([input]),
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	const code = await proc.exited;
-	return { ok: code === 0, stdout: stdout.trim(), stderr: stderr.trim() };
-}
 
 export async function isGitRepo(path: string): Promise<boolean> {
 	log.info("Checking if git repo", { path });
@@ -400,25 +381,41 @@ export async function isContentMergedInto(
 	// merge-tree can report conflicts when main has additional changes to the
 	// same files AFTER the squash merge (add/add conflicts). In that case,
 	// fall back to patch-id matching which handles post-merge divergence well.
+	//
+	// IMPORTANT: We use shell pipes (git log -p | git patch-id) to avoid
+	// reading the full patch output into JS memory. The old approach stored
+	// multi-MB git log -p output as JS strings, causing massive memory usage
+	// when called frequently (every 15s per task).
 	const mergeBaseResult = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
 	if (!mergeBaseResult.ok) return false;
 	const mergeBase = mergeBaseResult.stdout;
 
-	const [taskDiffResult, taskLogResult, mainLogResult] = await Promise.all([
-		run(["git", "diff", mergeBase, "HEAD"], worktreePath),
-		run(["git", "log", "-p", "--no-merges", `${mergeBase}..HEAD`], worktreePath),
-		run(["git", "log", "-p", "--no-merges", `${mergeBase}..${ref}`], worktreePath),
-	]);
+	// Check if there are any task changes at all (lightweight --stat check)
+	const taskStatResult = await run(["git", "diff", "--shortstat", mergeBase, "HEAD"], worktreePath);
+	if (!taskStatResult.ok || !taskStatResult.stdout) return true; // no task changes
 
-	if (!taskDiffResult.ok || !taskDiffResult.stdout) return true; // no task changes
-	if (!mainLogResult.ok || !mainLogResult.stdout) return false;
-
-	const fakeCommitDiff = `commit ${"0".repeat(40)}\n\n${taskDiffResult.stdout}`;
+	// Pipe git log -p directly into git patch-id via shell — no JS memory allocation
+	// for potentially huge patch outputs.
 	const [combinedPatchIdResult, taskPatchIdsResult, mainPatchIdsResult] = await Promise.all([
-		runWithInput(["git", "patch-id", "--stable"], worktreePath, fakeCommitDiff),
-		runWithInput(["git", "patch-id", "--stable"], worktreePath, taskLogResult.stdout ?? ""),
-		runWithInput(["git", "patch-id", "--stable"], worktreePath, mainLogResult.stdout),
+		// Combined diff as a single patch-id (for squash merge detection).
+		// We need to wrap the diff in a fake commit header for git patch-id.
+		run(
+			["bash", "-c", `{ echo "commit ${"0".repeat(40)}"; echo; git diff "${mergeBase}" HEAD; } | git patch-id --stable`],
+			worktreePath,
+		),
+		// Per-commit patch-ids from the task branch
+		run(
+			["bash", "-c", `git log -p --no-merges "${mergeBase}..HEAD" | git patch-id --stable`],
+			worktreePath,
+		),
+		// Per-commit patch-ids from the base branch
+		run(
+			["bash", "-c", `git log -p --no-merges "${mergeBase}..${ref}" | git patch-id --stable`],
+			worktreePath,
+		),
 	]);
+
+	if (!mainPatchIdsResult.ok || !mainPatchIdsResult.stdout) return false;
 
 	const mainPatchIds = new Set(
 		mainPatchIdsResult.stdout

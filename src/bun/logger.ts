@@ -1,5 +1,5 @@
+import { appendFileSync, mkdirSync } from "node:fs";
 import { DEV3_HOME } from "./paths";
-import { spawn } from "./spawn";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -24,7 +24,9 @@ let minLevel: LogLevel = "debug";
 let logDir: string | null = null;
 let currentLogFile: string | null = null;
 let currentLogDate: string | null = null;
-let writeQueue: Promise<void> = Promise.resolve();
+
+// Track which directories have been created so we only mkdir once per dir.
+const ensuredDirs = new Set<string>();
 
 function getLogDir(): string {
 	if (!logDir) {
@@ -53,25 +55,26 @@ function getLogFile(): string {
 	return currentLogFile;
 }
 
-async function ensureDir(filePath: string): Promise<void> {
+function ensureDir(filePath: string): void {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
-	const proc = spawn(["mkdir", "-p", dir]);
-	await proc.exited;
+	if (ensuredDirs.has(dir)) return;
+	try {
+		mkdirSync(dir, { recursive: true });
+	} catch {
+		// Directory may already exist — that's fine
+	}
+	ensuredDirs.add(dir);
 }
 
 function appendToFile(line: string): void {
-	writeQueue = writeQueue.then(async () => {
-		try {
-			const filePath = getLogFile();
-			await ensureDir(filePath);
-			const file = Bun.file(filePath);
-			const existing = (await file.exists()) ? await file.text() : "";
-			await Bun.write(filePath, existing + line + "\n");
-		} catch (err) {
-			// Last resort — don't let file logging break the app
-			console.error("[logger] Failed to write log file:", err);
-		}
-	});
+	try {
+		const filePath = getLogFile();
+		ensureDir(filePath);
+		appendFileSync(filePath, line + "\n");
+	} catch (err) {
+		// Last resort — don't let file logging break the app
+		console.error("[logger] Failed to write log file:", err);
+	}
 }
 
 function formatForConsole(
@@ -128,7 +131,7 @@ function log(
 			console.log(consoleLine);
 	}
 
-	// File output (async, fire-and-forget)
+	// File output (synchronous append — no memory overhead)
 	appendToFile(fileLine);
 }
 
@@ -157,4 +160,4 @@ export function getLogPath(): string {
 }
 
 // Init: ensure log directory exists on first import
-ensureDir(`${getLogDir()}/init`).catch(() => {});
+ensureDir(`${getLogDir()}/init.log`);
