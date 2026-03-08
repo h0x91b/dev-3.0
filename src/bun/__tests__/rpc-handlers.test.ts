@@ -1402,7 +1402,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0 });
+		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [] });
 	});
 
 	it("returns branch status with canRebase=true when behind", async () => {
@@ -1415,7 +1415,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 3, behind: 2 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 10, deletions: 5 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(1);
-		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 4, insertions: 50, deletions: 20 });
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 4, insertions: 50, deletions: 20, fileNames: ["a.ts", "b.ts", "c.ts", "d.ts"] });
 		vi.mocked(git.canRebaseCleanly).mockResolvedValue(true);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
@@ -1442,7 +1442,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
-		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0 });
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.canRebase).toBe(false);
@@ -1460,7 +1460,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
-		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0 });
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
 
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
@@ -1480,7 +1480,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
-		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0 });
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
 
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 

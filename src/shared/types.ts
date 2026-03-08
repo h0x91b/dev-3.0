@@ -303,6 +303,7 @@ export interface BranchStatus {
 	diffFiles: number; // total files changed in branch vs base
 	diffInsertions: number; // total lines added in branch vs base
 	diffDeletions: number; // total lines removed in branch vs base
+	diffFileNames: string[]; // list of changed file paths in branch vs base
 }
 
 // ---- Tmux sessions ----

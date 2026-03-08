@@ -95,7 +95,7 @@ const mergeNotifiedTasks = new Set<string>();
 const branchStatusInFlight = new Map<string, Promise<{
 	ahead: number; behind: number; canRebase: boolean;
 	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
-	diffFiles: number; diffInsertions: number; diffDeletions: number;
+	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
 }>>();
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
@@ -560,7 +560,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const task = await data.getTask(project, params.taskId);
 
 	if (!task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0 };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [] };
 	}
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -591,7 +591,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
-		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions,
+		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
 	};
 	log.info("← getBranchStatus", result);
 	return result;

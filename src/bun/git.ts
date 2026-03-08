@@ -368,23 +368,27 @@ export async function getUncommittedChanges(
 export async function getBranchDiffStats(
 	worktreePath: string,
 	ref: string,
-): Promise<{ files: number; insertions: number; deletions: number }> {
-	const result = await run(
-		["git", "diff", "--shortstat", `${ref}...HEAD`],
-		worktreePath,
-	);
-	if (!result.ok || !result.stdout.trim()) {
-		return { files: 0, insertions: 0, deletions: 0 };
+): Promise<{ files: number; insertions: number; deletions: number; fileNames: string[] }> {
+	const [statResult, namesResult] = await Promise.all([
+		run(["git", "diff", "--shortstat", `${ref}...HEAD`], worktreePath),
+		run(["git", "diff", "--name-only", `${ref}...HEAD`], worktreePath),
+	]);
+	if (!statResult.ok || !statResult.stdout.trim()) {
+		return { files: 0, insertions: 0, deletions: 0, fileNames: [] };
 	}
 	// Output like: " 3 files changed, 45 insertions(+), 12 deletions(-)"
-	const text = result.stdout.trim();
+	const text = statResult.stdout.trim();
 	const filesMatch = text.match(/(\d+)\s+file/);
 	const insMatch = text.match(/(\d+)\s+insertion/);
 	const delMatch = text.match(/(\d+)\s+deletion/);
+	const fileNames = namesResult.ok && namesResult.stdout.trim()
+		? namesResult.stdout.trim().split("\n")
+		: [];
 	return {
 		files: filesMatch ? parseInt(filesMatch[1], 10) : 0,
 		insertions: insMatch ? parseInt(insMatch[1], 10) : 0,
 		deletions: delMatch ? parseInt(delMatch[1], 10) : 0,
+		fileNames,
 	};
 }
 

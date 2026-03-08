@@ -89,6 +89,7 @@ const defaultBranchStatus: BranchStatus = {
 	diffFiles: 0,
 	diffInsertions: 0,
 	diffDeletions: 0,
+	diffFileNames: [],
 };
 
 function renderPanel(

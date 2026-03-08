@@ -702,10 +702,21 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	}
 
 	const diffStatsBadge = branchStatus && (branchStatus.diffFiles > 0) ? (
-		<span className="flex items-center gap-1.5 text-[0.6875rem] text-fg-3 flex-shrink-0 font-mono">
+		<span className="relative flex items-center gap-1.5 text-[0.6875rem] text-fg-3 flex-shrink-0 font-mono group/diff cursor-default">
+			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0AC3}"}</span>
 			<span>{branchStatus.diffFiles} {branchStatus.diffFiles === 1 ? "file" : "files"}</span>
 			<span className="text-[#34d399]">+{branchStatus.diffInsertions}</span>
 			<span className="text-[#f87171]">−{branchStatus.diffDeletions}</span>
+			{branchStatus.diffFileNames.length > 0 && (
+				<div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/diff:block">
+					<div className="bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 px-3 max-w-[25rem] max-h-[20rem] overflow-auto">
+						<div className="text-[0.625rem] text-fg-muted font-sans font-semibold uppercase tracking-wider mb-1.5">Changed files</div>
+						{branchStatus.diffFileNames.map((f) => (
+							<div key={f} className="text-[0.6875rem] text-fg-2 font-mono truncate py-0.5 leading-snug">{f}</div>
+						))}
+					</div>
+				</div>
+			)}
 		</span>
 	) : null;
 
