@@ -12,6 +12,23 @@ import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
 
 const log = createLogger("cli-socket");
 
+const MIN_PREFIX_LENGTH = 8;
+
+function findByIdPrefix<T extends { id: string }>(items: T[], prefix: string, entityName: string): T | null {
+	const exact = items.find((item) => item.id === prefix);
+	if (exact) return exact;
+
+	if (prefix.length < MIN_PREFIX_LENGTH) return null;
+
+	const matches = items.filter((item) => item.id.startsWith(prefix));
+	if (matches.length === 0) return null;
+	if (matches.length > 1) {
+		const ids = matches.map((m) => m.id.slice(0, 12)).join(", ");
+		throw new Error(`Ambiguous ${entityName} prefix "${prefix}" matches ${matches.length} items (${ids}). Use a longer prefix.`);
+	}
+	return matches[0];
+}
+
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 let socketPath = "";
 
@@ -48,11 +65,11 @@ async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Pro
 	for (const project of projects) {
 		try {
 			const tasks = await data.loadTasks(project);
-			// Support both full UUID and 8-char prefix
-			const task = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			const task = findByIdPrefix(tasks, taskId, "task");
 			if (task) return { project, task };
-		} catch {
-			// Skip projects with broken task files
+		} catch (err) {
+			// Re-throw ambiguity errors, skip broken task files
+			if (err instanceof Error && err.message.startsWith("Ambiguous")) throw err;
 		}
 	}
 	return null;
@@ -127,7 +144,7 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			const found = findByIdPrefix(tasks, taskId, "task");
 			if (!found) throw new Error(`Task not found: ${taskId}`);
 			task = found;
 		} else {
@@ -170,7 +187,7 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			const found = findByIdPrefix(tasks, taskId, "task");
 			if (!found) throw new Error(`Task not found: ${taskId}`);
 			task = found;
 		} else {
@@ -224,7 +241,7 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			const found = findByIdPrefix(tasks, taskId, "task");
 			if (!found) throw new Error(`Task not found: ${taskId}`);
 			task = found;
 		} else {
@@ -235,10 +252,11 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const before = task.notes ?? [];
-		const notes = before.filter((n) => n.id !== noteId && !n.id.startsWith(noteId));
-		if (notes.length === before.length) {
+		const noteToDelete = findByIdPrefix(before, noteId, "note");
+		if (!noteToDelete) {
 			throw new Error(`Note not found: ${noteId}`);
 		}
+		const notes = before.filter((n) => n.id !== noteToDelete.id);
 		const updated = await data.updateTask(project, task.id, { notes });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
@@ -280,7 +298,7 @@ const handlers: Record<string, Handler> = {
 
 		const project = await data.getProject(projectId);
 		const labels = project.labels ?? [];
-		const label = labels.find((l) => l.id === labelId || l.id.startsWith(labelId));
+		const label = findByIdPrefix(labels, labelId, "label");
 		if (!label) throw new Error(`Label not found: ${labelId}`);
 
 		await data.updateProject(projectId, { labels: labels.filter((l) => l.id !== label.id) });
@@ -308,10 +326,8 @@ const handlers: Record<string, Handler> = {
 
 		// Resolve short label ID prefixes to full UUIDs
 		const labelIds = rawLabelIds.map((raw) => {
-			const exact = projectLabels.find((l) => l.id === raw);
-			if (exact) return exact.id;
-			const byPrefix = projectLabels.find((l) => l.id.startsWith(raw));
-			if (byPrefix) return byPrefix.id;
+			const found = findByIdPrefix(projectLabels, raw, "label");
+			if (found) return found.id;
 			return raw; // pass through if not found — validation is caller's job
 		});
 
@@ -332,7 +348,7 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+			const found = findByIdPrefix(tasks, taskId, "task");
 			if (!found) throw new Error(`Task not found: ${taskId}`);
 			task = found;
 		} else {

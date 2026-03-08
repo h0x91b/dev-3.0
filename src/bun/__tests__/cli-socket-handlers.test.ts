@@ -260,6 +260,33 @@ describe("task.show", () => {
 		expect(resp.data).toEqual(task);
 	});
 
+	it("rejects short prefix (less than 8 chars)", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-abc12345-full-uuid" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "task-ab" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Task not found");
+	});
+
+	it("errors on ambiguous prefix across projects", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "task-abc12345-aaaa-uuid" });
+		const task2 = makeTask({ id: "task-abc12345-bbbb-uuid", seq: 2 });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1, task2]);
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "task-abc12345" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Ambiguous");
+	});
+
 	it("errors when task not found across projects", async () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
 		vi.mocked(data.loadTasks).mockResolvedValue([]);
@@ -689,6 +716,21 @@ describe("note.delete", () => {
 			makeRequest("note.delete", { taskId: task.id, projectId: "proj-1", noteId: "note-abcd" }),
 		);
 		expect(resp.ok).toBe(true);
+	});
+
+	it("errors on ambiguous note prefix", async () => {
+		const note1: TaskNote = { id: "note-abcd-1234-aaaa", content: "A", source: "ai", createdAt: "", updatedAt: "" };
+		const note2: TaskNote = { id: "note-abcd-1234-bbbb", content: "B", source: "ai", createdAt: "", updatedAt: "" };
+		const project = makeProject();
+		const task = makeTask({ notes: [note1, note2] });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(
+			makeRequest("note.delete", { taskId: task.id, projectId: "proj-1", noteId: "note-abcd-1234" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Ambiguous");
 	});
 
 	it("errors when note not found", async () => {
@@ -1173,6 +1215,20 @@ describe("label.delete", () => {
 		expect(resp.ok).toBe(true);
 	});
 
+	it("errors on ambiguous label prefix", async () => {
+		const labels = [
+			{ id: "lbl-abcd-1234-aaaa-5678", name: "bug", color: "#ef4444" },
+			{ id: "lbl-abcd-1234-bbbb-5678", name: "feature", color: "#14b8a6" },
+		];
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels }));
+
+		const resp = await handleRequest(
+			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-abcd-1234" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Ambiguous");
+	});
+
 	it("errors when label not found", async () => {
 		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
 
@@ -1259,6 +1315,25 @@ describe("task.setLabels", () => {
 				"bbbb1111-2222-3333-4444-555555555555",
 			],
 		});
+	});
+
+	it("errors on ambiguous label prefix in setLabels", async () => {
+		const labels = [
+			{ id: "aaaa1111-2222-3333-4444-aaaaaaaaaaaa", name: "bug", color: "#ef4444" },
+			{ id: "aaaa1111-2222-3333-4444-bbbbbbbbbbbb", name: "feature", color: "#14b8a6" },
+		];
+		const project = makeProject({ labels });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: "task-abc12345-1111-2222-3333-444444444444",
+				projectId: "proj-1",
+				labelIds: ["aaaa1111-2222-3333"],
+			}),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Ambiguous");
 	});
 
 	it("clears labels when empty array provided", async () => {
