@@ -251,6 +251,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	function handleDragStart(e: React.DragEvent) {
+		closePreview();
 		e.dataTransfer.setData("text/plain", task.id);
 		e.dataTransfer.effectAllowed = "move";
 		onDragStartProp(task.id);

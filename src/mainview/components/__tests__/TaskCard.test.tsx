@@ -517,6 +517,33 @@ describe("TaskCard", () => {
 			expect(onDragStart).toHaveBeenCalledWith("t1");
 			expect(mockDataTransfer.setData).toHaveBeenCalledWith("text/plain", "t1");
 		});
+
+		it("closes terminal preview when drag starts", async () => {
+			vi.useFakeTimers();
+			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" });
+			mockedApi.request.getTerminalPreview.mockResolvedValue("$ hello");
+
+			renderCard(task);
+
+			const card = screen.getByText("My task").closest("[draggable]")!;
+
+			// Trigger hover to open preview
+			fireEvent.mouseEnter(card);
+			// Advance past the 400ms hover delay
+			await vi.advanceTimersByTimeAsync(500);
+
+			// Preview should be open
+			expect(mockedApi.request.getTerminalPreview).toHaveBeenCalled();
+
+			// Start dragging — preview should close
+			const mockDataTransfer = { setData: vi.fn(), effectAllowed: "" };
+			fireEvent.dragStart(card, { dataTransfer: mockDataTransfer });
+
+			// Preview portal should be gone
+			expect(screen.queryByText("$ hello")).not.toBeInTheDocument();
+
+			vi.useRealTimers();
+		});
 	});
 
 	describe("title click and detail modal", () => {
