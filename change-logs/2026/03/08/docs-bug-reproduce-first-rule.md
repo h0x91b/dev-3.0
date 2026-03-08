@@ -1,0 +1,1 @@
+Added "reproduce first" rule to AGENTS.md: when fixing bugs, agents must write a failing test that reproduces the issue before applying the fix. Exception allowed only when reproduction is genuinely impractical.

@@ -318,6 +318,18 @@ Excluded from coverage (bootstrap/wrappers that only make sense in e2e): `src/bu
 
 **E2E tests (CLI-based):** Full lifecycle through CLI + Unix socket against a real app process with tmpdir. Scenarios: task lifecycle (create → move statuses → complete), project CRUD, worktree creation + cleanup, notes CRUD, CLI context auto-detection, concurrent writes (no data corruption).
 
+### Bug fixing workflow — reproduce first
+
+**When fixing a bug, always start by writing a failing test that reproduces the issue.** Do not jump straight to the fix.
+
+1. **Write a unit or e2e test** that triggers the exact bug (the test must fail / turn red).
+2. **Then fix the code** so the test passes (turns green).
+3. Commit both the test and the fix together.
+
+This ensures the bug is properly understood before being fixed, and prevents regressions.
+
+**Exception:** If the bug is genuinely impractical to reproduce in a test (e.g., it depends on OS-specific timing, hardware, or third-party service behavior that cannot be mocked), skip the reproduction test. But this should be rare — default to writing the test first.
+
 ### Test writing rules
 
 - One logical assertion per test. No dependencies between tests.
