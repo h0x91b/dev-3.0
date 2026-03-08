@@ -153,20 +153,33 @@ export function createSession(
 	spawnPty(session, 220, 50);
 }
 
-export function destroySession(taskId: string): void {
+export function destroySession(taskId: string, fallbackSocket?: string | null): void {
 	const session = sessions.get(taskId);
-	if (!session) {
-		log.warn("destroySession: session not found", { taskId: taskId.slice(0, 8) });
-		return;
-	}
+	const socket = session?.tmuxSocket ?? fallbackSocket ?? "dev3";
 
-	log.info("Destroying PTY session", { taskId: taskId.slice(0, 8), hasPid: !!session.proc });
+	log.info("Destroying PTY session", {
+		taskId: taskId.slice(0, 8),
+		hasPid: !!session?.proc,
+		inMap: !!session,
+		socket,
+	});
 
 	// Kill the tmux session explicitly — proc.kill() only disconnects the
 	// attached client, the session itself keeps running on the tmux server.
+	// Use spawnSync to ensure the kill completes before we proceed.
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
-		spawn(tmuxArgs(session.tmuxSocket, "kill-session", "-t", tmuxSessionName));
+		const result = spawnSync(tmuxArgs(socket, "kill-session", "-t", tmuxSessionName));
+		if (result.exitCode !== 0) {
+			const stderr = new TextDecoder().decode(result.stderr).trim();
+			log.warn("tmux kill-session exited non-zero", {
+				taskId: taskId.slice(0, 8),
+				exitCode: result.exitCode,
+				stderr,
+			});
+		} else {
+			log.info("tmux kill-session succeeded", { taskId: taskId.slice(0, 8), tmuxSessionName });
+		}
 	} catch (err) {
 		log.warn("tmux kill-session failed (best-effort)", {
 			taskId: taskId.slice(0, 8),
@@ -174,18 +187,20 @@ export function destroySession(taskId: string): void {
 		});
 	}
 
-	if (session.proc) {
-		session.proc.terminal?.close();
-		session.proc.kill();
-	}
-	if (session.ws) {
-		try {
-			session.ws.close();
-		} catch {
-			// already closed
+	if (session) {
+		if (session.proc) {
+			session.proc.terminal?.close();
+			session.proc.kill();
 		}
+		if (session.ws) {
+			try {
+				session.ws.close();
+			} catch {
+				// already closed
+			}
+		}
+		sessions.delete(taskId);
 	}
-	sessions.delete(taskId);
 }
 
 export function hasSession(taskId: string): boolean {

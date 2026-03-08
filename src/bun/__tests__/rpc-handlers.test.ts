@@ -1040,7 +1040,7 @@ describe("handlers.moveTask", () => {
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 		expect(result.status).toBe("completed");
-		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 	});
 
@@ -1154,7 +1154,7 @@ describe("handlers.moveTask", () => {
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 		expect(result.status).toBe("completed");
-		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
 			status: "completed",
@@ -1208,7 +1208,7 @@ describe("handlers.deleteTask", () => {
 		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
 
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
-		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
 	});

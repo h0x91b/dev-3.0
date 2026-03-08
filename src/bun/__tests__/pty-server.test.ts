@@ -263,15 +263,15 @@ describe("pty-server", () => {
 			expect(hasSession(id)).toBe(false);
 		});
 
-		it("kills tmux session via spawn", () => {
+		it("kills tmux session via spawnSync", () => {
 			const id = track("task-dstr-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			mockSpawn.mockClear();
+			mockSpawnSync.mockClear();
 
 			destroySession(id);
 			activeSessions.splice(activeSessions.indexOf(id), 1);
 
-			const killCall = mockSpawn.mock.calls.find(
+			const killCall = mockSpawnSync.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
 			expect(killCall).toBeDefined();
@@ -301,15 +301,44 @@ describe("pty-server", () => {
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 
 			// Make kill-session throw
-			mockSpawn.mockImplementation((cmd: any) => {
+			mockSpawnSync.mockImplementation((cmd: any) => {
 				if (Array.isArray(cmd) && cmd.includes("kill-session")) {
 					throw new Error("tmux kill failed");
 				}
-				return defaultSpawnReturn() as any;
+				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
 			});
 
 			expect(() => destroySession(id)).not.toThrow();
 			activeSessions.splice(activeSessions.indexOf(id), 1);
+		});
+
+		it("kills tmux session even when not in memory map (fallback socket)", () => {
+			mockSpawnSync.mockClear();
+
+			// Destroy a session that was never created in the Map
+			destroySession("unknown-task-id-1234", "dev3");
+
+			const killCall = mockSpawnSync.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
+			);
+			expect(killCall).toBeDefined();
+			expect(killCall![0]).toContain("dev3-unknown-");
+			expect(killCall![0]).toContain("-L");
+			expect(killCall![0]).toContain("dev3");
+		});
+
+		it("uses fallback socket 'dev3' when no session and no fallback provided", () => {
+			mockSpawnSync.mockClear();
+
+			destroySession("orphan-task-id-5678");
+
+			const killCall = mockSpawnSync.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
+			);
+			expect(killCall).toBeDefined();
+			// Should use default "dev3" socket
+			expect(killCall![0]).toContain("-L");
+			expect(killCall![0][2]).toBe("dev3");
 		});
 	});
 

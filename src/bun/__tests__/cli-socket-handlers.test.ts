@@ -925,7 +925,7 @@ describe("task.move", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(pty.destroySession).toHaveBeenCalledWith(task.id);
+		expect(pty.destroySession).toHaveBeenCalledWith(task.id, undefined);
 		expect(runCleanupScript).toHaveBeenCalledWith(task, project);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {

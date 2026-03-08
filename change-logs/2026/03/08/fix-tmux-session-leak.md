@@ -1,0 +1,1 @@
+Fix tmux sessions leaking after task completion/cancellation. The destroySession function now always attempts to kill the tmux session on the server even when the in-memory PTY session is missing (e.g. after app restart). Switched from async fire-and-forget spawn to synchronous spawnSync for the kill-session command to ensure it completes reliably.

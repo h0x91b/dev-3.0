@@ -411,7 +411,7 @@ const handlers: Record<string, Handler> = {
 
 		// active → completed/cancelled: destroy PTY, cleanup, remove worktree
 		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
-			try { pty.destroySession(task.id); } catch {}
+			try { pty.destroySession(task.id, task.tmuxSocket); } catch {}
 			try { await runCleanupScript(task, project); } catch {}
 			playTaskCompleteSound();
 			try { await git.removeWorktree(project, task); } catch {}
