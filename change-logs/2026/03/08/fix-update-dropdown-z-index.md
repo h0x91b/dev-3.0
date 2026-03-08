@@ -1,0 +1,1 @@
+Fix update dropdown in GlobalHeader being overlapped by Kanban columns. The glass-header's backdrop-filter created a stacking context that trapped the dropdown's z-index. Added relative z-30 to the header div so it sits above the board content.

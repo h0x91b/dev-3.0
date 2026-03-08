@@ -115,7 +115,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 
 	return (
 		<>
-		<div className="flex items-center justify-between px-5 py-2.5 border-b border-edge flex-shrink-0 glass-header">
+		<div className="relative z-30 flex items-center justify-between px-5 py-2.5 border-b border-edge flex-shrink-0 glass-header">
 			{/* Breadcrumbs */}
 			<div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden">
 				{segments.map((seg, i) => (
