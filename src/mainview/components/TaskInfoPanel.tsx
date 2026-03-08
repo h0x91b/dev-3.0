@@ -912,10 +912,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			}`}
 			title={t("header.fileBrowser")}
 		>
-			<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-					d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-			</svg>
+			<span className="text-base leading-none" style={{ fontFamily: "JetBrainsMono Nerd Font Mono" }}>{"\uF0645"}</span>
 			<span className="text-[0.6875rem] font-semibold">{t("header.fileBrowser")}</span>
 		</button>
 	);
