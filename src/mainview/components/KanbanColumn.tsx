@@ -36,6 +36,8 @@ interface KanbanColumnProps {
 	isDraggedColumn?: boolean;
 	onColumnDragStart?: () => void;
 	onColumnDragEnd?: () => void;
+	// Column reorder drop target (left half = "before", right half = "after")
+	onColumnDrop?: (side: "before" | "after") => void;
 }
 
 function KanbanColumn({
@@ -67,12 +69,14 @@ function KanbanColumn({
 	isDraggedColumn,
 	onColumnDragStart,
 	onColumnDragEnd,
+	onColumnDrop,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const color = colorOverride ?? statusColors[status];
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
+	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
 
 	// Is this a same-column reorder drag?
@@ -91,12 +95,22 @@ function KanbanColumn({
 	useEffect(() => {
 		function handleDragEnd() {
 			setDropIndex(null);
+			setColumnDragSide(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
 		return () => window.removeEventListener("dragend", handleDragEnd);
 	}, []);
 
 	function handleDragOver(e: React.DragEvent) {
+		// Column reorder: detect via dataTransfer type (works synchronously, unlike state)
+		if (isCustomColumn && onColumnDrop && e.dataTransfer.types.includes("dev3/column") && !isDraggedColumn) {
+			e.preventDefault();
+			e.dataTransfer.dropEffect = "move";
+			const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+			setColumnDragSide(e.clientX < rect.left + rect.width / 2 ? "before" : "after");
+			return;
+		}
+		// Task drag
 		if (!isCrossColumnTarget && !isSameColumnDrag) return;
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "move";
@@ -127,11 +141,22 @@ function KanbanColumn({
 		if (e.currentTarget.contains(e.relatedTarget as Node)) return;
 		setDragOver(false);
 		setDropIndex(null);
+		setColumnDragSide(null);
 	}
 
 	function handleDrop(e: React.DragEvent) {
 		e.preventDefault();
 		setDragOver(false);
+
+		// Column reorder drop
+		const colId = e.dataTransfer.getData("dev3/column");
+		if (colId && isCustomColumn && onColumnDrop && columnDragSide) {
+			setColumnDragSide(null);
+			onColumnDrop(columnDragSide);
+			return;
+		}
+		setColumnDragSide(null);
+
 		const taskId = e.dataTransfer.getData("text/plain");
 		if (!taskId) {
 			setDropIndex(null);
@@ -160,7 +185,7 @@ function KanbanColumn({
 
 	return (
 		<div
-			className={`flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
+			className={`relative flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
 					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
@@ -173,6 +198,13 @@ function KanbanColumn({
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
 		>
+			{/* Column reorder drop indicators */}
+			{columnDragSide === "before" && (
+				<div className="pointer-events-none absolute inset-y-0 -left-3 w-1 rounded-full bg-accent" />
+			)}
+			{columnDragSide === "after" && (
+				<div className="pointer-events-none absolute inset-y-0 -right-3 w-1 rounded-full bg-accent" />
+			)}
 			{/* Column header */}
 			<div
 				className="px-4 py-3.5 flex-shrink-0"
