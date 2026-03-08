@@ -99,9 +99,18 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
+				// Cmd+1..9 — switch to project by index (like Slack workspaces)
+				const idx = parseInt(e.key, 10) - 1;
+				const available = state.projects.filter((p) => !p.deleted);
+				if (idx < available.length) {
+					e.preventDefault();
+					e.stopPropagation();
+					navigate({ screen: "project", projectId: available[idx].id });
+				}
 			}
 		},
-		[navigate],
+		[navigate, state.projects],
 		{ capture: true },
 	);
 
