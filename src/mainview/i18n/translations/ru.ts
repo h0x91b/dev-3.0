@@ -471,8 +471,6 @@ const ru: TranslationRecord & Record<string, string> = {
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",
-	"openIn.openInApp": "Открыть в {app}",
-	"openIn.openFileInApp": "Открыть в {app}",
 	"openIn.noAppsFound": "Не найдены внешние приложения",
 	"openIn.failedOpen": "Не удалось открыть в {app}: {error}",
 

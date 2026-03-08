@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import OpenInMenu from "../OpenInMenu";
+import { invalidateAvailableApps } from "../../hooks/useAvailableApps";
 import { I18nProvider } from "../../i18n";
 
 vi.mock("../../rpc", () => ({
@@ -33,8 +34,7 @@ function renderMenu(path = "/tmp/worktree", onClose = vi.fn()) {
 describe("OpenInMenu", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		// Reset cached apps between tests
-		vi.resetModules();
+		invalidateAvailableApps();
 	});
 
 	it("renders available apps", async () => {

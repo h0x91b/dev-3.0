@@ -2331,6 +2331,9 @@ export const handlers = {
 		if (!params.path.startsWith("/") || params.path.includes("..")) {
 			throw new Error("Invalid path");
 		}
+		if (!params.appName || params.appName.includes("/")) {
+			throw new Error("Invalid app name");
+		}
 		// Finder: open the folder directly (not -R which reveals in parent)
 		if (params.appName === "Finder") {
 			spawn(["open", params.path], { stdout: "ignore", stderr: "ignore" });
@@ -2344,23 +2347,21 @@ export const handlers = {
 		const settings = await loadSettings();
 		const allApps = [...DEFAULT_EXTERNAL_APPS, ...(settings.externalApps ?? [])];
 
-		// Check which apps are installed using `open -Ra` (returns 0 if found)
-		const results: ExternalApp[] = [];
-		for (const app of allApps) {
+		// Check which apps are installed — parallel async spawn
+		const checks = allApps.map(async (app): Promise<ExternalApp | null> => {
 			// Finder and Terminal are always available on macOS
-			if (app.id === "finder" || app.id === "terminal") {
-				results.push(app);
-				continue;
-			}
+			if (app.id === "finder" || app.id === "terminal") return app;
+			// Skip apps with empty macAppName (incomplete user config)
+			if (!app.macAppName) return null;
 			try {
-				const proc = spawnSync(["open", "-Ra", app.macAppName], { stdout: "ignore", stderr: "ignore" });
-				if (proc.exitCode === 0) {
-					results.push(app);
-				}
+				const proc = spawn(["open", "-Ra", app.macAppName], { stdout: "ignore", stderr: "ignore" });
+				const code = await proc.exited;
+				return code === 0 ? app : null;
 			} catch {
-				// Not installed — skip
+				return null;
 			}
-		}
+		});
+		const results = (await Promise.all(checks)).filter((a): a is ExternalApp => a !== null);
 		log.info("← getAvailableApps", { count: results.length, apps: results.map((a) => a.name) });
 		return results;
 	},

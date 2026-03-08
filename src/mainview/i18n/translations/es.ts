@@ -462,8 +462,6 @@ const es: TranslationRecord & Record<string, string> = {
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",
-	"openIn.openInApp": "Abrir en {app}",
-	"openIn.openFileInApp": "Abrir en {app}",
 	"openIn.noAppsFound": "No se encontraron aplicaciones externas",
 	"openIn.failedOpen": "Error al abrir en {app}: {error}",
 

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import type { ExternalApp } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 
@@ -14,7 +15,7 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>;
 	playSoundOnTaskComplete?: boolean;
-	externalApps?: Array<{ id: string; name: string; macAppName: string }>;
+	externalApps?: ExternalApp[];
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {

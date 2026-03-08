@@ -3,6 +3,7 @@ import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
 import type { CodingAgent, AgentConfiguration, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
+import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
 import { getZoom, adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
@@ -99,6 +100,16 @@ function GlobalSettings() {
 		api.request.saveGlobalSettings(updated);
 	}
 
+	/** Filter out apps with empty fields before persisting to disk. */
+	function saveExternalApps(apps: ExternalApp[]) {
+		const valid = apps.filter((a) => a.name.trim() && a.macAppName.trim());
+		const updated = { ...globalSettings, externalApps: valid.length > 0 ? valid : undefined };
+		api.request.saveGlobalSettings(updated);
+		invalidateAvailableApps();
+	}
+
+	const debouncedSaveExternalApps = useDebouncedCallback(saveExternalApps, 500);
+
 	function handleAddExternalApp() {
 		const newApp: ExternalApp = {
 			id: crypto.randomUUID(),
@@ -106,28 +117,23 @@ function GlobalSettings() {
 			macAppName: "",
 		};
 		const apps = [...(globalSettings.externalApps ?? []), newApp];
-		const updated = { ...globalSettings, externalApps: apps };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
-		invalidateAvailableApps();
+		setGlobalSettings({ ...globalSettings, externalApps: apps });
+		// Don't persist yet — fields are empty, save will happen on input
 	}
 
 	function handleUpdateExternalApp(appId: string, patch: Partial<ExternalApp>) {
 		const apps = (globalSettings.externalApps ?? []).map((a) =>
 			a.id === appId ? { ...a, ...patch } : a,
 		);
-		const updated = { ...globalSettings, externalApps: apps };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
-		invalidateAvailableApps();
+		setGlobalSettings({ ...globalSettings, externalApps: apps });
+		debouncedSaveExternalApps(apps);
 	}
 
 	function handleDeleteExternalApp(appId: string) {
 		const apps = (globalSettings.externalApps ?? []).filter((a) => a.id !== appId);
 		const updated = { ...globalSettings, externalApps: apps.length > 0 ? apps : undefined };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
-		invalidateAvailableApps();
+		saveExternalApps(apps);
 	}
 
 	function handleDefaultAgentChange(agentId: string) {
