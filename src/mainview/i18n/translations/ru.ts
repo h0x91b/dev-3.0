@@ -3,6 +3,8 @@ import type { TranslationRecord } from "./en";
 const ru: TranslationRecord & Record<string, string> = {
 	// App
 	"app.loading": "Загрузка...",
+	"app.branchMergedTitle": "Ветка смержена",
+	"app.branchMergedMessage": "Все изменения из «{branchName}» уже в основной ветке.\n\nЗадача: {taskTitle}\n\nПеревести задачу в «Завершено»?",
 
 	// Dashboard
 	"dashboard.noProjects": "Пока нет проектов",

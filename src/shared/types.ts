@@ -580,6 +580,7 @@ export type AppRPCSchema = {
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
+			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string };
 			updateDownloadProgress: { status: string; progress?: number };
 		};
 	}>;

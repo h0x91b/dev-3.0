@@ -32,6 +32,11 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:gitOpCompleted", { detail: payload }),
 				);
 			},
+			branchMerged: (payload: any) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:branchMerged", { detail: payload }),
+				);
+			},
 			navigateToSettings: () => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:navigateToSettings"),

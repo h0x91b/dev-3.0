@@ -1,6 +1,8 @@
 const en = {
 	// App
 	"app.loading": "Loading...",
+	"app.branchMergedTitle": "Branch Merged",
+	"app.branchMergedMessage": "All changes from \"{branchName}\" are now in the base branch.\n\nTask: {taskTitle}\n\nMark this task as completed?",
 
 	// Dashboard
 	"dashboard.noProjects": "No projects yet",

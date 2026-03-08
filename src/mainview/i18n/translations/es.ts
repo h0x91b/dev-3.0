@@ -3,6 +3,8 @@ import type { TranslationRecord } from "./en";
 const es: TranslationRecord & Record<string, string> = {
 	// App
 	"app.loading": "Cargando...",
+	"app.branchMergedTitle": "Rama fusionada",
+	"app.branchMergedMessage": "Todos los cambios de \"{branchName}\" están en la rama base.\n\nTarea: {taskTitle}\n\n¿Marcar esta tarea como completada?",
 
 	// Dashboard
 	"dashboard.noProjects": "Aún no hay proyectos",

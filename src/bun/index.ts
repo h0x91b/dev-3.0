@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress } from "./rpc-handlers";
+import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -272,6 +272,9 @@ setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
 	(mainWindow.webview.rpc as any).send[name]?.(payload);
 });
+
+// Start background merge detection poller
+startMergeDetectionPoller();
 
 // Wire PTY death notifications
 setOnPtyDied((taskId) => {
