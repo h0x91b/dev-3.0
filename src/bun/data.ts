@@ -36,10 +36,20 @@ async function loadAllProjects(): Promise<Project[]> {
 		}
 		const projects: Project[] = await file.json();
 		// Backfill labels for projects created before this field existed
+		let needsSave = false;
 		for (const project of projects) {
 			if ((project as any).labels === undefined) {
 				project.labels = [];
 			}
+			// Migrate away from legacy `say` cleanup scripts (was the old default)
+			if (project.cleanupScript && /^\s*say\s+/i.test(project.cleanupScript)) {
+				project.cleanupScript = "";
+				needsSave = true;
+			}
+		}
+		if (needsSave) {
+			log.info("Migrated legacy 'say' cleanup scripts, saving projects");
+			await Bun.write(PROJECTS_FILE, JSON.stringify(projects, null, 2));
 		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
 		return projects;
