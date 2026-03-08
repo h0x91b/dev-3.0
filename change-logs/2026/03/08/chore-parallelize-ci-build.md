@@ -1,1 +1,1 @@
-Split the monolithic PR build workflow into parallel jobs (install, lint, test, build-check) with shared node_modules cache via actions/cache. The install job runs first and saves the cache; lint, test, and build-check run in parallel after it, restoring from cache.
+Split the monolithic PR build workflow into 3 fully parallel jobs (lint, test, build-check) on ubuntu-latest GitHub-hosted runners. Each job independently restores node_modules from actions/cache keyed by bun.lockb hash. No more self-hosted runner dependency for PR checks.
