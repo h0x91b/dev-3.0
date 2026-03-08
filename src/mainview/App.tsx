@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
 import { useT } from "./i18n";
-import { trackPageView } from "./analytics";
+import { trackPageView, trackEvent } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
@@ -159,6 +159,52 @@ function App() {
 		window.addEventListener("rpc:terminalBell", onTerminalBell);
 		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
 	}, [dispatch]);
+
+	// Listen for branch merge detection — offer to complete the task
+	useEffect(() => {
+		async function onBranchMerged(e: Event) {
+			const { taskId, projectId, taskTitle, branchName } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				taskTitle: string;
+				branchName: string;
+			};
+			const shouldComplete = await api.request.showConfirm({
+				title: t("app.branchMergedTitle"),
+				message: t("app.branchMergedMessage", { taskTitle, branchName }),
+			});
+			if (shouldComplete) {
+				dispatch({
+					type: "updateTask",
+					task: {
+						id: taskId,
+						projectId,
+						status: "completed",
+						worktreePath: null,
+						branchName: null,
+						movedAt: new Date().toISOString(),
+						columnOrder: undefined,
+					} as any,
+				});
+				dispatch({ type: "clearBell", taskId });
+				trackEvent("task_moved", { from_status: "review-by-user", to_status: "completed" });
+				api.request.moveTask({
+					taskId,
+					projectId,
+					newStatus: "completed",
+				}).catch(() => {
+					api.request.moveTask({
+						taskId,
+						projectId,
+						newStatus: "completed",
+						force: true,
+					}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
+				});
+			}
+		}
+		window.addEventListener("rpc:branchMerged", onBranchMerged);
+		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
+	}, [dispatch, t]);
 
 	// Listen for Cmd+, (Settings menu item)
 	useEffect(() => {

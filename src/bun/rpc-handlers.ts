@@ -88,6 +88,9 @@ const fileBrowserPaneIds = new Map<string, string>();
 // Track git operation tmux pane IDs per task
 const gitOpPaneIds = new Map<string, string>();
 
+// Track tasks whose merge was already detected (avoid repeated popups)
+const mergeNotifiedTasks = new Set<string>();
+
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
 	if (existingPane) {
@@ -185,6 +188,81 @@ export function getPushMessage(): ((name: string, payload: any) => void) | null 
 
 export function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
+}
+
+/**
+ * Background poller: detect when a "review-by-user" task's branch has been
+ * merged into the base branch (squash, rebase, or regular merge).
+ * Sends a `branchMerged` push message so the renderer can offer completion.
+ */
+let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startMergeDetectionPoller(): void {
+	if (mergePollerInterval) return;
+	const POLL_INTERVAL = 60_000; // 60 seconds
+
+	mergePollerInterval = setInterval(async () => {
+		try {
+			await checkMergedBranches();
+		} catch (err) {
+			log.error("Merge detection poller error", { error: String(err) });
+		}
+	}, POLL_INTERVAL);
+
+	log.info("Merge detection poller started", { intervalMs: POLL_INTERVAL });
+}
+
+async function checkMergedBranches(): Promise<void> {
+	if (!pushMessage) return;
+
+	const projects = await data.loadProjects();
+	for (const project of projects) {
+		const tasks = await data.loadTasks(project);
+		const reviewTasks = tasks.filter(
+			(t) => t.status === "review-by-user" && t.worktreePath && !mergeNotifiedTasks.has(t.id),
+		);
+
+		if (reviewTasks.length === 0) continue;
+
+		// Single fetch per project (covers all branches)
+		try {
+			await git.fetchOrigin(project.path);
+		} catch {
+			continue; // offline or no remote — skip this project
+		}
+
+		for (const task of reviewTasks) {
+			try {
+				const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+				const ref = `origin/${baseBranch}`;
+
+				// Check if branch was ever pushed (avoid false positives on new empty branches)
+				const branchName = await git.getCurrentBranch(task.worktreePath!);
+				if (!branchName) continue;
+				const hasRemote = await git.getUnpushedCount(task.worktreePath!, branchName);
+				if (hasRemote === -1) continue; // never pushed
+
+				const merged = await git.isContentMergedInto(task.worktreePath!, ref);
+				if (merged) {
+					mergeNotifiedTasks.add(task.id);
+					log.info("Branch merge detected", { taskId: task.id.slice(0, 8), branch: branchName });
+					pushMessage("branchMerged", {
+						taskId: task.id,
+						projectId: project.id,
+						taskTitle: task.customTitle || task.title,
+						branchName,
+					});
+				}
+			} catch (err) {
+				log.warn("Merge check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
+			}
+		}
+	}
+}
+
+/** Clear the merge-notified flag when a task leaves review-by-user (e.g. user dismisses). */
+export function clearMergeNotification(taskId: string): void {
+	mergeNotifiedTasks.delete(taskId);
 }
 
 /** Run CoW clones for configured paths after worktree creation. */
@@ -673,6 +751,9 @@ export const handlers = {
 		const dropOpts = { dropPosition: settings.taskDropPosition } as const;
 
 		log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
+
+		// Clear merge notification flag so it can re-trigger if task comes back to review-by-user
+		clearMergeNotification(task.id);
 
 		// todo → active: create worktree + PTY session
 		if (!isActive(oldStatus) && isActive(newStatus)) {
