@@ -3,6 +3,7 @@ import { extractRepoName } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { trackEvent } from "../analytics";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -58,6 +59,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
+				trackEvent("project_added", { source: "local" });
 				onClose();
 			} else {
 				setError(result.error);
@@ -96,6 +98,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			});
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
+				trackEvent("project_added", { source: "clone" });
 				onClose();
 			} else {
 				setError(result.error);

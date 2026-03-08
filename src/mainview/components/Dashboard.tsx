@@ -3,6 +3,7 @@ import type { Project } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { trackEvent } from "../analytics";
 import AddProjectModal from "./AddProjectModal";
 
 interface DashboardProps {
@@ -24,6 +25,7 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 		try {
 			await api.request.removeProject({ projectId });
 			dispatch({ type: "removeProject", projectId });
+			trackEvent("project_removed", { project_id: projectId });
 		} catch (err) {
 			alert(t("dashboard.failedRemove", { error: String(err) }));
 		}

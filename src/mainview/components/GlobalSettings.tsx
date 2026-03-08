@@ -6,6 +6,7 @@ import { api } from "../rpc";
 import { getZoom, adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { ListEditor } from "./ListEditor";
+import { trackEvent } from "../analytics";
 
 type Theme = "dark" | "light" | "system";
 
@@ -66,18 +67,21 @@ function GlobalSettings() {
 		setTheme(th);
 		document.documentElement.dataset.theme = resolveTheme(th);
 		localStorage.setItem("dev3-theme", th);
+		trackEvent("theme_changed", { theme: th });
 	}
 
 	function handleDropPositionChange(pos: "top" | "bottom") {
 		const updated = { ...globalSettings, taskDropPosition: pos };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated);
+		trackEvent("settings_changed", { setting: "task_drop_position", value: pos });
 	}
 
 	function handleUpdateChannelChange(channel: "stable" | "canary") {
 		const updated = { ...globalSettings, updateChannel: channel };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated);
+		trackEvent("settings_changed", { setting: "update_channel", value: channel });
 	}
 
 	function handleKeymapChange(preset: TerminalKeymapPreset) {
@@ -627,7 +631,10 @@ function GlobalSettings() {
 									locale={loc}
 									label={LOCALE_LABELS[loc]}
 									active={locale === loc}
-									onClick={() => setLocale(loc)}
+									onClick={() => {
+										setLocale(loc);
+										trackEvent("locale_changed", { locale: loc });
+									}}
 								/>
 							))}
 						</div>
