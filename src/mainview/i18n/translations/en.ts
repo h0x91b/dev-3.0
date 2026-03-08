@@ -145,7 +145,7 @@ const en = {
 	"createTask.branchLocal": "Local",
 	"createTask.branchRemote": "Remote",
 	"createTask.useExistingBranch": "Use existing branch",
-	"createTask.reviewMode": "Review this branch",
+	"createTask.reviewMode": "This is a PR review",
 	"createTask.reviewModeHint": "Pre-fills description with a code review prompt",
 	"createTask.reviewPrompt": "Review the code changes on this branch.\n\nYour task is to perform a thorough code review — do NOT modify any code.\n\nStart by analyzing what was changed, then evaluate:\n- Correctness and potential bugs\n- Adherence to the repository's conventions and best practices\n- Code clarity, naming, and structure\n- Edge cases and error handling\n- Security considerations\n\nProvide a structured review with actionable feedback.",
 

@@ -20,9 +20,14 @@ export function splitBranchWords(name: string): string[] {
 /** Check if any word in the branch name starts with any query token. */
 export function matchesBranchQuery(branchName: string, query: string): boolean {
 	if (!query) return true;
-	const words = splitBranchWords(branchName);
+	const nameLower = branchName.toLowerCase();
 	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-	return tokens.every((token) => words.some((w) => w.startsWith(token)));
+	// For each token: either a word-level prefix match OR a substring match on the full name.
+	// Substring match handles queries like "origin/dev" that span word boundaries.
+	const words = splitBranchWords(branchName);
+	return tokens.every((token) =>
+		words.some((w) => w.startsWith(token)) || nameLower.includes(token),
+	);
 }
 
 interface BranchSelectorProps {
