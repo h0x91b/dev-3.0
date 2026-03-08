@@ -1,0 +1,1 @@
+Fix unreliable diffs against main branch (#141). Added per-project fetch deduplication with 5-second cooldown to prevent git lock contention when multiple callers (polling, git operation completion, merge detection) trigger concurrent fetches. Also added missing `fetchOrigin` call to `showDiff` handler so the tmux diff pane always uses fresh remote refs.

@@ -264,9 +264,53 @@ export async function getCurrentBranch(worktreePath: string): Promise<string | n
 	return result.stdout;
 }
 
-export async function fetchOrigin(projectPath: string): Promise<void> {
-	log.debug("Fetching origin", { projectPath });
-	await run(["git", "fetch", "origin", "--quiet"], projectPath);
+// Per-project fetch deduplication: reuse in-flight fetch promises and enforce
+// a cooldown to prevent lock contention when multiple callers (polling, git
+// operation completion, merge detection) trigger concurrent fetches.
+const fetchInFlight = new Map<string, Promise<boolean>>();
+const fetchLastSuccess = new Map<string, number>();
+const FETCH_COOLDOWN_MS = 5_000;
+
+export async function fetchOrigin(projectPath: string): Promise<boolean> {
+	const now = Date.now();
+	const lastSuccess = fetchLastSuccess.get(projectPath) ?? 0;
+
+	// Skip if a successful fetch completed recently
+	if (now - lastSuccess < FETCH_COOLDOWN_MS) {
+		log.debug("fetchOrigin: skipping (cooldown)", { projectPath, msSinceLast: now - lastSuccess });
+		return true;
+	}
+
+	// Reuse in-flight fetch for the same project
+	const existing = fetchInFlight.get(projectPath);
+	if (existing) {
+		log.debug("fetchOrigin: reusing in-flight fetch", { projectPath });
+		return existing;
+	}
+
+	const promise = (async () => {
+		log.debug("Fetching origin", { projectPath });
+		const result = await run(["git", "fetch", "origin", "--quiet"], projectPath);
+		if (result.ok) {
+			fetchLastSuccess.set(projectPath, Date.now());
+		} else {
+			log.warn("fetchOrigin failed", { projectPath, stderr: result.stderr });
+		}
+		return result.ok;
+	})();
+
+	fetchInFlight.set(projectPath, promise);
+	try {
+		return await promise;
+	} finally {
+		fetchInFlight.delete(projectPath);
+	}
+}
+
+/** Reset fetch dedup state — for tests only. */
+export function _resetFetchState(): void {
+	fetchInFlight.clear();
+	fetchLastSuccess.clear();
 }
 
 export async function getBranchStatus(

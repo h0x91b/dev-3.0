@@ -95,6 +95,8 @@ import {
 	removeWorktree,
 	getUncommittedChanges,
 	listBranches,
+	fetchOrigin,
+	_resetFetchState,
 } from "../git";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -953,5 +955,80 @@ describe("listBranches", () => {
 
 		expect(localNames).not.toContain("temp-branch");
 		expect(remoteNames).toContain("origin/temp-branch");
+	});
+});
+
+// ─── fetchOrigin ─────────────────────────────────────────────────────────────
+
+describe("fetchOrigin", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		_resetFetchState();
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns true on successful fetch", async () => {
+		const ok = await fetchOrigin(repo.local);
+		expect(ok).toBe(true);
+	});
+
+	it("returns false when project has no remote", async () => {
+		// Create a repo with no origin remote
+		const dir = mkdtempSync(join(tmpdir(), "dev3-no-remote-"));
+		const local = join(dir, "repo");
+		g(`git init "${local}"`, dir);
+		g("git config user.email test@test.com", local);
+		g("git config user.name Test", local);
+		writeFileSync(join(local, "file.txt"), "test");
+		g("git add file.txt", local);
+		g('git commit -m "init"', local);
+
+		try {
+			const ok = await fetchOrigin(local);
+			expect(ok).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("deduplicates concurrent fetches for the same project", async () => {
+		// Launch three concurrent fetches — only one git process should run
+		const results = await Promise.all([
+			fetchOrigin(repo.local),
+			fetchOrigin(repo.local),
+			fetchOrigin(repo.local),
+		]);
+		// All should succeed (shared the same in-flight promise)
+		expect(results).toEqual([true, true, true]);
+	});
+
+	it("skips fetch within cooldown period", async () => {
+		// First fetch succeeds and records a timestamp
+		const ok1 = await fetchOrigin(repo.local);
+		expect(ok1).toBe(true);
+
+		// Second fetch within cooldown returns true without running git
+		const ok2 = await fetchOrigin(repo.local);
+		expect(ok2).toBe(true);
+	});
+
+	it("allows fetch for different projects concurrently", async () => {
+		// Create a second test repo
+		const repo2 = createTestRepo();
+		try {
+			const [ok1, ok2] = await Promise.all([
+				fetchOrigin(repo.local),
+				fetchOrigin(repo2.local),
+			]);
+			expect(ok1).toBe(true);
+			expect(ok2).toBe(true);
+		} finally {
+			cleanup(repo2);
+		}
 	});
 });

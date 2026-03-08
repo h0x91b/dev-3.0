@@ -1382,6 +1382,10 @@ export const handlers = {
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 		const ref = params.compareRef || `origin/${baseBranch}`;
+
+		// Fetch fresh refs before showing diff (deduped, won't re-fetch within cooldown)
+		await git.fetchOrigin(project.path);
+
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
 
