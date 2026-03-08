@@ -1,0 +1,1 @@
+Fix ambiguous ID prefix matching in CLI socket handlers. All `startsWith`-based lookups for tasks, notes, and labels now use a shared `findByIdPrefix` helper that requires a minimum 8-character prefix and throws an error when multiple items match, instead of silently selecting the first match.
