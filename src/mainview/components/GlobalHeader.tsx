@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef } from "react";
 import type { Project, Task } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, ACTIVE_STATUSES } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { api } from "../rpc";
@@ -18,6 +18,7 @@ interface BreadcrumbSegment {
 	label: string;
 	badge?: string;
 	onClick?: () => void;
+	isProjectDropdown?: boolean;
 }
 
 function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: GlobalHeaderProps) {
@@ -25,7 +26,10 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
 	const [showToast, setShowToast] = useState(false);
+	const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+	const [projectTaskCounts, setProjectTaskCounts] = useState<Record<string, number>>({});
 	const dropdownRef = useRef<HTMLDivElement>(null);
+	const projectDropdownRef = useRef<HTMLDivElement>(null);
 
 	// Show toast when updateVersion first appears
 	useEffect(() => {
@@ -36,17 +40,47 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 		}
 	}, [updateVersion]);
 
-	// Close dropdown on outside click
+	// Close dropdowns on outside click
 	useEffect(() => {
-		if (!showUpdateDropdown) return;
+		if (!showUpdateDropdown && !showProjectDropdown) return;
 		function handleClick(e: MouseEvent) {
-			if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+			if (showUpdateDropdown && dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
 				setShowUpdateDropdown(false);
+			}
+			if (showProjectDropdown && projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+				setShowProjectDropdown(false);
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
 		return () => document.removeEventListener("mousedown", handleClick);
-	}, [showUpdateDropdown]);
+	}, [showUpdateDropdown, showProjectDropdown]);
+
+	// Fetch active task counts when project dropdown opens
+	useEffect(() => {
+		if (!showProjectDropdown) return;
+		let cancelled = false;
+		async function fetchCounts() {
+			const counts: Record<string, number> = {};
+			await Promise.all(
+				projects.filter((p) => !p.deleted).map(async (p) => {
+					try {
+						const fetchedTasks = await api.request.getTasks({ projectId: p.id });
+						counts[p.id] = fetchedTasks.filter((ft) => ACTIVE_STATUSES.includes(ft.status)).length;
+					} catch {
+						counts[p.id] = 0;
+					}
+				}),
+			);
+			if (!cancelled) setProjectTaskCounts(counts);
+		}
+		fetchCounts();
+		return () => { cancelled = true; };
+	}, [showProjectDropdown, projects]);
+
+	// Close project dropdown on route change
+	useEffect(() => {
+		setShowProjectDropdown(false);
+	}, [route]);
 
 	async function handleRestart() {
 		setRestarting(true);
@@ -67,20 +101,14 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 				: undefined,
 	});
 
-	// Project name — when inside a project
+	// Project name — when inside a project (dropdown trigger for switching)
 	if ("projectId" in route) {
 		const project = projects.find((p) => p.id === route.projectId);
 		if (project) {
 			segments.push({
 				label: project.name,
-				onClick:
-					route.screen !== "project" || (route.screen === "project" && route.activeTaskId)
-						? () =>
-								navigate({
-									screen: "project",
-									projectId: route.projectId,
-								})
-						: undefined,
+				isProjectDropdown: true,
+				onClick: () => setShowProjectDropdown((v) => !v),
 			});
 		}
 	}
@@ -112,6 +140,9 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 	} else if (route.screen === "gauge-demo") {
 		segments.push({ label: t("gaugeDemo.title") });
 	}
+
+	const currentProjectId = "projectId" in route ? route.projectId : null;
+	const availableProjects = projects.filter((p) => !p.deleted);
 
 	return (
 		<>
@@ -146,6 +177,55 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 									<span className="font-mono font-semibold text-xs tracking-wide">{seg.label}</span>
 								</span>
 							)
+						) : seg.isProjectDropdown ? (
+							<div className="relative" ref={projectDropdownRef}>
+								<button
+									onClick={seg.onClick}
+									className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors truncate"
+									title={t("header.switchProject")}
+								>
+									<span className="truncate">{seg.label}</span>
+									<svg
+										className={`w-3 h-3 flex-shrink-0 transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+									</svg>
+								</button>
+								{showProjectDropdown && (
+									<div className="absolute left-0 top-full mt-1.5 w-64 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
+										{availableProjects.map((p) => {
+											const isCurrent = currentProjectId === p.id;
+											const count = projectTaskCounts[p.id];
+											return (
+												<button
+													key={p.id}
+													onClick={() => {
+														setShowProjectDropdown(false);
+														navigate({ screen: "project", projectId: p.id });
+													}}
+													className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
+														isCurrent
+															? "bg-accent/10 text-accent"
+															: "text-fg-2 hover:bg-elevated hover:text-fg"
+													}`}
+												>
+													<span className="truncate text-sm">{p.name}</span>
+													<span className="text-[0.6875rem] text-fg-muted flex-shrink-0">
+														{count != null
+															? count > 0
+																? t.plural("header.activeTaskCount", count)
+																: t("header.noActiveTasks")
+															: ""}
+													</span>
+												</button>
+											);
+										})}
+									</div>
+								)}
+							</div>
 						) : seg.onClick ? (
 							<button
 								onClick={seg.onClick}

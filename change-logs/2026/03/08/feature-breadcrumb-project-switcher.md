@@ -1,0 +1,1 @@
+Added a dropdown to the project name in the breadcrumb bar for quick project switching. Clicking the project name now opens a dropdown listing all projects with active task counts, allowing instant navigation without returning to the Dashboard. Inspired by Vlad Tansky's feedback (issue #160).
