@@ -278,6 +278,24 @@ async function runCowClones(project: Project, worktreePath: string): Promise<voi
 }
 
 /**
+ * Shared helper for activating a task: creates worktree (with existingBranch
+ * support), runs CoW clones, and launches the PTY session.
+ * Returns the worktree info for the caller to persist.
+ */
+export async function activateTask(
+	project: Project,
+	task: Task,
+	opts?: { isReopen?: boolean },
+): Promise<{ worktreePath: string; branchName: string }> {
+	const isReopen = opts?.isReopen ?? false;
+	const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
+	await runCowClones(project, wt.worktreePath);
+	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
+	await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
+}
+
+/**
  * Handle terminal bell notification. When a task is "in-progress" and
  * a BEL is received, auto-move it to "user-questions" — the agent is
  * likely waiting for human input.
@@ -763,9 +781,7 @@ export const handlers = {
 			log.info("Created into active status, creating worktree + PTY", {
 				taskId: task.id,
 			});
-			const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
-			await runCowClones(project, wt.worktreePath);
-			await launchTaskPty(project, task, wt.worktreePath, undefined, undefined, true);
+			const wt = await activateTask(project, task);
 
 			const updated = await data.updateTask(project, task.id, {
 				worktreePath: wt.worktreePath,
@@ -803,10 +819,7 @@ export const handlers = {
 		if (!isActive(oldStatus) && isActive(newStatus)) {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
-			const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
-			await runCowClones(project, wt.worktreePath);
-			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+			const wt = await activateTask(project, task, { isReopen });
 
 			const updated = await data.updateTask(project, task.id, {
 				status: newStatus,
@@ -2048,9 +2061,7 @@ export const handlers = {
 		// Moving from completed/cancelled into a custom column resumes the task (same as reopening to an active status)
 		if (params.customColumnId !== null && (task.status === "completed" || task.status === "cancelled")) {
 			log.info("Reopening task into custom column, creating worktree + PTY", { taskId: task.id });
-			const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
-			await runCowClones(project, wt.worktreePath);
-			await launchTaskPty(project, { ...task, description: "" }, wt.worktreePath, undefined, undefined, true, true);
+			const wt = await activateTask(project, task, { isReopen: true });
 			const updated = await data.updateTask(project, task.id, {
 				status: "in-progress",
 				worktreePath: wt.worktreePath,

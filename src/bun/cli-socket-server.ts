@@ -4,7 +4,7 @@ import { ALL_STATUSES, LABEL_COLORS, getAllowedTransitions, titleFromDescription
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
-import { isActive, launchTaskPty, runCleanupScript, playTaskCompleteSound, getPushMessage } from "./rpc-handlers";
+import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage } from "./rpc-handlers";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -348,8 +348,7 @@ const handlers: Record<string, Handler> = {
 		if (customColumn) {
 			// Moving from completed/cancelled into a custom column resumes the task
 			if (task.status === "completed" || task.status === "cancelled") {
-				const wt = await git.createWorktree(project, task);
-				await launchTaskPty(project, { ...task, description: "" }, wt.worktreePath, undefined, undefined, true, true);
+				const wt = await activateTask(project, task, { isReopen: true });
 				const updated = await data.updateTask(project, task.id, {
 					status: "in-progress",
 					worktreePath: wt.worktreePath,
@@ -395,9 +394,7 @@ const handlers: Record<string, Handler> = {
 		// inactive → active: create worktree + PTY
 		if (!isActive(oldStatus) && isActive(builtinStatus)) {
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
-			const wt = await git.createWorktree(project, task);
-			const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-			await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+			const wt = await activateTask(project, task, { isReopen });
 
 			const updated = await data.updateTask(project, task.id, {
 				status: builtinStatus,

@@ -26,7 +26,7 @@ vi.mock("../rpc-handlers", () => {
 	const ACTIVE = ["in-progress", "user-questions", "review-by-user", "review-by-ai"];
 	return {
 		isActive: vi.fn((status: string) => ACTIVE.includes(status)),
-		launchTaskPty: vi.fn(),
+		activateTask: vi.fn(),
 		runCleanupScript: vi.fn(),
 		playTaskCompleteSound: vi.fn(),
 		getPushMessage: vi.fn(() => null),
@@ -67,7 +67,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { launchTaskPty, runCleanupScript, getPushMessage } from "../rpc-handlers";
+import { activateTask, runCleanupScript, getPushMessage } from "../rpc-handlers";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
@@ -818,7 +818,7 @@ describe("task.move", () => {
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(git.createWorktree).mockResolvedValue(wtResult);
+		vi.mocked(activateTask).mockResolvedValue(wtResult);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 
@@ -831,16 +831,7 @@ describe("task.move", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(git.createWorktree).toHaveBeenCalledWith(project, task);
-		expect(launchTaskPty).toHaveBeenCalledWith(
-			project,
-			task, // NOT reopen, so original task (with description)
-			"/tmp/new-wt",
-			undefined,
-			undefined,
-			true,
-			false, // resume=false for non-reopen
-		);
+		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: false });
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
 			status: "in-progress",
 			worktreePath: "/tmp/new-wt",
@@ -849,14 +840,14 @@ describe("task.move", () => {
 		}, { dropPosition: "top" });
 	});
 
-	it("reopen (completed → in-progress): launches with empty description", async () => {
+	it("reopen (completed → in-progress): calls activateTask with isReopen=true", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "completed", description: "Old desc" });
 		const wtResult = { worktreePath: "/tmp/reopen-wt", branchName: "dev3/reopen" };
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(git.createWorktree).mockResolvedValue(wtResult);
+		vi.mocked(activateTask).mockResolvedValue(wtResult);
 		vi.mocked(data.updateTask).mockResolvedValue({
 			...task,
 			status: "in-progress",
@@ -872,20 +863,17 @@ describe("task.move", () => {
 			}),
 		);
 
-		// Should pass task with empty description and resume=true for reopen
-		const launchCall = vi.mocked(launchTaskPty).mock.calls[0];
-		expect(launchCall[1].description).toBe("");
-		expect(launchCall[6]).toBe(true); // resume flag
+		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: true });
 	});
 
-	it("reopen (cancelled → in-progress): launches with empty description", async () => {
+	it("reopen (cancelled → in-progress): calls activateTask with isReopen=true", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "cancelled", description: "Cancelled desc" });
 		const wtResult = { worktreePath: "/tmp/reopen-wt", branchName: "dev3/reopen" };
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(git.createWorktree).mockResolvedValue(wtResult);
+		vi.mocked(activateTask).mockResolvedValue(wtResult);
 		vi.mocked(data.updateTask).mockResolvedValue({
 			...task,
 			status: "in-progress",
@@ -901,9 +889,7 @@ describe("task.move", () => {
 			}),
 		);
 
-		const launchCall = vi.mocked(launchTaskPty).mock.calls[0];
-		expect(launchCall[1].description).toBe("");
-		expect(launchCall[6]).toBe(true); // resume flag
+		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: true });
 	});
 
 	it("active → completed: destroys PTY, runs cleanup, removes worktree", async () => {
