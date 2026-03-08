@@ -1,0 +1,1 @@
+Suppress native macOS context menu in the terminal area by adding `preventDefault()` on the `contextmenu` event. Previously, right-clicking opened both the native WKWebView menu and the app's custom context menu simultaneously.

@@ -630,6 +630,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			data-terminal="true"
 			style={{ backgroundColor: termBg }}
 			onClick={() => termRef.current?.focus()}
+			onContextMenu={(e) => e.preventDefault()}
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}
 		/>
