@@ -56,6 +56,7 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Dark & light themes** — full theme support for both dark and light environments
 - **Automated setup** — configure a setup script per project that runs for every new task
 - **Copy-on-Write clone paths** — clone `node_modules`, `.venv`, `build`, and other heavy directories into worktrees instantly with near-zero disk overhead
+- **PR review mode** — check out any remote branch and toggle "PR review" to pre-fill a structured code-review prompt for the agent
 
 <p align="center">
   <img src="docs/screenshots/multi-agent-launch.jpg" width="600" alt="Launch task with multiple AI agents: Claude, Cursor, Codex, Gemini">
@@ -67,6 +68,10 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 
 <p align="center">
   <img src="docs/screenshots/global-settings.jpg" width="600" alt="Global settings — agents, configs, languages">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/pr-review-mode.jpg" width="600" alt="PR review mode — pre-filled code review prompt">
 </p>
 
 ## Install
