@@ -287,6 +287,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const pushThenCreatePRRef = useRef(false);
+	const mergeDialogShownRef = useRef(false);
 	const [compareRef, setCompareRef] = useState<string>(""); // "" = origin/<baseBranch> (default)
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
@@ -297,6 +298,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	useEffect(() => {
 		if (!isTaskActive || !task.worktreePath) return;
 
+		// Reset merge dialog flag when task changes
+		mergeDialogShownRef.current = false;
 		let cancelled = false;
 
 		async function fetchStatus() {
@@ -306,7 +309,42 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					projectId: project.id,
 					compareRef: compareRef || undefined,
 				});
-				if (!cancelled) setBranchStatus(status);
+				if (!cancelled) {
+					setBranchStatus(status);
+					// Show merge-detected dialog immediately when branch is merged
+					if (
+						status.mergedByContent &&
+						task.status === "review-by-user" &&
+						!mergeDialogShownRef.current
+					) {
+						mergeDialogShownRef.current = true;
+						const shouldComplete = await api.request.showConfirm({
+							title: t("app.branchMergedTitle"),
+							message: t("app.branchMergedMessage", {
+								taskTitle: task.customTitle || task.title,
+								branchName: task.branchName || "",
+							}),
+						});
+						if (shouldComplete) {
+							dispatch({ type: "updateTask", task: { ...task, status: "completed", worktreePath: null, branchName: null, movedAt: new Date().toISOString(), columnOrder: undefined } });
+							dispatch({ type: "clearBell", taskId: task.id });
+							trackEvent("task_moved", { from_status: "review-by-user", to_status: "completed" });
+							navigate({ screen: "project", projectId: project.id });
+							api.request.moveTask({
+								taskId: task.id,
+								projectId: project.id,
+								newStatus: "completed",
+							}).catch(() => {
+								api.request.moveTask({
+									taskId: task.id,
+									projectId: project.id,
+									newStatus: "completed",
+									force: true,
+								}).catch((err) => console.error("moveTask (merge-detected) failed:", err));
+							});
+						}
+					}
+				}
 			} catch (err) {
 				// Silently ignore — polling will retry
 			}
