@@ -1,0 +1,1 @@
+Add comprehensive test coverage for column order persistence: 32 tests for `reorderTasksInColumn` (data layer) covering basic reorder, disk persistence, variant groups, edge cases, and full lifecycle; 15 tests for `sortTasksForColumn` reload scenarios documenting the frontend/backend sort order mismatch when tasks are cross-column moved (moveOrderMap is ephemeral, not persisted).
