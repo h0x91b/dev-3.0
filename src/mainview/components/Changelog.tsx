@@ -31,9 +31,9 @@ const TYPE_STYLES: Record<string, string> = {
 const FILTER_ACTIVE_STYLES: Record<string, string> = {
 	feature: "bg-accent/25 text-accent border-accent/40",
 	fix: "bg-danger/25 text-danger border-danger/40",
-	refactor: "bg-elevated text-fg-2 border-edge-active",
-	docs: "bg-elevated text-fg-2 border-edge-active",
-	chore: "bg-elevated text-fg-2 border-edge-active",
+	refactor: "bg-raised text-fg border-edge-active",
+	docs: "bg-raised text-fg border-edge-active",
+	chore: "bg-raised text-fg border-edge-active",
 };
 
 function sortByType(a: ChangelogEntry, b: ChangelogEntry): number {
@@ -79,7 +79,7 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 
 	const availableTypes = useMemo(() => {
 		const typeSet = new Set(entries.map((e) => e.type));
-		return ENTRY_TYPES.filter((t) => typeSet.has(t));
+		return ENTRY_TYPES.filter((type) => typeSet.has(type));
 	}, [entries]);
 
 	const grouped = useMemo(() => {
@@ -115,9 +115,9 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-2xl space-y-6">
+				<div className="mx-auto max-w-3xl">
 					{availableTypes.length > 1 && (
-						<div className="flex items-center gap-1.5 flex-wrap">
+						<div className="flex items-center gap-1.5 flex-wrap mb-5">
 							<span className="text-fg-3 text-xs mr-1">
 								{t("changelog.filterLabel")}
 							</span>
@@ -149,30 +149,35 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 							)}
 						</div>
 					)}
-					{grouped.map(({ date, items }) => (
-						<div key={date}>
-							<h3 className="text-fg-2 text-xs font-semibold uppercase tracking-wider mb-2 sticky top-0 bg-base py-1">
-								{formatDate(date)}
-							</h3>
-							<div className="space-y-1">
-								{items.map((entry) => (
-									<div
-										key={`${entry.date}-${entry.slug}`}
-										className="flex items-baseline gap-2 py-1 px-2 rounded-md"
-									>
-										<span
-											className={`inline-block px-1.5 py-0.5 rounded text-[0.625rem] font-medium leading-none flex-shrink-0 ${TYPE_STYLES[entry.type] ?? "bg-elevated text-fg-3"}`}
+					<div className="space-y-5">
+						{grouped.map(({ date, items }) => (
+							<div
+								key={date}
+								className="bg-raised rounded-lg border border-edge p-4"
+							>
+								<h3 className="text-fg-2 text-xs font-semibold uppercase tracking-wider mb-3">
+									{formatDate(date)}
+								</h3>
+								<div className="space-y-1.5">
+									{items.map((entry) => (
+										<div
+											key={`${entry.date}-${entry.slug}`}
+											className="flex items-baseline gap-2 py-1 px-1 rounded-md"
 										>
-											{t(`changelog.${entry.type}` as any) || entry.type}
-										</span>
-										<span className="text-fg text-sm leading-snug">
-											{entry.title}
-										</span>
-									</div>
-								))}
+											<span
+												className={`inline-block px-1.5 py-0.5 rounded text-[0.625rem] font-medium leading-none flex-shrink-0 ${TYPE_STYLES[entry.type] ?? "bg-elevated text-fg-3"}`}
+											>
+												{t(`changelog.${entry.type}` as any) || entry.type}
+											</span>
+											<span className="text-fg text-sm leading-snug">
+												{entry.title}
+											</span>
+										</div>
+									))}
+								</div>
 							</div>
-						</div>
-					))}
+						))}
+					</div>
 				</div>
 			</div>
 		</div>
