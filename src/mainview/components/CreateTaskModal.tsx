@@ -28,6 +28,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [customTitle, setCustomTitle] = useState<string | null>(null);
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+	const [reviewMode, setReviewMode] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -60,6 +61,34 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const handleRemovePath = useCallback((path: string) => {
 		setDescription((prev) => removeImagePath(prev, path));
 	}, []);
+
+	const reviewPrompt = t("createTask.reviewPrompt");
+	const REVIEW_SEPARATOR = "\n\n---\n\n";
+
+	function handleReviewModeChange(enabled: boolean) {
+		setReviewMode(enabled);
+		if (enabled) {
+			// Inject review prompt: if user has text, prepend prompt + separator + user text
+			const userText = description.trim();
+			if (userText) {
+				setDescription(reviewPrompt + REVIEW_SEPARATOR + userText);
+			} else {
+				setDescription(reviewPrompt);
+			}
+		} else {
+			// Remove review prompt: restore user's original text (if any)
+			const current = description;
+			const sepIdx = current.indexOf(REVIEW_SEPARATOR);
+			if (current.startsWith(reviewPrompt) && sepIdx !== -1) {
+				// Had user text after separator
+				setDescription(current.slice(sepIdx + REVIEW_SEPARATOR.length));
+			} else if (current.startsWith(reviewPrompt)) {
+				// No user text — just the prompt
+				setDescription("");
+			}
+			// If user modified the prompt text manually, leave it as-is
+		}
+	}
 
 	const generatedTitle = description.trim()
 		? titleFromDescription(description)
@@ -312,7 +341,15 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				<BranchSelector
 					projectId={project.id}
 					selectedBranch={selectedBranch}
-					onSelectBranch={setSelectedBranch}
+					onSelectBranch={(branch) => {
+						setSelectedBranch(branch);
+						// Turn off review mode when branch is deselected
+						if (!branch && reviewMode) {
+							handleReviewModeChange(false);
+						}
+					}}
+					reviewMode={reviewMode}
+					onReviewModeChange={handleReviewModeChange}
 				/>
 
 			{/* Actions */}

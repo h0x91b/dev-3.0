@@ -29,9 +29,11 @@ interface BranchSelectorProps {
 	projectId: string;
 	selectedBranch: string | null;
 	onSelectBranch: (branch: string | null) => void;
+	reviewMode: boolean;
+	onReviewModeChange: (enabled: boolean) => void;
 }
 
-function BranchSelector({ projectId, selectedBranch, onSelectBranch }: BranchSelectorProps) {
+function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode, onReviewModeChange }: BranchSelectorProps) {
 	const t = useT();
 	const [branchQuery, setBranchQuery] = useState("");
 	const [branches, setBranches] = useState<BranchInfo[]>([]);
@@ -228,6 +230,33 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch }: BranchSel
 					</div>
 				)}
 			</div>
+
+			{/* Review mode toggle — shown when a branch is selected */}
+			{selectedBranch && (
+				<label
+					className="flex items-center gap-2 cursor-pointer group/review"
+					title={t("createTask.reviewModeHint")}
+				>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={reviewMode}
+						onClick={() => onReviewModeChange(!reviewMode)}
+						className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+							reviewMode ? "bg-accent" : "bg-fg/20"
+						}`}
+					>
+						<span
+							className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
+								reviewMode ? "translate-x-3.5" : "translate-x-0.5"
+							}`}
+						/>
+					</button>
+					<span className={`text-xs transition-colors ${reviewMode ? "text-accent font-medium" : "text-fg-3 group-hover/review:text-fg-2"}`}>
+						{t("createTask.reviewMode")}
+					</span>
+				</label>
+			)}
 		</div>
 	);
 }

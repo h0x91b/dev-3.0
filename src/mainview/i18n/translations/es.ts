@@ -147,6 +147,9 @@ const es: TranslationRecord & Record<string, string> = {
 	"createTask.branchLocal": "Locales",
 	"createTask.branchRemote": "Remotas",
 	"createTask.useExistingBranch": "Usar rama existente",
+	"createTask.reviewMode": "Revisar esta rama",
+	"createTask.reviewModeHint": "Rellena la descripción con un prompt de revisión de código",
+	"createTask.reviewPrompt": "Revisa los cambios de código en esta rama.\n\nTu tarea es realizar una revisión exhaustiva del código — NO modifiques ningún código.\n\nComienza analizando qué se cambió, luego evalúa:\n- Corrección y posibles errores\n- Cumplimiento de las convenciones y mejores prácticas del repositorio\n- Claridad del código, nombres y estructura\n- Casos límite y manejo de errores\n- Consideraciones de seguridad\n\nProporciona una revisión estructurada con comentarios accionables.",
 
 	// TaskCard
 	"task.moveTo": "Mover a",
