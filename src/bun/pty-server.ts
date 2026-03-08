@@ -56,6 +56,11 @@ set -g visual-bell off
 set -g bell-action any
 setw -g monitor-bell on
 
+# Allow escape sequence passthrough (for image protocols like Kitty graphics)
+set -g allow-passthrough on
+set -ga update-environment TERM
+set -ga update-environment TERM_PROGRAM
+
 `;
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);

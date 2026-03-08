@@ -66,7 +66,7 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): s
 const SYSTEM_REQUIREMENTS = [
 	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install", brewInstallable: false },
 	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux", brewInstallable: true },
-	{ id: "yazi", name: "yazi", checkCommand: "yazi", installHint: "requirements.installYazi", installCommand: "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font", brewInstallable: true, optional: true },
+	{ id: "yazi", name: "yazi", checkCommand: "yazi", installHint: "requirements.installYazi", installCommand: "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font chafa", brewInstallable: true, optional: true },
 ];
 
 // Common paths where Homebrew installs binaries (Apple Silicon + Intel)
