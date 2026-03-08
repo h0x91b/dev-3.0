@@ -29,6 +29,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"header.fileBrowser": "Archivos",
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
 	"fileBrowser.notInstalledDesc": "El explorador de archivos requiere yazi. Ejecuta el comando para instalarlo:",
+	"fileBrowser.linuxBrewHint": "Primero instala Homebrew para Linux (https://brew.sh), luego ejecuta:",
 	"fileBrowser.clickAgainHint": "Después de la instalación, haz clic en Files de nuevo y funcionará.",
 
 	// GlobalSettings

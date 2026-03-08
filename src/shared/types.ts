@@ -437,7 +437,7 @@ export type AppRPCSchema = {
 			};
 			openFileBrowser: {
 				params: { taskId: string; projectId: string };
-				response: { notInstalled: true; installCommand: string } | void;
+				response: { notInstalled: true; installCommand: string; linuxHint?: boolean } | void;
 			};
 			getBranchStatus: {
 				params: { taskId: string; projectId: string; compareRef?: string };

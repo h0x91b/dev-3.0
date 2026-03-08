@@ -31,6 +31,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"header.fileBrowser": "Файлы",
 	"fileBrowser.notInstalledTitle": "yazi не установлен",
 	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Выполните команду для установки:",
+	"fileBrowser.linuxBrewHint": "Сначала установите Homebrew для Linux (https://brew.sh), затем выполните:",
 	"fileBrowser.clickAgainHint": "После установки нажмите Files снова — всё заработает.",
 
 	// GlobalSettings

@@ -895,6 +895,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const [yaziInstallPopup, setYaziInstallPopup] = useState(false);
 	const [yaziCopied, setYaziCopied] = useState(false);
 	const [yaziInstallCmd, setYaziInstallCmd] = useState("");
+	const [yaziLinuxHint, setYaziLinuxHint] = useState(false);
 
 	async function handleFileBrowser() {
 		if (!isTaskActive) return;
@@ -902,6 +903,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			const result = await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
 			if (result && (result as any).notInstalled) {
 				setYaziInstallCmd((result as any).installCommand);
+				setYaziLinuxHint(!!(result as any).linuxHint);
 				setYaziInstallPopup(true);
 				return;
 			}
@@ -930,6 +932,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 					<div className="bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-5 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
 						<div className="text-sm font-semibold text-fg mb-2">{t("fileBrowser.notInstalledTitle")}</div>
 						<p className="text-fg-3 text-xs mb-3">{t("fileBrowser.notInstalledDesc")}</p>
+						{yaziLinuxHint && <p className="text-fg-3 text-xs mb-2">{t("fileBrowser.linuxBrewHint")}</p>}
 						<div className="flex items-center gap-2 mb-3">
 							<code className="flex-1 text-yellow-400 bg-yellow-400/10 px-3 py-2 rounded text-xs font-mono break-all">
 								{yaziInstallCmd}

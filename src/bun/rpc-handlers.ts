@@ -938,19 +938,19 @@ export const handlers = {
 		}
 	},
 
-	async openFileBrowser(params: { taskId: string; projectId: string }): Promise<{ notInstalled: true; installCommand: string } | void> {
+	async openFileBrowser(params: { taskId: string; projectId: string }): Promise<{ notInstalled: true; installCommand: string; linuxHint?: boolean } | void> {
 		log.info("→ openFileBrowser", params);
 		try {
 			// Check if yazi is available
 			const yaziCheck = spawnSync(["which", "yazi"]);
 			if (yaziCheck.exitCode !== 0) {
-				const installCommand = process.platform === "darwin"
-					? "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font chafa"
-					: process.platform === "win32"
-						? "scoop install yazi ffmpeg 7zip jq poppler fd ripgrep fzf zoxide imagemagick chafa"
-						: "# See https://yazi-rs.github.io/docs/installation for your distro";
+				const brewCmd = "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick chafa";
+				const installCommand = process.platform === "win32"
+					? "scoop install yazi ffmpeg 7zip jq poppler fd ripgrep fzf zoxide imagemagick chafa"
+					: brewCmd;
+				const linuxHint = process.platform === "linux";
 				log.info("← openFileBrowser: yazi not installed", { platform: process.platform });
-				return { notInstalled: true, installCommand };
+				return { notInstalled: true, installCommand, linuxHint };
 			}
 
 			const project = await data.getProject(params.projectId);
