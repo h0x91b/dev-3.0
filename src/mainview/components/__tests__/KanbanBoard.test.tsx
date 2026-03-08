@@ -136,7 +136,7 @@ describe("column ordering", () => {
 		const alphaIdx = labels.findIndex((l) => l === "Alpha");
 		const todoIdx = labels.findIndex((l) => l === "To Do");
 		const betaIdx = labels.findIndex((l) => l === "Beta");
-		const inProgressIdx = labels.findIndex((l) => l === "In Progress");
+		const inProgressIdx = labels.findIndex((l) => l === "Agent is Working");
 		expect(alphaIdx).toBeLessThan(todoIdx);
 		expect(betaIdx).toBeGreaterThan(inProgressIdx);
 	});
@@ -162,7 +162,7 @@ describe("column ordering", () => {
 		const columns = document.querySelectorAll("[class*='glass-column']");
 		const labels = Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent);
 		const todoIdx = labels.findIndex((l) => l === "To Do");
-		const inProgressIdx = labels.findIndex((l) => l === "In Progress");
+		const inProgressIdx = labels.findIndex((l) => l === "Agent is Working");
 		const alphaIdx = labels.findIndex((l) => l === "Alpha");
 		// Listed items appear in order
 		expect(todoIdx).toBeLessThan(inProgressIdx);

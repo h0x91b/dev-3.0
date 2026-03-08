@@ -107,6 +107,7 @@ function renderColumn(overrides: {
 				bellCounts={new Map()}
 				draggedTaskId={null}
 				movingTaskIds={new Set()}
+				onSetMoving={vi.fn()}
 				siblingMap={new Map()}
 				isCustomColumn
 				customColumnId={overrides.customColumnId ?? "col-aaa"}
@@ -145,6 +146,7 @@ function renderBuiltinColumn(overrides: {
 				bellCounts={new Map()}
 				draggedTaskId={null}
 				movingTaskIds={new Set()}
+				onSetMoving={vi.fn()}
 				siblingMap={new Map()}
 				onColumnDrop={overrides.onColumnDrop}
 			/>
