@@ -193,6 +193,28 @@ All tokens support Tailwind opacity modifiers (e.g., `bg-accent/20`, `border-acc
 
 If you need a new color, **add a CSS variable** in `index.css` (both themes) + a Tailwind mapping in `tailwind.config.js`. Do not inline arbitrary color values.
 
+### Nerd Font icons in the renderer
+
+The app bundles **JetBrainsMono Nerd Font Mono** (`src/mainview/assets/fonts/`), loaded via `@font-face` in `index.css`. Use Nerd Font glyphs for icons instead of SVGs wherever possible.
+
+**How to use in JSX:**
+
+```tsx
+<span
+  className="text-[1.125rem] leading-none"
+  style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+>
+  {"\u{F0645}"}
+</span>
+```
+
+**Rules:**
+- **Always wrap font-family in single quotes** inside the style object: `"'JetBrainsMono Nerd Font Mono'"`. Without inner quotes, multi-word font names may not resolve.
+- **Use ES6 unicode escapes** for codepoints above U+FFFF: `"\u{F0645}"` (curly braces). The classic `"\uF0645"` silently parses as `"\uF064"` + `"5"` — only 4 hex digits are consumed.
+- For codepoints U+0000–U+FFFF, classic `"\uF188"` works fine.
+- Browse glyphs at [nerdfonts.com/cheat-sheet](https://www.nerdfonts.com/cheat-sheet). Use the hex codepoint from there directly.
+- See `GlobalHeader.tsx` (bug icon `\uf188`) and `TaskInfoPanel.tsx` (file-tree icon `\u{F0645}`) for working examples.
+
 ## Documentation
 
 Local documentation for key dependencies lives in `vendor-docs/`:
