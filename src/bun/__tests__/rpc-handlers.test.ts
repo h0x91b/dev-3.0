@@ -42,6 +42,8 @@ vi.mock("../git", () => ({
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
 	listBranches: vi.fn(),
+	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
+	taskDir: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({

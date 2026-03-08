@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Project, Task } from "../../shared/types";
@@ -97,6 +97,8 @@ import {
 	listBranches,
 	fetchOrigin,
 	_resetFetchState,
+	saveDiffSnapshot,
+	taskDir,
 } from "../git";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -1030,5 +1032,92 @@ describe("fetchOrigin", () => {
 		} finally {
 			cleanup(repo2);
 		}
+	});
+});
+
+// ─── saveDiffSnapshot ────────────────────────────────────────────────────────
+
+describe("saveDiffSnapshot", () => {
+	let repo: TestRepo;
+	const project: Project = { id: "proj-1", name: "Test", path: "" } as Project;
+	const task: Task = { id: "task-1000-0000-0000" } as Task;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		project.path = repo.local;
+		(task as { worktreePath: string }).worktreePath = repo.local;
+	});
+
+	afterEach(() => cleanup(repo));
+
+	it("saves a .patch file when there are changes", async () => {
+		makeTaskCommits(repo.local);
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const diffsDir = join(taskDir(project, task), "diffs");
+		expect(existsSync(diffsDir)).toBe(true);
+
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		expect(files).toHaveLength(1);
+
+		const content = readFileSync(join(diffsDir, files[0]), "utf-8");
+		expect(content).toContain("feature.ts");
+		expect(content).toContain("add");
+	});
+
+	it("skips saving when there is no diff", async () => {
+		// No commits on branch — no diff from origin/main
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const diffsDir = join(taskDir(project, task), "diffs");
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		expect(files).toHaveLength(0);
+	});
+
+	it("skips saving when diff is unchanged from the last snapshot", async () => {
+		makeTaskCommits(repo.local);
+
+		await saveDiffSnapshot(project, task, "origin/main");
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const diffsDir = join(taskDir(project, task), "diffs");
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		expect(files).toHaveLength(1);
+	});
+
+	it("saves a new file when diff changes", async () => {
+		makeTaskCommits(repo.local);
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		// Make another commit to change the diff
+		writeFileSync(join(repo.local, "extra.ts"), "export const x = 42;\n");
+		g("git add extra.ts", repo.local);
+		g('git commit -m "add extra"', repo.local);
+
+		// Ensure different timestamp
+		await new Promise((r) => setTimeout(r, 1100));
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const diffsDir = join(taskDir(project, task), "diffs");
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		expect(files).toHaveLength(2);
+	});
+
+	it("prunes old snapshots beyond MAX_DIFF_SNAPSHOTS", async () => {
+		makeTaskCommits(repo.local);
+		const diffsDir = join(taskDir(project, task), "diffs");
+		mkdirSync(diffsDir, { recursive: true });
+
+		// Create 55 fake patch files
+		for (let i = 0; i < 55; i++) {
+			const name = `2025-01-01T00-00-${String(i).padStart(2, "0")}.patch`;
+			writeFileSync(join(diffsDir, name), `patch-${i}`);
+		}
+
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		// 55 existing + 1 new = 56, pruned to 50
+		expect(files.length).toBeLessThanOrEqual(50);
 	});
 });

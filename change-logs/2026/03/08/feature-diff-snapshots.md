@@ -1,0 +1,1 @@
+Save periodic diff snapshots per task for recovery purposes. On every branch status refresh, the full `git diff origin/main...HEAD` is saved as a `.patch` file in `{taskDir}/diffs/`. Identical diffs are deduplicated and old snapshots are pruned to keep at most 50 per task.

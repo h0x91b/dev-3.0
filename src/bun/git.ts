@@ -1,5 +1,6 @@
 import type { Project, Task } from "../shared/types";
 export { extractRepoName } from "../shared/types";
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
@@ -117,7 +118,7 @@ export function projectSlug(projectPath: string): string {
 	return projectPath.replace(/^\//, "").replaceAll("/", "-");
 }
 
-function taskDir(project: Project, task: Task): string {
+export function taskDir(project: Project, task: Task): string {
 	return `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
 }
 
@@ -546,6 +547,57 @@ export async function cloneRepo(
 	}
 	log.info("Repository cloned successfully", { url, targetDir });
 	return { ok: true, path: targetDir };
+}
+
+const MAX_DIFF_SNAPSHOTS = 50;
+
+export async function saveDiffSnapshot(
+	project: Project,
+	task: Task,
+	ref: string,
+): Promise<void> {
+	const dir = `${taskDir(project, task)}/diffs`;
+	mkdirSync(dir, { recursive: true });
+
+	// Get full diff
+	const result = await run(["git", "diff", `${ref}...HEAD`], task.worktreePath!);
+	const diff = result.ok ? result.stdout : "";
+
+	// Skip if empty (no changes)
+	if (!diff.trim()) {
+		log.debug("saveDiffSnapshot: no diff, skipping");
+		return;
+	}
+
+	// Check if identical to the latest snapshot
+	const existing = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	if (existing.length > 0) {
+		const lastFile = `${dir}/${existing[existing.length - 1]}`;
+		try {
+			const lastContent = readFileSync(lastFile, "utf-8");
+			if (lastContent === diff) {
+				log.debug("saveDiffSnapshot: unchanged, skipping");
+				return;
+			}
+		} catch { /* file read error — proceed with saving */ }
+	}
+
+	// Save with timestamp
+	const now = new Date();
+	const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+	const filename = `${ts}.patch`;
+	writeFileSync(`${dir}/${filename}`, diff);
+	log.info("saveDiffSnapshot: saved", { file: filename, size: diff.length });
+
+	// Prune old snapshots beyond the limit
+	const allFiles = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	if (allFiles.length > MAX_DIFF_SNAPSHOTS) {
+		const toRemove = allFiles.slice(0, allFiles.length - MAX_DIFF_SNAPSHOTS);
+		for (const f of toRemove) {
+			unlinkSync(`${dir}/${f}`);
+		}
+		log.info("saveDiffSnapshot: pruned old snapshots", { removed: toRemove.length });
+	}
 }
 
 export async function removeWorktree(

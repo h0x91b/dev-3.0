@@ -635,6 +635,12 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
 	};
 	log.info("← getBranchStatus", result);
+
+	// Fire-and-forget: save diff snapshot for recovery purposes
+	git.saveDiffSnapshot(project, task, ref).catch((err) => {
+		log.warn("saveDiffSnapshot failed", { taskId: task.id, error: String(err) });
+	});
+
 	return result;
 }
 
