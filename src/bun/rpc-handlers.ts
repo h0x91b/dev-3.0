@@ -1292,7 +1292,7 @@ export const handlers = {
 		log.info("← createPullRequest (pane opened)", { paneId });
 	},
 
-	async showDiff(params: { taskId: string; projectId: string }): Promise<void> {
+	async showDiff(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {
 		log.info("→ showDiff", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -1300,6 +1300,7 @@ export const handlers = {
 		if (!task.worktreePath) throw new Error("Task has no worktree");
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		const ref = params.compareRef || `origin/${baseBranch}`;
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
 
@@ -1308,7 +1309,7 @@ export const handlers = {
 
 		const script = [
 			`#!/bin/bash`,
-			`git diff --color=always ${baseBranch}...HEAD | less -R`,
+			`git diff --color=always ${ref}...HEAD | less -R`,
 			`EXIT_CODE=\${PIPESTATUS[0]}`,
 			`if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 141 ]; then`,
 			`  printf '\\033[1;31m✗ git diff failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,

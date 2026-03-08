@@ -390,6 +390,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			await api.request.showDiff({
 				taskId: task.id,
 				projectId: project.id,
+				compareRef: compareRef || undefined,
 			});
 		} catch (err) {
 			alert(t("infoPanel.showDiffFailed", { error: String(err) }));

@@ -63,6 +63,8 @@ export async function isGitRepo(path: string): Promise<boolean> {
 
 export async function getDefaultBranch(path: string): Promise<string> {
 	log.info("Detecting default branch", { path });
+
+	// Strategy 1: symbolic-ref (works after clone when origin/HEAD is set)
 	const result = await run(
 		["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
 		path,
@@ -72,13 +74,48 @@ export async function getDefaultBranch(path: string): Promise<string> {
 		log.info(`Default branch: ${branch}`, { path });
 		return branch;
 	}
-	// Fallback: check if main exists, else master
+
+	// Strategy 2: auto-set origin/HEAD from the remote (requires network)
+	const setHead = await run(
+		["git", "remote", "set-head", "origin", "--auto"],
+		path,
+	);
+	if (setHead.ok) {
+		const retry = await run(
+			["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+			path,
+		);
+		if (retry.ok) {
+			const branch = retry.stdout.replace("refs/remotes/origin/", "");
+			log.info(`Default branch (auto-detected): ${branch}`, { path });
+			return branch;
+		}
+	}
+
+	// Strategy 3: check remote tracking branches
+	const remoteBranches = await run(
+		["git", "branch", "-r", "--format=%(refname:short)"],
+		path,
+	);
+	if (remoteBranches.ok && remoteBranches.stdout) {
+		const branches = remoteBranches.stdout.split("\n").map((b) => b.trim());
+		if (branches.includes("origin/main")) {
+			log.info("Default branch (remote fallback): main", { path });
+			return "main";
+		}
+		if (branches.includes("origin/master")) {
+			log.info("Default branch (remote fallback): master", { path });
+			return "master";
+		}
+	}
+
+	// Strategy 4: check local branches
 	const mainCheck = await run(
 		["git", "rev-parse", "--verify", "main"],
 		path,
 	);
 	const branch = mainCheck.ok ? "main" : "master";
-	log.info(`Default branch (fallback): ${branch}`, { path });
+	log.info(`Default branch (local fallback): ${branch}`, { path });
 	return branch;
 }
 

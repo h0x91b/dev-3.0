@@ -461,7 +461,7 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			showDiff: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; compareRef?: string };
 				response: void;
 			};
 			showUncommittedDiff: {
