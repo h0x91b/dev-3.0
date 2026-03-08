@@ -908,11 +908,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 				!isTaskActive
 					? "text-fg-muted/50 cursor-not-allowed"
-					: "text-[#f59e0b] hover:text-[#fbbf24] hover:bg-[#f59e0b]/15 border border-[#f59e0b]/30"
+					: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
 			}`}
 			title={t("header.fileBrowser")}
 		>
-			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}></span>
+			<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+					d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+			</svg>
 			<span className="text-[0.6875rem] font-semibold">{t("header.fileBrowser")}</span>
 		</button>
 	);

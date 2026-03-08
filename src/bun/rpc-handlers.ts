@@ -906,6 +906,7 @@ export const handlers = {
 				"split-window", "-h",
 				"-t", tmuxSession,
 				"-c", task.worktreePath,
+				"-l", "30%",
 				"-P", "-F", "#{pane_id}",
 				`bash "${devScriptPath}"`,
 			), { stdout: "pipe", stderr: "pipe" });
@@ -976,9 +977,9 @@ export const handlers = {
 				}
 			}
 
-			// Open new vertical split with yazi
+			// Open new horizontal split (bottom pane) with yazi
 			const proc = spawn(pty.tmuxArgs(socket,
-				"split-window", "-h",
+				"split-window", "-v",
 				"-t", tmuxSession,
 				"-c", task.worktreePath,
 				"-l", "30%",
