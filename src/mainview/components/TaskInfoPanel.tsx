@@ -1016,10 +1016,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 						})}
 						<div className="flex-1" />
+						{fileBrowserButton}
 						{tmuxHintsInline}
 						{tmuxHintsPopover}
 						{devServerButton}
-						{fileBrowserButton}
 						<button
 							onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
