@@ -86,6 +86,10 @@ const defaultBranchStatus: BranchStatus = {
 	deletions: 0,
 	unpushed: 0,
 	mergedByContent: false,
+	diffFiles: 0,
+	diffInsertions: 0,
+	diffDeletions: 0,
+	diffFileNames: [],
 };
 
 function renderPanel(

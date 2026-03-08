@@ -95,6 +95,7 @@ const mergeNotifiedTasks = new Set<string>();
 const branchStatusInFlight = new Map<string, Promise<{
 	ahead: number; behind: number; canRebase: boolean;
 	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
+	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
 }>>();
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
@@ -559,7 +560,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const task = await data.getTask(project, params.taskId);
 
 	if (!task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [] };
 	}
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -578,16 +579,20 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	await git.fetchOrigin(project.path);
 	// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
 	const ref = params.compareRef || `origin/${baseBranch}`;
-	const [status, uncommitted, unpushed] = await Promise.all([
+	const [status, uncommitted, unpushed, branchDiff] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpushedCount(task.worktreePath, branchForPush),
+		git.getBranchDiffStats(task.worktreePath, ref),
 	]);
-	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, ref });
+	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
 	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
 
-	const result = { ...status, canRebase, ...uncommitted, unpushed, mergedByContent };
+	const result = {
+		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
+		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
+	};
 	log.info("← getBranchStatus", result);
 	return result;
 }
