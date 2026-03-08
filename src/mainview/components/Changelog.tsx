@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useT } from "../i18n";
 import type { Route } from "../state";
 import type { ChangelogEntry } from "../../shared/types";
@@ -9,6 +9,17 @@ interface ChangelogProps {
 	previousRoute: Route | null;
 }
 
+const ENTRY_TYPES = ["feature", "fix", "refactor", "docs", "chore"] as const;
+type EntryType = (typeof ENTRY_TYPES)[number];
+
+const TYPE_SORT_ORDER: Record<string, number> = {
+	feature: 0,
+	fix: 1,
+	refactor: 2,
+	docs: 3,
+	chore: 4,
+};
+
 const TYPE_STYLES: Record<string, string> = {
 	feature: "bg-accent/15 text-accent",
 	fix: "bg-danger/15 text-danger",
@@ -16,6 +27,18 @@ const TYPE_STYLES: Record<string, string> = {
 	docs: "bg-elevated text-fg-3",
 	chore: "bg-elevated text-fg-3",
 };
+
+const FILTER_ACTIVE_STYLES: Record<string, string> = {
+	feature: "bg-accent/25 text-accent border-accent/40",
+	fix: "bg-danger/25 text-danger border-danger/40",
+	refactor: "bg-elevated text-fg-2 border-edge-active",
+	docs: "bg-elevated text-fg-2 border-edge-active",
+	chore: "bg-elevated text-fg-2 border-edge-active",
+};
+
+function sortByType(a: ChangelogEntry, b: ChangelogEntry): number {
+	return (TYPE_SORT_ORDER[a.type] ?? 99) - (TYPE_SORT_ORDER[b.type] ?? 99);
+}
 
 function formatDate(dateStr: string): string {
 	const [y, m, d] = dateStr.split("-").map(Number);
@@ -30,6 +53,7 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 	const t = useT();
 	const [entries, setEntries] = useState<ChangelogEntry[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [activeFilter, setActiveFilter] = useState<EntryType | null>(null);
 
 	useEffect(() => {
 		api.request.getChangelogs().then((data) => {
@@ -49,15 +73,28 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 		return () => document.removeEventListener("keydown", handleKey);
 	}, [navigate, previousRoute]);
 
+	const toggleFilter = useCallback((type: EntryType) => {
+		setActiveFilter((prev) => (prev === type ? null : type));
+	}, []);
+
+	const availableTypes = useMemo(() => {
+		const typeSet = new Set(entries.map((e) => e.type));
+		return ENTRY_TYPES.filter((t) => typeSet.has(t));
+	}, [entries]);
+
 	const grouped = useMemo(() => {
+		const filtered = activeFilter
+			? entries.filter((e) => e.type === activeFilter)
+			: entries;
+		const sorted = [...filtered].sort(sortByType);
 		const map = new Map<string, ChangelogEntry[]>();
-		for (const entry of entries) {
+		for (const entry of sorted) {
 			const group = map.get(entry.date) ?? [];
 			group.push(entry);
 			map.set(entry.date, group);
 		}
 		return Array.from(map.entries()).map(([date, items]) => ({ date, items }));
-	}, [entries]);
+	}, [entries, activeFilter]);
 
 	if (loading) {
 		return (
@@ -79,6 +116,39 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl space-y-6">
+					{availableTypes.length > 1 && (
+						<div className="flex items-center gap-1.5 flex-wrap">
+							<span className="text-fg-3 text-xs mr-1">
+								{t("changelog.filterLabel")}
+							</span>
+							{availableTypes.map((type) => {
+								const isActive = activeFilter === type;
+								return (
+									<button
+										key={type}
+										type="button"
+										onClick={() => toggleFilter(type)}
+										className={`px-2 py-0.5 rounded text-[0.6875rem] font-medium leading-tight border transition-colors cursor-pointer ${
+											isActive
+												? FILTER_ACTIVE_STYLES[type]
+												: "bg-transparent text-fg-3 border-edge hover:border-edge-active hover:text-fg-2"
+										}`}
+									>
+										{t(`changelog.${type}` as any) || type}
+									</button>
+								);
+							})}
+							{activeFilter && (
+								<button
+									type="button"
+									onClick={() => setActiveFilter(null)}
+									className="px-2 py-0.5 rounded text-[0.6875rem] text-fg-muted hover:text-fg-3 transition-colors cursor-pointer"
+								>
+									{t("changelog.clearFilter")}
+								</button>
+							)}
+						</div>
+					)}
 					{grouped.map(({ date, items }) => (
 						<div key={date}>
 							<h3 className="text-fg-2 text-xs font-semibold uppercase tracking-wider mb-2 sticky top-0 bg-base py-1">

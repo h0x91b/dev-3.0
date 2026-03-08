@@ -339,6 +339,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"changelog.refactor": "рефакторинг",
 	"changelog.docs": "документация",
 	"changelog.chore": "служебное",
+	"changelog.filterLabel": "Фильтр:",
+	"changelog.clearFilter": "сбросить",
 
 	// Tmux Session Manager
 	"tmuxSessions.title": "Сессии tmux",

@@ -1,0 +1,1 @@
+Changelog dialog now sorts entries by type within each date group (features first, then fixes, then the rest). Added filter buttons at the top to show only entries of a specific type, with a clear button to reset.

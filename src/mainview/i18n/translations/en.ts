@@ -331,6 +331,8 @@ const en = {
 	"changelog.refactor": "refactor",
 	"changelog.docs": "docs",
 	"changelog.chore": "chore",
+	"changelog.filterLabel": "Filter:",
+	"changelog.clearFilter": "clear",
 
 	// Tmux Session Manager
 	"tmuxSessions.title": "tmux Sessions",
