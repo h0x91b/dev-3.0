@@ -256,19 +256,18 @@ function KanbanColumn({
 						? "border-edge-active"
 						: "border-transparent"
 			} ${isDraggedColumn ? "opacity-40" : ""}`}
-			style={{ "--col-rgb": hexToRgb(color) } as React.CSSProperties}
+			style={{
+				"--col-rgb": hexToRgb(color),
+				// Column reorder indicator via box-shadow avoids dragleave false-fires
+				// from pointer-events:none children extending outside element bounds.
+				...(columnDragSide === "before" && { boxShadow: "-4px 0 0 0 rgb(var(--accent))" }),
+				...(columnDragSide === "after" && { boxShadow: "4px 0 0 0 rgb(var(--accent))" }),
+			} as React.CSSProperties}
 			onDragOver={handleDragOver}
 			onDragEnter={handleDragEnter}
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
 		>
-			{/* Column reorder drop indicators */}
-			{columnDragSide === "before" && (
-				<div className="pointer-events-none absolute inset-y-0 -left-3 w-1 rounded-full bg-accent" />
-			)}
-			{columnDragSide === "after" && (
-				<div className="pointer-events-none absolute inset-y-0 -right-3 w-1 rounded-full bg-accent" />
-			)}
 			{/* Column header */}
 			<div
 				className="px-4 py-3.5 flex-shrink-0"

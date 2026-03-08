@@ -203,32 +203,34 @@ describe("KanbanColumn — column drag-and-drop", () => {
 			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
 			setupColumnDragFromOther();
 			dispatch(getColumn(), "dragover", { clientX: -1 });
-			expect(document.querySelector("[class*='-left-3']")).toBeInTheDocument();
-			expect(document.querySelector("[class*='-right-3']")).not.toBeInTheDocument();
+			// "before" uses -4px (left) box-shadow; "after" would start with "4px"
+			expect(getColumn().style.boxShadow).toMatch(/-4px/);
+			expect(getColumn().style.boxShadow).not.toMatch(/^4px/);
 		});
 
 		it("shows 'after' indicator (clientX > center=0)", () => {
 			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
 			setupColumnDragFromOther();
 			dispatch(getColumn(), "dragover", { clientX: 1 });
-			expect(document.querySelector("[class*='-right-3']")).toBeInTheDocument();
-			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
+			// "after" uses +4px (right) box-shadow starting with "4px"
+			expect(getColumn().style.boxShadow).toMatch(/^4px/);
+			expect(getColumn().style.boxShadow).not.toMatch(/-4px/);
 		});
 
 		it("clears indicator on dragleave", () => {
 			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
 			setupColumnDragFromOther();
 			dispatch(getColumn(), "dragover", { clientX: -1 });
-			expect(document.querySelector("[class*='-left-3']")).toBeInTheDocument();
+			expect(getColumn().style.boxShadow).toMatch(/-4px/);
 
 			act(() => { getColumn().dispatchEvent(new MouseEvent("dragleave", { bubbles: true })); });
-			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
+			expect(getColumn().style.boxShadow).not.toMatch(/-4px/);
 		});
 
 		it("no indicator when no column drag is active", () => {
 			renderColumn({ onColumnDrop: vi.fn() });
 			dispatch(getColumn(), "dragover", { clientX: -1 });
-			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
+			expect(getColumn().style.boxShadow).not.toMatch(/-4px/);
 		});
 	});
 
@@ -279,9 +281,9 @@ describe("KanbanColumn — column drag-and-drop", () => {
 			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
 			setupColumnDragFromOther();
 			dispatch(getColumn(), "dragover", { clientX: -1 });
-			expect(document.querySelector("[class*='-left-3']")).toBeInTheDocument();
+			expect(getColumn().style.boxShadow).toMatch(/-4px/);
 			dispatch(getColumn(), "drop");
-			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
+			expect(getColumn().style.boxShadow).not.toMatch(/-4px/);
 		});
 	});
 });
