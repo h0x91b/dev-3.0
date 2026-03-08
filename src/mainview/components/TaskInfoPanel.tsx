@@ -912,7 +912,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			}`}
 			title={t("header.fileBrowser")}
 		>
-			<span className="text-base leading-none" style={{ fontFamily: "JetBrainsMono Nerd Font Mono" }}>{"\uF0645"}</span>
+			<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
 			<span className="text-[0.6875rem] font-semibold">{t("header.fileBrowser")}</span>
 		</button>
 	);
