@@ -2,74 +2,35 @@ name: Release
 
 on:
   push:
-    tags: ["v*", "full-v*"]
+    tags: ["v*"]
 
 permissions:
   contents: write
 
 jobs:
   # ──────────────────────────────────────────────────
-  # Determine build matrix and version
+  # Determine version from tag
   # ──────────────────────────────────────────────────
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
       tag: ${{ steps.version.outputs.tag }}
-      is_release: ${{ steps.version.outputs.is_release }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Determine version tag
         id: version
         run: |
-          REF="${{ github.ref_name }}"
-          # Strip "full-" prefix if present: full-v0.2.7 → v0.2.7
-          TAG="${REF#full-}"
-          # For PRs, read version from package.json
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"\([0-9.]*\)".*/\1/')
-            TAG="v$VERSION"
-          fi
+          TAG="${{ github.ref_name }}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "is_release=${{ github.event_name == 'push' }}" >> $GITHUB_OUTPUT
-          echo "Version tag: $TAG (from ref: $REF, event: ${{ github.event_name }})"
-
-      - name: Set build matrix
-        id: set-matrix
-        run: |
-          REF="${{ github.ref_name }}"
-          if [[ "$REF" == full-v* ]] || [ "${{ github.event_name }}" = "pull_request" ]; then
-            # full-v* tag or PR: all platforms
-            cat <<'EOF' > /tmp/matrix.json
-          {"include":[
-            {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true},
-            {"os":"macos","arch":"x64","runner":"\"macos-15-intel\"","sign":true},
-            {"os":"linux","arch":"x64","runner":"\"ubuntu-22.04\"","sign":false}
-          ]}
-          EOF
-          else
-            # v* tag: ARM64 macOS + Linux (both cheap/free)
-            cat <<'EOF' > /tmp/matrix.json
-          {"include":[
-            {"os":"macos","arch":"arm64","runner":"[\"self-hosted\",\"macOS\",\"ARM64\"]","sign":true},
-            {"os":"linux","arch":"x64","runner":"\"ubuntu-22.04\"","sign":false}
-          ]}
-          EOF
-          fi
-          MATRIX=$(cat /tmp/matrix.json | tr -d '\n' | tr -s ' ')
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
-          echo "Build matrix: $MATRIX"
+          echo "Version tag: $TAG"
 
   # ──────────────────────────────────────────────────
   # Build for each platform (parallel)
   # ──────────────────────────────────────────────────
-  build:
+  build-macos-arm64:
     needs: prepare
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
-    runs-on: ${{ fromJson(matrix.runner) }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -78,23 +39,12 @@ jobs:
         with:
           bun-version: "1.3.10"
 
-      # Linux: install system dependencies for Electrobun (WebKitGTK)
-      - name: Install Linux dependencies
-        if: matrix.os == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.0-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
       - name: Restore node_modules cache
         id: cache-deps
         uses: actions/cache/restore@v4
         with:
           path: ./node_modules
-          key: bun-deps-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -105,16 +55,9 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ./node_modules
-          key: bun-deps-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
 
-      # Tests only on self-hosted ARM64 to save GitHub-hosted minutes
-      - name: Run tests
-        if: matrix.os == 'macos' && matrix.arch == 'arm64'
-        run: bun run test
-
-      # macOS code signing
       - name: Import code signing certificate
-        if: matrix.sign
         env:
           MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
           MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
@@ -131,7 +74,6 @@ jobs:
           rm $RUNNER_TEMP/certificate.p12
 
       - name: Enable code signing in config
-        if: matrix.sign
         run: |
           sed -i '' 's/codesign: false/codesign: true/' electrobun.config.ts
           sed -i '' 's/notarize: false/notarize: true/' electrobun.config.ts
@@ -143,10 +85,10 @@ jobs:
 
       - name: Build release
         env:
-          ELECTROBUN_DEVELOPER_ID: ${{ matrix.sign && secrets.ELECTROBUN_DEVELOPER_ID || '' }}
-          ELECTROBUN_TEAMID: ${{ matrix.sign && secrets.ELECTROBUN_TEAMID || '' }}
-          ELECTROBUN_APPLEID: ${{ matrix.sign && secrets.ELECTROBUN_APPLEID || '' }}
-          ELECTROBUN_APPLEIDPASS: ${{ matrix.sign && secrets.ELECTROBUN_APPLEIDPASS || '' }}
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
+          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
           COPYFILE_DISABLE: "1"
           COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
         run: |
@@ -154,9 +96,6 @@ jobs:
           bun scripts/generate-changelog.ts
           bunx vite build
           bun run build:cli
-          # Sign the CLI binary before electrobun copies it into the app bundle.
-          # Electrobun only signs Contents/MacOS/* — cli/dev3 lives in Resources/app/
-          # and must be pre-signed to pass Apple notarization.
           if [ -n "$ELECTROBUN_DEVELOPER_ID" ] && [ -f dist/dev3 ]; then
             echo "Signing dist/dev3 with Developer ID..."
             codesign --force --verbose --timestamp \
@@ -175,34 +114,215 @@ jobs:
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
 
       - name: Create release artifacts
-        run: bash ./scripts/create-release-artifacts.sh ${{ matrix.os }} ${{ matrix.arch }}
+        run: bash ./scripts/create-release-artifacts.sh macos arm64
 
       - name: Upload artifacts to S3
-        if: needs.prepare.outputs.is_release == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: eu-west-1
         run: |
           TAG="${{ needs.prepare.outputs.tag }}"
-          ARTIFACT_DIR="./artifacts-${{ matrix.os }}-${{ matrix.arch }}"
-          aws s3 sync "$ARTIFACT_DIR/" "s3://h0x91b-releases/dev-3.0/$TAG/"
-          aws s3 sync "$ARTIFACT_DIR/" "s3://h0x91b-releases/dev-3.0/" \
+          aws s3 sync "./artifacts-macos-arm64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          aws s3 sync "./artifacts-macos-arm64/" "s3://h0x91b-releases/dev-3.0/" \
             --exclude "*.dmg" --exclude "*Setup*.tar.gz"
-          echo "Artifacts uploaded to S3 for ${{ matrix.os }}-${{ matrix.arch }}"
 
       - name: Upload artifacts for release job
         uses: actions/upload-artifact@v4
         with:
-          name: artifacts-${{ matrix.os }}-${{ matrix.arch }}
-          path: ./artifacts-${{ matrix.os }}-${{ matrix.arch }}/
+          name: artifacts-macos-arm64
+          path: ./artifacts-macos-arm64/
+
+  build-macos-x64:
+    needs: prepare
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-x64-${{ hashFiles('bun.lockb') }}
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-x64-${{ hashFiles('bun.lockb') }}
+
+      - name: Import code signing certificate
+        env:
+          MAC_CERTIFICATE_P12: ${{ secrets.MAC_CERTIFICATE_P12 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          echo "$MAC_CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $RUNNER_TEMP/certificate.p12 -P "$MAC_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          rm $RUNNER_TEMP/certificate.p12
+
+      - name: Enable code signing in config
+        run: |
+          sed -i '' 's/codesign: false/codesign: true/' electrobun.config.ts
+          sed -i '' 's/notarize: false/notarize: true/' electrobun.config.ts
+          echo "Patched electrobun.config.ts for signing:"
+          grep -E 'codesign|notarize' electrobun.config.ts
+
+      - name: Clean build directory
+        run: rm -rf ./build ./artifacts
+
+      - name: Build release
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+          ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
+          ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.ELECTROBUN_APPLEIDPASS }}
+          COPYFILE_DISABLE: "1"
+          COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
+        run: |
+          bun scripts/generate-build-info.ts
+          bun scripts/generate-changelog.ts
+          bunx vite build
+          bun run build:cli
+          if [ -n "$ELECTROBUN_DEVELOPER_ID" ] && [ -f dist/dev3 ]; then
+            echo "Signing dist/dev3 with Developer ID..."
+            codesign --force --verbose --timestamp \
+              --sign "$ELECTROBUN_DEVELOPER_ID" \
+              --options runtime \
+              dist/dev3
+          fi
+          bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
+
+      - name: Debug build output
+        if: always()
+        run: |
+          echo "=== ./build/ ==="
+          find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
+          echo "=== ./artifacts/ ==="
+          ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      - name: Create release artifacts
+        run: bash ./scripts/create-release-artifacts.sh macos x64
+
+      - name: Upload artifacts to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          aws s3 sync "./artifacts-macos-x64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          aws s3 sync "./artifacts-macos-x64/" "s3://h0x91b-releases/dev-3.0/" \
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz"
+
+      - name: Upload artifacts for release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-macos-x64
+          path: ./artifacts-macos-x64/
+
+  build-linux-x64:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-linux-x64-${{ hashFiles('bun.lockb') }}
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-linux-x64-${{ hashFiles('bun.lockb') }}
+
+      - name: Clean build directory
+        run: rm -rf ./build ./artifacts
+
+      - name: Build release
+        env:
+          COPYFILE_DISABLE: "1"
+          COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
+        run: |
+          bun scripts/generate-build-info.ts
+          bun scripts/generate-changelog.ts
+          bunx vite build
+          bun run build:cli
+          bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
+
+      - name: Debug build output
+        if: always()
+        run: |
+          echo "=== ./build/ ==="
+          find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
+          echo "=== ./artifacts/ ==="
+          ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      - name: Create release artifacts
+        run: bash ./scripts/create-release-artifacts.sh linux x64
+
+      - name: Upload artifacts to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          aws s3 sync "./artifacts-linux-x64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          aws s3 sync "./artifacts-linux-x64/" "s3://h0x91b-releases/dev-3.0/" \
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz"
+
+      - name: Upload artifacts for release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-linux-x64
+          path: ./artifacts-linux-x64/
 
   # ──────────────────────────────────────────────────
   # Create GitHub Release (aggregates all platforms)
   # ──────────────────────────────────────────────────
   release:
-    if: needs.prepare.outputs.is_release == 'true'
-    needs: [prepare, build]
+    needs: [prepare, build-macos-arm64, build-macos-x64, build-linux-x64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -285,9 +405,6 @@ jobs:
             gh release upload "$TAG" "$dmg" --repo "${{ github.repository }}" --clobber
           done
 
-      # Always update Homebrew when ARM64 DMG is available — even for full-v* tags.
-      # full-v* rebuilds the ARM64 DMG and overwrites the GitHub Release asset (--clobber),
-      # so the SHA must be refreshed to match the actually-published binary.
       - name: Update Homebrew Cask
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
