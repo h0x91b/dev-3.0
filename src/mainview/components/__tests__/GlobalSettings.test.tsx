@@ -77,10 +77,13 @@ function setupMocks(
 	mockedApi.request.saveGlobalSettings.mockResolvedValue(undefined as any);
 }
 
-/** Wait for async data (agents + settings) to be loaded into the UI */
+/** Wait for async data (agents + settings) to be loaded into the UI.
+ *  We wait for "Default Configuration" which only renders when BOTH agents
+ *  and globalSettings are loaded (it requires defaultAgentId to match an
+ *  agent that has configurations). Without this, tests race: agents arrive
+ *  but globalSettings still has initial defaultAgentId "builtin-claude". */
 async function waitForLoad() {
-	// "Coding Agents" label is unique and only renders after agents are loaded
-	await screen.findByText("Coding Agents");
+	await screen.findByText("Default Configuration");
 }
 
 describe("GlobalSettings", () => {
