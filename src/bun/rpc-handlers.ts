@@ -66,7 +66,6 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): s
 const SYSTEM_REQUIREMENTS = [
 	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install", brewInstallable: false },
 	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux", brewInstallable: true },
-	{ id: "yazi", name: "yazi", checkCommand: "yazi", installHint: "requirements.installYazi", installCommand: "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font chafa", brewInstallable: true, optional: true },
 ];
 
 // Common paths where Homebrew installs binaries (Apple Silicon + Intel)
@@ -939,9 +938,16 @@ export const handlers = {
 		}
 	},
 
-	async openFileBrowser(params: { taskId: string; projectId: string }): Promise<void> {
+	async openFileBrowser(params: { taskId: string; projectId: string }): Promise<{ notInstalled: true } | void> {
 		log.info("→ openFileBrowser", params);
 		try {
+			// Check if yazi is available
+			const yaziCheck = spawnSync(["which", "yazi"]);
+			if (yaziCheck.exitCode !== 0) {
+				log.info("← openFileBrowser: yazi not installed");
+				return { notInstalled: true };
+			}
+
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
 

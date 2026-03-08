@@ -892,29 +892,84 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	);
 
 	// ---- File browser (yazi) ----
+	const [yaziInstallPopup, setYaziInstallPopup] = useState(false);
+	const [yaziCopied, setYaziCopied] = useState(false);
+	const yaziInstallCmd = "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font chafa";
+
 	async function handleFileBrowser() {
 		if (!isTaskActive) return;
 		try {
-			await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
+			const result = await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
+			if (result && (result as any).notInstalled) {
+				setYaziInstallPopup(true);
+				return;
+			}
 		} catch (err) {
 			alert(t("infoPanel.fileBrowserFailed", { error: String(err) }));
 		}
 	}
 
+	const fileBrowserRef = useRef<HTMLDivElement>(null);
+
 	const fileBrowserButton = (
-		<button
-			onClick={handleFileBrowser}
-			disabled={!isTaskActive}
-			className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-				!isTaskActive
-					? "text-fg-muted/50 cursor-not-allowed"
-					: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
-			}`}
-			title={t("header.fileBrowser")}
-		>
-			<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
-			<span className="text-[0.6875rem] font-semibold">{t("header.fileBrowser")}</span>
-		</button>
+		<div ref={fileBrowserRef} className="relative flex-shrink-0">
+			<button
+				onClick={handleFileBrowser}
+				disabled={!isTaskActive}
+				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+					!isTaskActive
+						? "text-fg-muted/50 cursor-not-allowed"
+						: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
+				}`}
+				title={t("header.fileBrowser")}
+			>
+				<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
+				<span className="text-[0.6875rem] font-semibold">{t("header.fileBrowser")}</span>
+			</button>
+			{yaziInstallPopup && createPortal(
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setYaziInstallPopup(false)}>
+					<div className="bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-5 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
+						<div className="text-sm font-semibold text-fg mb-2">{t("fileBrowser.notInstalledTitle")}</div>
+						<p className="text-fg-3 text-xs mb-3">{t("fileBrowser.notInstalledDesc")}</p>
+						<div className="flex items-center gap-2 mb-3">
+							<code className="flex-1 text-yellow-400 bg-yellow-400/10 px-3 py-2 rounded text-xs font-mono break-all">
+								{yaziInstallCmd}
+							</code>
+							<button
+								onClick={() => {
+									navigator.clipboard.writeText(yaziInstallCmd);
+									setYaziCopied(true);
+									setTimeout(() => setYaziCopied(false), 2000);
+								}}
+								className="p-2 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+								title="Copy"
+							>
+								{yaziCopied ? (
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+								) : (
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+										<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+										<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+									</svg>
+								)}
+							</button>
+						</div>
+						{yaziCopied && <p className="text-green-400 text-xs mb-3">{t("requirements.copied")}</p>}
+						<div className="flex justify-end">
+							<button
+								onClick={() => setYaziInstallPopup(false)}
+								className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+							>
+								OK
+							</button>
+						</div>
+					</div>
+				</div>,
+				document.body,
+			)}
+		</div>
 	);
 
 	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";

@@ -29,6 +29,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"header.devServer": "Dev-сервер",
 	"header.devServerDisabled": "Настройте dev-скрипт в настройках проекта",
 	"header.fileBrowser": "Файлы",
+	"fileBrowser.notInstalledTitle": "yazi не установлен",
+	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Установите через Homebrew:",
 
 	// GlobalSettings
 	"settings.theme": "Тема",
