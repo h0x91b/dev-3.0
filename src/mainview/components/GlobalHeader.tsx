@@ -232,10 +232,11 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 									</span>
 								</button>
 								{showProjectDropdown && (
-									<div className="absolute left-0 top-full mt-1.5 w-64 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
-										{availableProjects.map((p) => {
+									<div className="absolute left-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
+										{availableProjects.map((p, idx) => {
 											const isCurrent = currentProjectId === p.id;
 											const count = projectTaskCounts[p.id];
+											const shortcutNum = idx < 9 ? idx + 1 : null;
 											return (
 												<button
 													key={p.id}
@@ -243,13 +244,13 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 														setShowProjectDropdown(false);
 														navigate({ screen: "project", projectId: p.id });
 													}}
-													className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
+													className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
 														isCurrent
 															? "bg-accent/10 text-accent"
 															: "text-fg-2 hover:bg-elevated hover:text-fg"
 													}`}
 												>
-													<span className="truncate text-sm">{p.name}</span>
+													<span className="truncate text-sm flex-1">{p.name}</span>
 													<span className="text-[0.6875rem] text-fg-muted flex-shrink-0">
 														{count != null
 															? count > 0
@@ -257,6 +258,11 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 																: t("header.noActiveTasks")
 															: ""}
 													</span>
+													{shortcutNum && (
+														<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-[0.625rem] text-fg-muted/60 font-mono">
+															<span className="text-[0.6875rem]">{"\u2318"}</span>{shortcutNum}
+														</kbd>
+													)}
 												</button>
 											);
 										})}

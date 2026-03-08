@@ -149,6 +149,49 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("project switching (Cmd+1..9)", () => {
+		it("Cmd+1 navigates to the first project", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+				{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+
+		it("Cmd+2 navigates to the second project", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+				{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+
+		it("Cmd+9 does nothing when fewer than 9 projects", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}9{/Meta}");
+			// Should stay on dashboard
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+
+		it("skips deleted projects in the index", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Deleted", path: "/d", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", deleted: true },
+				{ id: "p2", name: "Active", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			// Cmd+1 should navigate to Active (the only non-deleted project)
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+	});
+
 	describe("zoom (Cmd/Ctrl + = - 0)", () => {
 		it("Cmd+= calls adjustZoom with +ZOOM_STEP", async () => {
 			await renderApp();
