@@ -195,21 +195,26 @@ export function isActive(status: TaskStatus): boolean {
  * merged into the base branch (squash, rebase, or regular merge).
  * Sends a `branchMerged` push message so the renderer can offer completion.
  */
-let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
+let mergePollerInterval: ReturnType<typeof setTimeout> | null = null;
 
 export function startMergeDetectionPoller(): void {
 	if (mergePollerInterval) return;
-	const POLL_INTERVAL = 5 * 60_000; // 5 minutes
 
-	mergePollerInterval = setInterval(async () => {
-		try {
-			await checkMergedBranches();
-		} catch (err) {
-			log.error("Merge detection poller error", { error: String(err) });
-		}
-	}, POLL_INTERVAL);
+	function scheduleNext() {
+		// Random interval between 4 and 5 minutes to avoid thundering herd
+		const intervalMs = (4 * 60 + Math.random() * 60) * 1000;
+		mergePollerInterval = setTimeout(async () => {
+			try {
+				await checkMergedBranches();
+			} catch (err) {
+				log.error("Merge detection poller error", { error: String(err) });
+			}
+			scheduleNext();
+		}, intervalMs);
+	}
 
-	log.info("Merge detection poller started", { intervalMs: POLL_INTERVAL });
+	scheduleNext();
+	log.info("Merge detection poller started", { intervalRange: "4-5 min" });
 }
 
 async function checkMergedBranches(): Promise<void> {
