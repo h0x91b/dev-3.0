@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import type { Project, Task } from "../../shared/types";
 import { getTaskTitle, ACTIVE_STATUSES } from "../../shared/types";
 import type { Route } from "../state";
@@ -21,6 +21,9 @@ interface BreadcrumbSegment {
 	isProjectDropdown?: boolean;
 }
 
+/** Cache TTL for project task counts (30 seconds) */
+const COUNTS_CACHE_TTL = 30_000;
+
 function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: GlobalHeaderProps) {
 	const t = useT();
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
@@ -30,6 +33,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 	const [projectTaskCounts, setProjectTaskCounts] = useState<Record<string, number>>({});
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
+	const countsCacheTimeRef = useRef<number>(0);
 
 	// Show toast when updateVersion first appears
 	useEffect(() => {
@@ -40,7 +44,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 		}
 	}, [updateVersion]);
 
-	// Close dropdowns on outside click
+	// Close dropdowns on outside click or Escape
 	useEffect(() => {
 		if (!showUpdateDropdown && !showProjectDropdown) return;
 		function handleClick(e: MouseEvent) {
@@ -51,13 +55,25 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 				setShowProjectDropdown(false);
 			}
 		}
+		function handleKeydown(e: KeyboardEvent) {
+			if (e.key === "Escape") {
+				if (showProjectDropdown) setShowProjectDropdown(false);
+				if (showUpdateDropdown) setShowUpdateDropdown(false);
+			}
+		}
 		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
+		document.addEventListener("keydown", handleKeydown);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+			document.removeEventListener("keydown", handleKeydown);
+		};
 	}, [showUpdateDropdown, showProjectDropdown]);
 
-	// Fetch active task counts when project dropdown opens
+	// Fetch active task counts when project dropdown opens (with cache)
 	useEffect(() => {
 		if (!showProjectDropdown) return;
+		// Skip fetch if cache is still fresh
+		if (Date.now() - countsCacheTimeRef.current < COUNTS_CACHE_TTL) return;
 		let cancelled = false;
 		async function fetchCounts() {
 			const counts: Record<string, number> = {};
@@ -71,7 +87,10 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 					}
 				}),
 			);
-			if (!cancelled) setProjectTaskCounts(counts);
+			if (!cancelled) {
+				setProjectTaskCounts(counts);
+				countsCacheTimeRef.current = Date.now();
+			}
 		}
 		fetchCounts();
 		return () => { cancelled = true; };
@@ -90,6 +109,13 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 			setRestarting(false);
 		}
 	}
+
+	const handleProjectNameClick = useCallback(() => {
+		if (!("projectId" in route)) return;
+		// Navigate to project board (clears activeTaskId / returns from settings/task)
+		navigate({ screen: "project", projectId: route.projectId });
+	}, [route, navigate]);
+
 	const segments: BreadcrumbSegment[] = [];
 
 	// App name — always present
@@ -101,14 +127,17 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 				: undefined,
 	});
 
-	// Project name — when inside a project (dropdown trigger for switching)
+	// Project name — when inside a project
+	// Text click navigates to project board; chevron toggles dropdown
 	if ("projectId" in route) {
 		const project = projects.find((p) => p.id === route.projectId);
 		if (project) {
+			const canNavigateToProject =
+				route.screen !== "project" || (route.screen === "project" && route.activeTaskId);
 			segments.push({
 				label: project.name,
 				isProjectDropdown: true,
-				onClick: () => setShowProjectDropdown((v) => !v),
+				onClick: canNavigateToProject ? handleProjectNameClick : undefined,
 			});
 		}
 	}
@@ -178,21 +207,29 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 								</span>
 							)
 						) : seg.isProjectDropdown ? (
-							<div className="relative" ref={projectDropdownRef}>
-								<button
-									onClick={seg.onClick}
-									className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors truncate"
-									title={t("header.switchProject")}
-								>
-									<span className="truncate">{seg.label}</span>
-									<svg
-										className={`w-3 h-3 flex-shrink-0 transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
+							<div className="relative flex items-center gap-0.5" ref={projectDropdownRef}>
+								{seg.onClick ? (
+									<button
+										onClick={seg.onClick}
+										className="text-fg-3 hover:text-fg transition-colors truncate"
 									>
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-									</svg>
+										{seg.label}
+									</button>
+								) : (
+									<span className="text-fg font-semibold truncate">{seg.label}</span>
+								)}
+								<button
+									onClick={() => setShowProjectDropdown((v) => !v)}
+									className="text-fg-muted hover:text-fg transition-colors flex-shrink-0 p-0.5 rounded hover:bg-elevated"
+									title={t("header.switchProject")}
+									aria-label={t("header.switchProject")}
+								>
+									<span
+										className={`text-[0.75rem] leading-none inline-block transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\u{F0140}"}
+									</span>
 								</button>
 								{showProjectDropdown && (
 									<div className="absolute left-0 top-full mt-1.5 w-64 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">

@@ -70,37 +70,59 @@ function renderHeader(
 	);
 }
 
+function getChevronButton() {
+	return screen.getByLabelText("Switch project");
+}
+
 describe("GlobalHeader — project switcher dropdown", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("shows chevron icon next to project name when inside a project", () => {
+	it("shows chevron button next to project name when inside a project", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
-		const button = screen.getByTitle("Switch project");
-		expect(button).toBeInTheDocument();
-		expect(button).toHaveTextContent("Project Alpha");
-		// Chevron SVG should be present
-		expect(button.querySelector("svg")).toBeInTheDocument();
+		const chevron = getChevronButton();
+		expect(chevron).toBeInTheDocument();
+		// Project name text is rendered separately from the chevron
+		expect(screen.getByText("Project Alpha")).toBeInTheDocument();
 	});
 
 	it("does not show project dropdown on dashboard", () => {
 		renderHeader({ screen: "dashboard" });
-		expect(screen.queryByTitle("Switch project")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Switch project")).not.toBeInTheDocument();
 	});
 
-	it("opens dropdown on click and shows all non-deleted projects", async () => {
+	it("project name click navigates to project board (restores from split view)", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader(
+			{ screen: "project", projectId: "p1", activeTaskId: "t1" },
+			[project1, project2],
+			navigate,
+			[{ id: "t1", seq: 1, title: "Task 1", status: "in-progress" } as Task],
+		);
+
+		// Click the project name text (not the chevron)
+		await user.click(screen.getByText("Project Alpha"));
+
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project",
+			projectId: "p1",
+		});
+	});
+
+	it("opens dropdown on chevron click and shows all non-deleted projects", async () => {
 		const user = userEvent.setup();
 		renderHeader(
 			{ screen: "project", projectId: "p1" },
 			[project1, project2, project3Deleted],
 		);
 
-		await user.click(screen.getByTitle("Switch project"));
+		await user.click(getChevronButton());
 
 		// Both non-deleted projects should appear in the dropdown
-		// Project Alpha appears twice: once in breadcrumb trigger, once in dropdown
+		// Project Alpha appears twice: once in breadcrumb, once in dropdown
 		expect(screen.getAllByText("Project Alpha")).toHaveLength(2);
 		expect(screen.getByText("Project Beta")).toBeInTheDocument();
 
@@ -112,7 +134,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		await user.click(screen.getByTitle("Switch project"));
+		await user.click(getChevronButton());
 
 		// Find the dropdown buttons — the current project should have accent styling
 		const alphaBtn = screen.getAllByRole("button").find(
@@ -126,9 +148,9 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		const navigate = vi.fn();
 		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 
-		await user.click(screen.getByTitle("Switch project"));
+		await user.click(getChevronButton());
 
-		// Click on Project Beta
+		// Click on Project Beta in the dropdown
 		const betaBtn = screen.getAllByRole("button").find(
 			(b) => b.textContent?.includes("Project Beta"),
 		);
@@ -145,17 +167,27 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		await user.click(screen.getByTitle("Switch project"));
-		// Dropdown should be open
+		await user.click(getChevronButton());
+		// Dropdown should be open — Project Beta is only visible in the dropdown
 		expect(screen.getByText("Project Beta")).toBeInTheDocument();
 
 		// Click outside
 		await user.click(document.body);
 
-		// Dropdown should close — Project Beta should no longer be visible as a dropdown item
-		// (Project Alpha is still in breadcrumb, so we check for Beta specifically)
-		// Need to wait for state update
-		expect(screen.queryByText("No active tasks")).not.toBeInTheDocument();
+		// Dropdown should close — Project Beta should no longer be visible
+		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
+	});
+
+	it("closes dropdown on Escape key", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+
+		await user.click(getChevronButton());
+		expect(screen.getByText("Project Beta")).toBeInTheDocument();
+
+		await user.keyboard("{Escape}");
+
+		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
 	});
 
 	it("fetches task counts when dropdown opens", async () => {
@@ -175,7 +207,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 
 		renderHeader({ screen: "project", projectId: "p1" });
-		await user.click(screen.getByTitle("Switch project"));
+		await user.click(getChevronButton());
 
 		// Wait for counts to load
 		expect(await screen.findByText("1 active")).toBeInTheDocument();
@@ -189,27 +221,23 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		]);
 
 		renderHeader({ screen: "project", projectId: "p1" });
-		await user.click(screen.getByTitle("Switch project"));
+		await user.click(getChevronButton());
 
 		expect(await screen.findAllByText("No active tasks")).toHaveLength(2);
 	});
 
-	it("toggles dropdown open/close on repeated clicks", async () => {
+	it("toggles dropdown open/close on repeated chevron clicks", async () => {
 		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		const trigger = screen.getByTitle("Switch project");
+		const chevron = getChevronButton();
 
 		// Open
-		await user.click(trigger);
+		await user.click(chevron);
 		expect(screen.getByText("Project Beta")).toBeInTheDocument();
 
 		// Close
-		await user.click(trigger);
-		// After closing, dropdown items should be gone
-		// (Beta is only in the dropdown, not in breadcrumb)
-		const betaElements = screen.queryAllByText("Project Beta");
-		// Should be 0 or only the breadcrumb one (but breadcrumb shows Alpha, not Beta)
-		expect(betaElements).toHaveLength(0);
+		await user.click(chevron);
+		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
 	});
 });
