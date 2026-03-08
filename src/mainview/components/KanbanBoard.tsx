@@ -3,8 +3,8 @@ import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStat
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
-const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
-const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled"];
+const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-user"];
+const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled", "review-by-ai"];
 const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
 
 type ColumnSlot =
