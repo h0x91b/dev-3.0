@@ -199,7 +199,7 @@ let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startMergeDetectionPoller(): void {
 	if (mergePollerInterval) return;
-	const POLL_INTERVAL = 60_000; // 60 seconds
+	const POLL_INTERVAL = 5 * 60_000; // 5 minutes
 
 	mergePollerInterval = setInterval(async () => {
 		try {
