@@ -1,0 +1,1 @@
+Added terminal hover preview to the ActiveTasksSidebar. Hovering over a task in the sidebar now shows a live terminal preview popup (same as on Kanban board cards), with 400ms delay, auto-refresh every 1s, and smart viewport positioning.

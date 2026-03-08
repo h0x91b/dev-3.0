@@ -1,9 +1,12 @@
-import type { Dispatch } from "react";
+import { useState, useRef, useEffect, useCallback, type Dispatch } from "react";
+import { createPortal } from "react-dom";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
+import { api } from "../rpc";
+import { ansiToHtml } from "../utils/ansi-to-html";
 import LabelChip from "./LabelChip";
 
 interface ActiveTasksSidebarProps {
@@ -34,6 +37,130 @@ function ActiveTasksSidebar({
 }: ActiveTasksSidebarProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+
+	// Terminal preview state
+	const [previewOpen, setPreviewOpen] = useState(false);
+	const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+	const [previewLoading, setPreviewLoading] = useState(false);
+	const [previewPos, setPreviewPos] = useState({ top: 0, left: 0 });
+	const previewRef = useRef<HTMLDivElement>(null);
+	const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const previewTaskIdRef = useRef<string | null>(null);
+
+	const cancelPreviewTimers = useCallback(() => {
+		if (previewTimerRef.current) {
+			clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = null;
+		}
+		if (previewCloseTimerRef.current) {
+			clearTimeout(previewCloseTimerRef.current);
+			previewCloseTimerRef.current = null;
+		}
+	}, []);
+
+	const closePreview = useCallback(() => {
+		cancelPreviewTimers();
+		if (previewIntervalRef.current) {
+			clearInterval(previewIntervalRef.current);
+			previewIntervalRef.current = null;
+		}
+		setPreviewOpen(false);
+		setPreviewHtml(null);
+		setPreviewLoading(false);
+		previewTaskIdRef.current = null;
+	}, [cancelPreviewTimers]);
+
+	const scheduleClose = useCallback(() => {
+		previewCloseTimerRef.current = setTimeout(() => {
+			closePreview();
+		}, 200);
+	}, [closePreview]);
+
+	const cancelClose = useCallback(() => {
+		if (previewCloseTimerRef.current) {
+			clearTimeout(previewCloseTimerRef.current);
+			previewCloseTimerRef.current = null;
+		}
+	}, []);
+
+	function handleTaskMouseEnter(taskId: string, e: React.MouseEvent<HTMLButtonElement>) {
+		cancelPreviewTimers();
+		if (previewTaskIdRef.current && previewTaskIdRef.current !== taskId) {
+			closePreview();
+		}
+		const target = e.currentTarget;
+		previewTimerRef.current = setTimeout(async () => {
+			const rect = target.getBoundingClientRect();
+			const vw = window.innerWidth;
+			const vh = window.innerHeight;
+			const popW = 420;
+			const popH = 320;
+			const pad = 8;
+
+			let left = rect.right + 8;
+			let top = rect.top;
+
+			if (left + popW > vw - pad) {
+				left = rect.left - popW - 8;
+			}
+			if (left < pad) left = pad;
+			if (top + popH > vh - pad) {
+				top = vh - popH - pad;
+			}
+			if (top < pad) top = pad;
+
+			setPreviewPos({ top, left });
+			setPreviewOpen(true);
+			setPreviewLoading(true);
+			previewTaskIdRef.current = taskId;
+
+			try {
+				const content = await api.request.getTerminalPreview({ taskId });
+				if (content) {
+					setPreviewHtml(ansiToHtml(content));
+				} else {
+					setPreviewHtml(null);
+				}
+			} catch {
+				setPreviewHtml(null);
+			}
+			setPreviewLoading(false);
+
+			previewIntervalRef.current = setInterval(async () => {
+				try {
+					const content = await api.request.getTerminalPreview({ taskId });
+					if (content) {
+						setPreviewHtml(ansiToHtml(content));
+					}
+				} catch {
+					// ignore
+				}
+			}, 1000);
+		}, 400);
+	}
+
+	function handleTaskMouseLeave() {
+		if (previewTimerRef.current) {
+			clearTimeout(previewTimerRef.current);
+			previewTimerRef.current = null;
+		}
+		if (previewOpen) {
+			scheduleClose();
+		}
+	}
+
+	// Clean up timers on unmount
+	useEffect(() => {
+		return () => {
+			cancelPreviewTimers();
+			if (previewIntervalRef.current) {
+				clearInterval(previewIntervalRef.current);
+				previewIntervalRef.current = null;
+			}
+		};
+	}, [cancelPreviewTimers]);
 
 	const activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 
@@ -122,7 +249,9 @@ function ActiveTasksSidebar({
 											<div className="mx-3 border-t border-dashed border-edge" />
 										)}
 										<button
-											onClick={() => handleTaskClick(task)}
+											onClick={() => { closePreview(); handleTaskClick(task); }}
+											onMouseEnter={(e) => handleTaskMouseEnter(task.id, e)}
+											onMouseLeave={handleTaskMouseLeave}
 											className={`w-full text-left px-3 py-2 transition-all border-l-2 relative ${
 												isActive
 													? "bg-accent/10 border-accent"
@@ -173,6 +302,45 @@ function ActiveTasksSidebar({
 					))
 				)}
 			</div>
+
+			{/* Terminal preview popover */}
+			{previewOpen && createPortal(
+				<div
+					ref={previewRef}
+					className="fixed z-50 rounded-xl shadow-2xl shadow-black/50 border border-edge-active overflow-hidden transition-opacity duration-150"
+					style={{
+						top: previewPos.top,
+						left: previewPos.left,
+						width: 420,
+						maxHeight: 320,
+						background: "#1a1a2e",
+						opacity: previewHtml || previewLoading ? 1 : 0,
+					}}
+					onMouseEnter={cancelClose}
+					onMouseLeave={scheduleClose}
+					onClick={(e) => e.stopPropagation()}
+				>
+					{previewLoading ? (
+						<div className="flex items-center justify-center h-20">
+							<div className="w-4 h-4 border-2 border-fg-muted/30 border-t-fg-muted rounded-full animate-spin" />
+						</div>
+					) : previewHtml ? (
+						<pre
+							className="overflow-hidden m-0 p-2"
+							style={{
+								fontFamily: "monospace",
+								fontSize: "5px",
+								lineHeight: "6px",
+								color: "#d3d7cf",
+								whiteSpace: "pre",
+								userSelect: "none",
+							}}
+							dangerouslySetInnerHTML={{ __html: previewHtml }}
+						/>
+					) : null}
+				</div>,
+				document.body
+			)}
 		</div>
 	);
 }
