@@ -1,0 +1,1 @@
+Replace intrusive update popup with silent background download and non-intrusive UI indicator. Updates are now downloaded silently, and a toast notification + persistent header badge inform the user when a restart is available. The indicator reassures users that all tmux terminal sessions will be preserved across the restart.

@@ -319,6 +319,12 @@ const es: TranslationRecord & Record<string, string> = {
 	"update.downloadBtn": "Descargar",
 	"update.laterBtn": "Despues",
 	"update.errorTitle": "Error al buscar actualizaciones",
+	"update.readyLabel": "Actualizar",
+	"update.readyTooltip": "La versión {version} está lista para instalar",
+	"update.readyTitle": "v{version} lista para instalar",
+	"update.sessionsNote": "Todas las sesiones de terminal se conservarán — tmux sigue ejecutándose en segundo plano.",
+	"update.restartBtn": "Reiniciar para actualizar",
+	"update.restarting": "Reiniciando...",
 
 	// Requirements
 	"requirements.title": "Requisitos del sistema",

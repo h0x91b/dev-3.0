@@ -26,6 +26,9 @@ function App() {
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);
 
+	// Silent update indicator
+	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
 	const [reqResults, setReqResults] = useState<RequirementCheckResult[]>([]);
@@ -206,6 +209,16 @@ function App() {
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
 	}, [dispatch, t]);
 
+	// Listen for silent update ready notification
+	useEffect(() => {
+		function onUpdateAvailable(e: Event) {
+			const { version } = (e as CustomEvent).detail;
+			setUpdateVersion(version);
+		}
+		window.addEventListener("rpc:updateAvailable", onUpdateAvailable);
+		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
+	}, []);
+
 	// Listen for Cmd+, (Settings menu item)
 	useEffect(() => {
 		function onNavigateToSettings() {
@@ -295,6 +308,7 @@ function App() {
 				projects={state.projects}
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
+				updateVersion={updateVersion}
 			/>
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
 			{showQuitDialog && (

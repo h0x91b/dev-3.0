@@ -37,6 +37,16 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:branchMerged", { detail: payload }),
 				);
 			},
+			updateAvailable: (payload: any) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:updateAvailable", { detail: payload }),
+				);
+			},
+			updateDownloadProgress: (payload: any) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:updateDownloadProgress", { detail: payload }),
+				);
+			},
 			navigateToSettings: () => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:navigateToSettings"),

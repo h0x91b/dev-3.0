@@ -461,23 +461,12 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 startAutoCheck(
 	() => loadSettings().then((s) => s.updateChannel),
 	async (version) => {
-		log.info("Auto-check found update, downloading...", { version });
+		log.info("Auto-check found update, downloading silently...", { version });
 		const settings = await loadSettings();
 		const dlResult = await downloadUpdateForChannel(settings.updateChannel);
 		if (dlResult.ok) {
-			log.info("Auto-download complete, showing restart dialog");
-			const { response } = await Utils.showMessageBox({
-				type: "info",
-				title: "Update Ready",
-				message: `Version ${version} has been downloaded`,
-				detail: "Restart the app to apply the update.",
-				buttons: ["Restart Now", "Later"],
-				defaultId: 0,
-				cancelId: 1,
-			});
-			if (response === 0) {
-				await applyUpdate();
-			}
+			log.info("Auto-download complete, notifying renderer", { version });
+			(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
 		}

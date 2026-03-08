@@ -1,8 +1,9 @@
-import { Fragment } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import type { Project, Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
+import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 
 interface GlobalHeaderProps {
@@ -10,6 +11,7 @@ interface GlobalHeaderProps {
 	projects: Project[];
 	tasks: Task[];
 	navigate: (route: Route) => void;
+	updateVersion?: string | null;
 }
 
 interface BreadcrumbSegment {
@@ -18,8 +20,42 @@ interface BreadcrumbSegment {
 	onClick?: () => void;
 }
 
-function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: GlobalHeaderProps) {
 	const t = useT();
+	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
+	const [restarting, setRestarting] = useState(false);
+	const [showToast, setShowToast] = useState(false);
+	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	// Show toast when updateVersion first appears
+	useEffect(() => {
+		if (updateVersion) {
+			setShowToast(true);
+			const timer = setTimeout(() => setShowToast(false), 15_000);
+			return () => clearTimeout(timer);
+		}
+	}, [updateVersion]);
+
+	// Close dropdown on outside click
+	useEffect(() => {
+		if (!showUpdateDropdown) return;
+		function handleClick(e: MouseEvent) {
+			if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+				setShowUpdateDropdown(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [showUpdateDropdown]);
+
+	async function handleRestart() {
+		setRestarting(true);
+		try {
+			await api.request.applyUpdate();
+		} catch {
+			setRestarting(false);
+		}
+	}
 	const segments: BreadcrumbSegment[] = [];
 
 	// App name — always present
@@ -78,6 +114,7 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 	}
 
 	return (
+		<>
 		<div className="flex items-center justify-between px-5 py-2.5 border-b border-edge flex-shrink-0 glass-header">
 			{/* Breadcrumbs */}
 			<div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden">
@@ -130,6 +167,52 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 
 			{/* Actions — tmux sessions, changelog, project settings, global settings, external links */}
 			<div className="flex items-center gap-1.5 flex-shrink-0">
+				{/* Update available indicator */}
+				{updateVersion && (
+					<div className="relative" ref={dropdownRef}>
+						<button
+							onClick={() => setShowUpdateDropdown((v) => !v)}
+							className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors animate-pulse"
+							title={t("update.readyTooltip", { version: updateVersion })}
+						>
+							<span
+								className="text-[1rem] leading-none"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\u{F0A39}"}
+							</span>
+							<span className="text-[0.6875rem] font-semibold">{t("update.readyLabel")}</span>
+						</button>
+						{showUpdateDropdown && (
+							<div className="absolute right-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 p-4 space-y-3">
+								<div className="flex items-center gap-2">
+									<span
+										className="text-accent text-lg leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\u{F0A39}"}
+									</span>
+									<div>
+										<div className="text-fg text-sm font-semibold">
+											{t("update.readyTitle", { version: updateVersion })}
+										</div>
+										<div className="text-fg-3 text-xs mt-0.5">
+											{t("update.sessionsNote")}
+										</div>
+									</div>
+								</div>
+								<button
+									onClick={handleRestart}
+									disabled={restarting}
+									className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+								>
+									{restarting ? t("update.restarting") : t("update.restartBtn")}
+								</button>
+							</div>
+						)}
+					</div>
+				)}
+
 				{/* Tmux Session Manager */}
 				<TmuxSessionManager />
 
@@ -239,6 +322,50 @@ function GlobalHeader({ route, projects, tasks, navigate }: GlobalHeaderProps) {
 				)}
 			</div>
 		</div>
+		{/* Toast notification for update ready */}
+		{showToast && updateVersion && (
+			<div className="fixed top-14 right-4 z-50 animate-slide-in-right">
+				<div className="bg-overlay border border-accent/30 rounded-xl shadow-2xl p-4 w-80 flex items-start gap-3">
+					<span
+						className="text-accent text-xl leading-none mt-0.5 flex-shrink-0"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{"\u{F0A39}"}
+					</span>
+					<div className="flex-1 min-w-0">
+						<div className="text-fg text-sm font-semibold">
+							{t("update.readyTitle", { version: updateVersion })}
+						</div>
+						<div className="text-fg-3 text-xs mt-1">
+							{t("update.sessionsNote")}
+						</div>
+						<div className="flex items-center gap-2 mt-2.5">
+							<button
+								onClick={() => { setShowToast(false); handleRestart(); }}
+								className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+							>
+								{t("update.restartBtn")}
+							</button>
+							<button
+								onClick={() => setShowToast(false)}
+								className="px-3 py-1.5 text-xs font-medium rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+							>
+								{t("update.laterBtn")}
+							</button>
+						</div>
+					</div>
+					<button
+						onClick={() => setShowToast(false)}
+						className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
+					>
+						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+			</div>
+		)}
+		</>
 	);
 }
 

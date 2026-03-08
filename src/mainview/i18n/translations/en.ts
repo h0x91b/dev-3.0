@@ -316,6 +316,12 @@ const en = {
 	"update.downloadBtn": "Download",
 	"update.laterBtn": "Later",
 	"update.errorTitle": "Update Check Failed",
+	"update.readyLabel": "Update",
+	"update.readyTooltip": "Version {version} is ready to install",
+	"update.readyTitle": "v{version} ready to install",
+	"update.sessionsNote": "All terminal sessions will be preserved — tmux keeps running in the background.",
+	"update.restartBtn": "Restart to Update",
+	"update.restarting": "Restarting...",
 
 	// Requirements
 	"requirements.title": "System Requirements",

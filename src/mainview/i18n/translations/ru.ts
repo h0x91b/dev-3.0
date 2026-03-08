@@ -324,6 +324,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	"update.downloadBtn": "Скачать",
 	"update.laterBtn": "Позже",
 	"update.errorTitle": "Ошибка проверки обновлений",
+	"update.readyLabel": "Обновить",
+	"update.readyTooltip": "Версия {version} готова к установке",
+	"update.readyTitle": "v{version} готова к установке",
+	"update.sessionsNote": "Все терминальные сессии сохранятся — tmux продолжит работать в фоне.",
+	"update.restartBtn": "Перезапустить",
+	"update.restarting": "Перезапуск...",
 
 	// Requirements
 	"requirements.title": "Системные требования",
