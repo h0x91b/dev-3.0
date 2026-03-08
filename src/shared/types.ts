@@ -23,18 +23,18 @@ export type TaskStatus =
 export const ACTIVE_STATUSES: TaskStatus[] = [
 	"in-progress",
 	"user-questions",
-	"review-by-ai",
 	"review-by-user",
+	"review-by-ai",
 ];
 
 export const ALL_STATUSES: TaskStatus[] = [
 	"todo",
 	"in-progress",
 	"user-questions",
-	"review-by-ai",
 	"review-by-user",
 	"completed",
 	"cancelled",
+	"review-by-ai",
 ];
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {

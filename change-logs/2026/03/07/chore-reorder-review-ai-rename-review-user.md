@@ -1,1 +1,1 @@
-Moved "Review by AI" column to appear between "Waiting for You" and "Review by You" in the Kanban board. Renamed "Review by User" to "Review by You" across STATUS_LABELS, all i18n translation files (en, ru, es), and updated the affected test.
+Moved "Review by AI" column to the far right of the Kanban board (after Cancelled) by reordering ALL_STATUSES. Renamed "Review by User" to "Review by You" across STATUS_LABELS and all i18n translation files (en, ru, es).
