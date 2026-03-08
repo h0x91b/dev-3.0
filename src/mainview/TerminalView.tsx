@@ -3,6 +3,7 @@ import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
+import { TERMINAL_KEYMAPS, getKeymapPreset } from "./terminal-keymaps";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -475,6 +476,35 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		document.addEventListener("keydown", handleKeydown);
 		return () => document.removeEventListener("keydown", handleKeydown);
 	}, []);
+
+	// Terminal keymap shortcuts (configurable preset).
+	// Uses capture phase so ghostty-web can't swallow the events.
+	// Only fires when the terminal container has focus, to avoid
+	// accidental triggers while typing in other UI fields.
+	useEffect(() => {
+		function handleKeydown(e: KeyboardEvent) {
+			const container = containerRef.current;
+			if (!container) return;
+			if (!container.contains(document.activeElement) && document.activeElement !== container) return;
+
+			const preset = getKeymapPreset();
+			const bindings = TERMINAL_KEYMAPS[preset] ?? [];
+			const binding = bindings.find(
+				(b) =>
+					b.code === e.code &&
+					!!b.meta === e.metaKey &&
+					!!b.ctrl === e.ctrlKey &&
+					(b.shift === undefined || b.shift === e.shiftKey),
+			);
+			if (!binding) return;
+
+			e.preventDefault();
+			e.stopPropagation();
+			api.request.tmuxAction({ taskId, action: binding.action }).catch(() => {});
+		}
+		window.addEventListener("keydown", handleKeydown, { capture: true });
+		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });
+	}, [taskId]);
 
 	// When the page becomes visible again (e.g. user returns from another
 	// app or switches back to this tab), trigger a resize dance to force

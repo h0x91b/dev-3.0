@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
-import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel } from "../../shared/types";
+import type { CodingAgent, AgentConfiguration, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
 import { api } from "../rpc";
 import { getZoom, adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_CHANGED_EVENT } from "../zoom";
+import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { ListEditor } from "./ListEditor";
 
 type Theme = "dark" | "light" | "system";
@@ -17,6 +18,7 @@ function GlobalSettings() {
 	);
 
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
+	const [keymapPreset, setKeymapPresetState] = useState<TerminalKeymapPreset>(() => getKeymapPreset());
 
 	useEffect(() => {
 		function onZoomChanged(e: Event) {
@@ -39,7 +41,13 @@ function GlobalSettings() {
 
 	useEffect(() => {
 		api.request.getAgents().then(setAgents);
-		api.request.getGlobalSettings().then(setGlobalSettings);
+		api.request.getGlobalSettings().then((s) => {
+			setGlobalSettings(s);
+			if (s.terminalKeymap) {
+				setKeymapPresetState(s.terminalKeymap);
+				setKeymapPreset(s.terminalKeymap);
+			}
+		});
 	}, []);
 
 	const selectedDefaultAgent = agents.find((a) => a.id === globalSettings.defaultAgentId);
@@ -68,6 +76,14 @@ function GlobalSettings() {
 
 	function handleUpdateChannelChange(channel: "stable" | "canary") {
 		const updated = { ...globalSettings, updateChannel: channel };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated);
+	}
+
+	function handleKeymapChange(preset: TerminalKeymapPreset) {
+		setKeymapPresetState(preset);
+		setKeymapPreset(preset);
+		const updated = { ...globalSettings, terminalKeymap: preset };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated);
 	}
@@ -276,6 +292,39 @@ function GlobalSettings() {
 								active={globalSettings.taskDropPosition === "bottom"}
 								onClick={() => handleDropPositionChange("bottom")}
 								icon="↓"
+							/>
+						</div>
+					</div>
+
+					{/* Terminal Keymap */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.terminalKeymap")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.terminalKeymapDesc")}
+						</p>
+						<div className="flex gap-3">
+							<DropPositionCard
+								label={t("settings.keymapDev3")}
+								description={t("settings.keymapDev3Desc")}
+								active={keymapPreset === "dev3"}
+								onClick={() => handleKeymapChange("dev3")}
+								icon="^B -"
+							/>
+							<DropPositionCard
+								label={t("settings.keymapIterm2")}
+								description={t("settings.keymapIterm2Desc")}
+								active={keymapPreset === "iterm2"}
+								onClick={() => handleKeymapChange("iterm2")}
+								icon="⌘D"
+							/>
+							<DropPositionCard
+								label={t("settings.keymapTmuxNative")}
+								description={t("settings.keymapTmuxNativeDesc")}
+								active={keymapPreset === "tmux-native"}
+								onClick={() => handleKeymapChange("tmux-native")}
+								icon="^B %"
 							/>
 						</div>
 					</div>

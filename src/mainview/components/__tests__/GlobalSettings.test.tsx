@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
+import { KEYMAP_LS_KEY } from "../../terminal-keymaps";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -780,6 +781,59 @@ describe("GlobalSettings", () => {
 
 			expect(screen.getByText("2 configs")).toBeInTheDocument();
 			expect(screen.getByText("1 config")).toBeInTheDocument();
+		});
+	});
+
+	describe("terminal keymap preset", () => {
+		it("renders the three preset cards", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(screen.getByText("Convenient")).toBeInTheDocument();
+			expect(screen.getByText("iTerm2")).toBeInTheDocument();
+			expect(screen.getByText("Native tmux")).toBeInTheDocument();
+		});
+
+		it("Convenient card is active by default", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const btn = screen.getByText("Convenient").closest("button")!;
+			expect(btn.className).toContain("border-accent");
+		});
+
+		it("clicking iTerm2 card saves terminalKeymap to backend", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByText("iTerm2"));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ terminalKeymap: "iterm2" }),
+			);
+		});
+
+		it("clicking iTerm2 card persists preset to localStorage", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByText("iTerm2"));
+
+			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("iterm2");
+		});
+
+		it("loads terminalKeymap from backend settings and syncs to localStorage", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "iterm2" });
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("iterm2");
 		});
 	});
 });

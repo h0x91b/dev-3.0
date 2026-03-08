@@ -1,5 +1,7 @@
 import { render, act } from "@testing-library/react";
 import TerminalView from "../TerminalView";
+import { api } from "../rpc";
+import { KEYMAP_LS_KEY } from "../terminal-keymaps";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
@@ -57,7 +59,7 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
-	api: { request: { resolveFilename: vi.fn() } },
+	api: { request: { resolveFilename: vi.fn(), tmuxAction: vi.fn() } },
 }));
 
 vi.mock("../zoom", () => ({
@@ -271,5 +273,104 @@ describe("TerminalView – focus-on-type", () => {
 
 		expect(mockFocus).toHaveBeenCalledTimes(1);
 		expect(mockInput).toHaveBeenCalledWith(" ", true);
+	});
+});
+
+// ── Terminal keymap shortcuts ─────────────────────────────────────────────────
+
+const mockedTmuxAction = vi.mocked(api.request.tmuxAction);
+
+/** Focus a child element inside the terminal container so the keymap guard passes. */
+function focusInsideTerminal(): HTMLElement {
+	const container = document.querySelector("[data-terminal='true']")!;
+	const target = document.createElement("div");
+	target.tabIndex = 0;
+	container.appendChild(target);
+	target.focus();
+	return target;
+}
+
+describe("TerminalView – keymap shortcuts", () => {
+	beforeEach(() => {
+		localStorage.clear();
+		mockedTmuxAction.mockClear();
+		mockedTmuxAction.mockResolvedValue(undefined as any);
+	});
+
+	it("iterm2 mode: Cmd+W calls tmuxAction with killPane", async () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "killPane" });
+		target.remove();
+	});
+
+	it("iterm2 mode: Cmd+D (no shift) calls splitV", async () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", metaKey: true, shiftKey: false, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "splitV" });
+		target.remove();
+	});
+
+	it("iterm2 mode: Shift+Cmd+D calls splitH", async () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", metaKey: true, shiftKey: true, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "splitH" });
+		target.remove();
+	});
+
+	it("dev3 mode: Cmd+W does NOT call tmuxAction", async () => {
+		// dev3 is the default — no localStorage entry needed
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).not.toHaveBeenCalled();
+		target.remove();
+	});
+
+	it("tmux-native mode: Cmd+W does NOT call tmuxAction", async () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "tmux-native");
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).not.toHaveBeenCalled();
+		target.remove();
+	});
+
+	it("does NOT fire when terminal container does not have focus", async () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+		await renderAndSetup();
+		// Do NOT focus inside the container — activeElement remains document.body
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).not.toHaveBeenCalled();
 	});
 });
