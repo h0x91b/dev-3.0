@@ -93,6 +93,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			return state;
 		}
 		case "addTask":
+			if (state.currentProjectTasks.some((t) => t.id === action.task.id))
+				return state;
 			return {
 				...state,
 				currentProjectTasks: [...state.currentProjectTasks, action.task],
