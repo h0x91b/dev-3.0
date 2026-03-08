@@ -360,7 +360,7 @@ const handlers: Record<string, Handler> = {
 
 		// Check if this is a custom column ID
 		const customColumns = project.customColumns ?? [];
-		const customColumn = customColumns.find((c: CustomColumn) => c.id === newStatus || c.id.startsWith(newStatus));
+		const customColumn = findByIdPrefix(customColumns, newStatus, "custom column");
 		if (customColumn) {
 			// Moving from completed/cancelled into a custom column resumes the task
 			if (task.status === "completed" || task.status === "cancelled") {
