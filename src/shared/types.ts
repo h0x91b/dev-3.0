@@ -232,6 +232,8 @@ export interface Project {
 	deleted?: boolean;
 	labels?: Label[];
 	customColumns?: CustomColumn[];
+	// Ordered list of TaskStatus strings and custom column IDs; absent = default order
+	columnOrder?: string[];
 }
 
 export interface Task {
@@ -370,8 +372,8 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; customColumnId: string | null };
 				response: Task;
 			};
-			reorderCustomColumns: {
-				params: { projectId: string; columnIds: string[] };
+			reorderColumns: {
+				params: { projectId: string; columnOrder: string[] };
 				response: Project;
 			};
 			addProject: {

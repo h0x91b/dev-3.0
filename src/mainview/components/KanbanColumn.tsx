@@ -10,6 +10,35 @@ import TaskCard from "./TaskCard";
 // Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
 let _activeDragColumnId: string | null = null;
 
+function log(msg: string, data?: Record<string, unknown>) {
+	const text = data ? `${msg} ${JSON.stringify(data)}` : msg;
+	console.log("[DnD]", text);
+	// On-screen overlay — visible in WKWebView without Safari Web Inspector
+	let overlay = document.getElementById("__dnd_debug_overlay");
+	if (!overlay) {
+		overlay = document.createElement("div");
+		overlay.id = "__dnd_debug_overlay";
+		overlay.style.cssText = [
+			"position:fixed", "bottom:0", "left:0", "right:0",
+			"background:rgba(0,0,0,0.85)", "color:#00ff00",
+			"font-size:11px", "padding:6px 8px", "z-index:999999",
+			"max-height:220px", "overflow-y:auto", "font-family:monospace",
+			"border-top:2px solid #00ff00", "pointer-events:none",
+		].join(";");
+		// Clear button
+		const btn = document.createElement("button");
+		btn.textContent = "✕ clear";
+		btn.style.cssText = "position:absolute;top:4px;right:6px;background:#333;color:#fff;border:none;cursor:pointer;font-size:10px;padding:2px 5px;pointer-events:all;";
+		btn.onclick = () => { if (overlay) overlay.innerHTML = ""; overlay?.appendChild(btn); };
+		document.body.appendChild(overlay);
+		overlay.appendChild(btn);
+	}
+	const line = document.createElement("div");
+	line.textContent = `[DnD] ${text}`;
+	overlay.appendChild(line);
+	overlay.scrollTop = overlay.scrollHeight;
+}
+
 interface KanbanColumnProps {
 	status: TaskStatus;
 	label: string;
@@ -98,23 +127,31 @@ function KanbanColumn({
 	// Clear dropIndex when drag ends globally
 	useEffect(() => {
 		function handleDragEnd() {
+			log("window dragend → clearing dropIndex/columnDragSide", { label, customColumnId, _activeDragColumnId });
 			setDropIndex(null);
 			setColumnDragSide(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
 		return () => window.removeEventListener("dragend", handleDragEnd);
-	}, []);
+	}, [label, customColumnId]);
 
 	function handleDragOver(e: React.DragEvent) {
+		// Self-ID for drag: custom columns use customColumnId, built-in columns use status
+		const myDragId = customColumnId ?? status;
+		const ctx = { label, myDragId, isCustomColumn, _activeDragColumnId, hasOnColumnDrop: !!onColumnDrop };
 		// Column reorder: use module-level variable set synchronously on dragstart.
 		// dataTransfer.types is NOT used because WKWebView may reject custom MIME types.
-		if (isCustomColumn && onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== customColumnId) {
+		// Any column (built-in or custom) with onColumnDrop accepts a column reorder drop.
+		if (onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== myDragId) {
 			e.preventDefault();
 			e.dataTransfer.dropEffect = "move";
 			const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-			setColumnDragSide(e.clientX < rect.left + rect.width / 2 ? "before" : "after");
+			const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+			log("dragover → column reorder", { ...ctx, clientX: e.clientX, rect: { left: rect.left, width: rect.width }, side });
+			setColumnDragSide(side);
 			return;
 		}
+		log("dragover → skipped column reorder path", { ...ctx, isCrossColumnTarget, isSameColumnDrag });
 		// Task drag
 		if (!isCrossColumnTarget && !isSameColumnDrag) return;
 		e.preventDefault();
@@ -137,17 +174,22 @@ function KanbanColumn({
 	}
 
 	function handleDragEnter(e: React.DragEvent) {
+		const myDragId = customColumnId ?? status;
+		const ctx = { label, myDragId, isCustomColumn, _activeDragColumnId, hasOnColumnDrop: !!onColumnDrop };
 		// Column reorder: must also preventDefault on dragenter for drop to fire
-		if (isCustomColumn && onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== customColumnId) {
+		if (onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== myDragId) {
 			e.preventDefault();
+			log("dragenter → column reorder preventDefault", ctx);
 			return;
 		}
+		log("dragenter → skipped column reorder path", { ...ctx, isCrossColumnTarget, isSameColumnDrag });
 		if (!isCrossColumnTarget && !isSameColumnDrag) return;
 		e.preventDefault();
 		if (isCrossColumnTarget) setDragOver(true);
 	}
 
 	function handleDragLeave(e: React.DragEvent) {
+		log("dragleave", { label, customColumnId, relatedTargetIsChild: e.currentTarget.contains(e.relatedTarget as Node) });
 		if (e.currentTarget.contains(e.relatedTarget as Node)) return;
 		setDragOver(false);
 		setDropIndex(null);
@@ -157,16 +199,28 @@ function KanbanColumn({
 	function handleDrop(e: React.DragEvent) {
 		e.preventDefault();
 		setDragOver(false);
+		const ctx = { label, customColumnId, isCustomColumn, _activeDragColumnId, columnDragSide, hasOnColumnDrop: !!onColumnDrop };
+		log("drop fired", ctx);
 
 		// Column reorder drop (use module var; dataTransfer.getData won't have "dev3/column" in WKWebView)
-		if (_activeDragColumnId && _activeDragColumnId !== customColumnId && isCustomColumn && onColumnDrop && columnDragSide) {
+		const myDragId = customColumnId ?? status;
+		if (_activeDragColumnId && _activeDragColumnId !== myDragId && onColumnDrop && columnDragSide) {
+			log("drop → calling onColumnDrop", { side: columnDragSide });
 			setColumnDragSide(null);
 			onColumnDrop(columnDragSide);
 			return;
 		}
+		log("drop → did NOT call onColumnDrop", {
+			reason: !_activeDragColumnId ? "no _activeDragColumnId"
+				: _activeDragColumnId === myDragId ? "dragging onto itself"
+				: !onColumnDrop ? "no onColumnDrop handler"
+				: !columnDragSide ? "no columnDragSide (dragover never set it)"
+				: "unknown",
+		});
 		setColumnDragSide(null);
 
 		const taskId = e.dataTransfer.getData("text/plain");
+		log("drop → taskId from dataTransfer", { taskId });
 		// Ignore col: prefixed data (column drags that fell through without a side set)
 		if (!taskId || taskId.startsWith("col:")) {
 			setDropIndex(null);
@@ -229,12 +283,24 @@ function KanbanColumn({
 								onDragStart={(e) => {
 									e.stopPropagation();
 									_activeDragColumnId = customColumnId ?? null;
-									e.dataTransfer.setData("text/plain", `col:${customColumnId ?? ""}`);
-									e.dataTransfer.effectAllowed = "move";
+									log("handle dragstart", { customColumnId, _activeDragColumnId, label });
+									try {
+										e.dataTransfer.setData("text/plain", `col:${customColumnId ?? ""}`);
+										log("setData OK", { types: Array.from(e.dataTransfer.types) });
+									} catch (err) {
+										log("setData FAILED", { err: String(err) });
+									}
+									try {
+										e.dataTransfer.effectAllowed = "move";
+										log("effectAllowed set OK");
+									} catch (err) {
+										log("effectAllowed FAILED", { err: String(err) });
+									}
 									onColumnDragStart?.();
 								}}
 								onDragEnd={(e) => {
 									e.stopPropagation();
+									log("handle dragend", { customColumnId, label });
 									_activeDragColumnId = null;
 									onColumnDragEnd?.();
 								}}

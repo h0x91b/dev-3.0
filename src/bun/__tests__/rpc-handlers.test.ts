@@ -2434,7 +2434,7 @@ describe("handlers.tmuxAction", () => {
 	});
 });
 
-describe("reorderCustomColumns", () => {
+describe("reorderColumns", () => {
 	const colA = { id: "col-aaa", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 	const colB = { id: "col-bbb", name: "Beta", color: "#00ff00", llmInstruction: "" };
 	const colC = { id: "col-ccc", name: "Gamma", color: "#0000ff", llmInstruction: "" };
@@ -2444,36 +2444,40 @@ describe("reorderCustomColumns", () => {
 		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
 	});
 
-	it("reorders columns to specified order", async () => {
+	it("reorders custom columns and stores full columnOrder", async () => {
 		const project = makeProject({ customColumns: [colA, colB, colC] });
-		const updatedProject = { ...project, customColumns: [colC, colA, colB] };
+		const newOrder = ["todo", "in-progress", "col-ccc", "col-aaa", "col-bbb", "completed"];
+		const updatedProject = { ...project, customColumns: [colC, colA, colB], columnOrder: newOrder };
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateProject).mockResolvedValue(updatedProject);
 
-		const result = await handlers.reorderCustomColumns({
+		const result = await handlers.reorderColumns({
 			projectId: "proj-1",
-			columnIds: ["col-ccc", "col-aaa", "col-bbb"],
+			columnOrder: newOrder,
 		});
 
 		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
 			customColumns: [colC, colA, colB],
+			columnOrder: newOrder,
 		});
 		expect(result.customColumns).toEqual([colC, colA, colB]);
 	});
 
-	it("ignores unknown column IDs", async () => {
+	it("ignores unknown IDs in columnOrder for custom column extraction", async () => {
 		const project = makeProject({ customColumns: [colA, colB] });
-		const updatedProject = { ...project, customColumns: [colB, colA] };
+		const newOrder = ["todo", "col-bbb", "col-aaa", "col-unknown", "completed"];
+		const updatedProject = { ...project, customColumns: [colB, colA], columnOrder: newOrder };
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateProject).mockResolvedValue(updatedProject);
 
-		await handlers.reorderCustomColumns({
+		await handlers.reorderColumns({
 			projectId: "proj-1",
-			columnIds: ["col-bbb", "col-aaa", "col-unknown"],
+			columnOrder: newOrder,
 		});
 
 		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
 			customColumns: [colB, colA],
+			columnOrder: newOrder,
 		});
 	});
 });

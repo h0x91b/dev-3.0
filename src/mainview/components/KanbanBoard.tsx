@@ -2,10 +2,14 @@ import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from
 import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
-// Built-in statuses before custom columns
-const STATUSES_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
-// Built-in statuses after custom columns
-const STATUSES_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled"];
+// Default built-in column order (custom columns can be freely interspersed)
+const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
+const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled"];
+const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
+
+type ColumnSlot =
+	| { type: "builtin"; status: TaskStatus }
+	| { type: "custom"; col: CustomColumn };
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
 import { api } from "../rpc";
@@ -260,29 +264,59 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 	}
 
+	// Returns all columns in their effective display order, respecting project.columnOrder
+	function getOrderedColumns(): ColumnSlot[] {
+		const cols = customColumns;
+		if (!project.columnOrder || project.columnOrder.length === 0) {
+			return [
+				...DEFAULT_BEFORE_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...cols.map((c) => ({ type: "custom" as const, col: c })),
+				...DEFAULT_AFTER_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+			];
+		}
+		const result: ColumnSlot[] = [];
+		const used = new Set<string>();
+		for (const id of project.columnOrder) {
+			if ((ALL_BUILTIN as string[]).includes(id)) {
+				result.push({ type: "builtin", status: id as TaskStatus });
+				used.add(id);
+			} else {
+				const col = cols.find((c) => c.id === id);
+				if (col) { result.push({ type: "custom", col }); used.add(id); }
+			}
+		}
+		// Append anything missing (new built-ins added after columnOrder was stored, or new custom cols)
+		for (const s of ALL_BUILTIN) { if (!used.has(s)) result.push({ type: "builtin", status: s }); }
+		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
+		return result;
+	}
+
 	function handleColumnDragStart(colId: string) {
 		draggedColumnIdRef.current = colId;
 		setDraggedColumnId(colId);
 	}
 
-	// Called by KanbanColumn when a column is dragged over it (left/right half)
+	// Called by any column when a custom column is dragged over it
 	function handleColumnDrop(targetColId: string, side: "before" | "after") {
 		const srcColId = draggedColumnIdRef.current;
 		if (!srcColId || srcColId === targetColId) return;
-		const cols = [...customColumns];
-		const fromIndex = cols.findIndex((c) => c.id === srcColId);
-		const toIndex = cols.findIndex((c) => c.id === targetColId);
+		const currentOrder = getOrderedColumns().map((c) => c.type === "builtin" ? c.status : c.col.id);
+		const fromIndex = currentOrder.indexOf(srcColId);
+		const toIndex = currentOrder.indexOf(targetColId);
 		if (fromIndex === -1 || toIndex === -1) return;
-		// Compute insert position
 		let insertAt = side === "after" ? toIndex + 1 : toIndex;
-		if (fromIndex < insertAt) insertAt -= 1; // account for removal
-		const [moved] = cols.splice(fromIndex, 1);
-		cols.splice(insertAt, 0, moved);
+		if (fromIndex < insertAt) insertAt -= 1;
+		const newOrder = [...currentOrder];
+		newOrder.splice(fromIndex, 1);
+		newOrder.splice(insertAt, 0, srcColId);
 		draggedColumnIdRef.current = null;
 		setDraggedColumnId(null);
-		const reordered = cols.map((c) => c.id);
-		dispatch({ type: "updateProject", project: { ...project, customColumns: cols } });
-		api.request.reorderCustomColumns({ projectId: project.id, columnIds: reordered }).catch((err) => {
+		// Reorder customColumns array to match new order
+		const reorderedCustom = newOrder
+			.map((id) => customColumns.find((c) => c.id === id))
+			.filter((c): c is CustomColumn => c !== undefined);
+		dispatch({ type: "updateProject", project: { ...project, customColumns: reorderedCustom, columnOrder: newOrder } });
+		api.request.reorderColumns({ projectId: project.id, columnOrder: newOrder }).catch((err) => {
 			alert(`Failed to reorder columns: ${String(err)}`);
 		});
 	}
@@ -331,99 +365,59 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				onSearchChange={setSearchQuery}
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-8 overflow-x-scroll overflow-y-hidden kanban-scroll">
-				{STATUSES_BEFORE_CUSTOM.map((status) => (
-					<KanbanColumn
-						key={status}
-						status={status}
-						label={t(statusKey(status))}
-						tasks={tasksByStatus.get(status) || []}
-						project={project}
-						dispatch={dispatch}
-						navigate={navigate}
-						onAddTask={() => setShowCreateModal(true)}
-						agents={agents}
-						onLaunchVariants={(task, targetStatus) =>
-							setLaunchModal({ task, targetStatus })
-						}
-						onTaskDrop={handleTaskDrop}
-						onReorderTask={handleReorderTask}
-						dragFromStatus={dragFromStatus}
-						dragFromCustomColumnId={dragFromCustomColumnId}
-						onDragStart={handleDragStart}
-						onTaskMoved={recordMove}
-						bellCounts={bellCounts}
-						activeTaskId={activeTaskId}
-						draggedTaskId={draggedTaskId}
-						movingTaskIds={movingTaskIds}
-						onSetMoving={handleSetMoving}
-						siblingMap={siblingMap}
-					/>
-				))}
-
-				{/* Custom columns — each column is also a column-reorder drop target (left=before, right=after) */}
-				{customColumns.map((col) => (
-					<KanbanColumn
-						key={col.id}
-						status="todo"
-						label={col.name}
-						tasks={tasksByCustomColumn.get(col.id) || []}
-						project={project}
-						dispatch={dispatch}
-						navigate={navigate}
-						onAddTask={() => setShowCreateModal(true)}
-						agents={agents}
-						onLaunchVariants={(task, targetStatus) =>
-							setLaunchModal({ task, targetStatus })
-						}
-						onTaskDrop={handleTaskDrop}
-						onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
-						onReorderTask={handleReorderTask}
-						dragFromStatus={dragFromStatus}
-						dragFromCustomColumnId={dragFromCustomColumnId}
-						onDragStart={handleDragStart}
-						onTaskMoved={recordMove}
-						bellCounts={bellCounts}
-						activeTaskId={activeTaskId}
-						draggedTaskId={draggedTaskId}
-						movingTaskIds={movingTaskIds}
-						siblingMap={siblingMap}
-						isCustomColumn
-						customColumnId={col.id}
-						colorOverride={col.color}
-						isDraggedColumn={draggedColumnId === col.id}
-						onColumnDragStart={() => handleColumnDragStart(col.id)}
-						onColumnDragEnd={handleColumnDragEnd}
-						onColumnDrop={(side) => handleColumnDrop(col.id, side)}
-					/>
-				))}
-
-				{STATUSES_AFTER_CUSTOM.map((status) => (
-					<KanbanColumn
-						key={status}
-						status={status}
-						label={t(statusKey(status))}
-						tasks={tasksByStatus.get(status) || []}
-						project={project}
-						dispatch={dispatch}
-						navigate={navigate}
-						onAddTask={() => setShowCreateModal(true)}
-						agents={agents}
-						onLaunchVariants={(task, targetStatus) =>
-							setLaunchModal({ task, targetStatus })
-						}
-						onTaskDrop={handleTaskDrop}
-						onReorderTask={handleReorderTask}
-						dragFromStatus={dragFromStatus}
-						dragFromCustomColumnId={dragFromCustomColumnId}
-						onDragStart={handleDragStart}
-						onTaskMoved={recordMove}
-						bellCounts={bellCounts}
-						activeTaskId={activeTaskId}
-						draggedTaskId={draggedTaskId}
-						movingTaskIds={movingTaskIds}
-						siblingMap={siblingMap}
-					/>
-				))}
+				{getOrderedColumns().map((slot) => {
+					const commonProps = {
+						project,
+						dispatch,
+						navigate,
+						onAddTask: () => setShowCreateModal(true),
+						agents,
+						onLaunchVariants: (task: Task, targetStatus: TaskStatus) =>
+							setLaunchModal({ task, targetStatus }),
+						onTaskDrop: handleTaskDrop,
+						onReorderTask: handleReorderTask,
+						dragFromStatus,
+						dragFromCustomColumnId,
+						onDragStart: handleDragStart,
+						onTaskMoved: recordMove,
+						bellCounts,
+						activeTaskId,
+						draggedTaskId,
+						movingTaskIds,
+						siblingMap,
+						onSetMoving: handleSetMoving,
+					};
+					if (slot.type === "builtin") {
+						return (
+							<KanbanColumn
+								key={slot.status}
+								status={slot.status}
+								label={t(statusKey(slot.status))}
+								tasks={tasksByStatus.get(slot.status) || []}
+								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
+								{...commonProps}
+							/>
+						);
+					}
+					const col = slot.col;
+					return (
+						<KanbanColumn
+							key={col.id}
+							status="todo"
+							label={col.name}
+							tasks={tasksByCustomColumn.get(col.id) || []}
+							onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
+							isCustomColumn
+							customColumnId={col.id}
+							colorOverride={col.color}
+							isDraggedColumn={draggedColumnId === col.id}
+							onColumnDragStart={() => handleColumnDragStart(col.id)}
+							onColumnDragEnd={handleColumnDragEnd}
+							onColumnDrop={(side) => handleColumnDrop(col.id, side)}
+							{...commonProps}
+						/>
+					);
+				})}
 			</div>
 
 			{showCreateModal && (

@@ -2042,16 +2042,24 @@ export const handlers = {
 		return updated;
 	},
 
-	async reorderCustomColumns(params: { projectId: string; columnIds: string[] }): Promise<Project> {
-		log.info("→ reorderCustomColumns", { projectId: params.projectId, columnIds: params.columnIds });
+	async reorderColumns(params: { projectId: string; columnOrder: string[] }): Promise<Project> {
+		log.info("→ reorderColumns", { projectId: params.projectId, columnOrder: params.columnOrder });
 		const project = await data.getProject(params.projectId);
 		const existing = project.customColumns ?? [];
-		const reordered = params.columnIds
+		// Reorder customColumns to match their position in the new columnOrder
+		const reordered = params.columnOrder
 			.map((id) => existing.find((c) => c.id === id))
 			.filter((c): c is CustomColumn => c !== undefined);
-		const updated = await data.updateProject(params.projectId, { customColumns: reordered });
+		// Append any custom columns not present in columnOrder (safety net)
+		for (const col of existing) {
+			if (!reordered.find((c) => c.id === col.id)) reordered.push(col);
+		}
+		const updated = await data.updateProject(params.projectId, {
+			customColumns: reordered,
+			columnOrder: params.columnOrder,
+		});
 		pushMessage?.("projectUpdated", { project: updated });
-		log.info("← reorderCustomColumns done", { count: reordered.length });
+		log.info("← reorderColumns done", { count: reordered.length });
 		return updated;
 	},
 
