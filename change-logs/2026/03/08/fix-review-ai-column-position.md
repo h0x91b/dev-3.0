@@ -1,0 +1,1 @@
+Fix "Review by AI" column appearing at position 4 instead of the far right. The DEFAULT_BEFORE_CUSTOM array in KanbanBoard.tsx still had the old order — moved "review-by-ai" to DEFAULT_AFTER_CUSTOM (after "cancelled") to match the intended ALL_STATUSES order.
