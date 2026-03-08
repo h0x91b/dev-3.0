@@ -21,13 +21,15 @@ export function splitBranchWords(name: string): string[] {
 export function matchesBranchQuery(branchName: string, query: string): boolean {
 	if (!query) return true;
 	const nameLower = branchName.toLowerCase();
-	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-	// For each token: either a word-level prefix match OR a substring match on the full name.
-	// Substring match handles queries like "origin/dev" that span word boundaries.
 	const words = splitBranchWords(branchName);
-	return tokens.every((token) =>
-		words.some((w) => w.startsWith(token)) || nameLower.includes(token),
-	);
+	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+	return tokens.every((token) => {
+		// Word-level prefix match (default behavior)
+		if (words.some((w) => w.startsWith(token))) return true;
+		// Substring fallback for tokens containing "/" (e.g., "origin/dev")
+		if (token.includes("/") && nameLower.includes(token)) return true;
+		return false;
+	});
 }
 
 interface BranchSelectorProps {
