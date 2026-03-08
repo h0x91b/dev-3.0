@@ -619,6 +619,22 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</button>
 				)}
 
+				{/* "Open in..." button for active tasks */}
+				{isActive && task.worktreePath && (
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							const rect = (e.target as HTMLElement).getBoundingClientRect();
+							setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
+							setCtxMenuOpen(true);
+						}}
+						className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-1.5 py-1 rounded-lg text-accent hover:bg-accent/15 transition-all flex-shrink-0"
+						title={t("openIn.menuTitle")}
+					>
+						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+					</button>
+				)}
+
 				{/* Right side actions */}
 				{isTodo ? (
 					/* Run button for TODO cards */

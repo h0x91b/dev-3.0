@@ -453,6 +453,13 @@ const es: TranslationRecord & Record<string, string> = {
 	"sidebar.switchToBoard": "Mostrar tablero",
 	"sidebar.switchToSidebar": "Mostrar panel",
 
+	// External Apps settings
+	"settings.externalApps": "Aplicaciones externas",
+	"settings.externalAppsDesc": "Aplicaciones personalizadas para el menú \"Abrir en...\". Las aplicaciones predeterminadas (Finder, VS Code, Cursor, etc.) se detectan automáticamente.",
+	"settings.externalAppName": "Nombre para mostrar",
+	"settings.externalAppMacName": "Nombre de app macOS (para open -a)",
+	"settings.addExternalApp": "Agregar",
+
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",
 	"openIn.openInApp": "Abrir en {app}",

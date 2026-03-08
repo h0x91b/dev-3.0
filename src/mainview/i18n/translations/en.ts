@@ -450,6 +450,13 @@ const en = {
 	"sidebar.switchToBoard": "Show board",
 	"sidebar.switchToSidebar": "Show sidebar",
 
+	// External Apps settings
+	"settings.externalApps": "External Apps",
+	"settings.externalAppsDesc": "Custom apps for the \"Open in...\" context menu. Default apps (Finder, VS Code, Cursor, etc.) are detected automatically.",
+	"settings.externalAppName": "Display name",
+	"settings.externalAppMacName": "macOS app name (used with open -a)",
+	"settings.addExternalApp": "Add App",
+
 	// Open in...
 	"openIn.menuTitle": "Open in...",
 	"openIn.openInApp": "Open in {app}",

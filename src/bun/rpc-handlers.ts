@@ -2331,9 +2331,9 @@ export const handlers = {
 		if (!params.path.startsWith("/") || params.path.includes("..")) {
 			throw new Error("Invalid path");
 		}
-		// Finder special case: reveal in Finder
+		// Finder: open the folder directly (not -R which reveals in parent)
 		if (params.appName === "Finder") {
-			spawn(["open", "-R", params.path], { stdout: "ignore", stderr: "ignore" });
+			spawn(["open", params.path], { stdout: "ignore", stderr: "ignore" });
 			return;
 		}
 		spawn(["open", "-a", params.appName, params.path], { stdout: "ignore", stderr: "ignore" });
