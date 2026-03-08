@@ -132,6 +132,11 @@ function KanbanColumn({
 	}
 
 	function handleDragEnter(e: React.DragEvent) {
+		// Column reorder: must also preventDefault on dragenter for drop to fire
+		if (isCustomColumn && onColumnDrop && e.dataTransfer.types.includes("dev3/column") && !isDraggedColumn) {
+			e.preventDefault();
+			return;
+		}
 		if (!isCrossColumnTarget && !isSameColumnDrag) return;
 		e.preventDefault();
 		if (isCrossColumnTarget) setDragOver(true);
