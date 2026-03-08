@@ -41,6 +41,15 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const moveCounterRef = useRef(0);
 
+	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
+		setMovingTaskIds((prev) => {
+			const next = new Set(prev);
+			if (isMoving) next.add(taskId);
+			else next.delete(taskId);
+			return next;
+		});
+	}, []);
+
 	// Cmd+N — open create task modal (capture phase to intercept before terminal)
 	const handleCmdN = useCallback((e: KeyboardEvent) => {
 		if (!((e.metaKey || e.ctrlKey) && e.key === "n")) return;
@@ -252,6 +261,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						activeTaskId={activeTaskId}
 						draggedTaskId={draggedTaskId}
 						movingTaskIds={movingTaskIds}
+						onSetMoving={handleSetMoving}
 						siblingMap={siblingMap}
 					/>
 				))}

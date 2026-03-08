@@ -26,10 +26,11 @@ interface TaskCardProps {
 	bellCount?: number;
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
+	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, siblingMap }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -66,6 +67,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
+	const isCompleting = isDisabled && (task.status === "completed" || task.status === "cancelled");
 	const color = statusColors[task.status];
 
 	// Close menu on click outside
@@ -144,8 +146,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		}
 
 		const fromStatus = task.status;
-		setMoving(true);
+		const isTerminal = newStatus === "completed" || newStatus === "cancelled";
 		setMenuOpen(false);
+
+		// Optimistic update for terminal statuses — grey out and move immediately
+		if (isTerminal) {
+			dispatch({ type: "updateTask", task: { ...task, status: newStatus } });
+			dispatch({ type: "clearBell", taskId: task.id });
+			onTaskMoved(task.id);
+			onSetMoving?.(task.id, true);
+		} else {
+			setMoving(true);
+		}
+
 		try {
 			const updated = await api.request.moveTask({
 				taskId: task.id,
@@ -153,10 +166,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				newStatus,
 			});
 			dispatch({ type: "updateTask", task: updated });
-			if (newStatus === "completed" || newStatus === "cancelled") {
-				dispatch({ type: "clearBell", taskId: task.id });
-			}
-			onTaskMoved(task.id);
+			if (!isTerminal) onTaskMoved(task.id);
 			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 		} catch (err) {
 			// Auto-retry with force — environment is likely broken
@@ -168,16 +178,21 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					force: true,
 				});
 				dispatch({ type: "updateTask", task: updated });
-				if (newStatus === "completed" || newStatus === "cancelled") {
-					dispatch({ type: "clearBell", taskId: task.id });
-				}
-				onTaskMoved(task.id);
+				if (!isTerminal) onTaskMoved(task.id);
 				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 			} catch (retryErr) {
+				// Revert optimistic update on total failure
+				if (isTerminal) {
+					dispatch({ type: "updateTask", task });
+				}
 				alert(t("task.failedMove", { error: String(retryErr) }));
 			}
 		}
-		setMoving(false);
+		if (isTerminal) {
+			onSetMoving?.(task.id, false);
+		} else {
+			setMoving(false);
+		}
 	}
 
 	async function handleDelete() {
@@ -382,8 +397,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${isDisabled ? "opacity-50 pointer-events-none" : ""}`}
-			style={{ borderLeftColor: color }}
+			} ${isCompleting ? "grayscale opacity-40 pointer-events-none" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
+			style={{ borderLeftColor: isCompleting ? "#888" : color }}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}

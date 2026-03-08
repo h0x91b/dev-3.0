@@ -1,0 +1,1 @@
+Task cards now grey out instantly when moved to completed/cancelled status. The menu-based move path now uses optimistic UI updates (like drag-and-drop already did), so the card immediately relocates to the target column with a grayscale + dimmed appearance while the heavy backend cleanup runs in the background.

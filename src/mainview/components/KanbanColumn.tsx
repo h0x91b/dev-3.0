@@ -25,6 +25,7 @@ interface KanbanColumnProps {
 	activeTaskId?: string;
 	draggedTaskId: string | null;
 	movingTaskIds: Set<string>;
+	onSetMoving: (taskId: string, isMoving: boolean) => void;
 	siblingMap: Map<string, Task[]>;
 }
 
@@ -47,6 +48,7 @@ function KanbanColumn({
 	activeTaskId,
 	draggedTaskId,
 	movingTaskIds,
+	onSetMoving,
 	siblingMap,
 }: KanbanColumnProps) {
 	const t = useT();
@@ -196,6 +198,7 @@ function KanbanColumn({
 							bellCount={bellCounts.get(task.id) ?? 0}
 							isActiveInSplit={task.id === activeTaskId}
 							isMoving={movingTaskIds.has(task.id)}
+							onSetMoving={onSetMoving}
 							siblingMap={siblingMap}
 						/>
 					</div>
