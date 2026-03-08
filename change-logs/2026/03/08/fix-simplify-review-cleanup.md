@@ -1,0 +1,1 @@
+Deduplicate projectSlug() (data.ts now imports from git.ts), cache terminal keymap preset to avoid localStorage reads on every keydown, fix TOCTOU in playTaskCompleteSound(), clean up in-memory pane/merge tracking state on task deletion and completion, fix wrong useCallback dependency in RequirementsCheck.

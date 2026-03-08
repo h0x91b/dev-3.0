@@ -33,7 +33,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 			console.error("Failed to save custom binary path:", err);
 		}
 		setSavingId(null);
-	}, [customPaths, onRefresh]);
+	}, [customPaths, onRefreshResults]);
 
 	return (
 		<div className="h-full w-full flex items-center justify-center bg-base">

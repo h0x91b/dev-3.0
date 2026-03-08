@@ -3,7 +3,7 @@ import { Terminal, FitAddon } from "ghostty-web";
 import { api } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
-import { TERMINAL_KEYMAPS, getKeymapPreset } from "./terminal-keymaps";
+import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -481,14 +481,22 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 	// Uses capture phase so ghostty-web can't swallow the events.
 	// Only fires when the terminal container has focus, to avoid
 	// accidental triggers while typing in other UI fields.
+	const keymapRef = useRef(getKeymapPreset());
+	useEffect(() => {
+		function onKeymapChanged(e: Event) {
+			keymapRef.current = (e as CustomEvent).detail;
+		}
+		window.addEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
+		return () => window.removeEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
+	}, []);
+
 	useEffect(() => {
 		function handleKeydown(e: KeyboardEvent) {
 			const container = containerRef.current;
 			if (!container) return;
 			if (!container.contains(document.activeElement) && document.activeElement !== container) return;
 
-			const preset = getKeymapPreset();
-			const bindings = TERMINAL_KEYMAPS[preset] ?? [];
+			const bindings = TERMINAL_KEYMAPS[keymapRef.current] ?? [];
 			const binding = bindings.find(
 				(b) =>
 					b.code === e.code &&

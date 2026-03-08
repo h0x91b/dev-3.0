@@ -271,6 +271,15 @@ export function clearMergeNotification(taskId: string): void {
 	mergeNotifiedTasks.delete(taskId);
 }
 
+/** Clean up all in-memory tracking state for a task (pane IDs, merge flags). */
+function cleanupTaskState(taskId: string): void {
+	devPaneIds.delete(taskId);
+	fileBrowserPaneIds.delete(taskId);
+	gitOpPaneIds.delete(taskId);
+	mergeNotifiedTasks.delete(taskId);
+	branchStatusInFlight.delete(taskId);
+}
+
 /** Run CoW clones for configured paths after worktree creation. */
 async function runCowClones(project: Project, worktreePath: string): Promise<void> {
 	if (!project.clonePaths?.length) return;
@@ -383,9 +392,9 @@ export function playTaskCompleteSound(): void {
 
 	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", "task-complete.mp3");
 	const devPath = join(import.meta.dir, "..", "assets", "sounds", "task-complete.mp3");
-	const soundPath = existsSync(prodPath) ? prodPath : devPath;
+	const soundPath = existsSync(prodPath) ? prodPath : existsSync(devPath) ? devPath : null;
 
-	if (!existsSync(soundPath)) {
+	if (!soundPath) {
 		log.warn("Task complete sound file not found", { prodPath, devPath });
 		return;
 	}
@@ -834,6 +843,7 @@ export const handlers = {
 
 		// → completed/cancelled: destroy PTY, run cleanup if configured, then remove worktree
 		if (newStatus === "completed" || newStatus === "cancelled") {
+			cleanupTaskState(task.id);
 			if (params.force) {
 				// Force mode: skip PTY destruction, cleanup script, and worktree removal.
 				// The environment is already broken — just update the status.
@@ -911,6 +921,7 @@ export const handlers = {
 		log.info("→ deleteTask", params);
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
+		cleanupTaskState(task.id);
 
 		// Cleanup if active
 		if (isActive(task.status)) {

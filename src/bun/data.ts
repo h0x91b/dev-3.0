@@ -5,14 +5,11 @@ import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 import { detectClonePaths } from "./cow-clone";
 import { withFileLock } from "./file-lock";
+import { projectSlug } from "./git";
 
 const log = createLogger("data");
 
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
-
-function projectSlug(projectPath: string): string {
-	return projectPath.replace(/^\//, "").replaceAll("/", "-");
-}
 
 function tasksFile(project: Project): string {
 	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
