@@ -378,17 +378,15 @@ const handlers: Record<string, Handler> = {
 		}
 
 		// If moving from a custom column to a built-in status, allow any transition from the task's current status
-		const effectiveOldStatus = task.status;
+		const oldStatus = task.status;
 		if (!task.customColumnId) {
-			const allowed = getAllowedTransitions(effectiveOldStatus);
+			const allowed = getAllowedTransitions(oldStatus);
 			if (!allowed.includes(builtinStatus)) {
 				throw new Error(
-					`Cannot move task from "${effectiveOldStatus}" to "${builtinStatus}". Allowed: ${allowed.join(", ")}`,
+					`Cannot move task from "${oldStatus}" to "${builtinStatus}". Allowed: ${allowed.join(", ")}`,
 				);
 			}
 		}
-
-		const oldStatus = effectiveOldStatus;
 		const settings = await loadSettings();
 		const dropOpts = { dropPosition: settings.taskDropPosition } as const;
 

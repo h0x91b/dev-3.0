@@ -14,7 +14,6 @@ let userProperties: Record<string, { value: string }> = {};
 let currentScreen = "dashboard";
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let sessionStartTime = 0;
-let previousAppVersion = "";
 
 function getOrCreateClientId(): string {
 	const key = "dev3-ga-client-id";
@@ -117,7 +116,7 @@ export function initAnalytics(appVersion: string): void {
 	}
 
 	// app_update — fires when the app version changes (not on first open)
-	previousAppVersion = localStorage.getItem("dev3-ga-last-version") || "";
+	const previousAppVersion = localStorage.getItem("dev3-ga-last-version") || "";
 	if (previousAppVersion && previousAppVersion !== appVersion) {
 		initEvents.push({
 			name: "app_update",
