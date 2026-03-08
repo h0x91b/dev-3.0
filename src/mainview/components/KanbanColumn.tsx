@@ -6,6 +6,10 @@ import { useT } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
 import TaskCard from "./TaskCard";
 
+// Module-level variable: set synchronously on dragstart, cleared on dragend.
+// Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
+let _activeDragColumnId: string | null = null;
+
 interface KanbanColumnProps {
 	status: TaskStatus;
 	label: string;
@@ -102,8 +106,9 @@ function KanbanColumn({
 	}, []);
 
 	function handleDragOver(e: React.DragEvent) {
-		// Column reorder: detect via dataTransfer type (works synchronously, unlike state)
-		if (isCustomColumn && onColumnDrop && e.dataTransfer.types.includes("dev3/column") && !isDraggedColumn) {
+		// Column reorder: use module-level variable set synchronously on dragstart.
+		// dataTransfer.types is NOT used because WKWebView may reject custom MIME types.
+		if (isCustomColumn && onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== customColumnId) {
 			e.preventDefault();
 			e.dataTransfer.dropEffect = "move";
 			const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -133,7 +138,7 @@ function KanbanColumn({
 
 	function handleDragEnter(e: React.DragEvent) {
 		// Column reorder: must also preventDefault on dragenter for drop to fire
-		if (isCustomColumn && onColumnDrop && e.dataTransfer.types.includes("dev3/column") && !isDraggedColumn) {
+		if (isCustomColumn && onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== customColumnId) {
 			e.preventDefault();
 			return;
 		}
@@ -153,9 +158,8 @@ function KanbanColumn({
 		e.preventDefault();
 		setDragOver(false);
 
-		// Column reorder drop
-		const colId = e.dataTransfer.getData("dev3/column");
-		if (colId && isCustomColumn && onColumnDrop && columnDragSide) {
+		// Column reorder drop (use module var; dataTransfer.getData won't have "dev3/column" in WKWebView)
+		if (_activeDragColumnId && _activeDragColumnId !== customColumnId && isCustomColumn && onColumnDrop && columnDragSide) {
 			setColumnDragSide(null);
 			onColumnDrop(columnDragSide);
 			return;
@@ -163,7 +167,8 @@ function KanbanColumn({
 		setColumnDragSide(null);
 
 		const taskId = e.dataTransfer.getData("text/plain");
-		if (!taskId) {
+		// Ignore col: prefixed data (column drags that fell through without a side set)
+		if (!taskId || taskId.startsWith("col:")) {
 			setDropIndex(null);
 			return;
 		}
@@ -223,12 +228,14 @@ function KanbanColumn({
 								draggable
 								onDragStart={(e) => {
 									e.stopPropagation();
-									e.dataTransfer.setData("dev3/column", customColumnId ?? "");
+									_activeDragColumnId = customColumnId ?? null;
+									e.dataTransfer.setData("text/plain", `col:${customColumnId ?? ""}`);
 									e.dataTransfer.effectAllowed = "move";
 									onColumnDragStart?.();
 								}}
 								onDragEnd={(e) => {
 									e.stopPropagation();
+									_activeDragColumnId = null;
 									onColumnDragEnd?.();
 								}}
 								title="Drag to reorder"

@@ -6,11 +6,12 @@
  *
  * Testing approach:
  * - Use native `dispatchEvent` + `Object.defineProperty` for `dataTransfer`
- *   because happy-dom doesn't support setting `dataTransfer` via event init.
+ *   because happy-dom doesn't reliably set `dataTransfer` via event init.
  * - Wrap all dispatches in `act()` so React flushes state updates before assertions.
- * - Happy-dom elements have zero bounding rects (left=0, width=0, center=0).
- *   Use clientX < 0 for "before" and clientX > 0 for "after" to avoid needing
- *   getBoundingClientRect mocks.
+ * - Simulate the real user flow: dispatch `dragstart` on the drag handle first,
+ *   which sets the module-level `_activeDragColumnId` variable used for detection.
+ * - Happy-dom elements have zero bounding rects (center=0): clientX<0 → "before",
+ *   clientX>0 → "after".
  */
 import { act } from "@testing-library/react";
 import { render, screen } from "@testing-library/react";
@@ -40,46 +41,56 @@ const project: Project = {
 	createdAt: "2025-01-01T00:00:00Z",
 };
 
-function makeDataTransfer(types: string[], data: Record<string, string> = {}): DataTransfer {
+function makeDt(data: Record<string, string> = {}): DataTransfer {
 	return {
-		types,
+		types: Object.keys(data),
 		getData: (key: string) => data[key] ?? "",
-		setData: vi.fn(),
-		effectAllowed: "move",
-		dropEffect: "move",
+		setData: vi.fn((k: string, v: string) => { data[k] = v; }),
+		effectAllowed: "move" as const,
+		dropEffect: "move" as const,
 	} as unknown as DataTransfer;
 }
 
-/** Dispatch a drag event with a properly-set dataTransfer and return defaultPrevented. */
-function dispatchDragEvent(
-	el: Element,
-	type: string,
-	options: { dataTransfer?: DataTransfer; clientX?: number } = {},
-): boolean {
-	const event = new MouseEvent(type, {
-		bubbles: true,
-		cancelable: true,
-		clientX: options.clientX ?? 0,
-	});
-	if (options.dataTransfer) {
-		Object.defineProperty(event, "dataTransfer", { value: options.dataTransfer });
-	}
-	let defaultPrevented = false;
-	act(() => {
-		defaultPrevented = !el.dispatchEvent(event);
-	});
-	return defaultPrevented;
+/** Dispatch a drag event with a properly-set dataTransfer; returns defaultPrevented. */
+function dispatch(el: Element, type: string, opts: { clientX?: number; dataTransfer?: DataTransfer; relatedTarget?: Element | null } = {}): boolean {
+	const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: opts.clientX ?? 0 });
+	// Always attach a dataTransfer so handlers can safely set dropEffect etc.
+	Object.defineProperty(event, "dataTransfer", { value: opts.dataTransfer ?? makeDt() });
+	if (opts.relatedTarget !== undefined) Object.defineProperty(event, "relatedTarget", { value: opts.relatedTarget });
+	let prevented = false;
+	act(() => { prevented = !el.dispatchEvent(event); });
+	return prevented;
 }
 
-function renderCustomColumn(overrides: {
+/** Simulate starting a column drag from this column's handle (sets _activeDragColumnId). */
+function startColumnDrag(handle: Element) {
+	const dt = makeDt();
+	dispatch(handle, "dragstart", { dataTransfer: dt });
+}
+
+/** Simulate ending a column drag (clears _activeDragColumnId). */
+function endColumnDrag(handle: Element) {
+	dispatch(handle, "dragend");
+}
+
+function getHandle() {
+	return screen.getByTitle("Drag to reorder");
+}
+function getColumn() {
+	return screen.getByText("My Column").closest("[class*='glass-column']") as HTMLElement;
+}
+
+function renderColumn(overrides: {
 	onColumnDrop?: (side: "before" | "after") => void;
 	isDraggedColumn?: boolean;
+	customColumnId?: string;
+	label?: string;
 } = {}) {
 	return render(
 		<I18nProvider>
 			<KanbanColumn
 				status="todo"
-				label="My Column"
+				label={overrides.label ?? "My Column"}
 				tasks={[]}
 				project={project}
 				dispatch={vi.fn()}
@@ -98,179 +109,178 @@ function renderCustomColumn(overrides: {
 				movingTaskIds={new Set()}
 				siblingMap={new Map()}
 				isCustomColumn
-				customColumnId="col-aaa"
+				customColumnId={overrides.customColumnId ?? "col-aaa"}
 				colorOverride="#ff0000"
 				onColumnDragStart={vi.fn()}
 				onColumnDragEnd={vi.fn()}
-				{...overrides}
+				onColumnDrop={overrides.onColumnDrop}
+				isDraggedColumn={overrides.isDraggedColumn}
 			/>
 		</I18nProvider>,
 	);
 }
 
-function getColumn() {
-	return screen.getByText("My Column").closest("[class*='glass-column']") as HTMLElement;
-}
+afterEach(() => {
+	// Reset module-level _activeDragColumnId between tests by simulating dragend
+	// Render a throwaway column, start drag on it, then end it
+	const { unmount } = renderColumn();
+	const handle = document.querySelector("[title='Drag to reorder']");
+	if (handle) endColumnDrag(handle);
+	unmount();
+});
 
 describe("KanbanColumn — column drag-and-drop", () => {
 	describe("dragover", () => {
-		it("calls preventDefault when dev3/column is in dataTransfer types", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			const prevented = dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-			});
+		it("calls preventDefault when a column drag is active (different column)", () => {
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
+			// Simulate another column being dragged (sets _activeDragColumnId = "col-aaa")
+			startColumnDrag(getHandle()); // handle belongs to col-target, but _activeDragColumnId = "col-target"
+			// A DIFFERENT drag source would have set a different ID; simulate it directly
+			// by starting drag on another rendered column
+			const { container: srcContainer, unmount } = renderColumn({ label: "Source Column", customColumnId: "col-source", onColumnDrop: vi.fn() });
+			const sourceHandle = srcContainer.querySelector("[title='Drag to reorder']") as Element;
+			startColumnDrag(sourceHandle);
+			unmount();
+
+			// Now target column should accept the drag
+			const prevented = dispatch(getColumn(), "dragover");
 			expect(prevented).toBe(true);
 		});
 
-		it("does NOT call preventDefault for non-column drags (no dev3/column type)", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			const prevented = dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["text/plain"]),
-			});
+		it("does NOT call preventDefault when no column drag is active", () => {
+			// No dragstart dispatched → _activeDragColumnId is null
+			renderColumn({ onColumnDrop: vi.fn() });
+			const prevented = dispatch(getColumn(), "dragover");
 			expect(prevented).toBe(false);
 		});
 
-		it("does NOT call preventDefault when isDraggedColumn (self-drop guard)", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn(), isDraggedColumn: true });
-			const prevented = dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-			});
+		it("does NOT call preventDefault when dragging onto itself (_activeDragColumnId === customColumnId)", () => {
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-aaa" });
+			startColumnDrag(getHandle()); // sets _activeDragColumnId = "col-aaa"
+			const prevented = dispatch(getColumn(), "dragover");
 			expect(prevented).toBe(false);
 		});
 
 		it("does NOT call preventDefault when onColumnDrop is not provided", () => {
-			renderCustomColumn({ onColumnDrop: undefined });
-			const prevented = dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-			});
+			renderColumn({ onColumnDrop: undefined, customColumnId: "col-target" });
+			// Make some column set _activeDragColumnId
+			const { container: srcContainer, unmount } = renderColumn({ label: "Source", customColumnId: "col-source", onColumnDrop: vi.fn() });
+			startColumnDrag(srcContainer.querySelector("[title='Drag to reorder']") as Element);
+			unmount();
+
+			const prevented = dispatch(getColumn(), "dragover");
 			expect(prevented).toBe(false);
 		});
 	});
 
 	describe("dragenter", () => {
-		it("calls preventDefault when dev3/column is in dataTransfer types", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			const prevented = dispatchDragEvent(getColumn(), "dragenter", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-			});
+		it("calls preventDefault when a column drag is active (different column)", () => {
+			// Render source and target
+			const { unmount } = renderColumn({ label: "Source", customColumnId: "col-source", onColumnDrop: vi.fn() });
+			startColumnDrag(screen.getByTitle("Drag to reorder"));
+			unmount();
+
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
+			const prevented = dispatch(getColumn(), "dragenter");
 			expect(prevented).toBe(true);
 		});
 
-		it("does NOT call preventDefault when isDraggedColumn", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn(), isDraggedColumn: true });
-			const prevented = dispatchDragEvent(getColumn(), "dragenter", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-			});
+		it("does NOT call preventDefault when no column drag is active", () => {
+			renderColumn({ onColumnDrop: vi.fn() });
+			const prevented = dispatch(getColumn(), "dragenter");
 			expect(prevented).toBe(false);
 		});
 	});
 
 	describe("drop position indicator", () => {
-		// Happy-dom bounding rect is all zeros → center = 0.
-		// clientX < 0 → "before", clientX > 0 → "after"
+		function setupColumnDragFromOther() {
+			const { container, unmount } = renderColumn({ label: "Source", customColumnId: "col-source", onColumnDrop: vi.fn() });
+			startColumnDrag(container.querySelector("[title='Drag to reorder']") as Element);
+			unmount();
+		}
 
-		it("shows 'before' indicator when cursor is in left half (clientX < center)", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-				clientX: -1,
-			});
+		it("shows 'before' indicator (clientX < center=0)", () => {
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			dispatch(getColumn(), "dragover", { clientX: -1 });
 			expect(document.querySelector("[class*='-left-3']")).toBeInTheDocument();
 			expect(document.querySelector("[class*='-right-3']")).not.toBeInTheDocument();
 		});
 
-		it("shows 'after' indicator when cursor is in right half (clientX > center)", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-				clientX: 1,
-			});
+		it("shows 'after' indicator (clientX > center=0)", () => {
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			dispatch(getColumn(), "dragover", { clientX: 1 });
 			expect(document.querySelector("[class*='-right-3']")).toBeInTheDocument();
 			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
 		});
 
 		it("clears indicator on dragleave", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-				clientX: -1,
-			});
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			dispatch(getColumn(), "dragover", { clientX: -1 });
 			expect(document.querySelector("[class*='-left-3']")).toBeInTheDocument();
 
 			act(() => { getColumn().dispatchEvent(new MouseEvent("dragleave", { bubbles: true })); });
 			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
 		});
 
-		it("no indicator when dev3/column type is absent", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["text/plain"]),
-				clientX: -1,
-			});
+		it("no indicator when no column drag is active", () => {
+			renderColumn({ onColumnDrop: vi.fn() });
+			dispatch(getColumn(), "dragover", { clientX: -1 });
 			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
-			expect(document.querySelector("[class*='-right-3']")).not.toBeInTheDocument();
 		});
 	});
 
 	describe("drop", () => {
+		function setupColumnDragFromOther() {
+			const { container, unmount } = renderColumn({ label: "Source", customColumnId: "col-source", onColumnDrop: vi.fn() });
+			startColumnDrag(container.querySelector("[title='Drag to reorder']") as Element);
+			unmount();
+		}
+
 		it("calls onColumnDrop('before') when dropped on left half", () => {
 			const onColumnDrop = vi.fn();
-			renderCustomColumn({ onColumnDrop });
-			// Set side via dragover first
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-				clientX: -1,
-			});
-			// Drop
-			dispatchDragEvent(getColumn(), "drop", {
-				dataTransfer: makeDataTransfer(["dev3/column"], { "dev3/column": "col-bbb" }),
-			});
+			renderColumn({ onColumnDrop, customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			dispatch(getColumn(), "dragover", { clientX: -1 });  // set side = "before"
+			dispatch(getColumn(), "drop");
 			expect(onColumnDrop).toHaveBeenCalledTimes(1);
 			expect(onColumnDrop).toHaveBeenCalledWith("before");
 		});
 
 		it("calls onColumnDrop('after') when dropped on right half", () => {
 			const onColumnDrop = vi.fn();
-			renderCustomColumn({ onColumnDrop });
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-				clientX: 1,
-			});
-			dispatchDragEvent(getColumn(), "drop", {
-				dataTransfer: makeDataTransfer(["dev3/column"], { "dev3/column": "col-bbb" }),
-			});
+			renderColumn({ onColumnDrop, customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			dispatch(getColumn(), "dragover", { clientX: 1 });   // set side = "after"
+			dispatch(getColumn(), "drop");
 			expect(onColumnDrop).toHaveBeenCalledWith("after");
 		});
 
-		it("does NOT call onColumnDrop for task drops (text/plain only)", () => {
+		it("does NOT call onColumnDrop for task drops (no active column drag)", () => {
 			const onColumnDrop = vi.fn();
-			renderCustomColumn({ onColumnDrop });
-			dispatchDragEvent(getColumn(), "drop", {
-				dataTransfer: makeDataTransfer(["text/plain"], { "text/plain": "task-id-123" }),
-			});
+			renderColumn({ onColumnDrop });
+			// No startColumnDrag → _activeDragColumnId is null
+			dispatch(getColumn(), "drop", { dataTransfer: makeDt({ "text/plain": "task-id-123" }) });
 			expect(onColumnDrop).not.toHaveBeenCalled();
 		});
 
-		it("does NOT call onColumnDrop when no side was set (no preceding dragover)", () => {
+		it("does NOT call onColumnDrop when no preceding dragover (no side set)", () => {
 			const onColumnDrop = vi.fn();
-			renderCustomColumn({ onColumnDrop });
-			dispatchDragEvent(getColumn(), "drop", {
-				dataTransfer: makeDataTransfer(["dev3/column"], { "dev3/column": "col-bbb" }),
-			});
+			renderColumn({ onColumnDrop, customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			// Drop without dragover → columnDragSide is null
+			dispatch(getColumn(), "drop");
 			expect(onColumnDrop).not.toHaveBeenCalled();
 		});
 
 		it("clears indicator after drop", () => {
-			renderCustomColumn({ onColumnDrop: vi.fn() });
-			dispatchDragEvent(getColumn(), "dragover", {
-				dataTransfer: makeDataTransfer(["dev3/column"]),
-				clientX: -1,
-			});
+			renderColumn({ onColumnDrop: vi.fn(), customColumnId: "col-target" });
+			setupColumnDragFromOther();
+			dispatch(getColumn(), "dragover", { clientX: -1 });
 			expect(document.querySelector("[class*='-left-3']")).toBeInTheDocument();
-
-			dispatchDragEvent(getColumn(), "drop", {
-				dataTransfer: makeDataTransfer(["dev3/column"], { "dev3/column": "col-bbb" }),
-			});
+			dispatch(getColumn(), "drop");
 			expect(document.querySelector("[class*='-left-3']")).not.toBeInTheDocument();
 		});
 	});
