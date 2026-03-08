@@ -13,9 +13,34 @@ import { loadSettings, loadSettingsSync, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
+import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
 
 const log = createLogger("rpc");
+
+/**
+ * Hide the app by calling [NSApp hide:nil] via Objective-C runtime FFI.
+ * No permissions required — the app hides itself.
+ */
+function hideAppNative(): void {
+	try {
+		const objc = dlopen("libobjc.A.dylib", {
+			objc_getClass: { args: [FFIType.ptr], returns: FFIType.ptr },
+			sel_registerName: { args: [FFIType.ptr], returns: FFIType.ptr },
+			objc_msgSend: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+		});
+
+		const encode = (s: string) => Buffer.from(s + "\0");
+		const NSApplication = objc.symbols.objc_getClass(encode("NSApplication"));
+		const sharedAppSel = objc.symbols.sel_registerName(encode("sharedApplication"));
+		const hideSel = objc.symbols.sel_registerName(encode("hide:"));
+
+		const app = objc.symbols.objc_msgSend(NSApplication, sharedAppSel);
+		objc.symbols.objc_msgSend(app, hideSel);
+	} catch (err) {
+		log.error("hideAppNative FFI failed", { error: String(err) });
+	}
+}
 
 /**
  * Escape a string for safe use inside a double-quoted shell context.
@@ -608,8 +633,9 @@ export const handlers = {
 		// Electrobun doesn't expose a hide() API. The menu has { role: "hide" }
 		// which creates the native NSMenuItem, but WKWebView swallows the Cmd+H
 		// keystroke before it reaches the macOS menu responder chain.
-		// Workaround: call [NSApp hide:nil] via osascript.
-		spawn(["osascript", "-e", `tell application "System Events" to set visible of every process whose unix id is ${process.ppid} to false`]);
+		// Workaround: call [NSApp hide:nil] directly via Objective-C runtime FFI.
+		// This requires no permissions (unlike osascript + System Events).
+		hideAppNative();
 	},
 
 	async showConfirm(params: { title: string; message: string }): Promise<boolean> {

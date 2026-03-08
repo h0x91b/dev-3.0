@@ -105,6 +105,18 @@ vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
 }));
 
+const mockObjcMsgSend = vi.fn();
+vi.mock("bun:ffi", () => ({
+	dlopen: vi.fn(() => ({
+		symbols: {
+			objc_getClass: vi.fn(() => 1),
+			sel_registerName: vi.fn(() => 2),
+			objc_msgSend: mockObjcMsgSend,
+		},
+	})),
+	FFIType: { ptr: "ptr" },
+}));
+
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -1833,14 +1845,10 @@ describe("handlers.quitApp", () => {
 describe("handlers.hideApp", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("spawns osascript to hide the app via System Events", async () => {
+	it("calls objc_msgSend to hide the app via FFI", async () => {
 		await handlers.hideApp();
-		expect(mockSpawn).toHaveBeenCalledOnce();
-		const cmd = mockSpawn.mock.calls[0][0];
-		expect(cmd[0]).toBe("osascript");
-		expect(cmd[1]).toBe("-e");
-		expect(cmd[2]).toContain("System Events");
-		expect(cmd[2]).toContain("visible");
+		// objc_msgSend is called twice: once for sharedApplication, once for hide:
+		expect(mockObjcMsgSend).toHaveBeenCalledTimes(2);
 	});
 });
 
