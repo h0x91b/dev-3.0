@@ -1,0 +1,1 @@
+Show branch diff stats (files changed, lines added/removed) on the first row of the task info panel, next to the status badge. Uses `git diff --shortstat ref...HEAD` to compute total branch diff against the comparison ref, displayed as "N files +X −Y".

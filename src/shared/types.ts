@@ -300,6 +300,9 @@ export interface BranchStatus {
 	deletions: number;
 	unpushed: number; // -1 = never pushed, 0 = all pushed, N = N unpushed commits
 	mergedByContent: boolean; // true if git diff base HEAD is empty (squash/rebase merge)
+	diffFiles: number; // total files changed in branch vs base
+	diffInsertions: number; // total lines added in branch vs base
+	diffDeletions: number; // total lines removed in branch vs base
 }
 
 // ---- Tmux sessions ----

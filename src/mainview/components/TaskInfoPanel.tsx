@@ -701,6 +701,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		setBranchStatus(null); // clear stale data while re-fetching
 	}
 
+	const diffStatsBadge = branchStatus && (branchStatus.diffFiles > 0) ? (
+		<span className="flex items-center gap-1.5 text-[0.6875rem] text-fg-3 flex-shrink-0 font-mono">
+			<span>{branchStatus.diffFiles} {branchStatus.diffFiles === 1 ? "file" : "files"}</span>
+			<span className="text-[#34d399]">+{branchStatus.diffInsertions}</span>
+			<span className="text-[#f87171]">−{branchStatus.diffDeletions}</span>
+		</span>
+	) : null;
+
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] font-medium text-danger flex-shrink-0">
 			<span>+{branchStatus.insertions}</span>
@@ -1114,6 +1122,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							const label = (project.labels ?? []).find((l) => l.id === id);
 							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 						})}
+						{diffStatsBadge}
 						<div className="flex-1" />
 						{fileBrowserButton}
 						{tmuxHintsInline}
@@ -1180,6 +1189,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 								const label = (project.labels ?? []).find((l) => l.id === id);
 								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 							})}
+							{diffStatsBadge}
 							<div className="flex-1" />
 							{tmuxHintsInline}
 							{tmuxHintsPopover}

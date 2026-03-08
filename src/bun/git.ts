@@ -365,6 +365,29 @@ export async function getUncommittedChanges(
 	return { insertions, deletions };
 }
 
+export async function getBranchDiffStats(
+	worktreePath: string,
+	ref: string,
+): Promise<{ files: number; insertions: number; deletions: number }> {
+	const result = await run(
+		["git", "diff", "--shortstat", `${ref}...HEAD`],
+		worktreePath,
+	);
+	if (!result.ok || !result.stdout.trim()) {
+		return { files: 0, insertions: 0, deletions: 0 };
+	}
+	// Output like: " 3 files changed, 45 insertions(+), 12 deletions(-)"
+	const text = result.stdout.trim();
+	const filesMatch = text.match(/(\d+)\s+file/);
+	const insMatch = text.match(/(\d+)\s+insertion/);
+	const delMatch = text.match(/(\d+)\s+deletion/);
+	return {
+		files: filesMatch ? parseInt(filesMatch[1], 10) : 0,
+		insertions: insMatch ? parseInt(insMatch[1], 10) : 0,
+		deletions: delMatch ? parseInt(delMatch[1], 10) : 0,
+	};
+}
+
 export async function isContentMergedInto(
 	worktreePath: string,
 	ref: string,
