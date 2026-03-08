@@ -150,15 +150,15 @@ describe("sortTasksForColumn — backend vs frontend order mismatch scenarios", 
 		// MISMATCH!
 	});
 
-	it("movedAt without columnOrder: position after reload differs from in-session position", () => {
-		// During session: task was cross-column moved, got high counter in moveOrderMap → at top
-		// After reload: moveOrderMap is empty, task has movedAt → position determined by sort tiers
+	it("with fix: cross-column moved task gets columnOrder so reload position matches", () => {
+		// After the fix, cross-column moves assign columnOrder.
+		// Simulates task C moved to top of column (dropPosition=top):
+		// backend assigns C.columnOrder=0, A.columnOrder=1, B.columnOrder=2
 
 		const tasks = [
-			makeTask({ id: "A", columnOrder: 0, createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", columnOrder: 1, createdAt: "2025-01-02T00:00:00Z" }),
-			// C was moved cross-column, in-session was at top via moveOrderMap
-			makeTask({ id: "C", movedAt: "2026-03-01T00:00:00Z", createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "A", columnOrder: 1, createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 2, createdAt: "2025-01-02T00:00:00Z" }),
+			makeTask({ id: "C", columnOrder: 0, movedAt: "2026-03-01T00:00:00Z", createdAt: "2025-01-03T00:00:00Z" }),
 		];
 
 		// In-session (with moveOrderMap, C at top):
@@ -168,11 +168,10 @@ describe("sortTasksForColumn — backend vs frontend order mismatch scenarios", 
 
 		// After reload (no moveOrderMap):
 		const afterReload = sortTasksForColumn(tasks, "top", emptyMap);
-		// C has no columnOrder → goes AFTER A and B which have columnOrder
-		expect(ids(afterReload)).toEqual(["A", "B", "C"]);
+		// C has columnOrder 0 → stays at top
+		expect(ids(afterReload)).toEqual(["C", "A", "B"]);
 
-		// Position changed! C was at index 0 in-session, now at index 2 after reload.
-		// This is the fundamental persistence gap.
+		// Position is now stable across reload!
 	});
 
 	it("in bottom mode: cross-column moved task also changes position on reload", () => {
@@ -316,28 +315,26 @@ describe("sortTasksForColumn — session → reload transition", () => {
 		// In this case they match! movedAt preserves the relative order if set.
 	});
 
-	it("within-column reorder (columnOrder) survives reload correctly", () => {
-		// User reordered within column (all tasks get columnOrder)
-		// Then cross-column moved a new task in (has moveOrderMap in session)
+	it("with fix: cross-column moved task gets columnOrder — position stable on reload", () => {
+		// After the fix, cross-column move with dropPosition=top assigns columnOrder.
+		// NEW gets columnOrder 0, B→1, A→2, C→3
 		const tasks = [
-			makeTask({ id: "B", columnOrder: 0, createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "A", columnOrder: 1, createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "C", columnOrder: 2, createdAt: "2025-01-03T00:00:00Z" }),
-			// NEW was cross-column moved in this session
-			makeTask({ id: "NEW", movedAt: "2026-01-01T00:00:00Z", createdAt: "2025-06-01T00:00:00Z" }),
+			makeTask({ id: "B", columnOrder: 1, createdAt: "2025-01-02T00:00:00Z" }),
+			makeTask({ id: "A", columnOrder: 2, createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "C", columnOrder: 3, createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "NEW", columnOrder: 0, movedAt: "2026-01-01T00:00:00Z", createdAt: "2025-06-01T00:00:00Z" }),
 		];
 
-		// In-session (top mode): NEW at top via moveOrderMap, then B, A, C by columnOrder
+		// In-session (top mode): NEW at top via moveOrderMap
 		const moveOrder = new Map([["NEW", 1]]);
 		const inSession = sortTasksForColumn(tasks, "top", moveOrder);
 		expect(ids(inSession)).toEqual(["NEW", "B", "A", "C"]);
 
-		// After reload: no moveOrderMap
+		// After reload: no moveOrderMap, but columnOrder is set
 		const afterReload = sortTasksForColumn(tasks, "top", emptyMap);
-		// B(col 0), A(col 1), C(col 2) first — then NEW(no col, has movedAt)
-		expect(ids(afterReload)).toEqual(["B", "A", "C", "NEW"]);
+		// NEW(col 0), B(col 1), A(col 2), C(col 3)
+		expect(ids(afterReload)).toEqual(["NEW", "B", "A", "C"]);
 
-		// NEW moved from position 0 to position 3 after reload!
-		// This is the core persistence gap.
+		// Position is stable!
 	});
 });

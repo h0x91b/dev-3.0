@@ -74,7 +74,7 @@ vi.mock("../updater", () => ({
 }));
 
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(() => ({ updateChannel: "stable" })),
+	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
 	saveSettings: vi.fn(),
 }));
 
@@ -188,6 +188,7 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadProjects).mockReset();
 		vi.mocked(data.loadTasks).mockReset();
 		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 	});
 
 	it("moves in-progress task to user-questions", async () => {
@@ -202,7 +203,7 @@ describe("handleBellAutoStatus", () => {
 
 		await handleBellAutoStatus("task-1");
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" }, { dropPosition: "top" });
 		expect(push).toHaveBeenCalledWith("taskUpdated", {
 			projectId: "proj-1",
 			task: expect.objectContaining({ status: "user-questions" }),
@@ -977,7 +978,10 @@ describe("handlers.fetchBranches", () => {
 // ================================================================
 
 describe("handlers.moveTask", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+	});
 
 	it("todo → in-progress: creates worktree + PTY", async () => {
 		const project = makeProject();
@@ -1081,7 +1085,7 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("review-by-user");
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "review-by-user" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "review-by-user" }, { dropPosition: "top" });
 	});
 
 	it("should NOT throw when worktree directory is missing (completed)", async () => {
@@ -1155,7 +1159,7 @@ describe("handlers.moveTask", () => {
 			status: "completed",
 			worktreePath: null,
 			branchName: null,
-		});
+		}, { dropPosition: "top" });
 	});
 
 	it("todo → completed (without worktree): just updates status", async () => {

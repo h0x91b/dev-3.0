@@ -357,64 +357,78 @@ describe("reorderTasksInColumn — mixed tasks with/without columnOrder", () => 
 // ============================================================
 
 describe("updateTask + reorder — cross-column then within-column", () => {
-	it("cross-column move clears columnOrder and sets movedAt", async () => {
+	it("cross-column move with dropPosition=top assigns columnOrder 0", async () => {
 		const tasks = [
 			makeTask({ id: "A", seq: 1, status: "todo", createdAt: "2025-01-01T00:00:00Z", columnOrder: 2 }),
 		];
 		seedTasks(tasks);
 
-		const updated = await updateTask(testProject, "A", { status: "in-progress" });
+		const updated = await updateTask(testProject, "A", { status: "in-progress" }, { dropPosition: "top" });
 
-		expect(updated.columnOrder).toBeUndefined();
+		// Only task in target column → columnOrder 0
+		expect(updated.columnOrder).toBe(0);
 		expect(updated.movedAt).toBeDefined();
 	});
 
-	it("reorder after cross-column move works correctly", async () => {
+	it("cross-column move with dropPosition assigns columnOrder, subsequent reorder works", async () => {
 		const tasks = [
 			makeTask({ id: "A", seq: 1, status: "in-progress", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
 			makeTask({ id: "B", seq: 2, status: "in-progress", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "todo", createdAt: "2025-01-03T00:00:00Z" }),
 		];
 		seedTasks(tasks);
 
-		// Move C from todo to in-progress (simulating cross-column drag)
-		const cTask = makeTask({ id: "C", seq: 3, status: "todo", createdAt: "2025-01-03T00:00:00Z" });
-		const allTasks = [...tasks, cTask];
-		seedTasks(allTasks);
+		// Move C from todo to in-progress with dropPosition=top
+		const updated = await updateTask(testProject, "C", { status: "in-progress" }, { dropPosition: "top" });
+		expect(updated.columnOrder).toBe(0);
 
-		const updated = await updateTask(testProject, "C", { status: "in-progress" });
-		expect(updated.columnOrder).toBeUndefined();
-		expect(updated.movedAt).toBeDefined();
+		// Now reorder B to position 0 within in-progress
+		const result = await reorderTasksInColumn(testProject, "B", 0);
 
-		// Now reorder C to position 0 within in-progress
-		const result = await reorderTasksInColumn(testProject, "C", 0);
-
-		expect(result.map((t) => t.id)).toEqual(["C", "A", "B"]);
+		expect(result.map((t) => t.id)).toEqual(["B", "C", "A"]);
 		expect(result.every((t) => t.columnOrder !== undefined)).toBe(true);
 	});
 
-	it("reorder after multiple cross-column moves stabilizes order", async () => {
+	it("multiple cross-column moves with dropPosition=top: latest at top", async () => {
 		const tasks = [
-			makeTask({ id: "A", seq: 1, status: "in-progress", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", seq: 2, status: "in-progress", createdAt: "2025-01-02T00:00:00Z" }),
+			makeTask({ id: "A", seq: 1, status: "in-progress", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
 			makeTask({ id: "C", seq: 3, status: "todo", createdAt: "2025-01-03T00:00:00Z" }),
 			makeTask({ id: "D", seq: 4, status: "todo", createdAt: "2025-01-04T00:00:00Z" }),
 		];
 		seedTasks(tasks);
 
-		// Move C and D into in-progress
-		await updateTask(testProject, "C", { status: "in-progress" });
-		await updateTask(testProject, "D", { status: "in-progress" });
+		// Move C into in-progress (top) → [C, A, B]
+		await updateTask(testProject, "C", { status: "in-progress" }, { dropPosition: "top" });
+		// Move D into in-progress (top) → [D, C, A, B]
+		await updateTask(testProject, "D", { status: "in-progress" }, { dropPosition: "top" });
 
-		// Reorder all within in-progress: D first, then C, A, B
-		await reorderTasksInColumn(testProject, "D", 0);
-		const result = await reorderTasksInColumn(testProject, "C", 1);
+		const loaded = await loadTasks(testProject);
+		const ipTasks = loaded
+			.filter((t) => t.status === "in-progress")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(ipTasks.map((t) => t.id)).toEqual(["D", "C", "A", "B"]);
+	});
 
-		// Verify the full in-progress column
-		const inProgress = result.filter((t) => t.status === "in-progress");
-		// After: D(0), then C inserted at 1 → [D, C, ...]
-		// Remaining A and B should follow
-		expect(inProgress[0].id).toBe("D");
-		expect(inProgress[1].id).toBe("C");
+	it("multiple cross-column moves with dropPosition=bottom: latest at bottom", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "todo", createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "D", seq: 4, status: "todo", createdAt: "2025-01-04T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		// Move C into in-progress (bottom) → [A, B, C]
+		await updateTask(testProject, "C", { status: "in-progress" }, { dropPosition: "bottom" });
+		// Move D into in-progress (bottom) → [A, B, C, D]
+		await updateTask(testProject, "D", { status: "in-progress" }, { dropPosition: "bottom" });
+
+		const loaded = await loadTasks(testProject);
+		const ipTasks = loaded
+			.filter((t) => t.status === "in-progress")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(ipTasks.map((t) => t.id)).toEqual(["A", "B", "C", "D"]);
 	});
 });
 
@@ -504,7 +518,54 @@ describe("backend sort order vs frontend sort order mismatch", () => {
 // ============================================================
 
 describe("updateTask — columnOrder lifecycle", () => {
-	it("moving task out and back into column clears its columnOrder", async () => {
+	it("moving task to new column with dropPosition=top assigns columnOrder 0", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "todo", createdAt: "2025-01-03T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		// Move C to in-progress with dropPosition=top
+		const updated = await updateTask(testProject, "C", { status: "in-progress" }, { dropPosition: "top" });
+
+		// C should be at position 0, A and B should be renumbered
+		expect(updated.columnOrder).toBe(0);
+		expect(updated.movedAt).toBeDefined();
+
+		const loaded = await loadTasks(testProject);
+		const ipTasks = loaded
+			.filter((t) => t.status === "in-progress")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(ipTasks.map((t) => t.id)).toEqual(["C", "A", "B"]);
+		expect(ipTasks[0].columnOrder).toBe(0);
+		expect(ipTasks[1].columnOrder).toBe(1);
+		expect(ipTasks[2].columnOrder).toBe(2);
+	});
+
+	it("moving task to new column with dropPosition=bottom assigns last columnOrder", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "todo", createdAt: "2025-01-03T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		// Move C to in-progress with dropPosition=bottom
+		const updated = await updateTask(testProject, "C", { status: "in-progress" }, { dropPosition: "bottom" });
+
+		// C should be at last position
+		expect(updated.columnOrder).toBe(2);
+		expect(updated.movedAt).toBeDefined();
+
+		const loaded = await loadTasks(testProject);
+		const ipTasks = loaded
+			.filter((t) => t.status === "in-progress")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(ipTasks.map((t) => t.id)).toEqual(["A", "B", "C"]);
+	});
+
+	it("moving task out and back with dropPosition=top puts it at top", async () => {
 		const tasks = [
 			makeTask({ id: "A", seq: 1, status: "todo", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
 			makeTask({ id: "B", seq: 2, status: "todo", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
@@ -513,25 +574,32 @@ describe("updateTask — columnOrder lifecycle", () => {
 		seedTasks(tasks);
 
 		// Move B to in-progress
-		await updateTask(testProject, "B", { status: "in-progress" });
+		await updateTask(testProject, "B", { status: "in-progress" }, { dropPosition: "top" });
 
-		// Move B back to todo
-		const updated = await updateTask(testProject, "B", { status: "todo" });
+		// Move B back to todo with dropPosition=top
+		const updated = await updateTask(testProject, "B", { status: "todo" }, { dropPosition: "top" });
 
-		// B should have movedAt set and columnOrder cleared
-		expect(updated.columnOrder).toBeUndefined();
+		// B should be at position 0 in todo
+		expect(updated.columnOrder).toBe(0);
 		expect(updated.movedAt).toBeDefined();
 
-		// Load and check: A and C still have columnOrder, B does not
 		const loaded = await loadTasks(testProject);
-		const todoTasks = loaded.filter((t) => t.status === "todo");
-		const aTask = todoTasks.find((t) => t.id === "A")!;
-		const bTask = todoTasks.find((t) => t.id === "B")!;
-		const cTask = todoTasks.find((t) => t.id === "C")!;
+		const todoTasks = loaded
+			.filter((t) => t.status === "todo")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(todoTasks.map((t) => t.id)).toEqual(["B", "A", "C"]);
+	});
 
-		expect(aTask.columnOrder).toBe(0);
-		expect(bTask.columnOrder).toBeUndefined();
-		expect(cTask.columnOrder).toBe(2);
+	it("without dropPosition, columnOrder is cleared (backward compat)", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "todo", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+		];
+		seedTasks(tasks);
+
+		const updated = await updateTask(testProject, "A", { status: "in-progress" });
+
+		expect(updated.columnOrder).toBeUndefined();
+		expect(updated.movedAt).toBeDefined();
 	});
 
 	it("updating non-status fields preserves columnOrder", async () => {
@@ -564,13 +632,13 @@ describe("updateTask — columnOrder lifecycle", () => {
 // ============================================================
 
 describe("columnOrder serialization — undefined handling", () => {
-	it("columnOrder: undefined is omitted from JSON (not stored as null)", async () => {
+	it("columnOrder: undefined is omitted from JSON when no dropPosition given", async () => {
 		const tasks = [
 			makeTask({ id: "A", seq: 1, status: "todo", columnOrder: 5, createdAt: "2025-01-01T00:00:00Z" }),
 		];
 		seedTasks(tasks);
 
-		// Move to different status → clears columnOrder
+		// Move to different status without dropPosition → clears columnOrder
 		await updateTask(testProject, "A", { status: "in-progress" });
 
 		const raw = mockFileStore[tasksFilePath()];
@@ -578,6 +646,20 @@ describe("columnOrder serialization — undefined handling", () => {
 
 		// The key should not be present (JSON.stringify omits undefined)
 		expect("columnOrder" in parsed[0]).toBe(false);
+	});
+
+	it("columnOrder is a number in JSON when dropPosition is given", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "todo", columnOrder: 5, createdAt: "2025-01-01T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		await updateTask(testProject, "A", { status: "in-progress" }, { dropPosition: "top" });
+
+		const raw = mockFileStore[tasksFilePath()];
+		const parsed = JSON.parse(raw);
+
+		expect(parsed[0].columnOrder).toBe(0);
 	});
 
 	it("loading task without columnOrder key gives undefined (not null)", async () => {
@@ -635,7 +717,7 @@ describe("full lifecycle — order persistence through status transitions", () =
 		expect(sorted.map((t) => t.id)).toEqual([t3.id, t1.id, t2.id]);
 	});
 
-	it("move out + move back loses column position (by design)", async () => {
+	it("move out + move back with dropPosition=top puts task at top", async () => {
 		const task1 = await addTask(testProject, "Task 1");
 		const task2 = await addTask(testProject, "Task 2");
 		const task3 = await addTask(testProject, "Task 3");
@@ -643,23 +725,21 @@ describe("full lifecycle — order persistence through status transitions", () =
 		// Reorder: T3 to front → [T3, T1, T2]
 		await reorderTasksInColumn(testProject, task3.id, 0);
 
-		// Move T3 to in-progress → clears its columnOrder
-		await updateTask(testProject, task3.id, { status: "in-progress" });
+		// Move T3 to in-progress
+		await updateTask(testProject, task3.id, { status: "in-progress" }, { dropPosition: "top" });
 
-		// Move T3 back to todo
-		await updateTask(testProject, task3.id, { status: "todo" });
+		// Move T3 back to todo with dropPosition=top → should be at top
+		await updateTask(testProject, task3.id, { status: "todo" }, { dropPosition: "top" });
 
-		// Now T3 has no columnOrder but has movedAt
-		// T1 and T2 still have columnOrder from the reorder
 		const loaded = await loadTasks(testProject);
-		const todoTasks = loaded.filter((t) => t.status === "todo");
-		const t3Loaded = todoTasks.find((t) => t.id === task3.id)!;
-		const t1Loaded = todoTasks.find((t) => t.id === task1.id)!;
+		const todoTasks = loaded
+			.filter((t) => t.status === "todo")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
 
-		expect(t1Loaded.columnOrder).toBeDefined();
-		expect(t3Loaded.columnOrder).toBeUndefined();
-		expect(t3Loaded.movedAt).toBeDefined();
-		void task2; // used indirectly via loadTasks
+		// T3 should be back at top
+		expect(todoTasks.map((t) => t.id)).toEqual([task3.id, task1.id, task2.id]);
+		// All have columnOrder
+		expect(todoTasks.every((t) => t.columnOrder !== undefined)).toBe(true);
 	});
 
 	it("columnOrder gap after task removal — reorder still works", async () => {

@@ -5,6 +5,7 @@ import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
 import { isActive, launchTaskPty, runCleanupScript, getPushMessage } from "./rpc-handlers";
+import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
@@ -356,6 +357,8 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const oldStatus = task.status;
+		const settings = await loadSettings();
+		const dropOpts = { dropPosition: settings.taskDropPosition } as const;
 
 		// inactive → active: create worktree + PTY
 		if (!isActive(oldStatus) && isActive(newStatus)) {
@@ -368,7 +371,7 @@ const handlers: Record<string, Handler> = {
 				status: newStatus,
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
-			});
+			}, dropOpts);
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			return updated;
 		}
@@ -383,13 +386,13 @@ const handlers: Record<string, Handler> = {
 				status: newStatus,
 				worktreePath: null,
 				branchName: null,
-			});
+			}, dropOpts);
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			return updated;
 		}
 
 		// active → active or status-only change
-		const updated = await data.updateTask(project, task.id, { status: newStatus });
+		const updated = await data.updateTask(project, task.id, { status: newStatus }, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
 	},

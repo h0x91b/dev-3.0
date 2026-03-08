@@ -206,7 +206,8 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 			if (task.status !== "in-progress") return;
 
 			log.info("Bell auto-transition: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
-			const updated = await data.updateTask(project, task.id, { status: "user-questions" });
+			const bellSettings = await loadSettings();
+			const updated = await data.updateTask(project, task.id, { status: "user-questions" }, { dropPosition: bellSettings.taskDropPosition });
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 			return;
 		}
@@ -642,6 +643,8 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 		const oldStatus = task.status;
 		const newStatus = params.newStatus;
+		const settings = await loadSettings();
+		const dropOpts = { dropPosition: settings.taskDropPosition } as const;
 
 		log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
 
@@ -658,7 +661,7 @@ export const handlers = {
 				status: newStatus,
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
-			});
+			}, dropOpts);
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("← moveTask done (worktree created)", { taskId: task.id });
 			return updated;
@@ -709,7 +712,7 @@ export const handlers = {
 				status: newStatus,
 				worktreePath: null,
 				branchName: null,
-			});
+			}, dropOpts);
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("← moveTask done (worktree destroyed)", { taskId: task.id });
 			return updated;
@@ -718,7 +721,7 @@ export const handlers = {
 		// active → active or todo → todo/completed/cancelled (no worktree changes)
 		const updated = await data.updateTask(project, task.id, {
 			status: newStatus,
-		});
+		}, dropOpts);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 		log.info("← moveTask done (status only)", { taskId: task.id });
 		return updated;

@@ -267,6 +267,7 @@ export async function updateTask(
 	project: Project,
 	taskId: string,
 	updates: Partial<Task>,
+	options?: { dropPosition?: "top" | "bottom" },
 ): Promise<Task> {
 	log.info("Updating task", { taskId, updates });
 	const tasks = await loadTasks(project);
@@ -274,8 +275,43 @@ export async function updateTask(
 	if (idx === -1) throw new Error(`Task not found: ${taskId}`);
 	const now = new Date().toISOString();
 	const statusChanged = updates.status && updates.status !== tasks[idx].status;
-	const movedAtUpdate = statusChanged ? { movedAt: now, columnOrder: undefined } : {};
-	tasks[idx] = { ...tasks[idx], ...updates, ...movedAtUpdate, updatedAt: now };
+
+	if (statusChanged) {
+		const newStatus = updates.status!;
+		const dropPosition = options?.dropPosition;
+
+		// Apply updates + movedAt first (columnOrder will be set below if dropPosition given)
+		tasks[idx] = { ...tasks[idx], ...updates, movedAt: now, columnOrder: undefined, updatedAt: now };
+
+		if (dropPosition) {
+			// Get all tasks already in the target column (excluding the moved task)
+			const columnTasks = tasks
+				.filter((t) => t.status === newStatus && t.id !== taskId)
+				.sort((a, b) => {
+					if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
+						return a.columnOrder - b.columnOrder;
+					}
+					if (a.columnOrder !== undefined) return -1;
+					if (b.columnOrder !== undefined) return 1;
+					return a.createdAt < b.createdAt ? -1 : 1;
+				});
+
+			// Insert at top or bottom
+			if (dropPosition === "top") {
+				columnTasks.unshift(tasks[idx]);
+			} else {
+				columnTasks.push(tasks[idx]);
+			}
+
+			// Assign sequential columnOrder to all tasks in the column
+			for (let i = 0; i < columnTasks.length; i++) {
+				columnTasks[i].columnOrder = i;
+			}
+		}
+	} else {
+		tasks[idx] = { ...tasks[idx], ...updates, updatedAt: now };
+	}
+
 	await saveTasks(project, tasks);
 	return tasks[idx];
 }

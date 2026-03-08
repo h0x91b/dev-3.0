@@ -51,6 +51,11 @@ vi.mock("../socket-backpressure", () => ({
 	pendingWrites: new Map(),
 }));
 
+vi.mock("../settings", () => ({
+	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
+	saveSettings: vi.fn(),
+}));
+
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -794,7 +799,7 @@ describe("task.move", () => {
 			}),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-user" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-user" }, { dropPosition: "top" });
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
 	});
@@ -834,7 +839,7 @@ describe("task.move", () => {
 			status: "in-progress",
 			worktreePath: "/tmp/new-wt",
 			branchName: "dev3/task-new",
-		});
+		}, { dropPosition: "top" });
 	});
 
 	it("reopen (completed → in-progress): launches with empty description", async () => {
@@ -920,7 +925,7 @@ describe("task.move", () => {
 			status: "completed",
 			worktreePath: null,
 			branchName: null,
-		});
+		}, { dropPosition: "top" });
 	});
 
 	it("active → cancelled: same cleanup flow", async () => {
