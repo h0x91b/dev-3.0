@@ -4,6 +4,14 @@ This file provides guidance to AI coding agents when working with code in this r
 
 > **Note:** `CLAUDE.md` is a symbolic link to this file (`AGENTS.md`). This is intentional — it ensures all agents (Claude Code, Cursor, Codex, etc.) read the same instructions regardless of which filename convention they follow. If you see both files changed in a diff, that's expected.
 
+## What is this
+
+A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal-based tools across tasks and projects. Built with **Electrobun** (not Electron), React 18, Tailwind CSS, and Vite. Runtime is Bun. Currently **macOS only** (Linux and Windows support is planned).
+
+Key idea: each project is a git repo, each task gets its own **git worktree** + **terminal** running inside **tmux** with a preconfigured command (e.g., `claude`).
+
+**Full product concept, design details, and implementation status tracker:** see [`concept.md`](concept.md).
+
 ## Language policy
 
 **All code-related content MUST be in English — no exceptions.**
@@ -18,35 +26,11 @@ This applies to:
 
 The user may communicate with agents in Russian, but everything written into the codebase or git history must be in English only.
 
-## Multi-agent workflow
+## Git
 
-Multiple AI agents may work on this project in parallel. Each agent MUST:
+### Worktree
 
-- **Commit immediately after making changes — in English only.** Do not wait for the user to ask — commit as soon as a logical unit of work is done. Commit messages must be in English (see Language policy above). Do NOT `git push` automatically — let the user decide when to push.
-- **Only commit its own changes.** Never stage or commit files modified by another agent.
-- **Always commit `.claude/` directory changes.** The `.claude/` directory (e.g., `settings.local.json`) is modified automatically during agent sessions via UI interactions. These changes are part of your session — always include them in your commits.
-- **Ignore unrelated changes.** If `git status` shows modifications you didn't make (outside of `.claude/`), leave them alone. You may inform the user: "I see other uncommitted changes, but they aren't mine."
-- **Never revert or discard other agents' work.** Do not run `git checkout`, `git restore`, or `git clean` on files you didn't touch. This rule has no exceptions.
-
-## GitHub CLI (`gh`)
-
-The repo is owned by the **`h0x91b`** personal account. The developer machine has two `gh` accounts configured (`h0x91b` and `h0x91b-wix`). Before running any `gh` commands that access this repo, **switch to the correct account** if it is configured:
-
-```bash
-unset GH_TOKEN && gh auth switch --user h0x91b 2>/dev/null || true
-```
-
-This is a no-op for collaborators who don't have the `h0x91b` account — `gh` will fall back to whatever account they have configured. Always prefix `gh` calls with `unset GH_TOKEN &&` to avoid token conflicts (see global CLAUDE.md).
-
-## Git worktree
-
-Agents in this project typically run inside a **git worktree**, not the main working tree. The main project lives at:
-
-```
-/Users/arsenyp/Desktop/src-shared/dev-3.0
-```
-
-If you are in a worktree, your working directory will be different (e.g., a temp path). You can always check with `git worktree list`. When you need to reference the original project (e.g., to read a secret, copy a config, or inspect the main branch state), use the path above. Never write to the main working tree from a worktree — only read.
+Agents in this project typically run inside a **git worktree**, not the main working tree. Find the main project path with `git worktree list` (the first entry is the main working tree). When you need to reference the original project (e.g., to read a secret, copy a config, or inspect the main branch state), use that path. Never write to the main working tree from a worktree — only read.
 
 ### Branch naming
 
@@ -58,6 +42,21 @@ Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`
 - Derive the slug from the task description/title — 3-5 words max.
 - If the branch already has a meaningful name (doesn't match `dev3/task-*`), skip renaming.
 - If the branch was already pushed to the remote, also update the remote: `git push origin :<old-branch> && git push -u origin <new-branch>`.
+
+### Committing
+
+- **Commit immediately after making changes — in English only.** Do not wait for the user to ask — commit as soon as a logical unit of work is done. Do NOT `git push` automatically — let the user decide when to push.
+- **Always commit `.claude/` directory changes.** The `.claude/` directory (e.g., `settings.local.json`) is modified automatically during agent sessions via UI interactions. These changes are part of your session — always include them in your commits.
+
+### GitHub CLI (`gh`)
+
+The repo is owned by the **`h0x91b`** personal account. The developer machine has two `gh` accounts configured (`h0x91b` and `h0x91b-wix`). Before running any `gh` commands that access this repo, **switch to the correct account** if it is configured:
+
+```bash
+unset GH_TOKEN && gh auth switch --user h0x91b 2>/dev/null || true
+```
+
+This is a no-op for collaborators who don't have the `h0x91b` account — `gh` will fall back to whatever account they have configured. Always prefix `gh` calls with `unset GH_TOKEN &&` to avoid token conflicts (see global CLAUDE.md).
 
 ## Changelog policy
 
@@ -101,26 +100,6 @@ Non-obvious architectural decisions, hacks, and workarounds are documented in `d
 - **Keep it short.** Each section should be 2-4 sentences max. This is a quick reference, not a blog post. A good decision record fits on one screen.
 - Link to relevant code paths (file + function names) so readers can find the implementation.
 
-## What is this
-
-A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal-based tools across tasks and projects. Built with **Electrobun** (not Electron), React 18, Tailwind CSS, and Vite. Runtime is Bun. Cross-platform (macOS, Linux, Windows).
-
-Key idea: each project is a git repo, each task gets its own **git worktree** + **terminal** running inside **tmux** with a preconfigured command (e.g., `claude`).
-
-**Full product concept, design details, and implementation status tracker:** see [`concept.md`](concept.md).
-
-## Project scripts
-
-Each project has three lifecycle scripts, configurable in Project Settings (`src/mainview/components/ProjectSettings.tsx`). They are stored in `projects.json` as fields on the `Project` type (`src/shared/types.ts`).
-
-| Field | When it runs |
-|---|---|
-| `setupScript` | After a new worktree is created for a task |
-| `devScript` | When starting the dev server for the project (not yet wired up — reserved for future use) |
-| `cleanupScript` | When a task is moved to `cancelled` status (and `archived` once that status is added) |
-
-All three are free-form shell scripts. They are saved via the `updateProjectSettings` RPC handler in `src/bun/rpc-handlers.ts`.
-
 ## Commands
 
 ```bash
@@ -145,6 +124,21 @@ Two-process model:
 
 - **Main process** (`src/bun/index.ts`): Runs in Bun via Electrobun APIs (`BrowserWindow`, `Updater`, `Utils`). Creates the app window and handles lifecycle.
 - **Renderer process** (`src/mainview/`): React app bundled by Vite. Entry point is `main.tsx`, root component is `App.tsx`.
+
+### RPC protocol
+
+The renderer and main process communicate via **Electrobun's built-in RPC** (IPC bridge). The schema is defined in `src/shared/types.ts` as `AppRPCSchema` with two channels: `bun` (main process) and `webview` (renderer).
+
+- **Request/response:** Components call `api.request.METHOD(params)` (returns a Promise, 2-minute timeout). Handlers are registered in `src/bun/rpc-handlers.ts`.
+- **Push messages:** The main process sends unsolicited updates via `pushMessage?.("eventName", payload)`. The renderer dispatches these as `CustomEvent`s (e.g., `rpc:taskUpdated`), which components listen to with `window.addEventListener()`.
+
+### State management
+
+UI state uses React's **`useReducer`** pattern (no external state library). The store lives in `src/mainview/state.ts`:
+
+- `useAppState()` hook wraps `useReducer(reducer, initialState)` — state includes routing, project/task lists, and UI flags.
+- Components call `api.request.*` to fetch/mutate backend data, then `dispatch()` reducer actions to update local state.
+- Push messages from the main process trigger event listeners that dispatch actions to keep the UI in sync.
 
 ### HMR mechanism
 
@@ -171,6 +165,18 @@ macOS `.app` bundles inherit a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`). W
 The app auto-installs the **dev3 skill** into AI agent config directories (`~/.claude/skills/dev3/`, `~/.codex/skills/dev3/`, etc.) on every startup. The skill file is **generated from source** — the template lives in `src/bun/agent-skills.ts` (`SKILL_CONTENT` constant). **Never edit the generated `SKILL.md` files directly** — they are overwritten on each app launch. To change the skill content, edit `agent-skills.ts`.
 
 The skill uses the Claude Code `allowed-tools` frontmatter field to control which tools are auto-permitted when the skill is active. Omitting `allowed-tools` entirely means the skill imposes no tool restrictions (the user's normal permission settings apply). Adding `allowed-tools: Bash` would restrict the skill to only the Bash tool.
+
+## Project scripts
+
+Each project has three lifecycle scripts, configurable in Project Settings (`src/mainview/components/ProjectSettings.tsx`). They are stored in `projects.json` as fields on the `Project` type (`src/shared/types.ts`).
+
+| Field | When it runs |
+|---|---|
+| `setupScript` | After a new worktree is created for a task |
+| `devScript` | When starting the dev server for the project (not yet wired up — reserved for future use) |
+| `cleanupScript` | When a task is moved to `cancelled` status (and `archived` once that status is added) |
+
+All three are free-form shell scripts. They are saved via the `updateProjectSettings` RPC handler in `src/bun/rpc-handlers.ts`.
 
 ## Styling & design tokens
 
@@ -214,22 +220,6 @@ The app bundles **JetBrainsMono Nerd Font Mono** (`src/mainview/assets/fonts/`),
 - For codepoints U+0000–U+FFFF, classic `"\uF188"` works fine.
 - Browse glyphs at [nerdfonts.com/cheat-sheet](https://www.nerdfonts.com/cheat-sheet). Use the hex codepoint from there directly.
 - See `GlobalHeader.tsx` (bug icon `\uf188`) and `TaskInfoPanel.tsx` (file-tree icon `\u{F0645}`) for working examples.
-
-## Documentation
-
-Local documentation for key dependencies lives in `vendor-docs/`:
-
-| Directory | What's inside | How to use |
-|---|---|---|
-| `vendor-docs/electrobun/` | Local markdown docs (APIs, guides) | Read files directly |
-| `vendor-docs/ghostty-web/` | Local markdown docs (API, guides) | Read files directly |
-| `vendor-docs/bun/` | Pointer to Bun's `llms.txt` | Fetch `https://bun.com/docs/llms-full.txt` for full docs in one request, or see `vendor-docs/bun/README.md` for all links |
-
-**Before writing code that touches a dependency, check `vendor-docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
-
-## Landing page (GitHub Pages)
-
-The `docs/` directory hosts the **public landing page** served via GitHub Pages at `https://h0x91b.github.io/dev-3.0/`. Source: `docs/index.html`. Screenshots live in `docs/screenshots/`.
 
 ## Internationalization (i18n)
 
@@ -314,7 +304,7 @@ Excluded from coverage (bootstrap/wrappers that only make sense in e2e): `src/bu
 
 **Unit tests (mandatory):** state reducer actions + edge cases, all pure functions/utils/parsers, every RPC handler (happy path + 2-3 error cases), CLI commands (parsing + validation + output), data layer CRUD + corrupt data handling, git operations with mocked spawn, i18n interpolation + pluralization for all locales.
 
-**Component tests (mandatory):** KanbanBoard (drag-drop status transitions), TaskCard (click, context menu, drag), CreateTaskModal (validation, submit), TaskInfoPanel (fields, notes editing, labels), Dashboard (add/remove project), GlobalSettings (save, validation). Always use `userEvent` (not `fireEvent`). Test behavior, not implementation.
+**Component tests (mandatory):** All major interactive components — board views, task cards, modals, settings panels. Always use `userEvent` (not `fireEvent`). Test behavior, not implementation.
 
 **E2E tests (CLI-based):** Full lifecycle through CLI + Unix socket against a real app process with tmpdir. Scenarios: task lifecycle (create → move statuses → complete), project CRUD, worktree creation + cleanup, notes CRUD, CLI context auto-detection, concurrent writes (no data corruption).
 
@@ -383,3 +373,19 @@ render(
 - `vite.config.ts` — Vite config (root: `src/mainview`, output: `dist/`)
 - `tailwind.config.js` — Tailwind scans `src/mainview/**/*.{html,js,ts,jsx,tsx}`
 - `tsconfig.json` — Strict mode, ES2020 target, bundler module resolution
+
+## Documentation
+
+Local documentation for key dependencies lives in `vendor-docs/`:
+
+| Directory | What's inside | How to use |
+|---|---|---|
+| `vendor-docs/electrobun/` | Local markdown docs (APIs, guides) | Read files directly |
+| `vendor-docs/ghostty-web/` | Local markdown docs (API, guides) | Read files directly |
+| `vendor-docs/bun/` | Pointer to Bun's `llms.txt` | Fetch `https://bun.com/docs/llms-full.txt` for full docs in one request, or see `vendor-docs/bun/README.md` for all links |
+
+**Before writing code that touches a dependency, check `vendor-docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
+
+## Landing page (GitHub Pages)
+
+The `docs/` directory hosts the **public landing page** served via GitHub Pages at `https://h0x91b.github.io/dev-3.0/`. Source: `docs/index.html`. Screenshots live in `docs/screenshots/`.
