@@ -110,6 +110,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		// Optimistic update: move card to target column immediately and mark as moving
 		const optimisticTask = { ...task, status: targetStatus };
 		dispatch({ type: "updateTask", task: optimisticTask });
+		if (targetStatus === "completed" || targetStatus === "cancelled") {
+			dispatch({ type: "clearBell", taskId: task.id });
+		}
 		recordMove(task.id);
 		setMovingTaskIds((prev) => new Set(prev).add(task.id));
 

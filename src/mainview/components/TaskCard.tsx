@@ -153,6 +153,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				newStatus,
 			});
 			dispatch({ type: "updateTask", task: updated });
+			if (newStatus === "completed" || newStatus === "cancelled") {
+				dispatch({ type: "clearBell", taskId: task.id });
+			}
 			onTaskMoved(task.id);
 			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 		} catch (err) {
@@ -165,6 +168,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					force: true,
 				});
 				dispatch({ type: "updateTask", task: updated });
+				if (newStatus === "completed" || newStatus === "cancelled") {
+					dispatch({ type: "clearBell", taskId: task.id });
+				}
 				onTaskMoved(task.id);
 				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 			} catch (retryErr) {

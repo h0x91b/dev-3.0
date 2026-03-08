@@ -136,6 +136,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		// completed/cancelled: navigate immediately, cleanup in background
 		if (newStatus === "completed" || newStatus === "cancelled") {
 			dispatch({ type: "updateTask", task: { ...task, status: newStatus, worktreePath: null, branchName: null, movedAt: new Date().toISOString(), columnOrder: undefined } });
+			dispatch({ type: "clearBell", taskId: task.id });
 			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 			navigate({ screen: "project", projectId: project.id });
 			api.request.moveTask({
@@ -443,6 +444,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 				if (shouldComplete) {
 					const fromStatus = task.status;
 					dispatch({ type: "updateTask", task: { ...task, status: "completed", worktreePath: null, branchName: null, movedAt: new Date().toISOString(), columnOrder: undefined } });
+					dispatch({ type: "clearBell", taskId: task.id });
 					trackEvent("task_moved", { from_status: fromStatus, to_status: "completed" });
 					navigate({ screen: "project", projectId: project.id });
 					api.request.moveTask({

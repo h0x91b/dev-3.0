@@ -99,6 +99,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		if (task) {
 			dispatch({ type: "updateTask", task: { ...task, status: newStatus, worktreePath: null, branchName: null, movedAt: new Date().toISOString(), columnOrder: undefined } });
 		}
+		dispatch({ type: "clearBell", taskId });
 		trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 		navigate({ screen: "project", projectId });
 		api.request.moveTask({ taskId, projectId, newStatus, force: true }).catch((err) => {
