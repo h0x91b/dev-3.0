@@ -1,0 +1,1 @@
+Add yazi file browser integration. A new "Files" button in the task header opens yazi in a tmux vertical split (30% width) for navigating the worktree. The button toggles — clicking again kills the yazi pane. Yazi is added as an optional system requirement that doesn't block the app if missing.

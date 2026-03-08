@@ -66,6 +66,7 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): s
 const SYSTEM_REQUIREMENTS = [
 	{ id: "git", name: "Git", checkCommand: "git", installHint: "requirements.installGit", installCommand: "xcode-select --install", brewInstallable: false },
 	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux", brewInstallable: true },
+	{ id: "yazi", name: "yazi", checkCommand: "yazi", installHint: "requirements.installYazi", installCommand: "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font", brewInstallable: true, optional: true },
 ];
 
 // Common paths where Homebrew installs binaries (Apple Silicon + Intel)
@@ -81,6 +82,8 @@ let pushMessage: ((name: string, payload: any) => void) | null = null;
 
 // Track dev server tmux pane IDs per task
 const devPaneIds = new Map<string, string>();
+// Track file browser (yazi) tmux pane IDs per task
+const fileBrowserPaneIds = new Map<string, string>();
 
 // Track git operation tmux pane IDs per task
 const gitOpPaneIds = new Map<string, string>();
@@ -935,6 +938,79 @@ export const handlers = {
 		}
 	},
 
+	async openFileBrowser(params: { taskId: string; projectId: string }): Promise<void> {
+		log.info("→ openFileBrowser", params);
+		try {
+			const project = await data.getProject(params.projectId);
+			const task = await data.getTask(project, params.taskId);
+
+			if (!task.worktreePath) throw new Error("Task has no worktree");
+
+			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+			const socket = task.tmuxSocket ?? null;
+
+			// Toggle: if yazi pane already exists, kill it
+			const existingPane = fileBrowserPaneIds.get(task.id);
+			if (existingPane) {
+				const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
+				await kill.exited;
+				fileBrowserPaneIds.delete(task.id);
+				log.info("← openFileBrowser: toggled off (killed pane)", { taskId: task.id.slice(0, 8), paneId: existingPane });
+				return;
+			}
+
+			// Check if any existing pane is running yazi (handles app restart losing map)
+			const listProc = spawn(pty.tmuxArgs(socket,
+				"list-panes", "-t", tmuxSession,
+				"-F", "#{pane_id} #{pane_current_command}",
+			), { stdout: "pipe", stderr: "pipe" });
+			const listOutput = await new Response(listProc.stdout).text();
+			await listProc.exited;
+			for (const line of listOutput.trim().split("\n")) {
+				if (line.includes("yazi")) {
+					const paneId = line.split(" ")[0];
+					const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
+					await kill.exited;
+					log.info("← openFileBrowser: toggled off (found running yazi)", { taskId: task.id.slice(0, 8), paneId });
+					return;
+				}
+			}
+
+			// Open new vertical split with yazi
+			const proc = spawn(pty.tmuxArgs(socket,
+				"split-window", "-h",
+				"-t", tmuxSession,
+				"-c", task.worktreePath,
+				"-l", "30%",
+				"-P", "-F", "#{pane_id}",
+				"yazi",
+			), { stdout: "pipe", stderr: "pipe" });
+			const output = await new Response(proc.stdout).text();
+			const stderrOutput = await new Response(proc.stderr).text();
+			const exitCode = await proc.exited;
+
+			if (exitCode !== 0) {
+				log.error("openFileBrowser tmux failed", { taskId: task.id.slice(0, 8), exitCode, stderr: stderrOutput.trim() });
+				throw new Error(`tmux split-window failed: ${stderrOutput.trim() || "unknown error"}`);
+			}
+
+			const paneId = output.trim();
+			if (paneId) {
+				fileBrowserPaneIds.set(task.id, paneId);
+				log.info("← openFileBrowser done", { paneId });
+			} else {
+				log.info("← openFileBrowser done (no pane id captured)");
+			}
+		} catch (err) {
+			log.error("openFileBrowser FAILED", {
+				taskId: params.taskId.slice(0, 8),
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+			throw err;
+		}
+	},
+
 	async getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
 		log.info("→ getBranchStatus", params);
 		const project = await data.getProject(params.projectId);
@@ -1675,6 +1751,7 @@ export const handlers = {
 				installCommand: req.installCommand,
 				brewInstallable: req.brewInstallable,
 				customPathError,
+				...((req as any).optional ? { optional: true } : {}),
 			};
 		});
 

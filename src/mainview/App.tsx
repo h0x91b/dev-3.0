@@ -36,7 +36,7 @@ function App() {
 		try {
 			const results = await api.request.checkSystemRequirements();
 			setReqResults(results);
-			const allOk = results.every((r) => r.installed);
+			const allOk = results.every((r) => r.installed || r.optional);
 			setReqStatus(allOk ? "passed" : "failed");
 		} catch (err) {
 			console.error("Failed to check system requirements:", err);

@@ -1826,11 +1826,13 @@ describe("handlers.checkSystemRequirements", () => {
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") });
 
 		const results = await handlers.checkSystemRequirements();
-		expect(results).toHaveLength(2);
+		expect(results).toHaveLength(3);
 		expect(results[0].id).toBe("git");
 		expect(results[0].installed).toBe(true);
 		expect(results[1].id).toBe("tmux");
 		expect(results[1].installed).toBe(true);
+		expect(results[2].id).toBe("yazi");
+		expect(results[2].optional).toBe(true);
 	});
 
 	it("marks missing requirements when which fails and no fallback paths exist", async () => {

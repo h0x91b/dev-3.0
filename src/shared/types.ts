@@ -307,6 +307,7 @@ export interface RequirementCheckResult {
 	resolvedPath?: string; // full path to the binary (if found)
 	brewInstallable: boolean;
 	customPathError?: boolean; // true if custom path was set but file doesn't exist
+	optional?: boolean; // optional requirements don't block the app
 }
 
 // ---- CLI socket protocol ----
@@ -431,6 +432,10 @@ export type AppRPCSchema = {
 				response: string | null;
 			};
 			runDevServer: {
+				params: { taskId: string; projectId: string };
+				response: void;
+			};
+			openFileBrowser: {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};

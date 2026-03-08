@@ -891,6 +891,32 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</button>
 	);
 
+	// ---- File browser (yazi) ----
+	async function handleFileBrowser() {
+		if (!isTaskActive) return;
+		try {
+			await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
+		} catch (err) {
+			alert(t("infoPanel.fileBrowserFailed", { error: String(err) }));
+		}
+	}
+
+	const fileBrowserButton = (
+		<button
+			onClick={handleFileBrowser}
+			disabled={!isTaskActive}
+			className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+				!isTaskActive
+					? "text-fg-muted/50 cursor-not-allowed"
+					: "text-[#f59e0b] hover:text-[#fbbf24] hover:bg-[#f59e0b]/15 border border-[#f59e0b]/30"
+			}`}
+			title={t("header.fileBrowser")}
+		>
+			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}></span>
+			<span className="text-[0.6875rem] font-semibold">{t("header.fileBrowser")}</span>
+		</button>
+	);
+
 	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 
 	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom") => (e: React.MouseEvent) => {
@@ -990,6 +1016,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						{tmuxHintsInline}
 						{tmuxHintsPopover}
 						{devServerButton}
+						{fileBrowserButton}
 						<button
 							onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"

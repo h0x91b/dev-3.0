@@ -24,6 +24,7 @@ const en = {
 	"header.globalLabel": "Global",
 	"header.devServer": "Dev Server",
 	"header.devServerDisabled": "Configure dev script in Project Settings",
+	"header.fileBrowser": "Files",
 
 	// GlobalSettings
 	"settings.theme": "Theme",
@@ -280,6 +281,7 @@ const en = {
 	"infoPanel.mergeDisabledBehind": "Rebase first — branch is behind",
 	"infoPanel.statusLoading": "Loading branch status...",
 	"infoPanel.devServerFailed": "Failed to start dev server: {error}",
+	"infoPanel.fileBrowserFailed": "Failed to open file browser: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Refresh branch status",
 	"infoPanel.movedAt": "Moved",
@@ -316,6 +318,8 @@ const en = {
 	"requirements.copied": "Copied!",
 	"requirements.installGit": "Install via Xcode CLI tools:",
 	"requirements.installTmux": "Install via Homebrew:",
+	"requirements.installYazi": "Install via Homebrew (optional, for file browser):",
+	"requirements.optional": "optional",
 	"requirements.customPathHint": "Or specify the full path to the binary:",
 	"requirements.pathNotFound": "File not found at this path",
 	"requirements.setPath": "Set path",

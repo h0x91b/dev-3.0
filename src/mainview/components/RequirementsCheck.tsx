@@ -61,11 +61,18 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 							<div className="flex-1 min-w-0">
 								<div className="flex items-center gap-2">
 									<span className="font-medium text-fg">{req.name}</span>
+									{req.optional && (
+										<span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-fg-muted/10 text-fg-muted">
+											{t("requirements.optional")}
+										</span>
+									)}
 									<span
 										className={`text-xs px-1.5 py-0.5 rounded ${
 											req.installed
 												? "bg-green-400/15 text-green-400"
-												: "bg-danger/15 text-danger"
+												: req.optional
+													? "bg-yellow-400/15 text-yellow-400"
+													: "bg-danger/15 text-danger"
 										}`}
 									>
 										{req.installed

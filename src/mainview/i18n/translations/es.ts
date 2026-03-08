@@ -26,6 +26,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"header.globalLabel": "Global",
 	"header.devServer": "Servidor Dev",
 	"header.devServerDisabled": "Configure el script dev en la configuración del proyecto",
+	"header.fileBrowser": "Archivos",
 
 	// GlobalSettings
 	"settings.theme": "Tema",
@@ -283,6 +284,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"infoPanel.mergeDisabledBehind": "Primero haga rebase — la rama está atrás",
 	"infoPanel.statusLoading": "Cargando estado de la rama...",
 	"infoPanel.devServerFailed": "Error al iniciar el servidor de desarrollo: {error}",
+	"infoPanel.fileBrowserFailed": "Error al abrir el explorador de archivos: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Actualizar estado de la rama",
 	"infoPanel.movedAt": "Movido",
@@ -319,6 +321,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"requirements.copied": "Copiado!",
 	"requirements.installGit": "Instalar con Xcode CLI tools:",
 	"requirements.installTmux": "Instalar con Homebrew:",
+	"requirements.installYazi": "Instalar con Homebrew (opcional, para explorador de archivos):",
+	"requirements.optional": "opcional",
 	"requirements.customPathHint": "O especifique la ruta completa al binario:",
 	"requirements.pathNotFound": "Archivo no encontrado en esta ruta",
 	"requirements.setPath": "Establecer ruta",
