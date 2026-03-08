@@ -30,7 +30,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"header.devServerDisabled": "Настройте dev-скрипт в настройках проекта",
 	"header.fileBrowser": "Файлы",
 	"fileBrowser.notInstalledTitle": "yazi не установлен",
-	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Установите через Homebrew:",
+	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Выполните команду для установки:",
+	"fileBrowser.clickAgainHint": "После установки нажмите Files снова — всё заработает.",
 
 	// GlobalSettings
 	"settings.theme": "Тема",

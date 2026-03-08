@@ -28,7 +28,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"header.devServerDisabled": "Configure el script dev en la configuración del proyecto",
 	"header.fileBrowser": "Archivos",
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
-	"fileBrowser.notInstalledDesc": "El explorador de archivos requiere yazi. Instálalo con Homebrew:",
+	"fileBrowser.notInstalledDesc": "El explorador de archivos requiere yazi. Ejecuta el comando para instalarlo:",
+	"fileBrowser.clickAgainHint": "Después de la instalación, haz clic en Files de nuevo y funcionará.",
 
 	// GlobalSettings
 	"settings.theme": "Tema",

@@ -894,13 +894,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	// ---- File browser (yazi) ----
 	const [yaziInstallPopup, setYaziInstallPopup] = useState(false);
 	const [yaziCopied, setYaziCopied] = useState(false);
-	const yaziInstallCmd = "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick font-symbols-only-nerd-font chafa";
+	const [yaziInstallCmd, setYaziInstallCmd] = useState("");
 
 	async function handleFileBrowser() {
 		if (!isTaskActive) return;
 		try {
 			const result = await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
 			if (result && (result as any).notInstalled) {
+				setYaziInstallCmd((result as any).installCommand);
 				setYaziInstallPopup(true);
 				return;
 			}
@@ -909,10 +910,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		}
 	}
 
-	const fileBrowserRef = useRef<HTMLDivElement>(null);
-
 	const fileBrowserButton = (
-		<div ref={fileBrowserRef} className="relative flex-shrink-0">
+		<div className="relative flex-shrink-0">
 			<button
 				onClick={handleFileBrowser}
 				disabled={!isTaskActive}
@@ -957,6 +956,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							</button>
 						</div>
 						{yaziCopied && <p className="text-green-400 text-xs mb-3">{t("requirements.copied")}</p>}
+						<p className="text-fg-muted text-xs mb-3">{t("fileBrowser.clickAgainHint")}</p>
 						<div className="flex justify-end">
 							<button
 								onClick={() => setYaziInstallPopup(false)}

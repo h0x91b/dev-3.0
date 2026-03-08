@@ -26,7 +26,8 @@ const en = {
 	"header.devServerDisabled": "Configure dev script in Project Settings",
 	"header.fileBrowser": "Files",
 	"fileBrowser.notInstalledTitle": "yazi is not installed",
-	"fileBrowser.notInstalledDesc": "The file browser requires yazi. Install it with Homebrew:",
+	"fileBrowser.notInstalledDesc": "The file browser requires yazi. Run the command below to install it:",
+	"fileBrowser.clickAgainHint": "After installation, click Files again and it will work.",
 
 	// GlobalSettings
 	"settings.theme": "Theme",
