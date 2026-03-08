@@ -18,6 +18,10 @@ vi.mock("../cow-clone", () => ({
 	detectClonePaths: vi.fn(() => Promise.resolve([])),
 }));
 
+vi.mock("../file-lock", () => ({
+	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
+}));
+
 let mockFileStore: Record<string, string> = {};
 
 beforeEach(() => {

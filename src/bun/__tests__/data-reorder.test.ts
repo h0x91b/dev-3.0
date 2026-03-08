@@ -14,6 +14,10 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/dev3-test",
 }));
 
+vi.mock("../file-lock", () => ({
+	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
+}));
+
 let mockFileStore: Record<string, string> = {};
 
 beforeEach(() => {
