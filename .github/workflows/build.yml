@@ -8,9 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  install:
     runs-on: [self-hosted, macOS]
-
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +18,43 @@ jobs:
         with:
           bun-version: "1.3.10"
 
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
+
       - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
+
+      - name: Generate build files
+        run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
+
+  lint:
+    needs: install
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
 
       - name: Generate build files
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
@@ -28,8 +62,48 @@ jobs:
       - name: Type check
         run: bun run lint
 
+  test:
+    needs: install
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
+
+      - name: Generate build files
+        run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
+
       - name: Run tests
         run: bun run test
+
+  build-check:
+    needs: install
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ./node_modules
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
+
+      - name: Generate build files
+        run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
 
       - name: Build check
         run: bunx vite build && bun run build:cli

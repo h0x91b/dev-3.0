@@ -1,0 +1,1 @@
+Split the monolithic PR build workflow into parallel jobs (install, lint, test, build-check) with shared node_modules cache via actions/cache. The install job runs first and saves the cache; lint, test, and build-check run in parallel after it, restoring from cache.
