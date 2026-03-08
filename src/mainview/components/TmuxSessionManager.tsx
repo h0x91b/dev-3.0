@@ -26,11 +26,20 @@ function TmuxSessionManager() {
 		}
 	}, []);
 
-	// Poll every 30 seconds
+	// Poll every 30 seconds — use setTimeout chain (not setInterval) to
+	// prevent stampede on app wake/reconnect.
 	useEffect(() => {
-		fetchSessions();
-		const interval = setInterval(fetchSessions, 30_000);
-		return () => clearInterval(interval);
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		async function poll() {
+			await fetchSessions();
+			if (!cancelled) timer = setTimeout(poll, 30_000);
+		}
+		poll();
+		return () => {
+			cancelled = true;
+			if (timer) clearTimeout(timer);
+		};
 	}, [fetchSessions]);
 
 	// Refresh on popover open

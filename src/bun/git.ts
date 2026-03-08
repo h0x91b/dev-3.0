@@ -30,6 +30,14 @@ async function run(
 	return result;
 }
 
+// Validates that a string is a safe git ref (SHA, branch name, origin/xxx).
+// Rejects shell metacharacters to prevent injection when used in bash -c.
+const GIT_REF_RE = /^[a-zA-Z0-9_\/.@{}\-^~]+$/;
+function assertSafeRef(value: string, label: string): void {
+	if (!GIT_REF_RE.test(value)) {
+		throw new Error(`Unsafe git ref (${label}): ${value}`);
+	}
+}
 
 export async function isGitRepo(path: string): Promise<boolean> {
 	log.info("Checking if git repo", { path });
@@ -382,10 +390,8 @@ export async function isContentMergedInto(
 	// same files AFTER the squash merge (add/add conflicts). In that case,
 	// fall back to patch-id matching which handles post-merge divergence well.
 	//
-	// IMPORTANT: We use shell pipes (git log -p | git patch-id) to avoid
-	// reading the full patch output into JS memory. The old approach stored
-	// multi-MB git log -p output as JS strings, causing massive memory usage
-	// when called frequently (every 15s per task).
+	// IMPORTANT: We pipe git log -p directly into git patch-id via Bun
+	// subprocess piping to avoid reading multi-MB patch output into JS memory.
 	const mergeBaseResult = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
 	if (!mergeBaseResult.ok) return false;
 	const mergeBase = mergeBaseResult.stdout;
@@ -394,11 +400,15 @@ export async function isContentMergedInto(
 	const taskStatResult = await run(["git", "diff", "--shortstat", mergeBase, "HEAD"], worktreePath);
 	if (!taskStatResult.ok || !taskStatResult.stdout) return true; // no task changes
 
-	// Pipe git log -p directly into git patch-id via shell — no JS memory allocation
-	// for potentially huge patch outputs.
+	// Validate refs before use — mergeBase is a SHA from git merge-base,
+	// ref is origin/<baseBranch> from project config. Guard against injection
+	// for the one bash -c call below.
+	assertSafeRef(mergeBase, "mergeBase");
+	assertSafeRef(ref, "ref");
+
 	const [combinedPatchIdResult, taskPatchIdsResult, mainPatchIdsResult] = await Promise.all([
 		// Combined diff as a single patch-id (for squash merge detection).
-		// We need to wrap the diff in a fake commit header for git patch-id.
+		// We prepend a fake commit header so git patch-id can parse it.
 		run(
 			["bash", "-c", `{ echo "commit ${"0".repeat(40)}"; echo; git diff "${mergeBase}" HEAD; } | git patch-id --stable`],
 			worktreePath,

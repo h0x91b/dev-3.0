@@ -301,6 +301,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		// Reset merge dialog flag when task changes
 		mergeDialogShownRef.current = false;
 		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | null = null;
 
 		async function fetchStatus() {
 			try {
@@ -348,14 +349,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 			} catch (err) {
 				// Silently ignore — polling will retry
 			}
+			// Schedule next poll AFTER this one completes — prevents stampede
+			// on app wake/reconnect (setInterval fires all missed ticks at once).
+			if (!cancelled) {
+				timer = setTimeout(fetchStatus, 15_000);
+			}
 		}
 
 		fetchStatusRef.current = fetchStatus;
 		fetchStatus();
-		const interval = setInterval(fetchStatus, 15_000);
 		return () => {
 			cancelled = true;
-			clearInterval(interval);
+			if (timer) clearTimeout(timer);
 		};
 	}, [task.id, project.id, isTaskActive, task.worktreePath, compareRef]);
 

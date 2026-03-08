@@ -92,7 +92,10 @@ const gitOpPaneIds = new Map<string, string>();
 const mergeNotifiedTasks = new Set<string>();
 
 // Dedup in-flight getBranchStatus requests per task to prevent stampedes
-const branchStatusInFlight = new Map<string, Promise<any>>();
+const branchStatusInFlight = new Map<string, Promise<{
+	ahead: number; behind: number; canRebase: boolean;
+	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
+}>>();
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
@@ -522,6 +525,44 @@ export async function launchTaskPty(
 		});
 		throw err;
 	}
+}
+
+async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }) {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+
+	if (!task.worktreePath) {
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false };
+	}
+
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+
+	// Resolve live branch name — it may differ from stored after rename
+	const liveBranch = await git.getCurrentBranch(task.worktreePath);
+	const branchForPush = liveBranch ?? task.branchName ?? "";
+
+	// Auto-sync stored branchName if it drifted
+	if (liveBranch && liveBranch !== task.branchName) {
+		log.info("getBranchStatus: branch renamed, syncing stored name", { old: task.branchName, new: liveBranch });
+		await data.updateTask(project, task.id, { branchName: liveBranch });
+	}
+
+	log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
+	await git.fetchOrigin(project.path);
+	// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
+	const ref = params.compareRef || `origin/${baseBranch}`;
+	const [status, uncommitted, unpushed] = await Promise.all([
+		git.getBranchStatus(task.worktreePath, ref),
+		git.getUncommittedChanges(task.worktreePath),
+		git.getUnpushedCount(task.worktreePath, branchForPush),
+	]);
+	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, ref });
+	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
+	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
+
+	const result = { ...status, canRebase, ...uncommitted, unpushed, mergedByContent };
+	log.info("← getBranchStatus", result);
+	return result;
 }
 
 export const handlers = {
@@ -1151,51 +1192,13 @@ export const handlers = {
 			return existing;
 		}
 
-		const promise = this._getBranchStatusImpl(params);
+		const promise = getBranchStatusImpl(params);
 		branchStatusInFlight.set(dedupKey, promise);
 		try {
 			return await promise;
 		} finally {
 			branchStatusInFlight.delete(dedupKey);
 		}
-	},
-
-	async _getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }) {
-		const project = await data.getProject(params.projectId);
-		const task = await data.getTask(project, params.taskId);
-
-		if (!task.worktreePath) {
-			return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false };
-		}
-
-		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-
-		// Resolve live branch name — it may differ from stored after rename
-		const liveBranch = await git.getCurrentBranch(task.worktreePath);
-		const branchForPush = liveBranch ?? task.branchName ?? "";
-
-		// Auto-sync stored branchName if it drifted
-		if (liveBranch && liveBranch !== task.branchName) {
-			log.info("getBranchStatus: branch renamed, syncing stored name", { old: task.branchName, new: liveBranch });
-			await data.updateTask(project, task.id, { branchName: liveBranch });
-		}
-
-		log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
-		await git.fetchOrigin(project.path);
-		// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
-		const ref = params.compareRef || `origin/${baseBranch}`;
-		const [status, uncommitted, unpushed] = await Promise.all([
-			git.getBranchStatus(task.worktreePath, ref),
-			git.getUncommittedChanges(task.worktreePath),
-			git.getUnpushedCount(task.worktreePath, branchForPush),
-		]);
-		log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, ref });
-		const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
-		const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
-
-		const result = { ...status, canRebase, ...uncommitted, unpushed, mergedByContent };
-		log.info("← getBranchStatus", result);
-		return result;
 	},
 
 	async rebaseTask(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {
