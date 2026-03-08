@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { ChangelogEntry, CodingAgent, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
@@ -8,7 +9,7 @@ import * as git from "./git";
 import * as pty from "./pty-server";
 import * as agents from "./agents";
 import * as updater from "./updater";
-import { loadSettings, saveSettings } from "./settings";
+import { loadSettings, loadSettingsSync, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
@@ -233,7 +234,7 @@ export async function isTaskInProgress(taskId: string): Promise<boolean> {
 	return false;
 }
 
-const DEFAULT_CLEANUP_SCRIPT = 'say "task finished"';
+const DEFAULT_CLEANUP_SCRIPT = 'echo "Task finished"';
 
 export async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath) return;
@@ -272,6 +273,29 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 	await proc.exited;
 
 	log.info("Cleanup session finished", { session: sessionName });
+}
+
+export function playTaskCompleteSound(): void {
+	const settings = loadSettingsSync();
+	if (settings.playSoundOnTaskComplete === false) return;
+
+	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", "task-complete.mp3");
+	const devPath = join(import.meta.dir, "..", "assets", "sounds", "task-complete.mp3");
+	const soundPath = existsSync(prodPath) ? prodPath : devPath;
+
+	if (!existsSync(soundPath)) {
+		log.warn("Task complete sound file not found", { prodPath, devPath });
+		return;
+	}
+
+	// Fire and forget — don't block on sound playback
+	try {
+		spawn(["afplay", soundPath], {
+			env: { HOME: process.env.HOME || "/" },
+		});
+	} catch (err) {
+		log.warn("Failed to play task complete sound", { error: String(err) });
+	}
 }
 
 export async function launchTaskPty(
@@ -699,6 +723,8 @@ export const handlers = {
 						error: String(err),
 					});
 				}
+
+				playTaskCompleteSound();
 
 				try {
 					await git.removeWorktree(project, task);

@@ -75,6 +75,7 @@ vi.mock("../updater", () => ({
 
 vi.mock("../settings", () => ({
 	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
+	loadSettingsSync: vi.fn(() => ({ playSoundOnTaskComplete: false })),
 	saveSettings: vi.fn(),
 }));
 

@@ -30,6 +30,7 @@ export default {
 			"dist/assets": "views/mainview/assets",
 			"changelog.json": "changelog.json",
 			"dist/dev3": "cli/dev3",
+			"src/assets/sounds": "sounds",
 		},
 		linux: {
 			bundleCEF: false,

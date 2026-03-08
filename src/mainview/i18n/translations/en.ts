@@ -99,6 +99,8 @@ const en = {
 	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
 	"settings.keymapTmuxNative": "Native tmux",
 	"settings.keymapTmuxNativeDesc": "No shortcuts, use Ctrl+B",
+	"settings.taskCompleteSound": "Task Complete Sound",
+	"settings.taskCompleteSoundDesc": "Play a sound when a task is completed or cancelled",
 
 	// AddProjectModal
 	"addProject.title": "Add Project",

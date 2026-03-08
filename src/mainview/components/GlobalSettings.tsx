@@ -88,6 +88,12 @@ function GlobalSettings() {
 		api.request.saveGlobalSettings(updated);
 	}
 
+	function handleSoundToggle(enabled: boolean) {
+		const updated = { ...globalSettings, playSoundOnTaskComplete: enabled };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated);
+	}
+
 	function handleDefaultAgentChange(agentId: string) {
 		const agent = agents.find((a) => a.id === agentId);
 		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
@@ -327,6 +333,31 @@ function GlobalSettings() {
 								icon="^B %"
 							/>
 						</div>
+					</div>
+
+					{/* Task Complete Sound */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.taskCompleteSound")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.taskCompleteSoundDesc")}
+						</p>
+						<label className="inline-flex items-center gap-3 cursor-pointer select-none">
+							<div
+								role="switch"
+								aria-checked={globalSettings.playSoundOnTaskComplete !== false}
+								tabIndex={0}
+								className={`relative w-11 h-6 rounded-full transition-colors ${globalSettings.playSoundOnTaskComplete !== false ? "bg-accent" : "bg-raised border border-edge"}`}
+								onClick={() => handleSoundToggle(globalSettings.playSoundOnTaskComplete === false)}
+								onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSoundToggle(globalSettings.playSoundOnTaskComplete === false); } }}
+							>
+								<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.playSoundOnTaskComplete !== false ? "translate-x-5" : ""}`} />
+							</div>
+							<span className="text-fg text-sm">
+								{globalSettings.playSoundOnTaskComplete !== false ? "On" : "Off"}
+							</span>
+						</label>
 					</div>
 
 					{/* Update Channel */}

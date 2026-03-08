@@ -103,6 +103,8 @@ const ru: TranslationRecord & Record<string, string> = {
 	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
 	"settings.keymapTmuxNative": "Нативный tmux",
 	"settings.keymapTmuxNativeDesc": "Без шорткатов, используйте Ctrl+B",
+	"settings.taskCompleteSound": "Звук завершения задачи",
+	"settings.taskCompleteSoundDesc": "Воспроизводить звук при завершении или отмене задачи",
 
 	// AddProjectModal
 	"addProject.title": "Добавить проект",
