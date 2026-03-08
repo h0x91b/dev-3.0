@@ -402,7 +402,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"status.inProgress": "Agente trabajando",
 	"status.userQuestions": "Esperando tu respuesta",
 	"status.reviewByAi": "Revisión por IA (unimplemented)",
-	"status.reviewByUser": "Revisión por usuario",
+	"status.reviewByUser": "Revisión por ti",
 	"status.completed": "Completado",
 	"status.cancelled": "Cancelado",
 

@@ -32,9 +32,9 @@ export const ALL_STATUSES: TaskStatus[] = [
 	"in-progress",
 	"user-questions",
 	"review-by-user",
-	"review-by-ai",
 	"completed",
 	"cancelled",
+	"review-by-ai",
 ];
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -42,7 +42,7 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 	"in-progress": "Agent is Working",
 	"user-questions": "Waiting for You",
 	"review-by-ai": "Review by AI",
-	"review-by-user": "Review by User",
+	"review-by-user": "Review by You",
 	completed: "Completed",
 	cancelled: "Cancelled",
 };

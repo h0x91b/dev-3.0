@@ -1,0 +1,1 @@
+Moved "Review by AI" column to the far right of the Kanban board (after Cancelled) by reordering ALL_STATUSES. Renamed "Review by User" to "Review by You" across STATUS_LABELS and all i18n translation files (en, ru, es).
