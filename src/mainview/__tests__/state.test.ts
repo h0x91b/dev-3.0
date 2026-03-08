@@ -263,6 +263,19 @@ describe("reducer", () => {
 		expect(next.currentProjectTasks).toEqual([mockTask]);
 	});
 
+	it("addTask: skips duplicate by id", () => {
+		const state: AppState = {
+			...initialState,
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, {
+			type: "addTask",
+			task: { ...mockTask, title: "Updated title" },
+		});
+		expect(next).toBe(state);
+		expect(next.currentProjectTasks).toHaveLength(1);
+	});
+
 	it("removeTask: removes by id", () => {
 		const state: AppState = {
 			...initialState,
