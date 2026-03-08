@@ -79,6 +79,10 @@ function App() {
 				} else {
 					setShowQuitDialog(true);
 				}
+			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
+				e.preventDefault();
+				e.stopPropagation();
+				api.request.hideApp().catch(() => {});
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();

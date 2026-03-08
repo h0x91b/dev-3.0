@@ -603,6 +603,15 @@ export const handlers = {
 		Utils.quit();
 	},
 
+	async hideApp(): Promise<void> {
+		log.info("→ hideApp (Cmd+H from renderer)");
+		// Electrobun doesn't expose a hide() API. The menu has { role: "hide" }
+		// which creates the native NSMenuItem, but WKWebView swallows the Cmd+H
+		// keystroke before it reaches the macOS menu responder chain.
+		// Workaround: call [NSApp hide:nil] via osascript.
+		spawn(["osascript", "-e", `tell application "System Events" to set visible of every process whose unix id is ${process.ppid} to false`]);
+	},
+
 	async showConfirm(params: { title: string; message: string }): Promise<boolean> {
 		const { response } = await Utils.showMessageBox({
 			type: "question",

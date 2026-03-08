@@ -9,6 +9,7 @@ vi.mock("../rpc", () => ({
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getProjects: vi.fn().mockResolvedValue([]),
 			quitApp: vi.fn().mockResolvedValue(undefined),
+			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 		},
 	},
@@ -109,6 +110,20 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("{Meta>}q{/Meta}");
 			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
 			expect(api.request.quitApp).toHaveBeenCalled();
+		});
+	});
+
+	describe("hide (Cmd+H / Ctrl+H)", () => {
+		it("Cmd+H calls hideApp", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Meta>}h{/Meta}");
+			expect(api.request.hideApp).toHaveBeenCalled();
+		});
+
+		it("Ctrl+H calls hideApp", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Control>}h{/Control}");
+			expect(api.request.hideApp).toHaveBeenCalled();
 		});
 	});
 

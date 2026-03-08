@@ -548,6 +548,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			hideApp: {
+				params: void;
+				response: void;
+			};
 			listTmuxSessions: {
 				params: void;
 				response: TmuxSessionInfo[];

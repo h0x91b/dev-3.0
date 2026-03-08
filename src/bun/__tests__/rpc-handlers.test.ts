@@ -1827,6 +1827,24 @@ describe("handlers.quitApp", () => {
 });
 
 // ================================================================
+// handlers.hideApp
+// ================================================================
+
+describe("handlers.hideApp", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("spawns osascript to hide the app via System Events", async () => {
+		await handlers.hideApp();
+		expect(mockSpawn).toHaveBeenCalledOnce();
+		const cmd = mockSpawn.mock.calls[0][0];
+		expect(cmd[0]).toBe("osascript");
+		expect(cmd[1]).toBe("-e");
+		expect(cmd[2]).toContain("System Events");
+		expect(cmd[2]).toContain("visible");
+	});
+});
+
+// ================================================================
 // handlers.checkSystemRequirements
 // ================================================================
 
