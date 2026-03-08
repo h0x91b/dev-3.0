@@ -1,0 +1,1 @@
+Add "Open in..." context menu for worktrees. Right-click any active task card to open its worktree in Finder, VS Code, Cursor, Ghostty, iTerm, or Terminal. The menu auto-detects installed apps on macOS. Also available as a button in the TaskInfoPanel header, and per-file in the diff files popover. Custom external apps can be configured via global settings (`externalApps` field).

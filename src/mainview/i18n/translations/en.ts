@@ -450,6 +450,13 @@ const en = {
 	"sidebar.switchToBoard": "Show board",
 	"sidebar.switchToSidebar": "Show sidebar",
 
+	// Open in...
+	"openIn.menuTitle": "Open in...",
+	"openIn.openInApp": "Open in {app}",
+	"openIn.openFileInApp": "Open in {app}",
+	"openIn.noAppsFound": "No external apps found",
+	"openIn.failedOpen": "Failed to open in {app}: {error}",
+
 	// Gauge Demo
 	"gaugeDemo.title": "Gauge Components",
 	"gaugeDemo.playground": "Playground",

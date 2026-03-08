@@ -14,6 +14,7 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>;
 	playSoundOnTaskComplete?: boolean;
+	externalApps?: Array<{ id: string; name: string; macAppName: string }>;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -37,7 +38,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
-		playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
+			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
+			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -65,6 +67,7 @@ export function loadSettingsSync(): GlobalSettings {
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
+			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

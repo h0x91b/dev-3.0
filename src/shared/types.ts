@@ -161,6 +161,24 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 
 export type TerminalKeymapPreset = "dev3" | "iterm2" | "tmux-native";
 
+// ---- External Apps ("Open in...") ----
+
+export interface ExternalApp {
+	id: string;
+	name: string;
+	macAppName: string; // name used with `open -a`
+}
+
+/** Well-known macOS apps for "Open in..." menus. */
+export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
+	{ id: "finder", name: "Finder", macAppName: "Finder" },
+	{ id: "vscode", name: "VS Code", macAppName: "Visual Studio Code" },
+	{ id: "cursor", name: "Cursor", macAppName: "Cursor" },
+	{ id: "ghostty", name: "Ghostty", macAppName: "Ghostty" },
+	{ id: "iterm", name: "iTerm", macAppName: "iTerm" },
+	{ id: "terminal", name: "Terminal", macAppName: "Terminal" },
+];
+
 export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
@@ -170,6 +188,7 @@ export interface GlobalSettings {
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 	terminalKeymap?: TerminalKeymapPreset;
 	playSoundOnTaskComplete?: boolean;
+	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
@@ -607,6 +626,14 @@ export type AppRPCSchema = {
 			openFolder: {
 				params: { path: string };
 				response: void;
+			};
+			openInApp: {
+				params: { appName: string; path: string };
+				response: void;
+			};
+			getAvailableApps: {
+				params: void;
+				response: ExternalApp[];
 			};
 			listBranches: {
 				params: { projectId: string };

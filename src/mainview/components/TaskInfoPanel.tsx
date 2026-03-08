@@ -11,6 +11,7 @@ import { useT, statusKey } from "../i18n";
 import { trackEvent } from "../analytics";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
+import OpenInMenu from "./OpenInMenu";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -734,6 +735,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</span>
 	) : null;
 
+	// "Open file in..." state for diff files popover
+	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
+
+	function handleFileOpenIn(e: React.MouseEvent, relativePath: string) {
+		e.stopPropagation();
+		if (!task.worktreePath) return;
+		const fullPath = `${task.worktreePath}/${relativePath}`;
+		setFileOpenInMenu({ path: fullPath, pos: { top: e.clientY, left: e.clientX } });
+	}
+
 	const diffFilesPopover = diffFilesHover && branchStatus && branchStatus.diffFileNames.length > 0 && createPortal(
 		<div
 			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 px-3 max-w-[25rem] max-h-[20rem] overflow-auto"
@@ -743,10 +754,30 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		>
 			<div className="text-[0.625rem] text-fg-muted font-semibold uppercase tracking-wider mb-1.5">Changed files</div>
 			{branchStatus.diffFileNames.map((f) => (
-				<div key={f} className="text-[0.6875rem] text-fg-2 font-mono truncate py-0.5 leading-snug">{f}</div>
+				<div
+					key={f}
+					className="group/file flex items-center gap-1.5 py-0.5 leading-snug"
+				>
+					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{f}</span>
+					<button
+						onClick={(e) => handleFileOpenIn(e, f)}
+						className="opacity-0 group-hover/file:opacity-100 text-[0.5625rem] text-accent hover:text-accent-hover transition-all px-1 py-0.5 rounded bg-accent/10 hover:bg-accent/20 flex-shrink-0"
+						title={t("openIn.menuTitle")}
+					>
+						<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+					</button>
+				</div>
 			))}
 		</div>,
 		document.body,
+	);
+
+	const fileOpenInMenuPortal = fileOpenInMenu && (
+		<OpenInMenu
+			position={fileOpenInMenu.pos}
+			path={fileOpenInMenu.path}
+			onClose={() => setFileOpenInMenu(null)}
+		/>
 	);
 
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
@@ -983,6 +1014,41 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 		</button>
 	);
 
+	// ---- "Open in..." button ----
+	const [openInMenuOpen, setOpenInMenuOpen] = useState(false);
+	const [openInMenuPos, setOpenInMenuPos] = useState({ top: 0, left: 0 });
+	const openInBtnRef = useRef<HTMLButtonElement>(null);
+
+	function handleOpenInClick(e: React.MouseEvent) {
+		e.stopPropagation();
+		if (openInBtnRef.current) {
+			const rect = openInBtnRef.current.getBoundingClientRect();
+			setOpenInMenuPos({ top: rect.bottom + 4, left: rect.left });
+		}
+		setOpenInMenuOpen(true);
+	}
+
+	const openInButton = isTaskActive && task.worktreePath ? (
+		<div className="relative flex-shrink-0">
+			<button
+				ref={openInBtnRef}
+				onClick={handleOpenInClick}
+				className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-transparent hover:border-edge-active"
+				title={t("openIn.menuTitle")}
+			>
+				<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+				<span className="text-[0.6875rem] font-semibold">{t("openIn.menuTitle")}</span>
+			</button>
+			{openInMenuOpen && task.worktreePath && (
+				<OpenInMenu
+					position={openInMenuPos}
+					path={task.worktreePath}
+					onClose={() => setOpenInMenuOpen(false)}
+				/>
+			)}
+		</div>
+	) : null;
+
 	// ---- File browser (yazi) ----
 	const [yaziInstallPopup, setYaziInstallPopup] = useState(false);
 	const [yaziCopied, setYaziCopied] = useState(false);
@@ -1159,12 +1225,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						{statusDropdownPortal}
 						{refDropdownPortal}
 						{diffFilesPopover}
+						{fileOpenInMenuPortal}
 						{(task.labelIds ?? []).map((id) => {
 							const label = (project.labels ?? []).find((l) => l.id === id);
 							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 						})}
 						{diffStatsBadge}
 						<div className="flex-1" />
+						{openInButton}
 						{fileBrowserButton}
 						{tmuxHintsInline}
 						{tmuxHintsPopover}
@@ -1227,12 +1295,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							{statusDropdownPortal}
 						{refDropdownPortal}
 						{diffFilesPopover}
+						{fileOpenInMenuPortal}
 							{(task.labelIds ?? []).map((id) => {
 								const label = (project.labels ?? []).find((l) => l.id === id);
 								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 							})}
 							{diffStatsBadge}
 							<div className="flex-1" />
+							{openInButton}
 							{tmuxHintsInline}
 							{tmuxHintsPopover}
 							{devServerButton}

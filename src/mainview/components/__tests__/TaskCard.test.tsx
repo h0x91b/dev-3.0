@@ -13,6 +13,11 @@ vi.mock("../../rpc", () => ({
 			showConfirm: vi.fn(),
 			setTaskLabels: vi.fn(),
 			getTerminalPreview: vi.fn(),
+			getAvailableApps: vi.fn().mockResolvedValue([
+				{ id: "finder", name: "Finder", macAppName: "Finder" },
+				{ id: "vscode", name: "VS Code", macAppName: "Visual Studio Code" },
+			]),
+			openInApp: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -973,6 +978,52 @@ describe("TaskCard", () => {
 				expect(mockedApi.request.deleteTask).toHaveBeenCalledWith({
 					taskId: "t1",
 					projectId: "p1",
+				});
+			});
+		});
+	});
+
+	describe("context menu (Open in...)", () => {
+		it("shows context menu on right-click for active task with worktree", async () => {
+			renderCard(makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/worktree",
+				branchName: "dev3/test",
+			}));
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
+
+			await waitFor(() => {
+				expect(screen.getByText("Open in...")).toBeInTheDocument();
+			});
+		});
+
+		it("does not show context menu for todo task without worktree", () => {
+			renderCard(makeTask({ status: "todo", worktreePath: null }));
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
+			expect(screen.queryByText("Open in...")).not.toBeInTheDocument();
+		});
+
+		it("calls openInApp when clicking an app in the context menu", async () => {
+			renderCard(makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/worktree",
+				branchName: "dev3/test",
+			}));
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
+
+			await waitFor(() => {
+				expect(screen.getByText("Finder")).toBeInTheDocument();
+			});
+
+			await userEvent.click(screen.getByText("Finder"));
+
+			await waitFor(() => {
+				expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
+					appName: "Finder",
+					path: "/tmp/worktree",
 				});
 			});
 		});

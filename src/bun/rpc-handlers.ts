@@ -2,8 +2,8 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, CustomColumn, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -2324,6 +2324,45 @@ export const handlers = {
 			throw new Error("Invalid folder path");
 		}
 		Utils.openPath(params.path);
+	},
+
+	async openInApp(params: { appName: string; path: string }): Promise<void> {
+		log.info("→ openInApp", { appName: params.appName, path: params.path });
+		if (!params.path.startsWith("/") || params.path.includes("..")) {
+			throw new Error("Invalid path");
+		}
+		// Finder special case: reveal in Finder
+		if (params.appName === "Finder") {
+			spawn(["open", "-R", params.path], { stdout: "ignore", stderr: "ignore" });
+			return;
+		}
+		spawn(["open", "-a", params.appName, params.path], { stdout: "ignore", stderr: "ignore" });
+	},
+
+	async getAvailableApps(): Promise<ExternalApp[]> {
+		log.info("→ getAvailableApps");
+		const settings = await loadSettings();
+		const allApps = [...DEFAULT_EXTERNAL_APPS, ...(settings.externalApps ?? [])];
+
+		// Check which apps are installed using `open -Ra` (returns 0 if found)
+		const results: ExternalApp[] = [];
+		for (const app of allApps) {
+			// Finder and Terminal are always available on macOS
+			if (app.id === "finder" || app.id === "terminal") {
+				results.push(app);
+				continue;
+			}
+			try {
+				const proc = spawnSync(["open", "-Ra", app.macAppName], { stdout: "ignore", stderr: "ignore" });
+				if (proc.exitCode === 0) {
+					results.push(app);
+				}
+			} catch {
+				// Not installed — skip
+			}
+		}
+		log.info("← getAvailableApps", { count: results.length, apps: results.map((a) => a.name) });
+		return results;
 	},
 
 	async listBranches(params: { projectId: string }): Promise<Array<{ name: string; isRemote: boolean }>> {

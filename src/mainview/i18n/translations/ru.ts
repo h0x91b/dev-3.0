@@ -462,6 +462,13 @@ const ru: TranslationRecord & Record<string, string> = {
 	"sidebar.switchToBoard": "Показать доску",
 	"sidebar.switchToSidebar": "Показать панель",
 
+	// Open in...
+	"openIn.menuTitle": "Открыть в...",
+	"openIn.openInApp": "Открыть в {app}",
+	"openIn.openFileInApp": "Открыть в {app}",
+	"openIn.noAppsFound": "Не найдены внешние приложения",
+	"openIn.failedOpen": "Не удалось открыть в {app}: {error}",
+
 	// Gauge Demo
 	"gaugeDemo.title": "Компоненты-циферблаты",
 	"gaugeDemo.playground": "Песочница",
