@@ -101,6 +101,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"settings.keymapIterm2Desc": "Cmd+W/D/T/[/]",
 	"settings.keymapTmuxNative": "tmux nativo",
 	"settings.keymapTmuxNativeDesc": "Sin atajos, usa Ctrl+B",
+	"settings.taskCompleteSound": "Sonido de tarea completada",
+	"settings.taskCompleteSoundDesc": "Reproducir un sonido al completar o cancelar una tarea",
 
 	// AddProjectModal
 	"addProject.title": "Agregar proyecto",

@@ -169,6 +169,7 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 	terminalKeymap?: TerminalKeymapPreset;
+	playSoundOnTaskComplete?: boolean;
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */

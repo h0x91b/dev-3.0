@@ -28,6 +28,7 @@ vi.mock("../rpc-handlers", () => {
 		isActive: vi.fn((status: string) => ACTIVE.includes(status)),
 		launchTaskPty: vi.fn(),
 		runCleanupScript: vi.fn(),
+		playTaskCompleteSound: vi.fn(),
 		getPushMessage: vi.fn(() => null),
 	};
 });

@@ -4,7 +4,7 @@ import { ALL_STATUSES, LABEL_COLORS, getAllowedTransitions, titleFromDescription
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
-import { isActive, launchTaskPty, runCleanupScript, getPushMessage } from "./rpc-handlers";
+import { isActive, launchTaskPty, runCleanupScript, playTaskCompleteSound, getPushMessage } from "./rpc-handlers";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -380,6 +380,7 @@ const handlers: Record<string, Handler> = {
 		if (isActive(oldStatus) && (newStatus === "completed" || newStatus === "cancelled")) {
 			try { pty.destroySession(task.id); } catch {}
 			try { await runCleanupScript(task, project); } catch {}
+			playTaskCompleteSound();
 			try { await git.removeWorktree(project, task); } catch {}
 
 			const updated = await data.updateTask(project, task.id, {

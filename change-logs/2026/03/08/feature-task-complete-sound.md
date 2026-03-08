@@ -1,0 +1,1 @@
+Replace the `say "task finished"` default cleanup script with `echo "Task finished"`. Add a notification sound (MP3) that plays when a task is completed or cancelled. The sound can be disabled in Global Settings via a new "Task Complete Sound" toggle (enabled by default).
