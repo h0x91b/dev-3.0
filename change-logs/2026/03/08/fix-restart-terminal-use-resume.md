@@ -1,0 +1,1 @@
+Fix restart terminal to use resume command with correct agent. When restoring a PTY session via the "Resume Session" button, the task's agentId and configId are now passed to launchTaskPty instead of null. This ensures the correct agent and configuration are used, and the resume flag (e.g. `claude --continue`) is applied to the right command.
