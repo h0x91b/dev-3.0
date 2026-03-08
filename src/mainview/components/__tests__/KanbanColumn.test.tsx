@@ -120,6 +120,38 @@ function renderColumn(overrides: {
 	);
 }
 
+function renderBuiltinColumn(overrides: {
+	onColumnDrop?: (side: "before" | "after") => void;
+	label?: string;
+} = {}) {
+	return render(
+		<I18nProvider>
+			<KanbanColumn
+				status="todo"
+				label={overrides.label ?? "To Do"}
+				tasks={[]}
+				project={project}
+				dispatch={vi.fn()}
+				navigate={vi.fn()}
+				onAddTask={vi.fn()}
+				agents={[]}
+				onLaunchVariants={vi.fn()}
+				onTaskDrop={vi.fn()}
+				onReorderTask={vi.fn()}
+				dragFromStatus={null}
+				dragFromCustomColumnId={null}
+				onDragStart={vi.fn()}
+				onTaskMoved={vi.fn()}
+				bellCounts={new Map()}
+				draggedTaskId={null}
+				movingTaskIds={new Set()}
+				siblingMap={new Map()}
+				onColumnDrop={overrides.onColumnDrop}
+			/>
+		</I18nProvider>,
+	);
+}
+
 afterEach(() => {
 	// Reset module-level _activeDragColumnId between tests by simulating dragend
 	// Render a throwaway column, start drag on it, then end it
@@ -285,5 +317,36 @@ describe("KanbanColumn — column drag-and-drop", () => {
 			dispatch(getColumn(), "drop");
 			expect(getColumn().style.boxShadow).not.toMatch(/-4px/);
 		});
+	});
+});
+
+describe("built-in column as column-reorder drop target", () => {
+	function getBuiltinColumn() {
+		return screen.getByText("To Do").closest("[class*='glass-column']") as HTMLElement;
+	}
+
+	function setupCustomColumnDrag() {
+		// Render a custom column to provide the drag source
+		const { container, unmount } = renderColumn({ label: "Source", customColumnId: "col-source", onColumnDrop: vi.fn() });
+		startColumnDrag(container.querySelector("[title='Drag to reorder']") as Element);
+		unmount();
+	}
+
+	it("calls preventDefault on dragover when onColumnDrop provided (not isCustomColumn)", () => {
+		renderBuiltinColumn({ onColumnDrop: vi.fn() });
+		setupCustomColumnDrag();
+		// Built-in column has status="todo" as myDragId; _activeDragColumnId = "col-source" ≠ "todo"
+		const prevented = dispatch(getBuiltinColumn(), "dragover");
+		expect(prevented).toBe(true);
+	});
+
+	it("calls onColumnDrop when dropped on a built-in column with side set", () => {
+		const onColumnDrop = vi.fn();
+		renderBuiltinColumn({ onColumnDrop });
+		setupCustomColumnDrag();
+		dispatch(getBuiltinColumn(), "dragover", { clientX: -1 }); // side = "before"
+		dispatch(getBuiltinColumn(), "drop");
+		expect(onColumnDrop).toHaveBeenCalledTimes(1);
+		expect(onColumnDrop).toHaveBeenCalledWith("before");
 	});
 });
