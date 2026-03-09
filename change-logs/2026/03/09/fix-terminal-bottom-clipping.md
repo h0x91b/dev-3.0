@@ -1,0 +1,1 @@
+Add bottom padding (16px) to the terminal container to prevent the last row (e.g. tmux status bar) from being clipped by the Electrobun/WKWebView viewport. Same approach as the existing pb-8 workaround in KanbanBoard.
