@@ -608,7 +608,7 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			tmuxAction: {
-				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" };
+				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "search" };
 				response: void;
 			};
 			pasteClipboardImage: {

@@ -1,0 +1,1 @@
+Add CMD+F shortcut to trigger tmux copy-mode search in the active terminal pane. Pressing CMD+F while the terminal has focus enters tmux copy mode and opens the forward-search prompt (`/`), allowing users to search through terminal scrollback.

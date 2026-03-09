@@ -1,6 +1,6 @@
 import type { TerminalKeymapPreset } from "../shared/types";
 
-export type TmuxAction = "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow";
+export type TmuxAction = "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "search";
 
 export interface KeyBinding {
 	/**

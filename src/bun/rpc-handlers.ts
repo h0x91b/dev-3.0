@@ -2218,7 +2218,7 @@ export const handlers = {
 		return updated;
 	},
 
-	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" }): Promise<void> {
+	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "search" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
 		const socket = pty.getSessionSocket(params.taskId) ?? null;
 		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
@@ -2246,6 +2246,20 @@ export const handlers = {
 			case "newWindow":
 				args = pty.tmuxArgs(socket, "new-window", "-c", "#{pane_current_path}", "-t", tmuxSession);
 				break;
+			case "search": {
+				// Enter copy mode on the active pane, then send '/' to start a forward search.
+				const enterCopyMode = spawn(pty.tmuxArgs(socket, "copy-mode", "-t", tmuxSession), { stdout: "pipe", stderr: "pipe" });
+				await enterCopyMode.exited;
+				const sendSearch = spawn(pty.tmuxArgs(socket, "send-keys", "-t", tmuxSession, "/"), { stdout: "pipe", stderr: "pipe" });
+				const searchStderr = await new Response(sendSearch.stderr).text();
+				const searchExit = await sendSearch.exited;
+				if (searchExit !== 0) {
+					log.error("tmuxAction search failed", { exitCode: searchExit, stderr: searchStderr.trim() });
+					throw new Error(`tmux search failed: ${searchStderr.trim() || "unknown error"}`);
+				}
+				log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
+				return;
+			}
 		}
 
 		const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });

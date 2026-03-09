@@ -514,6 +514,21 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });
 	}, [taskId]);
 
+	// CMD+F → enter tmux copy-mode and start a forward search.
+	useEffect(() => {
+		function handleCmdF(e: KeyboardEvent) {
+			if (!e.metaKey || e.code !== "KeyF") return;
+			const container = containerRef.current;
+			if (!container) return;
+			if (!container.contains(document.activeElement) && document.activeElement !== container) return;
+			e.preventDefault();
+			e.stopPropagation();
+			api.request.tmuxAction({ taskId, action: "search" }).catch(() => {});
+		}
+		window.addEventListener("keydown", handleCmdF, { capture: true });
+		return () => window.removeEventListener("keydown", handleCmdF, { capture: true });
+	}, [taskId]);
+
 	// When the page becomes visible again (e.g. user returns from another
 	// app or switches back to this tab), trigger a resize dance to force
 	// tmux to fully redraw. This fixes display glitches (row offsets,
