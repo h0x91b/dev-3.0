@@ -916,6 +916,20 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 
 const rendererLog = createLogger("renderer");
 
+async function saveUploadedImage(projectId: string, pngData: Buffer | Uint8Array): Promise<{ path: string }> {
+	const project = await data.getProject(projectId);
+	const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+	const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
+	const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
+	await mkdirProc.exited;
+	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
+	const filename = `img-${Date.now()}-${hex}.png`;
+	const fullPath = `${uploadsDir}/${filename}`;
+	await Bun.write(fullPath, pngData);
+	log.info("Image saved", { path: fullPath, size: pngData.length });
+	return { path: fullPath };
+}
+
 export const handlers = {
 	async logRendererError(params: { description: string; source: "error" | "unhandledrejection" }): Promise<void> {
 		rendererLog.warn(`[${params.source}] ${params.description}`);
@@ -2813,17 +2827,17 @@ export const handlers = {
 			log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
 			return null;
 		}
-		const project = await data.getProject(params.projectId);
-		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
-		const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
-		const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
-		await mkdirProc.exited;
-		const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
-		const filename = `img-${Date.now()}-${hex}.png`;
-		const fullPath = `${uploadsDir}/${filename}`;
-		await Bun.write(fullPath, pngData);
-		log.info("← pasteClipboardImage", { path: fullPath, size: pngData.length });
-		return { path: fullPath };
+		return saveUploadedImage(params.projectId, pngData);
+	},
+
+	async uploadImageBase64(params: { projectId: string; base64: string }): Promise<{ path: string } | null> {
+		log.info("→ uploadImageBase64", { projectId: params.projectId.slice(0, 8), len: params.base64.length });
+		const pngData = Buffer.from(params.base64, "base64");
+		if (pngData.length === 0) {
+			log.warn("← uploadImageBase64: empty image data");
+			return null;
+		}
+		return saveUploadedImage(params.projectId, pngData);
 	},
 
 	async readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {

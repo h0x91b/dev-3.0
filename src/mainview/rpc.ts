@@ -142,9 +142,57 @@ function initBrowserApi(): ApiShape {
 		});
 	}
 
-	// Proxy: api.request.methodName(params) → rpcRequest("methodName", params)
+	// ── Browser-side overrides for native-only methods ──────────────
+	const browserOverrides: Record<string, (params: any) => Promise<any>> = {
+		async pickFolder(): Promise<string | null> {
+			const path = prompt("Enter folder path:");
+			return path?.trim() || null;
+		},
+
+		async showConfirm(params: { title: string; message: string }): Promise<boolean> {
+			return confirm(`${params.title}\n\n${params.message}`);
+		},
+
+		async pasteClipboardImage(params: { projectId: string }): Promise<{ path: string } | null> {
+			try {
+				const items = await navigator.clipboard.read();
+				for (const item of items) {
+					const imageType = item.types.find(t => t.startsWith("image/"));
+					if (imageType) {
+						const blob = await item.getType(imageType);
+						const buffer = await blob.arrayBuffer();
+						const base64 = btoa(
+							new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ""),
+						);
+						// Send to backend to save the file
+						return rpcRequest("uploadImageBase64", {
+							projectId: params.projectId,
+							base64,
+						});
+					}
+				}
+				return null;
+			} catch (err) {
+				console.warn("[browser-rpc] Clipboard read failed:", err);
+				return null;
+			}
+		},
+
+		async hideApp(): Promise<void> {
+			// No-op in browser
+		},
+
+		async quitApp(): Promise<void> {
+			// No-op in browser
+		},
+	};
+
+	// Proxy: api.request.methodName(params) → override or rpcRequest
 	const request = new Proxy({} as RequestProxy, {
 		get(_target, prop: string) {
+			if (browserOverrides[prop]) {
+				return browserOverrides[prop];
+			}
 			return (params: any) => rpcRequest(prop, params);
 		},
 	});
