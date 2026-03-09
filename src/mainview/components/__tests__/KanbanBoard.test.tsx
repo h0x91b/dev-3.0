@@ -164,6 +164,26 @@ describe("column ordering", () => {
 		expect(labels[0]).toBe("Review by Colleague");
 	});
 
+	it("review-by-colleague is hidden when peerReviewEnabled is false and NOT in stored columnOrder", () => {
+		// This is the common case: user has a saved columnOrder from before the feature existed
+		render(
+			<I18nProvider>
+				<KanbanBoard
+					project={{
+						...project,
+						peerReviewEnabled: false,
+						columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+					}}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		expect(getColumnLabels()).not.toContain("Review by Colleague");
+	});
+
 	it("review-by-colleague is hidden when peerReviewEnabled is false, even if in stored columnOrder", () => {
 		render(
 			<I18nProvider>

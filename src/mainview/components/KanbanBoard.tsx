@@ -303,7 +303,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 		// Append anything else missing (new built-ins, or new custom cols)
 		for (const s of ALL_BUILTIN) {
-			if (!used.has(s)) result.push({ type: "builtin", status: s });
+			if (!used.has(s) && (s !== "review-by-colleague" || peerReviewEnabled)) {
+				result.push({ type: "builtin", status: s });
+			}
 		}
 		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
 		return result;
