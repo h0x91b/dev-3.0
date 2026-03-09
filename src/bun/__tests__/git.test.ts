@@ -1094,9 +1094,11 @@ describe("saveDiffSnapshot", () => {
 		g("git add extra.ts", repo.local);
 		g('git commit -m "add extra"', repo.local);
 
-		// Ensure different timestamp
-		await new Promise((r) => setTimeout(r, 1100));
+		// Advance fake time to ensure different timestamp (avoids 1.1s sleep)
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		vi.advanceTimersByTime(60_000);
 		await saveDiffSnapshot(project, task, "origin/main");
+		vi.useRealTimers();
 
 		const diffsDir = join(taskDir(project, task), "diffs");
 		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
