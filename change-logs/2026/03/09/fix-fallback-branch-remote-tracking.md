@@ -1,0 +1,1 @@
+When creating a task from a branch that is already checked out in another worktree, the fallback task branch now automatically sets up remote tracking to the original branch's remote counterpart (if it exists). This ensures `git push` goes to the right remote branch without requiring manual `--set-upstream` configuration.
