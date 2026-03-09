@@ -1941,9 +1941,28 @@ export const handlers = {
 						const type = basename.slice(0, dashIdx);
 						const slug = basename.slice(dashIdx + 1);
 
-						// Read first sentence as title
+						// Read content and extract metadata
 						const content = await Bun.file(join(dayPath, file)).text();
-						const firstSentence = content.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
+
+						// Extract "Suggested by @username (owner/repo#N)" from any line
+						let suggestedBy: string | undefined;
+						let issueUrl: string | undefined;
+						let issueRef: string | undefined;
+						const creditMatch = content.match(/Suggested by @(\S+)\s+\(([^)]+)\)/);
+						if (creditMatch) {
+							suggestedBy = creditMatch[1];
+							const ref = creditMatch[2];
+							// ref is like "h0x91b/dev-3.0#191"
+							const refMatch = ref.match(/^(.+?)#(\d+)$/);
+							if (refMatch) {
+								issueRef = `#${refMatch[2]}`;
+								issueUrl = `https://github.com/${refMatch[1]}/issues/${refMatch[2]}`;
+							}
+						}
+
+						// Strip the "Suggested by" line from content before extracting title
+						const cleanContent = content.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "").trim();
+						const firstSentence = cleanContent.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
 						const title = firstSentence.length > 120
 							? firstSentence.slice(0, 117) + "..."
 							: firstSentence;
@@ -1953,6 +1972,9 @@ export const handlers = {
 							type,
 							slug,
 							title: title || slug,
+							...(suggestedBy && { suggestedBy }),
+							...(issueUrl && { issueUrl }),
+							...(issueRef && { issueRef }),
 						});
 					}
 				}

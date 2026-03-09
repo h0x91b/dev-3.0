@@ -17,7 +17,8 @@ import { act } from "@testing-library/react";
 import { render, screen } from "@testing-library/react";
 import KanbanColumn from "../KanbanColumn";
 import { I18nProvider } from "../../i18n";
-import type { Project } from "../../../shared/types";
+import userEvent from "@testing-library/user-event";
+import type { Project, Task } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { moveTask: vi.fn(), deleteTask: vi.fn() } },
@@ -123,18 +124,23 @@ function renderColumn(overrides: {
 
 function renderBuiltinColumn(overrides: {
 	onColumnDrop?: (side: "before" | "after") => void;
+	onAddTask?: () => void;
 	label?: string;
+	status?: "todo" | "in-progress" | "completed" | "cancelled" | "user-questions" | "review-by-ai" | "review-by-user";
+	tasks?: Task[];
+	isCustomColumn?: boolean;
+	customColumnId?: string;
 } = {}) {
 	return render(
 		<I18nProvider>
 			<KanbanColumn
-				status="todo"
+				status={overrides.status ?? "todo"}
 				label={overrides.label ?? "To Do"}
-				tasks={[]}
+				tasks={overrides.tasks ?? []}
 				project={project}
 				dispatch={vi.fn()}
 				navigate={vi.fn()}
-				onAddTask={vi.fn()}
+				onAddTask={overrides.onAddTask ?? vi.fn()}
 				agents={[]}
 				onLaunchVariants={vi.fn()}
 				onTaskDrop={vi.fn()}
@@ -149,6 +155,8 @@ function renderBuiltinColumn(overrides: {
 				onSetMoving={vi.fn()}
 				siblingMap={new Map()}
 				onColumnDrop={overrides.onColumnDrop}
+				isCustomColumn={overrides.isCustomColumn}
+				customColumnId={overrides.customColumnId}
 			/>
 		</I18nProvider>,
 	);
@@ -319,6 +327,57 @@ describe("KanbanColumn — column drag-and-drop", () => {
 			dispatch(getColumn(), "drop");
 			expect(getColumn().style.boxShadow).not.toMatch(/-4px/);
 		});
+	});
+});
+
+describe("KanbanColumn — double-click empty space to add task", () => {
+	it("calls onAddTask when double-clicking empty space in Todo column", async () => {
+		const onAddTask = vi.fn();
+		renderBuiltinColumn({ onAddTask, status: "todo" });
+		const noTasksText = screen.getByText("No tasks");
+		await userEvent.dblClick(noTasksText);
+		expect(onAddTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT call onAddTask when double-clicking in a non-todo column", async () => {
+		const onAddTask = vi.fn();
+		renderBuiltinColumn({ onAddTask, status: "in-progress", label: "In Progress" });
+		const noTasksText = screen.getByText("No tasks");
+		await userEvent.dblClick(noTasksText);
+		expect(onAddTask).not.toHaveBeenCalled();
+	});
+
+	it("does NOT call onAddTask when double-clicking in a custom column", async () => {
+		const onAddTask = vi.fn();
+		renderBuiltinColumn({ onAddTask, status: "todo", isCustomColumn: true, customColumnId: "col-x" });
+		const noTasksText = screen.getByText("No tasks");
+		await userEvent.dblClick(noTasksText);
+		expect(onAddTask).not.toHaveBeenCalled();
+	});
+
+	it("does NOT call onAddTask when double-clicking on a task card", async () => {
+		const onAddTask = vi.fn();
+		const task: Task = {
+			id: "t1",
+			projectId: "p1",
+			seq: 1,
+			title: "Test task",
+			description: "Test task",
+			status: "todo",
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+			groupId: null,
+			variantIndex: null,
+			agentId: null,
+			configId: null,
+			createdAt: "2025-01-01T00:00:00Z",
+			updatedAt: "2025-01-01T00:00:00Z",
+		};
+		const { container } = renderBuiltinColumn({ onAddTask, status: "todo", tasks: [task] });
+		const taskElement = container.querySelector("[data-task-id='t1']") as HTMLElement;
+		await userEvent.dblClick(taskElement);
+		expect(onAddTask).not.toHaveBeenCalled();
 	});
 });
 
