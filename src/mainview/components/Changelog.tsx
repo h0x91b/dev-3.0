@@ -59,6 +59,8 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 		api.request.getChangelogs().then((data) => {
 			setEntries(data);
 			setLoading(false);
+		}).catch(() => {
+			setLoading(false);
 		});
 	}, []);
 

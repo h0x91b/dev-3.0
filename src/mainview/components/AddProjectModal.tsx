@@ -26,7 +26,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			if (settings.cloneBaseDirectory) {
 				setCloneBaseDir(settings.cloneBaseDirectory);
 			}
-		});
+		}).catch(() => {});
 	}, []);
 
 	useEffect(() => {
