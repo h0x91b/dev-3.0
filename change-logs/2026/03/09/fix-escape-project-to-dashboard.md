@@ -1,0 +1,1 @@
+Pressing Escape on a project's Kanban board now navigates back to the main app dashboard, consistent with other screens. Previously, Escape had no effect when viewing a project without an active task.

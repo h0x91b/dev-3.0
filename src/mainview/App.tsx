@@ -274,6 +274,8 @@ function App() {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project" && route.activeTaskId) {
 				navigate({ screen: "project", projectId: route.projectId });
+			} else if (route.screen === "project") {
+				navigate({ screen: "dashboard" });
 			}
 		},
 		[state, navigate, showQuitDialog],

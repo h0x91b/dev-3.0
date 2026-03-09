@@ -149,6 +149,19 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("Escape from project view", () => {
+		it("Escape from project screen goes back to dashboard", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			await userEvent.keyboard("{Escape}");
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+	});
+
 	describe("project switching (Cmd+1..9)", () => {
 		it("Cmd+1 navigates to the first project", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
