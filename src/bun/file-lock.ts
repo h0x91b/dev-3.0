@@ -63,6 +63,11 @@ async function acquireLock(
 			fs.mkdirSync(lockDir);
 			return; // Lock acquired
 		} catch (err: any) {
+			if (err.code === "ENOENT") {
+				// Parent directory doesn't exist (e.g. new project with no tasks yet)
+				fs.mkdirSync(lockDir, { recursive: true });
+				return; // Lock acquired
+			}
 			if (err.code !== "EEXIST") {
 				throw err; // Unexpected error (e.g. permissions)
 			}
