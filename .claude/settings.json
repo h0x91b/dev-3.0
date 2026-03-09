@@ -15,5 +15,27 @@
       "Bash(bun:*)",
       "Bash(gh run:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/auto-approve.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/auto-approve.sh"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -1,0 +1,1 @@
+Add PreToolUse hook to auto-approve safe Bash and Read operations. Compound commands like `unset GH_TOKEN && git push` no longer prompt for permission. Also auto-approves `gh` CLI commands and reading files from `/tmp/` or `screenshots/` directories.
