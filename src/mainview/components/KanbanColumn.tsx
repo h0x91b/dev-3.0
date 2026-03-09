@@ -278,7 +278,15 @@ function KanbanColumn({
 			</div>
 
 			{/* Tasks */}
-			<div ref={taskListRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+			<div
+				ref={taskListRef}
+				className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
+				onDoubleClick={!isCustomColumn && status === "todo" ? (e) => {
+					// Only trigger when clicking empty space, not on a task card
+					if ((e.target as HTMLElement).closest("[data-task-id]")) return;
+					onAddTask();
+				} : undefined}
+			>
 				{tasks.map((task, index) => (
 					<div key={task.id} data-task-id={task.id}>
 						{isSameColumnDrag && dropIndex === index && task.id !== draggedTaskId && (
