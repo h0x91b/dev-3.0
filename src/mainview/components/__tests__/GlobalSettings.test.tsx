@@ -788,47 +788,61 @@ describe("GlobalSettings", () => {
 	});
 
 	describe("terminal keymap preset", () => {
-		it("renders the three preset cards", async () => {
+		function getKeymapToggle() {
+			return screen.getByRole("button", { name: /iTerm2 compatibility/ });
+		}
+
+		it("renders the iTerm2 compatibility toggle", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			expect(screen.getByText("Convenient")).toBeInTheDocument();
-			expect(screen.getByText("iTerm2")).toBeInTheDocument();
-			expect(screen.getByText("Native tmux")).toBeInTheDocument();
+			expect(getKeymapToggle()).toBeInTheDocument();
 		});
 
-		it("Convenient card is active by default", async () => {
+		it("toggle is inactive by default", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			const btn = screen.getByText("Convenient").closest("button")!;
-			expect(btn.className).toContain("border-accent");
+			expect(getKeymapToggle().className).not.toContain("border-accent");
 		});
 
-		it("clicking iTerm2 card saves terminalKeymap to backend", async () => {
+		it("clicking the toggle saves terminalKeymap iterm2 to backend", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			await user.click(screen.getByText("iTerm2"));
+			await user.click(getKeymapToggle());
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({ terminalKeymap: "iterm2" }),
 			);
 		});
 
-		it("clicking iTerm2 card persists preset to localStorage", async () => {
+		it("clicking the toggle persists iterm2 preset to localStorage", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			await user.click(screen.getByText("iTerm2"));
+			await user.click(getKeymapToggle());
 
 			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("iterm2");
+		});
+
+		it("clicking the toggle again reverts to default", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "iterm2" });
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(getKeymapToggle());
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ terminalKeymap: "default" }),
+			);
 		});
 
 		it("loads terminalKeymap from backend settings and syncs to localStorage", async () => {

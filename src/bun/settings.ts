@@ -16,6 +16,7 @@ export interface GlobalSettings {
 	customBinaryPaths?: Record<string, string>;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[];
+	terminalKeymap?: "default" | "iterm2";
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -41,6 +42,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
+			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -69,6 +71,7 @@ export function loadSettingsSync(): GlobalSettings {
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
+			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

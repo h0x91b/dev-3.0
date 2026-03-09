@@ -159,7 +159,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 	},
 ];
 
-export type TerminalKeymapPreset = "dev3" | "iterm2" | "tmux-native";
+export type TerminalKeymapPreset = "default" | "iterm2";
 
 // ---- External Apps ("Open in...") ----
 

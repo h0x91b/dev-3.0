@@ -16,10 +16,10 @@ export interface KeyBinding {
 }
 
 export const TERMINAL_KEYMAPS: Record<TerminalKeymapPreset, KeyBinding[]> = {
-	// No app-level shortcuts — matches the state before this feature was added.
-	"dev3": [],
+	// No app-level shortcuts — tmux Ctrl+B prefix works natively inside the terminal.
+	"default": [],
 
-	// Mirrors iTerm2's standard pane & tab shortcuts.
+	// Mirrors iTerm2's standard pane & tab shortcuts, layered on top of native tmux.
 	"iterm2": [
 		{ code: "KeyW", meta: true, action: "killPane" },
 		{ code: "KeyD", meta: true, shift: false, action: "splitV" },
@@ -28,16 +28,19 @@ export const TERMINAL_KEYMAPS: Record<TerminalKeymapPreset, KeyBinding[]> = {
 		{ code: "BracketRight", meta: true, action: "nextPane" },
 		{ code: "BracketLeft", meta: true, action: "prevPane" },
 	],
-
-	// No app-level shortcuts — everything via Ctrl+B prefix inside tmux.
-	"tmux-native": [],
 };
 
 export const KEYMAP_LS_KEY = "dev3-terminal-keymap";
 export const KEYMAP_CHANGED_EVENT = "dev3-terminal-keymap-changed";
 
+/** Normalizes legacy preset values saved before the simplified two-option model. */
+function normalize(raw: string | null): TerminalKeymapPreset {
+	if (raw === "iterm2") return "iterm2";
+	return "default";
+}
+
 export function getKeymapPreset(): TerminalKeymapPreset {
-	return (localStorage.getItem(KEYMAP_LS_KEY) as TerminalKeymapPreset) ?? "dev3";
+	return normalize(localStorage.getItem(KEYMAP_LS_KEY));
 }
 
 export function setKeymapPreset(preset: TerminalKeymapPreset): void {

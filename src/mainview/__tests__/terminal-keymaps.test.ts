@@ -11,13 +11,23 @@ beforeEach(() => {
 });
 
 describe("getKeymapPreset", () => {
-	it("returns 'dev3' when nothing is stored", () => {
-		expect(getKeymapPreset()).toBe("dev3");
+	it("returns 'default' when nothing is stored", () => {
+		expect(getKeymapPreset()).toBe("default");
 	});
 
-	it("returns the stored preset", () => {
+	it("returns 'iterm2' when iterm2 is stored", () => {
 		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
 		expect(getKeymapPreset()).toBe("iterm2");
+	});
+
+	it("normalizes legacy 'dev3' value to 'default'", () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "dev3");
+		expect(getKeymapPreset()).toBe("default");
+	});
+
+	it("normalizes legacy 'tmux-native' value to 'default'", () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "tmux-native");
+		expect(getKeymapPreset()).toBe("default");
 	});
 });
 
@@ -30,26 +40,22 @@ describe("setKeymapPreset", () => {
 	it("dispatches the change event with the new preset as detail", () => {
 		const handler = vi.fn();
 		window.addEventListener(KEYMAP_CHANGED_EVENT, handler);
-		setKeymapPreset("tmux-native");
+		setKeymapPreset("default");
 		expect(handler).toHaveBeenCalledOnce();
 		const event = handler.mock.calls[0][0] as CustomEvent;
-		expect(event.detail).toBe("tmux-native");
+		expect(event.detail).toBe("default");
 		window.removeEventListener(KEYMAP_CHANGED_EVENT, handler);
 	});
 
 	it("makes getKeymapPreset return the new preset", () => {
-		setKeymapPreset("tmux-native");
-		expect(getKeymapPreset()).toBe("tmux-native");
+		setKeymapPreset("iterm2");
+		expect(getKeymapPreset()).toBe("iterm2");
 	});
 });
 
 describe("TERMINAL_KEYMAPS", () => {
-	it("dev3 preset has no bindings", () => {
-		expect(TERMINAL_KEYMAPS["dev3"]).toHaveLength(0);
-	});
-
-	it("tmux-native preset has no bindings", () => {
-		expect(TERMINAL_KEYMAPS["tmux-native"]).toHaveLength(0);
+	it("default preset has no bindings", () => {
+		expect(TERMINAL_KEYMAPS["default"]).toHaveLength(0);
 	});
 
 	it("iterm2 preset has 6 bindings", () => {
