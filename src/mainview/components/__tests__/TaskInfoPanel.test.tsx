@@ -339,7 +339,7 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("To Do")).toBeInTheDocument();
 			expect(screen.getByText("Completed")).toBeInTheDocument();
 			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("Waiting for You")).toBeInTheDocument();
+			expect(screen.getByText("Has Questions")).toBeInTheDocument();
 		});
 
 		it("moves task to new status on selection", async () => {
@@ -354,7 +354,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Waiting for You"));
+			await user.click(screen.getByText("Has Questions"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -386,7 +386,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Review by You"));
+			await user.click(screen.getByText("Your Review"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
 			expect(mockedApi.request.moveTask).toHaveBeenLastCalledWith({
@@ -415,7 +415,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await user.click(screen.getByText("Agent is Working"));
-			await user.click(screen.getByText("Review by You"));
+			await user.click(screen.getByText("Your Review"));
 
 			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 			// alertSpy cleanup handled by clearAllMocks

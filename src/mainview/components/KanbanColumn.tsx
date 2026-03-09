@@ -13,6 +13,7 @@ let _activeDragColumnId: string | null = null;
 interface KanbanColumnProps {
 	status: TaskStatus;
 	label: string;
+	description?: string;
 	tasks: Task[];
 	project: Project;
 	dispatch: Dispatch<AppAction>;
@@ -47,6 +48,7 @@ interface KanbanColumnProps {
 function KanbanColumn({
 	status,
 	label,
+	description,
 	tasks,
 	project,
 	dispatch,
@@ -81,7 +83,21 @@ function KanbanColumn({
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
+	const [showInfo, setShowInfo] = useState(false);
+	const infoRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
+
+	// Close info popup on outside click
+	useEffect(() => {
+		if (!showInfo) return;
+		function handleClick(e: MouseEvent) {
+			if (infoRef.current && !infoRef.current.contains(e.target as Node)) {
+				setShowInfo(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [showInfo]);
 
 	// Is this a same-column reorder drag?
 	const isSameColumnDrag = isCustomColumn
@@ -201,7 +217,7 @@ function KanbanColumn({
 
 	return (
 		<div
-			className={`relative flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
+			className={`group/col relative flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
 					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
@@ -262,6 +278,23 @@ function KanbanColumn({
 						<span className="text-fg text-sm font-semibold">
 							{label}
 						</span>
+						{description && (
+							<div ref={infoRef} className="relative flex-shrink-0">
+								<button
+									onClick={() => setShowInfo((v) => !v)}
+									className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center rounded-full text-[0.6rem] leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									aria-label="Column info"
+								>
+									{"\uF449"}
+								</button>
+								{showInfo && (
+									<div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 w-52 px-3 py-2 rounded-lg bg-overlay border border-edge shadow-lg text-xs text-fg-2 leading-relaxed">
+										{description}
+									</div>
+								)}
+							</div>
+						)}
 					</div>
 					{tasks.length > 0 && (
 						<span

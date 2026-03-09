@@ -3,15 +3,15 @@ import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStat
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
-const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-user"];
-const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["review-by-colleague", "completed", "cancelled", "review-by-ai"];
+const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
+const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["review-by-colleague", "completed", "cancelled"];
 const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
 
 type ColumnSlot =
 	| { type: "builtin"; status: TaskStatus }
 	| { type: "custom"; col: CustomColumn };
 import type { AppAction, Route } from "../state";
-import { useT, statusKey } from "../i18n";
+import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import KanbanColumn from "./KanbanColumn";
@@ -413,6 +413,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 								key={slot.status}
 								status={slot.status}
 								label={t(statusKey(slot.status))}
+								description={t(statusDescKey(slot.status))}
 								tasks={tasksByStatus.get(slot.status) || []}
 								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
 								{...commonProps}

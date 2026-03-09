@@ -229,7 +229,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.baseBranch": "Базовая ветка",
 	"projectSettings.baseBranchDesc": "Ветка, от которой создаются worktree",
 	"projectSettings.peerReview": "Колонка ревью коллег",
-	"projectSettings.peerReviewDesc": "Показывать колонку «Внешнее ревью». Отключите для проектов без peer review.",
+	"projectSettings.peerReviewDesc": "Показывать колонку «Ревью PR». Отключите для проектов без peer review.",
 	"projectSettings.save": "Сохранить настройки",
 	"projectSettings.saving": "Сохранение...",
 	"projectSettings.failedSave": "Не удалось сохранить настройки: {error}",
@@ -448,12 +448,22 @@ const ru: TranslationRecord & Record<string, string> = {
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "Агент работает",
-	"status.userQuestions": "Ждём вас",
-	"status.reviewByAi": "Ревью ИИ (unimplemented)",
-	"status.reviewByUser": "Ревью вами",
-	"status.reviewByColleague": "Внешнее ревью",
+	"status.userQuestions": "Есть вопросы",
+	"status.reviewByAi": "Ревью ИИ",
+	"status.reviewByUser": "Ваше ревью",
+	"status.reviewByColleague": "Ревью PR",
 	"status.completed": "Завершено",
 	"status.cancelled": "Отменено",
+
+	// Status descriptions (info tooltips for column headers)
+	"status.todo.desc": "Задачи, ожидающие назначения агенту.",
+	"status.inProgress.desc": "ИИ-агент активно работает над задачей.",
+	"status.userQuestions.desc": "Агенту нужен ваш ответ, чтобы продолжить.",
+	"status.reviewByAi.desc": "Автоматическое ревью выполненной работы. Может вернуть агенту на доработку.",
+	"status.reviewByUser.desc": "Готово к вашему ревью. Создайте PR, если всё устраивает.",
+	"status.reviewByColleague.desc": "PR создан и проходит ревью ботами или коллегами.",
+	"status.completed.desc": "Готово — PR замержен или задача завершена.",
+	"status.cancelled.desc": "Задача отменена, worktree удалён.",
 
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Активные задачи",

@@ -224,7 +224,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",
 	"projectSettings.peerReview": "Columna de revisión de colegas",
-	"projectSettings.peerReviewDesc": "Mostrar la columna «Revisión externa». Desactívala en proyectos sin revisión de código entre pares.",
+	"projectSettings.peerReviewDesc": "Mostrar la columna «Revisión PR». Desactívala en proyectos sin revisión de código entre pares.",
 	"projectSettings.save": "Guardar configuración",
 	"projectSettings.saving": "Guardando...",
 	"projectSettings.failedSave": "Error al guardar configuración: {error}",
@@ -439,12 +439,22 @@ const es: TranslationRecord & Record<string, string> = {
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "Agente trabajando",
-	"status.userQuestions": "Esperando tu respuesta",
-	"status.reviewByAi": "Revisión por IA (unimplemented)",
-	"status.reviewByUser": "Revisión por ti",
-	"status.reviewByColleague": "Revisión externa",
+	"status.userQuestions": "Tiene preguntas",
+	"status.reviewByAi": "Revisión IA",
+	"status.reviewByUser": "Tu revisión",
+	"status.reviewByColleague": "Revisión PR",
 	"status.completed": "Completado",
 	"status.cancelled": "Cancelado",
+
+	// Status descriptions (info tooltips for column headers)
+	"status.todo.desc": "Tareas esperando ser asignadas a un agente.",
+	"status.inProgress.desc": "Un agente de IA está trabajando activamente en esta tarea.",
+	"status.userQuestions.desc": "El agente necesita tu respuesta para continuar.",
+	"status.reviewByAi.desc": "Revisión automática del trabajo completado. Puede devolver al agente para correcciones.",
+	"status.reviewByUser.desc": "Listo para tu revisión. Crea un PR cuando estés satisfecho.",
+	"status.reviewByColleague.desc": "PR creado y en revisión por bots o compañeros.",
+	"status.completed.desc": "Listo — PR fusionado o tarea terminada.",
+	"status.cancelled.desc": "Tarea cancelada y worktree eliminado.",
 
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Tareas activas",

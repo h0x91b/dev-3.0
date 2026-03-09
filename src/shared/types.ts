@@ -36,20 +36,20 @@ export const ALL_STATUSES: TaskStatus[] = [
 	"todo",
 	"in-progress",
 	"user-questions",
+	"review-by-ai",
 	"review-by-user",
 	"review-by-colleague",
 	"completed",
 	"cancelled",
-	"review-by-ai",
 ];
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
 	todo: "To Do",
 	"in-progress": "Agent is Working",
-	"user-questions": "Waiting for You",
-	"review-by-ai": "Review by AI",
-	"review-by-user": "Review by You",
-	"review-by-colleague": "External Review",
+	"user-questions": "Has Questions",
+	"review-by-ai": "AI Review",
+	"review-by-user": "Your Review",
+	"review-by-colleague": "PR Review",
 	completed: "Completed",
 	cancelled: "Cancelled",
 };
@@ -266,7 +266,7 @@ export interface Project {
 	customColumns?: CustomColumn[];
 	// Ordered list of TaskStatus strings and custom column IDs; absent = default order
 	columnOrder?: string[];
-	// When false, the "External Review" column is hidden (default: true)
+	// When false, the "PR Review" column is hidden (default: true)
 	peerReviewEnabled?: boolean;
 }
 

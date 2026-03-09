@@ -319,7 +319,7 @@ describe("task move", () => {
 			newStatus: "review-by-ai",
 		});
 		expect(stdoutOutput).toContain("Moved task");
-		expect(stdoutOutput).toContain("Review by AI");
+		expect(stdoutOutput).toContain("AI Review");
 	});
 
 	it("auto-detects taskId from context", async () => {
@@ -404,7 +404,7 @@ describe("task move", () => {
 
 		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-ai" }), SOCKET, null);
 
-		expect(stdoutOutput).toMatch(/→.*Review by AI/);
+		expect(stdoutOutput).toMatch(/→.*AI Review/);
 	});
 });
 

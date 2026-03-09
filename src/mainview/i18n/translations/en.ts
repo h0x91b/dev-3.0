@@ -221,7 +221,7 @@ const en = {
 	"projectSettings.baseBranch": "Base Branch",
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.peerReview": "Peer Review Column",
-	"projectSettings.peerReviewDesc": "Show the \"External Review\" column. Disable for projects that don't use peer code review.",
+	"projectSettings.peerReviewDesc": "Show the \"PR Review\" column. Disable for projects that don't use peer code review.",
 	"projectSettings.save": "Save Settings",
 	"projectSettings.saving": "Saving...",
 	"projectSettings.failedSave": "Failed to save settings: {error}",
@@ -436,12 +436,22 @@ const en = {
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "Agent is Working",
-	"status.userQuestions": "Waiting for You",
-	"status.reviewByAi": "Review by AI (unimplemented)",
-	"status.reviewByUser": "Review by You",
-	"status.reviewByColleague": "External Review",
+	"status.userQuestions": "Has Questions",
+	"status.reviewByAi": "AI Review",
+	"status.reviewByUser": "Your Review",
+	"status.reviewByColleague": "PR Review",
 	"status.completed": "Completed",
 	"status.cancelled": "Cancelled",
+
+	// Status descriptions (info tooltips for column headers)
+	"status.todo.desc": "Tasks waiting to be picked up by an agent.",
+	"status.inProgress.desc": "An AI agent is actively working on this task.",
+	"status.userQuestions.desc": "The agent needs your input before it can continue.",
+	"status.reviewByAi.desc": "Automated AI review of completed work. May return to the agent for fixes.",
+	"status.reviewByUser.desc": "Ready for your review. Create a PR when satisfied.",
+	"status.reviewByColleague.desc": "PR is created and under review by bots or teammates.",
+	"status.completed.desc": "Done — PR merged or task finished.",
+	"status.cancelled.desc": "Task was cancelled and its worktree cleaned up.",
 
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Active Tasks",
