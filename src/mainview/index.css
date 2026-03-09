@@ -103,11 +103,11 @@
 	--accent-hover: 37 99 235;
 	--danger: 220 38 38;
 
-	/* ---- Background gradient (saturated cool tones — the canvas) ---- */
+	/* ---- Background gradient ---- */
 	--bg-grad-angle: 135deg;
-	--bg-grad-from: #d4dffa;
-	--bg-grad-mid: #ded4f6;
-	--bg-grad-to: #f6d4e8;
+	--bg-grad-from: #dae3ee;
+	--bg-grad-mid: #e1e5d4;
+	--bg-grad-to: #b4b5c4;
 
 	/* ---- Glass surfaces (frosted white on colored canvas) ---- */
 	--glass-column-rgb: 255 255 255;
