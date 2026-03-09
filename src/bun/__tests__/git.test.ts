@@ -937,6 +937,39 @@ describe("createWorktree", () => {
 		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
 		g("git branch -D dev3/task-aaaaaaaa", repo.local);
 	});
+
+	it("creates worktree from latest origin/main even when local main is stale", async () => {
+		const project = makeProject(repo.local);
+
+		// Simulate a stale local main: push a new commit to origin from a
+		// separate clone, so local main is behind origin/main.
+		const otherClone = join(repo.dir, "other");
+		g(`git clone "${join(repo.dir, "origin.git")}" "${otherClone}"`, repo.dir);
+		g("git config user.email test@test.com", otherClone);
+		g("git config user.name Test", otherClone);
+		g("git checkout main", otherClone);
+		writeFileSync(join(otherClone, "new-file.ts"), "export const x = 42;\n");
+		g("git add new-file.ts", otherClone);
+		g('git commit -m "new commit on main"', otherClone);
+		g("git push origin main", otherClone);
+
+		// Verify local main doesn't have the new commit yet
+		const localMainHas = g("git log --oneline main", repo.local);
+		expect(localMainHas).not.toContain("new commit on main");
+
+		const task = makeTask({ id: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff" });
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+
+		// The worktree should contain the new file from origin/main
+		expect(existsSync(join(result.worktreePath, "new-file.ts"))).toBe(true);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-bbbbbbbb", repo.local);
+		rmSync(otherClone, { recursive: true, force: true });
+	});
 });
 
 // ─── Branch rename integration scenarios ─────────────────────────────────────

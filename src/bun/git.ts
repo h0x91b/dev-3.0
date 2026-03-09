@@ -222,10 +222,19 @@ export async function createWorktree(
 	const branch = branchName(task);
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 
-	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id, taskDir: tDir });
+	// Fetch origin so the worktree starts from the latest remote commit,
+	// not a potentially stale local branch.
+	const fetched = await fetchOrigin(project.path);
+	const remoteBase = `origin/${baseBranch}`;
+	const refCheckResult = fetched
+		? await run(["git", "rev-parse", "--verify", remoteBase], project.path)
+		: { ok: false };
+	const resolvedBase = refCheckResult.ok ? remoteBase : baseBranch;
+
+	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 
 	const result = await run(
-		["git", "worktree", "add", "-b", branch, wtPath, baseBranch],
+		["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
 		project.path,
 	);
 
