@@ -1,0 +1,1 @@
+When clicking the Dev Server button while a dev server is already running, the app now shows a dropdown menu with three options: Restart (stop the current server and start a new one), Stop (kill the server without restarting), and Cancel. Server detection checks the in-memory pane map first and falls back to a tmux scan, so it works correctly even after app restarts.

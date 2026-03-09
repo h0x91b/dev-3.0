@@ -49,6 +49,95 @@ function readNumber(key: string, fallback: number): number {
 }
 
 
+interface DevServerMenuProps {
+	position: { top: number; left: number };
+	onRestart: () => void;
+	onStop: () => void;
+	onClose: () => void;
+	t: ReturnType<typeof useT>;
+}
+
+function DevServerMenu({ position, onRestart, onStop, onClose, t }: DevServerMenuProps) {
+	const menuRef = useRef<HTMLDivElement>(null);
+	const [menuPos, setMenuPos] = useState(position);
+	const [visible, setVisible] = useState(false);
+
+	useEffect(() => {
+		function handleClick(e: MouseEvent) {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+				onClose();
+			}
+		}
+		function handleKey(e: KeyboardEvent) {
+			if (e.key === "Escape") onClose();
+		}
+		document.addEventListener("mousedown", handleClick);
+		document.addEventListener("keydown", handleKey);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+			document.removeEventListener("keydown", handleKey);
+		};
+	}, [onClose]);
+
+	useLayoutEffect(() => {
+		if (!menuRef.current) return;
+		const menu = menuRef.current.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const pad = 8;
+		let top = position.top;
+		let left = position.left;
+		if (top + menu.height > vh - pad) top = vh - menu.height - pad;
+		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
+		if (left < pad) left = pad;
+		if (top < pad) top = pad;
+		setMenuPos({ top, left });
+		setVisible(true);
+	}, [position]);
+
+	return (
+		<div
+			ref={menuRef}
+			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
+			style={{ top: menuPos.top, left: menuPos.left, visibility: visible ? "visible" : "hidden" }}
+			onClick={(e) => e.stopPropagation()}
+		>
+			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
+				{t("header.devServerRunning")}
+			</div>
+			<button
+				onClick={onRestart}
+				className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+			>
+				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+						d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+				</svg>
+				{t("header.devServerRestart")}
+			</button>
+			<button
+				onClick={onStop}
+				className="w-full text-left px-3 py-2 text-sm text-danger hover:bg-elevated-hover flex items-center gap-2.5 transition-colors"
+			>
+				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+						d="M6 18L18 6M6 6l12 12" />
+				</svg>
+				{t("header.devServerStop")}
+			</button>
+			<button
+				onClick={onClose}
+				className="w-full text-left px-3 py-2 text-sm text-fg-muted hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+			>
+				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+				</svg>
+				{t("header.devServerCancel")}
+			</button>
+		</div>
+	);
+}
+
 function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -270,11 +359,41 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	const hasDevScript = !!(project.devScript?.trim());
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	const devServerDisabled = !hasDevScript || !isTaskActive;
+	const devServerBtnRef = useRef<HTMLButtonElement>(null);
+	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
+	const [devServerMenuPos, setDevServerMenuPos] = useState({ top: 0, left: 0 });
 
 	async function handleDevServer() {
 		if (devServerDisabled) return;
 		try {
+			const { running } = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
+			if (running) {
+				if (devServerBtnRef.current) {
+					const rect = devServerBtnRef.current.getBoundingClientRect();
+					setDevServerMenuPos({ top: rect.bottom + 4, left: rect.left });
+				}
+				setDevServerMenuOpen(true);
+			} else {
+				await api.request.runDevServer({ taskId: task.id, projectId: project.id });
+			}
+		} catch (err) {
+			alert(t("infoPanel.devServerFailed", { error: String(err) }));
+		}
+	}
+
+	async function handleDevServerRestart() {
+		setDevServerMenuOpen(false);
+		try {
 			await api.request.runDevServer({ taskId: task.id, projectId: project.id });
+		} catch (err) {
+			alert(t("infoPanel.devServerFailed", { error: String(err) }));
+		}
+	}
+
+	async function handleDevServerStop() {
+		setDevServerMenuOpen(false);
+		try {
+			await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
 		} catch (err) {
 			alert(t("infoPanel.devServerFailed", { error: String(err) }));
 		}
@@ -996,22 +1115,35 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 	) : null;
 
 	const devServerButton = (
-		<button
-			onClick={handleDevServer}
-			disabled={devServerDisabled}
-			className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-				devServerDisabled
-					? "text-fg-muted/50 cursor-not-allowed"
-					: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
-			}`}
-			title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
-		>
-			<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-					d="M5 12h14M12 5l7 7-7 7" />
-			</svg>
-			<span className="text-[0.6875rem] font-semibold">{t("header.devServer")}</span>
-		</button>
+		<>
+			<button
+				ref={devServerBtnRef}
+				onClick={handleDevServer}
+				disabled={devServerDisabled}
+				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+					devServerDisabled
+						? "text-fg-muted/50 cursor-not-allowed"
+						: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
+				}`}
+				title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
+			>
+				<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+						d="M5 12h14M12 5l7 7-7 7" />
+				</svg>
+				<span className="text-[0.6875rem] font-semibold">{t("header.devServer")}</span>
+			</button>
+			{devServerMenuOpen && createPortal(
+				<DevServerMenu
+					position={devServerMenuPos}
+					onRestart={handleDevServerRestart}
+					onStop={handleDevServerStop}
+					onClose={() => setDevServerMenuOpen(false)}
+					t={t}
+				/>,
+				document.body,
+			)}
+		</>
 	);
 
 	// ---- "Open in..." button ----
