@@ -1,1 +1,1 @@
-Add bottom padding (16px) to the terminal container to prevent the last row (e.g. tmux status bar) from being clipped by the Electrobun/WKWebView viewport. Same approach as the existing pb-8 workaround in KanbanBoard.
+Fix bottom row clipping (e.g. tmux status bar) caused by an Electrobun/WKWebView viewport bug that loses ~29px after window resize. Added a global pb-7 padding to the app content area and a startup resize nudge to normalize the behavior. Also upgraded Electrobun to 1.14.4 and TypeScript to 5.9.3.

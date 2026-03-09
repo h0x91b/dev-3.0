@@ -389,7 +389,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 			/>
-			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-8 overflow-x-scroll overflow-y-hidden kanban-scroll">
+			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-scroll overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
 					const commonProps = {
 						project,

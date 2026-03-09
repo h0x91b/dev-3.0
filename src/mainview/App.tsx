@@ -335,7 +335,7 @@ function App() {
 				navigate={navigate}
 				updateVersion={updateVersion}
 			/>
-			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
 			{showQuitDialog && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
