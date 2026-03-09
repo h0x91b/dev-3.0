@@ -84,13 +84,22 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		exitUsage("--project <id> is required (or run from inside a worktree)");
 	}
 
-	const title = args.flags.title?.trim();
+	const positionalContent = args.positional[0]?.trim();
+
+	let title = args.flags.title?.trim();
+	if (!title && positionalContent) {
+		// Extract first line as title from positional content (e.g. @file)
+		const firstNewline = positionalContent.indexOf("\n");
+		title = firstNewline === -1 ? positionalContent : positionalContent.slice(0, firstNewline).trim();
+	}
 	if (!title) {
 		exitUsage("--title is required");
 	}
 
+	const description = args.flags.description || positionalContent;
+
 	const params: Record<string, unknown> = { projectId, title };
-	if (args.flags.description) params.description = args.flags.description;
+	if (description) params.description = description;
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) exitError(resp.error || "Failed to create task");
