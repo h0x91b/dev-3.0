@@ -358,6 +358,10 @@ async function checkOpenPRsForPromotion(): Promise<void> {
 				const branchName = await git.getCurrentBranch(task.worktreePath!);
 				if (!branchName) continue;
 
+				// Skip branches that were never pushed (can't have a PR)
+				const unpushed = await git.getUnpushedCount(task.worktreePath!, branchName);
+				if (unpushed === -1) continue;
+
 				// Check for open non-draft PR for this branch
 				const ghResult = await git.run(
 					["gh", "pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft", "--limit", "1"],
