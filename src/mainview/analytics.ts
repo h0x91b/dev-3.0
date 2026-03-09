@@ -2,6 +2,8 @@
 // Uses fetch() instead of gtag.js because WKWebView blocks external
 // script loading from the views:// custom protocol.
 
+import { api } from "./rpc";
+
 const GA_MEASUREMENT_ID = "G-L1NSQH6FGY";
 const GA_API_SECRET = "WlYPp7bSTVS5cMRMS4dJwQ";
 const GA_ENDPOINT = `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`;
@@ -170,25 +172,27 @@ export function trackEvent(
 
 // ── Error tracking ──
 
+/** Send error description to backend for local log file persistence. */
+function logToBackend(description: string, source: "error" | "unhandledrejection"): void {
+	api.request.logRendererError({ description, source }).catch(() => {});
+}
+
 function setupErrorTracking(): void {
 	if (errorTrackingSetup) return;
 	errorTrackingSetup = true;
 
 	window.addEventListener("error", (event) => {
-		trackEvent("app_exception", {
-			description: `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
-			fatal: false,
-		});
+		const description = `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`;
+		trackEvent("app_exception", { description, fatal: false });
+		logToBackend(description, "error");
 	});
 
 	window.addEventListener("unhandledrejection", (event) => {
 		const reason = event.reason;
 		const description = reason instanceof Error
-			? `${reason.message} | ${reason.stack?.split("\n")[1]?.trim() || "no stack"}`
-			: String(reason);
-		trackEvent("app_exception", {
-			description: `Unhandled rejection: ${description}`,
-			fatal: false,
-		});
+			? `Unhandled rejection: ${reason.message} | ${reason.stack?.split("\n")[1]?.trim() || "no stack"}`
+			: `Unhandled rejection: ${String(reason)}`;
+		trackEvent("app_exception", { description, fatal: false });
+		logToBackend(description, "unhandledrejection");
 	});
 }

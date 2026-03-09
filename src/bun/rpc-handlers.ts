@@ -744,7 +744,13 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	return result;
 }
 
+const rendererLog = createLogger("renderer");
+
 export const handlers = {
+	async logRendererError(params: { description: string; source: "error" | "unhandledrejection" }): Promise<void> {
+		rendererLog.warn(`[${params.source}] ${params.description}`);
+	},
+
 	async quitApp(): Promise<void> {
 		log.info("→ quitApp (Cmd+Q from renderer)");
 		Utils.quit();

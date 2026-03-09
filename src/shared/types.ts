@@ -653,6 +653,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: ExternalApp[];
 			};
+			logRendererError: {
+				params: { description: string; source: "error" | "unhandledrejection" };
+				response: void;
+			};
 			listBranches: {
 				params: { projectId: string };
 				response: Array<{ name: string; isRemote: boolean }>;
