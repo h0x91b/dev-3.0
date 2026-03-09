@@ -66,14 +66,14 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 };
 
 export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
-	todo: "#0ea5e9",
-	"in-progress": "#8b5cf6",
-	"user-questions": "#f97316",
-	"review-by-ai": "#94a3b8",
-	"review-by-user": "#eab308",
-	"review-by-colleague": "#a855f7",
-	completed: "#22c55e",
-	cancelled: "#ef4444",
+	todo: "#0891b2",
+	"in-progress": "#6366f1",
+	"user-questions": "#ea580c",
+	"review-by-ai": "#64748b",
+	"review-by-user": "#ca8a04",
+	"review-by-colleague": "#8b5cf6",
+	completed: "#059669",
+	cancelled: "#dc2626",
 };
 
 /** Convert "#rrggbb" → "R G B" for use as CSS variable value */
