@@ -15,6 +15,7 @@ import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
 import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
+import { setupAgentHooks } from "./agent-hooks";
 
 const log = createLogger("rpc");
 
@@ -480,6 +481,7 @@ export async function launchTaskPty(
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
+	let resolvedBaseCmd = "";
 
 	try {
 		const cmdOptions = resume ? { resume } : undefined;
@@ -488,6 +490,7 @@ export async function launchTaskPty(
 			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx, cmdOptions);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
+			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -500,6 +503,7 @@ export async function launchTaskPty(
 			);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
+			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		}
 		log.info("Command resolved", { tmuxCmd, envKeys: Object.keys(extraEnv) });
 	} catch (err) {
@@ -520,6 +524,16 @@ export async function launchTaskPty(
 			worktreePath,
 			error: String(err),
 			stack: (err as Error)?.stack ?? "no stack",
+		});
+	}
+
+	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop)
+	try {
+		setupAgentHooks(worktreePath, task.id, resolvedBaseCmd);
+	} catch (err) {
+		log.warn("setupAgentHooks failed (non-fatal)", {
+			worktreePath,
+			error: String(err),
 		});
 	}
 

@@ -142,7 +142,10 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	}
 	// Non-built-in values may be custom column IDs — let the server validate
 
+	const ifStatus = args.flags["if-status"];
+
 	const params: Record<string, unknown> = { taskId, newStatus };
+	if (ifStatus) params.ifStatus = ifStatus;
 	if (args.flags.project) params.projectId = args.flags.project;
 	else if (context?.projectId) params.projectId = context.projectId;
 

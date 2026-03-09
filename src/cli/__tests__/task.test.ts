@@ -476,6 +476,34 @@ describe("task update --id flag", () => {
 	});
 });
 
+describe("task move --if-status flag", () => {
+	it("passes --if-status to server when provided", async () => {
+		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "review-by-user", "if-status": "in-progress" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatus).toBe("in-progress");
+		expect(params.newStatus).toBe("review-by-user");
+	});
+
+	it("does not include ifStatus when --if-status is not provided", async () => {
+		const moved = { ...FAKE_TASK, status: "todo" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "todo" }), SOCKET, null);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params).not.toHaveProperty("ifStatus");
+	});
+});
+
 describe("task move --id flag", () => {
 	it("uses --id flag when no positional arg given", async () => {
 		const moved = { ...FAKE_TASK, status: "todo" as const };

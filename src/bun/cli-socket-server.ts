@@ -358,6 +358,13 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
+		// Conditional move: if --if-status was provided, only proceed when the
+		// task's current status matches.  Silent no-op otherwise (no error).
+		const ifStatus = params.ifStatus as string | undefined;
+		if (ifStatus && task.status !== ifStatus) {
+			return task;
+		}
+
 		// Check if this is a custom column ID
 		const customColumns = project.customColumns ?? [];
 		const customColumn = findByIdPrefix(customColumns, newStatus, "custom column");
