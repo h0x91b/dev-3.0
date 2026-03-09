@@ -904,6 +904,55 @@ describe("createWorktree", () => {
 		g("git branch -D dev3/task-aaaaaaaa", repo.local);
 	});
 
+	it("sets up remote tracking when fallback branch has a remote counterpart", async () => {
+		// Create feature/tracked, push it to origin, then check it out in another worktree
+		g("git checkout -b feature/tracked", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push origin feature/tracked", repo.local);
+		g("git checkout main", repo.local);
+		const otherWt = join(repo.dir, "other-wt-tracked");
+		g(`git worktree add "${otherWt}" feature/tracked`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task, "feature/tracked");
+
+		expect(result.branchName).toBe("dev3/task-aaaaaaaa");
+		// The fallback task branch should track origin/feature/tracked
+		const upstream = g(`git -C "${result.worktreePath}" rev-parse --abbrev-ref --symbolic-full-name @{u}`, repo.local);
+		expect(upstream.trim()).toBe("origin/feature/tracked");
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g(`git worktree remove --force "${otherWt}"`, repo.local);
+		g("git branch -D dev3/task-aaaaaaaa", repo.local);
+	});
+
+	it("does not set remote tracking when fallback branch has no remote counterpart", async () => {
+		// Create feature/local-only but do NOT push it; check it out in another worktree
+		g("git checkout -b feature/local-only", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+		const otherWt = join(repo.dir, "other-wt-local");
+		g(`git worktree add "${otherWt}" feature/local-only`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task, "feature/local-only");
+
+		expect(result.branchName).toBe("dev3/task-aaaaaaaa");
+		// No upstream should be configured
+		const upstreamResult = g(`git -C "${result.worktreePath}" rev-parse --abbrev-ref --symbolic-full-name @{u} 2>&1 || true`, repo.local);
+		expect(upstreamResult).not.toContain("origin/feature/local-only");
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g(`git worktree remove --force "${otherWt}"`, repo.local);
+		g("git branch -D dev3/task-aaaaaaaa", repo.local);
+	});
+
 	it("creates worktree from remote branch", async () => {
 		// Create a branch, push it, then delete the local copy
 		g("git checkout -b feature/remote-only", repo.local);

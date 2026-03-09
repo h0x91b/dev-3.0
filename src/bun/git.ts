@@ -206,6 +206,19 @@ export async function createWorktree(
 					log.error("Failed to create worktree from existing branch (fallback)", { stderr: fallbackResult.stderr, taskId: task.id });
 					throw new Error(`Failed to create worktree: ${fallbackResult.stderr}`);
 				}
+				// Set up remote tracking so `git push` targets the original remote branch
+				const remoteRef = `origin/${resolvedBranch}`;
+				const remoteCheckResult = await run(
+					["git", "rev-parse", "--verify", remoteRef],
+					project.path,
+				);
+				if (remoteCheckResult.ok) {
+					await run(
+						["git", "branch", "--set-upstream-to", remoteRef],
+						wtPath,
+					);
+					log.info("Set remote tracking branch for fallback task branch", { taskBranch, remoteRef });
+				}
 				log.info("Worktree created with task branch based on existing", { wtPath, branch: taskBranch, base: resolvedBranch });
 				return { worktreePath: wtPath, branchName: taskBranch };
 			}
