@@ -60,10 +60,16 @@ function initElectrobunApi(): ApiShape {
 }
 
 // ── Browser WebSocket transport ─────────────────────────────────────
-// Used when running in Chrome/Safari via Vite dev server.
+// Used when running in Chrome/Safari (remote access server or Vite dev).
 function initBrowserApi(): ApiShape {
-	const BROWSER_RPC_PORT = (globalThis as any).__DEV3_BROWSER_RPC_PORT || 19191;
-	const wsUrl = `ws://localhost:${BROWSER_RPC_PORT}/rpc`;
+	// If served by the remote access server, use the same host.
+	// If served by Vite dev server (localhost:5173), fall back to the known port.
+	const FALLBACK_RPC_PORT = (globalThis as any).__DEV3_BROWSER_RPC_PORT || 19191;
+	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+	const isViteDevServer = window.location.port === "5173";
+	const wsUrl = isViteDevServer
+		? `ws://localhost:${FALLBACK_RPC_PORT}/rpc`
+		: `${protocol}//${window.location.host}/rpc`;
 
 	let ws: WebSocket | null = null;
 	let requestId = 0;
@@ -176,6 +182,15 @@ function initBrowserApi(): ApiShape {
 				console.warn("[browser-rpc] Clipboard read failed:", err);
 				return null;
 			}
+		},
+
+		async getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
+			// Trigger the real handler (restores session etc.), but rewrite the URL
+			// to go through our access server's PTY proxy instead of direct localhost.
+			await rpcRequest("getPtyUrl", params);
+			const host = window.location.host; // e.g. "192.168.0.1:17231"
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+			return `${protocol}//${host}/pty?session=${params.taskId}`;
 		},
 
 		async hideApp(): Promise<void> {

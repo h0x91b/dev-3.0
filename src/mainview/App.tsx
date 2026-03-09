@@ -37,6 +37,9 @@ function App() {
 	const updateStatusShownAtRef = useRef<number>(0);
 	const updateClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Remote access QR code modal
+	const [remoteQR, setRemoteQR] = useState<{ qrDataUrl: string; accessUrl: string } | null>(null);
+
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
 	const [reqResults, setReqResults] = useState<RequirementCheckResult[]>([]);
@@ -340,6 +343,16 @@ function App() {
 		return () => window.removeEventListener("rpc:navigateToViewportLab", onNavigateToViewportLab);
 	}, [navigate]);
 
+	// Listen for View > Remote Access QR Code menu item
+	useEffect(() => {
+		function onShowRemoteQR(e: Event) {
+			const detail = (e as CustomEvent).detail;
+			setRemoteQR(detail);
+		}
+		window.addEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
+		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
+	}, []);
+
 	// Track page views on route changes
 	useEffect(() => {
 		const { screen } = state.route;
@@ -502,6 +515,39 @@ function App() {
 								{t("quit.confirm")}
 							</button>
 						</div>
+					</div>
+				</div>
+			)}
+			{remoteQR && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+					onMouseDown={(e) => {
+						if (e.target === e.currentTarget) setRemoteQR(null);
+					}}
+				>
+					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[28rem] p-6 space-y-4 text-center">
+						<h2 className="text-fg text-lg font-semibold">Remote Access</h2>
+						<p className="text-fg-2 text-sm">Scan this QR code to open the UI on your phone or another device</p>
+						<div className="flex justify-center">
+							<img src={remoteQR.qrDataUrl} alt="QR Code" className="w-56 h-56 rounded-lg" />
+						</div>
+						<div className="bg-base rounded-lg p-3">
+							<code className="text-fg text-xs break-all select-all">{remoteQR.accessUrl}</code>
+						</div>
+						<button
+							onClick={() => {
+								navigator.clipboard.writeText(remoteQR.accessUrl).catch(() => {});
+							}}
+							className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+						>
+							Copy URL
+						</button>
+						<button
+							onClick={() => setRemoteQR(null)}
+							className="ml-2 px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						>
+							Close
+						</button>
 					</div>
 				</div>
 			)}

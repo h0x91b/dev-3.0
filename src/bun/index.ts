@@ -15,7 +15,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
+import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
@@ -250,6 +250,8 @@ ApplicationMenu.setApplicationMenu([
 			{ label: "Zoom Out", action: "zoom-out", accelerator: "-" },
 			{ label: "Reset Zoom", action: "zoom-reset", accelerator: "0" },
 			{ type: "separator" },
+			{ label: "Remote Access QR Code", action: "show-remote-qr" },
+			{ type: "separator" },
 			{ role: "toggleFullScreen" },
 		],
 	},
@@ -313,7 +315,7 @@ setPushMessage((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
-// Start remote access server (browser RPC + PTY proxy + static files)
+// Start remote access server (serves UI + RPC + PTY proxy on LAN)
 startRemoteAccessServer({
 	rpcHandler: async (method: string, params: any) => {
 		const handler = (handlers as any)[method];
@@ -530,6 +532,14 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		(mainWindow.webview.rpc as any).send.zoomOut?.({});
 	} else if (e.data.action === "zoom-reset") {
 		(mainWindow.webview.rpc as any).send.zoomReset?.({});
+	} else if (e.data.action === "show-remote-qr") {
+		try {
+			const qrDataUrl = await generateQrDataUrl();
+			const accessUrl = getAccessUrl();
+			(mainWindow.webview.rpc as any).send.showRemoteAccessQR?.({ qrDataUrl, accessUrl });
+		} catch (err) {
+			log.error("Failed to generate QR code", { error: String(err) });
+		}
 	}
 });
 
