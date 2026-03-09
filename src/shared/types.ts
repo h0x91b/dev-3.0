@@ -188,6 +188,8 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
 	{ id: "terminal", name: "Terminal", macAppName: "Terminal" },
 	{ id: "intellij", name: "IntelliJ IDEA", macAppName: "IntelliJ IDEA" },
 	{ id: "intellij-ce", name: "IntelliJ IDEA CE", macAppName: "IntelliJ IDEA CE" },
+	{ id: "zed", name: "Zed", macAppName: "Zed" },
+	{ id: "sublime", name: "Sublime Text", macAppName: "Sublime Text" },
 ];
 
 export interface GlobalSettings {

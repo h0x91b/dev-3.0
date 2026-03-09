@@ -15,6 +15,8 @@ const APP_ICONS: Record<string, string> = {
 	terminal: "\uF489",
 	intellij: "\u{F0184}",    // nf-md-diamond_stone (IntelliJ)
 	"intellij-ce": "\u{F0184}",
+	zed: "\u{F0599}",            // nf-md-lightning_bolt (Zed)
+	sublime: "\u{F0CC5}",        // nf-md-text_box (Sublime Text)
 };
 
 interface OpenInMenuProps {
