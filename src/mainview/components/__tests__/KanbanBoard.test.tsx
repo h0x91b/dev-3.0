@@ -82,9 +82,125 @@ function startColumnDrag(handle: Element) {
 	dispatchDrag(handle, "dragstart", { dataTransfer: dt });
 }
 
+function getColumnLabels() {
+	const columns = document.querySelectorAll("[class*='glass-column']");
+	return Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent ?? "");
+}
+
 describe("column ordering", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it("review-by-colleague appears before completed in default order", () => {
+		render(
+			<I18nProvider>
+				<KanbanBoard project={project} tasks={[]} dispatch={vi.fn()} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		const labels = getColumnLabels();
+		const colleagueIdx = labels.findIndex((l) => l === "External Review");
+		const completedIdx = labels.findIndex((l) => l === "Completed");
+		expect(colleagueIdx).toBeGreaterThan(0);
+		expect(colleagueIdx).toBeLessThan(completedIdx);
+	});
+
+	it("review-by-colleague is hidden when peerReviewEnabled is false", () => {
+		render(
+			<I18nProvider>
+				<KanbanBoard
+					project={{ ...project, peerReviewEnabled: false }}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		const labels = getColumnLabels();
+		expect(labels).not.toContain("External Review");
+	});
+
+	it("review-by-colleague is inserted before completed when missing from stored columnOrder", () => {
+		render(
+			<I18nProvider>
+				<KanbanBoard
+					project={{
+						...project,
+						// Old stored order that predates review-by-colleague
+						columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+					}}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		const labels = getColumnLabels();
+		const colleagueIdx = labels.findIndex((l) => l === "External Review");
+		const completedIdx = labels.findIndex((l) => l === "Completed");
+		expect(colleagueIdx).toBeGreaterThan(0);
+		expect(colleagueIdx).toBeLessThan(completedIdx);
+	});
+
+	it("review-by-colleague stays in stored position when already in columnOrder", () => {
+		render(
+			<I18nProvider>
+				<KanbanBoard
+					project={{
+						...project,
+						// User moved it to the very beginning
+						columnOrder: ["review-by-colleague", "todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+					}}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		const labels = getColumnLabels();
+		expect(labels[0]).toBe("External Review");
+	});
+
+	it("review-by-colleague is hidden when peerReviewEnabled is false and NOT in stored columnOrder", () => {
+		// This is the common case: user has a saved columnOrder from before the feature existed
+		render(
+			<I18nProvider>
+				<KanbanBoard
+					project={{
+						...project,
+						peerReviewEnabled: false,
+						columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+					}}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		expect(getColumnLabels()).not.toContain("External Review");
+	});
+
+	it("review-by-colleague is hidden when peerReviewEnabled is false, even if in stored columnOrder", () => {
+		render(
+			<I18nProvider>
+				<KanbanBoard
+					project={{
+						...project,
+						peerReviewEnabled: false,
+						columnOrder: ["todo", "review-by-colleague", "in-progress", "completed", "cancelled", "review-by-ai", "review-by-user", "user-questions"],
+					}}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		expect(getColumnLabels()).not.toContain("External Review");
 	});
 
 	it("getOrderedColumns returns default order when columnOrder is absent", () => {

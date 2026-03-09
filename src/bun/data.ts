@@ -145,7 +145,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder">>,
+	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "peerReviewEnabled">>,
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		console.log("[updateProject] updates:", JSON.stringify(updates));

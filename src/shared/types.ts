@@ -17,6 +17,7 @@ export type TaskStatus =
 	| "user-questions"
 	| "review-by-ai"
 	| "review-by-user"
+	| "review-by-colleague"
 	| "completed"
 	| "cancelled";
 
@@ -24,6 +25,7 @@ export const ACTIVE_STATUSES: TaskStatus[] = [
 	"in-progress",
 	"user-questions",
 	"review-by-user",
+	"review-by-colleague",
 	"review-by-ai",
 ];
 
@@ -32,6 +34,7 @@ export const ALL_STATUSES: TaskStatus[] = [
 	"in-progress",
 	"user-questions",
 	"review-by-user",
+	"review-by-colleague",
 	"completed",
 	"cancelled",
 	"review-by-ai",
@@ -43,6 +46,7 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 	"user-questions": "Waiting for You",
 	"review-by-ai": "Review by AI",
 	"review-by-user": "Review by You",
+	"review-by-colleague": "External Review",
 	completed: "Completed",
 	cancelled: "Cancelled",
 };
@@ -53,6 +57,7 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	"user-questions": "#ffa353",
 	"review-by-ai": "#ff8bff",
 	"review-by-user": "#ffe55f",
+	"review-by-colleague": "#a8f0a0",
 	completed: "#3cf3b0",
 	cancelled: "#ff8282",
 };
@@ -63,6 +68,7 @@ export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	"user-questions": "#ea580c",
 	"review-by-ai": "#a21caf",
 	"review-by-user": "#4d7c0f",
+	"review-by-colleague": "#15803d",
 	completed: "#16a34a",
 	cancelled: "#dc2626",
 };
@@ -253,6 +259,8 @@ export interface Project {
 	customColumns?: CustomColumn[];
 	// Ordered list of TaskStatus strings and custom column IDs; absent = default order
 	columnOrder?: string[];
+	// When false, the "External Review" column is hidden (default: true)
+	peerReviewEnabled?: boolean;
 }
 
 export interface Task {
@@ -419,6 +427,7 @@ export type AppRPCSchema = {
 					cleanupScript: string;
 					defaultBaseBranch: string;
 					clonePaths: string[];
+					peerReviewEnabled: boolean;
 				};
 				response: Project;
 			};

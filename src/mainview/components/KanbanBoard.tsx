@@ -4,7 +4,7 @@ import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
 const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-user"];
-const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled", "review-by-ai"];
+const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["review-by-colleague", "completed", "cancelled", "review-by-ai"];
 const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
 
 type ColumnSlot =
@@ -267,16 +267,20 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	// Returns all columns in their effective display order, respecting project.columnOrder
 	function getOrderedColumns(): ColumnSlot[] {
 		const cols = customColumns;
+		const peerReviewEnabled = project.peerReviewEnabled !== false;
+		const filterBuiltin = (statuses: TaskStatus[]) =>
+			statuses.filter((s) => s !== "review-by-colleague" || peerReviewEnabled);
 		if (!project.columnOrder || project.columnOrder.length === 0) {
 			return [
-				...DEFAULT_BEFORE_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...filterBuiltin(DEFAULT_BEFORE_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
 				...cols.map((c) => ({ type: "custom" as const, col: c })),
-				...DEFAULT_AFTER_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...filterBuiltin(DEFAULT_AFTER_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
 			];
 		}
 		const result: ColumnSlot[] = [];
 		const used = new Set<string>();
 		for (const id of project.columnOrder) {
+			if (id === "review-by-colleague" && !peerReviewEnabled) { used.add(id); continue; }
 			if ((ALL_BUILTIN as string[]).includes(id)) {
 				result.push({ type: "builtin", status: id as TaskStatus });
 				used.add(id);
@@ -285,8 +289,24 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				if (col) { result.push({ type: "custom", col }); used.add(id); }
 			}
 		}
-		// Append anything missing (new built-ins added after columnOrder was stored, or new custom cols)
-		for (const s of ALL_BUILTIN) { if (!used.has(s)) result.push({ type: "builtin", status: s }); }
+		// review-by-colleague: if missing from stored order, insert right before "completed"
+		// (not at the tail) so it stays in a logical position for existing users.
+		if (!used.has("review-by-colleague") && peerReviewEnabled) {
+			const completedIdx = result.findIndex((c) => c.type === "builtin" && c.status === "completed");
+			const slot = { type: "builtin" as const, status: "review-by-colleague" as TaskStatus };
+			if (completedIdx !== -1) {
+				result.splice(completedIdx, 0, slot);
+			} else {
+				result.push(slot);
+			}
+			used.add("review-by-colleague");
+		}
+		// Append anything else missing (new built-ins, or new custom cols)
+		for (const s of ALL_BUILTIN) {
+			if (!used.has(s) && (s !== "review-by-colleague" || peerReviewEnabled)) {
+				result.push({ type: "builtin", status: s });
+			}
+		}
 		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
 		return result;
 	}

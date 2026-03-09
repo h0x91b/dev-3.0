@@ -198,6 +198,7 @@ function ProjectSettings({
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
 		project?.defaultBaseBranch || "main",
 	);
+	const [peerReviewEnabled, setPeerReviewEnabled] = useState(project?.peerReviewEnabled !== false);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
@@ -342,6 +343,7 @@ function ProjectSettings({
 				cleanupScript,
 				defaultBaseBranch,
 				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
+				peerReviewEnabled,
 			});
 			dispatch({ type: "updateProject", project: updated });
 			navigate({ screen: "project", projectId });
@@ -467,7 +469,37 @@ function ProjectSettings({
 						/>
 					</div>
 
-					{/* Custom Columns */}
+					{/* Peer Review Column */}
+					<div>
+						<div className="flex items-center justify-between">
+							<div>
+								<label className="block text-fg text-sm font-semibold mb-1">
+									{t("projectSettings.peerReview")}
+								</label>
+								<p className="text-fg-3 text-sm">
+									{t("projectSettings.peerReviewDesc")}
+								</p>
+							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={peerReviewEnabled}
+								aria-label={t("projectSettings.peerReview")}
+								onClick={() => setPeerReviewEnabled((v) => !v)}
+								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+									peerReviewEnabled ? "bg-accent" : "bg-edge-active"
+								}`}
+							>
+								<span
+									className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+										peerReviewEnabled ? "translate-x-4" : "translate-x-0"
+									}`}
+								/>
+							</button>
+						</div>
+					</div>
+
+				{/* Custom Columns */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("customColumns.settingsTitle")}
