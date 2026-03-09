@@ -24,7 +24,7 @@ export function useAvailableApps(): ExternalApp[] {
 			});
 		}
 
-		fetchPromise.then((result) => setApps(result));
+		fetchPromise.then((result) => setApps(result)).catch(() => {});
 	}, []);
 
 	return apps;

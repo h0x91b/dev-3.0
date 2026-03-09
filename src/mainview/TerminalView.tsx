@@ -385,11 +385,16 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			};
 
 			ws.onmessage = (event) => {
-				if (typeof event.data === "string") {
-					const cleaned = event.data.replace(OSC52_RE, "");
-					if (cleaned) term.write(cleaned);
-				} else {
-					term.write(new Uint8Array(event.data));
+				try {
+					if (typeof event.data === "string") {
+						const cleaned = event.data.replace(OSC52_RE, "");
+						if (cleaned) term.write(cleaned);
+					} else {
+						term.write(new Uint8Array(event.data));
+					}
+				} catch {
+					// Swallow ghostty-web rendering errors to avoid flooding
+					// analytics with thousands of app_exception events per session.
 				}
 			};
 

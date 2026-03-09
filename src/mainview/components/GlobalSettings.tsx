@@ -43,14 +43,14 @@ function GlobalSettings() {
 	});
 
 	useEffect(() => {
-		api.request.getAgents().then(setAgents);
+		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then((s) => {
 			setGlobalSettings(s);
 			if (s.terminalKeymap) {
 				setKeymapPresetState(s.terminalKeymap);
 				setKeymapPreset(s.terminalKeymap);
 			}
-		});
+		}).catch(() => {});
 	}, []);
 
 	const selectedDefaultAgent = agents.find((a) => a.id === globalSettings.defaultAgentId);
@@ -75,14 +75,14 @@ function GlobalSettings() {
 	function handleDropPositionChange(pos: "top" | "bottom") {
 		const updated = { ...globalSettings, taskDropPosition: pos };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 		trackEvent("settings_changed", { setting: "task_drop_position", value: pos });
 	}
 
 	function handleUpdateChannelChange(channel: "stable" | "canary") {
 		const updated = { ...globalSettings, updateChannel: channel };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 		trackEvent("settings_changed", { setting: "update_channel", value: channel });
 	}
 
@@ -91,20 +91,20 @@ function GlobalSettings() {
 		setKeymapPreset(preset);
 		const updated = { ...globalSettings, terminalKeymap: preset };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	function handleSoundToggle(enabled: boolean) {
 		const updated = { ...globalSettings, playSoundOnTaskComplete: enabled };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	/** Filter out apps with empty fields before persisting to disk. */
 	function saveExternalApps(apps: ExternalApp[]) {
 		const valid = apps.filter((a) => a.name.trim() && a.macAppName.trim());
 		const updated = { ...globalSettings, externalApps: valid.length > 0 ? valid : undefined };
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 		invalidateAvailableApps();
 	}
 
@@ -141,18 +141,22 @@ function GlobalSettings() {
 		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
 		const updated = { ...globalSettings, defaultAgentId: agentId, defaultConfigId: configId };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	function handleDefaultConfigChange(configId: string) {
 		const updated = { ...globalSettings, defaultConfigId: configId };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	async function persistAgents(updated: CodingAgent[]) {
 		setAgents(updated);
-		await api.request.saveAgents({ agents: updated });
+		try {
+			await api.request.saveAgents({ agents: updated });
+		} catch {
+			// Best-effort save — UI state is already updated
+		}
 	}
 
 	function updateAgent(agentId: string, patch: Partial<CodingAgent>) {
@@ -444,7 +448,7 @@ function GlobalSettings() {
 									if (!folder) return;
 									const updated = { ...globalSettings, cloneBaseDirectory: folder };
 									setGlobalSettings(updated);
-									api.request.saveGlobalSettings(updated);
+									api.request.saveGlobalSettings(updated).catch(() => {});
 								}}
 								className="px-4 py-3 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
 							>
