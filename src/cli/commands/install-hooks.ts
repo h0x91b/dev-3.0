@@ -1,8 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CliContext } from "../context";
 import { exitError } from "../output";
-import { mergeClaudeHooks } from "../../shared/agent-hooks";
+import { writeClaudeHooks } from "../../shared/agent-hooks";
 
 const WORKTREES_DIR = `${process.env.HOME || "/tmp"}/.dev3.0/worktrees`;
 
@@ -37,26 +36,12 @@ export async function handleInstallHooks(context: CliContext | null): Promise<vo
 	}
 
 	const taskId = context.taskId;
+	const settingsPath = join(worktreePath, ".claude", "settings.local.json");
 
-	// Claude Code hooks → .claude/settings.local.json
-	const claudeDir = join(worktreePath, ".claude");
-	const settingsPath = join(claudeDir, "settings.local.json");
-
-	let existing: Record<string, unknown> = {};
-	try {
-		if (existsSync(settingsPath)) {
-			existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		}
-	} catch {
-		// Corrupted — overwrite
-	}
-
-	const updated = mergeClaudeHooks(existing, taskId);
-
-	mkdirSync(claudeDir, { recursive: true });
-	writeFileSync(settingsPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
+	writeClaudeHooks(worktreePath, taskId);
 
 	process.stdout.write(`Installed Claude Code hooks → ${settingsPath}\n`);
+	process.stdout.write(`  PreToolUse → in-progress\n`);
 	process.stdout.write(`  PermissionRequest → user-questions\n`);
 	process.stdout.write(`  Stop → review-by-user\n`);
 }

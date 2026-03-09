@@ -1,7 +1,9 @@
 /**
- * Pure hook-building logic shared between the backend (bun/) and CLI.
- * No filesystem or process dependencies — only data transformations.
+ * Hook-building logic shared between the backend (bun/) and CLI.
  */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
@@ -92,4 +94,27 @@ export function mergeClaudeHooks(
 	}
 
 	return { ...existing, hooks: merged };
+}
+
+/**
+ * Read .claude/settings.local.json, merge dev3 hooks, write back.
+ * Creates the .claude/ directory if it doesn't exist.
+ */
+export function writeClaudeHooks(worktreePath: string, taskId: string): void {
+	const claudeDir = join(worktreePath, ".claude");
+	const settingsPath = join(claudeDir, "settings.local.json");
+
+	let existing: Record<string, unknown> = {};
+	try {
+		if (existsSync(settingsPath)) {
+			existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		}
+	} catch {
+		// Corrupted file — overwrite
+	}
+
+	const updated = mergeClaudeHooks(existing, taskId);
+
+	mkdirSync(claudeDir, { recursive: true });
+	writeFileSync(settingsPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 }

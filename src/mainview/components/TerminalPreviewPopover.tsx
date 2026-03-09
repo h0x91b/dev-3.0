@@ -6,13 +6,12 @@ function TerminalPreviewPopover({ open, html, loading, pos, cancelClose, schedul
 
 	return createPortal(
 		<div
-			className="fixed z-50 rounded-xl shadow-2xl shadow-black/50 border border-edge-active overflow-hidden transition-opacity duration-150"
+			className="fixed z-50 rounded-xl shadow-2xl shadow-black/50 border border-edge-active overflow-hidden transition-opacity duration-150 bg-overlay"
 			style={{
 				top: pos.top,
 				left: pos.left,
 				width: 420,
 				maxHeight: 320,
-				background: "#1a1a2e",
 				opacity: html || loading ? 1 : 0,
 			}}
 			onMouseEnter={cancelClose}
