@@ -46,7 +46,7 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 	"user-questions": "Waiting for You",
 	"review-by-ai": "Review by AI",
 	"review-by-user": "Review by You",
-	"review-by-colleague": "Review by Colleague",
+	"review-by-colleague": "External Review",
 	completed: "Completed",
 	cancelled: "Cancelled",
 };
@@ -259,7 +259,7 @@ export interface Project {
 	customColumns?: CustomColumn[];
 	// Ordered list of TaskStatus strings and custom column IDs; absent = default order
 	columnOrder?: string[];
-	// When false, the "Review by Colleague" column is hidden (default: true)
+	// When false, the "External Review" column is hidden (default: true)
 	peerReviewEnabled?: boolean;
 }
 

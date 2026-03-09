@@ -221,7 +221,7 @@ const en = {
 	"projectSettings.baseBranch": "Base Branch",
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.peerReview": "Peer Review Column",
-	"projectSettings.peerReviewDesc": "Show the \"Review by Colleague\" column. Disable for projects that don't use peer code review.",
+	"projectSettings.peerReviewDesc": "Show the \"External Review\" column. Disable for projects that don't use peer code review.",
 	"projectSettings.save": "Save Settings",
 	"projectSettings.saving": "Saving...",
 	"projectSettings.failedSave": "Failed to save settings: {error}",
@@ -439,7 +439,7 @@ const en = {
 	"status.userQuestions": "Waiting for You",
 	"status.reviewByAi": "Review by AI (unimplemented)",
 	"status.reviewByUser": "Review by You",
-	"status.reviewByColleague": "Review by Colleague",
+	"status.reviewByColleague": "External Review",
 	"status.completed": "Completed",
 	"status.cancelled": "Cancelled",
 

@@ -99,7 +99,7 @@ describe("column ordering", () => {
 			</I18nProvider>,
 		);
 		const labels = getColumnLabels();
-		const colleagueIdx = labels.findIndex((l) => l === "Review by Colleague");
+		const colleagueIdx = labels.findIndex((l) => l === "External Review");
 		const completedIdx = labels.findIndex((l) => l === "Completed");
 		expect(colleagueIdx).toBeGreaterThan(0);
 		expect(colleagueIdx).toBeLessThan(completedIdx);
@@ -118,7 +118,7 @@ describe("column ordering", () => {
 			</I18nProvider>,
 		);
 		const labels = getColumnLabels();
-		expect(labels).not.toContain("Review by Colleague");
+		expect(labels).not.toContain("External Review");
 	});
 
 	it("review-by-colleague is inserted before completed when missing from stored columnOrder", () => {
@@ -138,7 +138,7 @@ describe("column ordering", () => {
 			</I18nProvider>,
 		);
 		const labels = getColumnLabels();
-		const colleagueIdx = labels.findIndex((l) => l === "Review by Colleague");
+		const colleagueIdx = labels.findIndex((l) => l === "External Review");
 		const completedIdx = labels.findIndex((l) => l === "Completed");
 		expect(colleagueIdx).toBeGreaterThan(0);
 		expect(colleagueIdx).toBeLessThan(completedIdx);
@@ -161,7 +161,7 @@ describe("column ordering", () => {
 			</I18nProvider>,
 		);
 		const labels = getColumnLabels();
-		expect(labels[0]).toBe("Review by Colleague");
+		expect(labels[0]).toBe("External Review");
 	});
 
 	it("review-by-colleague is hidden when peerReviewEnabled is false and NOT in stored columnOrder", () => {
@@ -181,7 +181,7 @@ describe("column ordering", () => {
 				/>
 			</I18nProvider>,
 		);
-		expect(getColumnLabels()).not.toContain("Review by Colleague");
+		expect(getColumnLabels()).not.toContain("External Review");
 	});
 
 	it("review-by-colleague is hidden when peerReviewEnabled is false, even if in stored columnOrder", () => {
@@ -200,7 +200,7 @@ describe("column ordering", () => {
 				/>
 			</I18nProvider>,
 		);
-		expect(getColumnLabels()).not.toContain("Review by Colleague");
+		expect(getColumnLabels()).not.toContain("External Review");
 	});
 
 	it("getOrderedColumns returns default order when columnOrder is absent", () => {

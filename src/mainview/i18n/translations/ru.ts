@@ -229,7 +229,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"projectSettings.baseBranch": "Базовая ветка",
 	"projectSettings.baseBranchDesc": "Ветка, от которой создаются worktree",
 	"projectSettings.peerReview": "Колонка ревью коллег",
-	"projectSettings.peerReviewDesc": "Показывать колонку «Ревью коллегой». Отключите для проектов без peer review.",
+	"projectSettings.peerReviewDesc": "Показывать колонку «Внешнее ревью». Отключите для проектов без peer review.",
 	"projectSettings.save": "Сохранить настройки",
 	"projectSettings.saving": "Сохранение...",
 	"projectSettings.failedSave": "Не удалось сохранить настройки: {error}",
@@ -451,7 +451,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	"status.userQuestions": "Ждём вас",
 	"status.reviewByAi": "Ревью ИИ (unimplemented)",
 	"status.reviewByUser": "Ревью вами",
-	"status.reviewByColleague": "Ревью коллегой",
+	"status.reviewByColleague": "Внешнее ревью",
 	"status.completed": "Завершено",
 	"status.cancelled": "Отменено",
 
