@@ -41,6 +41,7 @@ export async function handleInstallHooks(context: CliContext | null): Promise<vo
 	writeClaudeHooks(worktreePath, taskId);
 
 	process.stdout.write(`Installed Claude Code hooks → ${settingsPath}\n`);
+	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
 	process.stdout.write(`  PreToolUse → in-progress\n`);
 	process.stdout.write(`  PermissionRequest → user-questions\n`);
 	process.stdout.write(`  Stop → review-by-user\n`);

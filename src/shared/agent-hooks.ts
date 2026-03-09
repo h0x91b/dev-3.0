@@ -26,13 +26,24 @@ export interface MatcherGroup {
 export function buildClaudeHooks(
 	taskId: string,
 ): Record<string, MatcherGroup[]> {
+	const inProgressCmd = `${DEV3_CLI} task move ${taskId} --status in-progress`;
 	return {
+		UserPromptSubmit: [
+			{
+				hooks: [
+					{
+						type: "command",
+						command: inProgressCmd,
+					},
+				],
+			},
+		],
 		PreToolUse: [
 			{
 				hooks: [
 					{
 						type: "command",
-						command: `${DEV3_CLI} task move ${taskId} --status in-progress`,
+						command: inProgressCmd,
 					},
 				],
 			},

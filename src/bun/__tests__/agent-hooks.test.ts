@@ -6,15 +6,26 @@ const TASK_ID = "aaaaaaaa-1111-2222-3333-444444444444";
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
 describe("buildClaudeHooks", () => {
-	it("returns PreToolUse, PermissionRequest and Stop matcher groups", () => {
+	it("returns UserPromptSubmit, PreToolUse, PermissionRequest and Stop matcher groups", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
 
+		expect(hooks).toHaveProperty("UserPromptSubmit");
 		expect(hooks).toHaveProperty("PreToolUse");
 		expect(hooks).toHaveProperty("PermissionRequest");
 		expect(hooks).toHaveProperty("Stop");
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
+	});
+
+	it("UserPromptSubmit hook moves to in-progress", () => {
+		const hooks = buildClaudeHooks(TASK_ID);
+		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
+
+		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd).toContain(TASK_ID);
+		expect(cmd).toContain("--status in-progress");
 	});
 
 	it("PreToolUse hook moves to in-progress", () => {
@@ -75,6 +86,7 @@ describe("mergeClaudeHooks", () => {
 
 		expect(result.hooks).toBeDefined();
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
@@ -124,6 +136,7 @@ describe("mergeClaudeHooks", () => {
 		const second = mergeClaudeHooks(first as Record<string, unknown>, TASK_ID);
 		const hooks = second.hooks as Record<string, MatcherGroup[]>;
 
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
