@@ -13,8 +13,20 @@
       "Bash(bun run:*)",
       "Bash(git:*)",
       "Bash(bun:*)",
-      "Bash(gh run:*)",
-      "Bash(unset:*)"
+      "Bash(gh run:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/auto-approve-unset.sh"
+          }
+        ]
+      }
     ]
   }
 }
