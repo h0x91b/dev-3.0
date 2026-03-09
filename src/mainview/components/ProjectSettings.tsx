@@ -484,6 +484,7 @@ function ProjectSettings({
 								type="button"
 								role="switch"
 								aria-checked={peerReviewEnabled}
+								aria-label={t("projectSettings.peerReview")}
 								onClick={() => setPeerReviewEnabled((v) => !v)}
 								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
 									peerReviewEnabled ? "bg-accent" : "bg-edge-active"

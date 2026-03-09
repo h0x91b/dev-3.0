@@ -338,7 +338,11 @@ export function startPRDetectionPoller(): void {
 	log.info("PR detection poller started", { intervalMs: POLL_INTERVAL });
 }
 
-async function checkOpenPRsForPromotion(): Promise<void> {
+export function _resetPRPollerState(): void {
+	prPromotedTasks.clear();
+}
+
+export async function checkOpenPRsForPromotion(): Promise<void> {
 	if (!pushMessage) return;
 
 	const projects = await data.loadProjects();

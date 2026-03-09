@@ -289,11 +289,21 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				if (col) { result.push({ type: "custom", col }); used.add(id); }
 			}
 		}
-		// Append anything missing (new built-ins added after columnOrder was stored, or new custom cols)
-		for (const s of ALL_BUILTIN) {
-			if (!used.has(s) && (s !== "review-by-colleague" || peerReviewEnabled)) {
-				result.push({ type: "builtin", status: s });
+		// review-by-colleague: if missing from stored order, insert right before "completed"
+		// (not at the tail) so it stays in a logical position for existing users.
+		if (!used.has("review-by-colleague") && peerReviewEnabled) {
+			const completedIdx = result.findIndex((c) => c.type === "builtin" && c.status === "completed");
+			const slot = { type: "builtin" as const, status: "review-by-colleague" as TaskStatus };
+			if (completedIdx !== -1) {
+				result.splice(completedIdx, 0, slot);
+			} else {
+				result.push(slot);
 			}
+			used.add("review-by-colleague");
+		}
+		// Append anything else missing (new built-ins, or new custom cols)
+		for (const s of ALL_BUILTIN) {
+			if (!used.has(s)) result.push({ type: "builtin", status: s });
 		}
 		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
 		return result;

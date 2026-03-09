@@ -44,6 +44,7 @@ vi.mock("../git", () => ({
 	listBranches: vi.fn(),
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
+	run: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -141,6 +142,8 @@ const {
 	handleBellAutoStatus,
 	setPushMessage,
 	getPushMessage,
+	checkOpenPRsForPromotion,
+	_resetPRPollerState,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -192,6 +195,7 @@ describe("isActive", () => {
 		expect(isActive("user-questions")).toBe(true);
 		expect(isActive("review-by-ai")).toBe(true);
 		expect(isActive("review-by-user")).toBe(true);
+		expect(isActive("review-by-colleague")).toBe(true);
 	});
 
 	it("returns false for inactive statuses", () => {
@@ -2623,5 +2627,131 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: null });
 		expect(result.customColumnId).toBeNull();
+	});
+});
+
+// ================================================================
+// checkOpenPRsForPromotion — PR detection poller
+// ================================================================
+
+describe("checkOpenPRsForPromotion", () => {
+	beforeEach(() => {
+		vi.mocked(data.loadProjects).mockReset();
+		vi.mocked(data.loadTasks).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(git.getCurrentBranch).mockReset();
+		vi.mocked(git.getUnpushedCount).mockReset();
+		vi.mocked(git.run).mockReset();
+		_resetPRPollerState();
+	});
+
+	function setup(taskOverrides?: Partial<Task>, projectOverrides?: Partial<Project>) {
+		const project = makeProject(projectOverrides);
+		const task = makeTask({ status: "review-by-user", worktreePath: "/tmp/wt", ...taskOverrides });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/my-feature");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		return { project, task };
+	}
+
+	it("promotes task to review-by-colleague when open non-draft PR found", async () => {
+		const { project, task } = setup();
+		const promoted = { ...task, status: "review-by-colleague" as const };
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, isDraft: false }]), stderr: "" });
+		vi.mocked(data.updateTask).mockResolvedValue(promoted);
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-colleague" });
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: promoted });
+	});
+
+	it("does not promote when PR is a draft", async () => {
+		setup();
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 7, isDraft: true }]), stderr: "" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("does not promote when no PR exists", async () => {
+		setup();
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([]), stderr: "" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips projects with peerReviewEnabled === false", async () => {
+		setup({}, { peerReviewEnabled: false });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips tasks not in review-by-user status", async () => {
+		setup({ status: "in-progress" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips tasks with no worktreePath", async () => {
+		setup({ worktreePath: null });
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips branches that were never pushed (getUnpushedCount === -1)", async () => {
+		setup();
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.run).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("does not re-check already promoted tasks", async () => {
+		const { task } = setup();
+		const promoted = { ...task, status: "review-by-colleague" as const };
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "" });
+		vi.mocked(data.updateTask).mockResolvedValue(promoted);
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+		expect(data.updateTask).toHaveBeenCalledTimes(1);
+
+		// Reset mocks but keep prPromotedTasks state
+		vi.mocked(data.updateTask).mockClear();
+		vi.mocked(push).mockClear();
+
+		await checkOpenPRsForPromotion();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips when gh pr list call fails", async () => {
+		setup();
+		vi.mocked(git.run).mockResolvedValue({ ok: false, stdout: "", stderr: "gh: not found" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 });
