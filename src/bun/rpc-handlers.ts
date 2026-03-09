@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -13,6 +13,7 @@ import { loadSettings, loadSettingsSync, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
+import { getPortsForTask } from "./port-scanner";
 import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
 import { setupAgentHooks } from "./agent-hooks";
@@ -1992,6 +1993,13 @@ export const handlers = {
 		return entries;
 	},
 
+	async getTaskPorts(params: { taskId: string }): Promise<PortInfo[]> {
+		log.info("→ getTaskPorts", { taskId: params.taskId.slice(0, 8) });
+		const ports = getPortsForTask(params.taskId);
+		log.info("← getTaskPorts", { taskId: params.taskId.slice(0, 8), count: ports.length });
+		return ports;
+	},
+
 	async listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		log.info("→ listTmuxSessions");
 
@@ -2044,6 +2052,7 @@ export const handlers = {
 				taskTitle: taskInfo?.title,
 				taskId: taskInfo?.taskId,
 				projectId: taskInfo?.projectId,
+				ports: taskInfo?.taskId ? getPortsForTask(taskInfo.taskId) : undefined,
 			});
 		}
 

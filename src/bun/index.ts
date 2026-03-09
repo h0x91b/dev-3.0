@@ -142,7 +142,8 @@ const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds } = await import("./pty-server");
+const { startPortScanPoller } = await import("./port-scanner");
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -294,6 +295,18 @@ startMergeDetectionPoller();
 
 // Start background PR detection poller (auto-moves review-by-user → review-by-colleague)
 startPRDetectionPoller();
+
+// Start background port scan poller (detects listening TCP ports per task)
+startPortScanPoller(
+	(name, payload) => {
+		try {
+			(mainWindow.webview.rpc as any).send[name]?.(payload);
+		} catch (err) {
+			log.error("Failed to push port update", { error: String(err) });
+		}
+	},
+	getActiveSessionIds,
+);
 
 // Wire PTY death notifications
 setOnPtyDied((taskId) => {

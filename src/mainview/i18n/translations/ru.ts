@@ -438,6 +438,17 @@ const ru: TranslationRecord & Record<string, string> = {
 	"images.remove": "Удалить изображение",
 	"images.dropHere": "Перетащите файл сюда",
 
+	// Ports
+	"ports.title": "Порты",
+	"ports.empty": "Нет открытых портов",
+	"ports.openInBrowser": "Открыть в браузере",
+	"ports.copyUrl": "Копировать URL",
+	"ports.copied": "Скопировано!",
+	"ports.count_one": "{count} порт",
+	"ports.count_few": "{count} порта",
+	"ports.count_many": "{count} портов",
+	"ports.count_other": "{count} портов",
+
 	// Quit dialog
 	"quit.dialogTitle": "Сессии продолжают работать",
 	"quit.dialogMessage": "Ваши терминальные сессии продолжат работать в tmux после выхода. Вы сможете подключиться к ним при следующем запуске приложения.",

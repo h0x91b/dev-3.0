@@ -426,6 +426,15 @@ const en = {
 	"images.remove": "Remove image",
 	"images.dropHere": "Drop file here",
 
+	// Ports
+	"ports.title": "Ports",
+	"ports.empty": "No listening ports",
+	"ports.openInBrowser": "Open in browser",
+	"ports.copyUrl": "Copy URL",
+	"ports.copied": "Copied!",
+	"ports.count_one": "{count} port",
+	"ports.count_other": "{count} ports",
+
 	// Quit dialog
 	"quit.dialogTitle": "Sessions keep running",
 	"quit.dialogMessage": "Your terminal sessions will continue running in tmux after quitting. You can reattach to them when you reopen the app.",

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -26,13 +26,14 @@ interface TaskCardProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
+	ports?: PortInfo[];
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -507,6 +508,26 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							/>
 						))}
 					</button>
+				)}
+
+				{/* Port indicator for active tasks */}
+				{isActive && ports && ports.length > 0 && (
+					<div className="flex items-center gap-1">
+						{ports.map((p) => (
+							<button
+								key={p.port}
+								onClick={(e) => {
+									e.stopPropagation();
+									window.open(`http://localhost:${p.port}`, "_blank");
+								}}
+								className="inline-flex items-center gap-0.5 text-[0.625rem] font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors"
+								title={`${p.processName} :${p.port} — ${t("ports.openInBrowser")}`}
+							>
+								<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+								:{p.port}
+							</button>
+						))}
+					</div>
 				)}
 
 				{/* "Open in..." button for active tasks */}

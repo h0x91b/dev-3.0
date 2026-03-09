@@ -42,6 +42,11 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 					new CustomEvent("rpc:updateAvailable", { detail: payload }),
 				);
 			},
+			portsUpdated: (payload: any) => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:portsUpdated", { detail: payload }),
+				);
+			},
 			updateDownloadProgress: (payload: any) => {
 				window.dispatchEvent(
 					new CustomEvent("rpc:updateDownloadProgress", { detail: payload }),

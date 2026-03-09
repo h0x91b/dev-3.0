@@ -41,6 +41,7 @@ function renderBoard() {
 				dispatch={vi.fn()}
 				navigate={vi.fn()}
 				bellCounts={new Map()}
+						taskPorts={new Map()}
 			/>
 		</I18nProvider>,
 	);
@@ -95,7 +96,7 @@ describe("column ordering", () => {
 	it("review-by-colleague appears before completed in default order", () => {
 		render(
 			<I18nProvider>
-				<KanbanBoard project={project} tasks={[]} dispatch={vi.fn()} navigate={vi.fn()} bellCounts={new Map()} />
+				<KanbanBoard project={project} tasks={[]} dispatch={vi.fn()} navigate={vi.fn()} bellCounts={new Map()} taskPorts={new Map()} />
 			</I18nProvider>,
 		);
 		const labels = getColumnLabels();
@@ -114,6 +115,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -134,6 +136,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -157,6 +160,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -178,6 +182,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -197,6 +202,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -212,6 +218,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -244,6 +251,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -272,6 +280,7 @@ describe("column ordering", () => {
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -304,6 +313,7 @@ describe("column ordering", () => {
 					dispatch={dispatch}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -340,6 +350,7 @@ describe("column ordering", () => {
 					dispatch={dispatch}
 					navigate={vi.fn()}
 					bellCounts={new Map()}
+						taskPorts={new Map()}
 				/>
 			</I18nProvider>,
 		);

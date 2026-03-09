@@ -242,6 +242,17 @@ export function getPtyPort(): number {
 	return ptyWsPort;
 }
 
+/** Returns active session info for port scanning. */
+export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: string | null }> {
+	const result: Array<{ taskId: string; tmuxSocket: string | null }> = [];
+	for (const session of sessions.values()) {
+		if (session.proc) {
+			result.push({ taskId: session.taskId, tmuxSocket: session.tmuxSocket });
+		}
+	}
+	return result;
+}
+
 function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
