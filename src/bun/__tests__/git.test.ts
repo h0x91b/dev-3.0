@@ -1120,4 +1120,18 @@ describe("saveDiffSnapshot", () => {
 		// 55 existing + 1 new = 56, pruned to 50
 		expect(files.length).toBeLessThanOrEqual(50);
 	});
+
+	it("skips saving when diff exceeds 1 MB", async () => {
+		// Create a large file that produces a diff > 1 MB
+		const bigContent = "x".repeat(1_100_000) + "\n";
+		writeFileSync(join(repo.local, "big.txt"), bigContent);
+		g("git add big.txt", repo.local);
+		g('git commit -m "add big file"', repo.local);
+
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const diffsDir = join(taskDir(project, task), "diffs");
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		expect(files).toHaveLength(0);
+	});
 });

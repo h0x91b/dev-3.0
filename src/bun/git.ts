@@ -550,6 +550,7 @@ export async function cloneRepo(
 }
 
 const MAX_DIFF_SNAPSHOTS = 50;
+const MAX_DIFF_SIZE_BYTES = 1_000_000; // 1 MB
 
 export async function saveDiffSnapshot(
 	project: Project,
@@ -566,6 +567,12 @@ export async function saveDiffSnapshot(
 	// Skip if empty (no changes)
 	if (!diff.trim()) {
 		log.debug("saveDiffSnapshot: no diff, skipping");
+		return;
+	}
+
+	// Skip if diff is too large
+	if (Buffer.byteLength(diff, "utf-8") > MAX_DIFF_SIZE_BYTES) {
+		log.info("saveDiffSnapshot: diff too large, skipping", { bytes: Buffer.byteLength(diff, "utf-8") });
 		return;
 	}
 
