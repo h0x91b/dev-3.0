@@ -58,21 +58,21 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	todo: "#70e3ff",
 	"in-progress": "#afbaff",
 	"user-questions": "#ffa353",
-	"review-by-ai": "#ff8bff",
+	"review-by-ai": "#a0aec0",
 	"review-by-user": "#ffe55f",
-	"review-by-colleague": "#a8f0a0",
+	"review-by-colleague": "#c4a5ff",
 	completed: "#3cf3b0",
 	cancelled: "#ff8282",
 };
 
 export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
-	todo: "#0284c7",
-	"in-progress": "#7c3aed",
+	todo: "#0891b2",
+	"in-progress": "#6366f1",
 	"user-questions": "#ea580c",
-	"review-by-ai": "#a21caf",
-	"review-by-user": "#4d7c0f",
-	"review-by-colleague": "#15803d",
-	completed: "#16a34a",
+	"review-by-ai": "#64748b",
+	"review-by-user": "#ca8a04",
+	"review-by-colleague": "#8b5cf6",
+	completed: "#059669",
 	cancelled: "#dc2626",
 };
 
