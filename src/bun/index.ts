@@ -221,6 +221,7 @@ ApplicationMenu.setApplicationMenu([
 			{ label: "Hard Reset Terminal", action: "terminal-hard-reset" },
 			{ type: "separator" },
 			{ label: "Gauge Demo", action: "gauge-demo" },
+			{ label: "Viewport Lab", action: "viewport-lab" },
 			{ type: "separator" },
 			{ label: "Zoom In", action: "zoom-in", accelerator: "=" },
 			{ label: "Zoom Out", action: "zoom-out", accelerator: "-" },
@@ -377,6 +378,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
 	} else if (e.data.action === "gauge-demo") {
 		(mainWindow.webview.rpc as any).send.navigateToGaugeDemo?.({});
+	} else if (e.data.action === "viewport-lab") {
+		(mainWindow.webview.rpc as any).send.navigateToViewportLab?.({});
 	} else if (e.data.action === "check-for-updates") {
 		try {
 			const settings = await loadSettings();

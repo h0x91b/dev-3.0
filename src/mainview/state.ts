@@ -10,7 +10,8 @@ export type Route =
 	| { screen: "project-settings"; projectId: string }
 	| { screen: "settings" }
 	| { screen: "changelog" }
-	| { screen: "gauge-demo" };
+	| { screen: "gauge-demo" }
+	| { screen: "viewport-lab" };
 
 // ---- State ----
 

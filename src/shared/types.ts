@@ -682,6 +682,7 @@ export type AppRPCSchema = {
 		messages: {
 			navigateToSettings: {};
 			navigateToGaugeDemo: {};
+			navigateToViewportLab: {};
 			terminalSoftReset: {};
 			terminalHardReset: {};
 		};
