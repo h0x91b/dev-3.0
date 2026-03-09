@@ -1,0 +1,1 @@
+Changelog entries now show community contributor credit when a feature or fix originated from a GitHub issue. The "Suggested by @username" line in changelog files is parsed and rendered as a linked credit badge in the changelog UI.
