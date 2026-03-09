@@ -725,6 +725,87 @@ describe("task update whitespace validation", () => {
 	});
 });
 
+// ─── task create: positional content as description ──────────────────────────
+// When using @file syntax, the file content lands in positional[0] after
+// resolveFileArgs. If --title is provided but --description is not, the
+// positional content should become the description.
+// Bug: createTask ignores positional args entirely — file content is lost.
+
+describe("task create with positional content (e.g. @file)", () => {
+	const createdTask: Task = {
+		...FAKE_TASK,
+		status: "todo",
+		seq: 55,
+		title: "Port exposure",
+		description: "Show which ports a task uses.\n\n**GitHub:** #190",
+	};
+
+	it("uses positional[0] as description when --title given but no --description", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		const fileContent = "Show which ports a task uses.\n\n**GitHub:** #190";
+		await handleTask(
+			"create",
+			args([fileContent], { project: "proj-001", title: "Port exposure" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Port exposure");
+		expect(params.description).toBe(fileContent);
+	});
+
+	it("--description flag takes priority over positional content", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask(
+			"create",
+			args(["file content here"], {
+				project: "proj-001",
+				title: "Task",
+				description: "Explicit desc",
+			}),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.description).toBe("Explicit desc");
+	});
+
+	it("uses first line of positional as title when --title is not provided", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		const fileContent = "Port exposure\n\nShow which ports a task uses.\n\n**GitHub:** #190";
+		await handleTask(
+			"create",
+			args([fileContent], { project: "proj-001" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Port exposure");
+		expect(params.description).toBe(fileContent);
+	});
+
+	it("uses single-line positional as both title and description when no --title", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		const fileContent = "Fix the login bug";
+		await handleTask(
+			"create",
+			args([fileContent], { project: "proj-001" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Fix the login bug");
+	});
+});
+
 // ─── unknown subcommand ──────────────────────────────────────────────────────
 
 describe("task (unknown subcommand)", () => {

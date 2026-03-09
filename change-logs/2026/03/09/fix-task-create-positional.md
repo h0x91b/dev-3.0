@@ -1,0 +1,1 @@
+Fixed `task create` CLI command ignoring positional content from `@file` syntax. When using `dev3 task create @file.md --title "..."`, the file content was silently dropped instead of being used as the task description. Now positional content is used as description (when `--description` is absent) and as title source (first line, when `--title` is absent).
