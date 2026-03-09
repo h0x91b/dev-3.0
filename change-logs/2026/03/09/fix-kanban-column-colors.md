@@ -1,0 +1,1 @@
+Fix duplicate green colors in Kanban board columns. AI Review is now gray (neutral "waiting" state) and PR Review is now purple, ensuring all columns have visually distinct colors. Updated both dark and light themes.
