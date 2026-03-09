@@ -337,7 +337,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 				)}
 
 				{/* Tmux Session Manager */}
-				<TmuxSessionManager />
+				<TmuxSessionManager navigate={navigate} />
 
 				{/* GitHub website */}
 				<button
