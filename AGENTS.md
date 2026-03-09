@@ -166,6 +166,8 @@ The app auto-installs the **dev3 skill** into AI agent config directories (`~/.c
 
 The skill uses the Claude Code `allowed-tools` frontmatter field to control which tools are auto-permitted when the skill is active. Omitting `allowed-tools` entirely means the skill imposes no tool restrictions (the user's normal permission settings apply). Adding `allowed-tools: Bash` would restrict the skill to only the Bash tool.
 
+**Feature differences between agents** (hooks, skill variants, CLI flags, integrations) are tracked in [`agent-support-matrix.md`](agent-support-matrix.md). **Keep this file up to date** when adding or changing agent-specific behavior.
+
 ## Project scripts
 
 Each project has three lifecycle scripts, configurable in Project Settings (`src/mainview/components/ProjectSettings.tsx`). They are stored in `projects.json` as fields on the `Project` type (`src/shared/types.ts`).
