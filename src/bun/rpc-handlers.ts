@@ -2128,13 +2128,14 @@ export const handlers = {
 		// Moving from completed/cancelled into a custom column resumes the task (same as reopening to an active status)
 		if (params.customColumnId !== null && (task.status === "completed" || task.status === "cancelled")) {
 			log.info("Reopening task into custom column, creating worktree + PTY", { taskId: task.id });
+			const settings = await loadSettings();
 			const wt = await activateTask(project, task, { isReopen: true });
 			const updated = await data.updateTask(project, task.id, {
 				status: "in-progress",
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
 				customColumnId: params.customColumnId,
-			});
+			}, { dropPosition: settings.taskDropPosition });
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("← moveTaskToCustomColumn done (reopened)", { taskId: params.taskId });
 			return updated;
