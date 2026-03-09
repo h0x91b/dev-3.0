@@ -128,10 +128,10 @@
 	--glass-border-card-alpha: 0.06;
 	--glass-border-card-hover-alpha: 0.13;
 
-	/* ---- Column glow (stronger than before — jewel tones need presence) ---- */
-	--glow-start-alpha: 0.14;
-	--glow-mid-alpha: 0.04;
-	--glow-line-alpha: 0.35;
+	/* ---- Column glow (vivid colors need stronger presence on white) ---- */
+	--glow-start-alpha: 0.20;
+	--glow-mid-alpha: 0.06;
+	--glow-line-alpha: 0.45;
 
 	/* ---- Shadows (blue-tinted, layered for depth) ---- */
 	--shadow-column: 0 8px 30px -8px rgb(80 100 140 / 0.13), 0 2px 8px -2px rgb(80 100 140 / 0.06);
