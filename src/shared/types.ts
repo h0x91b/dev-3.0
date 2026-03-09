@@ -345,6 +345,8 @@ export interface TmuxSessionInfo {
 	windowCount: number;
 	isCleanup: boolean;
 	taskTitle?: string;
+	taskId?: string;
+	projectId?: string;
 }
 
 // ---- System requirements ----

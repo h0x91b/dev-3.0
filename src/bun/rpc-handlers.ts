@@ -1989,14 +1989,18 @@ export const handlers = {
 	async listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		log.info("→ listTmuxSessions");
 
-		// Build shortId → taskTitle map from all projects/tasks
-		const titleMap = new Map<string, string>();
+		// Build shortId → { taskTitle, taskId, projectId } map from all projects/tasks
+		const taskMap = new Map<string, { title: string; taskId: string; projectId: string }>();
 		try {
 			const projects = await data.loadProjects();
 			for (const project of projects) {
 				const tasks = await data.loadTasks(project);
 				for (const task of tasks) {
-					titleMap.set(task.id.slice(0, 8), task.title);
+					taskMap.set(task.id.slice(0, 8), {
+						title: task.title,
+						taskId: task.id,
+						projectId: project.id,
+					});
 				}
 			}
 		} catch {
@@ -2023,6 +2027,7 @@ export const handlers = {
 
 			const isCleanup = name.startsWith("dev3-cl-");
 			const shortId = isCleanup ? name.slice(8) : name.slice(5);
+			const taskInfo = taskMap.get(shortId);
 
 			sessions.push({
 				name,
@@ -2030,7 +2035,9 @@ export const handlers = {
 				createdAt: parseInt(createdStr, 10) || 0,
 				windowCount: parseInt(windowsStr, 10) || 1,
 				isCleanup,
-				taskTitle: titleMap.get(shortId),
+				taskTitle: taskInfo?.title,
+				taskId: taskInfo?.taskId,
+				projectId: taskInfo?.projectId,
 			});
 		}
 
