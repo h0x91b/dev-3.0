@@ -3,7 +3,7 @@ import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStat
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
-const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-user"];
+const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-user", "review-by-colleague"];
 const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled", "review-by-ai"];
 const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
 
@@ -267,16 +267,20 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	// Returns all columns in their effective display order, respecting project.columnOrder
 	function getOrderedColumns(): ColumnSlot[] {
 		const cols = customColumns;
+		const peerReviewEnabled = project.peerReviewEnabled !== false;
+		const filterBuiltin = (statuses: TaskStatus[]) =>
+			statuses.filter((s) => s !== "review-by-colleague" || peerReviewEnabled);
 		if (!project.columnOrder || project.columnOrder.length === 0) {
 			return [
-				...DEFAULT_BEFORE_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...filterBuiltin(DEFAULT_BEFORE_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
 				...cols.map((c) => ({ type: "custom" as const, col: c })),
-				...DEFAULT_AFTER_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...filterBuiltin(DEFAULT_AFTER_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
 			];
 		}
 		const result: ColumnSlot[] = [];
 		const used = new Set<string>();
 		for (const id of project.columnOrder) {
+			if (id === "review-by-colleague" && !peerReviewEnabled) { used.add(id); continue; }
 			if ((ALL_BUILTIN as string[]).includes(id)) {
 				result.push({ type: "builtin", status: id as TaskStatus });
 				used.add(id);
@@ -286,7 +290,11 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 			}
 		}
 		// Append anything missing (new built-ins added after columnOrder was stored, or new custom cols)
-		for (const s of ALL_BUILTIN) { if (!used.has(s)) result.push({ type: "builtin", status: s }); }
+		for (const s of ALL_BUILTIN) {
+			if (!used.has(s) && (s !== "review-by-colleague" || peerReviewEnabled)) {
+				result.push({ type: "builtin", status: s });
+			}
+		}
 		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
 		return result;
 	}

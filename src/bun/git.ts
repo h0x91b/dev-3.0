@@ -7,7 +7,7 @@ import { DEV3_HOME } from "./paths";
 
 const log = createLogger("git");
 
-async function run(
+export async function run(
 	cmd: string[],
 	cwd: string,
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {

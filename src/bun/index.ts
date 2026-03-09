@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller } from "./rpc-handlers";
+import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -275,6 +275,9 @@ setPushMessage((name, payload) => {
 
 // Start background merge detection poller
 startMergeDetectionPoller();
+
+// Start background PR detection poller (auto-moves review-by-user → review-by-colleague)
+startPRDetectionPoller();
 
 // Wire PTY death notifications
 setOnPtyDied((taskId) => {

@@ -223,6 +223,8 @@ const es: TranslationRecord & Record<string, string> = {
 	"projectSettings.baseBranch": "Rama base",
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",
+	"projectSettings.peerReview": "Columna de revisión de colegas",
+	"projectSettings.peerReviewDesc": "Mostrar la columna «Revisión por colega». Desactívala en proyectos sin revisión de código entre pares.",
 	"projectSettings.save": "Guardar configuración",
 	"projectSettings.saving": "Guardando...",
 	"projectSettings.failedSave": "Error al guardar configuración: {error}",
@@ -440,6 +442,7 @@ const es: TranslationRecord & Record<string, string> = {
 	"status.userQuestions": "Esperando tu respuesta",
 	"status.reviewByAi": "Revisión por IA (unimplemented)",
 	"status.reviewByUser": "Revisión por ti",
+	"status.reviewByColleague": "Revisión por colega",
 	"status.completed": "Completado",
 	"status.cancelled": "Cancelado",
 

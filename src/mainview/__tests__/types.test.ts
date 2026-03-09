@@ -150,8 +150,8 @@ describe("extractRepoName", () => {
 // ---- Constants: ALL_STATUSES ----
 
 describe("ALL_STATUSES", () => {
-	it("contains all 7 statuses", () => {
-		expect(ALL_STATUSES).toHaveLength(7);
+	it("contains all 8 statuses", () => {
+		expect(ALL_STATUSES).toHaveLength(8);
 	});
 
 	it("includes every expected status", () => {
@@ -160,6 +160,7 @@ describe("ALL_STATUSES", () => {
 			"in-progress",
 			"user-questions",
 			"review-by-user",
+			"review-by-colleague",
 			"review-by-ai",
 			"completed",
 			"cancelled",

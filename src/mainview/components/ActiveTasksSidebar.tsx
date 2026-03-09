@@ -21,6 +21,7 @@ interface ActiveTasksSidebarProps {
 /** Status display order: most actionable for the user first */
 const STATUS_ORDER: TaskStatus[] = [
 	"review-by-user",
+	"review-by-colleague",
 	"user-questions",
 	"in-progress",
 	"review-by-ai",

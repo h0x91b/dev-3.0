@@ -782,6 +782,7 @@ describe("handlers.updateProjectSettings", () => {
 			cleanupScript: "echo done",
 			defaultBaseBranch: "main",
 			clonePaths: ["node_modules"],
+			peerReviewEnabled: true,
 		});
 
 		expect(result).toEqual(updated);
@@ -791,6 +792,7 @@ describe("handlers.updateProjectSettings", () => {
 			cleanupScript: "echo done",
 			defaultBaseBranch: "main",
 			clonePaths: ["node_modules"],
+			peerReviewEnabled: true,
 		});
 	});
 });

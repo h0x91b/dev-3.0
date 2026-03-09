@@ -268,7 +268,7 @@ async function checkMergedBranches(): Promise<void> {
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
-			(t) => t.status === "review-by-user" && t.worktreePath && !mergeNotifiedTasks.has(t.id),
+			(t) => (t.status === "review-by-user" || t.status === "review-by-colleague") && t.worktreePath && !mergeNotifiedTasks.has(t.id),
 		);
 
 		if (reviewTasks.length === 0) continue;
@@ -314,12 +314,90 @@ export function clearMergeNotification(taskId: string): void {
 	mergeNotifiedTasks.delete(taskId);
 }
 
+/**
+ * Background poller: detect when a "review-by-user" task's branch has an open
+ * non-draft PR and automatically move it to "review-by-colleague".
+ */
+let prPollerInterval: ReturnType<typeof setInterval> | null = null;
+
+// Track tasks already promoted to review-by-colleague (avoids re-checking in same session)
+const prPromotedTasks = new Set<string>();
+
+export function startPRDetectionPoller(): void {
+	if (prPollerInterval) return;
+	const POLL_INTERVAL = 5 * 60_000; // 5 minutes
+
+	prPollerInterval = setInterval(async () => {
+		try {
+			await checkOpenPRsForPromotion();
+		} catch (err) {
+			log.error("PR detection poller error", { error: String(err) });
+		}
+	}, POLL_INTERVAL);
+
+	log.info("PR detection poller started", { intervalMs: POLL_INTERVAL });
+}
+
+async function checkOpenPRsForPromotion(): Promise<void> {
+	if (!pushMessage) return;
+
+	const projects = await data.loadProjects();
+	for (const project of projects) {
+		// Only check projects with peer review enabled (default: true)
+		if (project.peerReviewEnabled === false) continue;
+
+		const tasks = await data.loadTasks(project);
+		const candidates = tasks.filter(
+			(t) => t.status === "review-by-user" && t.worktreePath && !prPromotedTasks.has(t.id),
+		);
+
+		if (candidates.length === 0) continue;
+
+		for (const task of candidates) {
+			try {
+				const branchName = await git.getCurrentBranch(task.worktreePath!);
+				if (!branchName) continue;
+
+				// Check for open non-draft PR for this branch
+				const ghResult = await git.run(
+					["gh", "pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft", "--limit", "1"],
+					task.worktreePath!,
+				);
+				if (!ghResult.ok || !ghResult.stdout) continue;
+
+				let prs: Array<{ number: number; isDraft: boolean }>;
+				try {
+					prs = JSON.parse(ghResult.stdout);
+				} catch {
+					continue;
+				}
+
+				const hasOpenNonDraftPR = Array.isArray(prs) && prs.length > 0 && !prs[0].isDraft;
+				if (!hasOpenNonDraftPR) continue;
+
+				prPromotedTasks.add(task.id);
+				log.info("Open PR detected — promoting to review-by-colleague", {
+					taskId: task.id.slice(0, 8),
+					branch: branchName,
+					pr: prs[0].number,
+				});
+
+				const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
+				pushMessage("taskUpdated", { projectId: project.id, task: updated });
+			} catch (err) {
+				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
+			}
+		}
+	}
+}
+
 /** Clean up all in-memory tracking state for a task (pane IDs, merge flags). */
 function cleanupTaskState(taskId: string): void {
 	devPaneIds.delete(taskId);
 	fileBrowserPaneIds.delete(taskId);
 	gitOpPaneIds.delete(taskId);
 	mergeNotifiedTasks.delete(taskId);
+	prPromotedTasks.delete(taskId);
 	branchStatusInFlight.delete(taskId);
 }
 
@@ -790,6 +868,7 @@ export const handlers = {
 		cleanupScript: string;
 		defaultBaseBranch: string;
 		clonePaths: string[];
+		peerReviewEnabled: boolean;
 	}): Promise<Project> {
 		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
@@ -799,6 +878,7 @@ export const handlers = {
 			cleanupScript: params.cleanupScript,
 			defaultBaseBranch: params.defaultBaseBranch,
 			clonePaths: params.clonePaths,
+			peerReviewEnabled: params.peerReviewEnabled,
 		});
 		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
 		log.info("← updateProjectSettings done");
