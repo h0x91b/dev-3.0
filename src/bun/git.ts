@@ -175,9 +175,10 @@ export async function createWorktree(
 		);
 
 		if (!result.ok) {
-			// If it's a remote branch that doesn't have a local tracking branch yet,
-			// try creating a local tracking branch
-			if (existingBranch.startsWith("origin/")) {
+			const isAlreadyCheckedOut = result.stderr.includes("already checked out") || result.stderr.includes("already used by worktree");
+
+			if (existingBranch.startsWith("origin/") && !isAlreadyCheckedOut) {
+				// Remote branch without a local tracking branch yet — create one
 				log.info("Retrying with tracking branch creation", { existingBranch });
 				const trackResult = await run(
 					["git", "worktree", "add", "--track", "-b", resolvedBranch, wtPath, existingBranch],
@@ -187,10 +188,30 @@ export async function createWorktree(
 					log.error("Failed to create worktree from existing branch", { stderr: trackResult.stderr, taskId: task.id });
 					throw new Error(`Failed to create worktree: ${trackResult.stderr}`);
 				}
-			} else {
-				log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
-				throw new Error(`Failed to create worktree: ${result.stderr}`);
+				log.info("Worktree created from existing branch (tracking)", { wtPath, branch: resolvedBranch });
+				return { worktreePath: wtPath, branchName: resolvedBranch };
 			}
+
+			if (isAlreadyCheckedOut) {
+				// Branch is checked out in another worktree — create a new task branch based on it
+				const taskBranch = branchName(task);
+				log.info("Branch already checked out, creating task branch based on it", {
+					existingBranch: resolvedBranch, taskBranch, taskId: task.id,
+				});
+				const fallbackResult = await run(
+					["git", "worktree", "add", "-b", taskBranch, wtPath, resolvedBranch],
+					project.path,
+				);
+				if (!fallbackResult.ok) {
+					log.error("Failed to create worktree from existing branch (fallback)", { stderr: fallbackResult.stderr, taskId: task.id });
+					throw new Error(`Failed to create worktree: ${fallbackResult.stderr}`);
+				}
+				log.info("Worktree created with task branch based on existing", { wtPath, branch: taskBranch, base: resolvedBranch });
+				return { worktreePath: wtPath, branchName: taskBranch };
+			}
+
+			log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
+			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
 
 		log.info("Worktree created from existing branch", { wtPath, branch: resolvedBranch });

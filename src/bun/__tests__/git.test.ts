@@ -93,6 +93,7 @@ import {
 	getBranchStatus,
 	canRebaseCleanly,
 	removeWorktree,
+	createWorktree,
 	getUncommittedChanges,
 	listBranches,
 	fetchOrigin,
@@ -794,6 +795,147 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("feature/login-v1");
 		// Original branch should be preserved
 		expect(branches).toContain("feature/login");
+	});
+});
+
+// ─── createWorktree ──────────────────────────────────────────────────────────
+
+describe("createWorktree", () => {
+	let repo: TestRepo;
+
+	function makeProject(path: string): Project {
+		return {
+			id: "proj-1",
+			name: "Test",
+			path,
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+			defaultBaseBranch: "main",
+			createdAt: new Date().toISOString(),
+		};
+	}
+
+	function makeTask(overrides: Partial<Task> = {}): Task {
+		return {
+			id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			seq: 1,
+			projectId: "proj-1",
+			title: "Test task",
+			description: "",
+			status: "in-progress",
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+			groupId: null,
+			variantIndex: null,
+			agentId: null,
+			configId: null,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			...overrides,
+		};
+	}
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => cleanup(repo));
+
+	it("creates worktree from existing branch that is not checked out", async () => {
+		// Create a branch but switch back to main
+		g("git checkout -b feature/available", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task, "feature/available");
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("feature/available");
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+	});
+
+	it("falls back to task branch when existing branch is already checked out", async () => {
+		// main is checked out in repo.local — selecting it as existing branch should trigger fallback
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task, "main");
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		// Should have created a task branch based on main, not checked out main directly
+		expect(result.branchName).toBe("dev3/task-aaaaaaaa");
+
+		// Verify the worktree has the same content as main
+		const mainContent = readFileSync(join(repo.local, "app.ts"), "utf-8");
+		const wtContent = readFileSync(join(result.worktreePath, "app.ts"), "utf-8");
+		expect(wtContent).toBe(mainContent);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-aaaaaaaa", repo.local);
+	});
+
+	it("falls back to task branch when existing branch is checked out in another worktree", async () => {
+		// Create a branch and check it out in a separate worktree
+		g("git checkout -b feature/busy", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+		const otherWt = join(repo.dir, "other-wt");
+		g(`git worktree add "${otherWt}" feature/busy`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task, "feature/busy");
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("dev3/task-aaaaaaaa");
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g(`git worktree remove --force "${otherWt}"`, repo.local);
+		g("git branch -D dev3/task-aaaaaaaa", repo.local);
+	});
+
+	it("creates worktree from remote branch", async () => {
+		// Create a branch, push it, then delete the local copy
+		g("git checkout -b feature/remote-only", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push origin feature/remote-only", repo.local);
+		g("git checkout main", repo.local);
+		g("git branch -D feature/remote-only", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task, "origin/feature/remote-only");
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("feature/remote-only");
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+	});
+
+	it("creates default task branch when no existing branch specified", async () => {
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("dev3/task-aaaaaaaa");
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-aaaaaaaa", repo.local);
 	});
 });
 
