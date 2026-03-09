@@ -838,6 +838,7 @@ describe("createWorktree", () => {
 	}
 
 	beforeEach(() => {
+		_resetFetchState();
 		repo = createTestRepo();
 	});
 
@@ -969,6 +970,55 @@ describe("createWorktree", () => {
 		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
 		g("git branch -D dev3/task-bbbbbbbb", repo.local);
 		rmSync(otherClone, { recursive: true, force: true });
+	});
+
+	it("falls back to local baseBranch when fetch fails (no remote)", async () => {
+		// Remove the remote so fetch will fail
+		g("git remote remove origin", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ id: "cccccccc-dddd-eeee-ffff-111111111111" });
+
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("dev3/task-cccccccc");
+
+		// Worktree should have the same content as local main
+		const mainContent = readFileSync(join(repo.local, "app.ts"), "utf-8");
+		const wtContent = readFileSync(join(result.worktreePath, "app.ts"), "utf-8");
+		expect(wtContent).toBe(mainContent);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-cccccccc", repo.local);
+	});
+
+	it("falls back to local baseBranch when origin/<baseBranch> does not exist", async () => {
+		// Create a local 'develop' branch but don't push it to origin
+		g("git checkout -b develop", repo.local);
+		writeFileSync(join(repo.local, "dev-file.ts"), "export const dev = true;\n");
+		g("git add dev-file.ts", repo.local);
+		g('git commit -m "develop commit"', repo.local);
+		g("git checkout main", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			id: "dddddddd-eeee-ffff-1111-222222222222",
+			baseBranch: "develop",
+		});
+
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("dev3/task-dddddddd");
+
+		// Worktree should have content from local develop (the fallback)
+		expect(existsSync(join(result.worktreePath, "dev-file.ts"))).toBe(true);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-dddddddd", repo.local);
 	});
 });
 
