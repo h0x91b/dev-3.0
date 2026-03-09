@@ -58,9 +58,9 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	todo: "#70e3ff",
 	"in-progress": "#afbaff",
 	"user-questions": "#ffa353",
-	"review-by-ai": "#ff8bff",
+	"review-by-ai": "#a0aec0",
 	"review-by-user": "#ffe55f",
-	"review-by-colleague": "#a8f0a0",
+	"review-by-colleague": "#c4a5ff",
 	completed: "#3cf3b0",
 	cancelled: "#ff8282",
 };
@@ -69,9 +69,9 @@ export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	todo: "#0284c7",
 	"in-progress": "#7c3aed",
 	"user-questions": "#ea580c",
-	"review-by-ai": "#a21caf",
+	"review-by-ai": "#64748b",
 	"review-by-user": "#4d7c0f",
-	"review-by-colleague": "#15803d",
+	"review-by-colleague": "#7c3aed",
 	completed: "#16a34a",
 	cancelled: "#dc2626",
 };
