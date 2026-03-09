@@ -23,7 +23,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/auto-approve-unset.sh"
+            "command": ".claude/hooks/auto-approve.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/auto-approve.sh"
           }
         ]
       }
