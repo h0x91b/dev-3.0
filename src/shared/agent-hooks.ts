@@ -13,8 +13,9 @@ export interface HookEntry {
 /**
  * Build the Claude Code hooks object for a given task.
  *
+ * - PreToolUse: agent is about to call a tool → in-progress (idempotent)
  * - PermissionRequest: agent is blocked waiting for user approval → user-questions
- * - Stop: agent finished its turn → review-by-user (only if still in-progress)
+ * - Stop: agent finished its turn → review-by-user
  */
 export interface MatcherGroup {
 	hooks: HookEntry[];
@@ -24,6 +25,16 @@ export function buildClaudeHooks(
 	taskId: string,
 ): Record<string, MatcherGroup[]> {
 	return {
+		PreToolUse: [
+			{
+				hooks: [
+					{
+						type: "command",
+						command: `${DEV3_CLI} task move ${taskId} --status in-progress`,
+					},
+				],
+			},
+		],
 		PermissionRequest: [
 			{
 				hooks: [
