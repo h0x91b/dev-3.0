@@ -268,6 +268,21 @@ const mainWindow = new BrowserWindow({
 
 log.info("Main window created");
 
+// Workaround: Electrobun/WKWebView clips the bottom ~16px of the viewport
+// after a window resize. Trigger a resize nudge at startup so the app always
+// starts in the "post-resize" state, making the pb-8 CSS padding reliable.
+setTimeout(() => {
+	try {
+		const { width: w, height: h } = mainWindow.getSize();
+		mainWindow.setSize(w, h - 1);
+		setTimeout(() => {
+			try { mainWindow.setSize(w, h); } catch { /* ignore */ }
+		}, 50);
+	} catch (err) {
+		log.warn("Resize nudge failed", { error: String(err) });
+	}
+}, 200);
+
 // Wire push messages to renderer
 setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
