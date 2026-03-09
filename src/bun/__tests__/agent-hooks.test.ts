@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { buildClaudeHooks, mergeClaudeHooks } from "../agent-hooks";
+import type { MatcherGroup } from "../../shared/agent-hooks";
 
 const TASK_ID = "aaaaaaaa-1111-2222-3333-444444444444";
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
 describe("buildClaudeHooks", () => {
-	it("returns PermissionRequest and Stop hooks with embedded task ID", () => {
+	it("returns PermissionRequest and Stop matcher groups", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
 
 		expect(hooks).toHaveProperty("PermissionRequest");
@@ -14,31 +15,44 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.Stop).toHaveLength(1);
 	});
 
+	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
+		const hooks = buildClaudeHooks(TASK_ID);
+
+		// Each event has an array of matcher groups
+		const permGroup = hooks.PermissionRequest[0];
+		expect(permGroup).toHaveProperty("hooks");
+		expect(permGroup.hooks).toHaveLength(1);
+		expect(permGroup.hooks[0]).toHaveProperty("type", "command");
+		expect(permGroup.hooks[0]).toHaveProperty("command");
+	});
+
 	it("PermissionRequest hook moves to user-questions", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
-		const cmd = hooks.PermissionRequest[0].command;
+		const cmd = hooks.PermissionRequest[0].hooks[0].command;
 
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status user-questions");
 	});
 
-	it("Stop hook moves to review-by-user with --if-status guard", () => {
+	it("Stop hook moves to review-by-user unconditionally", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
-		const cmd = hooks.Stop[0].command;
+		const cmd = hooks.Stop[0].hooks[0].command;
 
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status review-by-user");
-		expect(cmd).toContain("--if-status in-progress");
+		expect(cmd).not.toContain("--if-status");
 	});
 
 	it("all hooks use command type", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
 
-		for (const entries of Object.values(hooks)) {
-			for (const entry of entries) {
-				expect(entry.type).toBe("command");
+		for (const groups of Object.values(hooks)) {
+			for (const group of groups) {
+				for (const entry of group.hooks) {
+					expect(entry.type).toBe("command");
+				}
 			}
 		}
 	});
@@ -49,7 +63,7 @@ describe("mergeClaudeHooks", () => {
 		const result = mergeClaudeHooks({}, TASK_ID);
 
 		expect(result.hooks).toBeDefined();
-		const hooks = result.hooks as Record<string, unknown[]>;
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 	});
@@ -66,28 +80,28 @@ describe("mergeClaudeHooks", () => {
 	it("preserves existing hooks on unrelated events", () => {
 		const existing = {
 			hooks: {
-				PreToolUse: [{ type: "command", command: "echo pre" }],
+				PreToolUse: [{ hooks: [{ type: "command", command: "echo pre" }] }],
 			},
 		};
 		const result = mergeClaudeHooks(existing, TASK_ID);
-		const hooks = result.hooks as Record<string, unknown[]>;
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 	});
 
-	it("preserves non-dev3 hooks on the same events", () => {
+	it("preserves non-dev3 matcher groups on the same events", () => {
 		const existing = {
 			hooks: {
-				PermissionRequest: [{ type: "command", command: "echo notify" }],
-				Stop: [{ type: "command", command: "echo done" }],
+				PermissionRequest: [{ hooks: [{ type: "command", command: "echo notify" }] }],
+				Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
 			},
 		};
 		const result = mergeClaudeHooks(existing, TASK_ID);
-		const hooks = result.hooks as Record<string, unknown[]>;
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 
-		// Original hooks preserved + dev3 hooks appended
+		// Original matcher groups preserved + dev3 groups appended
 		expect(hooks.PermissionRequest).toHaveLength(2);
 		expect(hooks.Stop).toHaveLength(2);
 	});
@@ -95,7 +109,7 @@ describe("mergeClaudeHooks", () => {
 	it("is idempotent — running twice does not duplicate dev3 hooks", () => {
 		const first = mergeClaudeHooks({}, TASK_ID);
 		const second = mergeClaudeHooks(first as Record<string, unknown>, TASK_ID);
-		const hooks = second.hooks as Record<string, unknown[]>;
+		const hooks = second.hooks as Record<string, MatcherGroup[]>;
 
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
@@ -104,10 +118,10 @@ describe("mergeClaudeHooks", () => {
 	it("replaces dev3 hooks from a different task ID", () => {
 		const first = mergeClaudeHooks({}, "old-task-id");
 		const second = mergeClaudeHooks(first as Record<string, unknown>, "new-task-id");
-		const hooks = second.hooks as Record<string, { command: string }[]>;
+		const hooks = second.hooks as Record<string, MatcherGroup[]>;
 
 		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.PermissionRequest[0].command).toContain("new-task-id");
-		expect(hooks.PermissionRequest[0].command).not.toContain("old-task-id");
+		expect(hooks.PermissionRequest[0].hooks[0].command).toContain("new-task-id");
+		expect(hooks.PermissionRequest[0].hooks[0].command).not.toContain("old-task-id");
 	});
 });
