@@ -15,6 +15,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
@@ -163,7 +164,7 @@ const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 
 const DEV_SERVER_PORT = 5173;
@@ -305,10 +306,21 @@ setTimeout(() => {
 	}
 }, 200);
 
-// Wire push messages to renderer
+// Wire push messages to renderer (Electrobun + browser clients)
 setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
 	(mainWindow.webview.rpc as any).send[name]?.(payload);
+	pushToBrowserClients(name, payload);
+});
+
+// Start remote access server (browser RPC + PTY proxy + static files)
+startRemoteAccessServer({
+	rpcHandler: async (method: string, params: any) => {
+		const handler = (handlers as any)[method];
+		if (!handler) throw new Error(`Unknown RPC method: ${method}`);
+		return await handler(params);
+	},
+	getPtyPort,
 });
 
 // Start background merge detection poller
