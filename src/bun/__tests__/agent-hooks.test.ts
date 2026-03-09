@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { buildClaudeHooks, mergeClaudeHooks } from "../agent-hooks";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { buildClaudeHooks, mergeClaudeHooks, writeClaudeHooks } from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
 
 const TASK_ID = "aaaaaaaa-1111-2222-3333-444444444444";
@@ -150,5 +153,56 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toContain("new-task-id");
 		expect(hooks.PermissionRequest[0].hooks[0].command).not.toContain("old-task-id");
+	});
+});
+
+describe("writeClaudeHooks", () => {
+	let tmp: string;
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "agent-hooks-test-"));
+	});
+
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("creates .claude dir and settings file from scratch", () => {
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		expect(hooks.Stop).toHaveLength(1);
+		expect(hooks.Stop[0].hooks[0].command).toContain(TASK_ID);
+	});
+
+	it("preserves existing settings when merging", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "settings.local.json"),
+			JSON.stringify({ permissions: { allow: ["Bash(*)"] } }),
+		);
+
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(content.permissions).toEqual({ allow: ["Bash(*)"] });
+		expect(content.hooks).toBeDefined();
+	});
+
+	it("overwrites corrupted JSON gracefully", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(join(claudeDir, "settings.local.json"), "NOT VALID JSON{{{");
+
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+		expect(hooks.Stop).toHaveLength(1);
 	});
 });
