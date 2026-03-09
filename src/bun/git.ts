@@ -567,7 +567,7 @@ export async function removeWorktree(
 	);
 
 	if (branchToDelete) {
-		// Only delete branches that dev3 created (dev3/task-* or variant suffixes like feature/login-v1).
+		// Only delete branches that dev3 created (dev3/* prefix).
 		// User-owned branches (e.g. feature/login chosen via branch selector) should be preserved.
 		const isDevBranch = branchToDelete.startsWith("dev3/");
 		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
