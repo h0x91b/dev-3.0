@@ -72,7 +72,7 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 - Include the changelog file in the same commit as the code change.
 - The slug must be unique and descriptive enough to avoid collisions between parallel agents.
 - **One worktree = one changelog file.** A single task (worktree) must produce exactly one changelog entry for the entire session — not one per commit, not one per feature. If the task evolves, update or append to the existing changelog file rather than creating new ones.
-- **Credit community contributors.** If the feature or fix originated from a GitHub issue (i.e., was requested or reported by an external user), add a line at the end of the changelog entry: `Requested by @username (h0x91b/dev-3.0#123)` — linking to the issue and mentioning the reporter's GitHub handle. This makes contributors feel valued and gives proper credit.
+- **Credit community contributors.** If the feature or fix originated from a GitHub issue (i.e., was requested or reported by an external user), add a blank line and then `Suggested by @username (h0x91b/dev-3.0#N)` at the **end** of the changelog file. The parser extracts this into `suggestedBy`, `issueRef`, and `issueUrl` fields, displayed in the changelog UI as a linked credit line. Example: `Suggested by @roiros (h0x91b/dev-3.0#191)`.
 - See `change-logs/README.md` for the full format specification.
 
 ## Decision records

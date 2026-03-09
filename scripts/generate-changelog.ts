@@ -31,8 +31,26 @@ if (existsSync(changeLogsDir)) {
 					const slug = basename.slice(dashIdx + 1);
 
 					const content = await Bun.file(join(dayPath, file)).text();
+
+					// Extract "Suggested by @username (owner/repo#N)" from any line
+					let suggestedBy: string | undefined;
+					let issueUrl: string | undefined;
+					let issueRef: string | undefined;
+					const creditMatch = content.match(/Suggested by @(\S+)\s+\(([^)]+)\)/);
+					if (creditMatch) {
+						suggestedBy = creditMatch[1];
+						const ref = creditMatch[2];
+						const refMatch = ref.match(/^(.+?)#(\d+)$/);
+						if (refMatch) {
+							issueRef = `#${refMatch[2]}`;
+							issueUrl = `https://github.com/${refMatch[1]}/issues/${refMatch[2]}`;
+						}
+					}
+
+					// Strip the "Suggested by" line before extracting title
+					const cleanContent = content.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "").trim();
 					const firstSentence =
-						content.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
+						cleanContent.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
 					const title =
 						firstSentence.length > 120
 							? firstSentence.slice(0, 117) + "..."
@@ -43,6 +61,9 @@ if (existsSync(changeLogsDir)) {
 						type,
 						slug,
 						title: title || slug,
+						...(suggestedBy && { suggestedBy }),
+						...(issueUrl && { issueUrl }),
+						...(issueRef && { issueRef }),
 					});
 				}
 			}

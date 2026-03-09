@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 	type: string; // "feature" | "fix" | "refactor" | "docs" | "chore"
 	slug: string; // "system-requirements-check"
 	title: string; // First sentence of content (truncated to ~120 chars)
+	suggestedBy?: string; // GitHub username without @ (e.g. "roiros")
+	issueUrl?: string; // Full GitHub issue URL (e.g. "https://github.com/h0x91b/dev-3.0/issues/191")
+	issueRef?: string; // Short issue ref (e.g. "#191")
 }
 
 // ---- Data models ----
