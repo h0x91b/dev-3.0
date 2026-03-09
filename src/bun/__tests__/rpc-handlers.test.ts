@@ -2537,6 +2537,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		vi.clearAllMocks();
 		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/new-wt", branchName: "dev3/resumed" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 	});
 
 	it("moves active task to custom column without worktree changes", async () => {
@@ -2572,7 +2573,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 			worktreePath: "/tmp/new-wt",
 			branchName: "dev3/resumed",
 			customColumnId: "col-aaa",
-		});
+		}, { dropPosition: "top" });
 		expect(result.status).toBe("in-progress");
 		expect(result.customColumnId).toBe("col-aaa");
 	});
@@ -2592,7 +2593,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
 			status: "in-progress",
 			customColumnId: "col-aaa",
-		}));
+		}), { dropPosition: "top" });
 	});
 
 	it("throws when custom column not found", async () => {

@@ -364,13 +364,14 @@ const handlers: Record<string, Handler> = {
 		if (customColumn) {
 			// Moving from completed/cancelled into a custom column resumes the task
 			if (task.status === "completed" || task.status === "cancelled") {
+				const settings = await loadSettings();
 				const wt = await activateTask(project, task, { isReopen: true });
 				const updated = await data.updateTask(project, task.id, {
 					status: "in-progress",
 					worktreePath: wt.worktreePath,
 					branchName: wt.branchName,
 					customColumnId: customColumn.id,
-				});
+				}, { dropPosition: settings.taskDropPosition });
 				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 				return updated;
 			}

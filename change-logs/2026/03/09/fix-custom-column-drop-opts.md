@@ -1,0 +1,1 @@
+Fix missing dropPosition option when resuming completed/cancelled tasks into custom columns. The two custom-column resume paths (CLI socket and moveTaskToCustomColumn RPC) now pass the user's taskDropPosition setting to updateTask, matching the behavior of built-in status moves.
