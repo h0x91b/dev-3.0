@@ -24,20 +24,10 @@ const log = createLogger("remote-access");
 // ── Auth ────────────────────────────────────────────────────────────
 
 const PASSKEY = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-const COOKIE_NAME = "dev3_access";
-const COOKIE_MAX_AGE = 86400; // 24 hours
 
 function isAuthenticated(req: Request): boolean {
-	const cookies = req.headers.get("cookie") || "";
-	if (cookies.includes(`${COOKIE_NAME}=${PASSKEY}`)) return true;
-
-	// Also check query param for initial auth
 	const url = new URL(req.url);
 	return url.searchParams.get("key") === PASSKEY;
-}
-
-function authCookieHeader(): string {
-	return `${COOKIE_NAME}=${PASSKEY}; HttpOnly; SameSite=Strict; Max-Age=${COOKIE_MAX_AGE}; Path=/`;
 }
 
 // ── Static file serving ─────────────────────────────────────────────
@@ -205,49 +195,31 @@ export function startRemoteAccessServer(options: StartOptions): void {
 		fetch(req, server) {
 			const url = new URL(req.url);
 
-			// ── Auth gate ──
-			// Allow passkey param on any request (sets cookie + redirects)
-			if (url.searchParams.has("key")) {
-				if (url.searchParams.get("key") === PASSKEY) {
-					// Set cookie and redirect to clean URL (strip key param)
-					url.searchParams.delete("key");
-					return new Response(null, {
-						status: 302,
-						headers: {
-							Location: url.pathname + url.search,
-							"Set-Cookie": authCookieHeader(),
-						},
-					});
-				}
-				return new Response("Invalid passkey", { status: 403 });
-			}
-
-			if (!isAuthenticated(req)) {
-				return new Response("Unauthorized — use the full URL with passkey", { status: 401 });
-			}
-
-			// ── WebSocket upgrades ──
+			// ── WebSocket upgrades (auth required) ──
 			if (url.pathname === "/rpc") {
+				if (!isAuthenticated(req)) return new Response("Unauthorized", { status: 401 });
 				if (server.upgrade(req, { data: { type: "rpc" } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
 			if (url.pathname === "/pty") {
+				if (!isAuthenticated(req)) return new Response("Unauthorized", { status: 401 });
 				const sessionId = url.searchParams.get("session");
 				if (!sessionId) return new Response("Missing session param", { status: 400 });
 				if (server.upgrade(req, { data: { type: "pty", sessionId } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
-			// ── API endpoints ──
+			// ── API endpoints (auth required) ──
 			if (url.pathname === "/health") {
+				if (!isAuthenticated(req)) return new Response("Unauthorized", { status: 401 });
 				return Response.json({ ok: true, ptyPort: ptyPortGetter?.() ?? 0 });
 			}
 
-			// ── Static files ──
+			// ── Static files (no auth — UI code is not sensitive) ──
+			// The passkey protects WebSocket/API access, not static assets.
 			return serveStatic(url.pathname).then(resp => {
 				if (resp) return resp;
-				// SPA fallback: serve index.html for non-file routes
 				return serveStatic("/").then(r => r || new Response("Not Found", { status: 404 }));
 			});
 		},
