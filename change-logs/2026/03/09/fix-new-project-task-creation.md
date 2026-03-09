@@ -1,0 +1,1 @@
+Fix task creation failing silently for new projects. The mkdir-based file lock assumed the parent directory already existed, but for projects with no tasks yet the data directory was never created. Now `acquireLock` handles ENOENT by creating parent directories with `recursive: true`.

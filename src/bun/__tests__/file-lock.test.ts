@@ -203,6 +203,41 @@ describe("withFileLock — stale lock recovery", () => {
 	});
 });
 
+describe("withFileLock — non-existent parent directory", () => {
+	it("creates parent directories and acquires lock when parent dir does not exist", async () => {
+		const deepPath = path.join(tmpDir, "deep", "nested", "dir", "tasks.json");
+		const lockDir = deepPath + ".lock";
+
+		// Parent directory does NOT exist — this simulates a brand-new project
+		expect(fs.existsSync(path.dirname(deepPath))).toBe(false);
+
+		const result = await withFileLock(deepPath, async () => {
+			return "success";
+		});
+
+		expect(result).toBe("success");
+		// Lock should be released after execution
+		expect(fs.existsSync(lockDir)).toBe(false);
+		// Parent directory should have been created
+		expect(fs.existsSync(path.dirname(deepPath))).toBe(true);
+	});
+
+	it("serializes concurrent operations even when parent dir did not exist initially", async () => {
+		const deepPath = path.join(tmpDir, "new-project", "tasks.json");
+		let counter = 0;
+
+		const increment = () =>
+			withFileLock(deepPath, async () => {
+				const current = counter;
+				await new Promise((resolve) => setTimeout(resolve, 5));
+				counter = current + 1;
+			});
+
+		await Promise.all(Array.from({ length: 5 }, () => increment()));
+		expect(counter).toBe(5);
+	});
+});
+
 describe("withFileLock — re-entrancy (same file, nested calls)", () => {
 	it("does not deadlock on nested lock for the same file", async () => {
 		const filePath = path.join(tmpDir, "test.json");
