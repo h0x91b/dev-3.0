@@ -20,7 +20,7 @@
 		"bump": "bun run scripts/bump.ts"
 	},
 	"dependencies": {
-		"electrobun": "1.12.1-beta.2",
+		"electrobun": "1.14.4",
 		"ghostty-web": "^0.4.0",
 		"js-toml": "^1.0.2",
 		"react": "^18.3.1",
