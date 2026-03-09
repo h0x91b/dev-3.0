@@ -13,6 +13,7 @@ const APP_ICONS: Record<string, string> = {
 	ghostty: "\uF489",    // nf-oct-terminal
 	iterm: "\uF489",
 	terminal: "\uF489",
+	intellij: "\u{F0184}", // nf-md-diamond_stone (IntelliJ)
 };
 
 interface OpenInMenuProps {
