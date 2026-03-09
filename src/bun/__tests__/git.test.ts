@@ -838,6 +838,7 @@ describe("createWorktree", () => {
 	}
 
 	beforeEach(() => {
+		_resetFetchState();
 		repo = createTestRepo();
 	});
 
@@ -985,6 +986,88 @@ describe("createWorktree", () => {
 		// Cleanup
 		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
 		g("git branch -D dev3/task-aaaaaaaa", repo.local);
+	});
+
+	it("creates worktree from latest origin/main even when local main is stale", async () => {
+		const project = makeProject(repo.local);
+
+		// Simulate a stale local main: push a new commit to origin from a
+		// separate clone, so local main is behind origin/main.
+		const otherClone = join(repo.dir, "other");
+		g(`git clone "${join(repo.dir, "origin.git")}" "${otherClone}"`, repo.dir);
+		g("git config user.email test@test.com", otherClone);
+		g("git config user.name Test", otherClone);
+		g("git checkout main", otherClone);
+		writeFileSync(join(otherClone, "new-file.ts"), "export const x = 42;\n");
+		g("git add new-file.ts", otherClone);
+		g('git commit -m "new commit on main"', otherClone);
+		g("git push origin main", otherClone);
+
+		// Verify local main doesn't have the new commit yet
+		const localMainHas = g("git log --oneline main", repo.local);
+		expect(localMainHas).not.toContain("new commit on main");
+
+		const task = makeTask({ id: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff" });
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+
+		// The worktree should contain the new file from origin/main
+		expect(existsSync(join(result.worktreePath, "new-file.ts"))).toBe(true);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-bbbbbbbb", repo.local);
+		rmSync(otherClone, { recursive: true, force: true });
+	});
+
+	it("falls back to local baseBranch when fetch fails (no remote)", async () => {
+		// Remove the remote so fetch will fail
+		g("git remote remove origin", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ id: "cccccccc-dddd-eeee-ffff-111111111111" });
+
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("dev3/task-cccccccc");
+
+		// Worktree should have the same content as local main
+		const mainContent = readFileSync(join(repo.local, "app.ts"), "utf-8");
+		const wtContent = readFileSync(join(result.worktreePath, "app.ts"), "utf-8");
+		expect(wtContent).toBe(mainContent);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-cccccccc", repo.local);
+	});
+
+	it("falls back to local baseBranch when origin/<baseBranch> does not exist", async () => {
+		// Create a local 'develop' branch but don't push it to origin
+		g("git checkout -b develop", repo.local);
+		writeFileSync(join(repo.local, "dev-file.ts"), "export const dev = true;\n");
+		g("git add dev-file.ts", repo.local);
+		g('git commit -m "develop commit"', repo.local);
+		g("git checkout main", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			id: "dddddddd-eeee-ffff-1111-222222222222",
+			baseBranch: "develop",
+		});
+
+		const result = await createWorktree(project, task);
+
+		expect(existsSync(result.worktreePath)).toBe(true);
+		expect(result.branchName).toBe("dev3/task-dddddddd");
+
+		// Worktree should have content from local develop (the fallback)
+		expect(existsSync(join(result.worktreePath, "dev-file.ts"))).toBe(true);
+
+		// Cleanup
+		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
+		g("git branch -D dev3/task-dddddddd", repo.local);
 	});
 });
 
