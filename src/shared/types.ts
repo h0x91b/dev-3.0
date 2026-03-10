@@ -620,6 +620,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: RequirementCheckResult[];
 			};
+			checkGhAvailable: {
+				params: void;
+				response: { available: boolean; notInstalled: boolean };
+			};
 			setCustomBinaryPath: {
 				params: { requirementId: string; path: string };
 				response: void;

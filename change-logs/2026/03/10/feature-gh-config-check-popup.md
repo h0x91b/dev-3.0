@@ -1,0 +1,1 @@
+Added startup check for GitHub CLI (gh) availability. If gh is not installed or not authenticated, a dismissible warning banner appears below the header explaining which features won't work (PR detection, auto-promotion to "PR Review" status, merge detection via GitHub). The banner includes a "Don't show again" checkbox to suppress it permanently.

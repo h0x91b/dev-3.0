@@ -7,6 +7,7 @@ vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
+			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),

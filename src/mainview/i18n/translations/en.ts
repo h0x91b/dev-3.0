@@ -4,6 +4,14 @@ const en = {
 	"app.branchMergedTitle": "Branch Merged",
 	"app.branchMergedMessage": "All changes from \"{branchName}\" are now in the base branch.\n\nTask: {taskTitle}\n\nMark this task as completed?",
 
+	// GitHub CLI warning banner
+	"ghWarning.titleNotInstalled": "GitHub CLI (gh) is not installed",
+	"ghWarning.titleNotAuthenticated": "GitHub CLI (gh) is not signed in",
+	"ghWarning.messageNotInstalled": "Some features won't work without it: automatic PR detection, task promotion to \"PR Review\", and merge detection via GitHub. Install gh and run `gh auth login` to enable them.",
+	"ghWarning.messageNotAuthenticated": "Some features won't work without authentication: automatic PR detection, task promotion to \"PR Review\", and merge detection via GitHub. Run `gh auth login` to enable them.",
+	"ghWarning.dismiss": "Got it",
+	"ghWarning.dontShowAgain": "Don't show this again",
+
 	// Dashboard
 	"dashboard.noProjects": "No projects yet",
 	"dashboard.noProjectsHint": "Add a git repository to get started",

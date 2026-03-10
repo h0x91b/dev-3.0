@@ -6,6 +6,14 @@ const es: TranslationRecord & Record<string, string> = {
 	"app.branchMergedTitle": "Rama fusionada",
 	"app.branchMergedMessage": "Todos los cambios de \"{branchName}\" están en la rama base.\n\nTarea: {taskTitle}\n\n¿Marcar esta tarea como completada?",
 
+	// GitHub CLI warning banner
+	"ghWarning.titleNotInstalled": "GitHub CLI (gh) no está instalado",
+	"ghWarning.titleNotAuthenticated": "GitHub CLI (gh) no está autenticado",
+	"ghWarning.messageNotInstalled": "Algunas funciones no estarán disponibles: detección automática de PR, promoción de tareas a \"Revisión PR\" y detección de fusiones vía GitHub. Instala gh y ejecuta `gh auth login`.",
+	"ghWarning.messageNotAuthenticated": "Algunas funciones no estarán disponibles sin autenticación: detección automática de PR, promoción de tareas a \"Revisión PR\" y detección de fusiones vía GitHub. Ejecuta `gh auth login`.",
+	"ghWarning.dismiss": "Entendido",
+	"ghWarning.dontShowAgain": "No mostrar de nuevo",
+
 	// Dashboard
 	"dashboard.noProjects": "Aún no hay proyectos",
 	"dashboard.noProjectsHint": "Agrega un repositorio git para comenzar",

@@ -6,6 +6,14 @@ const ru: TranslationRecord & Record<string, string> = {
 	"app.branchMergedTitle": "Ветка смержена",
 	"app.branchMergedMessage": "Все изменения из «{branchName}» уже в основной ветке.\n\nЗадача: {taskTitle}\n\nПеревести задачу в «Завершено»?",
 
+	// GitHub CLI warning banner
+	"ghWarning.titleNotInstalled": "GitHub CLI (gh) не установлен",
+	"ghWarning.titleNotAuthenticated": "GitHub CLI (gh) не авторизован",
+	"ghWarning.messageNotInstalled": "Без него некоторые функции не будут работать: автоматическое обнаружение PR, перевод задачи в статус «На ревью PR» и определение слияния через GitHub. Установите gh и выполните `gh auth login`.",
+	"ghWarning.messageNotAuthenticated": "Без авторизации некоторые функции не будут работать: автоматическое обнаружение PR, перевод задачи в статус «На ревью PR» и определение слияния через GitHub. Выполните `gh auth login`.",
+	"ghWarning.dismiss": "Понятно",
+	"ghWarning.dontShowAgain": "Больше не показывать",
+
 	// Dashboard
 	"dashboard.noProjects": "Пока нет проектов",
 	"dashboard.noProjectsHint": "Добавьте git-репозиторий, чтобы начать",
