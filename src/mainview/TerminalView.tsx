@@ -367,6 +367,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 
 			ws.onopen = () => {
 				console.log("[TerminalView] WebSocket OPEN");
+				if (disposed) return;
 				const dims = fit.proposeDimensions();
 				console.log("[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
@@ -443,6 +444,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			// from firing on a disposed terminal (race condition: close
 			// handshake is async, messages can still arrive).
 			if (ws) {
+				ws.onopen = null;
 				ws.onmessage = null;
 				ws.onclose = null;
 				ws.onerror = null;
