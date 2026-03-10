@@ -1,3 +1,3 @@
-Show visible progress indicator during app upgrade. When an update is downloading (auto or manual), a spinner with "Downloading..." now appears in the header bar. Added a "Check for Updates" button in Global Settings so users can manually trigger update checks without using the menu. The button shows real-time status: checking, downloading, up-to-date, or error.
+Show visible progress indicator during app upgrade. The header bar now displays a spinner with "Checking..." during update checks and "Downloading..." during downloads — for both auto-check on startup, periodic checks, and manual "Check for Updates" from the menu.
 
 Reported by Bar Volovski (h0x91b/dev-3.0#215)

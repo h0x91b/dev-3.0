@@ -252,10 +252,10 @@ function App() {
 	useEffect(() => {
 		function onDownloadProgress(e: Event) {
 			const { status } = (e as CustomEvent).detail;
-			if (status === "complete") {
+			if (status === "complete" || status === "idle") {
 				setUpdateDownloadStatus(null);
 			} else {
-				setUpdateDownloadStatus(status); // "downloading", "error"
+				setUpdateDownloadStatus(status); // "checking", "downloading", "error"
 			}
 		}
 		window.addEventListener("rpc:updateDownloadProgress", onDownloadProgress);

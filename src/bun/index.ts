@@ -389,6 +389,11 @@ mainWindow.webview.on("dom-ready", async () => {
 	}
 });
 
+// Helper to push update progress to the renderer
+const sendUpdateProgress = (status: string, progress?: number) => {
+	(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
+};
+
 // --- Menu Event Handlers ---
 
 Electrobun.events.on("application-menu-clicked", async (e) => {
@@ -412,7 +417,9 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 	} else if (e.data.action === "check-for-updates") {
 		try {
 			const settings = await loadSettings();
+			sendUpdateProgress("checking");
 			const result = await checkForUpdateWithChannel(settings.updateChannel);
+			sendUpdateProgress("idle");
 
 			if (result.error) {
 				Utils.showMessageBox({
@@ -433,11 +440,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 					cancelId: 1,
 				});
 				if (response === 0) {
-					const sendMenuProgress = (status: string, progress?: number) => {
-						(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
-					};
-					sendMenuProgress("downloading", 0);
-					const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendMenuProgress);
+					sendUpdateProgress("downloading", 0);
+					const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 					if (dlResult.ok) {
 						const { response: restartResponse } = await Utils.showMessageBox({
 							type: "info",
@@ -471,6 +475,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				});
 			}
 		} catch (err) {
+			sendUpdateProgress("idle");
 			log.error("Menu check-for-updates failed", { error: String(err) });
 			Utils.showMessageBox({
 				type: "warning",
@@ -502,19 +507,17 @@ startAutoCheck(
 	async (version) => {
 		log.info("Auto-check found update, downloading silently...", { version });
 		const settings = await loadSettings();
-		const sendProgress = (status: string, progress?: number) => {
-			(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
-		};
-		sendProgress("downloading", 0);
-		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendProgress);
+		sendUpdateProgress("downloading", 0);
+		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 		if (dlResult.ok) {
 			log.info("Auto-download complete, notifying renderer", { version });
 			(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
-			sendProgress("error");
+			sendUpdateProgress("error");
 		}
 	},
+	sendUpdateProgress,
 );
 
 log.info("=== dev-3.0 ready ===");

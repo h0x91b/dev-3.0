@@ -195,6 +195,7 @@ export async function applyUpdate(): Promise<void> {
 export function startAutoCheck(
 	getChannel: () => Promise<string>,
 	onUpdate: (version: string) => void,
+	onProgress?: (status: string, progress?: number) => void,
 ): void {
 	const doCheck = async () => {
 		try {
@@ -205,15 +206,19 @@ export function startAutoCheck(
 				return;
 			}
 
+			onProgress?.("checking");
 			const channel = await getChannel();
 			const result = await checkForUpdateWithChannel(channel);
 
 			if (result.updateAvailable) {
 				log.info("Auto-check found update", { version: result.version });
 				onUpdate(result.version);
+			} else {
+				onProgress?.("idle");
 			}
 		} catch (err) {
 			log.error("Auto-check failed", { error: String(err) });
+			onProgress?.("idle");
 		}
 	};
 

@@ -323,11 +323,6 @@ const en = {
 	"update.restarting": "Restarting...",
 	"update.checking": "Checking...",
 	"update.downloading": "Downloading...",
-	"update.downloadFailed": "Download failed",
-	"update.checkFailed": "Check failed",
-	"settings.checkForUpdates": "Check for Updates",
-	"settings.checkForUpdatesDesc": "Manually check if a new version is available",
-	"settings.checkingForUpdates": "Checking...",
 
 	// Requirements
 	"requirements.title": "System Requirements",
