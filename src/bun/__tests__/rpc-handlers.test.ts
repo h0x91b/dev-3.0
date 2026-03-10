@@ -62,12 +62,13 @@ vi.mock("../pty-server", () => ({
 	hasDeadSession: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
-	getSessionSocket: vi.fn(() => null),
+	getSessionSocket: vi.fn(() => "dev3"),
 	capturePane: vi.fn(),
-	tmuxArgs: vi.fn((_socket: string | null, ...args: string[]) => ["tmux", ...args]),
+	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
+	DEFAULT_TMUX_SOCKET: "dev3",
 }));
 
 vi.mock("../agents", () => ({
