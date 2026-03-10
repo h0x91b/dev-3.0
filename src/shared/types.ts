@@ -378,6 +378,14 @@ export interface BranchStatus {
 	diffFileNames: string[]; // list of changed file paths in branch vs base
 }
 
+// ---- Listening ports ----
+
+export interface PortInfo {
+	port: number;
+	pid: number;
+	processName: string; // "node", "bun", "python3"
+}
+
 // ---- Tmux sessions ----
 
 export interface TmuxSessionInfo {
@@ -389,6 +397,7 @@ export interface TmuxSessionInfo {
 	taskTitle?: string;
 	taskId?: string;
 	projectId?: string;
+	ports?: PortInfo[];
 }
 
 // ---- System requirements ----
@@ -627,6 +636,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			getTaskPorts: {
+				params: { taskId: string };
+				response: PortInfo[];
+			};
 			listTmuxSessions: {
 				params: void;
 				response: TmuxSessionInfo[];
@@ -712,6 +725,7 @@ export type AppRPCSchema = {
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string };
+			portsUpdated: { taskId: string; ports: PortInfo[] };
 			updateDownloadProgress: { status: string; progress?: number };
 		};
 	}>;

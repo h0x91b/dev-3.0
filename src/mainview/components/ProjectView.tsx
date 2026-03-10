@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, type Dispatch } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { PortInfo, Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -27,6 +27,7 @@ interface ProjectViewProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	taskPorts: Map<string, PortInfo[]>;
 	activeTaskId?: string;
 }
 
@@ -37,6 +38,7 @@ function ProjectView({
 	dispatch,
 	navigate,
 	bellCounts,
+	taskPorts,
 	activeTaskId,
 }: ProjectViewProps) {
 	const t = useT();
@@ -80,6 +82,7 @@ function ProjectView({
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
+				taskPorts={taskPorts}
 				onSwitchToBoard={() => toggleSidebarMode("board")}
 			/>
 		) : (
@@ -89,6 +92,7 @@ function ProjectView({
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
+				taskPorts={taskPorts}
 				activeTaskId={activeTaskId}
 				onSwitchToSidebar={() => toggleSidebarMode("sidebar")}
 			/>
@@ -96,7 +100,7 @@ function ProjectView({
 
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
-				{activeTask && <TaskInfoPanel task={activeTask} project={project} dispatch={dispatch} navigate={navigate} />}
+				{activeTask && <TaskInfoPanel task={activeTask} project={project} dispatch={dispatch} navigate={navigate} taskPorts={taskPorts} />}
 				<SplitLayout
 					kanbanContent={leftContent}
 					terminalContent={
@@ -124,6 +128,7 @@ function ProjectView({
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
+				taskPorts={taskPorts}
 			/>
 		</div>
 	);

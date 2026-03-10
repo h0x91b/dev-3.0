@@ -1,5 +1,5 @@
 import type { Dispatch } from "react";
-import type { Project, Task, TaskStatus } from "../../shared/types";
+import type { PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
@@ -15,6 +15,7 @@ interface ActiveTasksSidebarProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	taskPorts: Map<string, PortInfo[]>;
 	onSwitchToBoard: () => void;
 }
 
@@ -33,6 +34,7 @@ function ActiveTasksSidebar({
 	activeTaskId,
 	navigate,
 	bellCounts,
+	taskPorts,
 	onSwitchToBoard,
 }: ActiveTasksSidebarProps) {
 	const t = useT();
@@ -171,6 +173,30 @@ function ActiveTasksSidebar({
 													))}
 												</div>
 											)}
+
+											{/* Port indicators */}
+											{(() => {
+												const ports = taskPorts.get(task.id);
+												if (!ports || ports.length === 0) return null;
+												return (
+													<div className="flex flex-wrap gap-1 mt-1">
+														{ports.map((p) => (
+															<span
+																key={p.port}
+																className="inline-flex items-center gap-1 text-[0.5625rem] font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
+																title={`${p.processName} (PID ${p.pid})`}
+																onClick={(e) => {
+																	e.stopPropagation();
+																	window.open(`http://localhost:${p.port}`, "_blank");
+																}}
+															>
+																<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+																:{p.port}
+															</span>
+														))}
+													</div>
+												);
+											})()}
 										</button>
 									</div>
 								);

@@ -177,6 +177,16 @@ function App() {
 		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
 	}, [dispatch]);
 
+	// Listen for port scan updates
+	useEffect(() => {
+		function onPortsUpdated(e: Event) {
+			const { taskId, ports } = (e as CustomEvent).detail;
+			dispatch({ type: "setPorts", taskId, ports });
+		}
+		window.addEventListener("rpc:portsUpdated", onPortsUpdated);
+		return () => window.removeEventListener("rpc:portsUpdated", onPortsUpdated);
+	}, [dispatch]);
+
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
@@ -394,6 +404,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						taskPorts={state.taskPorts}
 						activeTaskId={route.activeTaskId}
 					/>
 				);

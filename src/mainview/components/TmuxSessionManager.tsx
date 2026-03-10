@@ -305,6 +305,26 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 												</div>
 											)}
 
+											{/* Port badges */}
+											{session.ports && session.ports.length > 0 && (
+												<div className="flex flex-wrap gap-1 mt-1.5">
+													{session.ports.map((p) => (
+														<button
+															key={p.port}
+															onClick={(e) => {
+																e.stopPropagation();
+																window.open(`http://localhost:${p.port}`, "_blank");
+															}}
+															className="inline-flex items-center gap-1 text-[0.625rem] font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors"
+															title={`${p.processName} (PID ${p.pid})`}
+														>
+															<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+															:{p.port}
+														</button>
+													))}
+												</div>
+											)}
+
 											{/* Copy attach command */}
 											<button
 												onClick={(e) => {

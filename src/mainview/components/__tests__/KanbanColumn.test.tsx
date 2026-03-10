@@ -106,6 +106,7 @@ function renderColumn(overrides: {
 				onDragStart={vi.fn()}
 				onTaskMoved={vi.fn()}
 				bellCounts={new Map()}
+				taskPorts={new Map()}
 				draggedTaskId={null}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}
@@ -150,6 +151,7 @@ function renderBuiltinColumn(overrides: {
 				onDragStart={vi.fn()}
 				onTaskMoved={vi.fn()}
 				bellCounts={new Map()}
+				taskPorts={new Map()}
 				draggedTaskId={null}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -26,13 +26,14 @@ interface TaskCardProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
+	ports?: PortInfo[];
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -56,6 +57,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	const preview = useTerminalPreview();
 	const cardRef = useRef<HTMLDivElement>(null);
+
+	// Ports popover state
+	const [portsPopoverOpen, setPortsPopoverOpen] = useState(false);
+	const [portsPopoverPos, setPortsPopoverPos] = useState({ top: 0, left: 0 });
+	const [portsPopoverVisible, setPortsPopoverVisible] = useState(false);
+	const portsPopoverRef = useRef<HTMLDivElement>(null);
+	const portsAnchorRef = useRef<HTMLButtonElement>(null);
 
 	// Context menu ("Open in...") state
 	const [ctxMenuOpen, setCtxMenuOpen] = useState(false);
@@ -114,6 +122,41 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setMenuPos({ top, left });
 		setMenuVisible(true);
 	}, [menuOpen]);
+
+	// Ports popover: click outside to close
+	useEffect(() => {
+		if (!portsPopoverOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (
+				portsPopoverRef.current &&
+				!portsPopoverRef.current.contains(e.target as Node) &&
+				portsAnchorRef.current &&
+				!portsAnchorRef.current.contains(e.target as Node)
+			) {
+				setPortsPopoverOpen(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [portsPopoverOpen]);
+
+	// Ports popover: viewport clamping
+	useLayoutEffect(() => {
+		if (!portsPopoverOpen || !portsPopoverRef.current || !portsAnchorRef.current) return;
+		const menu = portsPopoverRef.current.getBoundingClientRect();
+		const trigger = portsAnchorRef.current.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const pad = 8;
+		let top = trigger.bottom + 6;
+		let left = trigger.left;
+		if (top + menu.height > vh - pad) top = trigger.top - menu.height - 6;
+		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
+		if (left < pad) left = pad;
+		if (top < pad) top = pad;
+		setPortsPopoverPos({ top, left });
+		setPortsPopoverVisible(true);
+	}, [portsPopoverOpen, ports]);
 
 	function toggleMenu(e: React.MouseEvent) {
 		e.stopPropagation();
@@ -509,6 +552,27 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</button>
 				)}
 
+				{/* Port indicator for active tasks — compact icon + count, popover on click */}
+				{isActive && ports && ports.length > 0 && (
+					<button
+						ref={portsAnchorRef}
+						onClick={(e) => {
+							e.stopPropagation();
+							if (!portsPopoverOpen && portsAnchorRef.current) {
+								const rect = portsAnchorRef.current.getBoundingClientRect();
+								setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
+								setPortsPopoverVisible(false);
+							}
+							setPortsPopoverOpen(!portsPopoverOpen);
+						}}
+						className="inline-flex items-center gap-1 text-[0.625rem] font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+						title={t.plural("ports.count", ports.length)}
+					>
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+						{ports.length}
+					</button>
+				)}
+
 				{/* "Open in..." button for active tasks */}
 				{isActive && task.worktreePath && (
 					<button
@@ -596,6 +660,35 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							</button>
 						</div>
 					)}
+				</div>,
+				document.body
+			)}
+
+			{/* Ports popover */}
+			{portsPopoverOpen && ports && ports.length > 0 && createPortal(
+				<div
+					ref={portsPopoverRef}
+					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[10rem]"
+					style={{
+						top: portsPopoverPos.top,
+						left: portsPopoverPos.left,
+						visibility: portsPopoverVisible ? "visible" : "hidden",
+					}}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<div className="px-3 py-1.5 text-[0.625rem] text-fg-3 uppercase tracking-wider font-semibold">
+						{t("ports.title")}
+					</div>
+					{ports.map((p) => (
+						<button
+							key={p.port}
+							onClick={() => window.open(`http://localhost:${p.port}`, "_blank")}
+							className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+						>
+							<span className="font-mono font-bold text-accent">:{p.port}</span>
+							<span className="text-fg-muted text-xs">{p.processName}</span>
+						</button>
+					))}
 				</div>,
 				document.body
 			)}

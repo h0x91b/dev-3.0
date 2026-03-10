@@ -40,6 +40,7 @@ describe("initialState", () => {
 			currentProjectTasks: [],
 			loading: true,
 			bellCounts: new Map(),
+			taskPorts: new Map(),
 		});
 	});
 });
@@ -490,6 +491,49 @@ describe("reducer", () => {
 		const next = reducer(state, { type: "clearBell", taskId: "t1" });
 		expect(next.bellCounts.has("t1")).toBe(false);
 		expect(next.bellCounts.get("t2")).toBe(3);
+	});
+
+	// ---- setPorts ----
+
+	it("setPorts: adds ports for a task", () => {
+		const ports = [{ port: 3000, pid: 123, processName: "node" }];
+		const next = reducer(initialState, { type: "setPorts", taskId: "t1", ports });
+		expect(next.taskPorts.get("t1")).toEqual(ports);
+	});
+
+	it("setPorts: updates existing ports", () => {
+		const state: AppState = {
+			...initialState,
+			taskPorts: new Map([["t1", [{ port: 3000, pid: 123, processName: "node" }]]]),
+		};
+		const newPorts = [{ port: 8080, pid: 456, processName: "bun" }];
+		const next = reducer(state, { type: "setPorts", taskId: "t1", ports: newPorts });
+		expect(next.taskPorts.get("t1")).toEqual(newPorts);
+	});
+
+	it("setPorts: removes entry when ports is empty", () => {
+		const state: AppState = {
+			...initialState,
+			taskPorts: new Map([["t1", [{ port: 3000, pid: 123, processName: "node" }]]]),
+		};
+		const next = reducer(state, { type: "setPorts", taskId: "t1", ports: [] });
+		expect(next.taskPorts.has("t1")).toBe(false);
+	});
+
+	// ---- clearPorts ----
+
+	it("clearPorts: removes ports for a task", () => {
+		const state: AppState = {
+			...initialState,
+			taskPorts: new Map([["t1", [{ port: 3000, pid: 123, processName: "node" }]]]),
+		};
+		const next = reducer(state, { type: "clearPorts", taskId: "t1" });
+		expect(next.taskPorts.has("t1")).toBe(false);
+	});
+
+	it("clearPorts: no-op when task has no ports", () => {
+		const next = reducer(initialState, { type: "clearPorts", taskId: "t1" });
+		expect(next).toBe(initialState);
 	});
 
 	it("unknown action: returns state unchanged", () => {

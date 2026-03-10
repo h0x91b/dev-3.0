@@ -429,6 +429,15 @@ const es: TranslationRecord & Record<string, string> = {
 	"images.remove": "Eliminar imagen",
 	"images.dropHere": "Suelta el archivo aquí",
 
+	// Ports
+	"ports.title": "Puertos",
+	"ports.empty": "Sin puertos abiertos",
+	"ports.openInBrowser": "Abrir en navegador",
+	"ports.copyUrl": "Copiar URL",
+	"ports.copied": "¡Copiado!",
+	"ports.count_one": "{count} puerto",
+	"ports.count_other": "{count} puertos",
+
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",
 	"quit.dialogMessage": "Tus sesiones de terminal seguirán ejecutándose en tmux después de salir. Podrás reconectarte al volver a abrir la aplicación.",
