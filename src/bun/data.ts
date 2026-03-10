@@ -148,13 +148,11 @@ export async function updateProject(
 	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "peerReviewEnabled">>,
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
-		console.log("[updateProject] updates:", JSON.stringify(updates));
 		log.info("Updating project", { projectId, updates });
 		const projects = await rawLoadAllProjects();
 		const idx = projects.findIndex((p) => p.id === projectId);
 		if (idx === -1) throw new Error(`Project not found: ${projectId}`);
 		projects[idx] = { ...projects[idx], ...updates };
-		console.log("[updateProject] merged project:", JSON.stringify(projects[idx]));
 		await rawSaveProjects(projects);
 		return projects[idx];
 	});

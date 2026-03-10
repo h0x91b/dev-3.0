@@ -504,6 +504,65 @@ describe("task move --if-status flag", () => {
 	});
 });
 
+describe("task move --if-status-not flag", () => {
+	it("passes --if-status-not to server when provided", async () => {
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "if-status-not": "review-by-ai" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatusNot).toBe("review-by-ai");
+		expect(params.newStatus).toBe("in-progress");
+	});
+
+	it("does not include ifStatusNot when --if-status-not is not provided", async () => {
+		const moved = { ...FAKE_TASK, status: "todo" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "todo" }), SOCKET, null);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params).not.toHaveProperty("ifStatusNot");
+	});
+
+	it("passes comma-separated --if-status-not to server", async () => {
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "if-status-not": "review-by-ai,review-by-user" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatusNot).toBe("review-by-ai,review-by-user");
+	});
+
+	it("supports both --if-status and --if-status-not together", async () => {
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "if-status": "todo", "if-status-not": "review-by-ai" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatus).toBe("todo");
+		expect(params.ifStatusNot).toBe("review-by-ai");
+	});
+});
+
 describe("task move --id flag", () => {
 	it("uses --id flag when no positional arg given", async () => {
 		const moved = { ...FAKE_TASK, status: "todo" as const };

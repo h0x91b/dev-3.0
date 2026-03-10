@@ -358,10 +358,14 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		// Conditional move: if --if-status was provided, only proceed when the
-		// task's current status matches.  Silent no-op otherwise (no error).
+		// Conditional move guards — silent no-op when condition is not met.
+		// Both flags support comma-separated values (e.g. "review-by-ai,review-by-user").
 		const ifStatus = params.ifStatus as string | undefined;
-		if (ifStatus && task.status !== ifStatus) {
+		if (ifStatus && !ifStatus.split(",").includes(task.status)) {
+			return task;
+		}
+		const ifStatusNot = params.ifStatusNot as string | undefined;
+		if (ifStatusNot && ifStatusNot.split(",").includes(task.status)) {
 			return task;
 		}
 
@@ -430,7 +434,7 @@ const handlers: Record<string, Handler> = {
 
 		// active → completed/cancelled: destroy PTY, cleanup, remove worktree
 		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
-			try { pty.destroySession(task.id, task.tmuxSocket); } catch {}
+			try { pty.destroySession(task.id, task.tmuxSocket ?? undefined); } catch {}
 			try { await runCleanupScript(task, project); } catch {}
 			playTaskCompleteSound();
 			try { await git.removeWorktree(project, task); } catch {}

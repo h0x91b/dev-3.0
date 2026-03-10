@@ -142,7 +142,7 @@ const branchStatusInFlight = new Map<string, Promise<{
 	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
 }>>();
 
-async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
+async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
 	if (existingPane) {
 		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
@@ -168,7 +168,7 @@ async function killExistingGitPane(taskId: string, tmuxSession: string, socket: 
 	}
 }
 
-async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string | null): Promise<string | null> {
+async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string): Promise<string | null> {
 	const proc = spawn(pty.tmuxArgs(socket,
 		"split-window", "-v", "-l", "20%",
 		"-t", tmuxSession,
@@ -190,7 +190,7 @@ async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: strin
 	return output.trim() || null;
 }
 
-function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string | null): void {
+function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string): void {
 	if (!paneId) return;
 	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
 	const exitFilePath = `/tmp/dev3-${taskId}-git-${operation}.sh.exit`;
@@ -499,10 +499,8 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 
 	// Run attached (no -d) so proc.exited fires when the script finishes
 	// and tmux destroys the session automatically when the shell exits.
-	const cleanupSocket = task.tmuxSocket ?? null;
-	const cleanupArgs = cleanupSocket
-		? pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`)
-		: pty.tmuxArgs(null, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`);
+	const cleanupSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`);
 	const proc = spawn(
 		cleanupArgs,
 		{
@@ -644,7 +642,7 @@ export async function launchTaskPty(
 		await Bun.write(setupPath, project.setupScript + "\n");
 		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env));
 
-		const splitCmd = `tmux split-window -v -c "${worktreePath}" "bash '${claudePath}'"`;
+		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "bash '${claudePath}'"`;
 		const setupFail = [
 			"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
 			"  exec bash",
@@ -686,7 +684,7 @@ export async function launchTaskPty(
 		envKeys: Object.keys(env),
 	});
 	try {
-		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? null);
+		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
@@ -1027,7 +1025,7 @@ export const handlers = {
 					hasWorktree: !!task.worktreePath,
 				});
 				try {
-					pty.destroySession(task.id, task.tmuxSocket);
+					pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 				} catch (err) {
 					log.error("destroySession failed, continuing with task move", {
 						taskId: task.id,
@@ -1098,7 +1096,7 @@ export const handlers = {
 		// Cleanup if active
 		if (isActive(task.status)) {
 			log.info("Task is active, cleaning up PTY + worktree");
-			pty.destroySession(task.id, task.tmuxSocket);
+			pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 			await git.removeWorktree(project, task);
 		}
 
@@ -1211,7 +1209,7 @@ export const handlers = {
 
 			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 			const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
-			const socket = task.tmuxSocket ?? null;
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 			// Kill existing dev pane for this task if it's still alive
 			// Check both in-memory map and tmux directly (map lost on restart)
@@ -1312,7 +1310,7 @@ export const handlers = {
 			if (!task.worktreePath) throw new Error("Task has no worktree");
 
 			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-			const socket = task.tmuxSocket ?? null;
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 			// Toggle: if yazi pane already exists, kill it
 			const existingPane = fileBrowserPaneIds.get(task.id);
@@ -1409,7 +1407,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-rebase.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1464,7 +1462,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-merge.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const escapedPath = project.path.replace(/'/g, "'\\''");
@@ -1520,7 +1518,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-push.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1559,7 +1557,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-createPR.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -1614,7 +1612,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1662,7 +1660,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-uncommitted-diff.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -2379,7 +2377,7 @@ export const handlers = {
 
 	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
-		const socket = pty.getSessionSocket(params.taskId) ?? null;
+		const socket = pty.getSessionSocket(params.taskId);
 		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
 
 		let args: string[];

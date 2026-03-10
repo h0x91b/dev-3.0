@@ -360,8 +360,8 @@ describe("poller", () => {
 	it("cleans up stale cache entries when sessions disappear", () => {
 		const push = vi.fn();
 		let sessions = [
-			{ taskId: "task-aaaa", tmuxSocket: "dev3" as string | null },
-			{ taskId: "task-bbbb", tmuxSocket: "dev3" as string | null },
+			{ taskId: "task-aaaa", tmuxSocket: "dev3" },
+			{ taskId: "task-bbbb", tmuxSocket: "dev3" },
 		];
 		const getActiveSessions = vi.fn().mockImplementation(() => sessions);
 

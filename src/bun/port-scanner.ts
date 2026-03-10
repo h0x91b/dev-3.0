@@ -8,7 +8,7 @@ const log = createLogger("port-scanner");
 /**
  * Get pane PIDs for a tmux session.
  */
-export function getSessionPanePids(socket: string | null, sessionName: string): number[] {
+export function getSessionPanePids(socket: string, sessionName: string): number[] {
 	try {
 		const result = spawnSync(tmuxArgs(socket, "list-panes", "-t", sessionName, "-F", "#{pane_pid}"));
 		if (result.exitCode !== 0) return [];
@@ -105,7 +105,7 @@ export function getLsofOutput(): string {
 /**
  * Build the full PID set (pane PIDs + all descendants) for a tmux session.
  */
-export function collectTaskPids(socket: string | null, sessionName: string): Set<number> {
+export function collectTaskPids(socket: string, sessionName: string): Set<number> {
 	const panePids = getSessionPanePids(socket, sessionName);
 	const allPids = new Set<number>(panePids);
 	for (const pid of panePids) {
@@ -120,7 +120,7 @@ export function collectTaskPids(socket: string | null, sessionName: string): Set
  * Scan listening TCP ports for a tmux session.
  * Optionally accepts pre-fetched lsof output to avoid redundant calls.
  */
-export function scanTaskPorts(socket: string | null, sessionName: string, lsofOutput?: string): PortInfo[] {
+export function scanTaskPorts(socket: string, sessionName: string, lsofOutput?: string): PortInfo[] {
 	const allPids = collectTaskPids(socket, sessionName);
 	if (allPids.size === 0) return [];
 
@@ -134,7 +134,7 @@ export function scanTaskPorts(socket: string | null, sessionName: string, lsofOu
 const POLL_INTERVAL_MS = 10_000;
 
 type PushMessageFn = (name: string, payload: unknown) => void;
-type ActiveSessionsFn = () => Array<{ taskId: string; tmuxSocket: string | null }>;
+type ActiveSessionsFn = () => Array<{ taskId: string; tmuxSocket: string }>;
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let pushMessageFn: PushMessageFn | null = null;

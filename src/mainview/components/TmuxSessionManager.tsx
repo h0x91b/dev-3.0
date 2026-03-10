@@ -148,7 +148,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	}
 
 	function handleCopy(sessionName: string) {
-		navigator.clipboard.writeText(`tmux attach -t ${sessionName}`);
+		navigator.clipboard.writeText(`tmux -L dev3 attach -t ${sessionName}`);
 		setCopiedName(sessionName);
 		setTimeout(() => setCopiedName(null), 1500);
 	}
@@ -354,7 +354,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 												</svg>
 												{copiedName === session.name
 													? t("tmuxSessions.copied")
-													: `tmux attach -t ${session.name}`}
+													: `tmux -L dev3 attach -t ${session.name}`}
 											</button>
 										</div>
 									);

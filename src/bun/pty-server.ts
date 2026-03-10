@@ -65,6 +65,9 @@ set -ga update-environment TERM_PROGRAM
 
 writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
 
+// Default tmux socket name — all dev3 sessions live here.
+export const DEFAULT_TMUX_SOCKET = "dev3";
+
 // Resolved tmux binary path. Defaults to "tmux" (relies on PATH).
 // Updated by setTmuxBinary() after requirements check finds a custom or fallback path.
 let tmuxBinary = "tmux";
@@ -82,11 +85,8 @@ export function getTmuxBinary(): string {
  * All tmux invocations in the app MUST use this helper to ensure
  * session isolation from the user's personal tmux server.
  */
-export function tmuxArgs(socket: string | null | undefined, ...args: string[]): string[] {
-	if (socket) {
-		return [tmuxBinary, "-L", socket, ...args];
-	}
-	return [tmuxBinary, ...args];
+export function tmuxArgs(socket: string, ...args: string[]): string[] {
+	return [tmuxBinary, "-L", socket, ...args];
 }
 
 const log = createLogger("pty");
@@ -101,7 +101,7 @@ interface PtySession {
 	env: Record<string, string>;
 	proc: ReturnType<typeof Bun.spawn> | null;
 	ws: any;
-	tmuxSocket: string | null;
+	tmuxSocket: string;
 	lastOutputTime: number;
 	idleNotified: boolean;
 	/** Streaming decoder that buffers incomplete multi-byte UTF-8 sequences
@@ -132,7 +132,7 @@ export function createSession(
 	cwd: string,
 	tmuxCommand: string,
 	extraEnv: Record<string, string> = {},
-	tmuxSocket: string | null = null,
+	tmuxSocket: string = DEFAULT_TMUX_SOCKET,
 ): void {
 	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand, tmuxSocket });
 	const session: PtySession = {
@@ -153,9 +153,9 @@ export function createSession(
 	spawnPty(session, 220, 50);
 }
 
-export function destroySession(taskId: string, fallbackSocket?: string | null): void {
+export function destroySession(taskId: string, fallbackSocket?: string): void {
 	const session = sessions.get(taskId);
-	const socket = session?.tmuxSocket ?? fallbackSocket ?? "dev3";
+	const socket = session?.tmuxSocket ?? fallbackSocket ?? DEFAULT_TMUX_SOCKET;
 
 	log.info("Destroying PTY session", {
 		taskId: taskId.slice(0, 8),
@@ -215,7 +215,7 @@ export function hasDeadSession(taskId: string): boolean {
 
 export function capturePane(taskId: string): string | null {
 	const session = sessions.get(taskId);
-	const socket = session?.tmuxSocket ?? null;
+	const socket = session?.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
 		const result = spawnSync(
@@ -234,8 +234,8 @@ export function getSessionProjectId(taskId: string): string | null {
 	return sessions.get(taskId)?.projectId ?? null;
 }
 
-export function getSessionSocket(taskId: string): string | null {
-	return sessions.get(taskId)?.tmuxSocket ?? null;
+export function getSessionSocket(taskId: string): string {
+	return sessions.get(taskId)?.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 }
 
 export function getPtyPort(): number {
@@ -243,8 +243,8 @@ export function getPtyPort(): number {
 }
 
 /** Returns active session info for port scanning. */
-export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: string | null }> {
-	const result: Array<{ taskId: string; tmuxSocket: string | null }> = [];
+export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: string }> {
+	const result: Array<{ taskId: string; tmuxSocket: string }> = [];
 	for (const session of sessions.values()) {
 		if (session.proc) {
 			result.push({ taskId: session.taskId, tmuxSocket: session.tmuxSocket });
@@ -289,13 +289,11 @@ function checkForBell(data: string, taskId: string): void {
 	}
 }
 
-function configureTmux(tmuxSessionName: string, socket: string | null): void {
-	if (socket) {
-		// Re-source the config in case the tmux server was already running
-		// (the -f flag on new-session only applies when starting a fresh server)
-		spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
-		log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
-	}
+function configureTmux(tmuxSessionName: string, socket: string): void {
+	// Re-source the config in case the tmux server was already running
+	// (the -f flag on new-session only applies when starting a fresh server)
+	spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
+	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
 }
 
 function spawnPty(session: PtySession, cols: number, rows: number): void {
@@ -337,9 +335,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 
 	let proc: ReturnType<typeof Bun.spawn>;
 	try {
-		const newSessionArgs = session.tmuxSocket
-			? tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd)
-			: tmuxArgs(null, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd);
+		const newSessionArgs = tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd);
 		proc = spawn(
 			newSessionArgs,
 			{
