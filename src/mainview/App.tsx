@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
 import { useT } from "./i18n";
@@ -33,6 +33,8 @@ function App() {
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
 	// Download progress: null = idle, "checking" | "downloading" | "error"
 	const [updateDownloadStatus, setUpdateDownloadStatus] = useState<string | null>(null);
+	const updateStatusShownAtRef = useRef<number>(0);
+	const updateClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
@@ -248,18 +250,35 @@ function App() {
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
 	}, []);
 
-	// Listen for update download progress
+	// Listen for update download progress (minimum 5s display time)
 	useEffect(() => {
+		const MIN_DISPLAY_MS = 5_000;
 		function onDownloadProgress(e: Event) {
 			const { status } = (e as CustomEvent).detail;
 			if (status === "complete" || status === "idle") {
-				setUpdateDownloadStatus(null);
+				// Clear after minimum display time
+				const elapsed = Date.now() - updateStatusShownAtRef.current;
+				const remaining = Math.max(0, MIN_DISPLAY_MS - elapsed);
+				if (updateClearTimerRef.current) clearTimeout(updateClearTimerRef.current);
+				updateClearTimerRef.current = setTimeout(() => {
+					setUpdateDownloadStatus(null);
+					updateClearTimerRef.current = null;
+				}, remaining);
 			} else {
+				// Show immediately, record timestamp
+				if (updateClearTimerRef.current) {
+					clearTimeout(updateClearTimerRef.current);
+					updateClearTimerRef.current = null;
+				}
+				updateStatusShownAtRef.current = Date.now();
 				setUpdateDownloadStatus(status); // "checking", "downloading", "error"
 			}
 		}
 		window.addEventListener("rpc:updateDownloadProgress", onDownloadProgress);
-		return () => window.removeEventListener("rpc:updateDownloadProgress", onDownloadProgress);
+		return () => {
+			window.removeEventListener("rpc:updateDownloadProgress", onDownloadProgress);
+			if (updateClearTimerRef.current) clearTimeout(updateClearTimerRef.current);
+		};
 	}, []);
 
 	// Listen for Cmd+, (Settings menu item)
