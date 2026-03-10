@@ -5,6 +5,7 @@ import "./index.css";
 import "./rpc";
 import App from "./App";
 import { I18nProvider } from "./i18n";
+import { MobileProvider } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
 import { api } from "./rpc";
 import { bootstrapZoom } from "./zoom";
@@ -74,9 +75,11 @@ async function bootstrap() {
 	console.log("[main] Rendering React app...");
 	createRoot(document.getElementById("root")!).render(
 		<StrictMode>
-			<I18nProvider>
-				<App />
-			</I18nProvider>
+			<MobileProvider>
+				<I18nProvider>
+					<App />
+				</I18nProvider>
+			</MobileProvider>
 		</StrictMode>,
 	);
 	console.log("[main] React app rendered");

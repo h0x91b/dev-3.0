@@ -6,6 +6,7 @@ import { trackPageView, trackEvent } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
+import { useViewport } from "./hooks/useViewport";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
@@ -22,6 +23,7 @@ const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
+	useViewport(state.route);
 
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
