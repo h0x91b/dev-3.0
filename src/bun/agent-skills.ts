@@ -84,7 +84,7 @@ const SKILL_STATUS_HOOKS = `
 ## Task status management
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-user\`).
-You can still run \`dev3 task move --status <s>\` manually if needed (e.g. for custom columns).
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. You can still use it for custom columns.
 ${SKILL_CUSTOM_COLUMNS}`;
 
 // Composed bodies for each agent type
