@@ -329,6 +329,13 @@ const ru: TranslationRecord & Record<string, string> = {
 	"update.sessionsNote": "Все терминальные сессии сохранятся — tmux продолжит работать в фоне.",
 	"update.restartBtn": "Перезапустить",
 	"update.restarting": "Перезапуск...",
+	"update.checking": "Проверка...",
+	"update.downloading": "Загрузка...",
+	"update.downloadFailed": "Ошибка загрузки",
+	"update.checkFailed": "Ошибка проверки",
+	"settings.checkForUpdates": "Проверить обновления",
+	"settings.checkForUpdatesDesc": "Проверить наличие новой версии вручную",
+	"settings.checkingForUpdates": "Проверка...",
 
 	// Requirements
 	"requirements.title": "Системные требования",

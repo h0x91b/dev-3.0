@@ -34,6 +34,8 @@ function GlobalSettings() {
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
 	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
+	const [updateCheckState, setUpdateCheckState] = useState<"idle" | "checking" | "downloading" | "up-to-date" | "error">("idle");
+	const [updateCheckError, setUpdateCheckError] = useState<string | null>(null);
 
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
@@ -98,6 +100,37 @@ function GlobalSettings() {
 		const updated = { ...globalSettings, playSoundOnTaskComplete: enabled };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated).catch(() => {});
+	}
+
+	async function handleCheckForUpdates() {
+		setUpdateCheckState("checking");
+		setUpdateCheckError(null);
+		try {
+			const result = await api.request.checkForUpdate();
+			if (result.error) {
+				setUpdateCheckState("error");
+				setUpdateCheckError(result.error);
+				return;
+			}
+			if (!result.updateAvailable) {
+				setUpdateCheckState("up-to-date");
+				setTimeout(() => setUpdateCheckState("idle"), 5000);
+				return;
+			}
+			// Update found — trigger download
+			setUpdateCheckState("downloading");
+			const dlResult = await api.request.downloadUpdate();
+			if (dlResult.ok) {
+				setUpdateCheckState("idle");
+				// updateAvailable push event will show the restart button in header
+			} else {
+				setUpdateCheckState("error");
+				setUpdateCheckError(dlResult.error || "Unknown error");
+			}
+		} catch (err) {
+			setUpdateCheckState("error");
+			setUpdateCheckError(String(err));
+		}
 	}
 
 	/** Filter out apps with empty fields before persisting to disk. */
@@ -424,6 +457,41 @@ function GlobalSettings() {
 							<option value="stable">Stable</option>
 							<option value="canary">Canary</option>
 						</select>
+					</div>
+
+					{/* Check for Updates */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.checkForUpdates")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.checkForUpdatesDesc")}
+						</p>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={handleCheckForUpdates}
+								disabled={updateCheckState === "checking" || updateCheckState === "downloading"}
+								className="px-4 py-2.5 bg-raised border border-edge rounded-xl text-fg text-sm font-medium hover:border-edge-active transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+							>
+								{(updateCheckState === "checking" || updateCheckState === "downloading") && (
+									<svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+										<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+										<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+									</svg>
+								)}
+								{updateCheckState === "checking"
+									? t("settings.checkingForUpdates")
+									: updateCheckState === "downloading"
+										? t("update.downloading")
+										: t("settings.checkForUpdates")}
+							</button>
+							{updateCheckState === "up-to-date" && (
+								<span className="text-sm text-green-400">{t("update.upToDate")}</span>
+							)}
+							{updateCheckState === "error" && (
+								<span className="text-sm text-danger">{updateCheckError || t("update.checkFailed")}</span>
+							)}
+						</div>
 					</div>
 
 					{/* Clone Base Directory */}

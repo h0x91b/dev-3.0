@@ -324,6 +324,13 @@ const es: TranslationRecord & Record<string, string> = {
 	"update.sessionsNote": "Todas las sesiones de terminal se conservarán — tmux sigue ejecutándose en segundo plano.",
 	"update.restartBtn": "Reiniciar para actualizar",
 	"update.restarting": "Reiniciando...",
+	"update.checking": "Verificando...",
+	"update.downloading": "Descargando...",
+	"update.downloadFailed": "Error de descarga",
+	"update.checkFailed": "Error de verificación",
+	"settings.checkForUpdates": "Buscar actualizaciones",
+	"settings.checkForUpdatesDesc": "Verificar manualmente si hay una nueva versión disponible",
+	"settings.checkingForUpdates": "Verificando...",
 
 	// Requirements
 	"requirements.title": "Requisitos del sistema",

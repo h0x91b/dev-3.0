@@ -23,6 +23,8 @@ vi.mock("../../rpc", () => ({
 			saveAgents: vi.fn(),
 			getGlobalSettings: vi.fn(),
 			saveGlobalSettings: vi.fn(),
+			checkForUpdate: vi.fn(),
+			downloadUpdate: vi.fn(),
 		},
 	},
 }));
@@ -784,6 +786,76 @@ describe("GlobalSettings", () => {
 
 			expect(screen.getByText("2 configs")).toBeInTheDocument();
 			expect(screen.getByText("1 config")).toBeInTheDocument();
+		});
+	});
+
+	describe("check for updates", () => {
+		it("renders Check for Updates button", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			// Label + button both have the text
+			expect(screen.getAllByText("Check for Updates").length).toBeGreaterThanOrEqual(2);
+		});
+
+		it("shows up-to-date message when no update available", async () => {
+			setupMocks();
+			mockedApi.request.checkForUpdate.mockResolvedValue({
+				updateAvailable: false,
+				version: "1.0.0",
+			});
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const btn = screen.getAllByText("Check for Updates").find(
+				(el) => el.tagName === "BUTTON" || el.closest("button"),
+			)!;
+			await user.click(btn.closest("button") ?? btn);
+
+			expect(await screen.findByText("You're up to date!")).toBeInTheDocument();
+		});
+
+		it("triggers download when update is available", async () => {
+			setupMocks();
+			mockedApi.request.checkForUpdate.mockResolvedValue({
+				updateAvailable: true,
+				version: "2.0.0",
+			});
+			mockedApi.request.downloadUpdate.mockResolvedValue({ ok: true });
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const btn = screen.getAllByText("Check for Updates").find(
+				(el) => el.tagName === "BUTTON" || el.closest("button"),
+			)!;
+			await user.click(btn.closest("button") ?? btn);
+
+			// Should have called both check and download
+			await vi.waitFor(() => {
+				expect(mockedApi.request.downloadUpdate).toHaveBeenCalled();
+			});
+		});
+
+		it("shows error when check fails", async () => {
+			setupMocks();
+			mockedApi.request.checkForUpdate.mockResolvedValue({
+				updateAvailable: false,
+				version: "1.0.0",
+				error: "Network error",
+			});
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const btn = screen.getAllByText("Check for Updates").find(
+				(el) => el.tagName === "BUTTON" || el.closest("button"),
+			)!;
+			await user.click(btn.closest("button") ?? btn);
+
+			expect(await screen.findByText("Network error")).toBeInTheDocument();
 		});
 	});
 

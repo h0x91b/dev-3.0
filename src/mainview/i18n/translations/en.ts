@@ -321,6 +321,13 @@ const en = {
 	"update.sessionsNote": "All terminal sessions will be preserved — tmux keeps running in the background.",
 	"update.restartBtn": "Restart to Update",
 	"update.restarting": "Restarting...",
+	"update.checking": "Checking...",
+	"update.downloading": "Downloading...",
+	"update.downloadFailed": "Download failed",
+	"update.checkFailed": "Check failed",
+	"settings.checkForUpdates": "Check for Updates",
+	"settings.checkForUpdatesDesc": "Manually check if a new version is available",
+	"settings.checkingForUpdates": "Checking...",
 
 	// Requirements
 	"requirements.title": "System Requirements",

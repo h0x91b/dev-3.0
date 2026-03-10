@@ -31,6 +31,8 @@ function App() {
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+	// Download progress: null = idle, "checking" | "downloading" | "error"
+	const [updateDownloadStatus, setUpdateDownloadStatus] = useState<string | null>(null);
 
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
@@ -240,9 +242,24 @@ function App() {
 		function onUpdateAvailable(e: Event) {
 			const { version } = (e as CustomEvent).detail;
 			setUpdateVersion(version);
+			setUpdateDownloadStatus(null); // clear download indicator once ready
 		}
 		window.addEventListener("rpc:updateAvailable", onUpdateAvailable);
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
+	}, []);
+
+	// Listen for update download progress
+	useEffect(() => {
+		function onDownloadProgress(e: Event) {
+			const { status } = (e as CustomEvent).detail;
+			if (status === "complete") {
+				setUpdateDownloadStatus(null);
+			} else {
+				setUpdateDownloadStatus(status); // "downloading", "error"
+			}
+		}
+		window.addEventListener("rpc:updateDownloadProgress", onDownloadProgress);
+		return () => window.removeEventListener("rpc:updateDownloadProgress", onDownloadProgress);
 	}, []);
 
 	// Listen for Cmd+, (Settings menu item)
@@ -346,6 +363,7 @@ function App() {
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
 				updateVersion={updateVersion}
+				updateDownloadStatus={updateDownloadStatus}
 			/>
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
 			{showQuitDialog && (

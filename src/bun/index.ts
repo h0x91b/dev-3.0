@@ -433,7 +433,11 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 					cancelId: 1,
 				});
 				if (response === 0) {
-					const dlResult = await downloadUpdateForChannel(settings.updateChannel);
+					const sendMenuProgress = (status: string, progress?: number) => {
+						(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
+					};
+					sendMenuProgress("downloading", 0);
+					const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendMenuProgress);
 					if (dlResult.ok) {
 						const { response: restartResponse } = await Utils.showMessageBox({
 							type: "info",
@@ -498,12 +502,17 @@ startAutoCheck(
 	async (version) => {
 		log.info("Auto-check found update, downloading silently...", { version });
 		const settings = await loadSettings();
-		const dlResult = await downloadUpdateForChannel(settings.updateChannel);
+		const sendProgress = (status: string, progress?: number) => {
+			(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
+		};
+		sendProgress("downloading", 0);
+		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendProgress);
 		if (dlResult.ok) {
 			log.info("Auto-download complete, notifying renderer", { version });
 			(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
+			sendProgress("error");
 		}
 	},
 );
