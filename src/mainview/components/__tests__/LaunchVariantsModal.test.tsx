@@ -46,7 +46,7 @@ const codexAgent: CodingAgent = {
 			id: "codex-default",
 			name: "Default (GPT-5.4 Medium)",
 			model: "gpt-5.4",
-			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
+			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
 		},
 		{
 			id: "codex-plan",
@@ -59,19 +59,25 @@ const codexAgent: CodingAgent = {
 			id: "codex-heavy",
 			name: "Heavy (GPT-5.4 High)",
 			model: "gpt-5.4",
+			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+		},
+		{
+			id: "codex-heavy-confirm",
+			name: "Heavy (GPT-5.4 High Confirm)",
+			model: "gpt-5.4",
 			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 		},
 		{
 			id: "codex-codex-medium",
 			name: "GPT-5.3 Codex Medium",
 			model: "gpt-5.3-codex",
-			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
+			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
 		},
 		{
 			id: "codex-codex-high",
 			name: "GPT-5.3 Codex High",
 			model: "gpt-5.3-codex",
-			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 		},
 	],
 	defaultConfigId: "codex-default",
@@ -286,12 +292,13 @@ describe("LaunchVariantsModal", () => {
 			renderModal(project, { globalSettings: gs });
 
 			const options = await getDropdownOptions(user, getConfigButtons()[0]);
-			expect(options).toHaveLength(5);
+			expect(options).toHaveLength(6);
 			expect(options[0]).toBe("Default (GPT-5.4 Medium)");
 			expect(options[1]).toBe("Plan (GPT-5.4)");
 			expect(options[2]).toBe("Heavy (GPT-5.4 High)");
-			expect(options[3]).toBe("GPT-5.3 Codex Medium");
-			expect(options[4]).toBe("GPT-5.3 Codex High");
+			expect(options[3]).toBe("Heavy (GPT-5.4 High Confirm)");
+			expect(options[4]).toBe("GPT-5.3 Codex Medium");
+			expect(options[5]).toBe("GPT-5.3 Codex High");
 		});
 
 		it("agent dropdown shows all agents", async () => {
@@ -329,7 +336,7 @@ describe("LaunchVariantsModal", () => {
 
 			// Config dropdown should show Codex curated configs
 			const options = await getDropdownOptions(user, configBtnAfter);
-			expect(options).toHaveLength(5);
+			expect(options).toHaveLength(6);
 			expect(options[0]).toBe("Default (GPT-5.4 Medium)");
 		});
 
