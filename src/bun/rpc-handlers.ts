@@ -170,7 +170,7 @@ async function killExistingGitPane(taskId: string, tmuxSession: string, socket: 
 
 async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string | null): Promise<string | null> {
 	const proc = spawn(pty.tmuxArgs(socket,
-		"split-window", "-v",
+		"split-window", "-v", "-l", "20%",
 		"-t", tmuxSession,
 		"-c", cwd,
 		"-P", "-F", "#{pane_id}",
