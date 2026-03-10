@@ -2278,7 +2278,7 @@ describe("handlers.killTmuxSession", () => {
 
 		await handlers.killTmuxSession({ sessionName: "dev3-abc12345" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "kill-session", "-t", "dev3-abc12345"],
+			["tmux", "-L", "dev3", "kill-session", "-t", "dev3-abc12345"],
 			expect.any(Object),
 		);
 	});
@@ -2457,7 +2457,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -2471,7 +2471,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -2485,7 +2485,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "resize-pane", "-Z", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "resize-pane", "-Z", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
