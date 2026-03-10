@@ -750,11 +750,13 @@ function ConfigPreviewCard({
 	t: ReturnType<typeof useT>;
 }) {
 	const tags: { label: string; value: string }[] = [];
+	const cmdName = (config.baseCommandOverride || agentBaseCommand || "").split("/").pop() ?? "";
+	const isCodex = cmdName === "codex";
 
 	if (config.model) {
 		tags.push({ label: t("settings.configModel"), value: config.model });
 	}
-	if (config.permissionMode && config.permissionMode !== "default") {
+	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
 		const modeLabels: Record<string, string> = {
 			plan: t("settings.permPlan"),
 			acceptEdits: t("settings.permAcceptEdits"),
@@ -766,7 +768,7 @@ function ConfigPreviewCard({
 			value: modeLabels[config.permissionMode] ?? config.permissionMode,
 		});
 	}
-	if (config.effort) {
+	if (!isCodex && config.effort) {
 		const effortLabels: Record<string, string> = {
 			low: t("settings.effortLow"),
 			medium: t("settings.effortMedium"),
@@ -777,7 +779,7 @@ function ConfigPreviewCard({
 			value: effortLabels[config.effort] ?? config.effort,
 		});
 	}
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
+	if (!isCodex && config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
 		tags.push({
 			label: t("settings.configMaxBudget"),
 			value: `$${config.maxBudgetUsd}`,
@@ -821,8 +823,9 @@ function buildCommandPreview(
 
 	const cmdName = baseCmd.split("/").pop() ?? "";
 	const isCursor = cmdName === "agent";
+	const isCodex = cmdName === "codex";
 
-	if (config.permissionMode && config.permissionMode !== "default") {
+	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
 		if (isCursor) {
 			if (config.permissionMode === "plan") {
 				parts.push("--mode", "plan");
@@ -834,11 +837,11 @@ function buildCommandPreview(
 		}
 	}
 
-	if (config.effort && !isCursor) {
+	if (config.effort && !isCursor && !isCodex) {
 		parts.push("--effort", config.effort);
 	}
 
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor) {
+	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex) {
 		parts.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 

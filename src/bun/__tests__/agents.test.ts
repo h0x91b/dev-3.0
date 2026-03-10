@@ -103,6 +103,26 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("Some task");
 	});
 
+	it("Codex: ignores unsupported generic config flags during resume", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({
+				model: "gpt-5",
+				permissionMode: "bypassPermissions",
+				effort: "high",
+				maxBudgetUsd: 10,
+			}),
+			makeCtx({ taskDescription: "Some task" }),
+			{ resume: true },
+		);
+
+		expect(cmd).toMatch(/^codex resume --last/);
+		expect(cmd).toContain("--model gpt-5");
+		expect(cmd).not.toContain("--permission-mode");
+		expect(cmd).not.toContain("--effort");
+		expect(cmd).not.toContain("--max-budget-usd");
+	});
+
 	it("Codex: normal command when resume is not set", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
