@@ -4,11 +4,19 @@ import type { GlobalSettings, Project, Task } from "../../shared/types";
 // ---- Mocks ----
 
 vi.mock("electrobun/bun", () => ({
+	PATHS: {
+		VIEWS_FOLDER: "/fake-bundle/Resources/app/views/",
+	},
 	Utils: {
 		showMessageBox: vi.fn(),
 		openFileDialog: vi.fn(),
 		quit: vi.fn(),
 	},
+}));
+
+const mockBundledChangelog: any[] = [];
+vi.mock("../changelog-bundled", () => ({
+	get BUNDLED_CHANGELOG() { return mockBundledChangelog; },
 }));
 
 vi.mock("../data", () => ({
@@ -103,9 +111,11 @@ vi.mock("../spawn", () => ({
 	spawnSync: (...args: any[]) => mockSpawnSync(...args),
 }));
 
-// Mock node:fs for existsSync
+// Mock node:fs for existsSync and readdirSync
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
+	readdirSync: vi.fn(() => []),
+	statSync: vi.fn(() => ({ isDirectory: () => true })),
 }));
 
 const mockObjcGetClass = vi.fn(() => "NSApplication_ptr");
@@ -2753,5 +2763,62 @@ describe("checkOpenPRsForPromotion", () => {
 		await checkOpenPRsForPromotion();
 
 		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// getChangelogs
+// ================================================================
+
+describe("getChangelogs", () => {
+	beforeEach(() => {
+		vi.mocked(existsSync).mockReset();
+		mockBundledChangelog.length = 0;
+	});
+
+	it("returns empty array when no change-logs dir, no JSON file, and no bundled data (reproduces production bug)", async () => {
+		// Simulate Electrobun 1.14+ production: no vite.config.ts, no change-logs/,
+		// no changelog.json on disk (resources inside tar archive)
+		vi.mocked(existsSync).mockReturnValue(false);
+
+		const result = await handlers.getChangelogs();
+		expect(result).toEqual([]);
+	});
+
+	it("returns bundled data when filesystem paths are inaccessible (Electrobun 1.14+ fix)", async () => {
+		// Simulate production: all filesystem checks fail
+		vi.mocked(existsSync).mockReturnValue(false);
+
+		// But bundled data is available (inlined at build time)
+		mockBundledChangelog.push(
+			{ date: "2026-03-09", type: "fix", slug: "test-fix", title: "A test fix" },
+			{ date: "2026-03-08", type: "feature", slug: "test-feat", title: "A test feature" },
+		);
+
+		const result = await handlers.getChangelogs();
+		expect(result).toHaveLength(2);
+		expect(result[0]).toEqual({ date: "2026-03-09", type: "fix", slug: "test-fix", title: "A test fix" });
+	});
+
+	it("reads from JSON file when it exists on disk", async () => {
+		const fakeEntries = [{ date: "2026-03-01", type: "fix", slug: "s", title: "T" }];
+		// existsSync: false for vite.config.ts (20 calls), false for change-logs/,
+		// then true for prodJson path
+		const calls: string[] = [];
+		vi.mocked(existsSync).mockImplementation((p: any) => {
+			calls.push(String(p));
+			if (String(p).endsWith("changelog.json")) return true;
+			return false;
+		});
+
+		// Mock Bun.file().text() to return JSON
+		(globalThis as any).Bun.file = vi.fn(() => ({
+			text: () => Promise.resolve(JSON.stringify(fakeEntries)),
+			exists: () => Promise.resolve(true),
+			json: () => Promise.resolve(fakeEntries),
+		}));
+
+		const result = await handlers.getChangelogs();
+		expect(result).toEqual(fakeEntries);
 	});
 });
