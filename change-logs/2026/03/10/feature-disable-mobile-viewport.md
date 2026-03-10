@@ -1,0 +1,1 @@
+Set viewport to fixed 1280px width so the app renders in desktop mode on mobile devices instead of using mobile-scaled layout. This is the first step toward mobile web access — users can view the full UI by pinch-zooming.
