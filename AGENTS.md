@@ -34,12 +34,16 @@ Agents in this project typically run inside a **git worktree**, not the main wor
 
 ### Branch naming
 
-Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the task is about, **rename the branch automatically** to something descriptive using `git branch -m <old> dev3/<slug>`. Do not ask for permission — just do it on session start.
+Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the task is about, **rename the branch automatically** to something descriptive using `git branch -m <old> <type>/<slug>`. Do not ask for permission — just do it on session start.
 
-**Rules:**
-- Always keep the `dev3/` prefix.
-- Use lowercase kebab-case: `dev3/fix-auth-race-condition`, `dev3/add-drag-reorder`, `dev3/refactor-rpc-handlers`.
+> **User preferences override these defaults.** If the user's CLAUDE.md, AGENTS.md, or auto-memory specifies a different branch naming convention (e.g., JIRA ticket prefix, custom format), follow the user's convention instead of the defaults below.
+
+**Default rules** (apply only when the user has no custom branch naming preference):
+- Use a conventional type prefix: `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`.
+- Use lowercase kebab-case: `fix/auth-race-condition`, `feat/drag-reorder`, `refactor/rpc-handlers`.
 - Derive the slug from the task description/title — 3-5 words max.
+
+**Always applies:**
 - If the branch already has a meaningful name (doesn't match `dev3/task-*`), skip renaming.
 - If the branch was already pushed to the remote, also update the remote: `git push origin :<old-branch> && git push -u origin <new-branch>`.
 

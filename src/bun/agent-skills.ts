@@ -19,13 +19,19 @@ After learning your current task, check if the branch matches \`dev3/task-*\` (o
 If it does, **rename it immediately** to something meaningful based on the task description:
 
 \`\`\`bash
-git branch -m dev3/task-XXXXXXXX dev3/<slug>
+git branch -m dev3/task-XXXXXXXX <type>/<slug>
 \`\`\`
 
-**Rules:**
-- Always keep the \`dev3/\` prefix.
-- Use lowercase kebab-case, 3-5 words: \`dev3/fix-auth-race-condition\`, \`dev3/add-drag-reorder\`.
+> **User preferences override these defaults.** If the user's CLAUDE.md, AGENTS.md, or auto-memory
+> specifies a different branch naming convention (e.g., JIRA ticket prefix, custom format),
+> follow the user's convention instead of the defaults below.
+
+**Default rules** (apply only when the user has no custom branch naming preference):
+- Use a conventional type prefix: \`feat/\`, \`fix/\`, \`chore/\`, \`refactor/\`, \`docs/\`.
+- Use lowercase kebab-case, 3-5 words: \`fix/auth-race-condition\`, \`feat/drag-reorder\`, \`refactor/rpc-handlers\`.
 - Derive the slug from the task description/title — be concise but descriptive.
+
+**Always applies:**
 - If the branch already has a meaningful name (does NOT match \`dev3/task-*\`), skip renaming.
 - If the branch was already pushed, also update the remote: \`git push origin :<old> && git push -u origin <new>\`.
 
