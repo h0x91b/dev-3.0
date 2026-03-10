@@ -111,50 +111,56 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRow
 	return (
 		<div className="p-3 bg-raised rounded-xl border border-edge space-y-2.5">
 			{/* Name + color + delete */}
-			<div className="flex items-center gap-2">
-				<div
-					className="w-4 h-4 rounded-full flex-shrink-0 border border-edge-active"
-					style={{ background: color }}
-				/>
-				<input
-					type="text"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					onBlur={() => commitUpdate()}
-					onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-					aria-label={t("customColumns.columnName")}
-					placeholder={t("customColumns.columnName")}
-					disabled={saving}
-					className="flex-1 bg-transparent text-fg text-sm outline-none placeholder-fg-muted min-w-0"
-				/>
-				{/* Color palette */}
-				<div className="flex items-center gap-1 flex-shrink-0">
-					{LABEL_COLORS.map((c) => (
-						<button
-							key={c}
-							type="button"
-							onClick={() => { setColor(c); commitUpdate(name, c, llmInstruction); }}
-							disabled={saving}
-							className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""}`}
-							style={{ background: c }}
-							title={c}
-						/>
-					))}
+			<div>
+				<div className="flex items-center justify-between mb-1">
+					<label className="text-fg-3 text-xs">{t("customColumns.columnName")}</label>
+					<button
+						type="button"
+						onClick={onDelete}
+						disabled={saving}
+						className="w-5 h-5 flex items-center justify-center rounded text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors"
+						title={t("customColumns.deleteColumn")}
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
 				</div>
-				<button
-					type="button"
-					onClick={onDelete}
-					disabled={saving}
-					className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
-					title={t("customColumns.deleteColumn")}
-				>
-					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
+				<div className="flex items-center gap-2">
+					<div
+						className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+					<input
+						type="text"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						onBlur={() => commitUpdate()}
+						onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+						aria-label={t("customColumns.columnName")}
+						placeholder={t("customColumns.columnName")}
+						disabled={saving}
+						className="flex-1 px-3 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors min-w-0"
+					/>
+					{/* Color palette */}
+					<div className="flex items-center gap-1 flex-shrink-0">
+						{LABEL_COLORS.map((c) => (
+							<button
+								key={c}
+								type="button"
+								onClick={() => { setColor(c); commitUpdate(name, c, llmInstruction); }}
+								disabled={saving}
+								className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""}`}
+								style={{ background: c }}
+								title={c}
+							/>
+						))}
+					</div>
+				</div>
 			</div>
 			{/* LLM instruction */}
 			<div>
+				<label className="block text-fg-3 text-xs mb-1">{t("customColumns.llmInstruction")}</label>
 				<textarea
 					value={llmInstruction}
 					onChange={(e) => setLlmInstruction(e.target.value)}
