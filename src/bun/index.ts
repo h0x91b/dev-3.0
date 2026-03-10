@@ -143,7 +143,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds } = await import("./pty-server");
-const { startPortScanPoller } = await import("./port-scanner");
+const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -362,6 +362,7 @@ setOnIdle((taskId) => {
 
 mainWindow.on("close", () => {
 	log.info("Main window closing, cleaning up");
+	stopPortScanPoller();
 	stopSocketServer();
 	Utils.quit();
 });
