@@ -57,6 +57,7 @@ function renderHeader(
 	projects: Project[] = [project1, project2],
 	navigate?: (route: Route) => void,
 	tasks: Task[] = [],
+	extra?: { updateVersion?: string | null; updateDownloadStatus?: string | null },
 ) {
 	return render(
 		<I18nProvider>
@@ -65,6 +66,8 @@ function renderHeader(
 				projects={projects}
 				tasks={tasks}
 				navigate={navigate ?? vi.fn()}
+				updateVersion={extra?.updateVersion}
+				updateDownloadStatus={extra?.updateDownloadStatus}
 			/>
 		</I18nProvider>,
 	);
@@ -224,6 +227,53 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		await user.click(getChevronButton());
 
 		expect(await screen.findAllByText("No active tasks")).toHaveLength(2);
+	});
+
+	it("shows downloading indicator when updateDownloadStatus is downloading", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1, project2],
+			vi.fn(),
+			[],
+			{ updateDownloadStatus: "downloading" },
+		);
+		expect(screen.getByText("Downloading...")).toBeInTheDocument();
+	});
+
+	it("shows checking indicator when updateDownloadStatus is checking", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1, project2],
+			vi.fn(),
+			[],
+			{ updateDownloadStatus: "checking" },
+		);
+		expect(screen.getByText("Checking...")).toBeInTheDocument();
+	});
+
+	it("does not show download indicator when updateVersion is set (ready state)", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1, project2],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3", updateDownloadStatus: "downloading" },
+		);
+		expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
+		// Should show the "Update" ready button instead
+		expect(screen.getByText("Update")).toBeInTheDocument();
+	});
+
+	it("does not show download indicator when status is error", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1, project2],
+			vi.fn(),
+			[],
+			{ updateDownloadStatus: "error" },
+		);
+		expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
+		expect(screen.queryByText("Checking...")).not.toBeInTheDocument();
 	});
 
 	it("toggles dropdown open/close on repeated chevron clicks", async () => {
