@@ -140,7 +140,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [portsPopoverOpen]);
 
-	// Ports popover: viewport clamping
+	// Ports popover: viewport clamping (only reposition on open, not on port data updates)
 	useLayoutEffect(() => {
 		if (!portsPopoverOpen || !portsPopoverRef.current || !portsAnchorRef.current) return;
 		const menu = portsPopoverRef.current.getBoundingClientRect();
@@ -156,7 +156,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		if (top < pad) top = pad;
 		setPortsPopoverPos({ top, left });
 		setPortsPopoverVisible(true);
-	}, [portsPopoverOpen, ports]);
+	}, [portsPopoverOpen]);
 
 	function toggleMenu(e: React.MouseEvent) {
 		e.stopPropagation();

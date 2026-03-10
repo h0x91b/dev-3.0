@@ -79,7 +79,7 @@ export function parseLsofOutput(output: string, pidSet: Set<number>): PortInfo[]
 			const colonIdx = value.lastIndexOf(":");
 			if (colonIdx < 0) continue;
 			const port = parseInt(value.slice(colonIdx + 1), 10);
-			if (isNaN(port) || seenPorts.has(port)) continue;
+			if (isNaN(port) || port < 1 || port > 65535 || seenPorts.has(port)) continue;
 			seenPorts.add(port);
 			ports.push({ port, pid: currentPid, processName: currentName });
 		}
@@ -90,29 +90,43 @@ export function parseLsofOutput(output: string, pidSet: Set<number>): PortInfo[]
 }
 
 /**
- * Scan listening TCP ports for a tmux session.
+ * Run lsof once and return raw stdout. Shared across all tasks in a poll cycle.
  */
-export function scanTaskPorts(socket: string | null, sessionName: string): PortInfo[] {
-	const panePids = getSessionPanePids(socket, sessionName);
-	if (panePids.length === 0) return [];
+export function getLsofOutput(): string {
+	try {
+		const result = spawnSync(["lsof", "-i", "-P", "-n", "-sTCP:LISTEN", "-F", "pcn"]);
+		if (result.exitCode !== 0) return "";
+		return new TextDecoder().decode(result.stdout);
+	} catch {
+		return "";
+	}
+}
 
-	// Build full PID tree
+/**
+ * Build the full PID set (pane PIDs + all descendants) for a tmux session.
+ */
+export function collectTaskPids(socket: string | null, sessionName: string): Set<number> {
+	const panePids = getSessionPanePids(socket, sessionName);
 	const allPids = new Set<number>(panePids);
 	for (const pid of panePids) {
 		for (const descendant of getDescendantPids(pid)) {
 			allPids.add(descendant);
 		}
 	}
+	return allPids;
+}
 
-	// Run lsof once for all listening TCP sockets
-	try {
-		const result = spawnSync(["lsof", "-i", "-P", "-n", "-sTCP:LISTEN", "-F", "pcn"]);
-		if (result.exitCode !== 0) return [];
-		const output = new TextDecoder().decode(result.stdout);
-		return parseLsofOutput(output, allPids);
-	} catch {
-		return [];
-	}
+/**
+ * Scan listening TCP ports for a tmux session.
+ * Optionally accepts pre-fetched lsof output to avoid redundant calls.
+ */
+export function scanTaskPorts(socket: string | null, sessionName: string, lsofOutput?: string): PortInfo[] {
+	const allPids = collectTaskPids(socket, sessionName);
+	if (allPids.size === 0) return [];
+
+	const output = lsofOutput ?? getLsofOutput();
+	if (!output) return [];
+	return parseLsofOutput(output, allPids);
 }
 
 // ── Background poller ──────────────────────────────────────────────
@@ -131,40 +145,43 @@ const portCache = new Map<string, string>();
 // Cache: taskId → PortInfo[] (actual objects)
 const portData = new Map<string, PortInfo[]>();
 
-function portsEqual(a: string | undefined, b: string): boolean {
-	return a === b;
-}
-
 function poll() {
-	if (!getActiveSessionsFn || !pushMessageFn) return;
+	try {
+		if (!getActiveSessionsFn || !pushMessageFn) return;
 
-	const sessions = getActiveSessionsFn();
-	const activeTaskIds = new Set(sessions.map((s) => s.taskId));
+		const sessions = getActiveSessionsFn();
+		const activeTaskIds = new Set(sessions.map((s) => s.taskId));
 
-	// Clean up stale cache entries
-	for (const taskId of portCache.keys()) {
-		if (!activeTaskIds.has(taskId)) {
-			portCache.delete(taskId);
-			portData.delete(taskId);
-		}
-	}
-
-	for (const { taskId, tmuxSocket } of sessions) {
-		const sessionName = `dev3-${taskId.slice(0, 8)}`;
-		try {
-			const ports = scanTaskPorts(tmuxSocket, sessionName);
-			const serialized = JSON.stringify(ports);
-			if (!portsEqual(portCache.get(taskId), serialized)) {
-				portCache.set(taskId, serialized);
-				portData.set(taskId, ports);
-				pushMessageFn("portsUpdated", { taskId, ports });
+		// Clean up stale cache entries
+		for (const taskId of portCache.keys()) {
+			if (!activeTaskIds.has(taskId)) {
+				portCache.delete(taskId);
+				portData.delete(taskId);
 			}
-		} catch (err) {
-			log.warn("Port scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
 		}
-	}
 
-	pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+		// Run lsof once for all tasks (instead of per-task)
+		const lsofOutput = sessions.length > 0 ? getLsofOutput() : "";
+
+		for (const { taskId, tmuxSocket } of sessions) {
+			const sessionName = `dev3-${taskId.slice(0, 8)}`;
+			try {
+				const ports = scanTaskPorts(tmuxSocket, sessionName, lsofOutput);
+				const serialized = JSON.stringify(ports);
+				if (portCache.get(taskId) !== serialized) {
+					portCache.set(taskId, serialized);
+					portData.set(taskId, ports);
+					pushMessageFn!("portsUpdated", { taskId, ports });
+				}
+			} catch (err) {
+				log.warn("Port scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
+			}
+		}
+	} catch (err) {
+		log.error("Port scan poll cycle failed", { error: String(err) });
+	} finally {
+		pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+	}
 }
 
 export function startPortScanPoller(
