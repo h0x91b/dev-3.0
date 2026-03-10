@@ -1,0 +1,1 @@
+Fix race condition causing "Terminal has been destroyed" and "Out of bounds memory access" errors in TerminalView. WebSocket handlers (onmessage, onclose, onerror) now check the `disposed` flag before calling terminal methods, and cleanup nullifies all WS handlers before closing the socket to prevent callbacks from firing on a disposed WASM terminal.

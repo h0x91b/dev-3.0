@@ -389,6 +389,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			};
 
 			ws.onmessage = (event) => {
+				if (disposed) return;
 				try {
 					if (typeof event.data === "string") {
 						const cleaned = event.data.replace(OSC52_RE, "");
@@ -408,11 +409,13 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 					reason: event.reason,
 					wasClean: event.wasClean,
 				});
+				if (disposed) return;
 				try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
 			};
 
 			ws.onerror = (event) => {
 				console.error("[TerminalView] WebSocket ERROR", event);
+				if (disposed) return;
 				try { term.writeln("\x1b[31mFailed to connect to PTY server\x1b[0m"); } catch { /* disposed */ }
 			};
 
@@ -436,6 +439,14 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			disposed = true;
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
+			// Neutralize WS handlers before closing to prevent callbacks
+			// from firing on a disposed terminal (race condition: close
+			// handshake is async, messages can still arrive).
+			if (ws) {
+				ws.onmessage = null;
+				ws.onclose = null;
+				ws.onerror = null;
+			}
 			try {
 				ws?.close();
 			} catch (err) {
