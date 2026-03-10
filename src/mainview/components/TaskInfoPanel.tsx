@@ -19,6 +19,7 @@ interface TaskInfoPanelProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	taskPorts?: Map<string, PortInfo[]>;
+	isFullPage?: boolean;
 }
 
 const COLLAPSED_HEIGHT_REM = 3.875; // 62px at 1× zoom – scales with root font-size
@@ -50,7 +51,7 @@ function readNumber(key: string, fallback: number): number {
 }
 
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPage }: TaskInfoPanelProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
@@ -1239,12 +1240,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts }: TaskInf
 						{tmuxHintsPopover}
 						{devServerButton}
 						<button
-							onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+							onClick={() => isFullPage
+								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+								: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+							}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={t("infoPanel.fullScreen")}
+							title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
 						>
 							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+								{isFullPage
+									? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
+									: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+								}
 							</svg>
 						</button>
 						<button
@@ -1308,12 +1315,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts }: TaskInf
 							{tmuxHintsPopover}
 							{devServerButton}
 							<button
-								onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+								onClick={() => isFullPage
+									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+								}
 								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								title={t("infoPanel.fullScreen")}
+								title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
 							>
 								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+									{isFullPage
+										? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
+										: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+									}
 								</svg>
 							</button>
 							<button

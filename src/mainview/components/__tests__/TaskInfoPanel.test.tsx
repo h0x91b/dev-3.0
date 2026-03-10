@@ -98,6 +98,7 @@ function renderPanel(
 		dispatch?: React.Dispatch<AppAction>;
 		navigate?: (route: Route) => void;
 		project?: Project;
+		isFullPage?: boolean;
 	},
 ) {
 	const dispatch = opts?.dispatch ?? vi.fn();
@@ -109,6 +110,7 @@ function renderPanel(
 				project={opts?.project ?? project}
 				dispatch={dispatch}
 				navigate={navigate}
+				isFullPage={opts?.isFullPage}
 			/>
 		</I18nProvider>,
 	);
@@ -1075,6 +1077,22 @@ describe("TaskInfoPanel", () => {
 				screen: "task",
 				projectId: "p1",
 				taskId: "t1",
+			});
+		});
+
+		it("navigates back to project when in full page mode", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const navigate = vi.fn();
+			await act(async () => {
+				renderPanel(makeTask(), { navigate, isFullPage: true });
+			});
+
+			await user.click(screen.getByTitle("Exit full screen"));
+
+			expect(navigate).toHaveBeenCalledWith({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
 			});
 		});
 	});
