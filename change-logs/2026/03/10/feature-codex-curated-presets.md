@@ -1,0 +1,1 @@
+Expanded the built-in Codex agent presets with curated launch variants for web search, full-auto sandboxed runs, local OSS via Ollama, and inline terminal mode. Also fixed Codex command building so resume sessions no longer receive unsupported generic flags like `--permission-mode`, `--effort`, or `--max-budget-usd`, and the settings preview now matches the real command.

@@ -41,7 +41,13 @@ const codexAgent: CodingAgent = {
 	name: "Codex",
 	baseCommand: "codex",
 	isDefault: true,
-	configurations: [{ id: "codex-default", name: "Default" }],
+	configurations: [
+		{ id: "codex-default", name: "Default" },
+		{ id: "codex-search", name: "Search", additionalArgs: ["--search"] },
+		{ id: "codex-full-auto", name: "Full Auto", additionalArgs: ["--full-auto"] },
+		{ id: "codex-oss-ollama", name: "OSS (Ollama)", additionalArgs: ["--oss", "--local-provider", "ollama"] },
+		{ id: "codex-no-alt-screen", name: "Inline TUI", additionalArgs: ["--no-alt-screen"] },
+	],
 	defaultConfigId: "codex-default",
 };
 
@@ -247,15 +253,19 @@ describe("LaunchVariantsModal", () => {
 			expect(options[2]).toBe("Bypass (Opus)");
 		});
 
-		it("shows single configuration for Codex", async () => {
+		it("shows curated configurations for Codex", async () => {
 			const user = userEvent.setup();
 			const project = makeProject();
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "codex-default" });
 			renderModal(project, { globalSettings: gs });
 
 			const options = await getDropdownOptions(user, getConfigButtons()[0]);
-			expect(options).toHaveLength(1);
+			expect(options).toHaveLength(5);
 			expect(options[0]).toBe("Default");
+			expect(options[1]).toBe("Search");
+			expect(options[2]).toBe("Full Auto");
+			expect(options[3]).toBe("OSS (Ollama)");
+			expect(options[4]).toBe("Inline TUI");
 		});
 
 		it("agent dropdown shows all agents", async () => {
@@ -291,9 +301,9 @@ describe("LaunchVariantsModal", () => {
 			const configBtnAfter = getConfigButtons()[0];
 			expect(getSelectedText(configBtnAfter)).toBe("Default");
 
-			// Config dropdown should show Codex configs (only 1)
+			// Config dropdown should show Codex curated configs
 			const options = await getDropdownOptions(user, configBtnAfter);
-			expect(options).toHaveLength(1);
+			expect(options).toHaveLength(5);
 			expect(options[0]).toBe("Default");
 		});
 

@@ -140,7 +140,13 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Codex",
 		baseCommand: "codex",
 		isDefault: true,
-		configurations: [{ id: "codex-default", name: "Default" }],
+		configurations: [
+			{ id: "codex-default", name: "Default" },
+			{ id: "codex-search", name: "Search", additionalArgs: ["--search"] },
+			{ id: "codex-full-auto", name: "Full Auto", additionalArgs: ["--full-auto"] },
+			{ id: "codex-oss-ollama", name: "OSS (Ollama)", additionalArgs: ["--oss", "--local-provider", "ollama"] },
+			{ id: "codex-no-alt-screen", name: "Inline TUI", additionalArgs: ["--no-alt-screen"] },
+		],
 		defaultConfigId: "codex-default",
 	},
 	{

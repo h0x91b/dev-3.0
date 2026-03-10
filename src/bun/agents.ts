@@ -180,6 +180,7 @@ export function resolveAgentCommand(
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const args: string[] = [];
 	const shouldResume = options?.resume && supportsResume(baseCmd);
+	const codexAgent = isCodexCommand(baseCmd);
 
 	// Resume flags per agent (Codex uses a subcommand, handled at the end)
 	if (shouldResume) {
@@ -197,7 +198,7 @@ export function resolveAgentCommand(
 
 	const cursorAgent = isCursorCommand(baseCmd);
 
-	if (config?.permissionMode && config.permissionMode !== "default") {
+	if (config?.permissionMode && config.permissionMode !== "default" && !codexAgent) {
 		if (cursorAgent) {
 			// Cursor Agent uses different flags for modes
 			if (config.permissionMode === "plan") {
@@ -211,11 +212,11 @@ export function resolveAgentCommand(
 		}
 	}
 
-	if (config?.effort && !cursorAgent) {
+	if (config?.effort && !cursorAgent && !codexAgent) {
 		args.push("--effort", config.effort);
 	}
 
-	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent) {
+	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent) {
 		args.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
