@@ -1,1 +1,1 @@
-Set viewport to fixed 1280px width so the app renders in desktop mode on mobile devices instead of using mobile-scaled layout. This is the first step toward mobile web access — users can view the full UI by pinch-zooming.
+Add mobile device detection and dynamic viewport switching. On mobile, UI screens (dashboard, settings, kanban) use native device-width viewport for future responsive adaptation, while terminal screens use fixed 1280px viewport to preserve the full desktop terminal experience. On desktop, behavior is unchanged.
