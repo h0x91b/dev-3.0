@@ -1,4 +1,5 @@
 import { installAgentSkills } from "../../bun/agent-skills";
+import { setMinLevel } from "../../bun/logger";
 
 const SKILL_PATHS = [
 	".claude/skills/dev3/SKILL.md",
@@ -10,6 +11,7 @@ const SKILL_PATHS = [
 ];
 
 export async function handleInstallSkills(): Promise<void> {
+	setMinLevel("error");
 	installAgentSkills();
 
 	process.stdout.write("Installed agent skills:\n");
