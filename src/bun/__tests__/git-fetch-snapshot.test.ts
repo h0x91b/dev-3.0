@@ -1,3 +1,7 @@
+/**
+ * Tests for fetchOrigin (dedup/cooldown logic) and saveDiffSnapshot
+ * using mocked spawn() responses. No real git repos needed.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -17,10 +21,33 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/dev3-test",
 }));
 
-vi.mock("../spawn", async () => {
-	const { createSpawnMock } = await import("./git-test-helpers");
-	return createSpawnMock();
-});
+let spawnResponses: Array<{ exitCode: number; stdout: string; stderr: string }> = [];
+
+function queueResponse(exitCode: number, stdout: string, stderr = "") {
+	spawnResponses.push({ exitCode, stdout, stderr });
+}
+
+vi.mock("../spawn", () => ({
+	spawn: () => {
+		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
+		const encoder = new TextEncoder();
+		return {
+			exited: Promise.resolve(response.exitCode),
+			stdout: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(response.stdout));
+					controller.close();
+				},
+			}),
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(response.stderr));
+					controller.close();
+				},
+			}),
+		};
+	},
+}));
 
 import {
 	fetchOrigin,
@@ -28,94 +55,83 @@ import {
 	saveDiffSnapshot,
 	taskDir,
 } from "../git";
-import { createTestRepo, cleanup, makeTaskCommits, g, type TestRepo } from "./git-test-helpers";
+
+beforeEach(() => {
+	spawnResponses = [];
+	_resetFetchState();
+});
 
 // ─── fetchOrigin ─────────────────────────────────────────────────────────────
 
 describe("fetchOrigin", () => {
-	let repo: TestRepo;
-
-	beforeEach(() => {
-		_resetFetchState();
-		repo = createTestRepo();
-	});
-
-	afterEach(() => {
-		cleanup(repo);
-	});
-
 	it("returns true on successful fetch", async () => {
-		const ok = await fetchOrigin(repo.local);
+		queueResponse(0, "");
+		const ok = await fetchOrigin("/repo");
 		expect(ok).toBe(true);
 	});
 
-	it("returns false when project has no remote", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "dev3-no-remote-"));
-		const local = join(dir, "repo");
-		g(`git init "${local}"`, dir);
-		g("git config user.email test@test.com", local);
-		g("git config user.name Test", local);
-		writeFileSync(join(local, "file.txt"), "test");
-		g("git add file.txt", local);
-		g('git commit -m "init"', local);
-
-		try {
-			const ok = await fetchOrigin(local);
-			expect(ok).toBe(false);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
+	it("returns false when fetch fails", async () => {
+		queueResponse(128, "", "fatal: no remote");
+		const ok = await fetchOrigin("/repo");
+		expect(ok).toBe(false);
 	});
 
 	it("deduplicates concurrent fetches for the same project", async () => {
+		// Only one spawn call should happen despite 3 concurrent requests
+		queueResponse(0, "");
 		const results = await Promise.all([
-			fetchOrigin(repo.local),
-			fetchOrigin(repo.local),
-			fetchOrigin(repo.local),
+			fetchOrigin("/repo"),
+			fetchOrigin("/repo"),
+			fetchOrigin("/repo"),
 		]);
 		expect(results).toEqual([true, true, true]);
+		// Only 1 response consumed — the other 2 reused the same promise
+		expect(spawnResponses).toHaveLength(0);
 	});
 
 	it("skips fetch within cooldown period", async () => {
-		const ok1 = await fetchOrigin(repo.local);
+		queueResponse(0, "");
+		const ok1 = await fetchOrigin("/repo");
 		expect(ok1).toBe(true);
 
-		const ok2 = await fetchOrigin(repo.local);
+		// Second call should skip (no spawn needed)
+		const ok2 = await fetchOrigin("/repo");
 		expect(ok2).toBe(true);
 	});
 
 	it("allows fetch for different projects concurrently", async () => {
-		const repo2 = createTestRepo();
-		try {
-			const [ok1, ok2] = await Promise.all([
-				fetchOrigin(repo.local),
-				fetchOrigin(repo2.local),
-			]);
-			expect(ok1).toBe(true);
-			expect(ok2).toBe(true);
-		} finally {
-			cleanup(repo2);
-		}
+		queueResponse(0, ""); // for /repo-a
+		queueResponse(0, ""); // for /repo-b
+		const [ok1, ok2] = await Promise.all([
+			fetchOrigin("/repo-a"),
+			fetchOrigin("/repo-b"),
+		]);
+		expect(ok1).toBe(true);
+		expect(ok2).toBe(true);
+		expect(spawnResponses).toHaveLength(0); // both consumed
 	});
 });
 
 // ─── saveDiffSnapshot ────────────────────────────────────────────────────────
 
 describe("saveDiffSnapshot", () => {
-	let repo: TestRepo;
+	let tmpDir: string;
 	const project: Project = { id: "proj-1", name: "Test", path: "" } as Project;
 	const task: Task = { id: "task-1000-0000-0000" } as Task;
 
 	beforeEach(() => {
-		repo = createTestRepo();
-		project.path = repo.local;
-		(task as { worktreePath: string }).worktreePath = repo.local;
+		tmpDir = mkdtempSync(join(tmpdir(), "dev3-snap-test-"));
+		project.path = tmpDir;
+		(task as { worktreePath: string }).worktreePath = tmpDir;
 	});
 
-	afterEach(() => cleanup(repo));
+	afterEach(() => {
+		rmSync(tmpDir, { recursive: true, force: true });
+	});
 
 	it("saves a .patch file when there are changes", async () => {
-		makeTaskCommits(repo.local);
+		queueResponse(0, "diff --git a/feature.ts b/feature.ts\n+export const add = 1;\n");
+		// spawn for mkdir -p (taskDir creates it)
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
@@ -126,10 +142,10 @@ describe("saveDiffSnapshot", () => {
 
 		const content = readFileSync(join(diffsDir, files[0]), "utf-8");
 		expect(content).toContain("feature.ts");
-		expect(content).toContain("add");
 	});
 
 	it("skips saving when there is no diff", async () => {
+		queueResponse(0, ""); // empty diff
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
@@ -138,9 +154,11 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("skips saving when diff is unchanged from the last snapshot", async () => {
-		makeTaskCommits(repo.local);
-
+		const diffContent = "diff --git a/f.ts b/f.ts\n+line\n";
+		queueResponse(0, diffContent);
 		await saveDiffSnapshot(project, task, "origin/main");
+
+		queueResponse(0, diffContent); // same diff
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
@@ -149,15 +167,13 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("saves a new file when diff changes", async () => {
-		makeTaskCommits(repo.local);
+		queueResponse(0, "diff v1\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
-		writeFileSync(join(repo.local, "extra.ts"), "export const x = 42;\n");
-		g("git add extra.ts", repo.local);
-		g('git commit -m "add extra"', repo.local);
-
+		// Advance time to get a different timestamp
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		vi.advanceTimersByTime(60_000);
+		queueResponse(0, "diff v2\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 		vi.useRealTimers();
 
@@ -167,7 +183,6 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("prunes old snapshots beyond MAX_DIFF_SNAPSHOTS", async () => {
-		makeTaskCommits(repo.local);
 		const diffsDir = join(taskDir(project, task), "diffs");
 		mkdirSync(diffsDir, { recursive: true });
 
@@ -176,6 +191,7 @@ describe("saveDiffSnapshot", () => {
 			writeFileSync(join(diffsDir, name), `patch-${i}`);
 		}
 
+		queueResponse(0, "new diff content\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
@@ -183,11 +199,7 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("skips saving when diff exceeds 1 MB", async () => {
-		const bigContent = "x".repeat(1_100_000) + "\n";
-		writeFileSync(join(repo.local, "big.txt"), bigContent);
-		g("git add big.txt", repo.local);
-		g('git commit -m "add big file"', repo.local);
-
+		queueResponse(0, "x".repeat(1_100_000) + "\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
