@@ -276,7 +276,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		if (isDisabled) return;
 		if (isActive && !menuOpen) {
 			preview.close();
-			if (isActiveInSplit) {
+			const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+			if (openMode === "fullscreen") {
+				navigate({ screen: "task", projectId: project.id, taskId: task.id });
+			} else if (isActiveInSplit) {
 				// Toggle: clicking the already-active card closes the split
 				navigate({ screen: "project", projectId: project.id });
 			} else {

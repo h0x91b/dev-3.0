@@ -338,6 +338,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiVariantInspiration.body",
 		icon: "\u{F0EB4}", // nf-md-lightbulb_outline
 	},
+	{
+		id: "task-open-mode",
+		titleKey: "tip.taskOpenMode.title",
+		bodyKey: "tip.taskOpenMode.body",
+		icon: "\u{F0124}", // nf-md-fullscreen
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

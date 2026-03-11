@@ -241,6 +241,7 @@ export interface GlobalSettings {
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
+	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 }
 
 export interface TipState {

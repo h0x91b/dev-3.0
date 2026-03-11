@@ -110,6 +110,8 @@ const tips = {
 	"tip.spawnAgentUseCases.body": "Lanza un segundo agente en la misma tarea: uno busca en la documentación mientras el otro codifica, o uno prueba mientras el otro desarrolla — todo en un worktree.",
 	"tip.multiVariantInspiration.title": "¿No sabes qué quieres? Prueba variantes",
 	"tip.multiVariantInspiration.body": "Escribe un TODO vago como \"rediseña la página de ajustes\" y lanza 3–5 variantes. Cada agente trabaja independientemente en su propio worktree — compara los enfoques y quédate con el mejor.",
+	"tip.taskOpenMode.title": "Modo terminal de pantalla completa",
+	"tip.taskOpenMode.body": "Activa «Pantalla completa» en Modo de apertura de tarea (Ajustes globales) para abrir tareas sin vista dividida.",
 };
 
 export default tips;

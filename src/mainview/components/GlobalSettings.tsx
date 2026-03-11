@@ -50,6 +50,12 @@ function GlobalSettings() {
 				setKeymapPresetState(s.terminalKeymap);
 				setKeymapPreset(s.terminalKeymap);
 			}
+			// Sync task open mode to localStorage so TaskCard can read it without prop drilling
+			if (s.taskOpenMode === "fullscreen") {
+				localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			} else {
+				localStorage.removeItem("dev3-task-open-mode");
+			}
 		}).catch(() => {});
 	}, []);
 
@@ -113,6 +119,18 @@ function GlobalSettings() {
 			setTipsResetDone(true);
 			setTimeout(() => setTipsResetDone(false), 3000);
 		}).catch(() => {});
+	}
+
+	function handleTaskOpenModeChange(mode: "split" | "fullscreen") {
+		const updated = { ...globalSettings, taskOpenMode: mode === "fullscreen" ? "fullscreen" as const : undefined };
+		setGlobalSettings(updated);
+		if (mode === "fullscreen") {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+		} else {
+			localStorage.removeItem("dev3-task-open-mode");
+		}
+		api.request.saveGlobalSettings(updated).catch(() => {});
+		trackEvent("settings_changed", { setting: "task_open_mode", value: mode });
 	}
 
 	/** Filter out apps with empty fields before persisting to disk. */
@@ -422,7 +440,32 @@ function GlobalSettings() {
 						</label>
 					</div>
 
-					{/* Tips */}
+					{/* Task Open Mode */}
+				<div>
+					<label className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.taskOpenMode")}
+					</label>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.taskOpenModeDesc")}
+					</p>
+					<div className="flex gap-3">
+						{(["split", "fullscreen"] as const).map((mode) => (
+							<button
+								key={mode}
+								onClick={() => handleTaskOpenModeChange(mode)}
+								className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
+									(globalSettings.taskOpenMode ?? "split") === mode
+										? "border-accent bg-accent/10 text-accent"
+										: "border-edge bg-raised text-fg hover:border-edge-active"
+								}`}
+							>
+								{mode === "split" ? t("settings.taskOpenModeSplit") : t("settings.taskOpenModeFullscreen")}
+							</button>
+						))}
+					</div>
+				</div>
+
+				{/* Tips */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-3">
 							{t("settings.tipsSection")}

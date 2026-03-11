@@ -1,0 +1,1 @@
+Added a global preference for how active tasks open when clicked. Users can choose between "Split view" (sidebar + terminal, the default) and "Full screen" (terminal only, distraction-free). The setting is available in Global Settings and persists across sessions.

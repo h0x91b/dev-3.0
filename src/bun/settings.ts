@@ -17,6 +17,7 @@ export interface GlobalSettings {
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[];
 	terminalKeymap?: "default" | "iterm2";
+	taskOpenMode?: "split" | "fullscreen";
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -43,6 +44,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
+			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -72,6 +74,7 @@ export function loadSettingsSync(): GlobalSettings {
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
+			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });
