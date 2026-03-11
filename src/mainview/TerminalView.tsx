@@ -224,6 +224,52 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 							}, 50);
 						}
 					});
+
+					// Mobile keyboards use IME composition — characters buffer
+					// in the textarea and only get sent on compositionend (Enter).
+					// Intercept input events to send each character immediately.
+					let lastSentLen = 0;
+
+					hiddenTextarea.addEventListener("input", () => {
+						if (disposed) return;
+						const val = hiddenTextarea.value;
+						if (val.length > lastSentLen) {
+							const newChars = val.slice(lastSentLen);
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send(newChars);
+							}
+						} else if (val.length < lastSentLen) {
+							const deleted = lastSentLen - val.length;
+							for (let i = 0; i < deleted; i++) {
+								if (wsRef.current?.readyState === WebSocket.OPEN) {
+									wsRef.current.send("\x7f");
+								}
+							}
+						}
+						lastSentLen = val.length;
+					});
+
+					// Backspace on empty textarea — input event doesn't fire
+					// because nothing changed, so handle it in beforeinput.
+					hiddenTextarea.addEventListener("beforeinput", (e) => {
+						if (disposed) return;
+						const ie = e as InputEvent;
+						if (ie.inputType === "deleteContentBackward" && hiddenTextarea.value === "") {
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send("\x7f");
+							}
+							e.preventDefault();
+						}
+					});
+
+					// When composition ends, ghostty-web would send event.data
+					// again (double-sending). Neutralize the data so ghostty-web
+					// skips it, but let the event propagate so it resets isComposing.
+					hiddenTextarea.addEventListener("compositionend", (e) => {
+						Object.defineProperty(e, "data", { value: "", writable: false });
+						hiddenTextarea.value = "";
+						lastSentLen = 0;
+					}, { capture: true });
 				}
 			}
 
