@@ -1147,7 +1147,29 @@ export const handlers = {
 				throw new Error(`tmux new-session failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
 			}
 
-			log.info("← runDevServer done", { devSession });
+			// Create a viewer pane in the task session that nests the dev server session.
+			// TMUX= bypasses the nesting guard so attach works from inside another session.
+			const taskSession = `dev3-${task.id.slice(0, 8)}`;
+			const viewerProc = spawn(pty.tmuxArgs(socket,
+				"split-window", "-h",
+				"-t", taskSession,
+				"-c", task.worktreePath,
+				"-l", "50%",
+				"-P", "-F", "#{pane_id}",
+				`TMUX= tmux attach-session -t "${devSession}"`,
+			), { stdout: "pipe", stderr: "pipe" });
+			const viewerOut = await new Response(viewerProc.stdout).text();
+			await viewerProc.exited;
+			const viewerPaneId = viewerOut.trim();
+
+			if (viewerPaneId) {
+				// Label the pane so the user knows Ctrl+b is captured by the outer session
+				spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)"));
+				// Enable pane border titles for the task session
+				spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top"));
+			}
+
+			log.info("← runDevServer done", { devSession, viewerPaneId });
 		} catch (err) {
 			log.error("runDevServer FAILED", {
 				taskId: params.taskId.slice(0, 8),
@@ -1179,6 +1201,9 @@ export const handlers = {
 			const task = await data.getTask(project, params.taskId);
 			const socket = task.tmuxSocket ?? null;
 			await killDevServerSession(task.id, socket);
+			// Remove pane border titles from the task session now that the viewer pane is gone
+			const taskSession = `dev3-${task.id.slice(0, 8)}`;
+			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off"));
 			log.info("← stopDevServer done");
 		} catch (err) {
 			log.error("stopDevServer FAILED", {
