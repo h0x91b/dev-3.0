@@ -1158,9 +1158,14 @@ export const handlers = {
 			// TMUX= bypasses the nesting guard so attach works from inside another session.
 			// Must include -L <socket> so the attach targets the same tmux server.
 			const taskSession = `dev3-${task.id.slice(0, 8)}`;
+			// Wrap attach in a trap so the dev session is killed when the viewer pane
+			// exits for any reason: pane killed manually, dev script finished, or detach.
+			const tmuxKill = socket
+				? `tmux -L "${socket}" kill-session -t "${devSession}" 2>/dev/null`
+				: `tmux kill-session -t "${devSession}" 2>/dev/null`;
 			const attachCmd = socket
-				? `TMUX= tmux -L "${socket}" attach-session -t "${devSession}"`
-				: `TMUX= tmux attach-session -t "${devSession}"`;
+				? `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux -L "${socket}" attach-session -t "${devSession}"'`
+				: `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux attach-session -t "${devSession}"'`;
 			const viewerProc = spawn(pty.tmuxArgs(socket,
 				"split-window", "-h",
 				"-t", taskSession,
