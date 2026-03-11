@@ -247,16 +247,17 @@ All user-facing strings in the renderer are localized. The i18n system lives in 
 - **`useT()`** — React hook that returns the translation function `t(key)` and `t.plural(baseKey, count)`
 - **`useLocale()`** — returns `[locale, setLocale]` for reading/changing the current language
 - **`statusKey(status)`** — maps `TaskStatus` to the corresponding translation key (e.g., `"in-progress"` → `"status.inProgress"`)
-- Translations are plain TypeScript objects in `src/mainview/i18n/translations/{en,ru,es}.ts`
+- Translations are split into **domain files** under `src/mainview/i18n/translations/{en,ru,es}/` (e.g., `common.ts`, `kanban.ts`, `tips.ts`, `settings.ts`). Each locale's barrel file (`en.ts`, `ru.ts`, `es.ts`) re-exports the merged object.
 - English (`en.ts`) is the source of truth — it defines the `TranslationKey` type
 - Other locales must satisfy `TranslationRecord` (all keys from English must be present)
 - Locale is persisted in `localStorage("dev3-locale")`, same pattern as the theme
 
 ### Adding a new string
 
-1. Add the key to `src/mainview/i18n/translations/en.ts`
-2. Add translations to `ru.ts` and `es.ts` (TypeScript will error if you forget)
+1. Find the matching domain file under `src/mainview/i18n/translations/en/` (e.g., `kanban.ts` for `kanban.*` keys, `tips.ts` for `tip.*` keys)
+2. Add the key to that domain file, then add translations to the same domain file in `ru/` and `es/` (TypeScript will error if you forget)
 3. Use `t("your.key")` in the component via `useT()`
+4. **Never edit the barrel files** (`en.ts`, `ru.ts`, `es.ts`) directly — only edit domain files
 
 ### Interpolation
 
