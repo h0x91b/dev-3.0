@@ -933,6 +933,13 @@ export const handlers = {
 					});
 				}
 
+				// Kill the dev server session if one was started for this task (best-effort)
+				killDevServerSession(task.id, task.tmuxSocket ?? null).catch((err) => {
+					log.warn("killDevServerSession on task move failed (best-effort)", {
+						taskId: task.id.slice(0, 8), error: String(err),
+					});
+				});
+
 				try {
 					log.info("Running cleanup script before removing worktree", { taskId: task.id });
 					await runCleanupScript(task, project);
@@ -1968,6 +1975,15 @@ export const handlers = {
 			log.error("killTmuxSession failed", { sessionName: params.sessionName, stderr: stderr.trim() });
 			throw new Error(`Failed to kill session: ${stderr.trim()}`);
 		}
+
+		// If this was a task session (dev3-<id>), also kill the associated dev server session
+		if (!params.sessionName.startsWith("dev3-dev-")) {
+			const devSession = `dev3-dev-${params.sessionName.slice("dev3-".length)}`;
+			const devKill = spawn(pty.tmuxArgs("dev3", "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+			await devKill.exited; // best-effort: ignore exit code
+			log.info("killTmuxSession: killed dev server session (best-effort)", { devSession });
+		}
+
 		log.info("← killTmuxSession done", { sessionName: params.sessionName });
 	},
 
