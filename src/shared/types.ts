@@ -728,6 +728,10 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: Array<{ name: string; isRemote: boolean }>;
 			};
+			getProjectCurrentBranch: {
+				params: { projectId: string };
+				response: { branch: string | null; isBaseBranch: boolean };
+			};
 			getTipState: {
 				params: void;
 				response: TipState;

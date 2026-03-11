@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			moveTask: vi.fn(),
+			moveTaskToCustomColumn: vi.fn(),
 			deleteTask: vi.fn(),
 			showConfirm: vi.fn(),
 			setTaskLabels: vi.fn(),
@@ -528,21 +529,27 @@ describe("TaskCard", () => {
 			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" });
 			mockedApi.request.getTerminalPreview.mockResolvedValue("$ hello");
 
-			renderCard(task);
+			await act(async () => {
+				renderCard(task);
+			});
 
 			const card = screen.getByText("My task").closest("[draggable]")!;
 
 			// Trigger hover to open preview
-			fireEvent.mouseEnter(card);
-			// Advance past the 400ms hover delay
-			await vi.advanceTimersByTimeAsync(500);
+			await act(async () => {
+				fireEvent.mouseEnter(card);
+				// Advance past the 400ms hover delay
+				await vi.advanceTimersByTimeAsync(500);
+			});
 
 			// Preview should be open
 			expect(mockedApi.request.getTerminalPreview).toHaveBeenCalled();
 
 			// Start dragging — preview should close
 			const mockDataTransfer = { setData: vi.fn(), effectAllowed: "" };
-			fireEvent.dragStart(card, { dataTransfer: mockDataTransfer });
+			await act(async () => {
+				fireEvent.dragStart(card, { dataTransfer: mockDataTransfer });
+			});
 
 			// Preview portal should be gone
 			expect(screen.queryByText("$ hello")).not.toBeInTheDocument();
@@ -1026,6 +1033,74 @@ describe("TaskCard", () => {
 					path: "/tmp/worktree",
 				});
 			});
+		});
+	});
+
+	describe("custom columns in status dropdown", () => {
+		const projectWithCustomColumns: Project = {
+			...project,
+			customColumns: [
+				{ id: "col-1", name: "On Hold", color: "#f59e0b", llmInstruction: "When waiting" },
+				{ id: "col-2", name: "Blocked", color: "#ef4444", llmInstruction: "When blocked" },
+			],
+		};
+
+		it("shows custom columns in the move-to dropdown", async () => {
+			const user = userEvent.setup();
+			renderCard(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }),
+				{ projectOverride: projectWithCustomColumns },
+			);
+
+			await user.click(screen.getByText("Agent is Working"));
+
+			await waitFor(() => {
+				expect(screen.getByText("On Hold")).toBeInTheDocument();
+				expect(screen.getByText("Blocked")).toBeInTheDocument();
+			});
+		});
+
+		it("calls moveTaskToCustomColumn when clicking a custom column", async () => {
+			const user = userEvent.setup();
+			const updatedTask = makeTask({ status: "in-progress", customColumnId: "col-1" });
+			mockedApi.request.moveTaskToCustomColumn.mockResolvedValueOnce(updatedTask);
+			const dispatch = vi.fn();
+
+			renderCard(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }),
+				{ projectOverride: projectWithCustomColumns, dispatch },
+			);
+
+			await user.click(screen.getByText("Agent is Working"));
+
+			await waitFor(() => {
+				expect(screen.getByText("On Hold")).toBeInTheDocument();
+			});
+
+			await user.click(screen.getByText("On Hold"));
+
+			await waitFor(() => {
+				expect(mockedApi.request.moveTaskToCustomColumn).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					customColumnId: "col-1",
+				});
+			});
+		});
+
+		it("excludes the current custom column from the dropdown", async () => {
+			const user = userEvent.setup();
+			renderCard(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test", customColumnId: "col-1" }),
+				{ projectOverride: projectWithCustomColumns },
+			);
+
+			await user.click(screen.getByText("Agent is Working"));
+
+			await waitFor(() => {
+				expect(screen.getByText("Blocked")).toBeInTheDocument();
+			});
+			expect(screen.queryByText("On Hold")).not.toBeInTheDocument();
 		});
 	});
 });

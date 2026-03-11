@@ -18,6 +18,7 @@ vi.mock("../../rpc", () => ({
 			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			updateTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true }),
 		},
 	},
 }));
@@ -35,19 +36,23 @@ const project: Project = {
 	createdAt: "2025-01-01T00:00:00Z",
 };
 
-function renderBoard() {
-	return render(
-		<I18nProvider>
-			<KanbanBoard
-				project={project}
-				tasks={[]}
-				dispatch={vi.fn()}
-				navigate={vi.fn()}
-				bellCounts={new Map()}
-						taskPorts={new Map()}
-			/>
-		</I18nProvider>,
-	);
+async function renderBoard() {
+	let result: ReturnType<typeof render>;
+	await act(async () => {
+		result = render(
+			<I18nProvider>
+				<KanbanBoard
+					project={project}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+	});
+	return result!;
 }
 
 const customColA: CustomColumn = { id: "col-a", name: "Alpha", color: "#ff0000", llmInstruction: "" };
@@ -86,6 +91,25 @@ function startColumnDrag(handle: Element) {
 	dispatchDrag(handle, "dragstart", { dataTransfer: dt });
 }
 
+async function renderBoardWith(props: Partial<React.ComponentProps<typeof KanbanBoard>> = {}) {
+	let result: ReturnType<typeof render>;
+	await act(async () => {
+		result = render(
+			<I18nProvider>
+				<KanbanBoard
+					project={props.project ?? project}
+					tasks={props.tasks ?? []}
+					dispatch={props.dispatch ?? vi.fn()}
+					navigate={props.navigate ?? vi.fn()}
+					bellCounts={props.bellCounts ?? new Map()}
+					taskPorts={props.taskPorts ?? new Map()}
+				/>
+			</I18nProvider>,
+		);
+	});
+	return result!;
+}
+
 function getColumnLabels() {
 	const columns = document.querySelectorAll("[class*='glass-column']");
 	return Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent ?? "");
@@ -96,12 +120,8 @@ describe("column ordering", () => {
 		vi.clearAllMocks();
 	});
 
-	it("review-by-colleague appears before completed in default order", () => {
-		render(
-			<I18nProvider>
-				<KanbanBoard project={project} tasks={[]} dispatch={vi.fn()} navigate={vi.fn()} bellCounts={new Map()} taskPorts={new Map()} />
-			</I18nProvider>,
-		);
+	it("review-by-colleague appears before completed in default order", async () => {
+		await renderBoardWith();
 		const labels = getColumnLabels();
 		const colleagueIdx = labels.findIndex((l) => l === "PR Review");
 		const completedIdx = labels.findIndex((l) => l === "Completed");
@@ -109,40 +129,19 @@ describe("column ordering", () => {
 		expect(colleagueIdx).toBeLessThan(completedIdx);
 	});
 
-	it("review-by-colleague is hidden when peerReviewEnabled is false", () => {
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{ ...project, peerReviewEnabled: false }}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("review-by-colleague is hidden when peerReviewEnabled is false", async () => {
+		await renderBoardWith({ project: { ...project, peerReviewEnabled: false } });
 		const labels = getColumnLabels();
 		expect(labels).not.toContain("PR Review");
 	});
 
-	it("review-by-colleague is inserted before completed when missing from stored columnOrder", () => {
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						// Old stored order that predates review-by-colleague
-						columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
-					}}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("review-by-colleague is inserted before completed when missing from stored columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+			},
+		});
 		const labels = getColumnLabels();
 		const colleagueIdx = labels.findIndex((l) => l === "PR Review");
 		const completedIdx = labels.findIndex((l) => l === "Completed");
@@ -150,81 +149,41 @@ describe("column ordering", () => {
 		expect(colleagueIdx).toBeLessThan(completedIdx);
 	});
 
-	it("review-by-colleague stays in stored position when already in columnOrder", () => {
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						// User moved it to the very beginning
-						columnOrder: ["review-by-colleague", "todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
-					}}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("review-by-colleague stays in stored position when already in columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				columnOrder: ["review-by-colleague", "todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+			},
+		});
 		const labels = getColumnLabels();
 		expect(labels[0]).toBe("PR Review");
 	});
 
-	it("review-by-colleague is hidden when peerReviewEnabled is false and NOT in stored columnOrder", () => {
-		// This is the common case: user has a saved columnOrder from before the feature existed
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						peerReviewEnabled: false,
-						columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
-					}}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("review-by-colleague is hidden when peerReviewEnabled is false and NOT in stored columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				peerReviewEnabled: false,
+				columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+			},
+		});
 		expect(getColumnLabels()).not.toContain("PR Review");
 	});
 
-	it("review-by-colleague is hidden when peerReviewEnabled is false, even if in stored columnOrder", () => {
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						peerReviewEnabled: false,
-						columnOrder: ["todo", "review-by-colleague", "in-progress", "completed", "cancelled", "review-by-ai", "review-by-user", "user-questions"],
-					}}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("review-by-colleague is hidden when peerReviewEnabled is false, even if in stored columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				peerReviewEnabled: false,
+				columnOrder: ["todo", "review-by-colleague", "in-progress", "completed", "cancelled", "review-by-ai", "review-by-user", "user-questions"],
+			},
+		});
 		expect(getColumnLabels()).not.toContain("PR Review");
 	});
 
-	it("getOrderedColumns returns default order when columnOrder is absent", () => {
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{ ...project, customColumns: [customColA] }}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("getOrderedColumns returns default order when columnOrder is absent", async () => {
+		await renderBoardWith({ project: { ...project, customColumns: [customColA] } });
 		// Default order: built-ins before custom, then completed/cancelled
 		// The custom column "Alpha" should appear between review-by-user and completed
 		const columns = document.querySelectorAll("[class*='glass-column']");
@@ -240,24 +199,14 @@ describe("column ordering", () => {
 		expect(alphaIndex).toBeLessThan(cancelledIndex);
 	});
 
-	it("getOrderedColumns respects stored columnOrder mixing built-ins and custom cols", () => {
-		// columnOrder puts Alpha before "todo" and Beta after "in-progress"
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						customColumns: [customColA, customColB],
-						columnOrder: ["col-a", "todo", "in-progress", "col-b", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
-					}}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("getOrderedColumns respects stored columnOrder mixing built-ins and custom cols", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA, customColB],
+				columnOrder: ["col-a", "todo", "in-progress", "col-b", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
+			},
+		});
 		const columns = document.querySelectorAll("[class*='glass-column']");
 		const labels = Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent);
 		const alphaIdx = labels.findIndex((l) => l === "Alpha");
@@ -268,25 +217,14 @@ describe("column ordering", () => {
 		expect(betaIdx).toBeGreaterThan(inProgressIdx);
 	});
 
-	it("getOrderedColumns appends unknown/missing statuses at end", () => {
-		// columnOrder only lists a subset — missing statuses must be appended
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						customColumns: [customColA],
-						// Omit "cancelled" and "completed" from columnOrder
-						columnOrder: ["todo", "in-progress", "col-a"],
-					}}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+	it("getOrderedColumns appends unknown/missing statuses at end", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA],
+				columnOrder: ["todo", "in-progress", "col-a"],
+			},
+		});
 		const columns = document.querySelectorAll("[class*='glass-column']");
 		const labels = Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent);
 		const todoIdx = labels.findIndex((l) => l === "To Do");
@@ -302,24 +240,12 @@ describe("column ordering", () => {
 		expect(cancelledIdx).toBeGreaterThan(alphaIdx);
 	});
 
-	it("handleColumnDrop moves custom column before a built-in column", () => {
+	it("handleColumnDrop moves custom column before a built-in column", async () => {
 		const dispatch = vi.fn();
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						customColumns: [customColA],
-						// Default order: todo, in-progress, ..., col-a, completed, cancelled
-					}}
-					tasks={[]}
-					dispatch={dispatch}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+		await renderBoardWith({
+			project: { ...project, customColumns: [customColA] },
+			dispatch,
+		});
 		// Drag "Alpha" (custom col) and drop it BEFORE "To Do" (built-in)
 		const handle = getHandle("Alpha");
 		startColumnDrag(handle);
@@ -339,24 +265,16 @@ describe("column ordering", () => {
 		expect(alphaIdx).toBeLessThan(todoIdx);
 	});
 
-	it("handleColumnDrop moves custom column after another custom column", () => {
+	it("handleColumnDrop moves custom column after another custom column", async () => {
 		const dispatch = vi.fn();
-		render(
-			<I18nProvider>
-				<KanbanBoard
-					project={{
-						...project,
-						customColumns: [customColA, customColB],
-						columnOrder: ["todo", "col-a", "col-b", "in-progress", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
-					}}
-					tasks={[]}
-					dispatch={dispatch}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-						taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA, customColB],
+				columnOrder: ["todo", "col-a", "col-b", "in-progress", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
+			},
+			dispatch,
+		});
 		// Drag "Beta" and drop AFTER "Alpha"
 		const betaHandle = getHandle("Beta");
 		startColumnDrag(betaHandle);
@@ -386,21 +304,21 @@ describe("KanbanBoard keyboard shortcuts", () => {
 	});
 
 	it("Cmd+N opens the create task modal", async () => {
-		renderBoard();
+		await renderBoard();
 		expect(screen.queryByText("New Task")).not.toBeInTheDocument();
 		await userEvent.keyboard("{Meta>}n{/Meta}");
 		expect(screen.getByText("New Task")).toBeInTheDocument();
 	});
 
 	it("Ctrl+N opens the create task modal", async () => {
-		renderBoard();
+		await renderBoard();
 		expect(screen.queryByText("New Task")).not.toBeInTheDocument();
 		await userEvent.keyboard("{Control>}n{/Control}");
 		expect(screen.getByText("New Task")).toBeInTheDocument();
 	});
 
 	it("Cmd+N does nothing when the modal is already open", async () => {
-		renderBoard();
+		await renderBoard();
 		await userEvent.keyboard("{Meta>}n{/Meta}");
 		expect(screen.getByText("New Task")).toBeInTheDocument();
 		// Second press should not open a second modal
@@ -409,7 +327,7 @@ describe("KanbanBoard keyboard shortcuts", () => {
 	});
 
 	it("Escape closes the create task modal after Cmd+N", async () => {
-		renderBoard();
+		await renderBoard();
 		await userEvent.keyboard("{Meta>}n{/Meta}");
 		expect(screen.getByText("New Task")).toBeInTheDocument();
 		await userEvent.keyboard("{Escape}");

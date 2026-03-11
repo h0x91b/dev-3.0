@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -161,6 +161,17 @@ describe("withFileLock — timeout", () => {
 });
 
 describe("withFileLock — stale lock recovery", () => {
+	let warnSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		// Suppress expected "Breaking stale lock" warnings from the logger
+		warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		warnSpy.mockRestore();
+	});
+
 	it("breaks a stale lock and acquires it", async () => {
 		const filePath = path.join(tmpDir, "test.json");
 		const lockDir = filePath + ".lock";

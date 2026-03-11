@@ -74,7 +74,7 @@ jobs:
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
 
       - name: Run tests
-        run: bun run test
+        run: bun run test:full
 
   build-check:
     runs-on: ubuntu-latest

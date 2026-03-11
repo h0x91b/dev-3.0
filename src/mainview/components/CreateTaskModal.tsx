@@ -96,7 +96,15 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	useEffect(() => {
 		textareaRef.current?.focus();
-	}, []);
+		// Auto-fill branch if project's main worktree is on a non-base branch
+		api.request.getProjectCurrentBranch({ projectId: project.id }).then((result) => {
+			if (!result.isBaseBranch && result.branch) {
+				setSelectedBranch(result.branch);
+			}
+		}).catch(() => {
+			// silently fail — auto-fill is optional
+		});
+	}, [project.id]);
 
 	function handleRequestClose() {
 		if (description.trim()) {
@@ -115,6 +123,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
+				e.stopImmediatePropagation();
 				if (confirmDiscard) {
 					setConfirmDiscard(false);
 				} else {
@@ -122,8 +131,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				}
 			}
 		}
-		window.addEventListener("keydown", handleKey);
-		return () => window.removeEventListener("keydown", handleKey);
+		// Use capture phase so we intercept ESC before App's global handler
+		window.addEventListener("keydown", handleKey, true);
+		return () => window.removeEventListener("keydown", handleKey, true);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [description, onClose, confirmDiscard]);
 
@@ -202,11 +212,24 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	return (
 		<div
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+			onClick={handleRequestClose}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5">
-				<h2 className="text-fg text-lg font-semibold">
-					{t("createTask.title")}
-				</h2>
+			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+				<div className="flex items-center justify-between">
+					<h2 className="text-fg text-lg font-semibold">
+						{t("createTask.title")}
+					</h2>
+					<button
+						onClick={handleRequestClose}
+						className="text-fg-muted hover:text-fg transition-colors p-1 -mr-1 rounded-lg hover:bg-fg/5"
+						aria-label="Close"
+					>
+						<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
 
 				{/* Description textarea + drop zone */}
 				<div className="space-y-1.5">
@@ -376,12 +399,6 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 					) : (
 						<>
 							<div className="flex items-center justify-end gap-2">
-								<button
-									onClick={handleRequestClose}
-									className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
-								>
-									{t("kanban.cancel")}
-								</button>
 								{onCreateAndRun && (
 									<button
 										onClick={handleCreateAndRun}

@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
+			getProjectCurrentBranch: vi.fn(),
 		},
 	},
 }));
@@ -75,6 +76,7 @@ describe("CreateTaskModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
 	});
 
 	it("shows Save & Start button when onCreateAndRun is provided", () => {
@@ -185,32 +187,56 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("clicking outside the modal does NOT close it", async () => {
+	it("clicking backdrop with empty form closes immediately", async () => {
 		const onClose = vi.fn();
 		renderModal({ onClose });
 
 		const overlay = screen.getByText("New Task").closest(".fixed");
 		if (overlay) await userEvent.click(overlay);
 
-		expect(onClose).not.toHaveBeenCalled();
-	});
-
-	it("Cancel with empty description closes immediately", async () => {
-		const onClose = vi.fn();
-		renderModal({ onClose });
-
-		await userEvent.click(screen.getByText("Cancel"));
-
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("Cancel with filled description shows inline discard confirmation", async () => {
+	it("clicking backdrop with filled form shows discard confirmation", async () => {
 		const onClose = vi.fn();
 		renderModal({ onClose });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByText("Cancel"));
+
+		const overlay = screen.getByText("New Task").closest(".fixed");
+		if (overlay) await userEvent.click(overlay);
+
+		expect(screen.getByText("Discard")).toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("clicking inside the modal does not close it", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		// Click on the modal dialog itself (not the backdrop)
+		await userEvent.click(screen.getByText("New Task"));
+
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("X close button with empty description closes immediately", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		await userEvent.click(screen.getByLabelText("Close"));
+
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("X close button with filled description shows inline discard confirmation", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "some text");
+		await userEvent.click(screen.getByLabelText("Close"));
 
 		expect(screen.getByText("Discard")).toBeInTheDocument();
 		expect(screen.getByText("Keep editing")).toBeInTheDocument();
@@ -223,7 +249,7 @@ describe("CreateTaskModal", () => {
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByText("Cancel"));
+		await userEvent.click(screen.getByLabelText("Close"));
 		await userEvent.click(screen.getByText("Discard"));
 
 		expect(onClose).toHaveBeenCalled();
@@ -235,7 +261,7 @@ describe("CreateTaskModal", () => {
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByText("Cancel"));
+		await userEvent.click(screen.getByLabelText("Close"));
 		await userEvent.click(screen.getByText("Keep editing"));
 
 		expect(screen.queryByText("Discard")).not.toBeInTheDocument();
@@ -284,7 +310,7 @@ describe("CreateTaskModal", () => {
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "some text");
-		await userEvent.click(screen.getByText("Cancel"));
+		await userEvent.click(screen.getByLabelText("Close"));
 
 		const keepEditingBtn = screen.getByText("Keep editing");
 		expect(document.activeElement).toBe(keepEditingBtn);
@@ -394,6 +420,61 @@ describe("CreateTaskModal", () => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
 				projectId: "p1",
 				description: "New task",
+			});
+		});
+	});
+
+	// ---- Auto-fill branch from project's current branch ----
+
+	it("auto-fills branch when project is on a non-base branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		renderModal();
+
+		await waitFor(() => {
+			expect(screen.getByText("feat/login")).toBeInTheDocument();
+		});
+	});
+
+	it("does not auto-fill branch when project is on the base branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
+		renderModal();
+
+		// Wait a tick for the effect to settle
+		await waitFor(() => {
+			expect(mockedApi.request.getProjectCurrentBranch).toHaveBeenCalled();
+		});
+		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
+	});
+
+	it("does not auto-fill branch when getProjectCurrentBranch fails", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockRejectedValue(new Error("fail"));
+		renderModal();
+
+		await waitFor(() => {
+			expect(mockedApi.request.getProjectCurrentBranch).toHaveBeenCalled();
+		});
+		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
+	});
+
+	it("auto-filled branch is passed to createTask", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		renderModal({ dispatch, onClose });
+
+		await waitFor(() => {
+			expect(screen.getByText("feat/login")).toBeInTheDocument();
+		});
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Continue login work");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "Continue login work",
+				existingBranch: "feat/login",
 			});
 		});
 	});

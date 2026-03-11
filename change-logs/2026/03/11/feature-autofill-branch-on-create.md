@@ -1,0 +1,1 @@
+When creating a new task, if the project's main worktree is on a non-base branch, the branch selector now auto-fills with that branch. This saves time when you've already checked out the branch you want to work on.

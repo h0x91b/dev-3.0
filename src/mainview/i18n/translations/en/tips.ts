@@ -110,6 +110,10 @@ const tips = {
 	"tip.spawnAgentUseCases.body": "Spawn a second agent on the same task to research docs while the first one codes, or run tests in parallel with development — all in one worktree.",
 	"tip.multiVariantInspiration.title": "Not sure what you want? Try variants",
 	"tip.multiVariantInspiration.body": "Write a vague TODO like \"redesign the settings page\" and launch 3–5 variants. Each agent works independently in its own worktree — compare the approaches and keep the winner.",
+	"tip.modalQuickDismiss.title": "Dismiss dialogs quickly",
+	"tip.modalQuickDismiss.body": "Press ESC or click the backdrop to close a dialog. If you have unsaved input, you'll get a confirmation prompt first.",
+	"tip.autoFillBranch.title": "Branch auto-fills on create",
+	"tip.autoFillBranch.body": "Switch to a feature branch before creating a task — the branch selector auto-fills so you don't have to search for it.",
 	"tip.taskOpenMode.title": "Full-screen terminal mode",
 	"tip.taskOpenMode.body": "Switch Task Open Mode to \"Full screen\" in Global Settings to open tasks in a distraction-free terminal instead of split view.",
 } as const;

@@ -338,6 +338,20 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiVariantInspiration.body",
 		icon: "\u{F0EB4}", // nf-md-lightbulb_outline
 	},
+	// Batch 12: modal dismiss
+	{
+		id: "modal-quick-dismiss",
+		titleKey: "tip.modalQuickDismiss.title",
+		bodyKey: "tip.modalQuickDismiss.body",
+		icon: "\u{F12B7}", // nf-md-keyboard_esc
+	},
+	// Batch 13: auto-fill branch
+	{
+		id: "auto-fill-branch",
+		titleKey: "tip.autoFillBranch.title",
+		bodyKey: "tip.autoFillBranch.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
 	{
 		id: "task-open-mode",
 		titleKey: "tip.taskOpenMode.title",
