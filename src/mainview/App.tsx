@@ -457,6 +457,7 @@ function App() {
 						projects={state.projects}
 						dispatch={dispatch}
 						navigate={navigate}
+						bellCounts={state.bellCounts}
 					/>
 				);
 			case "project":

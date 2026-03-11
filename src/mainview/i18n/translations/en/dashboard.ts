@@ -10,6 +10,18 @@ const dashboard = {
 	"dashboard.failedRemove": "Failed to remove project: {error}",
 	"dashboard.projectCount_one": "{count} project",
 	"dashboard.projectCount_other": "{count} projects",
+	"dashboard.tabActivity": "Activity",
+	"dashboard.tabProjects": "Projects",
+
+	// Activity overview
+	"activity.noActiveTasks": "No active tasks across any project",
+	"activity.taskCount_one": "{count} active",
+	"activity.taskCount_other": "{count} active",
+	"activity.noActiveInProject": "no active tasks",
+	"activity.justNow": "just now",
+	"activity.minutesAgo": "{count}m ago",
+	"activity.hoursAgo": "{count}h ago",
+	"activity.daysAgo": "{count}d ago",
 
 	// GlobalHeader
 	"header.task": "Task",
