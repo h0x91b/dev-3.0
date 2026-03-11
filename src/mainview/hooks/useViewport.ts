@@ -4,7 +4,7 @@ import { useMobile } from "./useMobile";
 import { isElectrobun } from "../rpc";
 
 const DESKTOP_VIEWPORT = "width=1280";
-const BROWSER_VIEWPORT = "width=768";
+const BROWSER_VIEWPORT = "width=768, maximum-scale=1, user-scalable=no";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
 /** Screens that require desktop-width viewport even on mobile (terminal). */
