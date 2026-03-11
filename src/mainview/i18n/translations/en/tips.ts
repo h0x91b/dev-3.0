@@ -116,6 +116,8 @@ const tips = {
 	"tip.autoFillBranch.body": "Switch to a feature branch before creating a task — the branch selector auto-fills so you don't have to search for it.",
 	"tip.taskOpenMode.title": "Full-screen terminal mode",
 	"tip.taskOpenMode.body": "Switch Task Open Mode to \"Full screen\" in Global Settings to open tasks in a distraction-free terminal instead of split view.",
+	"tip.forkBranchSupport.title": "Review fork PRs",
+	"tip.forkBranchSupport.body": "Type user:branch in the branch field (e.g. yanive:feat/new-tab) and click Fetch to pull a branch from a GitHub fork.",
 } as const;
 
 export default tips;

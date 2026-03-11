@@ -116,6 +116,8 @@ const tips = {
 	"tip.autoFillBranch.body": "Cambia a una rama de feature antes de crear la tarea — el selector de rama se auto-completará para que no tengas que buscarla.",
 	"tip.taskOpenMode.title": "Modo terminal de pantalla completa",
 	"tip.taskOpenMode.body": "Activa «Pantalla completa» en Modo de apertura de tarea (Ajustes globales) para abrir tareas sin vista dividida.",
+	"tip.forkBranchSupport.title": "Revisa PRs de forks",
+	"tip.forkBranchSupport.body": "Escribe user:branch en el campo de rama (ej. yanive:feat/new-tab) y haz clic en Actualizar para descargar la rama de un fork de GitHub.",
 };
 
 export default tips;

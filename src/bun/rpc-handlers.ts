@@ -2661,9 +2661,21 @@ export const handlers = {
 		return git.listBranches(project.path);
 	},
 
-	async fetchBranches(params: { projectId: string }): Promise<Array<{ name: string; isRemote: boolean }>> {
+	async fetchBranches(params: { projectId: string; forkRef?: string }): Promise<Array<{ name: string; isRemote: boolean }>> {
 		const project = await data.getProject(params.projectId);
-		await git.fetchOrigin(project.path);
+		if (params.forkRef) {
+			// Parse "user:branch" format
+			const colonIdx = params.forkRef.indexOf(":");
+			if (colonIdx > 0) {
+				const forkOwner = params.forkRef.slice(0, colonIdx);
+				const branchName = params.forkRef.slice(colonIdx + 1);
+				if (forkOwner && branchName) {
+					await git.fetchFork(project.path, forkOwner, branchName);
+				}
+			}
+		} else {
+			await git.fetchOrigin(project.path);
+		}
 		return git.listBranches(project.path);
 	},
 

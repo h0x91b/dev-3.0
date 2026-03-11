@@ -57,10 +57,15 @@ import {
 	canRebaseCleanly,
 	getUncommittedChanges,
 	listBranches,
+	getOriginUrl,
+	deriveForkUrl,
+	fetchFork,
+	_resetFetchState,
 } from "../git";
 
 beforeEach(() => {
 	spawnResponses = [];
+	_resetFetchState();
 });
 
 // ─── getCurrentBranch ────────────────────────────────────────────────────────
@@ -229,5 +234,81 @@ describe("listBranches", () => {
 		queueResponse(0, "");
 		const branches = await listBranches("/repo");
 		expect(branches).toEqual([]);
+	});
+});
+
+// ─── getOriginUrl ────────────────────────────────────────────────────────────
+
+describe("getOriginUrl", () => {
+	it("returns origin URL on success", async () => {
+		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n");
+		const url = await getOriginUrl("/repo");
+		expect(url).toBe("https://github.com/h0x91b/dev-3.0.git");
+	});
+
+	it("returns null when command fails", async () => {
+		queueResponse(1, "", "fatal: not a git repository");
+		const url = await getOriginUrl("/not-a-repo");
+		expect(url).toBeNull();
+	});
+});
+
+// ─── deriveForkUrl ───────────────────────────────────────────────────────────
+
+describe("deriveForkUrl", () => {
+	it("replaces owner in HTTPS URL", () => {
+		const result = deriveForkUrl("https://github.com/h0x91b/dev-3.0.git", "yanive");
+		expect(result).toBe("https://github.com/yanive/dev-3.0.git");
+	});
+
+	it("replaces owner in SSH URL", () => {
+		const result = deriveForkUrl("git@github.com:h0x91b/dev-3.0.git", "yanive");
+		expect(result).toBe("git@github.com:yanive/dev-3.0.git");
+	});
+
+	it("handles HTTPS URL without .git suffix", () => {
+		const result = deriveForkUrl("https://github.com/h0x91b/dev-3.0", "yanive");
+		expect(result).toBe("https://github.com/yanive/dev-3.0");
+	});
+
+	it("returns null for unrecognized URL format", () => {
+		const result = deriveForkUrl("not-a-url", "yanive");
+		expect(result).toBeNull();
+	});
+});
+
+// ─── fetchFork ───────────────────────────────────────────────────────────────
+
+describe("fetchFork", () => {
+	it("adds remote and fetches branch successfully", async () => {
+		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n"); // get-url origin
+		queueResponse(1, "", "fatal: No such remote");                  // get-url forkOwner (not found)
+		queueResponse(0, "");                                            // remote add
+		queueResponse(0, "");                                            // fetch
+		const result = await fetchFork("/repo", "yanive", "feat/cool-stuff");
+		expect(result).toBe(true);
+	});
+
+	it("reuses existing remote", async () => {
+		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n"); // get-url origin
+		queueResponse(0, "https://github.com/yanive/dev-3.0.git\n"); // get-url forkOwner (exists)
+		queueResponse(0, "");                                            // fetch
+		const result = await fetchFork("/repo", "yanive", "feat/cool-stuff");
+		expect(result).toBe(true);
+	});
+
+	it("returns false when origin URL cannot be determined", async () => {
+		queueResponse(1, "", "fatal: not a git repository");
+		const result = await fetchFork("/not-a-repo", "yanive", "feat/cool-stuff");
+		expect(result).toBe(false);
+	});
+
+	it("returns false when fetch fails", async () => {
+		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n");
+		queueResponse(1, "", "fatal: No such remote");
+		queueResponse(0, "");                                            // remote add
+		queueResponse(1, "", "fatal: couldn't find remote ref");         // fetch fails
+		const result = await fetchFork("/repo", "yanive", "nonexistent");
+		expect(result).toBe(false);
 	});
 });

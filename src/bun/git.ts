@@ -192,9 +192,20 @@ export async function createWorktree(
 	}
 
 	if (existingBranch) {
-		// Use an existing branch — no -b flag
-		const resolvedBranch = existingBranch.replace(/^origin\//, "");
-		log.info("Creating worktree from existing branch", { wtPath, existingBranch: resolvedBranch, taskId: task.id });
+		// Check if this is a remote tracking ref (origin/xxx, yanive/xxx, etc.)
+		const isRemoteRef = (await run(
+			["git", "rev-parse", "--verify", `refs/remotes/${existingBranch}`],
+			project.path,
+		)).ok;
+
+		// For remote refs, extract local branch name by stripping the remote prefix
+		const resolvedBranch = isRemoteRef
+			? existingBranch.slice(existingBranch.indexOf("/") + 1)
+			: existingBranch;
+
+		log.info("Creating worktree from existing branch", {
+			wtPath, existingBranch, resolvedBranch, isRemoteRef, taskId: task.id,
+		});
 
 		const result = await run(
 			["git", "worktree", "add", wtPath, resolvedBranch],
@@ -204,7 +215,7 @@ export async function createWorktree(
 		if (!result.ok) {
 			const isAlreadyCheckedOut = result.stderr.includes("already checked out") || result.stderr.includes("already used by worktree");
 
-			if (existingBranch.startsWith("origin/") && !isAlreadyCheckedOut) {
+			if (isRemoteRef && !isAlreadyCheckedOut) {
 				// Remote branch without a local tracking branch yet — create one
 				log.info("Retrying with tracking branch creation", { existingBranch });
 				const trackResult = await run(
@@ -234,7 +245,7 @@ export async function createWorktree(
 					throw new Error(`Failed to create worktree: ${fallbackResult.stderr}`);
 				}
 				// Set up remote tracking so `git push` targets the original remote branch
-				const remoteRef = `origin/${resolvedBranch}`;
+				const remoteRef = isRemoteRef ? existingBranch : `origin/${resolvedBranch}`;
 				const remoteCheckResult = await run(
 					["git", "rev-parse", "--verify", remoteRef],
 					project.path,
@@ -377,6 +388,78 @@ export async function fetchOrigin(projectPath: string): Promise<boolean> {
 	} finally {
 		fetchInFlight.delete(projectPath);
 	}
+}
+
+export async function getOriginUrl(projectPath: string): Promise<string | null> {
+	const result = await run(["git", "remote", "get-url", "origin"], projectPath);
+	return result.ok ? result.stdout : null;
+}
+
+/**
+ * Derive a fork URL from the origin URL by replacing the owner.
+ * Supports both HTTPS and SSH formats:
+ *   https://github.com/h0x91b/dev-3.0.git → https://github.com/yanive/dev-3.0.git
+ *   git@github.com:h0x91b/dev-3.0.git → git@github.com:yanive/dev-3.0.git
+ */
+export function deriveForkUrl(originUrl: string, forkOwner: string): string | null {
+	// HTTPS: https://github.com/OWNER/REPO.git
+	const httpsMatch = originUrl.match(/^(https?:\/\/[^/]+\/)([^/]+)(\/[^/]+)$/);
+	if (httpsMatch) {
+		return `${httpsMatch[1]}${forkOwner}${httpsMatch[3]}`;
+	}
+	// SSH: git@github.com:OWNER/REPO.git
+	const sshMatch = originUrl.match(/^([^@]+@[^:]+:)([^/]+)(\/[^/]+)$/);
+	if (sshMatch) {
+		return `${sshMatch[1]}${forkOwner}${sshMatch[3]}`;
+	}
+	return null;
+}
+
+/**
+ * Add a fork remote and fetch a specific branch from it.
+ * Returns true if the branch was successfully fetched.
+ */
+export async function fetchFork(
+	projectPath: string,
+	forkOwner: string,
+	branchName: string,
+): Promise<boolean> {
+	const originUrl = await getOriginUrl(projectPath);
+	if (!originUrl) {
+		log.warn("fetchFork: could not determine origin URL", { projectPath });
+		return false;
+	}
+
+	const forkUrl = deriveForkUrl(originUrl, forkOwner);
+	if (!forkUrl) {
+		log.warn("fetchFork: could not derive fork URL", { originUrl, forkOwner });
+		return false;
+	}
+
+	// Check if remote already exists
+	const remoteCheck = await run(["git", "remote", "get-url", forkOwner], projectPath);
+	if (!remoteCheck.ok) {
+		// Add the remote
+		log.info("Adding fork remote", { forkOwner, forkUrl });
+		const addResult = await run(["git", "remote", "add", forkOwner, forkUrl], projectPath);
+		if (!addResult.ok) {
+			log.error("Failed to add fork remote", { stderr: addResult.stderr });
+			return false;
+		}
+	}
+
+	// Fetch the specific branch
+	log.info("Fetching fork branch", { forkOwner, branchName });
+	const fetchResult = await run(
+		["git", "fetch", forkOwner, branchName, "--quiet"],
+		projectPath,
+	);
+	if (!fetchResult.ok) {
+		log.warn("fetchFork: failed to fetch branch", { forkOwner, branchName, stderr: fetchResult.stderr });
+		return false;
+	}
+
+	return true;
 }
 
 /** Reset fetch dedup state — for tests only. */

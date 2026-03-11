@@ -358,6 +358,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskOpenMode.body",
 		icon: "\u{F0124}", // nf-md-fullscreen
 	},
+	{
+		id: "fork-branch-support",
+		titleKey: "tip.forkBranchSupport.title",
+		bodyKey: "tip.forkBranchSupport.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

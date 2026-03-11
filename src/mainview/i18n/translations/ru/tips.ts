@@ -116,6 +116,8 @@ const tips = {
 	"tip.autoFillBranch.body": "Переключитесь на фича-ветку перед созданием задачи — селектор ветки заполнится автоматически, искать не придётся.",
 	"tip.taskOpenMode.title": "Режим полноэкранного терминала",
 	"tip.taskOpenMode.body": "Включите «Полный экран» в режиме открытия задач (Глобальные настройки), чтобы открывать задачи без разделённого вида.",
+	"tip.forkBranchSupport.title": "Ревью PR из форков",
+	"tip.forkBranchSupport.body": "Введите user:branch в поле ветки (напр. yanive:feat/new-tab) и нажмите Обновить, чтобы загрузить ветку из форка на GitHub.",
 };
 
 export default tips;

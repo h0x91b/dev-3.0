@@ -27,6 +27,8 @@ const kanban = {
 	"createTask.branchFetching": "Actualizando...",
 	"createTask.branchLocal": "Locales",
 	"createTask.branchRemote": "Remotas",
+	"createTask.branchNoneFound": "No se encontraron ramas",
+	"createTask.branchForkHint": "Haz clic en Actualizar para obtener la rama del fork",
 	"createTask.useExistingBranch": "Usar rama existente",
 	"createTask.reviewMode": "Esto es una revisión de PR",
 	"createTask.reviewModeHint": "Rellena la descripción con un prompt de revisión de código",
