@@ -442,13 +442,10 @@ describe("KanbanColumn — collapsed state", () => {
 		expect(badge?.textContent).toBe("1");
 	});
 
-	it("pin button triggers onCollapseToggle callback", async () => {
-		const onCollapseToggle = vi.fn();
-		renderCollapsedColumn({ onCollapseToggle });
-		const pinBtn = document.querySelector("[data-collapsed-column] button[aria-label='Pin column open']") as HTMLElement;
-		expect(pinBtn).not.toBeNull();
-		await userEvent.click(pinBtn);
-		expect(onCollapseToggle).toHaveBeenCalledTimes(1);
+	it("collapsed strip does not render a pin button", () => {
+		renderCollapsedColumn({ onCollapseToggle: vi.fn() });
+		const pinBtn = document.querySelector("[data-collapsed-column] button[aria-label='Pin column open']");
+		expect(pinBtn).toBeNull();
 	});
 
 	it("collapsed Todo column renders a new task button", async () => {
