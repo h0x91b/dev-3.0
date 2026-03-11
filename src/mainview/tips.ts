@@ -319,6 +319,25 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.customTaskTitle.body",
 		icon: "\u{F0B5B}", // nf-md-pencil
 	},
+	// Batch 11: spawn agents, multi-variant inspiration
+	{
+		id: "spawn-extra-agent",
+		titleKey: "tip.spawnExtraAgent.title",
+		bodyKey: "tip.spawnExtraAgent.body",
+		icon: "\u{F0219}", // nf-md-robot
+	},
+	{
+		id: "spawn-agent-use-cases",
+		titleKey: "tip.spawnAgentUseCases.title",
+		bodyKey: "tip.spawnAgentUseCases.body",
+		icon: "\u{F0313}", // nf-md-console
+	},
+	{
+		id: "multi-variant-inspiration",
+		titleKey: "tip.multiVariantInspiration.title",
+		bodyKey: "tip.multiVariantInspiration.body",
+		icon: "\u{F0EB4}", // nf-md-lightbulb_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

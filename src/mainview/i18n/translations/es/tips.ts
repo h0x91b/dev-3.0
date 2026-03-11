@@ -104,6 +104,12 @@ const tips = {
 	"tip.setupScriptPanes.body": "El script de configuración del proyecto corre en su propio panel tmux antes de que arranque el agente.",
 	"tip.customTaskTitle.title": "Renombra cualquier tarea",
 	"tip.customTaskTitle.body": "El título se genera automáticamente a partir de las primeras palabras de la descripción para no llenar dos campos. Pero siempre puedes hacer clic en el título para personalizarlo.",
+	"tip.spawnExtraAgent.title": "Varios agentes en una tarea",
+	"tip.spawnExtraAgent.body": "¿Necesitas más manos? Lanza otro agente en el mismo worktree — se abre un nuevo panel tmux con una sesión fresca, sin configuración extra.",
+	"tip.spawnAgentUseCases.title": "Investiga y programa a la vez",
+	"tip.spawnAgentUseCases.body": "Lanza un segundo agente en la misma tarea: uno busca en la documentación mientras el otro codifica, o uno prueba mientras el otro desarrolla — todo en un worktree.",
+	"tip.multiVariantInspiration.title": "¿No sabes qué quieres? Prueba variantes",
+	"tip.multiVariantInspiration.body": "Escribe un TODO vago como \"rediseña la página de ajustes\" y lanza 3–5 variantes. Cada agente trabaja independientemente en su propio worktree — compara los enfoques y quédate con el mejor.",
 };
 
 export default tips;

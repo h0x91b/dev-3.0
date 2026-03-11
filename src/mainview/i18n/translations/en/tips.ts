@@ -104,6 +104,12 @@ const tips = {
 	"tip.setupScriptPanes.body": "Your project setup script runs in its own tmux pane before the agent starts, so dependencies are always ready.",
 	"tip.customTaskTitle.title": "Rename any task",
 	"tip.customTaskTitle.body": "Task titles are auto-generated from the first words of the description so you don't fill two fields. But you can always click the title to set a custom name.",
+	"tip.spawnExtraAgent.title": "Run multiple agents on one task",
+	"tip.spawnExtraAgent.body": "Need more hands? Spawn another agent in the same worktree — it opens a new tmux pane with a fresh agent session, no extra setup needed.",
+	"tip.spawnAgentUseCases.title": "Research and code at the same time",
+	"tip.spawnAgentUseCases.body": "Spawn a second agent on the same task to research docs while the first one codes, or run tests in parallel with development — all in one worktree.",
+	"tip.multiVariantInspiration.title": "Not sure what you want? Try variants",
+	"tip.multiVariantInspiration.body": "Write a vague TODO like \"redesign the settings page\" and launch 3–5 variants. Each agent works independently in its own worktree — compare the approaches and keep the winner.",
 } as const;
 
 export default tips;
