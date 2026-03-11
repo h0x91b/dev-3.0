@@ -12,6 +12,20 @@ const dashboard = {
 	"dashboard.projectCount_few": "{count} проекта",
 	"dashboard.projectCount_many": "{count} проектов",
 	"dashboard.projectCount_other": "{count} проектов",
+	"dashboard.tabActivity": "Активность",
+	"dashboard.tabProjects": "Проекты",
+
+	// Activity overview
+	"activity.noActiveTasks": "Нет активных задач ни в одном проекте",
+	"activity.taskCount_one": "{count} активная",
+	"activity.taskCount_few": "{count} активных",
+	"activity.taskCount_many": "{count} активных",
+	"activity.taskCount_other": "{count} активных",
+	"activity.noActiveInProject": "нет активных задач",
+	"activity.justNow": "только что",
+	"activity.minutesAgo": "{count}м назад",
+	"activity.hoursAgo": "{count}ч назад",
+	"activity.daysAgo": "{count}д назад",
 
 	// GlobalHeader
 	"header.task": "Задача",

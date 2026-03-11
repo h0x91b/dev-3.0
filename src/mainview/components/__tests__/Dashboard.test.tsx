@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			cloneAndAddProject: vi.fn(),
 			removeProject: vi.fn(),
 			showConfirm: vi.fn(),
+			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
 			getGlobalSettings: vi.fn(() => Promise.resolve({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
@@ -39,6 +40,7 @@ function renderDashboard(
 				projects={projects}
 				dispatch={dispatch ?? vi.fn()}
 				navigate={navigate ?? vi.fn()}
+				bellCounts={new Map()}
 			/>
 		</I18nProvider>,
 	);
@@ -78,25 +80,31 @@ describe("Dashboard", () => {
 	});
 
 	describe("project list", () => {
-		it("renders project name and path", () => {
+		it("renders project name and path", async () => {
+			const user = userEvent.setup();
 			renderDashboard([mockProject]);
+			await user.click(screen.getByText("Projects"));
 			expect(screen.getByText("My Project")).toBeInTheDocument();
 			expect(
 				screen.getByText("/home/user/my-project"),
 			).toBeInTheDocument();
 		});
 
-		it("shows project count", () => {
+		it("shows project count", async () => {
+			const user = userEvent.setup();
 			renderDashboard([mockProject]);
+			await user.click(screen.getByText("Projects"));
 			expect(screen.getByText("1 project")).toBeInTheDocument();
 		});
 
-		it("shows plural count for multiple projects", () => {
+		it("shows plural count for multiple projects", async () => {
+			const user = userEvent.setup();
 			const projects = [
 				mockProject,
 				{ ...mockProject, id: "p2", name: "Second" },
 			];
 			renderDashboard(projects);
+			await user.click(screen.getByText("Projects"));
 			expect(screen.getByText("2 projects")).toBeInTheDocument();
 		});
 	});
@@ -153,6 +161,7 @@ describe("Dashboard", () => {
 			mockedApi.request.removeProject.mockResolvedValue(undefined);
 
 			renderDashboard([mockProject], dispatch);
+			await user.click(screen.getByText("Projects"));
 
 			const removeBtn = screen.getByText("Remove");
 			await user.click(removeBtn);
@@ -174,6 +183,7 @@ describe("Dashboard", () => {
 			mockedApi.request.showConfirm.mockResolvedValue(false);
 
 			renderDashboard([mockProject], dispatch);
+			await user.click(screen.getByText("Projects"));
 			await user.click(screen.getByText("Remove"));
 
 			expect(mockedApi.request.removeProject).not.toHaveBeenCalled();
@@ -187,6 +197,7 @@ describe("Dashboard", () => {
 			const navigate = vi.fn();
 
 			renderDashboard([mockProject], vi.fn(), navigate);
+			await user.click(screen.getByText("Projects"));
 
 			await user.click(screen.getByText("My Project"));
 

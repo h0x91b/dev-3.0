@@ -992,6 +992,21 @@ export const handlers = {
 		return tasks;
 	},
 
+	async getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] }[]> {
+		log.info("→ getAllProjectTasks");
+		const projects = await data.loadProjects();
+		const results = await Promise.all(
+			projects.map(async (project) => {
+				const tasks = await data.loadTasks(project);
+				const active = tasks.filter((t) => ACTIVE_STATUSES.includes(t.status));
+				return { projectId: project.id, tasks: active };
+			}),
+		);
+		const totalActive = results.reduce((sum, r) => sum + r.tasks.length, 0);
+		log.info(`← getAllProjectTasks: ${totalActive} active task(s) across ${projects.length} project(s)`);
+		return results;
+	},
+
 	async createTask(params: {
 		projectId: string;
 		description: string;
