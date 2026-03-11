@@ -529,7 +529,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
 								tip={tipColumnId === slot.status ? currentTip : undefined}
 								onTipChanged={handleTipChanged}
-							tipState={tipState ?? undefined}
+								tipState={tipState ?? undefined}
 								collapsed={collapseState.isCollapsed(colId)}
 								onCollapseToggle={() => collapseState.toggle(colId)}
 								collapseDragHandlers={collapseState.dragExpandHandlers(colId)}
