@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -62,7 +62,7 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 				const next = new Map(prev);
 				const projectTasks = [...(next.get(task.projectId) ?? [])];
 				const idx = projectTasks.findIndex((t) => t.id === task.id);
-				const isActive = ["in-progress", "user-questions", "review-by-ai", "review-by-user", "review-by-colleague"].includes(task.status);
+				const isActive = ACTIVE_STATUSES.includes(task.status);
 				if (isActive) {
 					if (idx >= 0) {
 						projectTasks[idx] = task;
