@@ -7,6 +7,7 @@ const kanban = {
 	"kanban.failedCreate": "Не удалось создать задачу: {error}",
 	"kanban.showMore": "Показать ещё ({count})",
 	"kanban.showLess": "Свернуть",
+	"kanban.collapseColumn": "Свернуть колонку",
 
 	// CreateTaskModal
 	"createTask.title": "Новая задача",

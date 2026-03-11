@@ -120,6 +120,8 @@ const tips = {
 	"tip.taskOpenMode.body": "Activa «Pantalla completa» en Modo de apertura de tarea (Ajustes globales) para abrir tareas sin vista dividida.",
 	"tip.forkBranchSupport.title": "Revisa PRs de forks",
 	"tip.forkBranchSupport.body": "Escribe user:branch en el campo de rama (ej. yanive:feat/new-tab) y haz clic en Actualizar para descargar la rama de un fork de GitHub.",
+	"tip.collapsibleColumns.title": "Columnas contraibles",
+	"tip.collapsibleColumns.body": "Haz clic en una columna contraida para fijarla abierta, o pasa el cursor para ver su contenido.",
 	"tip.taskDropPosition.title": "Tareas nuevas arriba",
 	"tip.taskDropPosition.body": "Por defecto las tareas nuevas y movidas aparecen arriba de la columna. Cámbialo en Ajustes globales → Posición al mover tareas.",
 	"tip.restartTaskFromScratch.title": "Reinicia una tarea desde cero",

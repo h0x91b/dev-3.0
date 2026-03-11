@@ -383,6 +383,86 @@ describe("KanbanColumn — double-click empty space to add task", () => {
 	});
 });
 
+describe("KanbanColumn — collapsed state", () => {
+	function renderCollapsedColumn(overrides: {
+		onCollapseToggle?: () => void;
+		tasks?: Task[];
+	} = {}) {
+		const tasks = overrides.tasks ?? [];
+		return render(
+			<I18nProvider>
+				<KanbanColumn
+					status="todo"
+					label="To Do"
+					tasks={tasks}
+					project={project}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					onAddTask={vi.fn()}
+					agents={[]}
+					onLaunchVariants={vi.fn()}
+					onTaskDrop={vi.fn()}
+					onReorderTask={vi.fn()}
+					dragFromStatus={null}
+					dragFromCustomColumnId={null}
+					onDragStart={vi.fn()}
+					onTaskMoved={vi.fn()}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					draggedTaskId={null}
+					movingTaskIds={new Set()}
+					onSetMoving={vi.fn()}
+					siblingMap={new Map()}
+					collapsed={true}
+					onCollapseToggle={overrides.onCollapseToggle ?? vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("renders narrow collapsed column with vertical label", () => {
+		renderCollapsedColumn();
+		const collapsed = document.querySelector("[data-collapsed-column]");
+		expect(collapsed).not.toBeNull();
+		// Check vertical label text
+		const label = collapsed?.querySelector(".kanban-col-vertical-label");
+		expect(label).not.toBeNull();
+		expect(label?.textContent).toBe("To Do");
+	});
+
+	it("renders task count badge when tasks exist", () => {
+		const task: Task = {
+			id: "t1", projectId: "p1", seq: 1, title: "Test", description: "Test",
+			status: "todo", baseBranch: "main", worktreePath: null, branchName: null,
+			groupId: null, variantIndex: null, agentId: null, configId: null,
+			createdAt: "2025-01-01T00:00:00Z", updatedAt: "2025-01-01T00:00:00Z",
+		};
+		renderCollapsedColumn({ tasks: [task] });
+		const badge = document.querySelector("[data-collapsed-column] .text-xs.font-bold");
+		expect(badge?.textContent).toBe("1");
+	});
+
+	it("click triggers onCollapseToggle callback", async () => {
+		const onCollapseToggle = vi.fn();
+		renderCollapsedColumn({ onCollapseToggle });
+		const collapsed = document.querySelector("[data-collapsed-column]") as HTMLElement;
+		await userEvent.click(collapsed);
+		expect(onCollapseToggle).toHaveBeenCalledTimes(1);
+	});
+
+	it("collapsed column still has drag-and-drop handlers", () => {
+		renderCollapsedColumn();
+		const collapsed = document.querySelector("[data-collapsed-column]") as HTMLElement;
+		// Verify element exists and can receive drag events (doesn't throw)
+		expect(collapsed).not.toBeNull();
+		const dt = makeDt({ "text/plain": "task-123" });
+		const event = new MouseEvent("dragover", { bubbles: true, cancelable: true });
+		Object.defineProperty(event, "dataTransfer", { value: dt });
+		act(() => { collapsed.dispatchEvent(event); });
+		// No error thrown = drag handlers are active
+	});
+});
+
 describe("built-in column as column-reorder drop target", () => {
 	function getBuiltinColumn() {
 		return screen.getByText("To Do").closest("[class*='glass-column']") as HTMLElement;

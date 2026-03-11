@@ -7,6 +7,7 @@ const kanban = {
 	"kanban.failedCreate": "Error al crear tarea: {error}",
 	"kanban.showMore": "Mostrar más ({count})",
 	"kanban.showLess": "Mostrar menos",
+	"kanban.collapseColumn": "Contraer columna",
 
 	// CreateTaskModal
 	"createTask.title": "Nueva tarea",
