@@ -192,6 +192,13 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 
+			// Prevent mobile browser auto-zoom when the hidden textarea gains focus.
+			// iOS/Android zoom to input elements with font-size < 16px.
+			const hiddenTextarea = containerRef.current.querySelector("textarea");
+			if (hiddenTextarea) {
+				hiddenTextarea.style.fontSize = "16px";
+			}
+
 			// Use ResizeObserver to detect when the container gets its final
 			// flex-computed dimensions. Unlike requestAnimationFrame heuristics,
 			// this fires exactly when layout is done — no timing guesses.
