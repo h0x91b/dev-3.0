@@ -373,10 +373,10 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 		for (const slot of orderedCols) {
 			if (slot.type === "builtin") {
 				const count = tasksByStatus.get(slot.status)?.length ?? 0;
-				if (count < 2) return slot.status;
+				if (count < 3) return slot.status;
 			} else {
 				const count = tasksByCustomColumn.get(slot.col.id)?.length ?? 0;
-				if (count < 2) return slot.col.id;
+				if (count < 3) return slot.col.id;
 			}
 		}
 		return null;

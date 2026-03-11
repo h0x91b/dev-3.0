@@ -370,10 +370,14 @@ function KanbanColumn({
 					</div>
 				)}
 
-				{tip && onTipDismiss && (
+				</div>
+
+			{/* Tip card — pinned to bottom, above the add-task button */}
+			{tip && onTipDismiss && (
+				<div className="px-3 pb-3 flex-shrink-0">
 					<TipCard tip={tip} onDismiss={onTipDismiss} />
-				)}
-			</div>
+				</div>
+			)}
 
 			{/* Add task button (only in To Do column, not custom columns) */}
 			{!isCustomColumn && status === "todo" && (
