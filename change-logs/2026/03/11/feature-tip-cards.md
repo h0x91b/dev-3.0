@@ -1,1 +1,3 @@
 Add "Did you know?" tip cards to the Kanban board for feature discovery. A single tip card appears in the first column with fewer than 2 tasks, visually distinct from regular task cards (dashed accent border, lightbulb icon). Tips rotate through 8 hints about agent capabilities, keyboard shortcuts, and UI features. Users can dismiss individual tips or cycle through them. Fully localized in English, Russian, and Spanish.
+
+Suggested by @BarVolovski (h0x91b/dev-3.0#245)
