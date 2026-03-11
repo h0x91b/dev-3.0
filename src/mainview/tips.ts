@@ -300,13 +300,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.resumeConversationOnReopen.body",
 		icon: "\u{F040A}", // nf-md-restore
 	},
-	{
-		id: "append-system-prompt-claude",
-		titleKey: "tip.appendSystemPromptClaude.title",
-		bodyKey: "tip.appendSystemPromptClaude.body",
-		icon: "\u{F0219}", // nf-md-robot
-	},
-	// Batch 10: i18n, setup scripts, theme, task titles
+	// Batch 10: i18n, setup scripts, task titles
 	{
 		id: "language-switching",
 		titleKey: "tip.languageSwitching.title",
@@ -318,12 +312,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.setupScriptPanes.title",
 		bodyKey: "tip.setupScriptPanes.body",
 		icon: "\u{F0259}", // nf-md-console
-	},
-	{
-		id: "glassmorphism-theme",
-		titleKey: "tip.glassmorphismTheme.title",
-		bodyKey: "tip.glassmorphismTheme.body",
-		icon: "\u{F0493}", // nf-md-palette
 	},
 	{
 		id: "custom-task-title",
