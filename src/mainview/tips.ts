@@ -59,12 +59,6 @@ const ALL_TIPS: Tip[] = [
 	},
 	// Batch 1: split-view, multi-variant, labels, search, PR
 	{
-		id: "split-view-open",
-		titleKey: "tip.splitViewOpen.title",
-		bodyKey: "tip.splitViewOpen.body",
-		icon: "\u{F0E4E}", // nf-md-view_split_vertical
-	},
-	{
 		id: "split-view-escape",
 		titleKey: "tip.splitViewEscape.title",
 		bodyKey: "tip.splitViewEscape.body",

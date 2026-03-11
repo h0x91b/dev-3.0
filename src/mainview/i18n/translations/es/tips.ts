@@ -20,8 +20,6 @@ const tips = {
 	"tip.cmdN.body": "Presiona \u2318N en cualquier lugar para crear una tarea sin usar el ratón.",
 	"tip.terminalPreview.title": "Vista previa del terminal",
 	"tip.terminalPreview.body": "Pasa el cursor sobre una tarea activa para ver una vista previa en vivo del terminal.",
-	"tip.splitViewOpen.title": "Terminal junto al tablero",
-	"tip.splitViewOpen.body": "Haz clic en una tarjeta activa para abrir su terminal en vista dividida — arrastra el divisor para ajustar, doble clic para restablecer.",
 	"tip.splitViewEscape.title": "Escape cierra la vista dividida",
 	"tip.splitViewEscape.body": "Pulsa Escape para cerrar el panel de terminal y volver al tablero Kanban completo en cualquier momento.",
 	"tip.multiVariantTasks.title": "Explora varias soluciones a la vez",
