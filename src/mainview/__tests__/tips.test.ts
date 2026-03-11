@@ -1,84 +1,70 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { getCurrentTip, dismissTip, advanceTip } from "../tips";
+import { describe, it, expect } from "vitest";
+import { selectTip, getAvailableTipsCount, ALL_TIPS, SNOOZE_MS } from "../tips";
+import type { TipState } from "../../shared/types";
 
-// Mock localStorage
-const store = new Map<string, string>();
-const localStorageMock = {
-	getItem: vi.fn((key: string) => store.get(key) ?? null),
-	setItem: vi.fn((key: string, value: string) => { store.set(key, value); }),
-	removeItem: vi.fn((key: string) => { store.delete(key); }),
-	clear: vi.fn(() => store.clear()),
-	get length() { return store.size; },
-	key: vi.fn(() => null),
-};
-Object.defineProperty(globalThis, "localStorage", { value: localStorageMock });
+function freshState(overrides: Partial<TipState> = {}): TipState {
+	return { snoozedUntil: 0, seen: {}, rotationIndex: 0, ...overrides };
+}
 
 describe("tips", () => {
-	beforeEach(() => {
-		store.clear();
-		vi.clearAllMocks();
-	});
-
-	it("returns a tip when none are dismissed", () => {
-		const tip = getCurrentTip();
+	it("returns a tip with fresh state", () => {
+		const tip = selectTip(freshState());
 		expect(tip).not.toBeNull();
-		expect(tip!.id).toBeTruthy();
-		expect(tip!.titleKey).toBeTruthy();
-		expect(tip!.bodyKey).toBeTruthy();
-		expect(tip!.icon).toBeTruthy();
+		expect(tip!.id).toBe(ALL_TIPS[0].id);
 	});
 
-	it("returns a different tip after advancing", () => {
-		const tip1 = getCurrentTip();
-		advanceTip();
-		const tip2 = getCurrentTip();
+	it("returns a different tip when rotationIndex advances", () => {
+		const tip0 = selectTip(freshState({ rotationIndex: 0 }));
+		const tip1 = selectTip(freshState({ rotationIndex: 1 }));
+		expect(tip0).not.toBeNull();
 		expect(tip1).not.toBeNull();
-		expect(tip2).not.toBeNull();
-		expect(tip1!.id).not.toBe(tip2!.id);
+		expect(tip0!.id).not.toBe(tip1!.id);
 	});
 
-	it("does not return a dismissed tip", () => {
-		const tip = getCurrentTip();
+	it("skips tips that are on cooldown", () => {
+		const now = Date.now();
+		const state = freshState({ seen: { [ALL_TIPS[0].id]: now }, rotationIndex: 0 });
+		const tip = selectTip(state);
 		expect(tip).not.toBeNull();
-		dismissTip(tip!.id);
-		const next = getCurrentTip();
-		// next should either be null (all dismissed) or a different tip
-		if (next) {
-			expect(next.id).not.toBe(tip!.id);
-		}
+		// Should skip the first tip (on cooldown) and pick from remaining
+		expect(tip!.id).not.toBe(ALL_TIPS[0].id);
 	});
 
-	it("returns null when all tips are dismissed", () => {
-		// Dismiss all tips one by one
-		let tip = getCurrentTip();
-		while (tip) {
-			dismissTip(tip.id);
-			tip = getCurrentTip();
-		}
-		expect(getCurrentTip()).toBeNull();
+	it("returns null when snoozed", () => {
+		const state = freshState({ snoozedUntil: Date.now() + SNOOZE_MS });
+		expect(selectTip(state)).toBeNull();
 	});
 
-	it("advanceTip is a no-op when only one tip remains", () => {
-		// Dismiss all tips one by one until only one remains
-		const seen = new Set<string>();
-		let tip = getCurrentTip();
-		while (tip) {
-			seen.add(tip.id);
-			dismissTip(tip.id);
-			tip = getCurrentTip();
-		}
-		// Restore exactly one tip by removing it from dismissed list
-		const keptId = [...seen][0];
-		const dismissed = [...seen].filter((id) => id !== keptId);
-		store.set("dev3-dismissed-tips", JSON.stringify(dismissed));
-		store.delete("dev3-tip-rotation-index");
+	it("returns tip when snooze has expired", () => {
+		const state = freshState({ snoozedUntil: Date.now() - 1000 });
+		expect(selectTip(state)).not.toBeNull();
+	});
 
-		const remaining = getCurrentTip();
-		expect(remaining).not.toBeNull();
-		expect(remaining!.id).toBe(keptId);
-		advanceTip();
-		const stillRemaining = getCurrentTip();
-		expect(stillRemaining).not.toBeNull();
-		expect(remaining!.id).toBe(stillRemaining!.id);
+	it("returns null when all tips are on cooldown", () => {
+		const now = Date.now();
+		const seen: Record<string, number> = {};
+		for (const t of ALL_TIPS) seen[t.id] = now;
+		expect(selectTip(freshState({ seen }))).toBeNull();
+	});
+
+	it("shows tip again after cooldown expires", () => {
+		const expired = Date.now() - 4 * 24 * 60 * 60 * 1000; // 4 days ago
+		const seen: Record<string, number> = {};
+		for (const t of ALL_TIPS) seen[t.id] = expired;
+		const tip = selectTip(freshState({ seen }));
+		expect(tip).not.toBeNull();
+	});
+
+	it("getAvailableTipsCount returns correct count", () => {
+		expect(getAvailableTipsCount(freshState())).toBe(ALL_TIPS.length);
+		const now = Date.now();
+		expect(getAvailableTipsCount(freshState({ seen: { [ALL_TIPS[0].id]: now } }))).toBe(ALL_TIPS.length - 1);
+	});
+
+	it("rotationIndex wraps around available tips", () => {
+		const state = freshState({ rotationIndex: ALL_TIPS.length + 2 });
+		const tip = selectTip(state);
+		expect(tip).not.toBeNull();
+		expect(tip!.id).toBe(ALL_TIPS[2].id);
 	});
 });

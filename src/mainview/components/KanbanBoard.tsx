@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
-import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
@@ -21,7 +21,7 @@ import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
-import { getCurrentTip } from "../tips";
+import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -55,8 +55,38 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
-	const [tipRevision, setTipRevision] = useState(0);
-	const currentTip = useMemo(() => getCurrentTip(), [tipRevision]);
+	const [tipState, setTipState] = useState<TipState | null>(null);
+	const currentTip = useMemo(() => tipState ? selectTip(tipState) : null, [tipState]);
+
+	const reloadTipState = useCallback(() => {
+		api.request.getTipState().then(setTipState).catch(() => {});
+	}, []);
+
+	// Load tip state on mount + auto-rotate every 60s
+	useEffect(() => {
+		if (globalSettings.tipsDisabled) return;
+		reloadTipState();
+		let timer: ReturnType<typeof setTimeout>;
+		function scheduleRotation() {
+			timer = setTimeout(() => {
+				if (!tipState) {
+					scheduleRotation();
+					return;
+				}
+				api.request.updateTipState({
+					seen: currentTip ? { [currentTip.id]: Date.now() } : {},
+					rotationIndex: (tipState?.rotationIndex ?? 0) + 1,
+				}).then((state) => {
+					setTipState(state);
+					scheduleRotation();
+				}).catch(() => {
+					scheduleRotation();
+				});
+			}, ROTATION_INTERVAL_MS);
+		}
+		scheduleRotation();
+		return () => clearTimeout(timer);
+	}, [globalSettings.tipsDisabled]);
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
@@ -411,7 +441,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-scroll overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
-					const handleTipDismiss = () => setTipRevision((r) => r + 1);
+					const handleTipChanged = () => reloadTipState();
 					const commonProps = {
 						project,
 						dispatch,
@@ -444,7 +474,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 								tasks={tasksByStatus.get(slot.status) || []}
 								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
 								tip={tipColumnId === slot.status ? currentTip : undefined}
-								onTipDismiss={handleTipDismiss}
+								onTipChanged={handleTipChanged}
+								tipState={tipState ?? undefined}
 								{...commonProps}
 							/>
 						);
@@ -465,7 +496,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 							onColumnDragEnd={handleColumnDragEnd}
 							onColumnDrop={(side) => handleColumnDrop(col.id, side)}
 							tip={tipColumnId === col.id ? currentTip : undefined}
-							onTipDismiss={handleTipDismiss}
+							onTipChanged={handleTipChanged}
+								tipState={tipState ?? undefined}
 							{...commonProps}
 						/>
 					);

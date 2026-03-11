@@ -523,7 +523,12 @@ const ru: TranslationRecord & Record<string, string> = {
 	// Tips (feature discovery)
 	"tip.badge": "А вы знали?",
 	"tip.dismiss": "Больше не показывать",
+	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
+	"settings.tipsSection": "Подсказки",
+	"settings.tipsDisabled": "Отключить подсказки",
+	"settings.tipsReset": "Сбросить подсказки",
+	"settings.tipsResetDone": "Подсказки сброшены",
 	"tip.agentCreateTasks.title": "Агенты создают задачи",
 	"tip.agentCreateTasks.body": "Скажите «создай задачу в dev3 про...» в промпте — агент добавит её на доску.",
 	"tip.agentSeesTasks.title": "Агенты видят вашу доску",

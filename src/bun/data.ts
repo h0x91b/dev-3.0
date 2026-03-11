@@ -1,4 +1,4 @@
-import type { Project, Task, TaskStatus } from "../shared/types";
+import type { Project, Task, TaskStatus, TipState } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
@@ -467,5 +467,55 @@ export async function reorderTasksInColumn(
 		await rawSaveTasks(project, tasks);
 		log.info("Task reordered", { taskId, targetIndex: clampedIndex, columnTaskCount: updatedColumnTasks.length });
 		return updatedColumnTasks;
+	});
+}
+
+// ---- Tip State ----
+
+const TIP_STATE_FILE = `${DEV3_HOME}/tip-state.json`;
+
+const DEFAULT_TIP_STATE: TipState = {
+	snoozedUntil: 0,
+	seen: {},
+	rotationIndex: 0,
+};
+
+async function rawLoadTipState(): Promise<TipState> {
+	try {
+		const file = Bun.file(TIP_STATE_FILE);
+		if (!(await file.exists())) return { ...DEFAULT_TIP_STATE };
+		const data = await file.json();
+		return { ...DEFAULT_TIP_STATE, ...data };
+	} catch {
+		return { ...DEFAULT_TIP_STATE };
+	}
+}
+
+async function rawSaveTipState(state: TipState): Promise<void> {
+	await ensureDir(TIP_STATE_FILE);
+	await Bun.write(TIP_STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+export async function loadTipState(): Promise<TipState> {
+	return rawLoadTipState();
+}
+
+export async function saveTipState(patch: Partial<TipState>): Promise<TipState> {
+	return withFileLock(TIP_STATE_FILE, async () => {
+		const current = await rawLoadTipState();
+		const updated = { ...current, ...patch };
+		if (patch.seen) {
+			updated.seen = { ...current.seen, ...patch.seen };
+		}
+		await rawSaveTipState(updated);
+		return updated;
+	});
+}
+
+export async function resetTipState(): Promise<TipState> {
+	return withFileLock(TIP_STATE_FILE, async () => {
+		const fresh = { ...DEFAULT_TIP_STATE };
+		await rawSaveTipState(fresh);
+		return fresh;
 	});
 }

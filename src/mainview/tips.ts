@@ -1,4 +1,5 @@
 import type { TranslationKey } from "./i18n/translations/en";
+import type { TipState } from "../shared/types";
 
 export interface Tip {
 	id: string;
@@ -332,50 +333,35 @@ const ALL_TIPS: Tip[] = [
 	},
 ];
 
-const STORAGE_KEY = "dev3-dismissed-tips";
-const ROTATION_KEY = "dev3-tip-rotation-index";
+const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+export const SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
+export const ROTATION_INTERVAL_MS = 60 * 1000; // 1 minute
 
-function getDismissedIds(): Set<string> {
-	try {
-		const raw = localStorage.getItem(STORAGE_KEY);
-		return raw ? new Set(JSON.parse(raw)) : new Set();
-	} catch {
-		return new Set();
-	}
-}
+/** Pick the current tip based on persisted state. Pure function — no side effects. */
+export function selectTip(state: TipState): Tip | null {
+	const now = Date.now();
 
-export function dismissTip(tipId: string): void {
-	const dismissed = getDismissedIds();
-	dismissed.add(tipId);
-	localStorage.setItem(STORAGE_KEY, JSON.stringify([...dismissed]));
-}
+	if (state.snoozedUntil > now) return null;
 
-export function getCurrentTip(): Tip | null {
-	const dismissed = getDismissedIds();
-	const available = ALL_TIPS.filter((t) => !dismissed.has(t.id));
+	const available = ALL_TIPS.filter((t) => {
+		const lastSeen = state.seen[t.id];
+		if (!lastSeen) return true;
+		return now - lastSeen > COOLDOWN_MS;
+	});
+
 	if (available.length === 0) return null;
 
-	let index = 0;
-	try {
-		index = parseInt(localStorage.getItem(ROTATION_KEY) ?? "0", 10) || 0;
-	} catch {
-		// ignore
-	}
-
-	return available[index % available.length];
+	return available[state.rotationIndex % available.length];
 }
 
-export function advanceTip(): void {
-	const dismissed = getDismissedIds();
-	const available = ALL_TIPS.filter((t) => !dismissed.has(t.id));
-	if (available.length <= 1) return;
-
-	let index = 0;
-	try {
-		index = parseInt(localStorage.getItem(ROTATION_KEY) ?? "0", 10) || 0;
-	} catch {
-		// ignore
-	}
-
-	localStorage.setItem(ROTATION_KEY, String((index + 1) % available.length));
+/** Get available tips count for the given state. */
+export function getAvailableTipsCount(state: TipState): number {
+	const now = Date.now();
+	return ALL_TIPS.filter((t) => {
+		const lastSeen = state.seen[t.id];
+		if (!lastSeen) return true;
+		return now - lastSeen > COOLDOWN_MS;
+	}).length;
 }
+
+export { ALL_TIPS };

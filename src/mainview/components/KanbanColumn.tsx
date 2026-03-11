@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
@@ -48,7 +48,8 @@ interface KanbanColumnProps {
 	onColumnDrop?: (side: "before" | "after") => void;
 	// Feature discovery tip
 	tip?: Tip | null;
-	onTipDismiss?: () => void;
+	tipState?: TipState;
+	onTipChanged?: () => void;
 }
 
 function KanbanColumn({
@@ -84,7 +85,8 @@ function KanbanColumn({
 	onColumnDragEnd,
 	onColumnDrop,
 	tip,
-	onTipDismiss,
+	tipState,
+	onTipChanged,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -373,9 +375,9 @@ function KanbanColumn({
 				</div>
 
 			{/* Tip card — pinned to bottom, above the add-task button */}
-			{tip && onTipDismiss && (
+			{tip && tipState && onTipChanged && (
 				<div className="px-3 pb-3 flex-shrink-0">
-					<TipCard tip={tip} onDismiss={onTipDismiss} />
+					<TipCard tip={tip} tipState={tipState} onChanged={onTipChanged} />
 				</div>
 			)}
 

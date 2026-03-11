@@ -15,6 +15,9 @@ vi.mock("../../rpc", () => ({
 				updateChannel: "stable",
 			}),
 			reorderColumns: vi.fn().mockResolvedValue(undefined),
+			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			updateTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 		},
 	},
 }));

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -2533,6 +2533,18 @@ export const handlers = {
 		const project = await data.getProject(params.projectId);
 		await git.fetchOrigin(project.path);
 		return git.listBranches(project.path);
+	},
+
+	async getTipState(): Promise<TipState> {
+		return data.loadTipState();
+	},
+
+	async updateTipState(params: Partial<TipState>): Promise<TipState> {
+		return data.saveTipState(params);
+	},
+
+	async resetTipState(): Promise<TipState> {
+		return data.resetTipState();
 	},
 
 };

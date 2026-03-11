@@ -512,7 +512,12 @@ const es: TranslationRecord & Record<string, string> = {
 	// Tips (feature discovery)
 	"tip.badge": "¿Sabías que...?",
 	"tip.dismiss": "No mostrar este consejo",
+	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
+	"settings.tipsSection": "Consejos",
+	"settings.tipsDisabled": "Desactivar consejos de funciones",
+	"settings.tipsReset": "Restablecer consejos",
+	"settings.tipsResetDone": "Los consejos se han restablecido",
 	"tip.agentCreateTasks.title": "Los agentes crean tareas",
 	"tip.agentCreateTasks.body": "Di \"crea una tarea en dev3 sobre...\" en tu prompt y el agente la agregará al tablero.",
 	"tip.agentSeesTasks.title": "Los agentes ven tu tablero",

@@ -509,7 +509,12 @@ const en = {
 	// Tips (feature discovery)
 	"tip.badge": "Did you know?",
 	"tip.dismiss": "Don't show this tip",
+	"tip.snooze": "Hide tips for a while",
 	"tip.next": "Next tip",
+	"settings.tipsSection": "Tips",
+	"settings.tipsDisabled": "Disable feature tips",
+	"settings.tipsReset": "Reset Tips",
+	"settings.tipsResetDone": "Tips have been reset",
 	"tip.agentCreateTasks.title": "Agents can create tasks",
 	"tip.agentCreateTasks.body": "Just say \"create a task in dev3 about...\" in your prompt and the agent will add it to your board.",
 	"tip.agentSeesTasks.title": "Agents see your board",
