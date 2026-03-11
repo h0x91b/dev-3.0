@@ -96,7 +96,15 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	useEffect(() => {
 		textareaRef.current?.focus();
-	}, []);
+		// Auto-fill branch if project's main worktree is on a non-base branch
+		api.request.getProjectCurrentBranch({ projectId: project.id }).then((result) => {
+			if (!result.isBaseBranch && result.branch) {
+				setSelectedBranch(result.branch);
+			}
+		}).catch(() => {
+			// silently fail — auto-fill is optional
+		});
+	}, [project.id]);
 
 	function handleRequestClose() {
 		if (description.trim()) {

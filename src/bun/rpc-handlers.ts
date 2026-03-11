@@ -2548,6 +2548,13 @@ export const handlers = {
 		return git.listBranches(project.path);
 	},
 
+	async getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean }> {
+		const project = await data.getProject(params.projectId);
+		const branch = await git.getCurrentBranch(project.path);
+		const isBaseBranch = !branch || branch === project.defaultBaseBranch;
+		return { branch, isBaseBranch };
+	},
+
 	async getTipState(): Promise<TipState> {
 		return data.loadTipState();
 	},

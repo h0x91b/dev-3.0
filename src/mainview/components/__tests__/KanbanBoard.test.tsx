@@ -18,6 +18,7 @@ vi.mock("../../rpc", () => ({
 			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			updateTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true }),
 		},
 	},
 }));

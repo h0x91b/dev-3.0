@@ -345,6 +345,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.modalQuickDismiss.body",
 		icon: "\u{F12B7}", // nf-md-keyboard_esc
 	},
+	// Batch 13: auto-fill branch
+	{
+		id: "auto-fill-branch",
+		titleKey: "tip.autoFillBranch.title",
+		bodyKey: "tip.autoFillBranch.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
