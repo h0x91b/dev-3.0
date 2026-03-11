@@ -4,7 +4,7 @@ import { useMobile } from "./useMobile";
 import { isElectrobun } from "../rpc";
 
 const DESKTOP_VIEWPORT = "width=1280";
-const BROWSER_VIEWPORT = "width=1024";
+const BROWSER_VIEWPORT = "width=1024, user-scalable=no, maximum-scale=1";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
 /** Screens that show the terminal and need a wider viewport on mobile. */

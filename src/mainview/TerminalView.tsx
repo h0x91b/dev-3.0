@@ -53,13 +53,19 @@ const LIGHT_TERMINAL_THEME = {
 
 const TERMINAL_BASE_FONT_SIZE = 14;
 
+export interface TerminalHandle {
+	sendInput: (data: string) => void;
+	focus: () => void;
+}
+
 interface TerminalViewProps {
 	ptyUrl: string;
 	taskId: string;
 	projectId: string;
+	onReady?: (handle: TerminalHandle) => void;
 }
 
-function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -192,13 +198,8 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 
-			// Prevent mobile browser auto-zoom when the hidden textarea gains focus.
-			// ghostty-web creates a 1x1px textarea in the corner for keyboard input.
-			// Chrome auto-zooms to it on focus. Fix:
-			// 1. Stretch textarea over the canvas (not offscreen)
-			// 2. On focus, lock viewport scale to the current initial scale
-			//    (e.g. viewport=1024 on a 360px phone → scale ≈ 0.35;
-			//     setting maximum-scale=1 would allow 3x zoom — wrong!)
+			// Stretch ghostty-web's hidden textarea over the canvas.
+			// Without this it's 1x1px in the corner, causing scroll jumps on focus.
 			const hiddenTextarea = containerRef.current.querySelector("textarea");
 			if (hiddenTextarea) {
 				hiddenTextarea.style.fontSize = "16px";
@@ -209,35 +210,6 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 				hiddenTextarea.style.pointerEvents = "none";
 				hiddenTextarea.style.caretColor = "transparent";
 				hiddenTextarea.style.zIndex = "-1";
-
-				// Lock viewport scale on focus to prevent auto-zoom.
-				// The initial scale = screen.width / viewport-width. We must use
-				// that exact value as maximum-scale, not "1" (which is zoomed in).
-				const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
-				if (viewportMeta) {
-					function getInitialScale(): string {
-						const viewportWidth = window.innerWidth;
-						// visualViewport.scale tells us the current zoom level
-						const currentScale = window.visualViewport?.scale ?? 1;
-						// screen.width / (innerWidth * currentScale) gives us the
-						// ratio the browser uses to fit the viewport on screen
-						const fitScale = screen.width / (viewportWidth * currentScale);
-						return fitScale.toFixed(4);
-					}
-
-					hiddenTextarea.addEventListener("focus", () => {
-						const scale = getInitialScale();
-						const base = viewportMeta.content
-							.replace(/,?\s*maximum-scale=[^,]*/g, "")
-							.replace(/,?\s*minimum-scale=[^,]*/g, "");
-						viewportMeta.content = `${base}, minimum-scale=${scale}, maximum-scale=${scale}`;
-					});
-					hiddenTextarea.addEventListener("blur", () => {
-						viewportMeta.content = viewportMeta.content
-							.replace(/,?\s*maximum-scale=[^,]*/g, "")
-							.replace(/,?\s*minimum-scale=[^,]*/g, "");
-					});
-				}
 			}
 
 			// Translate touch events to mouse events for mobile terminal interaction.
@@ -312,6 +284,16 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 									return true;
 								}
 								return false;
+							});
+
+							// Expose terminal handle for external input (e.g. ExtraKeyBar)
+							onReady?.({
+								sendInput: (data: string) => {
+									if (wsRef.current?.readyState === WebSocket.OPEN) {
+										wsRef.current.send(data);
+									}
+								},
+								focus: () => { try { term.focus(); } catch { /* disposed */ } },
 							});
 
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");

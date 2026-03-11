@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			checkWorktreeExists: vi.fn(),
 		},
 	},
+	isElectrobun: false,
 }));
 
 vi.mock("../../analytics", () => ({
