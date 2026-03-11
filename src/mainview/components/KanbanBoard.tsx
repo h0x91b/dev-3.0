@@ -491,7 +491,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 			/>
-			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-scroll overflow-y-hidden kanban-scroll">
+			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
 					const handleTipChanged = () => reloadTipState();
 					const commonProps = {

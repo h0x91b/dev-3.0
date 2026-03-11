@@ -442,12 +442,50 @@ describe("KanbanColumn — collapsed state", () => {
 		expect(badge?.textContent).toBe("1");
 	});
 
-	it("click triggers onCollapseToggle callback", async () => {
+	it("pin button triggers onCollapseToggle callback", async () => {
 		const onCollapseToggle = vi.fn();
 		renderCollapsedColumn({ onCollapseToggle });
-		const collapsed = document.querySelector("[data-collapsed-column]") as HTMLElement;
-		await userEvent.click(collapsed);
+		const pinBtn = document.querySelector("[data-collapsed-column] button[aria-label='Pin column open']") as HTMLElement;
+		expect(pinBtn).not.toBeNull();
+		await userEvent.click(pinBtn);
 		expect(onCollapseToggle).toHaveBeenCalledTimes(1);
+	});
+
+	it("collapsed Todo column renders a new task button", async () => {
+		const onAddTask = vi.fn();
+		render(
+			<I18nProvider>
+				<KanbanColumn
+					status="todo"
+					label="To Do"
+					tasks={[]}
+					project={project}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					onAddTask={onAddTask}
+					agents={[]}
+					onLaunchVariants={vi.fn()}
+					onTaskDrop={vi.fn()}
+					onReorderTask={vi.fn()}
+					dragFromStatus={null}
+					dragFromCustomColumnId={null}
+					onDragStart={vi.fn()}
+					onTaskMoved={vi.fn()}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					draggedTaskId={null}
+					movingTaskIds={new Set()}
+					onSetMoving={vi.fn()}
+					siblingMap={new Map()}
+					collapsed={true}
+					onCollapseToggle={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		const addBtn = document.querySelector("[data-collapsed-column] button[aria-label='+ New Task']") as HTMLElement;
+		expect(addBtn).not.toBeNull();
+		await userEvent.click(addBtn);
+		expect(onAddTask).toHaveBeenCalledTimes(1);
 	});
 
 	it("collapsed column still has drag-and-drop handlers", () => {

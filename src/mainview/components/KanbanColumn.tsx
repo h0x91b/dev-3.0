@@ -322,6 +322,20 @@ function KanbanColumn({
 						{label}
 					</span>
 				</div>
+
+				{/* New Task button (Todo column only) */}
+				{!isCustomColumn && status === "todo" && (
+					<div className="flex justify-center pb-3">
+						<button
+							onClick={(e) => { e.stopPropagation(); onAddTask(); }}
+							className="text-fg-3 hover:text-accent transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 text-base leading-none"
+							aria-label={t("kanban.newTask")}
+							title={t("kanban.newTask")}
+						>
+							+
+						</button>
+					</div>
+				)}
 			</div>
 			</>
 		);
