@@ -14,6 +14,7 @@ import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
+import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
@@ -40,6 +41,9 @@ function App() {
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
 	const [reqResults, setReqResults] = useState<RequirementCheckResult[]>([]);
 	const [reqChecking, setReqChecking] = useState(false);
+
+	// GitHub CLI availability warning
+	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
 
 	const checkRequirements = useCallback(async () => {
 		setReqChecking(true);
@@ -127,6 +131,21 @@ function App() {
 		}
 		api.request.quitApp().catch(() => {});
 	}
+
+	// Check gh availability after requirements pass (non-blocking)
+	useEffect(() => {
+		if (reqStatus !== "passed") return;
+		if (isGhWarningDismissed()) return;
+		api.request.checkGhAvailable()
+			.then(({ available, notInstalled }) => {
+				if (!available) {
+					setGhWarning({ notInstalled });
+				}
+			})
+			.catch(() => {
+				// Ignore — don't block the app if this check fails
+			});
+	}, [reqStatus]);
 
 	// Load projects on mount — gated on requirements passing
 	useEffect(() => {
@@ -384,6 +403,12 @@ function App() {
 				updateVersion={updateVersion}
 				updateDownloadStatus={updateDownloadStatus}
 			/>
+			{ghWarning && (
+				<GhWarningBanner
+					notInstalled={ghWarning.notInstalled}
+					onDismiss={() => setGhWarning(null)}
+				/>
+			)}
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
 			{showQuitDialog && (
 				<div

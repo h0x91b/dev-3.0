@@ -2159,6 +2159,19 @@ export const handlers = {
 		return results;
 	},
 
+	async checkGhAvailable(): Promise<{ available: boolean; notInstalled: boolean }> {
+		log.info("-> checkGhAvailable");
+		const whichResult = spawnSync(["which", "gh"]);
+		if (whichResult.exitCode !== 0) {
+			log.info("<- checkGhAvailable: gh not installed");
+			return { available: false, notInstalled: true };
+		}
+		const authResult = spawnSync(["gh", "auth", "status"]);
+		const available = authResult.exitCode === 0;
+		log.info("<- checkGhAvailable", { available });
+		return { available, notInstalled: false };
+	},
+
 	async setCustomBinaryPath(params: { requirementId: string; path: string }): Promise<void> {
 		log.info("-> setCustomBinaryPath", params);
 		const settings = await loadSettings();

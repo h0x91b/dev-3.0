@@ -41,6 +41,14 @@ const common = {
 	"openIn.menuTitle": "Abrir en...",
 	"openIn.noAppsFound": "No se encontraron aplicaciones externas",
 	"openIn.failedOpen": "Error al abrir en {app}: {error}",
+
+	// GitHub CLI warning banner
+	"ghWarning.titleNotInstalled": "GitHub CLI (gh) no está instalado",
+	"ghWarning.titleNotAuthenticated": "GitHub CLI (gh) no está autenticado",
+	"ghWarning.messageNotInstalled": "Algunas funciones no estarán disponibles: detección automática de PR, promoción de tareas a \"Revisión PR\" y detección de fusiones vía GitHub. Instala gh y ejecuta `gh auth login`.",
+	"ghWarning.messageNotAuthenticated": "Algunas funciones no estarán disponibles sin autenticación: detección automática de PR, promoción de tareas a \"Revisión PR\" y detección de fusiones vía GitHub. Ejecuta `gh auth login`.",
+	"ghWarning.dismiss": "Entendido",
+	"ghWarning.dontShowAgain": "No mostrar de nuevo",
 };
 
 export default common;
