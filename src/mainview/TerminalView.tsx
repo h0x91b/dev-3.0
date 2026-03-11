@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
-import { api } from "./rpc";
+import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
@@ -210,6 +210,21 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				hiddenTextarea.style.pointerEvents = "none";
 				hiddenTextarea.style.caretColor = "transparent";
 				hiddenTextarea.style.zIndex = "-1";
+
+				// In browser mode, keep the textarea focused to prevent
+				// the mobile keyboard from dismissing. Re-focus on blur
+				// unless another input element actually needs focus.
+				if (!isElectrobun) {
+					hiddenTextarea.addEventListener("blur", () => {
+						if (disposed) return;
+						const active = document.activeElement;
+						if (!active || active === document.body) {
+							setTimeout(() => {
+								if (!disposed) hiddenTextarea.focus();
+							}, 50);
+						}
+					});
+				}
 			}
 
 			// Translate touch events to mouse events for mobile terminal interaction.
@@ -232,6 +247,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				canvas.addEventListener("touchstart", (e) => {
 					if (e.touches.length === 1) {
 						touchToMouse("mousedown", e.touches[0]);
+						// Focus textarea on tap — user gesture opens mobile keyboard
+						if (!isElectrobun && hiddenTextarea) {
+							hiddenTextarea.focus();
+						}
 					}
 				}, { passive: true });
 
