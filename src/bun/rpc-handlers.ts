@@ -1149,14 +1149,18 @@ export const handlers = {
 
 			// Create a viewer pane in the task session that nests the dev server session.
 			// TMUX= bypasses the nesting guard so attach works from inside another session.
+			// Must include -L <socket> so the attach targets the same tmux server.
 			const taskSession = `dev3-${task.id.slice(0, 8)}`;
+			const attachCmd = socket
+				? `TMUX= tmux -L "${socket}" attach-session -t "${devSession}"`
+				: `TMUX= tmux attach-session -t "${devSession}"`;
 			const viewerProc = spawn(pty.tmuxArgs(socket,
 				"split-window", "-h",
 				"-t", taskSession,
 				"-c", task.worktreePath,
 				"-l", "50%",
 				"-P", "-F", "#{pane_id}",
-				`TMUX= tmux attach-session -t "${devSession}"`,
+				attachCmd,
 			), { stdout: "pipe", stderr: "pipe" });
 			const viewerOut = await new Response(viewerProc.stdout).text();
 			await viewerProc.exited;
