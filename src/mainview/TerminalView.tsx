@@ -199,6 +199,42 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 				hiddenTextarea.style.fontSize = "16px";
 			}
 
+			// Translate touch events to mouse events for mobile terminal interaction.
+			// ghostty-web only listens for mousedown/mousemove/mouseup on the canvas,
+			// so touch events (taps) don't trigger mouse reporting to tmux/vim/etc.
+			const canvas = containerRef.current.querySelector("canvas");
+			if (canvas) {
+				function touchToMouse(type: string, touch: Touch) {
+					const mouseEvent = new MouseEvent(type, {
+						clientX: touch.clientX,
+						clientY: touch.clientY,
+						button: 0,
+						buttons: 1,
+						bubbles: true,
+						cancelable: true,
+					});
+					canvas!.dispatchEvent(mouseEvent);
+				}
+
+				canvas.addEventListener("touchstart", (e) => {
+					if (e.touches.length === 1) {
+						touchToMouse("mousedown", e.touches[0]);
+					}
+				}, { passive: true });
+
+				canvas.addEventListener("touchend", (e) => {
+					if (e.changedTouches.length === 1) {
+						touchToMouse("mouseup", e.changedTouches[0]);
+					}
+				}, { passive: true });
+
+				canvas.addEventListener("touchmove", (e) => {
+					if (e.touches.length === 1) {
+						touchToMouse("mousemove", e.touches[0]);
+					}
+				}, { passive: true });
+			}
+
 			// Use ResizeObserver to detect when the container gets its final
 			// flex-computed dimensions. Unlike requestAnimationFrame heuristics,
 			// this fires exactly when layout is done — no timing guesses.
