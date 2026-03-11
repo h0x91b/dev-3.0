@@ -119,20 +119,10 @@ function DevServerMenu({ position, onRestart, onStop, onClose, t }: DevServerMen
 				onClick={onStop}
 				className="w-full text-left px-3 py-2 text-sm text-danger hover:bg-elevated-hover flex items-center gap-2.5 transition-colors"
 			>
-				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-						d="M6 18L18 6M6 6l12 12" />
+				<svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+					<rect x="5" y="5" width="14" height="14" rx="2" />
 				</svg>
 				{t("header.devServerStop")}
-			</button>
-			<button
-				onClick={onClose}
-				className="w-full text-left px-3 py-2 text-sm text-fg-muted hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-			>
-				<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-				</svg>
-				{t("header.devServerCancel")}
 			</button>
 		</div>
 	);

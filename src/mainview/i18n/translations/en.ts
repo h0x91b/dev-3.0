@@ -29,7 +29,6 @@ const en = {
 	"header.devServerRunning": "Dev server is already running",
 	"header.devServerRestart": "Restart",
 	"header.devServerStop": "Stop",
-	"header.devServerCancel": "Cancel",
 	"header.fileBrowser": "Files",
 	"fileBrowser.notInstalledTitle": "yazi is not installed",
 	"fileBrowser.notInstalledDesc": "The file browser requires yazi. Run the command below to install it:",

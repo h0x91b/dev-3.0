@@ -31,7 +31,6 @@ const es: TranslationRecord & Record<string, string> = {
 	"header.devServerRunning": "El servidor de desarrollo ya está en ejecución",
 	"header.devServerRestart": "Reiniciar",
 	"header.devServerStop": "Detener",
-	"header.devServerCancel": "Cancelar",
 	"header.fileBrowser": "Archivos",
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
 	"fileBrowser.notInstalledDesc": "El explorador de archivos requiere yazi. Ejecuta el comando para instalarlo:",

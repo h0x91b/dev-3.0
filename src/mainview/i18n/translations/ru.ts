@@ -33,7 +33,6 @@ const ru: TranslationRecord & Record<string, string> = {
 	"header.devServerRunning": "Dev-сервер уже запущен",
 	"header.devServerRestart": "Перезапустить",
 	"header.devServerStop": "Остановить",
-	"header.devServerCancel": "Отмена",
 	"header.fileBrowser": "Файлы",
 	"fileBrowser.notInstalledTitle": "yazi не установлен",
 	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Выполните команду для установки:",
