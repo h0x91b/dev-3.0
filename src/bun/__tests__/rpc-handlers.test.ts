@@ -1569,7 +1569,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, isDraft: false }]), stderr: "" });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42 }]), stderr: "" });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(42);
@@ -1626,7 +1626,7 @@ describe("handlers.getBranchStatus", () => {
 		expect(result.prNumber).toBeNull();
 	});
 
-	it("returns prNumber=null for draft PRs", async () => {
+	it("returns prNumber for draft PRs (drafts are included)", async () => {
 		const project = makeProject();
 		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -1637,10 +1637,10 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 10, isDraft: true }]), stderr: "" });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 10 }]), stderr: "" });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result.prNumber).toBeNull();
+		expect(result.prNumber).toBe(10);
 	});
 });
 
