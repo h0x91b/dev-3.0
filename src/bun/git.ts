@@ -104,9 +104,36 @@ export async function getDefaultBranch(path: string): Promise<string> {
 		["git", "rev-parse", "--verify", "main"],
 		path,
 	);
-	const branch = mainCheck.ok ? "main" : "master";
-	log.info(`Default branch (local fallback): ${branch}`, { path });
-	return branch;
+	if (mainCheck.ok) {
+		log.info("Default branch (local fallback): main", { path });
+		return "main";
+	}
+
+	const masterCheck = await run(
+		["git", "rev-parse", "--verify", "master"],
+		path,
+	);
+	if (masterCheck.ok) {
+		log.info("Default branch (local fallback): master", { path });
+		return "master";
+	}
+
+	// Strategy 5: use whatever local branch exists
+	const localBranches = await run(
+		["git", "branch", "--format=%(refname:short)"],
+		path,
+	);
+	if (localBranches.ok && localBranches.stdout.trim()) {
+		const first = localBranches.stdout.trim().split("\n")[0].trim();
+		if (first) {
+			log.info(`Default branch (first local branch): ${first}`, { path });
+			return first;
+		}
+	}
+
+	// No branches at all (empty repo with no commits)
+	log.warn("No branches found in repository", { path });
+	throw new Error("No branches found in repository. Make at least one commit before adding the project.");
 }
 
 export function shortId(taskId: string): string {
@@ -243,6 +270,18 @@ export async function createWorktree(
 		? await run(["git", "rev-parse", "--verify", remoteBase], project.path)
 		: { ok: false };
 	const resolvedBase = refCheckResult.ok ? remoteBase : baseBranch;
+
+	// Verify the resolved base actually exists before attempting worktree creation
+	if (!refCheckResult.ok) {
+		const localCheck = await run(["git", "rev-parse", "--verify", baseBranch], project.path);
+		if (!localCheck.ok) {
+			log.error("Base branch does not exist", { baseBranch, taskId: task.id });
+			throw new Error(
+				`Branch "${baseBranch}" does not exist locally or on the remote. ` +
+				`Check your project's base branch setting, or make sure the branch exists.`,
+			);
+		}
+	}
 
 	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 

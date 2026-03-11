@@ -100,6 +100,8 @@ import {
 	_resetFetchState,
 	saveDiffSnapshot,
 	taskDir,
+	getDefaultBranch,
+	isGitRepo,
 } from "../git";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -1409,5 +1411,279 @@ describe("saveDiffSnapshot", () => {
 		const diffsDir = join(taskDir(project, task), "diffs");
 		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
 		expect(files).toHaveLength(0);
+	});
+});
+
+// ─── Helper: create a local-only repo (no remote) ──────────────────────────
+
+interface LocalOnlyRepo {
+	dir: string;
+	local: string;
+}
+
+function createLocalOnlyRepo(branchName = "main"): LocalOnlyRepo {
+	const dir = mkdtempSync(join(tmpdir(), "dev3-local-only-"));
+	const local = join(dir, "repo");
+	g(`git init "${local}"`, dir);
+	g("git config user.email test@test.com", local);
+	g("git config user.name Test", local);
+	writeFileSync(join(local, "file.txt"), "hello\n");
+	g("git add file.txt", local);
+	g('git commit -m "initial"', local);
+	if (branchName !== "master") {
+		// git init may create "master" or "main" depending on config
+		// force the branch name we want
+		g(`git branch -M ${branchName}`, local);
+	}
+	return { dir, local };
+}
+
+function createEmptyRepo(): LocalOnlyRepo {
+	const dir = mkdtempSync(join(tmpdir(), "dev3-empty-"));
+	const local = join(dir, "repo");
+	g(`git init "${local}"`, dir);
+	g("git config user.email test@test.com", local);
+	g("git config user.name Test", local);
+	return { dir, local };
+}
+
+function cleanupLocal(r: LocalOnlyRepo): void {
+	rmSync(r.dir, { recursive: true, force: true });
+}
+
+// ─── isGitRepo ──────────────────────────────────────────────────────────────
+
+describe("isGitRepo", () => {
+	it("returns true for a valid git repository", async () => {
+		const r = createLocalOnlyRepo();
+		try {
+			expect(await isGitRepo(r.local)).toBe(true);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("returns false for a non-git directory", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-not-git-"));
+		try {
+			expect(await isGitRepo(dir)).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+// ─── getDefaultBranch ───────────────────────────────────────────────────────
+
+describe("getDefaultBranch", () => {
+	it("detects 'main' from origin/HEAD in a cloned repo", async () => {
+		const repo = createTestRepo(); // has origin with main
+		try {
+			const branch = await getDefaultBranch(repo.local);
+			expect(branch).toBe("main");
+		} finally {
+			cleanup(repo);
+		}
+	});
+
+	it("detects 'master' from origin remote branches", async () => {
+		// Create a repo with origin whose default branch is master
+		const dir = mkdtempSync(join(tmpdir(), "dev3-master-origin-"));
+		const origin = join(dir, "origin.git");
+		const local = join(dir, "local");
+		g(`git init --bare "${origin}"`, dir);
+		g(`git clone "${origin}" "${local}"`, dir);
+		g("git config user.email test@test.com", local);
+		g("git config user.name Test", local);
+		writeFileSync(join(local, "file.txt"), "test");
+		g("git add file.txt", local);
+		g('git commit -m "initial"', local);
+		g("git branch -M master", local);
+		g("git push -u origin master", local);
+		// Remove origin/HEAD so strategy 1 fails, forcing fallback to strategy 3
+		g("git remote set-head origin -d", local);
+
+		try {
+			const branch = await getDefaultBranch(local);
+			expect(branch).toBe("master");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("falls back to local 'main' when no remote exists", async () => {
+		const r = createLocalOnlyRepo("main");
+		try {
+			const branch = await getDefaultBranch(r.local);
+			expect(branch).toBe("main");
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("falls back to local 'master' when no remote exists and branch is master", async () => {
+		const r = createLocalOnlyRepo();
+		// Force rename to master
+		g("git branch -M master", r.local);
+		try {
+			const branch = await getDefaultBranch(r.local);
+			expect(branch).toBe("master");
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("falls back to first local branch when neither main nor master exists", async () => {
+		const r = createLocalOnlyRepo();
+		g("git branch -M develop", r.local);
+		try {
+			const branch = await getDefaultBranch(r.local);
+			expect(branch).toBe("develop");
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("throws when repo has no commits (no branches at all)", async () => {
+		const r = createEmptyRepo();
+		try {
+			await expect(getDefaultBranch(r.local)).rejects.toThrow(
+				"No branches found in repository",
+			);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+});
+
+// ─── createWorktree edge cases (no remote, wrong baseBranch) ────────────────
+
+describe("createWorktree edge cases", () => {
+	function makeProject(path: string, defaultBaseBranch = "main"): Project {
+		return {
+			id: "proj-1",
+			name: "Test",
+			path,
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+			defaultBaseBranch,
+			createdAt: new Date().toISOString(),
+		};
+	}
+
+	function makeTask(overrides: Partial<Task> = {}): Task {
+		return {
+			id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+			seq: 1,
+			projectId: "proj-1",
+			title: "Test task",
+			description: "",
+			status: "in-progress",
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+			groupId: null,
+			variantIndex: null,
+			agentId: null,
+			configId: null,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			...overrides,
+		};
+	}
+
+	beforeEach(() => {
+		_resetFetchState();
+	});
+
+	it("succeeds with local-only repo (no remote) when base branch exists", async () => {
+		const r = createLocalOnlyRepo("main");
+		try {
+			const project = makeProject(r.local);
+			const task = makeTask({ id: "eeeeeeee-ffff-0000-1111-222222222222" });
+
+			const result = await createWorktree(project, task);
+			expect(existsSync(result.worktreePath)).toBe(true);
+			expect(result.branchName).toBe("dev3/task-eeeeeeee");
+
+			// Cleanup
+			g(`git worktree remove --force "${result.worktreePath}"`, r.local);
+			g("git branch -D dev3/task-eeeeeeee", r.local);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("succeeds with local-only repo when branch is master", async () => {
+		const r = createLocalOnlyRepo();
+		g("git branch -M master", r.local);
+		try {
+			const project = makeProject(r.local, "master");
+			const task = makeTask({ id: "ffffffff-0000-1111-2222-333333333333", baseBranch: "master" });
+
+			const result = await createWorktree(project, task);
+			expect(existsSync(result.worktreePath)).toBe(true);
+			expect(result.branchName).toBe("dev3/task-ffffffff");
+
+			// Cleanup
+			g(`git worktree remove --force "${result.worktreePath}"`, r.local);
+			g("git branch -D dev3/task-ffffffff", r.local);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("throws descriptive error when base branch does not exist (the #213 bug)", async () => {
+		const r = createLocalOnlyRepo("develop");
+		try {
+			// Project thinks default branch is "master" but repo only has "develop"
+			const project = makeProject(r.local, "master");
+			const task = makeTask({
+				id: "11111111-2222-3333-4444-555555555555",
+				baseBranch: "master",
+			});
+
+			await expect(createWorktree(project, task)).rejects.toThrow(
+				'Branch "master" does not exist',
+			);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("throws descriptive error when base branch is 'main' but repo uses 'master' without remote", async () => {
+		const r = createLocalOnlyRepo();
+		g("git branch -M master", r.local);
+		try {
+			// defaultBaseBranch is "main" (wrong) but repo only has "master"
+			const project = makeProject(r.local, "main");
+			const task = makeTask({
+				id: "22222222-3333-4444-5555-666666666666",
+				baseBranch: "main",
+			});
+
+			await expect(createWorktree(project, task)).rejects.toThrow(
+				'Branch "main" does not exist',
+			);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("throws when repo has no commits at all", async () => {
+		const r = createEmptyRepo();
+		try {
+			const project = makeProject(r.local);
+			const task = makeTask({
+				id: "33333333-4444-5555-6666-777777777777",
+			});
+
+			await expect(createWorktree(project, task)).rejects.toThrow(
+				'Branch "main" does not exist',
+			);
+		} finally {
+			cleanupLocal(r);
+		}
 	});
 });
