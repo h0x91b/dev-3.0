@@ -1083,9 +1083,11 @@ describe("handlers.moveTask", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 		vi.mocked(existsSync).mockReturnValue(true);
-		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) });
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
 		await handlers.moveTask({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+		// killDevServerSession is fire-and-forget; drain microtask queue so it completes
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
@@ -1100,9 +1102,11 @@ describe("handlers.moveTask", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 		vi.mocked(existsSync).mockReturnValue(true);
-		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) });
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
 		await handlers.moveTask({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled" });
+		// killDevServerSession is fire-and-forget; drain microtask queue so it completes
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
@@ -2491,11 +2495,9 @@ describe("handlers.runDevServer", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		mockSpawn.mockReturnValue({
-			stdout: new Response("%12"),
-			stderr: new Response(""),
-			exited: Promise.resolve(0),
-		});
+		// Use plain strings — new Response(new Response(...)) loses body in Bun test env
+		// and would leave a stale entry in devViewerPaneIds affecting subsequent tests
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
 		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
 
@@ -2515,14 +2517,71 @@ describe("handlers.runDevServer", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		mockSpawn
-			.mockReturnValueOnce({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
-			.mockReturnValue({ stdout: new Response("%12"), stderr: new Response(""), exited: Promise.resolve(0) }); // rest succeed
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }); // rest succeed
 
 		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
 
 		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
 		expect(calls.some((a) => a.includes("new-session") && a.includes("-d"))).toBe(true);
+	});
+
+	it("kills viewer pane (from map) before dev session on restart to prevent trap race", async () => {
+		// First runDevServer: records viewer pane ID "%42" in the map
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// Use plain string for split-window stdout — new Response(new Response(...)) loses body in Bun test env
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }) // has-session → not running
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // new-session ok
+			.mockReturnValueOnce({ stdout: "%42\n", stderr: new Response(""), exited: Promise.resolve(0) }) // split-window → pane ID
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		vi.clearAllMocks();
+
+		// Second call (restart): has-session=running → kill-pane %42, then kill-session, then new-session
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		const killPaneIdx = calls.findIndex((a) => a.includes("kill-pane") && a.includes("%42"));
+		const killSessionIdx = calls.findIndex((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"));
+		expect(killPaneIdx).toBeGreaterThanOrEqual(0);
+		expect(killSessionIdx).toBeGreaterThanOrEqual(0);
+		expect(killPaneIdx).toBeLessThan(killSessionIdx);
+	});
+
+	it("kills viewer pane via list-panes fallback when map is empty (after app restart)", async () => {
+		// Simulate app restart: map is empty, but the task session has a pane running attach-session
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// has-session → running; list-panes returns a pane running attach-session for dev3-dev-abcd1234
+		// Use plain strings — new Response(new Response(...)) loses body in Bun test env
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
+			.mockReturnValueOnce({ stdout: "%99 TMUX= tmux attach-session -t dev3-dev-abcd1234\n", stderr: new Response(""), exited: Promise.resolve(0) }) // list-panes fallback
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		const killPaneIdx = calls.findIndex((a) => a.includes("kill-pane") && a.includes("%99"));
+		const killSessionIdx = calls.findIndex((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"));
+		expect(killPaneIdx).toBeGreaterThanOrEqual(0);
+		expect(killSessionIdx).toBeGreaterThanOrEqual(0);
+		expect(killPaneIdx).toBeLessThan(killSessionIdx);
 	});
 
 
