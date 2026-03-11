@@ -121,58 +121,22 @@ const HOMEBREW_FALLBACK_PATHS = [
 // Will be set by index.ts after window creation
 let pushMessage: ((name: string, payload: any) => void) | null = null;
 
-// Track dev server tmux pane IDs per task
-const devPaneIds = new Map<string, string>();
-
-async function isDevServerRunning(taskId: string, socket: string | null, tmuxSession: string): Promise<boolean> {
-	const devScriptPath = `/tmp/dev3-${taskId}-dev.sh`;
-	const existingPane = devPaneIds.get(taskId);
-	if (existingPane) {
-		// Verify the pane still exists in tmux
-		const check = spawn(pty.tmuxArgs(socket, "list-panes", "-t", existingPane, "-F", "#{pane_id}"),
-			{ stdout: "pipe", stderr: "pipe" });
-		const out = await new Response(check.stdout).text();
-		await check.exited;
-		if (out.trim()) return true;
-		devPaneIds.delete(taskId);
-	}
-	// Fallback: scan tmux for the dev script pane
-	const listProc = spawn(pty.tmuxArgs(socket,
-		"list-panes", "-t", tmuxSession,
-		"-F", "#{pane_id} #{pane_start_command}",
-	), { stdout: "pipe", stderr: "pipe" });
-	const listOutput = await new Response(listProc.stdout).text();
-	await listProc.exited;
-	for (const line of listOutput.trim().split("\n")) {
-		if (line.includes(devScriptPath)) return true;
-	}
-	return false;
+function devServerSessionName(taskId: string): string {
+	return `dev3-dev-${taskId.slice(0, 8)}`;
 }
 
-async function killExistingDevPane(taskId: string, socket: string | null, tmuxSession: string): Promise<void> {
-	const devScriptPath = `/tmp/dev3-${taskId}-dev.sh`;
-	const existingPane = devPaneIds.get(taskId);
-	if (existingPane) {
-		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
-		await kill.exited;
-		devPaneIds.delete(taskId);
-		log.info("Killed existing dev pane (from map)", { taskId: taskId.slice(0, 8), paneId: existingPane });
-	} else {
-		const listProc = spawn(pty.tmuxArgs(socket,
-			"list-panes", "-t", tmuxSession,
-			"-F", "#{pane_id} #{pane_start_command}",
-		), { stdout: "pipe", stderr: "pipe" });
-		const listOutput = await new Response(listProc.stdout).text();
-		await listProc.exited;
-		for (const line of listOutput.trim().split("\n")) {
-			if (line.includes(devScriptPath)) {
-				const paneId = line.split(" ")[0];
-				const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
-				await kill.exited;
-				log.info("Killed existing dev pane (from tmux scan)", { taskId: taskId.slice(0, 8), paneId });
-			}
-		}
-	}
+async function isDevServerRunning(taskId: string, socket: string | null): Promise<boolean> {
+	const devSession = devServerSessionName(taskId);
+	const check = spawn(pty.tmuxArgs(socket, "has-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+	const exitCode = await check.exited;
+	return exitCode === 0;
+}
+
+async function killDevServerSession(taskId: string, socket: string | null): Promise<void> {
+	const devSession = devServerSessionName(taskId);
+	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+	await kill.exited;
+	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
 }
 // Track file browser (yazi) tmux pane IDs per task
 const fileBrowserPaneIds = new Map<string, string>();
@@ -366,7 +330,6 @@ export function clearMergeNotification(taskId: string): void {
 
 /** Clean up all in-memory tracking state for a task (pane IDs, merge flags). */
 function cleanupTaskState(taskId: string): void {
-	devPaneIds.delete(taskId);
 	fileBrowserPaneIds.delete(taskId);
 	gitOpPaneIds.delete(taskId);
 	mergeNotifiedTasks.delete(taskId);
@@ -1144,13 +1107,14 @@ export const handlers = {
 			if (!project.devScript.trim()) throw new Error("No dev script configured");
 			if (!task.worktreePath) throw new Error("Task has no worktree");
 
-			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+			const devSession = devServerSessionName(task.id);
 			const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
 			const socket = task.tmuxSocket ?? null;
 
-			// Kill existing dev pane for this task if it's still alive
-			// Check both in-memory map and tmux directly (map lost on restart)
-			await killExistingDevPane(task.id, socket, tmuxSession);
+			// Kill existing dev server session if still alive
+			if (await isDevServerRunning(task.id, socket)) {
+				await killDevServerSession(task.id, socket);
+			}
 
 			const wrappedScript = [
 				`#!/bin/bash`,
@@ -1166,16 +1130,12 @@ export const handlers = {
 			].join("\n") + "\n";
 			await Bun.write(devScriptPath, wrappedScript);
 
-			// Create pane and capture its ID with -P -F
 			const proc = spawn(pty.tmuxArgs(socket,
-				"split-window", "-h",
-				"-t", tmuxSession,
+				"new-session", "-d",
+				"-s", devSession,
 				"-c", task.worktreePath,
-				"-l", "30%",
-				"-P", "-F", "#{pane_id}",
 				`bash "${devScriptPath}"`,
 			), { stdout: "pipe", stderr: "pipe" });
-			const output = await new Response(proc.stdout).text();
 			const stderrOutput = await new Response(proc.stderr).text();
 			const exitCode = await proc.exited;
 
@@ -1184,16 +1144,10 @@ export const handlers = {
 			}
 			if (exitCode !== 0) {
 				log.error("runDevServer tmux exited with non-zero code", { taskId: task.id.slice(0, 8), exitCode, stderr: stderrOutput.trim() });
-				throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+				throw new Error(`tmux new-session failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
 			}
 
-			const paneId = output.trim();
-			if (paneId) {
-				devPaneIds.set(task.id, paneId);
-				log.info("← runDevServer done", { paneId });
-			} else {
-				log.info("← runDevServer done (no pane id captured)");
-			}
+			log.info("← runDevServer done", { devSession });
 		} catch (err) {
 			log.error("runDevServer FAILED", {
 				taskId: params.taskId.slice(0, 8),
@@ -1209,9 +1163,8 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
-			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 			const socket = task.tmuxSocket ?? null;
-			const running = await isDevServerRunning(task.id, socket, tmuxSession);
+			const running = await isDevServerRunning(task.id, socket);
 			log.info("← checkDevServer", { running });
 			return { running };
 		} catch {
@@ -1224,9 +1177,8 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
-			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 			const socket = task.tmuxSocket ?? null;
-			await killExistingDevPane(task.id, socket, tmuxSession);
+			await killDevServerSession(task.id, socket);
 			log.info("← stopDevServer done");
 		} catch (err) {
 			log.error("stopDevServer FAILED", {
