@@ -568,6 +568,14 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
+			checkDevServer: {
+				params: { taskId: string; projectId: string };
+				response: { running: boolean };
+			};
+			stopDevServer: {
+				params: { taskId: string; projectId: string };
+				response: void;
+			};
 			openFileBrowser: {
 				params: { taskId: string; projectId: string };
 				response: { notInstalled: true; installCommand: string; linuxHint?: boolean } | void;

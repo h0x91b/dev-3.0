@@ -124,8 +124,58 @@ const HOMEBREW_FALLBACK_PATHS = [
 // Will be set by index.ts after window creation
 let pushMessage: ((name: string, payload: any) => void) | null = null;
 
-// Track dev server tmux pane IDs per task
-const devPaneIds = new Map<string, string>();
+function devServerSessionName(taskId: string): string {
+	return `dev3-dev-${taskId.slice(0, 8)}`;
+}
+
+async function isDevServerRunning(taskId: string, socket: string): Promise<boolean> {
+	const devSession = devServerSessionName(taskId);
+	const check = spawn(pty.tmuxArgs(socket, "has-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+	const exitCode = await check.exited;
+	return exitCode === 0;
+}
+
+// Track viewer pane IDs for dev server sessions (task ID → tmux pane ID).
+// Used to kill the viewer pane before the dev session so the trap EXIT in the
+// viewer pane shell cannot fire after the new session is already running (restart race).
+const devViewerPaneIds = new Map<string, string>();
+
+async function killDevServerViewerPane(taskId: string, taskSession: string, devSession: string, socket: string): Promise<void> {
+	// First try in-memory map (fast, always available unless app restarted)
+	let viewerPaneId = devViewerPaneIds.get(taskId);
+	if (!viewerPaneId) {
+		// Fallback: scan the task session for a pane running attach-session to our dev session.
+		// This handles app restarts where the map was lost.
+		const listProc = spawn(pty.tmuxArgs(socket,
+			"list-panes", "-t", taskSession,
+			"-F", "#{pane_id} #{pane_start_command}",
+		), { stdout: "pipe", stderr: "pipe" });
+		const listOutput = await new Response(listProc.stdout).text();
+		await listProc.exited;
+		for (const line of listOutput.trim().split("\n")) {
+			if (line.includes(devSession)) {
+				viewerPaneId = line.split(" ")[0];
+				break;
+			}
+		}
+	}
+	if (viewerPaneId) {
+		const killPane = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", viewerPaneId), { stdout: "pipe", stderr: "pipe" });
+		await killPane.exited;
+		devViewerPaneIds.delete(taskId);
+		log.info("Killed dev server viewer pane", { taskId: taskId.slice(0, 8), viewerPaneId });
+	}
+}
+
+async function killDevServerSession(taskId: string, socket: string): Promise<void> {
+	const devSession = devServerSessionName(taskId);
+	const taskSession = `dev3-${taskId.slice(0, 8)}`;
+	// Kill the viewer pane first so its trap EXIT cannot fire on the new session.
+	await killDevServerViewerPane(taskId, taskSession, devSession, socket);
+	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+	await kill.exited;
+	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
+}
 // Track file browser (yazi) tmux pane IDs per task
 const fileBrowserPaneIds = new Map<string, string>();
 
@@ -403,9 +453,9 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 /** Clean up all in-memory tracking state for a task (pane IDs, merge flags). */
 function cleanupTaskState(taskId: string): void {
-	devPaneIds.delete(taskId);
 	fileBrowserPaneIds.delete(taskId);
 	gitOpPaneIds.delete(taskId);
+	devViewerPaneIds.delete(taskId);
 	mergeNotifiedTasks.delete(taskId);
 	prPromotedTasks.delete(taskId);
 	branchStatusInFlight.delete(taskId);
@@ -1033,6 +1083,13 @@ export const handlers = {
 					});
 				}
 
+				// Kill the dev server session if one was started for this task (best-effort)
+				killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
+					log.warn("killDevServerSession on task move failed (best-effort)", {
+						taskId: task.id.slice(0, 8), error: String(err),
+					});
+				});
+
 				try {
 					log.info("Running cleanup script before removing worktree", { taskId: task.id });
 					await runCleanupScript(task, project);
@@ -1207,34 +1264,13 @@ export const handlers = {
 			if (!project.devScript.trim()) throw new Error("No dev script configured");
 			if (!task.worktreePath) throw new Error("Task has no worktree");
 
-			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+			const devSession = devServerSessionName(task.id);
 			const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
 			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
-			// Kill existing dev pane for this task if it's still alive
-			// Check both in-memory map and tmux directly (map lost on restart)
-			const existingPane = devPaneIds.get(task.id);
-			if (existingPane) {
-				const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
-				await kill.exited;
-				devPaneIds.delete(task.id);
-				log.info("Killed existing dev pane (from map)", { taskId: task.id.slice(0, 8), paneId: existingPane });
-			} else {
-				// Fallback: find panes running the dev script file for this task
-				const listProc = spawn(pty.tmuxArgs(socket,
-					"list-panes", "-t", tmuxSession,
-					"-F", "#{pane_id} #{pane_start_command}",
-				), { stdout: "pipe", stderr: "pipe" });
-				const listOutput = await new Response(listProc.stdout).text();
-				await listProc.exited;
-				for (const line of listOutput.trim().split("\n")) {
-					if (line.includes(devScriptPath)) {
-						const paneId = line.split(" ")[0];
-						const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
-						await kill.exited;
-						log.info("Killed existing dev pane (from tmux scan)", { taskId: task.id.slice(0, 8), paneId });
-					}
-				}
+			// Kill existing dev server session if still alive
+			if (await isDevServerRunning(task.id, socket)) {
+				await killDevServerSession(task.id, socket);
 			}
 
 			const wrappedScript = [
@@ -1251,16 +1287,12 @@ export const handlers = {
 			].join("\n") + "\n";
 			await Bun.write(devScriptPath, wrappedScript);
 
-			// Create pane and capture its ID with -P -F
 			const proc = spawn(pty.tmuxArgs(socket,
-				"split-window", "-h",
-				"-t", tmuxSession,
+				"new-session", "-d",
+				"-s", devSession,
 				"-c", task.worktreePath,
-				"-l", "30%",
-				"-P", "-F", "#{pane_id}",
 				`bash "${devScriptPath}"`,
 			), { stdout: "pipe", stderr: "pipe" });
-			const output = await new Response(proc.stdout).text();
 			const stderrOutput = await new Response(proc.stderr).text();
 			const exitCode = await proc.exited;
 
@@ -1269,21 +1301,83 @@ export const handlers = {
 			}
 			if (exitCode !== 0) {
 				log.error("runDevServer tmux exited with non-zero code", { taskId: task.id.slice(0, 8), exitCode, stderr: stderrOutput.trim() });
-				throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+				throw new Error(`tmux new-session failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
 			}
 
-			const paneId = output.trim();
-			if (paneId) {
-				devPaneIds.set(task.id, paneId);
-				log.info("← runDevServer done", { paneId });
-			} else {
-				log.info("← runDevServer done (no pane id captured)");
+			// Create a viewer pane in the task session that nests the dev server session.
+			// TMUX= bypasses the nesting guard so attach works from inside another session.
+			// Must include -L <socket> so the attach targets the same tmux server.
+			// The trap EXIT kills the dev session when the viewer pane is closed manually —
+			// but killDevServerSession kills this pane FIRST (via devViewerPaneIds or a
+			// list-panes scan) so the trap never fires during a restart.
+			const taskSession = `dev3-${task.id.slice(0, 8)}`;
+			const tmuxKill = socket
+				? `tmux -L "${socket}" kill-session -t "${devSession}" 2>/dev/null`
+				: `tmux kill-session -t "${devSession}" 2>/dev/null`;
+			const attachCmd = socket
+				? `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux -L "${socket}" attach-session -t "${devSession}"'`
+				: `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux attach-session -t "${devSession}"'`;
+			const viewerProc = spawn(pty.tmuxArgs(socket,
+				"split-window", "-h",
+				"-t", taskSession,
+				"-c", task.worktreePath,
+				"-l", "50%",
+				"-P", "-F", "#{pane_id}",
+				attachCmd,
+			), { stdout: "pipe", stderr: "pipe" });
+			const viewerOut = await new Response(viewerProc.stdout).text();
+			await viewerProc.exited;
+			const viewerPaneId = viewerOut.trim();
+
+			if (viewerPaneId) {
+				// Track so killDevServerSession can kill this pane before the dev session
+				devViewerPaneIds.set(task.id, viewerPaneId);
+				// Label the pane so the user knows Ctrl+b is captured by the outer session
+				spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)"));
+				// Enable pane border titles for the task session
+				spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top"));
 			}
+
+			log.info("← runDevServer done", { devSession, viewerPaneId });
 		} catch (err) {
 			log.error("runDevServer FAILED", {
 				taskId: params.taskId.slice(0, 8),
 				error: String(err),
 				stack: (err as Error)?.stack ?? "no stack",
+			});
+			throw err;
+		}
+	},
+
+	async checkDevServer(params: { taskId: string; projectId: string }): Promise<{ running: boolean }> {
+		log.info("→ checkDevServer", params);
+		try {
+			const project = await data.getProject(params.projectId);
+			const task = await data.getTask(project, params.taskId);
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+			const running = await isDevServerRunning(task.id, socket);
+			log.info("← checkDevServer", { running });
+			return { running };
+		} catch {
+			return { running: false };
+		}
+	},
+
+	async stopDevServer(params: { taskId: string; projectId: string }): Promise<void> {
+		log.info("→ stopDevServer", params);
+		try {
+			const project = await data.getProject(params.projectId);
+			const task = await data.getTask(project, params.taskId);
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+			await killDevServerSession(task.id, socket);
+			// Remove pane border titles from the task session now that the viewer pane is gone
+			const taskSession = `dev3-${task.id.slice(0, 8)}`;
+			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off"));
+			log.info("← stopDevServer done");
+		} catch (err) {
+			log.error("stopDevServer FAILED", {
+				taskId: params.taskId.slice(0, 8),
+				error: String(err),
 			});
 			throw err;
 		}
@@ -2043,6 +2137,7 @@ export const handlers = {
 			if (!line) continue;
 			const [name, cwd, windowsStr, createdStr] = line.split("|");
 			if (!name.startsWith("dev3-")) continue;
+		if (name.startsWith("dev3-dev-")) continue; // dev server sessions are internal, not user-visible
 
 			const isCleanup = name.startsWith("dev3-cl-");
 			const shortId = isCleanup ? name.slice(8) : name.slice(5);
@@ -2082,6 +2177,15 @@ export const handlers = {
 			log.error("killTmuxSession failed", { sessionName: params.sessionName, stderr: stderr.trim() });
 			throw new Error(`Failed to kill session: ${stderr.trim()}`);
 		}
+
+		// If this was a task session (dev3-<id>), also kill the associated dev server session
+		if (!params.sessionName.startsWith("dev3-dev-")) {
+			const devSession = `dev3-dev-${params.sessionName.slice("dev3-".length)}`;
+			const devKill = spawn(pty.tmuxArgs("dev3", "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+			await devKill.exited; // best-effort: ignore exit code
+			log.info("killTmuxSession: killed dev server session (best-effort)", { devSession });
+		}
+
 		log.info("← killTmuxSession done", { sessionName: params.sessionName });
 	},
 

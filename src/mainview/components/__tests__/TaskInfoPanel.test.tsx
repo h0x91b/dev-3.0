@@ -13,6 +13,8 @@ vi.mock("../../rpc", () => ({
 			updateTaskNote: vi.fn(),
 			deleteTaskNote: vi.fn(),
 			runDevServer: vi.fn(),
+			checkDevServer: vi.fn(),
+			stopDevServer: vi.fn(),
 			getBranchStatus: vi.fn(),
 			rebaseTask: vi.fn(),
 			mergeTask: vi.fn(),
@@ -634,8 +636,9 @@ describe("TaskInfoPanel", () => {
 			expect(btn).toBeDisabled();
 		});
 
-		it("calls runDevServer when clicked and enabled", async () => {
+		it("calls runDevServer when clicked and no server is running", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
 			mockedApi.request.runDevServer.mockResolvedValue(undefined);
 
 			await act(async () => {
@@ -648,15 +651,79 @@ describe("TaskInfoPanel", () => {
 
 			await user.click(btn);
 
+			expect(mockedApi.request.checkDevServer).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+			});
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 			});
 		});
 
+		it("shows running menu when dev server is already running", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const buttons = screen.getAllByText("Dev Server");
+			await user.click(buttons[0].closest("button")!);
+
+			await waitFor(() => expect(screen.getByText("Dev server is already running")).toBeInTheDocument());
+			expect(screen.getByText("Restart")).toBeInTheDocument();
+			expect(screen.getByText("Stop")).toBeInTheDocument();
+			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
+		});
+
+		it("restarts dev server from running menu", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+			mockedApi.request.runDevServer.mockResolvedValue(undefined);
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const buttons = screen.getAllByText("Dev Server");
+			await user.click(buttons[0].closest("button")!);
+			await waitFor(() => expect(screen.getByText("Restart")).toBeInTheDocument());
+
+			await user.click(screen.getByText("Restart"));
+
+			await waitFor(() => expect(mockedApi.request.runDevServer).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+			}));
+		});
+
+		it("stops dev server from running menu", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+			mockedApi.request.stopDevServer.mockResolvedValue(undefined);
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const buttons = screen.getAllByText("Dev Server");
+			await user.click(buttons[0].closest("button")!);
+			await waitFor(() => expect(screen.getByText("Stop")).toBeInTheDocument());
+
+			await user.click(screen.getByText("Stop"));
+
+			await waitFor(() => expect(mockedApi.request.stopDevServer).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+			}));
+		});
+
 		it("shows alert when dev server fails", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const alertSpy = vi.fn(); window.alert = alertSpy;
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
 			mockedApi.request.runDevServer.mockRejectedValue(new Error("port busy"));
 
 			await act(async () => {

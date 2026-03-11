@@ -1093,6 +1093,44 @@ describe("handlers.moveTask", () => {
 		expect(pty.destroySession).toHaveBeenCalled();
 	});
 
+	it("in-progress → completed: kills dev server session", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", id: "abcd1234-0000-0000-0000-000000000000" });
+		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(existsSync).mockReturnValue(true);
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.moveTask({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+		// killDevServerSession is fire-and-forget; drain microtask queue so it completes
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
+	});
+
+	it("in-progress → cancelled: kills dev server session", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", id: "abcd1234-0000-0000-0000-000000000000" });
+		const updatedTask = makeTask({ status: "cancelled", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(existsSync).mockReturnValue(true);
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.moveTask({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled" });
+		// killDevServerSession is fire-and-forget; drain microtask queue so it completes
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
+	});
+
 	it("force mode: skips PTY/cleanup/worktree destruction", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
@@ -2283,6 +2321,36 @@ describe("handlers.killTmuxSession", () => {
 		);
 	});
 
+	it("also kills associated dev server session after killing task session", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.killTmuxSession({ sessionName: "dev3-abc12345" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0]);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-abc12345"))).toBe(true);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abc12345"))).toBe(true);
+	});
+
+	it("does not attempt to kill a nested dev session when killing a dev3-dev- session", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		// dev3-dev- sessions pass the dev3- prefix check but should not recurse
+		await handlers.killTmuxSession({ sessionName: "dev3-dev-abc12345" });
+
+		const killCalls = mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("kill-session"));
+		// Only the one explicit kill, no secondary kill for a "dev3-dev-dev3-dev-..." session
+		expect(killCalls).toHaveLength(1);
+		expect(killCalls[0]).toContain("dev3-dev-abc12345");
+	});
+
 	it("throws when tmux kill fails", async () => {
 		mockSpawn.mockReturnValue({
 			stderr: new Response("session not found"),
@@ -2438,6 +2506,229 @@ describe("handlers.runDevServer", () => {
 		await expect(
 			handlers.runDevServer({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Task has no worktree");
+	});
+
+	it("starts new-session -d when no dev server running", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// Use plain strings — new Response(new Response(...)) loses body in Bun test env
+		// and would leave a stale entry in devViewerPaneIds affecting subsequent tests
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		// has-session check
+		expect(calls.some((a) => a.includes("has-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
+		// new-session -d for dev server
+		expect(calls.some((a) => a.includes("new-session") && a.includes("-d") && a.includes("dev3-dev-abcd1234"))).toBe(true);
+		// viewer pane split-window
+		expect(calls.some((a) => a.includes("split-window") && a.some((s) => s.includes("attach-session")))).toBe(true);
+	});
+
+	it("kills existing dev session before starting a new one", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }); // rest succeed
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
+		expect(calls.some((a) => a.includes("new-session") && a.includes("-d"))).toBe(true);
+	});
+
+	it("kills viewer pane (from map) before dev session on restart to prevent trap race", async () => {
+		// First runDevServer: records viewer pane ID "%42" in the map
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// Use plain string for split-window stdout — new Response(new Response(...)) loses body in Bun test env
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }) // has-session → not running
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // new-session ok
+			.mockReturnValueOnce({ stdout: "%42\n", stderr: new Response(""), exited: Promise.resolve(0) }) // split-window → pane ID
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		vi.clearAllMocks();
+
+		// Second call (restart): has-session=running → kill-pane %42, then kill-session, then new-session
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		const killPaneIdx = calls.findIndex((a) => a.includes("kill-pane") && a.includes("%42"));
+		const killSessionIdx = calls.findIndex((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"));
+		expect(killPaneIdx).toBeGreaterThanOrEqual(0);
+		expect(killSessionIdx).toBeGreaterThanOrEqual(0);
+		expect(killPaneIdx).toBeLessThan(killSessionIdx);
+	});
+
+	it("kills viewer pane via list-panes fallback when map is empty (after app restart)", async () => {
+		// Simulate app restart: map is empty, but the task session has a pane running attach-session
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// has-session → running; list-panes returns a pane running attach-session for dev3-dev-abcd1234
+		// Use plain strings — new Response(new Response(...)) loses body in Bun test env
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
+			.mockReturnValueOnce({ stdout: "%99 TMUX= tmux attach-session -t dev3-dev-abcd1234\n", stderr: new Response(""), exited: Promise.resolve(0) }) // list-panes fallback
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		const killPaneIdx = calls.findIndex((a) => a.includes("kill-pane") && a.includes("%99"));
+		const killSessionIdx = calls.findIndex((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"));
+		expect(killPaneIdx).toBeGreaterThanOrEqual(0);
+		expect(killSessionIdx).toBeGreaterThanOrEqual(0);
+		expect(killPaneIdx).toBeLessThan(killSessionIdx);
+	});
+
+
+	it("throws when tmux new-session fails", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn
+			.mockReturnValueOnce({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(1) }) // has-session → not running
+			.mockReturnValue({ stdout: new Response(""), stderr: new Response("port in use"), exited: Promise.resolve(1) });
+
+		await expect(
+			handlers.runDevServer({ taskId: task.id, projectId: "proj-1" }),
+		).rejects.toThrow("tmux new-session failed");
+	});
+});
+
+// ================================================================
+// handlers.checkDevServer
+// ================================================================
+
+describe("handlers.checkDevServer", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("returns { running: true } when has-session exits 0", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) });
+
+		const result = await handlers.checkDevServer({ taskId: task.id, projectId: "proj-1" });
+		expect(result).toEqual({ running: true });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			expect.arrayContaining(["has-session", "-t", "dev3-dev-abcd1234"]),
+			expect.any(Object),
+		);
+	});
+
+	it("returns { running: false } when has-session exits non-zero", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(1) });
+
+		const result = await handlers.checkDevServer({ taskId: task.id, projectId: "proj-1" });
+		expect(result).toEqual({ running: false });
+	});
+
+	it("returns { running: false } on exception", async () => {
+		vi.mocked(data.getProject).mockRejectedValue(new Error("db error"));
+
+		const result = await handlers.checkDevServer({ taskId: "task-1", projectId: "proj-1" });
+		expect(result).toEqual({ running: false });
+	});
+});
+
+// ================================================================
+// handlers.stopDevServer
+// ================================================================
+
+describe("handlers.stopDevServer", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("kills dev server session and disables pane-border-status", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
+		expect(calls.some((a) => a.includes("set-option") && a.includes("pane-border-status") && a.includes("off"))).toBe(true);
+	});
+
+	it("throws when kill-session fails", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response("not found"), exited: Promise.resolve(1) });
+
+		// kill-session exit code is ignored (best-effort), so it should not throw
+		await expect(
+			handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" }),
+		).resolves.toBeUndefined();
+	});
+
+	it("throws when data lookup fails", async () => {
+		vi.mocked(data.getProject).mockRejectedValue(new Error("not found"));
+
+		await expect(
+			handlers.stopDevServer({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow("not found");
+	});
+});
+
+// ================================================================
+// handlers.listTmuxSessions (dev server filtering)
+// ================================================================
+
+describe("handlers.listTmuxSessions", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("filters out dev3-dev-* sessions", async () => {
+		vi.mocked(data.loadProjects).mockResolvedValue([]);
+		// stdout must be a plain string — new Response(Response) does not propagate the body
+		mockSpawn.mockReturnValue({
+			stdout: "dev3-abc12345|/tmp/wt|1|1700000001\ndev3-dev-abc12345|/tmp/wt|1|1700000002\ndev3-xyz99999|/tmp/wt|1|1700000000",
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		const result = await handlers.listTmuxSessions();
+		const names = result.map((s) => s.name);
+		expect(names).toContain("dev3-abc12345");
+		expect(names).toContain("dev3-xyz99999");
+		expect(names).not.toContain("dev3-dev-abc12345");
 	});
 });
 
