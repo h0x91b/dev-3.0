@@ -193,10 +193,34 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			termRef.current = term;
 
 			// Prevent mobile browser auto-zoom when the hidden textarea gains focus.
-			// iOS/Android zoom to input elements with font-size < 16px.
+			// ghostty-web creates a 1x1px textarea in the corner for keyboard input.
+			// Chrome auto-zooms to small/offscreen focused elements. Fix:
+			// 1. Stretch textarea over the canvas so it's "in viewport"
+			// 2. Set font-size: 16px (Chrome threshold for auto-zoom)
+			// 3. On focus, temporarily add maximum-scale=1 to viewport meta
+			//    (disables pinch-zoom only while typing — acceptable trade-off)
 			const hiddenTextarea = containerRef.current.querySelector("textarea");
 			if (hiddenTextarea) {
 				hiddenTextarea.style.fontSize = "16px";
+				hiddenTextarea.style.width = "100%";
+				hiddenTextarea.style.height = "100%";
+				hiddenTextarea.style.clipPath = "none";
+				hiddenTextarea.style.opacity = "0";
+				hiddenTextarea.style.pointerEvents = "none";
+				hiddenTextarea.style.caretColor = "transparent";
+				hiddenTextarea.style.zIndex = "-1";
+
+				// Dynamically toggle maximum-scale on focus/blur to block auto-zoom
+				const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+				if (viewportMeta) {
+					hiddenTextarea.addEventListener("focus", () => {
+						const content = viewportMeta.content.replace(/,?\s*maximum-scale=[^,]*/g, "");
+						viewportMeta.content = content + ", maximum-scale=1";
+					});
+					hiddenTextarea.addEventListener("blur", () => {
+						viewportMeta.content = viewportMeta.content.replace(/,?\s*maximum-scale=[^,]*/g, "");
+					});
+				}
 			}
 
 			// Translate touch events to mouse events for mobile terminal interaction.
