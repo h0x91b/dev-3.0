@@ -1,0 +1,56 @@
+const terminal = {
+	// TaskTerminal
+	"terminal.connecting": "Подключение...",
+	"terminal.envError": "Ошибка окружения задачи",
+	"terminal.worktreeNotFound": "Рабочая директория задачи больше не существует. Это может произойти, если worktree был удалён извне.",
+	"terminal.errorPath": "Worktree не найден:",
+	"terminal.complete": "Завершить",
+	"terminal.cancelTask": "Отменить задачу",
+	"terminal.sessionEnded": "Терминальная сессия завершена",
+	"terminal.sessionEndedDesc": "Процесс терминала завершился. Worktree и все файлы на месте.",
+	"terminal.resumeAgentSession": "Возобновить сессию",
+
+	// Tmux hotkey hints
+	"tmux.hSplit": "гориз.",
+	"tmux.vSplit": "верт.",
+	"tmux.zoom": "зум",
+	"tmux.title": "Горячие клавиши tmux",
+	"tmux.panes": "Панели",
+	"tmux.splitHDesc": "Разделить горизонтально",
+	"tmux.splitVDesc": "Разделить вертикально",
+	"tmux.zoomDesc": "Увеличить панель (переключение)",
+	"tmux.closePaneDesc": "Закрыть панель",
+	"tmux.selectPaneDesc": "Кликните на панель для выбора",
+	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
+
+	// Tmux Session Manager
+	"tmuxSessions.title": "Сессии tmux",
+	"tmuxSessions.empty": "Нет активных сессий dev3",
+	"tmuxSessions.sessionCount_one": "{count} сессия",
+	"tmuxSessions.sessionCount_few": "{count} сессии",
+	"tmuxSessions.sessionCount_many": "{count} сессий",
+	"tmuxSessions.sessionCount_other": "{count} сессий",
+	"tmuxSessions.copied": "Скопировано!",
+	"tmuxSessions.kill": "Убить",
+	"tmuxSessions.killConfirmTitle": "Убить сессию tmux",
+	"tmuxSessions.killConfirmMessage": "Убить сессию «{name}»? Все процессы в ней будут завершены.",
+	"tmuxSessions.killFailed": "Не удалось убить сессию: {error}",
+	"tmuxSessions.cleanup": "очистка",
+	"tmuxSessions.killAll": "Убить все",
+	"tmuxSessions.killAllConfirmTitle": "Убить все сессии tmux",
+	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",
+	"tmuxSessions.refresh": "Обновить",
+
+	// Ports
+	"ports.title": "Порты",
+	"ports.empty": "Нет открытых портов",
+	"ports.openInBrowser": "Открыть в браузере",
+	"ports.copyUrl": "Копировать URL",
+	"ports.copied": "Скопировано!",
+	"ports.count_one": "{count} порт",
+	"ports.count_few": "{count} порта",
+	"ports.count_many": "{count} портов",
+	"ports.count_other": "{count} портов",
+};
+
+export default terminal;
