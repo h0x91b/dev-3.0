@@ -300,11 +300,14 @@ Call with `t.plural("dashboard.projectCount", count)`.
 
 ```bash
 bun run lint          # TypeScript type-check (must pass before committing)
-bun run test          # Mainview tests
-bun run test:bun      # Backend tests
+bun run test          # Fast tests — mainview + bun in parallel, excludes 3 slow e2e files (~6s)
+bun run test:full     # Full tests — everything including slow e2e files (~42s, for CI/PR)
+bun run test:bun      # Backend tests only
 bun run test:cli      # CLI tests
 bun run test:watch    # Watch mode
 ```
+
+> **Note:** When running vitest directly (outside `bun run`), use `bunx vitest run` — not `npx`.
 
 > **Rule:** Always run both `bun run lint` **and** `bun run test` before committing. A commit that breaks type-checking is not acceptable, even if tests pass. Fix all TypeScript errors before pushing.
 
