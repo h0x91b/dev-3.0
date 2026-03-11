@@ -20,12 +20,6 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-L1NSQH6FGY');
 gtag('config', 'AW-1005164906');
-// Google Ads page view conversion
-gtag('event', 'conversion', {
-  'send_to': 'AW-1005164906/oovsCJP3yoYcEOqypt8D',
-  'value': 1.0,
-  'currency': 'ILS'
-});
 </script>
 <style>
 /* ======= RESET & BASE ======= */
@@ -1884,6 +1878,12 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
       // Categorize click
       if (href.includes('/releases')) {
         track('download_click', { link_text: text, section: sectionId, url: href });
+        // Google Ads conversion — user clicked Download
+        gtag('event', 'conversion', {
+          'send_to': 'AW-1005164906/oovsCJP3yoYcEOqypt8D',
+          'value': 1.0,
+          'currency': 'ILS'
+        });
       } else if (href.includes('github.com/h0x91b/dev-3.0') && !href.includes('/releases') && !href.includes('/issues')) {
         track('github_repo_click', { link_text: text, section: sectionId });
       } else if (href.includes('/issues')) {
