@@ -10,8 +10,8 @@ const tips = {
 	"tip.agentSeesTasks.body": "Menciona \"dev3\" en un prompt y el agente puede listar tareas, ver estados y encontrar trabajo anterior.",
 	"tip.agentNotes.title": "Los agentes dejan notas",
 	"tip.agentNotes.body": "Los agentes registran decisiones clave como notas de tarea. Revisa la sección de Notas en el panel de tareas.",
-	"tip.dragColumns.title": "Cambia el orden de las columnas",
-	"tip.dragColumns.body": "Agarra el asa en el encabezado de cualquier columna personalizada y arrástrala para reordenar tu tablero.",
+	"tip.dragColumns.title": "Reordena columnas personalizadas",
+	"tip.dragColumns.body": "Añade columnas personalizadas en Project Settings y arrástralas por el asa para colocarlas entre las columnas integradas.",
 	"tip.doubleClickTodo.title": "Creación rápida de tareas",
 	"tip.doubleClickTodo.body": "Haz doble clic en el espacio vacío de la columna Por Hacer para abrir el formulario de nueva tarea.",
 	"tip.rightClickOpen.title": "Abre en tu editor",
@@ -118,6 +118,8 @@ const tips = {
 	"tip.taskOpenMode.body": "Activa «Pantalla completa» en Modo de apertura de tarea (Ajustes globales) para abrir tareas sin vista dividida.",
 	"tip.forkBranchSupport.title": "Revisa PRs de forks",
 	"tip.forkBranchSupport.body": "Escribe user:branch en el campo de rama (ej. yanive:feat/new-tab) y haz clic en Actualizar para descargar la rama de un fork de GitHub.",
+	"tip.taskDropPosition.title": "Tareas nuevas arriba",
+	"tip.taskDropPosition.body": "Por defecto las tareas nuevas y movidas aparecen arriba de la columna. Cámbialo en Ajustes globales → Posición al mover tareas.",
 };
 
 export default tips;

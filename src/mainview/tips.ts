@@ -364,6 +364,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.forkBranchSupport.body",
 		icon: "\u{F062C}", // nf-md-source_branch
 	},
+	// Batch 14: task drop position
+	{
+		id: "task-drop-position",
+		titleKey: "tip.taskDropPosition.title",
+		bodyKey: "tip.taskDropPosition.body",
+		icon: "\u{F0140}", // nf-md-arrow_up_down
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
