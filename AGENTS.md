@@ -34,12 +34,16 @@ Agents in this project typically run inside a **git worktree**, not the main wor
 
 ### Branch naming
 
-Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the task is about, **rename the branch automatically** to something descriptive using `git branch -m <old> dev3/<slug>`. Do not ask for permission — just do it on session start.
+Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the task is about, **rename the branch automatically** to something descriptive using `git branch -m <old> <type>/<slug>`. Do not ask for permission — just do it on session start.
 
-**Rules:**
-- Always keep the `dev3/` prefix.
-- Use lowercase kebab-case: `dev3/fix-auth-race-condition`, `dev3/add-drag-reorder`, `dev3/refactor-rpc-handlers`.
+> **User preferences override these defaults.** If the user's CLAUDE.md, AGENTS.md, or auto-memory specifies a different branch naming convention (e.g., JIRA ticket prefix, custom format), follow the user's convention instead of the defaults below.
+
+**Default rules** (apply only when the user has no custom branch naming preference):
+- Use a conventional type prefix: `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`.
+- Use lowercase kebab-case: `fix/auth-race-condition`, `feat/drag-reorder`, `refactor/rpc-handlers`.
 - Derive the slug from the task description/title — 3-5 words max.
+
+**Always applies:**
 - If the branch already has a meaningful name (doesn't match `dev3/task-*`), skip renaming.
 - If the branch was already pushed to the remote, also update the remote: `git push origin :<old-branch> && git push -u origin <new-branch>`.
 
@@ -74,6 +78,14 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 - **One worktree = one changelog file.** A single task (worktree) must produce exactly one changelog entry for the entire session — not one per commit, not one per feature. If the task evolves, update or append to the existing changelog file rather than creating new ones.
 - **Credit community contributors.** If the feature or fix originated from a GitHub issue (i.e., was requested or reported by an external user), add a blank line and then `Suggested by @username (h0x91b/dev-3.0#N)` at the **end** of the changelog file. The parser extracts this into `suggestedBy`, `issueRef`, and `issueUrl` fields, displayed in the changelog UI as a linked credit line. Example: `Suggested by @roiros (h0x91b/dev-3.0#191)`.
 - See `change-logs/README.md` for the full format specification.
+
+## Feature discovery tips
+
+**Every user-facing feature must include 1–2 "Did you know?" tips** (small feature → 1, large → 2). Bug fixes/refactors — skip. Include tips in the same commit as the feature.
+
+**Files:** tip registry in `src/mainview/tips.ts` (`ALL_TIPS` array), i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. See existing tips for the pattern.
+
+**Content:** title 3–6 words, body one sentence max ~120 chars — tell the user *what to do*, no fluff. Icon: Nerd Font glyph (`\u{XXXXX}`).
 
 ## Decision records
 
@@ -235,16 +247,17 @@ All user-facing strings in the renderer are localized. The i18n system lives in 
 - **`useT()`** — React hook that returns the translation function `t(key)` and `t.plural(baseKey, count)`
 - **`useLocale()`** — returns `[locale, setLocale]` for reading/changing the current language
 - **`statusKey(status)`** — maps `TaskStatus` to the corresponding translation key (e.g., `"in-progress"` → `"status.inProgress"`)
-- Translations are plain TypeScript objects in `src/mainview/i18n/translations/{en,ru,es}.ts`
+- Translations are split into **domain files** under `src/mainview/i18n/translations/{en,ru,es}/` (e.g., `common.ts`, `kanban.ts`, `tips.ts`, `settings.ts`). Each locale's barrel file (`en.ts`, `ru.ts`, `es.ts`) re-exports the merged object.
 - English (`en.ts`) is the source of truth — it defines the `TranslationKey` type
 - Other locales must satisfy `TranslationRecord` (all keys from English must be present)
 - Locale is persisted in `localStorage("dev3-locale")`, same pattern as the theme
 
 ### Adding a new string
 
-1. Add the key to `src/mainview/i18n/translations/en.ts`
-2. Add translations to `ru.ts` and `es.ts` (TypeScript will error if you forget)
+1. Find the matching domain file under `src/mainview/i18n/translations/en/` (e.g., `kanban.ts` for `kanban.*` keys, `tips.ts` for `tip.*` keys)
+2. Add the key to that domain file, then add translations to the same domain file in `ru/` and `es/` (TypeScript will error if you forget)
 3. Use `t("your.key")` in the component via `useT()`
+4. **Never edit the barrel files** (`en.ts`, `ru.ts`, `es.ts`) directly — only edit domain files
 
 ### Interpolation
 

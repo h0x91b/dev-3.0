@@ -100,6 +100,21 @@ function GlobalSettings() {
 		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
+	const [tipsResetDone, setTipsResetDone] = useState(false);
+
+	function handleTipsDisabledToggle(disabled: boolean) {
+		const updated = { ...globalSettings, tipsDisabled: disabled };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
+	}
+
+	function handleTipsReset() {
+		api.request.resetTipState().then(() => {
+			setTipsResetDone(true);
+			setTimeout(() => setTipsResetDone(false), 3000);
+		}).catch(() => {});
+	}
+
 	/** Filter out apps with empty fields before persisting to disk. */
 	function saveExternalApps(apps: ExternalApp[]) {
 		const valid = apps.filter((a) => a.name.trim() && a.macAppName.trim());
@@ -405,6 +420,36 @@ function GlobalSettings() {
 								{globalSettings.playSoundOnTaskComplete !== false ? "On" : "Off"}
 							</span>
 						</label>
+					</div>
+
+					{/* Tips */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-3">
+							{t("settings.tipsSection")}
+						</label>
+						<div className="flex items-center gap-4">
+							<label className="inline-flex items-center gap-3 cursor-pointer select-none">
+								<div
+									role="switch"
+									aria-checked={globalSettings.tipsDisabled === true}
+									tabIndex={0}
+									className={`relative w-11 h-6 rounded-full transition-colors ${globalSettings.tipsDisabled ? "bg-accent" : "bg-raised border border-edge"}`}
+									onClick={() => handleTipsDisabledToggle(!globalSettings.tipsDisabled)}
+									onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTipsDisabledToggle(!globalSettings.tipsDisabled); } }}
+								>
+									<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.tipsDisabled ? "translate-x-5" : ""}`} />
+								</div>
+								<span className="text-fg text-sm">
+									{t("settings.tipsDisabled")}
+								</span>
+							</label>
+							<button
+								onClick={handleTipsReset}
+								className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30"
+							>
+								{tipsResetDone ? t("settings.tipsResetDone") : t("settings.tipsReset")}
+							</button>
+						</div>
 					</div>
 
 					{/* Update Channel */}

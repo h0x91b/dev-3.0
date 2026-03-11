@@ -240,6 +240,13 @@ export interface GlobalSettings {
 	terminalKeymap?: TerminalKeymapPreset;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
+	tipsDisabled?: boolean;
+}
+
+export interface TipState {
+	snoozedUntil: number; // timestamp — all tips hidden until this time
+	seen: Record<string, number>; // tipId → last-seen timestamp
+	rotationIndex: number;
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
@@ -719,6 +726,18 @@ export type AppRPCSchema = {
 			fetchBranches: {
 				params: { projectId: string };
 				response: Array<{ name: string; isRemote: boolean }>;
+			};
+			getTipState: {
+				params: void;
+				response: TipState;
+			};
+			updateTipState: {
+				params: Partial<TipState>;
+				response: TipState;
+			};
+			resetTipState: {
+				params: void;
+				response: TipState;
 			};
 		};
 		messages: {

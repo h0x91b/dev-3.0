@@ -1,0 +1,1 @@
+Added `dev3 install-skills` CLI command that installs agent skills globally (Claude, Cursor, Codex, Gemini, OpenCode), updates ~/.agents/AGENTS.md, Claude permissions, and Codex config. Works without the app running, useful for debugging agent setups.

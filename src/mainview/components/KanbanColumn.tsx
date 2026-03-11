@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
 import TaskCard from "./TaskCard";
+import TipCard from "./TipCard";
+import type { Tip } from "../tips";
 
 // Module-level variable: set synchronously on dragstart, cleared on dragend.
 // Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
@@ -44,6 +46,10 @@ interface KanbanColumnProps {
 	onColumnDragEnd?: () => void;
 	// Column reorder drop target (left half = "before", right half = "after")
 	onColumnDrop?: (side: "before" | "after") => void;
+	// Feature discovery tip
+	tip?: Tip | null;
+	tipState?: TipState;
+	onTipChanged?: () => void;
 }
 
 function KanbanColumn({
@@ -78,6 +84,9 @@ function KanbanColumn({
 	onColumnDragStart,
 	onColumnDragEnd,
 	onColumnDrop,
+	tip,
+	tipState,
+	onTipChanged,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -357,12 +366,20 @@ function KanbanColumn({
 					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0 transition-all" />
 				)}
 
-				{tasks.length === 0 && (
+				{tasks.length === 0 && !tip && (
 					<div className="text-fg-muted text-sm text-center py-8">
 						{t("kanban.noTasks")}
 					</div>
 				)}
-			</div>
+
+				</div>
+
+			{/* Tip card — pinned to bottom, above the add-task button */}
+			{tip && tipState && onTipChanged && (
+				<div className="px-3 pb-3 flex-shrink-0">
+					<TipCard tip={tip} tipState={tipState} onChanged={onTipChanged} />
+				</div>
+			)}
 
 			{/* Add task button (only in To Do column, not custom columns) */}
 			{!isCustomColumn && status === "todo" && (

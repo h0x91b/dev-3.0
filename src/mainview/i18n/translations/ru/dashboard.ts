@@ -1,0 +1,47 @@
+const dashboard = {
+	// Dashboard
+	"dashboard.noProjects": "Пока нет проектов",
+	"dashboard.noProjectsHint": "Добавьте git-репозиторий, чтобы начать",
+	"dashboard.addProject": "Добавить проект",
+	"dashboard.openInFinder": "Открыть в Finder",
+	"dashboard.remove": "Удалить",
+	"dashboard.confirmRemove": "Убрать этот проект из списка?",
+	"dashboard.failedAdd": "Не удалось добавить проект: {error}",
+	"dashboard.failedRemove": "Не удалось удалить проект: {error}",
+	"dashboard.projectCount_one": "{count} проект",
+	"dashboard.projectCount_few": "{count} проекта",
+	"dashboard.projectCount_many": "{count} проектов",
+	"dashboard.projectCount_other": "{count} проектов",
+
+	// GlobalHeader
+	"header.task": "Задача",
+	"header.settings": "Настройки",
+	"header.projectSettings": "Настройки проекта",
+	"header.globalSettingsTooltip": "Глобальные настройки (\u2318,)",
+	"header.openFolderTooltip": "Открыть папку проекта",
+	"header.projLabel": "Проект",
+	"header.globalLabel": "Общие",
+	"header.devServer": "Dev-сервер",
+	"header.devServerDisabled": "Настройте dev-скрипт в настройках проекта",
+	"header.fileBrowser": "Файлы",
+	"header.changelog": "Журнал изменений",
+	"header.changelogLabel": "Change Log",
+	"header.changelogTooltip": "Журнал изменений",
+	"header.githubTooltip": "Сайт проекта",
+	"header.reportBugTooltip": "Сообщить об ошибке",
+	"header.reportLabel": "Report",
+	"header.switchProject": "Переключить проект",
+	"header.activeTaskCount_one": "{count} активная",
+	"header.activeTaskCount_few": "{count} активных",
+	"header.activeTaskCount_many": "{count} активных",
+	"header.activeTaskCount_other": "{count} активных",
+	"header.noActiveTasks": "Нет активных задач",
+
+	// FileBrowser
+	"fileBrowser.notInstalledTitle": "yazi не установлен",
+	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Выполните команду для установки:",
+	"fileBrowser.linuxBrewHint": "Сначала установите Homebrew для Linux (https://brew.sh), затем выполните:",
+	"fileBrowser.clickAgainHint": "После установки нажмите Files снова — всё заработает.",
+};
+
+export default dashboard;
