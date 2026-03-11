@@ -1,18 +1,19 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, type Dispatch } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
-import { ansiToHtml } from "../utils/ansi-to-html";
 import { trackEvent } from "../analytics";
+import { useStatusColors } from "../hooks/useStatusColors";
+import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import SiblingPopover from "./SiblingPopover";
 import OpenInMenu from "./OpenInMenu";
+import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
-import { useStatusColors } from "../hooks/useStatusColors";
 import TaskDetailModal from "./TaskDetailModal";
 
 interface TaskCardProps {
@@ -25,13 +26,14 @@ interface TaskCardProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
+	ports?: PortInfo[];
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -53,16 +55,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const hasSiblings = groupMembers.length > 1;
 	const siblings = groupMembers.filter((s) => s.id !== task.id);
 
-	// Terminal preview state
-	const [previewOpen, setPreviewOpen] = useState(false);
-	const [previewHtml, setPreviewHtml] = useState<string | null>(null);
-	const [previewLoading, setPreviewLoading] = useState(false);
-	const [previewPos, setPreviewPos] = useState({ top: 0, left: 0 });
-	const previewRef = useRef<HTMLDivElement>(null);
-	const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const previewIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const preview = useTerminalPreview();
 	const cardRef = useRef<HTMLDivElement>(null);
+
+	// Ports popover state
+	const [portsPopoverOpen, setPortsPopoverOpen] = useState(false);
+	const [portsPopoverPos, setPortsPopoverPos] = useState({ top: 0, left: 0 });
+	const [portsPopoverVisible, setPortsPopoverVisible] = useState(false);
+	const portsPopoverRef = useRef<HTMLDivElement>(null);
+	const portsAnchorRef = useRef<HTMLButtonElement>(null);
 
 	// Context menu ("Open in...") state
 	const [ctxMenuOpen, setCtxMenuOpen] = useState(false);
@@ -121,6 +122,41 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setMenuPos({ top, left });
 		setMenuVisible(true);
 	}, [menuOpen]);
+
+	// Ports popover: click outside to close
+	useEffect(() => {
+		if (!portsPopoverOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (
+				portsPopoverRef.current &&
+				!portsPopoverRef.current.contains(e.target as Node) &&
+				portsAnchorRef.current &&
+				!portsAnchorRef.current.contains(e.target as Node)
+			) {
+				setPortsPopoverOpen(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [portsPopoverOpen]);
+
+	// Ports popover: viewport clamping (only reposition on open, not on port data updates)
+	useLayoutEffect(() => {
+		if (!portsPopoverOpen || !portsPopoverRef.current || !portsAnchorRef.current) return;
+		const menu = portsPopoverRef.current.getBoundingClientRect();
+		const trigger = portsAnchorRef.current.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const pad = 8;
+		let top = trigger.bottom + 6;
+		let left = trigger.left;
+		if (top + menu.height > vh - pad) top = trigger.top - menu.height - 6;
+		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
+		if (left < pad) left = pad;
+		if (top < pad) top = pad;
+		setPortsPopoverPos({ top, left });
+		setPortsPopoverVisible(true);
+	}, [portsPopoverOpen]);
 
 	function toggleMenu(e: React.MouseEvent) {
 		e.stopPropagation();
@@ -239,7 +275,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	function handleClick() {
 		if (isDisabled) return;
 		if (isActive && !menuOpen) {
-			closePreview();
+			preview.close();
 			if (isActiveInSplit) {
 				// Toggle: clicking the already-active card closes the split
 				navigate({ screen: "project", projectId: project.id });
@@ -264,7 +300,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	function handleDragStart(e: React.DragEvent) {
-		closePreview();
+		preview.close();
 		e.dataTransfer.setData("text/plain", task.id);
 		e.dataTransfer.effectAllowed = "move";
 		onDragStartProp(task.id);
@@ -285,118 +321,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setDetailOpen(true);
 	}
 
-	// --- Terminal preview hover logic ---
-	const cancelPreviewTimers = useCallback(() => {
-		if (previewTimerRef.current) {
-			clearTimeout(previewTimerRef.current);
-			previewTimerRef.current = null;
-		}
-		if (previewCloseTimerRef.current) {
-			clearTimeout(previewCloseTimerRef.current);
-			previewCloseTimerRef.current = null;
-		}
-	}, []);
-
-	const closePreview = useCallback(() => {
-		cancelPreviewTimers();
-		if (previewIntervalRef.current) {
-			clearInterval(previewIntervalRef.current);
-			previewIntervalRef.current = null;
-		}
-		setPreviewOpen(false);
-		setPreviewHtml(null);
-		setPreviewLoading(false);
-	}, [cancelPreviewTimers]);
-
-	const scheduleClose = useCallback(() => {
-		previewCloseTimerRef.current = setTimeout(() => {
-			closePreview();
-		}, 200);
-	}, [closePreview]);
-
-	const cancelClose = useCallback(() => {
-		if (previewCloseTimerRef.current) {
-			clearTimeout(previewCloseTimerRef.current);
-			previewCloseTimerRef.current = null;
-		}
-	}, []);
-
 	function handleCardMouseEnter() {
 		if (!isActive || menuOpen) return;
-		cancelPreviewTimers();
-		previewTimerRef.current = setTimeout(async () => {
-			if (!cardRef.current) return;
-			const rect = cardRef.current.getBoundingClientRect();
-			const vw = window.innerWidth;
-			const vh = window.innerHeight;
-			const popW = 420;
-			const popH = 320;
-			const pad = 8;
-
-			let left = rect.right + 8;
-			let top = rect.top;
-
-			// Flip to left if overflows right
-			if (left + popW > vw - pad) {
-				left = rect.left - popW - 8;
-			}
-			// Clamp edges
-			if (left < pad) left = pad;
-			if (top + popH > vh - pad) {
-				top = vh - popH - pad;
-			}
-			if (top < pad) top = pad;
-
-			setPreviewPos({ top, left });
-			setPreviewOpen(true);
-			setPreviewLoading(true);
-
-			try {
-				const content = await api.request.getTerminalPreview({ taskId: task.id });
-				if (content) {
-					setPreviewHtml(ansiToHtml(content));
-				} else {
-					setPreviewHtml(null);
-				}
-			} catch {
-				setPreviewHtml(null);
-			}
-			setPreviewLoading(false);
-
-			// Refresh preview every second while open
-			previewIntervalRef.current = setInterval(async () => {
-				try {
-					const content = await api.request.getTerminalPreview({ taskId: task.id });
-					if (content) {
-						setPreviewHtml(ansiToHtml(content));
-					}
-				} catch {
-					// ignore refresh errors
-				}
-			}, 1000);
-		}, 400);
+		if (!cardRef.current) return;
+		preview.handlers.onMouseEnter(task.id, cardRef.current);
 	}
 
 	function handleCardMouseLeave() {
-		if (previewTimerRef.current) {
-			clearTimeout(previewTimerRef.current);
-			previewTimerRef.current = null;
-		}
-		if (previewOpen) {
-			scheduleClose();
-		}
+		preview.handlers.onMouseLeave();
 	}
-
-	// Clean up timers on unmount
-	useEffect(() => {
-		return () => {
-			cancelPreviewTimers();
-			if (previewIntervalRef.current) {
-				clearInterval(previewIntervalRef.current);
-				previewIntervalRef.current = null;
-			}
-		};
-	}, [cancelPreviewTimers]);
 
 	const showDismissButton = isTodo || isCancelled;
 
@@ -605,7 +538,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{hasSiblings && (
 					<button
 						ref={siblingAnchorRef}
-						onClick={(e) => { e.stopPropagation(); closePreview(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+						onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
 						className="flex items-center gap-1 px-1.5 py-1 rounded-lg hover:bg-fg/5 transition-colors"
 						title={t.plural("task.siblingsCount", siblings.length)}
 					>
@@ -616,6 +549,27 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								style={{ background: statusColors[s.status] }}
 							/>
 						))}
+					</button>
+				)}
+
+				{/* Port indicator for active tasks — compact icon + count, popover on click */}
+				{isActive && ports && ports.length > 0 && (
+					<button
+						ref={portsAnchorRef}
+						onClick={(e) => {
+							e.stopPropagation();
+							if (!portsPopoverOpen && portsAnchorRef.current) {
+								const rect = portsAnchorRef.current.getBoundingClientRect();
+								setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
+								setPortsPopoverVisible(false);
+							}
+							setPortsPopoverOpen(!portsPopoverOpen);
+						}}
+						className="inline-flex items-center gap-1 text-[0.625rem] font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+						title={t.plural("ports.count", ports.length)}
+					>
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+						{ports.length}
 					</button>
 				)}
 
@@ -710,6 +664,35 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				document.body
 			)}
 
+			{/* Ports popover */}
+			{portsPopoverOpen && ports && ports.length > 0 && createPortal(
+				<div
+					ref={portsPopoverRef}
+					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[10rem]"
+					style={{
+						top: portsPopoverPos.top,
+						left: portsPopoverPos.left,
+						visibility: portsPopoverVisible ? "visible" : "hidden",
+					}}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<div className="px-3 py-1.5 text-[0.625rem] text-fg-3 uppercase tracking-wider font-semibold">
+						{t("ports.title")}
+					</div>
+					{ports.map((p) => (
+						<button
+							key={p.port}
+							onClick={() => window.open(`http://localhost:${p.port}`, "_blank")}
+							className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+						>
+							<span className="font-mono font-bold text-accent">:{p.port}</span>
+							<span className="text-fg-muted text-xs">{p.processName}</span>
+						</button>
+					))}
+				</div>,
+				document.body
+			)}
+
 			{/* Context menu — "Open in..." */}
 			{ctxMenuOpen && task.worktreePath && (
 				<OpenInMenu
@@ -719,44 +702,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				/>
 			)}
 
-			{/* Terminal preview popover */}
-			{previewOpen && createPortal(
-				<div
-					ref={previewRef}
-					className="fixed z-50 rounded-xl shadow-2xl shadow-black/50 border border-edge-active overflow-hidden transition-opacity duration-150"
-					style={{
-						top: previewPos.top,
-						left: previewPos.left,
-						width: 420,
-						maxHeight: 320,
-						background: "#1a1a2e",
-						opacity: previewHtml || previewLoading ? 1 : 0,
-					}}
-					onMouseEnter={cancelClose}
-					onMouseLeave={scheduleClose}
-					onClick={(e) => e.stopPropagation()}
-				>
-					{previewLoading ? (
-						<div className="flex items-center justify-center h-20">
-							<div className="w-4 h-4 border-2 border-fg-muted/30 border-t-fg-muted rounded-full animate-spin" />
-						</div>
-					) : previewHtml ? (
-						<pre
-							className="overflow-hidden m-0 p-2"
-							style={{
-								fontFamily: "monospace",
-								fontSize: "5px",
-								lineHeight: "6px",
-								color: "#d3d7cf",
-								whiteSpace: "pre",
-								userSelect: "none",
-							}}
-							dangerouslySetInnerHTML={{ __html: previewHtml }}
-						/>
-					) : null}
-				</div>,
-				document.body
-			)}
+			<TerminalPreviewPopover {...preview.state} />
 		</div>
 	);
 }

@@ -103,11 +103,11 @@
 	--accent-hover: 37 99 235;
 	--danger: 220 38 38;
 
-	/* ---- Background gradient (saturated cool tones — the canvas) ---- */
+	/* ---- Background gradient ---- */
 	--bg-grad-angle: 135deg;
-	--bg-grad-from: #d4dffa;
-	--bg-grad-mid: #ded4f6;
-	--bg-grad-to: #f6d4e8;
+	--bg-grad-from: #dae3ee;
+	--bg-grad-mid: #e1e5d4;
+	--bg-grad-to: #b4b5c4;
 
 	/* ---- Glass surfaces (frosted white on colored canvas) ---- */
 	--glass-column-rgb: 255 255 255;
@@ -128,10 +128,10 @@
 	--glass-border-card-alpha: 0.06;
 	--glass-border-card-hover-alpha: 0.13;
 
-	/* ---- Column glow (stronger than before — jewel tones need presence) ---- */
-	--glow-start-alpha: 0.14;
-	--glow-mid-alpha: 0.04;
-	--glow-line-alpha: 0.35;
+	/* ---- Column glow (vivid colors need stronger presence on white) ---- */
+	--glow-start-alpha: 0.20;
+	--glow-mid-alpha: 0.06;
+	--glow-line-alpha: 0.45;
 
 	/* ---- Shadows (blue-tinted, layered for depth) ---- */
 	--shadow-column: 0 8px 30px -8px rgb(80 100 140 / 0.13), 0 2px 8px -2px rgb(80 100 140 / 0.06);
@@ -208,6 +208,13 @@ body, #root {
 		transparent 100%
 	);
 	box-shadow: inset 0 2px 0 0 rgb(var(--col-rgb) / var(--glow-line-alpha));
+}
+
+/* Colored outer shadow for light theme columns */
+[data-theme="light"] .column-glow {
+	box-shadow:
+		0 4px 20px -4px rgb(var(--col-rgb) / 0.28),
+		0 2px 8px -2px rgb(var(--col-rgb) / 0.14);
 }
 
 /* ---- Custom scrollbars ---- */

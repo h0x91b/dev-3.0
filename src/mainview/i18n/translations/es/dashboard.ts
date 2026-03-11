@@ -1,0 +1,46 @@
+const dashboard = {
+	// Dashboard
+	"dashboard.noProjects": "Aún no hay proyectos",
+	"dashboard.noProjectsHint": "Agrega un repositorio git para comenzar",
+	"dashboard.addProject": "Agregar proyecto",
+	"dashboard.openInFinder": "Abrir en Finder",
+	"dashboard.remove": "Eliminar",
+	"dashboard.confirmRemove": "¿Eliminar este proyecto de la lista?",
+	"dashboard.failedAdd": "Error al agregar proyecto: {error}",
+	"dashboard.failedRemove": "Error al eliminar proyecto: {error}",
+	"dashboard.projectCount_one": "{count} proyecto",
+	"dashboard.projectCount_other": "{count} proyectos",
+
+	// GlobalHeader
+	"header.task": "Tarea",
+	"header.settings": "Configuración",
+	"header.projectSettings": "Configuración del proyecto",
+	"header.globalSettingsTooltip": "Configuración global (\u2318,)",
+	"header.openFolderTooltip": "Abrir carpeta del proyecto",
+	"header.projLabel": "Proy",
+	"header.globalLabel": "Global",
+	"header.devServer": "Servidor Dev",
+	"header.devServerDisabled": "Configure el script dev en la configuración del proyecto",
+	"header.devServerRunning": "El servidor dev ya está en ejecución",
+	"header.devServerRestart": "Reiniciar",
+	"header.devServerStop": "Detener",
+	"header.fileBrowser": "Archivos",
+	"header.changelog": "Registro de cambios",
+	"header.changelogLabel": "Change Log",
+	"header.changelogTooltip": "Ver registro de cambios",
+	"header.githubTooltip": "Sitio web",
+	"header.reportBugTooltip": "Reportar un error",
+	"header.reportLabel": "Report",
+	"header.switchProject": "Cambiar proyecto",
+	"header.activeTaskCount_one": "{count} en curso",
+	"header.activeTaskCount_other": "{count} en curso",
+	"header.noActiveTasks": "Sin tareas activas",
+
+	// FileBrowser
+	"fileBrowser.notInstalledTitle": "yazi no está instalado",
+	"fileBrowser.notInstalledDesc": "El explorador de archivos requiere yazi. Ejecuta el comando para instalarlo:",
+	"fileBrowser.linuxBrewHint": "Primero instala Homebrew para Linux (https://brew.sh), luego ejecuta:",
+	"fileBrowser.clickAgainHint": "Después de la instalación, haz clic en Files de nuevo y funcionará.",
+};
+
+export default dashboard;

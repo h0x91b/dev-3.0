@@ -5,30 +5,40 @@ import { ensureCodexConfigFile } from "./codex-config";
 
 const log = createLogger("agent-skills");
 
-// ---- Shared skill body (everything after frontmatter) ----
+// ---- Composable skill body sections ----
 
-const SKILL_BODY = `# dev3 — Task Lifecycle Protocol
+const SKILL_HEADER = `# dev3 — Task Lifecycle Protocol
 
 You are working inside a **dev-3.0 managed worktree** with a Kanban board task assigned to you.
+`;
 
+const SKILL_BRANCH_NAMING = `
 ## Branch naming
 
 After learning your current task, check if the branch matches \`dev3/task-*\` (opaque auto-generated name).
 If it does, **rename it immediately** to something meaningful based on the task description:
 
 \`\`\`bash
-git branch -m dev3/task-XXXXXXXX dev3/<slug>
+git branch -m dev3/task-XXXXXXXX <type>/<slug>
 \`\`\`
 
-**Rules:**
-- Always keep the \`dev3/\` prefix.
-- Use lowercase kebab-case, 3-5 words: \`dev3/fix-auth-race-condition\`, \`dev3/add-drag-reorder\`.
+> **User preferences override these defaults.** If the user's CLAUDE.md, AGENTS.md, or auto-memory
+> specifies a different branch naming convention (e.g., JIRA ticket prefix, custom format),
+> follow the user's convention instead of the defaults below.
+
+**Default rules** (apply only when the user has no custom branch naming preference):
+- Use a conventional type prefix: \`feat/\`, \`fix/\`, \`chore/\`, \`refactor/\`, \`docs/\`.
+- Use lowercase kebab-case, 3-5 words: \`fix/auth-race-condition\`, \`feat/drag-reorder\`, \`refactor/rpc-handlers\`.
 - Derive the slug from the task description/title — be concise but descriptive.
+
+**Always applies:**
 - If the branch already has a meaningful name (does NOT match \`dev3/task-*\`), skip renaming.
 - If the branch was already pushed, also update the remote: \`git push origin :<old> && git push -u origin <new>\`.
 
 Run this ONCE at session start, right after setting \`in-progress\`.
+`;
 
+const SKILL_TITLE_GENERATION = `
 ## Title generation
 
 The task title is auto-generated from the first 80 characters of the description.
@@ -40,21 +50,9 @@ longer than ~6 words, synthesize a concise title and update it:
 Good titles: "Fix auth race condition", "Map missing keyboard bindings", "Add drag-to-reorder support"
 Bad titles: copies of the description, vague summaries, titles with ellipsis
 Run this ONCE at session start, before doing any other work.
+`;
 
-## Task status management (CRITICAL — NON-NEGOTIABLE)
-
-### Status transitions — every turn:
-
-1. **Start of every turn** — run \`~/.dev3.0/bin/dev3 task move --status in-progress\` when you receive a message and begin working.
-2. **End of every turn** — before your final response, you MUST move the task to one of exactly two states:
-   - **\`user-questions\`** — you need user input, clarification, or the ball is on the user's side for any reason. **This is the default if the task is not yet complete.** (shown in UI as "Waiting for You")
-   - **\`review-by-user\`** — you believe the task is fully complete from your side.
-3. **\`in-progress\` is transient** — it MUST NEVER remain after you finish responding. It only exists while you are actively working. (shown in UI as "Agent is Working")
-
-### Rules:
-
-- If \`task move\` fails because the task is already in the target status, that is OK — just continue.
-
+const SKILL_CUSTOM_COLUMNS = `
 ### Custom columns
 
 If the project defines custom columns (visible in \`dev3 current\` output), you can move tasks there:
@@ -62,13 +60,42 @@ If the project defines custom columns (visible in \`dev3 current\` output), you 
   dev3 task move --status <custom-column-id>
 
 Each custom column has an 8-char ID prefix and a description of when to use it.
-Moving to a custom column does not affect the worktree or terminal session.
-To move a task back to a built-in status, use the regular \`dev3 task move\` command.
+`;
 
+const SKILL_NOTES = `
 ## Notes (per-task scratchpad)
 
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
 `;
+
+// Full manual status management — for agents without hooks (Cursor, Codex, Gemini, etc.)
+const SKILL_STATUS_MANUAL = `
+## Task status management (CRITICAL — NON-NEGOTIABLE)
+
+### Status transitions — every turn:
+
+1. **Start of every turn** — run \`~/.dev3.0/bin/dev3 task move --status in-progress\` when you receive a message and begin working.
+2. **End of every turn** — before your final response, you MUST move the task to one of exactly two states:
+   - **\`user-questions\`** — you need user input, clarification, or the ball is on the user's side for any reason. **This is the default if the task is not yet complete.** (shown in UI as "Has Questions")
+   - **\`review-by-user\`** — you believe the task is fully complete from your side.
+3. **\`in-progress\` is transient** — it MUST NEVER remain after you finish responding. It only exists while you are actively working. (shown in UI as "Agent is Working")
+
+### Rules:
+
+- If \`task move\` fails because the task is already in the target status, that is OK — just continue.
+${SKILL_CUSTOM_COLUMNS}`;
+
+// Simplified status management — for Claude Code (hooks handle everything automatically)
+const SKILL_STATUS_HOOKS = `
+## Task status management
+
+Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-user\`).
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. You can still use it for custom columns.
+${SKILL_CUSTOM_COLUMNS}`;
+
+// Composed bodies for each agent type
+const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES;
+const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill. Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
@@ -80,7 +107,7 @@ description: "${SKILL_DESCRIPTION}"
 user-invocable: true
 ---
 
-${SKILL_BODY}
+${CLAUDE_SKILL_BODY}
 ## Status (auto-set on skill load)
 
 !\`~/.dev3.0/bin/dev3 task move --status in-progress 2>&1\`
@@ -106,7 +133,7 @@ description: "${SKILL_DESCRIPTION}"
 user-invocable: true
 ---
 
-${SKILL_BODY}
+${GENERIC_SKILL_BODY}
 ## On session start
 
 Run these two commands to learn about available CLI commands and your current task:

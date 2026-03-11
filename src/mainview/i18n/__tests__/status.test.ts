@@ -8,6 +8,7 @@ describe("statusKey", () => {
 		"user-questions": "status.userQuestions",
 		"review-by-ai": "status.reviewByAi",
 		"review-by-user": "status.reviewByUser",
+		"review-by-colleague": "status.reviewByColleague",
 		completed: "status.completed",
 		cancelled: "status.cancelled",
 	};

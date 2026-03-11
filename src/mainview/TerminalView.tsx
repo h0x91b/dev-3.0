@@ -95,8 +95,10 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 
 			// 1. Full frontend reset (recreates WASM terminal)
 			if (term) {
-				term.reset();
-				term.renderer?.remeasureFont();
+				try {
+					term.reset();
+					term.renderer?.remeasureFont();
+				} catch { /* disposed */ }
 				console.log("[TerminalView] Hard reset: term.reset() + remeasureFont()");
 			}
 
@@ -107,14 +109,16 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 
 			// 3. Force tmux redraw via resize nudge
 			if (term) {
-				const cols = term.cols;
-				const rows = term.rows;
-				ws.send(`\x1b]resize;${Math.max(2, cols - 1)};${rows}\x07`);
-				setTimeout(() => {
-					if (ws.readyState === WebSocket.OPEN) {
-						ws.send(`\x1b]resize;${cols};${rows}\x07`);
-					}
-				}, 50);
+				try {
+					const cols = term.cols;
+					const rows = term.rows;
+					ws.send(`\x1b]resize;${Math.max(2, cols - 1)};${rows}\x07`);
+					setTimeout(() => {
+						if (ws.readyState === WebSocket.OPEN) {
+							ws.send(`\x1b]resize;${cols};${rows}\x07`);
+						}
+					}, 50);
+				} catch { /* disposed */ }
 			}
 			console.log("[TerminalView] Hard reset sent");
 		}
@@ -363,6 +367,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 
 			ws.onopen = () => {
 				console.log("[TerminalView] WebSocket OPEN");
+				if (disposed) return;
 				const dims = fit.proposeDimensions();
 				console.log("[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
@@ -385,11 +390,17 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			};
 
 			ws.onmessage = (event) => {
-				if (typeof event.data === "string") {
-					const cleaned = event.data.replace(OSC52_RE, "");
-					if (cleaned) term.write(cleaned);
-				} else {
-					term.write(new Uint8Array(event.data));
+				if (disposed) return;
+				try {
+					if (typeof event.data === "string") {
+						const cleaned = event.data.replace(OSC52_RE, "");
+						if (cleaned) term.write(cleaned);
+					} else {
+						term.write(new Uint8Array(event.data));
+					}
+				} catch {
+					// Swallow ghostty-web rendering errors to avoid flooding
+					// analytics with thousands of app_exception events per session.
 				}
 			};
 
@@ -399,12 +410,14 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 					reason: event.reason,
 					wasClean: event.wasClean,
 				});
-				term.writeln("\r\n\x1b[2m[session ended]\x1b[0m");
+				if (disposed) return;
+				try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
 			};
 
 			ws.onerror = (event) => {
 				console.error("[TerminalView] WebSocket ERROR", event);
-				term.writeln("\x1b[31mFailed to connect to PTY server\x1b[0m");
+				if (disposed) return;
+				try { term.writeln("\x1b[31mFailed to connect to PTY server\x1b[0m"); } catch { /* disposed */ }
 			};
 
 			term.onData((data) => {
@@ -427,6 +440,15 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			disposed = true;
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
+			// Neutralize WS handlers before closing to prevent callbacks
+			// from firing on a disposed terminal (race condition: close
+			// handshake is async, messages can still arrive).
+			if (ws) {
+				ws.onopen = null;
+				ws.onmessage = null;
+				ws.onclose = null;
+				ws.onerror = null;
+			}
 			try {
 				ws?.close();
 			} catch (err) {
@@ -451,10 +473,12 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 	}, [ptyUrl, taskId]);
 
 	useEffect(() => {
-		if (termRef.current) {
-			termRef.current.options.theme =
-				resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
-		}
+		try {
+			if (termRef.current) {
+				termRef.current.options.theme =
+					resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+			}
+		} catch { /* disposed */ }
 	}, [resolvedTheme]);
 
 	// When the user starts typing printable characters but nothing has focus
@@ -469,8 +493,10 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			if (e.key.length !== 1) return;
 			const term = termRef.current;
 			if (!term) return;
-			term.focus();
-			term.input(e.key, true);
+			try {
+				term.focus();
+				term.input(e.key, true);
+			} catch { return; /* disposed */ }
 			e.preventDefault();
 		}
 		document.addEventListener("keydown", handleKeydown);
@@ -526,7 +552,8 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			const fit = fitAddonRef.current;
 			if (!ws || ws.readyState !== WebSocket.OPEN || !term || !fit) return;
 
-			const dims = fit.proposeDimensions();
+			let dims: { cols: number; rows: number } | undefined;
+			try { dims = fit.proposeDimensions(); } catch { return; /* disposed */ }
 			if (!dims) return;
 
 			const nudgeCols = Math.max(2, dims.cols - 1);
@@ -550,8 +577,10 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		function onZoomChanged(e: Event) {
 			const term = termRef.current;
 			if (term) {
-				term.options.fontSize = Math.round(TERMINAL_BASE_FONT_SIZE * (e as CustomEvent).detail);
-				fitAddonRef.current?.fit();
+				try {
+					term.options.fontSize = Math.round(TERMINAL_BASE_FONT_SIZE * (e as CustomEvent).detail);
+					fitAddonRef.current?.fit();
+				} catch { /* disposed */ }
 			}
 		}
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
@@ -637,7 +666,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			className="w-full h-full min-h-0 overflow-hidden"
 			data-terminal="true"
 			style={{ backgroundColor: termBg }}
-			onClick={() => termRef.current?.focus()}
+			onClick={() => { try { termRef.current?.focus(); } catch { /* disposed */ } }}
 			onContextMenu={(e) => e.preventDefault()}
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}

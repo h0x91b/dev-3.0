@@ -121,6 +121,7 @@ bun run test         # Run tests
 ```
 
 See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.
+See [agent-support-matrix.md](agent-support-matrix.md) for feature compatibility across AI agents.
 
 ## Star History
 

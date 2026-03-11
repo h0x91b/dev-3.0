@@ -219,4 +219,71 @@ describe("ProjectSettings", () => {
 			});
 		});
 	});
+
+	describe("peer review toggle", () => {
+		it("toggle is on by default (peerReviewEnabled undefined)", () => {
+			renderProjectSettings();
+			const toggle = screen.getByRole("switch", { name: /peer review column/i });
+			expect(toggle).toHaveAttribute("aria-checked", "true");
+		});
+
+		it("toggle reflects peerReviewEnabled: false from project", () => {
+			renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
+			const toggle = screen.getByRole("switch", { name: /peer review column/i });
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+		});
+
+		it("clicking toggle flips state", async () => {
+			const user = userEvent.setup();
+			renderProjectSettings();
+			const toggle = screen.getByRole("switch", { name: /peer review column/i });
+			expect(toggle).toHaveAttribute("aria-checked", "true");
+			await user.click(toggle);
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+		});
+
+		it("saves peerReviewEnabled: false when toggle is turned off", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockResolvedValue({ ...mockProject, peerReviewEnabled: false });
+
+			const user = userEvent.setup();
+			renderProjectSettings();
+
+			// Turn off the toggle
+			const toggle = screen.getByRole("switch", { name: /peer review column/i });
+			await user.click(toggle);
+
+			// Save
+			await user.click(screen.getByText("Save Settings"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({ peerReviewEnabled: false }),
+				);
+			});
+		});
+
+		it("saves peerReviewEnabled: true when toggle is on", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockResolvedValue({ ...mockProject, peerReviewEnabled: true });
+
+			const user = userEvent.setup();
+			renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
+
+			// Turn on the toggle
+			const toggle = screen.getByRole("switch", { name: /peer review column/i });
+			await user.click(toggle);
+
+			// Save
+			await user.click(screen.getByText("Save Settings"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({ peerReviewEnabled: true }),
+				);
+			});
+		});
+	});
 });

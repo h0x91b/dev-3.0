@@ -4,11 +4,19 @@ import type { GlobalSettings, Project, Task } from "../../shared/types";
 // ---- Mocks ----
 
 vi.mock("electrobun/bun", () => ({
+	PATHS: {
+		VIEWS_FOLDER: "/fake-bundle/Resources/app/views/",
+	},
 	Utils: {
 		showMessageBox: vi.fn(),
 		openFileDialog: vi.fn(),
 		quit: vi.fn(),
 	},
+}));
+
+const mockBundledChangelog: any[] = [];
+vi.mock("../changelog-bundled", () => ({
+	get BUNDLED_CHANGELOG() { return mockBundledChangelog; },
 }));
 
 vi.mock("../data", () => ({
@@ -42,6 +50,9 @@ vi.mock("../git", () => ({
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
 	listBranches: vi.fn(),
+	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
+	taskDir: vi.fn(),
+	run: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -51,12 +62,13 @@ vi.mock("../pty-server", () => ({
 	hasDeadSession: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
-	getSessionSocket: vi.fn(() => null),
+	getSessionSocket: vi.fn(() => "dev3"),
 	capturePane: vi.fn(),
-	tmuxArgs: vi.fn((_socket: string | null, ...args: string[]) => ["tmux", ...args]),
+	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
+	DEFAULT_TMUX_SOCKET: "dev3",
 }));
 
 vi.mock("../agents", () => ({
@@ -100,9 +112,11 @@ vi.mock("../spawn", () => ({
 	spawnSync: (...args: any[]) => mockSpawnSync(...args),
 }));
 
-// Mock node:fs for existsSync
+// Mock node:fs for existsSync and readdirSync
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
+	readdirSync: vi.fn(() => []),
+	statSync: vi.fn(() => ({ isDirectory: () => true })),
 }));
 
 const mockObjcGetClass = vi.fn(() => "NSApplication_ptr");
@@ -139,6 +153,8 @@ const {
 	handleBellAutoStatus,
 	setPushMessage,
 	getPushMessage,
+	checkOpenPRsForPromotion,
+	_resetPRPollerState,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -190,6 +206,7 @@ describe("isActive", () => {
 		expect(isActive("user-questions")).toBe(true);
 		expect(isActive("review-by-ai")).toBe(true);
 		expect(isActive("review-by-user")).toBe(true);
+		expect(isActive("review-by-colleague")).toBe(true);
 	});
 
 	it("returns false for inactive statuses", () => {
@@ -780,6 +797,7 @@ describe("handlers.updateProjectSettings", () => {
 			cleanupScript: "echo done",
 			defaultBaseBranch: "main",
 			clonePaths: ["node_modules"],
+			peerReviewEnabled: true,
 		});
 
 		expect(result).toEqual(updated);
@@ -789,6 +807,7 @@ describe("handlers.updateProjectSettings", () => {
 			cleanupScript: "echo done",
 			defaultBaseBranch: "main",
 			clonePaths: ["node_modules"],
+			peerReviewEnabled: true,
 		});
 	});
 });
@@ -2297,7 +2316,7 @@ describe("handlers.killTmuxSession", () => {
 
 		await handlers.killTmuxSession({ sessionName: "dev3-abc12345" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "kill-session", "-t", "dev3-abc12345"],
+			["tmux", "-L", "dev3", "kill-session", "-t", "dev3-abc12345"],
 			expect.any(Object),
 		);
 	});
@@ -2311,8 +2330,8 @@ describe("handlers.killTmuxSession", () => {
 		await handlers.killTmuxSession({ sessionName: "dev3-abc12345" });
 
 		const calls = mockSpawn.mock.calls.map((c) => c[0]);
-		expect(calls).toContainEqual(["tmux", "kill-session", "-t", "dev3-abc12345"]);
-		expect(calls).toContainEqual(["tmux", "kill-session", "-t", "dev3-dev-abc12345"]);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-abc12345"))).toBe(true);
+		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abc12345"))).toBe(true);
 	});
 
 	it("does not attempt to kill a nested dev session when killing a dev3-dev- session", async () => {
@@ -2729,7 +2748,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -2743,7 +2762,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -2757,7 +2776,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "resize-pane", "-Z", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "resize-pane", "-Z", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -2910,5 +2929,188 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: null });
 		expect(result.customColumnId).toBeNull();
+	});
+});
+
+// ================================================================
+// checkOpenPRsForPromotion — PR detection poller
+// ================================================================
+
+describe("checkOpenPRsForPromotion", () => {
+	beforeEach(() => {
+		vi.mocked(data.loadProjects).mockReset();
+		vi.mocked(data.loadTasks).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(git.getCurrentBranch).mockReset();
+		vi.mocked(git.getUnpushedCount).mockReset();
+		vi.mocked(git.run).mockReset();
+		_resetPRPollerState();
+	});
+
+	function setup(taskOverrides?: Partial<Task>, projectOverrides?: Partial<Project>) {
+		const project = makeProject(projectOverrides);
+		const task = makeTask({ status: "review-by-user", worktreePath: "/tmp/wt", ...taskOverrides });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/my-feature");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		return { project, task };
+	}
+
+	it("promotes task to review-by-colleague when open non-draft PR found", async () => {
+		const { project, task } = setup();
+		const promoted = { ...task, status: "review-by-colleague" as const };
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, isDraft: false }]), stderr: "" });
+		vi.mocked(data.updateTask).mockResolvedValue(promoted);
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-colleague" });
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: promoted });
+	});
+
+	it("does not promote when PR is a draft", async () => {
+		setup();
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 7, isDraft: true }]), stderr: "" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("does not promote when no PR exists", async () => {
+		setup();
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([]), stderr: "" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips projects with peerReviewEnabled === false", async () => {
+		setup({}, { peerReviewEnabled: false });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips tasks not in review-by-user status", async () => {
+		setup({ status: "in-progress" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips tasks with no worktreePath", async () => {
+		setup({ worktreePath: null });
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips branches that were never pushed (getUnpushedCount === -1)", async () => {
+		setup();
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.run).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("does not re-check already promoted tasks", async () => {
+		const { task } = setup();
+		const promoted = { ...task, status: "review-by-colleague" as const };
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "" });
+		vi.mocked(data.updateTask).mockResolvedValue(promoted);
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+		expect(data.updateTask).toHaveBeenCalledTimes(1);
+
+		// Reset mocks but keep prPromotedTasks state
+		vi.mocked(data.updateTask).mockClear();
+		vi.mocked(push).mockClear();
+
+		await checkOpenPRsForPromotion();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("skips when gh pr list call fails", async () => {
+		setup();
+		vi.mocked(git.run).mockResolvedValue({ ok: false, stdout: "", stderr: "gh: not found" });
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// getChangelogs
+// ================================================================
+
+describe("getChangelogs", () => {
+	beforeEach(() => {
+		vi.mocked(existsSync).mockReset();
+		mockBundledChangelog.length = 0;
+	});
+
+	it("returns empty array when no change-logs dir, no JSON file, and no bundled data (reproduces production bug)", async () => {
+		// Simulate Electrobun 1.14+ production: no vite.config.ts, no change-logs/,
+		// no changelog.json on disk (resources inside tar archive)
+		vi.mocked(existsSync).mockReturnValue(false);
+
+		const result = await handlers.getChangelogs();
+		expect(result).toEqual([]);
+	});
+
+	it("returns bundled data when filesystem paths are inaccessible (Electrobun 1.14+ fix)", async () => {
+		// Simulate production: all filesystem checks fail
+		vi.mocked(existsSync).mockReturnValue(false);
+
+		// But bundled data is available (inlined at build time)
+		mockBundledChangelog.push(
+			{ date: "2026-03-09", type: "fix", slug: "test-fix", title: "A test fix" },
+			{ date: "2026-03-08", type: "feature", slug: "test-feat", title: "A test feature" },
+		);
+
+		const result = await handlers.getChangelogs();
+		expect(result).toHaveLength(2);
+		expect(result[0]).toEqual({ date: "2026-03-09", type: "fix", slug: "test-fix", title: "A test fix" });
+	});
+
+	it("reads from JSON file when it exists on disk", async () => {
+		const fakeEntries = [{ date: "2026-03-01", type: "fix", slug: "s", title: "T" }];
+		// existsSync: false for vite.config.ts (20 calls), false for change-logs/,
+		// then true for prodJson path
+		const calls: string[] = [];
+		vi.mocked(existsSync).mockImplementation((p: any) => {
+			calls.push(String(p));
+			if (String(p).endsWith("changelog.json")) return true;
+			return false;
+		});
+
+		// Mock Bun.file().text() to return JSON
+		(globalThis as any).Bun.file = vi.fn(() => ({
+			text: () => Promise.resolve(JSON.stringify(fakeEntries)),
+			exists: () => Promise.resolve(true),
+			json: () => Promise.resolve(fakeEntries),
+		}));
+
+		const result = await handlers.getChangelogs();
+		expect(result).toEqual(fakeEntries);
 	});
 });

@@ -128,7 +128,7 @@ function Dashboard({ projects, dispatch, navigate }: DashboardProps) {
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
-											api.request.openFolder({ path: project.path });
+											api.request.openFolder({ path: project.path }).catch(() => {});
 										}}
 										className="opacity-0 group-hover:opacity-100 text-fg-3 hover:text-fg text-sm font-medium transition-all px-3 py-1.5 rounded-lg hover:bg-elevated"
 									>

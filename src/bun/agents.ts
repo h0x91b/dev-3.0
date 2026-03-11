@@ -124,12 +124,9 @@ export function interpolateTemplate(template: string, ctx: TemplateContext): str
 export const DEV3_SYSTEM_PROMPT =
 	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
 	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
-	"TASK STATUS MANAGEMENT IS NON-NEGOTIABLE: " +
-	"(1) Run `~/.dev3.0/bin/dev3 task move --status in-progress` at the START of every turn (when you receive a message and begin working). " +
-	"(2) At the END of every turn, you MUST move the task to one of exactly two states: " +
-	"`user-questions` (need user input or task is not yet complete — this is the default) or " +
-	"`review-by-user` (task is fully complete). " +
-	"(3) The task MUST NEVER remain in `in-progress` after you finish responding — it is a transient state only while you are actively working.";
+	"Task status transitions (in-progress, user-questions, review) are managed " +
+	"automatically by hooks — do NOT call `dev3 task move` for status changes " +
+	"unless you need to move to a custom column.";
 
 /** Returns true when the resolved base command is the Claude CLI. */
 export function isClaudeCommand(baseCmd: string): boolean {
@@ -180,6 +177,7 @@ export function resolveAgentCommand(
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const args: string[] = [];
 	const shouldResume = options?.resume && supportsResume(baseCmd);
+	const codexAgent = isCodexCommand(baseCmd);
 
 	// Resume flags per agent (Codex uses a subcommand, handled at the end)
 	if (shouldResume) {
@@ -197,7 +195,7 @@ export function resolveAgentCommand(
 
 	const cursorAgent = isCursorCommand(baseCmd);
 
-	if (config?.permissionMode && config.permissionMode !== "default") {
+	if (config?.permissionMode && config.permissionMode !== "default" && !codexAgent) {
 		if (cursorAgent) {
 			// Cursor Agent uses different flags for modes
 			if (config.permissionMode === "plan") {
@@ -211,11 +209,11 @@ export function resolveAgentCommand(
 		}
 	}
 
-	if (config?.effort && !cursorAgent) {
+	if (config?.effort && !cursorAgent && !codexAgent) {
 		args.push("--effort", config.effort);
 	}
 
-	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent) {
+	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent) {
 		args.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 

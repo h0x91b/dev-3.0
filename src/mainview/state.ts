@@ -1,5 +1,5 @@
 import { useReducer } from "react";
-import type { Project, Task } from "../shared/types";
+import type { PortInfo, Project, Task } from "../shared/types";
 
 // ---- Routes ----
 
@@ -10,7 +10,8 @@ export type Route =
 	| { screen: "project-settings"; projectId: string }
 	| { screen: "settings" }
 	| { screen: "changelog" }
-	| { screen: "gauge-demo" };
+	| { screen: "gauge-demo" }
+	| { screen: "viewport-lab" };
 
 // ---- State ----
 
@@ -21,6 +22,7 @@ export interface AppState {
 	currentProjectTasks: Task[];
 	loading: boolean;
 	bellCounts: Map<string, number>;
+	taskPorts: Map<string, PortInfo[]>;
 }
 
 export const initialState: AppState = {
@@ -30,6 +32,7 @@ export const initialState: AppState = {
 	currentProjectTasks: [],
 	loading: true,
 	bellCounts: new Map(),
+	taskPorts: new Map(),
 };
 
 // ---- Actions ----
@@ -47,7 +50,9 @@ export type AppAction =
 	| { type: "updateProject"; project: Project }
 	| { type: "setLoading"; loading: boolean }
 	| { type: "addBell"; taskId: string }
-	| { type: "clearBell"; taskId: string };
+	| { type: "clearBell"; taskId: string }
+	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
+	| { type: "clearPorts"; taskId: string };
 
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -160,6 +165,21 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			const bellCounts = new Map(state.bellCounts);
 			bellCounts.delete(action.taskId);
 			return { ...state, bellCounts };
+		}
+		case "setPorts": {
+			const taskPorts = new Map(state.taskPorts);
+			if (action.ports.length === 0) {
+				taskPorts.delete(action.taskId);
+			} else {
+				taskPorts.set(action.taskId, action.ports);
+			}
+			return { ...state, taskPorts };
+		}
+		case "clearPorts": {
+			if (!state.taskPorts.has(action.taskId)) return state;
+			const taskPorts = new Map(state.taskPorts);
+			taskPorts.delete(action.taskId);
+			return { ...state, taskPorts };
 		}
 		default:
 			return state;

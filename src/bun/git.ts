@@ -1,12 +1,13 @@
 import type { Project, Task } from "../shared/types";
 export { extractRepoName } from "../shared/types";
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("git");
 
-async function run(
+export async function run(
 	cmd: string[],
 	cwd: string,
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
@@ -103,9 +104,36 @@ export async function getDefaultBranch(path: string): Promise<string> {
 		["git", "rev-parse", "--verify", "main"],
 		path,
 	);
-	const branch = mainCheck.ok ? "main" : "master";
-	log.info(`Default branch (local fallback): ${branch}`, { path });
-	return branch;
+	if (mainCheck.ok) {
+		log.info("Default branch (local fallback): main", { path });
+		return "main";
+	}
+
+	const masterCheck = await run(
+		["git", "rev-parse", "--verify", "master"],
+		path,
+	);
+	if (masterCheck.ok) {
+		log.info("Default branch (local fallback): master", { path });
+		return "master";
+	}
+
+	// Strategy 5: use whatever local branch exists
+	const localBranches = await run(
+		["git", "branch", "--format=%(refname:short)"],
+		path,
+	);
+	if (localBranches.ok && localBranches.stdout.trim()) {
+		const first = localBranches.stdout.trim().split("\n")[0].trim();
+		if (first) {
+			log.info(`Default branch (first local branch): ${first}`, { path });
+			return first;
+		}
+	}
+
+	// No branches at all (empty repo with no commits)
+	log.warn("No branches found in repository", { path });
+	throw new Error("No branches found in repository. Make at least one commit before adding the project.");
 }
 
 export function shortId(taskId: string): string {
@@ -117,7 +145,7 @@ export function projectSlug(projectPath: string): string {
 	return projectPath.replace(/^\//, "").replaceAll("/", "-");
 }
 
-function taskDir(project: Project, task: Task): string {
+export function taskDir(project: Project, task: Task): string {
 	return `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
 }
 
@@ -174,9 +202,10 @@ export async function createWorktree(
 		);
 
 		if (!result.ok) {
-			// If it's a remote branch that doesn't have a local tracking branch yet,
-			// try creating a local tracking branch
-			if (existingBranch.startsWith("origin/")) {
+			const isAlreadyCheckedOut = result.stderr.includes("already checked out") || result.stderr.includes("already used by worktree");
+
+			if (existingBranch.startsWith("origin/") && !isAlreadyCheckedOut) {
+				// Remote branch without a local tracking branch yet — create one
 				log.info("Retrying with tracking branch creation", { existingBranch });
 				const trackResult = await run(
 					["git", "worktree", "add", "--track", "-b", resolvedBranch, wtPath, existingBranch],
@@ -186,10 +215,43 @@ export async function createWorktree(
 					log.error("Failed to create worktree from existing branch", { stderr: trackResult.stderr, taskId: task.id });
 					throw new Error(`Failed to create worktree: ${trackResult.stderr}`);
 				}
-			} else {
-				log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
-				throw new Error(`Failed to create worktree: ${result.stderr}`);
+				log.info("Worktree created from existing branch (tracking)", { wtPath, branch: resolvedBranch });
+				return { worktreePath: wtPath, branchName: resolvedBranch };
 			}
+
+			if (isAlreadyCheckedOut) {
+				// Branch is checked out in another worktree — create a new task branch based on it
+				const taskBranch = branchName(task);
+				log.info("Branch already checked out, creating task branch based on it", {
+					existingBranch: resolvedBranch, taskBranch, taskId: task.id,
+				});
+				const fallbackResult = await run(
+					["git", "worktree", "add", "-b", taskBranch, wtPath, resolvedBranch],
+					project.path,
+				);
+				if (!fallbackResult.ok) {
+					log.error("Failed to create worktree from existing branch (fallback)", { stderr: fallbackResult.stderr, taskId: task.id });
+					throw new Error(`Failed to create worktree: ${fallbackResult.stderr}`);
+				}
+				// Set up remote tracking so `git push` targets the original remote branch
+				const remoteRef = `origin/${resolvedBranch}`;
+				const remoteCheckResult = await run(
+					["git", "rev-parse", "--verify", remoteRef],
+					project.path,
+				);
+				if (remoteCheckResult.ok) {
+					await run(
+						["git", "branch", "--set-upstream-to", remoteRef],
+						wtPath,
+					);
+					log.info("Set remote tracking branch for fallback task branch", { taskBranch, remoteRef });
+				}
+				log.info("Worktree created with task branch based on existing", { wtPath, branch: taskBranch, base: resolvedBranch });
+				return { worktreePath: wtPath, branchName: taskBranch };
+			}
+
+			log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
+			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
 
 		log.info("Worktree created from existing branch", { wtPath, branch: resolvedBranch });
@@ -200,10 +262,31 @@ export async function createWorktree(
 	const branch = branchName(task);
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 
-	log.info("Creating worktree", { wtPath, branch, baseBranch, taskId: task.id, taskDir: tDir });
+	// Fetch origin so the worktree starts from the latest remote commit,
+	// not a potentially stale local branch.
+	const fetched = await fetchOrigin(project.path);
+	const remoteBase = `origin/${baseBranch}`;
+	const refCheckResult = fetched
+		? await run(["git", "rev-parse", "--verify", remoteBase], project.path)
+		: { ok: false };
+	const resolvedBase = refCheckResult.ok ? remoteBase : baseBranch;
+
+	// Verify the resolved base actually exists before attempting worktree creation
+	if (!refCheckResult.ok) {
+		const localCheck = await run(["git", "rev-parse", "--verify", baseBranch], project.path);
+		if (!localCheck.ok) {
+			log.error("Base branch does not exist", { baseBranch, taskId: task.id });
+			throw new Error(
+				`Branch "${baseBranch}" does not exist locally or on the remote. ` +
+				`Check your project's base branch setting, or make sure the branch exists.`,
+			);
+		}
+	}
+
+	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 
 	const result = await run(
-		["git", "worktree", "add", "-b", branch, wtPath, baseBranch],
+		["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
 		project.path,
 	);
 
@@ -548,6 +631,64 @@ export async function cloneRepo(
 	return { ok: true, path: targetDir };
 }
 
+const MAX_DIFF_SNAPSHOTS = 50;
+const MAX_DIFF_SIZE_BYTES = 1_000_000; // 1 MB
+
+export async function saveDiffSnapshot(
+	project: Project,
+	task: Task,
+	ref: string,
+): Promise<void> {
+	const dir = `${taskDir(project, task)}/diffs`;
+	mkdirSync(dir, { recursive: true });
+
+	// Get full diff
+	const result = await run(["git", "diff", `${ref}...HEAD`], task.worktreePath!);
+	const diff = result.ok ? result.stdout : "";
+
+	// Skip if empty (no changes)
+	if (!diff.trim()) {
+		log.debug("saveDiffSnapshot: no diff, skipping");
+		return;
+	}
+
+	// Skip if diff is too large
+	if (Buffer.byteLength(diff, "utf-8") > MAX_DIFF_SIZE_BYTES) {
+		log.info("saveDiffSnapshot: diff too large, skipping", { bytes: Buffer.byteLength(diff, "utf-8") });
+		return;
+	}
+
+	// Check if identical to the latest snapshot
+	const existing = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	if (existing.length > 0) {
+		const lastFile = `${dir}/${existing[existing.length - 1]}`;
+		try {
+			const lastContent = readFileSync(lastFile, "utf-8");
+			if (lastContent === diff) {
+				log.debug("saveDiffSnapshot: unchanged, skipping");
+				return;
+			}
+		} catch { /* file read error — proceed with saving */ }
+	}
+
+	// Save with timestamp
+	const now = new Date();
+	const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+	const filename = `${ts}.patch`;
+	writeFileSync(`${dir}/${filename}`, diff);
+	log.info("saveDiffSnapshot: saved", { file: filename, size: diff.length });
+
+	// Prune old snapshots beyond the limit
+	const allFiles = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	if (allFiles.length > MAX_DIFF_SNAPSHOTS) {
+		const toRemove = allFiles.slice(0, allFiles.length - MAX_DIFF_SNAPSHOTS);
+		for (const f of toRemove) {
+			unlinkSync(`${dir}/${f}`);
+		}
+		log.info("saveDiffSnapshot: pruned old snapshots", { removed: toRemove.length });
+	}
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,
@@ -567,9 +708,11 @@ export async function removeWorktree(
 	);
 
 	if (branchToDelete) {
-		// Only delete branches that dev3 created (dev3/task-* or variant suffixes like feature/login-v1).
-		// User-owned branches (e.g. feature/login chosen via branch selector) should be preserved.
-		const isDevBranch = branchToDelete.startsWith("dev3/");
+		// Delete branches that dev3 created. We check task.branchName (the original name
+		// assigned at worktree creation) rather than the live branch name, because agents
+		// may rename branches to conventional prefixes (feat/, fix/, etc.).
+		// A task.branchName starting with "dev3/task-" means dev3 created it.
+		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/");
 		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
 			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
 		if (isDevBranch || isVariantBranch) {

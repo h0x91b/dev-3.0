@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
 import { useT } from "./i18n";
@@ -6,6 +6,7 @@ import { trackPageView, trackEvent } from "./analytics";
 import type { RequirementCheckResult } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
+import { useViewport } from "./hooks/useViewport";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
@@ -15,12 +16,14 @@ import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
+import ViewportLab from "./components/ViewportLab";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
+	useViewport(state.route);
 
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
@@ -28,6 +31,10 @@ function App() {
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+	// Download progress: null = idle, "checking" | "downloading" | "error"
+	const [updateDownloadStatus, setUpdateDownloadStatus] = useState<string | null>(null);
+	const updateStatusShownAtRef = useRef<number>(0);
+	const updateClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
@@ -176,6 +183,16 @@ function App() {
 		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
 	}, [dispatch]);
 
+	// Listen for port scan updates
+	useEffect(() => {
+		function onPortsUpdated(e: Event) {
+			const { taskId, ports } = (e as CustomEvent).detail;
+			dispatch({ type: "setPorts", taskId, ports });
+		}
+		window.addEventListener("rpc:portsUpdated", onPortsUpdated);
+		return () => window.removeEventListener("rpc:portsUpdated", onPortsUpdated);
+	}, [dispatch]);
+
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
@@ -227,9 +244,41 @@ function App() {
 		function onUpdateAvailable(e: Event) {
 			const { version } = (e as CustomEvent).detail;
 			setUpdateVersion(version);
+			setUpdateDownloadStatus(null); // clear download indicator once ready
 		}
 		window.addEventListener("rpc:updateAvailable", onUpdateAvailable);
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
+	}, []);
+
+	// Listen for update download progress (minimum 5s display time)
+	useEffect(() => {
+		const MIN_DISPLAY_MS = 5_000;
+		function onDownloadProgress(e: Event) {
+			const { status } = (e as CustomEvent).detail;
+			if (status === "complete" || status === "idle") {
+				// Clear after minimum display time
+				const elapsed = Date.now() - updateStatusShownAtRef.current;
+				const remaining = Math.max(0, MIN_DISPLAY_MS - elapsed);
+				if (updateClearTimerRef.current) clearTimeout(updateClearTimerRef.current);
+				updateClearTimerRef.current = setTimeout(() => {
+					setUpdateDownloadStatus(null);
+					updateClearTimerRef.current = null;
+				}, remaining);
+			} else {
+				// Show immediately, record timestamp
+				if (updateClearTimerRef.current) {
+					clearTimeout(updateClearTimerRef.current);
+					updateClearTimerRef.current = null;
+				}
+				updateStatusShownAtRef.current = Date.now();
+				setUpdateDownloadStatus(status); // "checking", "downloading", "error"
+			}
+		}
+		window.addEventListener("rpc:updateDownloadProgress", onDownloadProgress);
+		return () => {
+			window.removeEventListener("rpc:updateDownloadProgress", onDownloadProgress);
+			if (updateClearTimerRef.current) clearTimeout(updateClearTimerRef.current);
+		};
 	}, []);
 
 	// Listen for Cmd+, (Settings menu item)
@@ -248,6 +297,15 @@ function App() {
 		}
 		window.addEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
 		return () => window.removeEventListener("rpc:navigateToGaugeDemo", onNavigateToGaugeDemo);
+	}, [navigate]);
+
+	// Listen for View > Viewport Lab menu item
+	useEffect(() => {
+		function onNavigateToViewportLab() {
+			navigate({ screen: "viewport-lab" });
+		}
+		window.addEventListener("rpc:navigateToViewportLab", onNavigateToViewportLab);
+		return () => window.removeEventListener("rpc:navigateToViewportLab", onNavigateToViewportLab);
 	}, [navigate]);
 
 	// Track page views on route changes
@@ -324,8 +382,9 @@ function App() {
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
 				updateVersion={updateVersion}
+				updateDownloadStatus={updateDownloadStatus}
 			/>
-			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
 			{showQuitDialog && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -384,6 +443,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						taskPorts={state.taskPorts}
 						activeTaskId={route.activeTaskId}
 					/>
 				);
@@ -413,6 +473,8 @@ function App() {
 				return <Changelog navigate={navigate} previousRoute={state.previousRoute} />;
 			case "gauge-demo":
 				return <GaugeDemo navigate={navigate} />;
+			case "viewport-lab":
+				return <ViewportLab navigate={navigate} />;
 			default:
 				return null;
 		}

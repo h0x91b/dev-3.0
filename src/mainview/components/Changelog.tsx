@@ -59,6 +59,8 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 		api.request.getChangelogs().then((data) => {
 			setEntries(data);
 			setLoading(false);
+		}).catch(() => {
+			setLoading(false);
 		});
 	}, []);
 
@@ -170,6 +172,37 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 												{t(`changelog.${entry.type}` as any) || entry.type}
 											</span>
 											<span className="text-fg text-sm leading-snug">
+												{entry.suggestedBy && (
+													<span className="text-fg-3 mr-1.5">
+														by{" "}
+														{entry.issueUrl ? (
+															<a
+																href={entry.issueUrl}
+																target="_blank"
+																rel="noopener noreferrer"
+																className="text-accent hover:underline"
+															>
+																@{entry.suggestedBy}
+															</a>
+														) : (
+															<span className="text-accent">@{entry.suggestedBy}</span>
+														)}
+														{entry.issueRef && entry.issueUrl && (
+															<>
+																{" "}
+																<a
+																	href={entry.issueUrl}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="text-fg-muted hover:text-fg-3 hover:underline"
+																>
+																	{entry.issueRef}
+																</a>
+															</>
+														)}
+														{" · "}
+													</span>
+												)}
 												{entry.title}
 											</span>
 										</div>

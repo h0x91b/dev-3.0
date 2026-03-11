@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 	type: string; // "feature" | "fix" | "refactor" | "docs" | "chore"
 	slug: string; // "system-requirements-check"
 	title: string; // First sentence of content (truncated to ~120 chars)
+	suggestedBy?: string; // GitHub username without @ (e.g. "roiros")
+	issueUrl?: string; // Full GitHub issue URL (e.g. "https://github.com/h0x91b/dev-3.0/issues/191")
+	issueRef?: string; // Short issue ref (e.g. "#191")
 }
 
 // ---- Data models ----
@@ -17,6 +20,7 @@ export type TaskStatus =
 	| "user-questions"
 	| "review-by-ai"
 	| "review-by-user"
+	| "review-by-colleague"
 	| "completed"
 	| "cancelled";
 
@@ -24,6 +28,7 @@ export const ACTIVE_STATUSES: TaskStatus[] = [
 	"in-progress",
 	"user-questions",
 	"review-by-user",
+	"review-by-colleague",
 	"review-by-ai",
 ];
 
@@ -31,18 +36,20 @@ export const ALL_STATUSES: TaskStatus[] = [
 	"todo",
 	"in-progress",
 	"user-questions",
+	"review-by-ai",
 	"review-by-user",
+	"review-by-colleague",
 	"completed",
 	"cancelled",
-	"review-by-ai",
 ];
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
 	todo: "To Do",
 	"in-progress": "Agent is Working",
-	"user-questions": "Waiting for You",
-	"review-by-ai": "Review by AI",
-	"review-by-user": "Review by You",
+	"user-questions": "Has Questions",
+	"review-by-ai": "AI Review",
+	"review-by-user": "Your Review",
+	"review-by-colleague": "PR Review",
 	completed: "Completed",
 	cancelled: "Cancelled",
 };
@@ -51,19 +58,21 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	todo: "#70e3ff",
 	"in-progress": "#afbaff",
 	"user-questions": "#ffa353",
-	"review-by-ai": "#ff8bff",
+	"review-by-ai": "#a0aec0",
 	"review-by-user": "#ffe55f",
+	"review-by-colleague": "#c4a5ff",
 	completed: "#3cf3b0",
 	cancelled: "#ff8282",
 };
 
 export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
-	todo: "#0284c7",
-	"in-progress": "#7c3aed",
+	todo: "#0891b2",
+	"in-progress": "#6366f1",
 	"user-questions": "#ea580c",
-	"review-by-ai": "#a21caf",
-	"review-by-user": "#4d7c0f",
-	completed: "#16a34a",
+	"review-by-ai": "#64748b",
+	"review-by-user": "#ca8a04",
+	"review-by-colleague": "#8b5cf6",
+	completed: "#059669",
 	cancelled: "#dc2626",
 };
 
@@ -131,7 +140,45 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Codex",
 		baseCommand: "codex",
 		isDefault: true,
-		configurations: [{ id: "codex-default", name: "Default" }],
+		configurations: [
+			{
+				id: "codex-default",
+				name: "Default (GPT-5.4 Medium)",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
+			},
+			{
+				id: "codex-plan",
+				name: "Plan (GPT-5.4)",
+				model: "gpt-5.4",
+				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
+				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-heavy",
+				name: "Heavy (GPT-5.4 High)",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-heavy-confirm",
+				name: "Heavy (GPT-5.4 High Confirm)",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-codex-medium",
+				name: "GPT-5.3 Codex Medium",
+				model: "gpt-5.3-codex",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
+			},
+			{
+				id: "codex-codex-high",
+				name: "GPT-5.3 Codex High",
+				model: "gpt-5.3-codex",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+		],
 		defaultConfigId: "codex-default",
 	},
 	{
@@ -177,6 +224,10 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
 	{ id: "ghostty", name: "Ghostty", macAppName: "Ghostty" },
 	{ id: "iterm", name: "iTerm", macAppName: "iTerm" },
 	{ id: "terminal", name: "Terminal", macAppName: "Terminal" },
+	{ id: "intellij", name: "IntelliJ IDEA", macAppName: "IntelliJ IDEA" },
+	{ id: "intellij-ce", name: "IntelliJ IDEA CE", macAppName: "IntelliJ IDEA CE" },
+	{ id: "zed", name: "Zed", macAppName: "Zed" },
+	{ id: "sublime", name: "Sublime Text", macAppName: "Sublime Text" },
 ];
 
 export interface GlobalSettings {
@@ -189,6 +240,13 @@ export interface GlobalSettings {
 	terminalKeymap?: TerminalKeymapPreset;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
+	tipsDisabled?: boolean;
+}
+
+export interface TipState {
+	snoozedUntil: number; // timestamp — all tips hidden until this time
+	seen: Record<string, number>; // tipId → last-seen timestamp
+	rotationIndex: number;
 }
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
@@ -253,6 +311,8 @@ export interface Project {
 	customColumns?: CustomColumn[];
 	// Ordered list of TaskStatus strings and custom column IDs; absent = default order
 	columnOrder?: string[];
+	// When false, the "PR Review" column is hidden (default: true)
+	peerReviewEnabled?: boolean;
 }
 
 export interface Task {
@@ -325,6 +385,14 @@ export interface BranchStatus {
 	diffFileNames: string[]; // list of changed file paths in branch vs base
 }
 
+// ---- Listening ports ----
+
+export interface PortInfo {
+	port: number;
+	pid: number;
+	processName: string; // "node", "bun", "python3"
+}
+
 // ---- Tmux sessions ----
 
 export interface TmuxSessionInfo {
@@ -334,6 +402,9 @@ export interface TmuxSessionInfo {
 	windowCount: number;
 	isCleanup: boolean;
 	taskTitle?: string;
+	taskId?: string;
+	projectId?: string;
+	ports?: PortInfo[];
 }
 
 // ---- System requirements ----
@@ -419,6 +490,7 @@ export type AppRPCSchema = {
 					cleanupScript: string;
 					defaultBaseBranch: string;
 					clonePaths: string[];
+					peerReviewEnabled: boolean;
 				};
 				response: Project;
 			};
@@ -579,6 +651,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			getTaskPorts: {
+				params: { taskId: string };
+				response: PortInfo[];
+			};
 			listTmuxSessions: {
 				params: void;
 				response: TmuxSessionInfo[];
@@ -643,6 +719,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: ExternalApp[];
 			};
+			logRendererError: {
+				params: { description: string; source: "error" | "unhandledrejection" };
+				response: void;
+			};
 			listBranches: {
 				params: { projectId: string };
 				response: Array<{ name: string; isRemote: boolean }>;
@@ -650,6 +730,18 @@ export type AppRPCSchema = {
 			fetchBranches: {
 				params: { projectId: string };
 				response: Array<{ name: string; isRemote: boolean }>;
+			};
+			getTipState: {
+				params: void;
+				response: TipState;
+			};
+			updateTipState: {
+				params: Partial<TipState>;
+				response: TipState;
+			};
+			resetTipState: {
+				params: void;
+				response: TipState;
 			};
 		};
 		messages: {
@@ -660,6 +752,7 @@ export type AppRPCSchema = {
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string };
+			portsUpdated: { taskId: string; ports: PortInfo[] };
 			updateDownloadProgress: { status: string; progress?: number };
 		};
 	}>;
@@ -668,6 +761,7 @@ export type AppRPCSchema = {
 		messages: {
 			navigateToSettings: {};
 			navigateToGaugeDemo: {};
+			navigateToViewportLab: {};
 			terminalSoftReset: {};
 			terminalHardReset: {};
 		};

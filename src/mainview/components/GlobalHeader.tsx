@@ -12,6 +12,7 @@ interface GlobalHeaderProps {
 	tasks: Task[];
 	navigate: (route: Route) => void;
 	updateVersion?: string | null;
+	updateDownloadStatus?: string | null;
 }
 
 interface BreadcrumbSegment {
@@ -24,7 +25,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus }: GlobalHeaderProps) {
 	const t = useT();
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
@@ -290,6 +291,18 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 
 			{/* Actions — tmux sessions, changelog, project settings, global settings, external links */}
 			<div className="flex items-center gap-1.5 flex-shrink-0">
+				{/* Update download progress indicator */}
+				{updateDownloadStatus && updateDownloadStatus !== "error" && !updateVersion && (
+					<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/10 text-accent">
+						<svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+							<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+							<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+						</svg>
+						<span className="text-[0.6875rem] font-semibold">
+							{updateDownloadStatus === "checking" ? t("update.checking") : t("update.downloading")}
+						</span>
+					</div>
+				)}
 				{/* Update available indicator */}
 				{updateVersion && (
 					<div className="relative" ref={dropdownRef}>
@@ -337,7 +350,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion }: Globa
 				)}
 
 				{/* Tmux Session Manager */}
-				<TmuxSessionManager />
+				<TmuxSessionManager navigate={navigate} />
 
 				{/* GitHub website */}
 				<button

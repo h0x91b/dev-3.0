@@ -1,0 +1,1 @@
+Add mobile device detection and dynamic viewport switching. On mobile, UI screens (dashboard, settings, kanban) use native device-width viewport for future responsive adaptation, while terminal screens use fixed 1280px viewport to preserve the full desktop terminal experience. On desktop, behavior is unchanged.

@@ -2,6 +2,8 @@
 // Uses fetch() instead of gtag.js because WKWebView blocks external
 // script loading from the views:// custom protocol.
 
+import { api } from "./rpc";
+
 const GA_MEASUREMENT_ID = "G-L1NSQH6FGY";
 const GA_API_SECRET = "WlYPp7bSTVS5cMRMS4dJwQ";
 const GA_ENDPOINT = `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`;
@@ -170,25 +172,64 @@ export function trackEvent(
 
 // ── Error tracking ──
 
+/** Send error description to backend for local log file persistence. */
+function logToBackend(description: string, source: "error" | "unhandledrejection"): void {
+	api.request.logRendererError({ description, source }).catch(() => {});
+}
+
+/** Extract just the filename from a URL or path (e.g. "index-abc123.js" from "views://mainview/assets/index-abc123.js"). */
+function extractFilename(raw: string): string {
+	if (!raw) return "unknown";
+	try {
+		return raw.split("/").pop() || raw;
+	} catch {
+		return raw;
+	}
+}
+
+/** Extract the first meaningful stack frame (skip the error message line). */
+function extractStackLine(stack: string | undefined): string {
+	if (!stack) return "no stack";
+	const lines = stack.split("\n");
+	for (let i = 1; i < lines.length; i++) {
+		const line = lines[i].trim();
+		if (line) return line;
+	}
+	return "no stack";
+}
+
 function setupErrorTracking(): void {
 	if (errorTrackingSetup) return;
 	errorTrackingSetup = true;
 
 	window.addEventListener("error", (event) => {
+		const file = extractFilename(event.filename);
+		const description = `${event.message} at ${file}:${event.lineno}:${event.colno}`;
 		trackEvent("app_exception", {
-			description: `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
+			description,
 			fatal: false,
+			error_source: "error",
+			error_file: file,
+			error_line: event.lineno,
+			error_message: String(event.message).slice(0, 150),
 		});
+		logToBackend(description, "error");
 	});
 
 	window.addEventListener("unhandledrejection", (event) => {
 		const reason = event.reason;
-		const description = reason instanceof Error
-			? `${reason.message} | ${reason.stack?.split("\n")[1]?.trim() || "no stack"}`
-			: String(reason);
+		const isError = reason instanceof Error;
+		const message = isError ? reason.message : String(reason);
+		const stackLine = isError ? extractStackLine(reason.stack) : "no stack";
+		const description = `Unhandled rejection: ${message} | ${stackLine}`;
 		trackEvent("app_exception", {
-			description: `Unhandled rejection: ${description}`,
+			description,
 			fatal: false,
+			error_source: "unhandledrejection",
+			error_file: extractFilename(stackLine),
+			error_message: message.slice(0, 150),
+			stack_line: stackLine.slice(0, 200),
 		});
+		logToBackend(description, "unhandledrejection");
 	});
 }

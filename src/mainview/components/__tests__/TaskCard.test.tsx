@@ -390,7 +390,7 @@ describe("TaskCard", () => {
 			expect(screen.getByText("To Do")).toBeInTheDocument();
 			expect(screen.getByText("Completed")).toBeInTheDocument();
 			expect(screen.getByText("Cancelled")).toBeInTheDocument();
-			expect(screen.getByText("Waiting for You")).toBeInTheDocument();
+			expect(screen.getByText("Has Questions")).toBeInTheDocument();
 		});
 
 		it("in-progress task does not show Run button", () => {
@@ -749,7 +749,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch, onTaskMoved });
 
-			await user.click(screen.getByText("Waiting for You"));
+			await user.click(screen.getByText("Has Questions"));
 			await user.click(screen.getByText("Agent is Working"));
 
 			await waitFor(() => {
@@ -781,7 +781,7 @@ describe("TaskCard", () => {
 
 			renderCard(task);
 
-			await user.click(screen.getByText("Waiting for You"));
+			await user.click(screen.getByText("Has Questions"));
 			await user.click(screen.getByText("Agent is Working"));
 
 			await waitFor(() => {

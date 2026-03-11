@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { TmuxSessionInfo } from "../../shared/types";
+import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 
-function TmuxSessionManager() {
+interface TmuxSessionManagerProps {
+	navigate: (route: Route) => void;
+}
+
+function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	const t = useT();
 
 	const [sessions, setSessions] = useState<TmuxSessionInfo[]>([]);
@@ -143,9 +148,16 @@ function TmuxSessionManager() {
 	}
 
 	function handleCopy(sessionName: string) {
-		navigator.clipboard.writeText(`tmux attach -t ${sessionName}`);
+		navigator.clipboard.writeText(`tmux -L dev3 attach -t ${sessionName}`);
 		setCopiedName(sessionName);
 		setTimeout(() => setCopiedName(null), 1500);
+	}
+
+	function handleSessionClick(session: TmuxSessionInfo) {
+		if (session.taskId && session.projectId) {
+			navigate({ screen: "project", projectId: session.projectId, activeTaskId: session.taskId });
+			setPopoverOpen(false);
+		}
 	}
 
 	const count = sessions.length;
@@ -252,77 +264,101 @@ function TmuxSessionManager() {
 									{t("tmuxSessions.empty")}
 								</div>
 							) : (
-								sessions.map((session) => (
-									<div
-										key={session.name}
-										className="px-4 py-2.5 hover:bg-elevated-hover transition-colors border-b border-edge/50 last:border-0"
-									>
-										{/* Session name + badges + kill */}
-										<div className="flex items-center justify-between gap-2">
-											<div className="flex items-center gap-2 min-w-0">
-												<span className="text-sm font-semibold text-fg truncate" title={session.name}>
-													{session.taskTitle || session.name}
-												</span>
-												{session.isCleanup && (
-													<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-														{t(
-															"tmuxSessions.cleanup",
-														)}
+								sessions.map((session) => {
+									const canNavigate = !!(session.taskId && session.projectId);
+									return (
+										<div
+											key={session.name}
+											className={`px-4 py-2.5 hover:bg-elevated-hover transition-colors border-b border-edge/50 last:border-0${canNavigate ? " cursor-pointer" : ""}`}
+											onClick={() => handleSessionClick(session)}
+										>
+											{/* Session name + badges + kill */}
+											<div className="flex items-center justify-between gap-2">
+												<div className="flex items-center gap-2 min-w-0">
+													<span className={`text-sm font-semibold truncate${canNavigate ? " text-accent" : " text-fg"}`} title={session.name}>
+														{session.taskTitle || session.name}
 													</span>
-												)}
+													{session.isCleanup && (
+														<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+															{t("tmuxSessions.cleanup")}
+														</span>
+													)}
+												</div>
+												<button
+													onClick={(e) => {
+														e.stopPropagation();
+														handleKill(session.name);
+													}}
+													className="flex-shrink-0 text-[0.625rem] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+												>
+													{t("tmuxSessions.kill")}
+												</button>
 											</div>
+
+											{/* Working directory */}
+											{session.cwd && (
+												<div
+													className="text-[0.6875rem] text-fg-3 font-mono truncate mt-1"
+													title={session.cwd}
+												>
+													{session.cwd}
+												</div>
+											)}
+
+											{/* Port badges */}
+											{session.ports && session.ports.length > 0 && (
+												<div className="flex flex-wrap gap-1 mt-1.5">
+													{session.ports.map((p) => (
+														<button
+															key={p.port}
+															onClick={(e) => {
+																e.stopPropagation();
+																window.open(`http://localhost:${p.port}`, "_blank");
+															}}
+															className="inline-flex items-center gap-1 text-[0.625rem] font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors"
+															title={`${p.processName} (PID ${p.pid})`}
+														>
+															<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+															:{p.port}
+														</button>
+													))}
+												</div>
+											)}
+
+											{/* Copy attach command */}
 											<button
-												onClick={() =>
-													handleKill(session.name)
-												}
-												className="flex-shrink-0 text-[0.625rem] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+												onClick={(e) => {
+													e.stopPropagation();
+													handleCopy(session.name);
+												}}
+												className="mt-1.5 flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-hover transition-colors"
 											>
-												{t("tmuxSessions.kill")}
+												<svg
+													className="w-3 h-3 flex-shrink-0"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+												>
+													<rect
+														x="9"
+														y="9"
+														width="13"
+														height="13"
+														rx="2"
+														strokeWidth={2}
+													/>
+													<path
+														d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+														strokeWidth={2}
+													/>
+												</svg>
+												{copiedName === session.name
+													? t("tmuxSessions.copied")
+													: `tmux -L dev3 attach -t ${session.name}`}
 											</button>
 										</div>
-
-										{/* Working directory */}
-										{session.cwd && (
-											<div
-												className="text-[0.6875rem] text-fg-3 font-mono truncate mt-1"
-												title={session.cwd}
-											>
-												{session.cwd}
-											</div>
-										)}
-
-										{/* Copy attach command */}
-										<button
-											onClick={() =>
-												handleCopy(session.name)
-											}
-											className="mt-1.5 flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-hover transition-colors"
-										>
-											<svg
-												className="w-3 h-3 flex-shrink-0"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<rect
-													x="9"
-													y="9"
-													width="13"
-													height="13"
-													rx="2"
-													strokeWidth={2}
-												/>
-												<path
-													d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-													strokeWidth={2}
-												/>
-											</svg>
-											{copiedName === session.name
-												? t("tmuxSessions.copied")
-												: `tmux attach -t ${session.name}`}
-										</button>
-									</div>
-								))
+									);
+								})
 							)}
 						</div>
 					</div>,

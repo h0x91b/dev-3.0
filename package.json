@@ -1,6 +1,6 @@
 {
 	"name": "electrobun-react-tailwind-vite",
-	"version": "0.7.7",
+	"version": "0.8.5",
 	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
 	"license": "Apache-2.0",
 	"author": "Arseny Pavlenko",
@@ -20,7 +20,7 @@
 		"bump": "bun run scripts/bump.ts"
 	},
 	"dependencies": {
-		"electrobun": "1.12.1-beta.2",
+		"electrobun": "1.14.4",
 		"ghostty-web": "^0.4.0",
 		"js-toml": "^1.0.2",
 		"react": "^18.3.1",
@@ -39,7 +39,7 @@
 		"happy-dom": "^20.5.0",
 		"postcss": "^8.4.49",
 		"tailwindcss": "^3.4.16",
-		"typescript": "^5.7.2",
+		"typescript": "^5.9.3",
 		"vite": "^6.0.3",
 		"vitest": "^4.0.18"
 	}

@@ -7,6 +7,8 @@ import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
 import { handleLabel } from "./commands/label";
+import { handleInstallHooks } from "./commands/install-hooks";
+import { handleInstallSkills } from "./commands/install-skills";
 
 const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
@@ -26,6 +28,8 @@ Commands:
   dev3 label set <id> [<id>...]         Assign labels to current task
   dev3 label set --clear                Remove all labels from task
   dev3 tasks list [--status <s>] [--label <id>]  List/filter tasks
+  dev3 install-hooks                     Install agent hooks in current worktree
+  dev3 install-skills                    Install agent skills globally
   dev3 projects list                    List all projects
 
 Statuses: todo, in-progress, user-questions, review-by-ai, review-by-user
@@ -62,6 +66,12 @@ async function main(): Promise<void> {
 	// Commands that work without the app running
 	if (command === "current") {
 		return await handleCurrent(socketPath);
+	}
+	if (command === "install-hooks") {
+		return await handleInstallHooks(context);
+	}
+	if (command === "install-skills") {
+		return await handleInstallSkills();
 	}
 
 	// All other commands require the socket

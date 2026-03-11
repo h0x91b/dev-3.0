@@ -111,50 +111,56 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRow
 	return (
 		<div className="p-3 bg-raised rounded-xl border border-edge space-y-2.5">
 			{/* Name + color + delete */}
-			<div className="flex items-center gap-2">
-				<div
-					className="w-4 h-4 rounded-full flex-shrink-0 border border-edge-active"
-					style={{ background: color }}
-				/>
-				<input
-					type="text"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					onBlur={() => commitUpdate()}
-					onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-					aria-label={t("customColumns.columnName")}
-					placeholder={t("customColumns.columnName")}
-					disabled={saving}
-					className="flex-1 bg-transparent text-fg text-sm outline-none placeholder-fg-muted min-w-0"
-				/>
-				{/* Color palette */}
-				<div className="flex items-center gap-1 flex-shrink-0">
-					{LABEL_COLORS.map((c) => (
-						<button
-							key={c}
-							type="button"
-							onClick={() => { setColor(c); commitUpdate(name, c, llmInstruction); }}
-							disabled={saving}
-							className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""}`}
-							style={{ background: c }}
-							title={c}
-						/>
-					))}
+			<div>
+				<div className="flex items-center justify-between mb-1">
+					<label className="text-fg-3 text-xs">{t("customColumns.columnName")}</label>
+					<button
+						type="button"
+						onClick={onDelete}
+						disabled={saving}
+						className="w-5 h-5 flex items-center justify-center rounded text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors"
+						title={t("customColumns.deleteColumn")}
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
 				</div>
-				<button
-					type="button"
-					onClick={onDelete}
-					disabled={saving}
-					className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
-					title={t("customColumns.deleteColumn")}
-				>
-					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
+				<div className="flex items-center gap-2">
+					<div
+						className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+					<input
+						type="text"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						onBlur={() => commitUpdate()}
+						onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+						aria-label={t("customColumns.columnName")}
+						placeholder={t("customColumns.columnName")}
+						disabled={saving}
+						className="flex-1 px-3 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors min-w-0"
+					/>
+					{/* Color palette */}
+					<div className="flex items-center gap-1 flex-shrink-0">
+						{LABEL_COLORS.map((c) => (
+							<button
+								key={c}
+								type="button"
+								onClick={() => { setColor(c); commitUpdate(name, c, llmInstruction); }}
+								disabled={saving}
+								className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""}`}
+								style={{ background: c }}
+								title={c}
+							/>
+						))}
+					</div>
+				</div>
 			</div>
 			{/* LLM instruction */}
 			<div>
+				<label className="block text-fg-3 text-xs mb-1">{t("customColumns.llmInstruction")}</label>
 				<textarea
 					value={llmInstruction}
 					onChange={(e) => setLlmInstruction(e.target.value)}
@@ -198,6 +204,7 @@ function ProjectSettings({
 	const [defaultBaseBranch, setDefaultBaseBranch] = useState(
 		project?.defaultBaseBranch || "main",
 	);
+	const [peerReviewEnabled, setPeerReviewEnabled] = useState(project?.peerReviewEnabled !== false);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
@@ -342,6 +349,7 @@ function ProjectSettings({
 				cleanupScript,
 				defaultBaseBranch,
 				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
+				peerReviewEnabled,
 			});
 			dispatch({ type: "updateProject", project: updated });
 			navigate({ screen: "project", projectId });
@@ -467,7 +475,37 @@ function ProjectSettings({
 						/>
 					</div>
 
-					{/* Custom Columns */}
+					{/* Peer Review Column */}
+					<div>
+						<div className="flex items-center justify-between">
+							<div>
+								<label className="block text-fg text-sm font-semibold mb-1">
+									{t("projectSettings.peerReview")}
+								</label>
+								<p className="text-fg-3 text-sm">
+									{t("projectSettings.peerReviewDesc")}
+								</p>
+							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={peerReviewEnabled}
+								aria-label={t("projectSettings.peerReview")}
+								onClick={() => setPeerReviewEnabled((v) => !v)}
+								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+									peerReviewEnabled ? "bg-accent" : "bg-edge-active"
+								}`}
+							>
+								<span
+									className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+										peerReviewEnabled ? "translate-x-4" : "translate-x-0"
+									}`}
+								/>
+							</button>
+						</div>
+					</div>
+
+				{/* Custom Columns */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("customColumns.settingsTitle")}

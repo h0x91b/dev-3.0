@@ -1,0 +1,1 @@
+Renamed Kanban column labels for clarity: "Waiting for You" → "Has Questions", "Review by AI" → "AI Review", "Review by You" → "Your Review", "External Review" → "PR Review". Fixed column order so AI Review appears in its logical position between Has Questions and Your Review. Added info icon with description tooltip to each column header explaining its purpose.

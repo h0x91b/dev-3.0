@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
 import TaskCard from "./TaskCard";
+import TipCard from "./TipCard";
+import type { Tip } from "../tips";
 
 // Module-level variable: set synchronously on dragstart, cleared on dragend.
 // Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
@@ -13,6 +15,7 @@ let _activeDragColumnId: string | null = null;
 interface KanbanColumnProps {
 	status: TaskStatus;
 	label: string;
+	description?: string;
 	tasks: Task[];
 	project: Project;
 	dispatch: Dispatch<AppAction>;
@@ -28,6 +31,7 @@ interface KanbanColumnProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
+	taskPorts: Map<string, PortInfo[]>;
 	activeTaskId?: string;
 	draggedTaskId: string | null;
 	movingTaskIds: Set<string>;
@@ -42,11 +46,16 @@ interface KanbanColumnProps {
 	onColumnDragEnd?: () => void;
 	// Column reorder drop target (left half = "before", right half = "after")
 	onColumnDrop?: (side: "before" | "after") => void;
+	// Feature discovery tip
+	tip?: Tip | null;
+	tipState?: TipState;
+	onTipChanged?: () => void;
 }
 
 function KanbanColumn({
 	status,
 	label,
+	description,
 	tasks,
 	project,
 	dispatch,
@@ -62,6 +71,7 @@ function KanbanColumn({
 	onDragStart,
 	onTaskMoved,
 	bellCounts,
+	taskPorts,
 	activeTaskId,
 	draggedTaskId,
 	movingTaskIds,
@@ -74,6 +84,9 @@ function KanbanColumn({
 	onColumnDragStart,
 	onColumnDragEnd,
 	onColumnDrop,
+	tip,
+	tipState,
+	onTipChanged,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -81,7 +94,34 @@ function KanbanColumn({
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
+	const [showInfo, setShowInfo] = useState(false);
+	const [infoPos, setInfoPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+	const infoBtnRef = useRef<HTMLButtonElement>(null);
+	const infoPopupRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
+
+	// Close info popup on outside click
+	useEffect(() => {
+		if (!showInfo) return;
+		function handleClick(e: MouseEvent) {
+			if (
+				infoBtnRef.current?.contains(e.target as Node) ||
+				infoPopupRef.current?.contains(e.target as Node)
+			) return;
+			setShowInfo(false);
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [showInfo]);
+
+	function toggleInfo() {
+		if (showInfo) { setShowInfo(false); return; }
+		if (infoBtnRef.current) {
+			const r = infoBtnRef.current.getBoundingClientRect();
+			setInfoPos({ top: r.bottom + 6, left: r.left });
+		}
+		setShowInfo(true);
+	}
 
 	// Is this a same-column reorder drag?
 	const isSameColumnDrag = isCustomColumn
@@ -200,8 +240,9 @@ function KanbanColumn({
 	const showDropHighlight = dragOver && isCrossColumnTarget;
 
 	return (
+		<>
 		<div
-			className={`relative flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
+			className={`group/col relative flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
 					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
@@ -262,6 +303,17 @@ function KanbanColumn({
 						<span className="text-fg text-sm font-semibold">
 							{label}
 						</span>
+						{description && (
+							<button
+								ref={infoBtnRef}
+								onClick={toggleInfo}
+								className="text-fg-muted hover:text-fg-3 transition-colors w-5 h-5 flex items-center justify-center rounded-full text-base leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								aria-label="Column info"
+							>
+								{"\uF449"}
+							</button>
+						)}
 					</div>
 					{tasks.length > 0 && (
 						<span
@@ -278,7 +330,15 @@ function KanbanColumn({
 			</div>
 
 			{/* Tasks */}
-			<div ref={taskListRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+			<div
+				ref={taskListRef}
+				className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
+				onDoubleClick={!isCustomColumn && status === "todo" ? (e) => {
+					// Only trigger when clicking empty space, not on a task card
+					if ((e.target as HTMLElement).closest("[data-task-id]")) return;
+					onAddTask();
+				} : undefined}
+			>
 				{tasks.map((task, index) => (
 					<div key={task.id} data-task-id={task.id}>
 						{isSameColumnDrag && dropIndex === index && task.id !== draggedTaskId && (
@@ -294,6 +354,7 @@ function KanbanColumn({
 							onDragStart={onDragStart}
 							onTaskMoved={onTaskMoved}
 							bellCount={bellCounts.get(task.id) ?? 0}
+							ports={taskPorts.get(task.id)}
 							isActiveInSplit={task.id === activeTaskId}
 							isMoving={movingTaskIds.has(task.id)}
 							onSetMoving={onSetMoving}
@@ -305,12 +366,20 @@ function KanbanColumn({
 					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0 transition-all" />
 				)}
 
-				{tasks.length === 0 && (
+				{tasks.length === 0 && !tip && (
 					<div className="text-fg-muted text-sm text-center py-8">
 						{t("kanban.noTasks")}
 					</div>
 				)}
-			</div>
+
+				</div>
+
+			{/* Tip card — pinned to bottom, above the add-task button */}
+			{tip && tipState && onTipChanged && (
+				<div className="px-3 pb-3 flex-shrink-0">
+					<TipCard tip={tip} tipState={tipState} onChanged={onTipChanged} />
+				</div>
+			)}
 
 			{/* Add task button (only in To Do column, not custom columns) */}
 			{!isCustomColumn && status === "todo" && (
@@ -324,6 +393,17 @@ function KanbanColumn({
 				</div>
 			)}
 		</div>
+		{/* Info tooltip — rendered outside column div to escape stacking context */}
+		{showInfo && description && (
+			<div
+				ref={infoPopupRef}
+				className="fixed z-[9999] w-56 px-3.5 py-2.5 rounded-xl border border-edge shadow-xl text-xs text-fg leading-relaxed"
+				style={{ top: infoPos.top, left: infoPos.left, background: "rgb(var(--surface-overlay))" }}
+			>
+				{description}
+			</div>
+		)}
+		</>
 	);
 }
 

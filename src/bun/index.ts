@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller } from "./rpc-handlers";
+import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -142,7 +142,8 @@ const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds } = await import("./pty-server");
+const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -221,6 +222,7 @@ ApplicationMenu.setApplicationMenu([
 			{ label: "Hard Reset Terminal", action: "terminal-hard-reset" },
 			{ type: "separator" },
 			{ label: "Gauge Demo", action: "gauge-demo" },
+			{ label: "Viewport Lab", action: "viewport-lab" },
 			{ type: "separator" },
 			{ label: "Zoom In", action: "zoom-in", accelerator: "=" },
 			{ label: "Zoom Out", action: "zoom-out", accelerator: "-" },
@@ -267,6 +269,21 @@ const mainWindow = new BrowserWindow({
 
 log.info("Main window created");
 
+// Workaround: Electrobun/WKWebView clips the bottom ~16px of the viewport
+// after a window resize. Trigger a resize nudge at startup so the app always
+// starts in the "post-resize" state, making the pb-8 CSS padding reliable.
+setTimeout(() => {
+	try {
+		const { width: w, height: h } = mainWindow.getSize();
+		mainWindow.setSize(w, h - 1);
+		setTimeout(() => {
+			try { mainWindow.setSize(w, h); } catch { /* ignore */ }
+		}, 50);
+	} catch (err) {
+		log.warn("Resize nudge failed", { error: String(err) });
+	}
+}, 200);
+
 // Wire push messages to renderer
 setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
@@ -275,6 +292,21 @@ setPushMessage((name, payload) => {
 
 // Start background merge detection poller
 startMergeDetectionPoller();
+
+// Start background PR detection poller (auto-moves review-by-user → review-by-colleague)
+startPRDetectionPoller();
+
+// Start background port scan poller (detects listening TCP ports per task)
+startPortScanPoller(
+	(name, payload) => {
+		try {
+			(mainWindow.webview.rpc as any).send[name]?.(payload);
+		} catch (err) {
+			log.error("Failed to push port update", { error: String(err) });
+		}
+	},
+	getActiveSessionIds,
+);
 
 // Wire PTY death notifications
 setOnPtyDied((taskId) => {
@@ -330,6 +362,7 @@ setOnIdle((taskId) => {
 
 mainWindow.on("close", () => {
 	log.info("Main window closing, cleaning up");
+	stopPortScanPoller();
 	stopSocketServer();
 	Utils.quit();
 });
@@ -356,6 +389,11 @@ mainWindow.webview.on("dom-ready", async () => {
 	}
 });
 
+// Helper to push update progress to the renderer
+const sendUpdateProgress = (status: string, progress?: number) => {
+	(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
+};
+
 // --- Menu Event Handlers ---
 
 Electrobun.events.on("application-menu-clicked", async (e) => {
@@ -374,10 +412,14 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
 	} else if (e.data.action === "gauge-demo") {
 		(mainWindow.webview.rpc as any).send.navigateToGaugeDemo?.({});
+	} else if (e.data.action === "viewport-lab") {
+		(mainWindow.webview.rpc as any).send.navigateToViewportLab?.({});
 	} else if (e.data.action === "check-for-updates") {
 		try {
 			const settings = await loadSettings();
+			sendUpdateProgress("checking");
 			const result = await checkForUpdateWithChannel(settings.updateChannel);
+			sendUpdateProgress("idle");
 
 			if (result.error) {
 				Utils.showMessageBox({
@@ -398,7 +440,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 					cancelId: 1,
 				});
 				if (response === 0) {
-					const dlResult = await downloadUpdateForChannel(settings.updateChannel);
+					sendUpdateProgress("downloading", 0);
+					const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 					if (dlResult.ok) {
 						const { response: restartResponse } = await Utils.showMessageBox({
 							type: "info",
@@ -432,6 +475,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				});
 			}
 		} catch (err) {
+			sendUpdateProgress("idle");
 			log.error("Menu check-for-updates failed", { error: String(err) });
 			Utils.showMessageBox({
 				type: "warning",
@@ -463,14 +507,17 @@ startAutoCheck(
 	async (version) => {
 		log.info("Auto-check found update, downloading silently...", { version });
 		const settings = await loadSettings();
-		const dlResult = await downloadUpdateForChannel(settings.updateChannel);
+		sendUpdateProgress("downloading", 0);
+		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 		if (dlResult.ok) {
 			log.info("Auto-download complete, notifying renderer", { version });
 			(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
+			sendUpdateProgress("error");
 		}
 	},
+	sendUpdateProgress,
 );
 
 log.info("=== dev-3.0 ready ===");

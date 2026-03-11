@@ -319,7 +319,7 @@ describe("task move", () => {
 			newStatus: "review-by-ai",
 		});
 		expect(stdoutOutput).toContain("Moved task");
-		expect(stdoutOutput).toContain("Review by AI");
+		expect(stdoutOutput).toContain("AI Review");
 	});
 
 	it("auto-detects taskId from context", async () => {
@@ -404,7 +404,7 @@ describe("task move", () => {
 
 		await handleTask("move", args(["aaaaaaaa"], { status: "review-by-ai" }), SOCKET, null);
 
-		expect(stdoutOutput).toMatch(/→.*Review by AI/);
+		expect(stdoutOutput).toMatch(/→.*AI Review/);
 	});
 });
 
@@ -473,6 +473,93 @@ describe("task update --id flag", () => {
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.taskId).not.toBe(CTX.taskId);
 		expect(params.taskId).toBe("different-task");
+	});
+});
+
+describe("task move --if-status flag", () => {
+	it("passes --if-status to server when provided", async () => {
+		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "review-by-user", "if-status": "in-progress" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatus).toBe("in-progress");
+		expect(params.newStatus).toBe("review-by-user");
+	});
+
+	it("does not include ifStatus when --if-status is not provided", async () => {
+		const moved = { ...FAKE_TASK, status: "todo" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "todo" }), SOCKET, null);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params).not.toHaveProperty("ifStatus");
+	});
+});
+
+describe("task move --if-status-not flag", () => {
+	it("passes --if-status-not to server when provided", async () => {
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "if-status-not": "review-by-ai" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatusNot).toBe("review-by-ai");
+		expect(params.newStatus).toBe("in-progress");
+	});
+
+	it("does not include ifStatusNot when --if-status-not is not provided", async () => {
+		const moved = { ...FAKE_TASK, status: "todo" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "todo" }), SOCKET, null);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params).not.toHaveProperty("ifStatusNot");
+	});
+
+	it("passes comma-separated --if-status-not to server", async () => {
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "if-status-not": "review-by-ai,review-by-user" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatusNot).toBe("review-by-ai,review-by-user");
+	});
+
+	it("supports both --if-status and --if-status-not together", async () => {
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "if-status": "todo", "if-status-not": "review-by-ai" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.ifStatus).toBe("todo");
+		expect(params.ifStatusNot).toBe("review-by-ai");
 	});
 });
 
@@ -694,6 +781,87 @@ describe("task update whitespace validation", () => {
 			handleTask("update", args(["aaaaaaaa"], { description: "   " }), SOCKET, null),
 		).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+// ─── task create: positional content as description ──────────────────────────
+// When using @file syntax, the file content lands in positional[0] after
+// resolveFileArgs. If --title is provided but --description is not, the
+// positional content should become the description.
+// Bug: createTask ignores positional args entirely — file content is lost.
+
+describe("task create with positional content (e.g. @file)", () => {
+	const createdTask: Task = {
+		...FAKE_TASK,
+		status: "todo",
+		seq: 55,
+		title: "Port exposure",
+		description: "Show which ports a task uses.\n\n**GitHub:** #190",
+	};
+
+	it("uses positional[0] as description when --title given but no --description", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		const fileContent = "Show which ports a task uses.\n\n**GitHub:** #190";
+		await handleTask(
+			"create",
+			args([fileContent], { project: "proj-001", title: "Port exposure" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Port exposure");
+		expect(params.description).toBe(fileContent);
+	});
+
+	it("--description flag takes priority over positional content", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask(
+			"create",
+			args(["file content here"], {
+				project: "proj-001",
+				title: "Task",
+				description: "Explicit desc",
+			}),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.description).toBe("Explicit desc");
+	});
+
+	it("uses first line of positional as title when --title is not provided", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		const fileContent = "Port exposure\n\nShow which ports a task uses.\n\n**GitHub:** #190";
+		await handleTask(
+			"create",
+			args([fileContent], { project: "proj-001" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Port exposure");
+		expect(params.description).toBe(fileContent);
+	});
+
+	it("uses single-line positional as both title and description when no --title", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		const fileContent = "Fix the login bug";
+		await handleTask(
+			"create",
+			args([fileContent], { project: "proj-001" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Fix the login bug");
 	});
 });
 

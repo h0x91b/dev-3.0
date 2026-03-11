@@ -1,0 +1,3 @@
+Clicking a tmux session row in the TmuxSessionManager popover now navigates to the corresponding task. Sessions linked to a known task show the title in accent color and act as clickable links. Kill and copy buttons still work independently via stopPropagation.
+
+Suggested by @genrym (h0x91b/dev-3.0#193)

@@ -1,8 +1,8 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -13,8 +13,11 @@ import { loadSettings, loadSettingsSync, saveSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
+import { getPortsForTask } from "./port-scanner";
 import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
+import { setupAgentHooks } from "./agent-hooks";
+import { BUNDLED_CHANGELOG } from "./changelog-bundled";
 
 const log = createLogger("rpc");
 
@@ -125,7 +128,7 @@ function devServerSessionName(taskId: string): string {
 	return `dev3-dev-${taskId.slice(0, 8)}`;
 }
 
-async function isDevServerRunning(taskId: string, socket: string | null): Promise<boolean> {
+async function isDevServerRunning(taskId: string, socket: string): Promise<boolean> {
 	const devSession = devServerSessionName(taskId);
 	const check = spawn(pty.tmuxArgs(socket, "has-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 	const exitCode = await check.exited;
@@ -137,7 +140,7 @@ async function isDevServerRunning(taskId: string, socket: string | null): Promis
 // viewer pane shell cannot fire after the new session is already running (restart race).
 const devViewerPaneIds = new Map<string, string>();
 
-async function killDevServerViewerPane(taskId: string, taskSession: string, devSession: string, socket: string | null): Promise<void> {
+async function killDevServerViewerPane(taskId: string, taskSession: string, devSession: string, socket: string): Promise<void> {
 	// First try in-memory map (fast, always available unless app restarted)
 	let viewerPaneId = devViewerPaneIds.get(taskId);
 	if (!viewerPaneId) {
@@ -164,7 +167,7 @@ async function killDevServerViewerPane(taskId: string, taskSession: string, devS
 	}
 }
 
-async function killDevServerSession(taskId: string, socket: string | null): Promise<void> {
+async function killDevServerSession(taskId: string, socket: string): Promise<void> {
 	const devSession = devServerSessionName(taskId);
 	const taskSession = `dev3-${taskId.slice(0, 8)}`;
 	// Kill the viewer pane first so its trap EXIT cannot fire on the new session.
@@ -189,7 +192,7 @@ const branchStatusInFlight = new Map<string, Promise<{
 	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
 }>>();
 
-async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string | null): Promise<void> {
+async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
 	if (existingPane) {
 		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
@@ -215,9 +218,9 @@ async function killExistingGitPane(taskId: string, tmuxSession: string, socket: 
 	}
 }
 
-async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string | null): Promise<string | null> {
+async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string): Promise<string | null> {
 	const proc = spawn(pty.tmuxArgs(socket,
-		"split-window", "-v",
+		"split-window", "-v", "-l", "20%",
 		"-t", tmuxSession,
 		"-c", cwd,
 		"-P", "-F", "#{pane_id}",
@@ -237,7 +240,7 @@ async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: strin
 	return output.trim() || null;
 }
 
-function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string | null): void {
+function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string): void {
 	if (!paneId) return;
 	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
 	const exitFilePath = `/tmp/dev3-${taskId}-git-${operation}.sh.exit`;
@@ -317,7 +320,7 @@ async function checkMergedBranches(): Promise<void> {
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
-			(t) => t.status === "review-by-user" && t.worktreePath && !mergeNotifiedTasks.has(t.id),
+			(t) => (t.status === "review-by-user" || t.status === "review-by-colleague") && t.worktreePath && !mergeNotifiedTasks.has(t.id),
 		);
 
 		if (reviewTasks.length === 0) continue;
@@ -363,12 +366,98 @@ export function clearMergeNotification(taskId: string): void {
 	mergeNotifiedTasks.delete(taskId);
 }
 
+/**
+ * Background poller: detect when a "review-by-user" task's branch has an open
+ * non-draft PR and automatically move it to "review-by-colleague".
+ */
+let prPollerInterval: ReturnType<typeof setInterval> | null = null;
+
+// Track tasks already promoted to review-by-colleague (avoids re-checking in same session)
+const prPromotedTasks = new Set<string>();
+
+export function startPRDetectionPoller(): void {
+	if (prPollerInterval) return;
+	const POLL_INTERVAL = 5 * 60_000; // 5 minutes
+
+	prPollerInterval = setInterval(async () => {
+		try {
+			await checkOpenPRsForPromotion();
+		} catch (err) {
+			log.error("PR detection poller error", { error: String(err) });
+		}
+	}, POLL_INTERVAL);
+
+	log.info("PR detection poller started", { intervalMs: POLL_INTERVAL });
+}
+
+export function _resetPRPollerState(): void {
+	prPromotedTasks.clear();
+}
+
+export async function checkOpenPRsForPromotion(): Promise<void> {
+	if (!pushMessage) return;
+
+	const projects = await data.loadProjects();
+	for (const project of projects) {
+		// Only check projects with peer review enabled (default: true)
+		if (project.peerReviewEnabled === false) continue;
+
+		const tasks = await data.loadTasks(project);
+		const candidates = tasks.filter(
+			(t) => t.status === "review-by-user" && t.worktreePath && !prPromotedTasks.has(t.id),
+		);
+
+		if (candidates.length === 0) continue;
+
+		for (const task of candidates) {
+			try {
+				const branchName = await git.getCurrentBranch(task.worktreePath!);
+				if (!branchName) continue;
+
+				// Skip branches that were never pushed (can't have a PR)
+				const unpushed = await git.getUnpushedCount(task.worktreePath!, branchName);
+				if (unpushed === -1) continue;
+
+				// Check for open non-draft PR for this branch
+				const ghResult = await git.run(
+					["gh", "pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft", "--limit", "1"],
+					task.worktreePath!,
+				);
+				if (!ghResult.ok || !ghResult.stdout) continue;
+
+				let prs: Array<{ number: number; isDraft: boolean }>;
+				try {
+					prs = JSON.parse(ghResult.stdout);
+				} catch {
+					continue;
+				}
+
+				const hasOpenNonDraftPR = Array.isArray(prs) && prs.length > 0 && !prs[0].isDraft;
+				if (!hasOpenNonDraftPR) continue;
+
+				prPromotedTasks.add(task.id);
+				log.info("Open PR detected — promoting to review-by-colleague", {
+					taskId: task.id.slice(0, 8),
+					branch: branchName,
+					pr: prs[0].number,
+				});
+
+				const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
+				pushMessage("taskUpdated", { projectId: project.id, task: updated });
+			} catch (err) {
+				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
+			}
+		}
+	}
+}
+
 /** Clean up all in-memory tracking state for a task (pane IDs, merge flags). */
 function cleanupTaskState(taskId: string): void {
 	fileBrowserPaneIds.delete(taskId);
 	gitOpPaneIds.delete(taskId);
 	devViewerPaneIds.delete(taskId);
 	mergeNotifiedTasks.delete(taskId);
+	prPromotedTasks.delete(taskId);
 	branchStatusInFlight.delete(taskId);
 }
 
@@ -460,10 +549,8 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 
 	// Run attached (no -d) so proc.exited fires when the script finishes
 	// and tmux destroys the session automatically when the shell exits.
-	const cleanupSocket = task.tmuxSocket ?? null;
-	const cleanupArgs = cleanupSocket
-		? pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`)
-		: pty.tmuxArgs(null, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`);
+	const cleanupSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`);
 	const proc = spawn(
 		cleanupArgs,
 		{
@@ -530,6 +617,7 @@ export async function launchTaskPty(
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
+	let resolvedBaseCmd = "";
 
 	try {
 		const cmdOptions = resume ? { resume } : undefined;
@@ -538,6 +626,7 @@ export async function launchTaskPty(
 			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx, cmdOptions);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
+			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -550,6 +639,7 @@ export async function launchTaskPty(
 			);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
+			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		}
 		log.info("Command resolved", { tmuxCmd, envKeys: Object.keys(extraEnv) });
 	} catch (err) {
@@ -573,6 +663,16 @@ export async function launchTaskPty(
 		});
 	}
 
+	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop)
+	try {
+		setupAgentHooks(worktreePath, task.id, resolvedBaseCmd);
+	} catch (err) {
+		log.warn("setupAgentHooks failed (non-fatal)", {
+			worktreePath,
+			error: String(err),
+		});
+	}
+
 	// Build env early so both setup and normal paths can embed exports
 	// in their wrapper scripts (tmux server doesn't propagate client env).
 	const dev3Bin = `${DEV3_HOME}/bin`;
@@ -592,7 +692,7 @@ export async function launchTaskPty(
 		await Bun.write(setupPath, project.setupScript + "\n");
 		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env));
 
-		const splitCmd = `tmux split-window -v -c "${worktreePath}" "bash '${claudePath}'"`;
+		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "bash '${claudePath}'"`;
 		const setupFail = [
 			"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
 			"  exec bash",
@@ -634,7 +734,7 @@ export async function launchTaskPty(
 		envKeys: Object.keys(env),
 	});
 	try {
-		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? null);
+		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
@@ -685,10 +785,22 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
 	};
 	log.info("← getBranchStatus", result);
+
+	// Fire-and-forget: save diff snapshot for recovery purposes
+	git.saveDiffSnapshot(project, task, ref).catch((err) => {
+		log.warn("saveDiffSnapshot failed", { taskId: task.id, error: String(err) });
+	});
+
 	return result;
 }
 
+const rendererLog = createLogger("renderer");
+
 export const handlers = {
+	async logRendererError(params: { description: string; source: "error" | "unhandledrejection" }): Promise<void> {
+		rendererLog.warn(`[${params.source}] ${params.description}`);
+	},
+
 	async quitApp(): Promise<void> {
 		log.info("→ quitApp (Cmd+Q from renderer)");
 		Utils.quit();
@@ -820,6 +932,7 @@ export const handlers = {
 		cleanupScript: string;
 		defaultBaseBranch: string;
 		clonePaths: string[];
+		peerReviewEnabled: boolean;
 	}): Promise<Project> {
 		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
@@ -829,6 +942,7 @@ export const handlers = {
 			cleanupScript: params.cleanupScript,
 			defaultBaseBranch: params.defaultBaseBranch,
 			clonePaths: params.clonePaths,
+			peerReviewEnabled: params.peerReviewEnabled,
 		});
 		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
 		log.info("← updateProjectSettings done");
@@ -961,7 +1075,7 @@ export const handlers = {
 					hasWorktree: !!task.worktreePath,
 				});
 				try {
-					pty.destroySession(task.id, task.tmuxSocket);
+					pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 				} catch (err) {
 					log.error("destroySession failed, continuing with task move", {
 						taskId: task.id,
@@ -970,7 +1084,7 @@ export const handlers = {
 				}
 
 				// Kill the dev server session if one was started for this task (best-effort)
-				killDevServerSession(task.id, task.tmuxSocket ?? null).catch((err) => {
+				killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
 					log.warn("killDevServerSession on task move failed (best-effort)", {
 						taskId: task.id.slice(0, 8), error: String(err),
 					});
@@ -1039,7 +1153,7 @@ export const handlers = {
 		// Cleanup if active
 		if (isActive(task.status)) {
 			log.info("Task is active, cleaning up PTY + worktree");
-			pty.destroySession(task.id, task.tmuxSocket);
+			pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 			await git.removeWorktree(project, task);
 		}
 
@@ -1152,7 +1266,7 @@ export const handlers = {
 
 			const devSession = devServerSessionName(task.id);
 			const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
-			const socket = task.tmuxSocket ?? null;
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 			// Kill existing dev server session if still alive
 			if (await isDevServerRunning(task.id, socket)) {
@@ -1240,7 +1354,7 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
-			const socket = task.tmuxSocket ?? null;
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 			const running = await isDevServerRunning(task.id, socket);
 			log.info("← checkDevServer", { running });
 			return { running };
@@ -1254,7 +1368,7 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
-			const socket = task.tmuxSocket ?? null;
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 			await killDevServerSession(task.id, socket);
 			// Remove pane border titles from the task session now that the viewer pane is gone
 			const taskSession = `dev3-${task.id.slice(0, 8)}`;
@@ -1290,7 +1404,7 @@ export const handlers = {
 			if (!task.worktreePath) throw new Error("Task has no worktree");
 
 			const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-			const socket = task.tmuxSocket ?? null;
+			const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 			// Toggle: if yazi pane already exists, kill it
 			const existingPane = fileBrowserPaneIds.get(task.id);
@@ -1387,7 +1501,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-rebase.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1442,7 +1556,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-merge.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const escapedPath = project.path.replace(/'/g, "'\\''");
@@ -1498,7 +1612,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-push.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1537,7 +1651,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-createPR.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -1592,7 +1706,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1640,7 +1754,7 @@ export const handlers = {
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-uncommitted-diff.sh`;
 
-		const socket = task.tmuxSocket ?? null;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killExistingGitPane(task.id, tmuxSession, socket);
 
 		const script = [
@@ -1879,12 +1993,10 @@ export const handlers = {
 
 	async getChangelogs(): Promise<ChangelogEntry[]> {
 		log.info("-> getChangelogs");
-		const { join, dirname } = await import("path");
-		const { readdirSync, existsSync } = await import("fs");
 
 		// Find project root (same pattern as "rebuild" menu handler)
-		let root = import.meta.dir;
-		for (let i = 0; i < 20; i++) {
+		let root = import.meta.dir ?? "";
+		for (let i = 0; i < 20 && root; i++) {
 			if (existsSync(join(root, "vite.config.ts"))) break;
 			const parent = dirname(root);
 			if (parent === root) break;
@@ -1893,17 +2005,25 @@ export const handlers = {
 
 		const changeLogsDir = join(root, "change-logs");
 		if (!existsSync(changeLogsDir)) {
-			// Production fallback: read baked JSON from the app bundle
-			// Try production path first (PATHS.VIEWS_FOLDER), then dev fallback (import.meta.dir)
-			const prodJson = join(PATHS.VIEWS_FOLDER, "..", "changelog.json");
-			const devJson = join(import.meta.dir, "..", "changelog.json");
-			const jsonPath = existsSync(prodJson) ? prodJson : devJson;
+			// Production fallback 1: try reading changelog.json from the app bundle
+			const prodJson = PATHS.VIEWS_FOLDER ? join(PATHS.VIEWS_FOLDER, "..", "changelog.json") : "";
+			const metaDir = import.meta.dir ?? "";
+			const devJson = metaDir ? join(metaDir, "..", "changelog.json") : "";
+			const jsonPath = (prodJson && existsSync(prodJson)) ? prodJson : devJson;
 			if (existsSync(jsonPath)) {
 				const entries: ChangelogEntry[] = JSON.parse(await Bun.file(jsonPath).text());
 				log.info("<- getChangelogs (from bundled JSON)", { count: entries.length });
 				return entries;
 			}
-			log.info("<- getChangelogs (no change-logs dir, no bundled JSON)");
+			// Production fallback 2: use build-time inlined data.
+			// Electrobun 1.14+ packs app resources into a tar archive, so filesystem
+			// reads fail. BUNDLED_CHANGELOG is generated by scripts/generate-changelog.ts
+			// and inlined by the Bun bundler at build time.
+			if (BUNDLED_CHANGELOG.length > 0) {
+				log.info("<- getChangelogs (from bundled TS data)", { count: BUNDLED_CHANGELOG.length });
+				return BUNDLED_CHANGELOG;
+			}
+			log.info("<- getChangelogs (no change-logs dir, no bundled data)");
 			return [];
 		}
 
@@ -1927,9 +2047,28 @@ export const handlers = {
 						const type = basename.slice(0, dashIdx);
 						const slug = basename.slice(dashIdx + 1);
 
-						// Read first sentence as title
+						// Read content and extract metadata
 						const content = await Bun.file(join(dayPath, file)).text();
-						const firstSentence = content.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
+
+						// Extract "Suggested by @username (owner/repo#N)" from any line
+						let suggestedBy: string | undefined;
+						let issueUrl: string | undefined;
+						let issueRef: string | undefined;
+						const creditMatch = content.match(/Suggested by @(\S+)\s+\(([^)]+)\)/);
+						if (creditMatch) {
+							suggestedBy = creditMatch[1];
+							const ref = creditMatch[2];
+							// ref is like "h0x91b/dev-3.0#191"
+							const refMatch = ref.match(/^(.+?)#(\d+)$/);
+							if (refMatch) {
+								issueRef = `#${refMatch[2]}`;
+								issueUrl = `https://github.com/${refMatch[1]}/issues/${refMatch[2]}`;
+							}
+						}
+
+						// Strip the "Suggested by" line from content before extracting title
+						const cleanContent = content.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "").trim();
+						const firstSentence = cleanContent.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
 						const title = firstSentence.length > 120
 							? firstSentence.slice(0, 117) + "..."
 							: firstSentence;
@@ -1939,6 +2078,9 @@ export const handlers = {
 							type,
 							slug,
 							title: title || slug,
+							...(suggestedBy && { suggestedBy }),
+							...(issueUrl && { issueUrl }),
+							...(issueRef && { issueRef }),
 						});
 					}
 				}
@@ -1950,17 +2092,28 @@ export const handlers = {
 		return entries;
 	},
 
+	async getTaskPorts(params: { taskId: string }): Promise<PortInfo[]> {
+		log.info("→ getTaskPorts", { taskId: params.taskId.slice(0, 8) });
+		const ports = getPortsForTask(params.taskId);
+		log.info("← getTaskPorts", { taskId: params.taskId.slice(0, 8), count: ports.length });
+		return ports;
+	},
+
 	async listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		log.info("→ listTmuxSessions");
 
-		// Build shortId → taskTitle map from all projects/tasks
-		const titleMap = new Map<string, string>();
+		// Build shortId → { taskTitle, taskId, projectId } map from all projects/tasks
+		const taskMap = new Map<string, { title: string; taskId: string; projectId: string }>();
 		try {
 			const projects = await data.loadProjects();
 			for (const project of projects) {
 				const tasks = await data.loadTasks(project);
 				for (const task of tasks) {
-					titleMap.set(task.id.slice(0, 8), task.title);
+					taskMap.set(task.id.slice(0, 8), {
+						title: task.title,
+						taskId: task.id,
+						projectId: project.id,
+					});
 				}
 			}
 		} catch {
@@ -1988,6 +2141,7 @@ export const handlers = {
 
 			const isCleanup = name.startsWith("dev3-cl-");
 			const shortId = isCleanup ? name.slice(8) : name.slice(5);
+			const taskInfo = taskMap.get(shortId);
 
 			sessions.push({
 				name,
@@ -1995,7 +2149,10 @@ export const handlers = {
 				createdAt: parseInt(createdStr, 10) || 0,
 				windowCount: parseInt(windowsStr, 10) || 1,
 				isCleanup,
-				taskTitle: titleMap.get(shortId),
+				taskTitle: taskInfo?.title,
+				taskId: taskInfo?.taskId,
+				projectId: taskInfo?.projectId,
+				ports: taskInfo?.taskId ? getPortsForTask(taskInfo.taskId) : undefined,
 			});
 		}
 
@@ -2324,7 +2481,7 @@ export const handlers = {
 
 	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
-		const socket = pty.getSessionSocket(params.taskId) ?? null;
+		const socket = pty.getSessionSocket(params.taskId);
 		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
 
 		let args: string[];
@@ -2480,6 +2637,18 @@ export const handlers = {
 		const project = await data.getProject(params.projectId);
 		await git.fetchOrigin(project.path);
 		return git.listBranches(project.path);
+	},
+
+	async getTipState(): Promise<TipState> {
+		return data.loadTipState();
+	},
+
+	async updateTipState(params: Partial<TipState>): Promise<TipState> {
+		return data.saveTipState(params);
+	},
+
+	async resetTipState(): Promise<TipState> {
+		return data.resetTipState();
 	},
 
 };

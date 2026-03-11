@@ -43,14 +43,14 @@ function GlobalSettings() {
 	});
 
 	useEffect(() => {
-		api.request.getAgents().then(setAgents);
+		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then((s) => {
 			setGlobalSettings(s);
 			if (s.terminalKeymap) {
 				setKeymapPresetState(s.terminalKeymap);
 				setKeymapPreset(s.terminalKeymap);
 			}
-		});
+		}).catch(() => {});
 	}, []);
 
 	const selectedDefaultAgent = agents.find((a) => a.id === globalSettings.defaultAgentId);
@@ -75,14 +75,14 @@ function GlobalSettings() {
 	function handleDropPositionChange(pos: "top" | "bottom") {
 		const updated = { ...globalSettings, taskDropPosition: pos };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 		trackEvent("settings_changed", { setting: "task_drop_position", value: pos });
 	}
 
 	function handleUpdateChannelChange(channel: "stable" | "canary") {
 		const updated = { ...globalSettings, updateChannel: channel };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 		trackEvent("settings_changed", { setting: "update_channel", value: channel });
 	}
 
@@ -91,20 +91,35 @@ function GlobalSettings() {
 		setKeymapPreset(preset);
 		const updated = { ...globalSettings, terminalKeymap: preset };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	function handleSoundToggle(enabled: boolean) {
 		const updated = { ...globalSettings, playSoundOnTaskComplete: enabled };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
+	}
+
+	const [tipsResetDone, setTipsResetDone] = useState(false);
+
+	function handleTipsDisabledToggle(disabled: boolean) {
+		const updated = { ...globalSettings, tipsDisabled: disabled };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
+	}
+
+	function handleTipsReset() {
+		api.request.resetTipState().then(() => {
+			setTipsResetDone(true);
+			setTimeout(() => setTipsResetDone(false), 3000);
+		}).catch(() => {});
 	}
 
 	/** Filter out apps with empty fields before persisting to disk. */
 	function saveExternalApps(apps: ExternalApp[]) {
 		const valid = apps.filter((a) => a.name.trim() && a.macAppName.trim());
 		const updated = { ...globalSettings, externalApps: valid.length > 0 ? valid : undefined };
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 		invalidateAvailableApps();
 	}
 
@@ -141,18 +156,22 @@ function GlobalSettings() {
 		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
 		const updated = { ...globalSettings, defaultAgentId: agentId, defaultConfigId: configId };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	function handleDefaultConfigChange(configId: string) {
 		const updated = { ...globalSettings, defaultConfigId: configId };
 		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
 	}
 
 	async function persistAgents(updated: CodingAgent[]) {
 		setAgents(updated);
-		await api.request.saveAgents({ agents: updated });
+		try {
+			await api.request.saveAgents({ agents: updated });
+		} catch {
+			// Best-effort save — UI state is already updated
+		}
 	}
 
 	function updateAgent(agentId: string, patch: Partial<CodingAgent>) {
@@ -403,6 +422,36 @@ function GlobalSettings() {
 						</label>
 					</div>
 
+					{/* Tips */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-3">
+							{t("settings.tipsSection")}
+						</label>
+						<div className="flex items-center gap-4">
+							<label className="inline-flex items-center gap-3 cursor-pointer select-none">
+								<div
+									role="switch"
+									aria-checked={globalSettings.tipsDisabled === true}
+									tabIndex={0}
+									className={`relative w-11 h-6 rounded-full transition-colors ${globalSettings.tipsDisabled ? "bg-accent" : "bg-raised border border-edge"}`}
+									onClick={() => handleTipsDisabledToggle(!globalSettings.tipsDisabled)}
+									onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTipsDisabledToggle(!globalSettings.tipsDisabled); } }}
+								>
+									<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.tipsDisabled ? "translate-x-5" : ""}`} />
+								</div>
+								<span className="text-fg text-sm">
+									{t("settings.tipsDisabled")}
+								</span>
+							</label>
+							<button
+								onClick={handleTipsReset}
+								className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30"
+							>
+								{tipsResetDone ? t("settings.tipsResetDone") : t("settings.tipsReset")}
+							</button>
+						</div>
+					</div>
+
 					{/* Update Channel */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
@@ -444,7 +493,7 @@ function GlobalSettings() {
 									if (!folder) return;
 									const updated = { ...globalSettings, cloneBaseDirectory: folder };
 									setGlobalSettings(updated);
-									api.request.saveGlobalSettings(updated);
+									api.request.saveGlobalSettings(updated).catch(() => {});
 								}}
 								className="px-4 py-3 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
 							>
@@ -746,11 +795,13 @@ function ConfigPreviewCard({
 	t: ReturnType<typeof useT>;
 }) {
 	const tags: { label: string; value: string }[] = [];
+	const cmdName = (config.baseCommandOverride || agentBaseCommand || "").split("/").pop() ?? "";
+	const isCodex = cmdName === "codex";
 
 	if (config.model) {
 		tags.push({ label: t("settings.configModel"), value: config.model });
 	}
-	if (config.permissionMode && config.permissionMode !== "default") {
+	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
 		const modeLabels: Record<string, string> = {
 			plan: t("settings.permPlan"),
 			acceptEdits: t("settings.permAcceptEdits"),
@@ -762,7 +813,7 @@ function ConfigPreviewCard({
 			value: modeLabels[config.permissionMode] ?? config.permissionMode,
 		});
 	}
-	if (config.effort) {
+	if (!isCodex && config.effort) {
 		const effortLabels: Record<string, string> = {
 			low: t("settings.effortLow"),
 			medium: t("settings.effortMedium"),
@@ -773,7 +824,7 @@ function ConfigPreviewCard({
 			value: effortLabels[config.effort] ?? config.effort,
 		});
 	}
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
+	if (!isCodex && config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
 		tags.push({
 			label: t("settings.configMaxBudget"),
 			value: `$${config.maxBudgetUsd}`,
@@ -817,8 +868,9 @@ function buildCommandPreview(
 
 	const cmdName = baseCmd.split("/").pop() ?? "";
 	const isCursor = cmdName === "agent";
+	const isCodex = cmdName === "codex";
 
-	if (config.permissionMode && config.permissionMode !== "default") {
+	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
 		if (isCursor) {
 			if (config.permissionMode === "plan") {
 				parts.push("--mode", "plan");
@@ -830,11 +882,11 @@ function buildCommandPreview(
 		}
 	}
 
-	if (config.effort && !isCursor) {
+	if (config.effort && !isCursor && !isCodex) {
 		parts.push("--effort", config.effort);
 	}
 
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor) {
+	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex) {
 		parts.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 

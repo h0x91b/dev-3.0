@@ -102,12 +102,8 @@ describe("pty-server", () => {
 			]);
 		});
 
-		it("omits -L when socket is null", () => {
-			expect(tmuxArgs(null, "list-sessions")).toEqual(["tmux", "list-sessions"]);
-		});
-
-		it("omits -L when socket is undefined", () => {
-			expect(tmuxArgs(undefined, "list-sessions")).toEqual(["tmux", "list-sessions"]);
+		it("always includes -L with socket name", () => {
+			expect(tmuxArgs("dev3", "list-sessions")).toEqual(["tmux", "-L", "dev3", "list-sessions"]);
 		});
 
 		it("passes multiple args correctly", () => {
@@ -413,14 +409,14 @@ describe("pty-server", () => {
 			expect(getSessionSocket(id)).toBe("my-socket");
 		});
 
-		it("returns null for session without socket", () => {
+		it("returns default socket when created without explicit socket", () => {
 			const id = track("task-gsck-02");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, null);
-			expect(getSessionSocket(id)).toBeNull();
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			expect(getSessionSocket(id)).toBe("dev3");
 		});
 
-		it("returns null for non-existing session", () => {
-			expect(getSessionSocket("nonexistent")).toBeNull();
+		it("returns default socket for non-existing session", () => {
+			expect(getSessionSocket("nonexistent")).toBe("dev3");
 		});
 	});
 
@@ -714,11 +710,11 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("does not source config when no socket", () => {
+		it("always sources config with default socket", () => {
 			vi.useFakeTimers();
 
 			const id = track("task-conf-03");
-			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, null);
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			mockSpawnSync.mockClear();
 
 			vi.advanceTimersByTime(200);
@@ -726,7 +722,7 @@ describe("pty-server", () => {
 			const sourceCall = mockSpawnSync.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
 			);
-			expect(sourceCall).toBeUndefined();
+			expect(sourceCall).toBeDefined();
 
 			vi.useRealTimers();
 		});

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, BranchStatus } from "../../shared/types";
+import type { Task, Project, TaskStatus, BranchStatus, PortInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getAllowedTransitions } from "../../shared/types";
@@ -18,6 +18,8 @@ interface TaskInfoPanelProps {
 	project: Project;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
+	taskPorts?: Map<string, PortInfo[]>;
+	isFullPage?: boolean;
 }
 
 const COLLAPSED_HEIGHT_REM = 3.875; // 62px at 1× zoom – scales with root font-size
@@ -128,7 +130,7 @@ function DevServerMenu({ position, onRestart, onStop, onClose, t }: DevServerMen
 	);
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPage }: TaskInfoPanelProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
@@ -1360,12 +1362,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 						{tmuxHintsPopover}
 						{devServerButton}
 						<button
-							onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+							onClick={() => isFullPage
+								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+								: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+							}
 							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={t("infoPanel.fullScreen")}
+							title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
 						>
 							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+								{isFullPage
+									? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
+									: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+								}
 							</svg>
 						</button>
 						<button
@@ -1429,12 +1437,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							{tmuxHintsPopover}
 							{devServerButton}
 							<button
-								onClick={() => navigate({ screen: "task", projectId: project.id, taskId: task.id })}
+								onClick={() => isFullPage
+									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+								}
 								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								title={t("infoPanel.fullScreen")}
+								title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
 							>
 								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+									{isFullPage
+										? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
+										: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+									}
 								</svg>
 							</button>
 							<button
@@ -1529,6 +1543,38 @@ function TaskInfoPanel({ task, project, dispatch, navigate }: TaskInfoPanelProps
 							<span className="text-fg-3">{t("infoPanel.updated")}</span>
 							<span className="text-fg-3">{formatDate(task.updatedAt)}</span>
 						</div>
+
+						{/* Ports section */}
+						{(() => {
+							const ports = taskPorts?.get(task.id);
+							if (!ports || ports.length === 0) return null;
+							return (
+								<div className="mt-3 border-t border-edge pt-3">
+									<div className="flex items-center gap-2 mb-2">
+										<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+										<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
+											{t("ports.title")}
+										</span>
+										<span className="text-[0.625rem] text-fg-muted">
+											{t.plural("ports.count", ports.length)}
+										</span>
+									</div>
+									<div className="flex flex-wrap gap-1.5">
+										{ports.map((p) => (
+											<button
+												key={p.port}
+												onClick={() => window.open(`http://localhost:${p.port}`, "_blank")}
+												className="inline-flex items-center gap-1.5 text-xs font-mono text-accent bg-accent/10 hover:bg-accent/20 px-2 py-1 rounded-md transition-colors"
+												title={`${p.processName} (PID ${p.pid}) — ${t("ports.openInBrowser")}`}
+											>
+												<span className="font-bold">:{p.port}</span>
+												<span className="text-fg-muted text-[0.625rem]">{p.processName}</span>
+											</button>
+										))}
+									</div>
+								</div>
+							);
+						})()}
 
 						{/* Notes section */}
 						<div className="mt-3 border-t border-edge pt-3">

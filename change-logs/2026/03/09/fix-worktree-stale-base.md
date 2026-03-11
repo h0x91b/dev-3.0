@@ -1,0 +1,1 @@
+Worktrees now start from the latest `origin/<baseBranch>` instead of the potentially stale local branch. Before this fix, creating a task could leave you behind main if the local branch hadn't been updated recently. Falls back to the local branch if fetch fails (e.g. no network).

@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
-import type { CodingAgent, CustomColumn, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
-const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-user"];
-const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["completed", "cancelled", "review-by-ai"];
+const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
+const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["review-by-colleague", "completed", "cancelled"];
 const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
 
 type ColumnSlot =
 	| { type: "builtin"; status: TaskStatus }
 	| { type: "custom"; col: CustomColumn };
 import type { AppAction, Route } from "../state";
-import { useT, statusKey } from "../i18n";
+import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import KanbanColumn from "./KanbanColumn";
@@ -21,6 +21,7 @@ import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -28,11 +29,12 @@ interface KanbanBoardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	taskPorts: Map<string, PortInfo[]>;
 	activeTaskId?: string;
 	onSwitchToSidebar?: () => void;
 }
 
-function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTaskId, onSwitchToSidebar }: KanbanBoardProps) {
+function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts, activeTaskId, onSwitchToSidebar }: KanbanBoardProps) {
 	const t = useT();
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -53,6 +55,38 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
+	const [tipState, setTipState] = useState<TipState | null>(null);
+	const currentTip = useMemo(() => tipState ? selectTip(tipState) : null, [tipState]);
+
+	const reloadTipState = useCallback(() => {
+		api.request.getTipState().then(setTipState).catch(() => {});
+	}, []);
+
+	// Load tip state on mount + auto-rotate every 60s
+	useEffect(() => {
+		if (globalSettings.tipsDisabled) return;
+		reloadTipState();
+		let timer: ReturnType<typeof setTimeout>;
+		function scheduleRotation() {
+			timer = setTimeout(() => {
+				if (!tipState) {
+					scheduleRotation();
+					return;
+				}
+				api.request.updateTipState({
+					seen: currentTip ? { [currentTip.id]: Date.now() } : {},
+					rotationIndex: (tipState?.rotationIndex ?? 0) + 1,
+				}).then((state) => {
+					setTipState(state);
+					scheduleRotation();
+				}).catch(() => {
+					scheduleRotation();
+				});
+			}, ROTATION_INTERVAL_MS);
+		}
+		scheduleRotation();
+		return () => clearTimeout(timer);
+	}, [globalSettings.tipsDisabled]);
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
@@ -267,16 +301,25 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 	// Returns all columns in their effective display order, respecting project.columnOrder
 	function getOrderedColumns(): ColumnSlot[] {
 		const cols = customColumns;
+		const peerReviewEnabled = project.peerReviewEnabled !== false;
+		// Hide AI Review column unless it has tasks (feature not yet implemented)
+		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !t.customColumnId);
+		const shouldHide = (s: TaskStatus) =>
+			(s === "review-by-colleague" && !peerReviewEnabled) ||
+			(s === "review-by-ai" && !aiReviewHasItems);
+		const filterBuiltin = (statuses: TaskStatus[]) =>
+			statuses.filter((s) => !shouldHide(s));
 		if (!project.columnOrder || project.columnOrder.length === 0) {
 			return [
-				...DEFAULT_BEFORE_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...filterBuiltin(DEFAULT_BEFORE_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
 				...cols.map((c) => ({ type: "custom" as const, col: c })),
-				...DEFAULT_AFTER_CUSTOM.map((s) => ({ type: "builtin" as const, status: s })),
+				...filterBuiltin(DEFAULT_AFTER_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
 			];
 		}
 		const result: ColumnSlot[] = [];
 		const used = new Set<string>();
 		for (const id of project.columnOrder) {
+			if ((ALL_BUILTIN as string[]).includes(id) && shouldHide(id as TaskStatus)) { used.add(id); continue; }
 			if ((ALL_BUILTIN as string[]).includes(id)) {
 				result.push({ type: "builtin", status: id as TaskStatus });
 				used.add(id);
@@ -285,8 +328,24 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				if (col) { result.push({ type: "custom", col }); used.add(id); }
 			}
 		}
-		// Append anything missing (new built-ins added after columnOrder was stored, or new custom cols)
-		for (const s of ALL_BUILTIN) { if (!used.has(s)) result.push({ type: "builtin", status: s }); }
+		// review-by-colleague: if missing from stored order, insert right before "completed"
+		// (not at the tail) so it stays in a logical position for existing users.
+		if (!used.has("review-by-colleague") && !shouldHide("review-by-colleague")) {
+			const completedIdx = result.findIndex((c) => c.type === "builtin" && c.status === "completed");
+			const slot = { type: "builtin" as const, status: "review-by-colleague" as TaskStatus };
+			if (completedIdx !== -1) {
+				result.splice(completedIdx, 0, slot);
+			} else {
+				result.push(slot);
+			}
+			used.add("review-by-colleague");
+		}
+		// Append anything else missing (new built-ins, or new custom cols)
+		for (const s of ALL_BUILTIN) {
+			if (!used.has(s) && !shouldHide(s)) {
+				result.push({ type: "builtin", status: s });
+			}
+		}
 		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
 		return result;
 	}
@@ -337,6 +396,22 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 		}
 	}
 
+	// Find the first column with <2 tasks for the tip card (only one tip across the board)
+	const tipColumnId: string | null = useMemo(() => {
+		if (!currentTip) return null;
+		const orderedCols = getOrderedColumns();
+		for (const slot of orderedCols) {
+			if (slot.type === "builtin") {
+				const count = tasksByStatus.get(slot.status)?.length ?? 0;
+				if (count < 3) return slot.status;
+			} else {
+				const count = tasksByCustomColumn.get(slot.col.id)?.length ?? 0;
+				if (count < 3) return slot.col.id;
+			}
+		}
+		return null;
+	}, [currentTip, displayTasks]);
+
 	return (
 		<>
 			{onSwitchToSidebar && (
@@ -364,8 +439,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 			/>
-			<div className="flex-1 min-h-0 flex gap-5 p-6 pb-8 overflow-x-scroll overflow-y-hidden kanban-scroll">
+			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-scroll overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
+					const handleTipChanged = () => reloadTipState();
 					const commonProps = {
 						project,
 						dispatch,
@@ -381,6 +457,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 						onDragStart: handleDragStart,
 						onTaskMoved: recordMove,
 						bellCounts,
+						taskPorts,
 						activeTaskId,
 						draggedTaskId,
 						movingTaskIds,
@@ -393,8 +470,12 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 								key={slot.status}
 								status={slot.status}
 								label={t(statusKey(slot.status))}
+								description={t(statusDescKey(slot.status))}
 								tasks={tasksByStatus.get(slot.status) || []}
 								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
+								tip={tipColumnId === slot.status ? currentTip : undefined}
+								onTipChanged={handleTipChanged}
+								tipState={tipState ?? undefined}
 								{...commonProps}
 							/>
 						);
@@ -414,6 +495,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, activeTas
 							onColumnDragStart={() => handleColumnDragStart(col.id)}
 							onColumnDragEnd={handleColumnDragEnd}
 							onColumnDrop={(side) => handleColumnDrop(col.id, side)}
+							tip={tipColumnId === col.id ? currentTip : undefined}
+							onTipChanged={handleTipChanged}
+								tipState={tipState ?? undefined}
 							{...commonProps}
 						/>
 					);
