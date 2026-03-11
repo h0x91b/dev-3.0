@@ -56,6 +56,280 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.terminalPreview.body",
 		icon: "\u{F0489}", // nf-md-monitor
 	},
+	// Batch 1: split-view, multi-variant, labels, search, PR
+	{
+		id: "split-view-open",
+		titleKey: "tip.splitViewOpen.title",
+		bodyKey: "tip.splitViewOpen.body",
+		icon: "\u{F0E4E}", // nf-md-view_split_vertical
+	},
+	{
+		id: "split-view-escape",
+		titleKey: "tip.splitViewEscape.title",
+		bodyKey: "tip.splitViewEscape.body",
+		icon: "\u{F12B7}", // nf-md-keyboard_esc
+	},
+	{
+		id: "multi-variant-tasks",
+		titleKey: "tip.multiVariantTasks.title",
+		bodyKey: "tip.multiVariantTasks.body",
+		icon: "\u{F0219}", // nf-md-robot
+	},
+	{
+		id: "task-labels",
+		titleKey: "tip.taskLabels.title",
+		bodyKey: "tip.taskLabels.body",
+		icon: "\u{F0B05}", // nf-md-label
+	},
+	{
+		id: "task-search",
+		titleKey: "tip.taskSearch.title",
+		bodyKey: "tip.taskSearch.body",
+		icon: "\u{F0349}", // nf-md-magnify
+	},
+	{
+		id: "push-and-create-pr",
+		titleKey: "tip.pushAndCreatePr.title",
+		bodyKey: "tip.pushAndCreatePr.body",
+		icon: "\u{F0544}", // nf-md-source_pull
+	},
+	// Batch 2: diff, images, custom columns, clone
+	{
+		id: "show-diff-button",
+		titleKey: "tip.showDiffButton.title",
+		bodyKey: "tip.showDiffButton.body",
+		icon: "\u{F044B}", // nf-md-source_diff
+	},
+	{
+		id: "image-paste-attach",
+		titleKey: "tip.imagePasteAttach.title",
+		bodyKey: "tip.imagePasteAttach.body",
+		icon: "\u{F021F}", // nf-md-image_plus
+	},
+	{
+		id: "custom-columns",
+		titleKey: "tip.customColumns.title",
+		bodyKey: "tip.customColumns.body",
+		icon: "\u{F0349}", // nf-md-view_column
+	},
+	{
+		id: "clone-from-url",
+		titleKey: "tip.cloneFromUrl.title",
+		bodyKey: "tip.cloneFromUrl.body",
+		icon: "\u{F02A2}", // nf-md-source_repository
+	},
+	// Batch 3: sidebar, drag-drop, yazi, review mode
+	{
+		id: "active-tasks-sidebar",
+		titleKey: "tip.activeTasksSidebar.title",
+		bodyKey: "tip.activeTasksSidebar.body",
+		icon: "\u{F0CB1}", // nf-md-view_list
+	},
+	{
+		id: "terminal-drag-drop-file-path",
+		titleKey: "tip.terminalDragDropFilePath.title",
+		bodyKey: "tip.terminalDragDropFilePath.body",
+		icon: "\u{F0525}", // nf-md-drag
+	},
+	{
+		id: "yazi-file-browser",
+		titleKey: "tip.yaziFileBrowser.title",
+		bodyKey: "tip.yaziFileBrowser.body",
+		icon: "\uF24B", // nf-fa-folder_open
+	},
+	{
+		id: "review-mode-branch",
+		titleKey: "tip.reviewModeBranch.title",
+		bodyKey: "tip.reviewModeBranch.body",
+		icon: "\u{F0804}", // nf-md-code_review
+	},
+	// Batch 4: auto-complete, ports, resume, tmux buttons
+	{
+		id: "auto-complete-on-pr-merge",
+		titleKey: "tip.autoCompleteOnPrMerge.title",
+		bodyKey: "tip.autoCompleteOnPrMerge.body",
+		icon: "\u{F0382}", // nf-md-source_merge
+	},
+	{
+		id: "expose-task-ports",
+		titleKey: "tip.exposeTaskPorts.title",
+		bodyKey: "tip.exposeTaskPorts.body",
+		icon: "\u{F0168}", // nf-md-lan_connect
+	},
+	{
+		id: "resume-agent-session",
+		titleKey: "tip.resumeAgentSession.title",
+		bodyKey: "tip.resumeAgentSession.body",
+		icon: "\u{F040A}", // nf-md-play_circle_outline
+	},
+	{
+		id: "tmux-action-buttons",
+		titleKey: "tip.tmuxActionButtons.title",
+		bodyKey: "tip.tmuxActionButtons.body",
+		icon: "\u{F0156}", // nf-md-view_split_vertical
+	},
+	// Batch 5: bell, breadcrumb, zoom, agents
+	{
+		id: "bell-auto-move",
+		titleKey: "tip.bellAutoMove.title",
+		bodyKey: "tip.bellAutoMove.body",
+		icon: "\uF0F3", // nf-fa-bell
+	},
+	{
+		id: "breadcrumb-project-switcher",
+		titleKey: "tip.breadcrumbProjectSwitcher.title",
+		bodyKey: "tip.breadcrumbProjectSwitcher.body",
+		icon: "\uF07C", // nf-fa-folder_open
+	},
+	{
+		id: "zoom-support",
+		titleKey: "tip.zoomSupport.title",
+		bodyKey: "tip.zoomSupport.body",
+		icon: "\uF00E", // nf-fa-search_plus
+	},
+	{
+		id: "configurable-agents",
+		titleKey: "tip.configurableAgents.title",
+		bodyKey: "tip.configurableAgents.body",
+		icon: "\u{F0219}", // nf-md-robot
+	},
+	// Batch 6: clipboard, info panel, bell indicator, branch status
+	{
+		id: "osc52-clipboard",
+		titleKey: "tip.osc52Clipboard.title",
+		bodyKey: "tip.osc52Clipboard.body",
+		icon: "\uF0C5", // nf-fa-copy
+	},
+	{
+		id: "task-info-panel",
+		titleKey: "tip.taskInfoPanel.title",
+		bodyKey: "tip.taskInfoPanel.body",
+		icon: "\u{F05A}", // nf-fa-info_circle
+	},
+	{
+		id: "terminal-bell-indicator",
+		titleKey: "tip.terminalBellIndicator.title",
+		bodyKey: "tip.terminalBellIndicator.body",
+		icon: "\uF0F3", // nf-fa-bell
+	},
+	{
+		id: "git-branch-status",
+		titleKey: "tip.gitBranchStatus.title",
+		bodyKey: "tip.gitBranchStatus.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
+	// Batch 7: warn, completed modal, CoW, shortcuts, system theme
+	{
+		id: "warn-before-complete",
+		titleKey: "tip.warnBeforeComplete.title",
+		bodyKey: "tip.warnBeforeComplete.body",
+		icon: "\u{F0F09}", // nf-md-alert_circle_outline
+	},
+	{
+		id: "completed-task-modal",
+		titleKey: "tip.completedTaskModal.title",
+		bodyKey: "tip.completedTaskModal.body",
+		icon: "\u{F0150}", // nf-md-checkbox_marked_circle_outline
+	},
+	{
+		id: "cow-clone-paths",
+		titleKey: "tip.cowClonePaths.title",
+		bodyKey: "tip.cowClonePaths.body",
+		icon: "\u{F0198}", // nf-md-content_copy
+	},
+	{
+		id: "keyboard-shortcuts",
+		titleKey: "tip.keyboardShortcuts.title",
+		bodyKey: "tip.keyboardShortcuts.body",
+		icon: "\u{F030D}", // nf-md-keyboard
+	},
+	{
+		id: "system-theme",
+		titleKey: "tip.systemTheme.title",
+		bodyKey: "tip.systemTheme.body",
+		icon: "\u{F0498}", // nf-md-theme_light_dark
+	},
+	// Batch 8: tmux manager, CLI, snapshots, sound, siblings
+	{
+		id: "tmux-session-manager",
+		titleKey: "tip.tmuxSessionManager.title",
+		bodyKey: "tip.tmuxSessionManager.body",
+		icon: "\u{F0313}", // nf-md-console
+	},
+	{
+		id: "cli-tool",
+		titleKey: "tip.cliTool.title",
+		bodyKey: "tip.cliTool.body",
+		icon: "\u{F0A9E}", // nf-md-terminal
+	},
+	{
+		id: "diff-snapshots",
+		titleKey: "tip.diffSnapshots.title",
+		bodyKey: "tip.diffSnapshots.body",
+		icon: "\u{F0804}", // nf-md-history
+	},
+	{
+		id: "task-complete-sound",
+		titleKey: "tip.taskCompleteSound.title",
+		bodyKey: "tip.taskCompleteSound.body",
+		icon: "\u{F075D}", // nf-md-volume_high
+	},
+	{
+		id: "sibling-variant-visibility",
+		titleKey: "tip.siblingVariantVisibility.title",
+		bodyKey: "tip.siblingVariantVisibility.body",
+		icon: "\u{F0CB8}", // nf-md-dots_horizontal
+	},
+	// Batch 9: branch selector, reorder, resume, custom prompts
+	{
+		id: "branch-selector-task-creation",
+		titleKey: "tip.branchSelectorTaskCreation.title",
+		bodyKey: "tip.branchSelectorTaskCreation.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
+	{
+		id: "vertical-dnd-reorder",
+		titleKey: "tip.verticalDndReorder.title",
+		bodyKey: "tip.verticalDndReorder.body",
+		icon: "\u{F0140}", // nf-md-arrow_up_down
+	},
+	{
+		id: "resume-conversation-on-reopen",
+		titleKey: "tip.resumeConversationOnReopen.title",
+		bodyKey: "tip.resumeConversationOnReopen.body",
+		icon: "\u{F040A}", // nf-md-restore
+	},
+	{
+		id: "append-system-prompt-claude",
+		titleKey: "tip.appendSystemPromptClaude.title",
+		bodyKey: "tip.appendSystemPromptClaude.body",
+		icon: "\u{F0219}", // nf-md-robot
+	},
+	// Batch 10: i18n, setup scripts, theme, task titles
+	{
+		id: "language-switching",
+		titleKey: "tip.languageSwitching.title",
+		bodyKey: "tip.languageSwitching.body",
+		icon: "\u{F1AB7}", // nf-md-translate
+	},
+	{
+		id: "setup-script-panes",
+		titleKey: "tip.setupScriptPanes.title",
+		bodyKey: "tip.setupScriptPanes.body",
+		icon: "\u{F0259}", // nf-md-console
+	},
+	{
+		id: "glassmorphism-theme",
+		titleKey: "tip.glassmorphismTheme.title",
+		bodyKey: "tip.glassmorphismTheme.body",
+		icon: "\u{F0493}", // nf-md-palette
+	},
+	{
+		id: "custom-task-title",
+		titleKey: "tip.customTaskTitle.title",
+		bodyKey: "tip.customTaskTitle.body",
+		icon: "\u{F0B5B}", // nf-md-pencil
+	},
 ];
 
 const STORAGE_KEY = "dev3-dismissed-tips";

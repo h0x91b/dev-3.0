@@ -59,28 +59,26 @@ describe("tips", () => {
 	});
 
 	it("advanceTip is a no-op when only one tip remains", () => {
-		// Dismiss all but one
+		// Dismiss all tips one by one until only one remains
+		const seen = new Set<string>();
 		let tip = getCurrentTip();
-		const kept = tip!.id;
 		while (tip) {
-			const next = getCurrentTip();
-			if (!next) break;
-			// Dismiss all except the first one
-			advanceTip();
-			const afterAdvance = getCurrentTip();
-			if (afterAdvance && afterAdvance.id !== kept) {
-				dismissTip(afterAdvance.id);
-			} else {
-				break;
-			}
+			seen.add(tip.id);
+			dismissTip(tip.id);
 			tip = getCurrentTip();
 		}
-		// After advance, should still get the same tip
+		// Restore exactly one tip by removing it from dismissed list
+		const keptId = [...seen][0];
+		const dismissed = [...seen].filter((id) => id !== keptId);
+		store.set("dev3-dismissed-tips", JSON.stringify(dismissed));
+		store.delete("dev3-tip-rotation-index");
+
 		const remaining = getCurrentTip();
+		expect(remaining).not.toBeNull();
+		expect(remaining!.id).toBe(keptId);
 		advanceTip();
 		const stillRemaining = getCurrentTip();
-		if (remaining && stillRemaining) {
-			expect(remaining.id).toBe(stillRemaining.id);
-		}
+		expect(stillRemaining).not.toBeNull();
+		expect(remaining!.id).toBe(stillRemaining!.id);
 	});
 });
