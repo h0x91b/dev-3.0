@@ -122,6 +122,28 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("dev3/task-aaaaaaaa");
 	});
 
+	it("removes worktree and deletes branch renamed to conventional prefix (feat/, fix/, etc.)", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Agent renames to conventional prefix — no longer starts with dev3/
+		g("git branch -m dev3/task-aaaaaaaa feat/fix-login", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "dev3/task-aaaaaaaa", // original name stored at worktree creation
+		});
+
+		await removeWorktree(project, task);
+
+		expect(existsSync(wtPath)).toBe(false);
+		// The conventionally-prefixed branch should be deleted (dev3 created it)
+		const branches = g("git branch", repo.local);
+		expect(branches).not.toContain("feat/fix-login");
+		expect(branches).not.toContain("dev3/task-aaaaaaaa");
+	});
+
 	it("preserves user-owned branch (non-dev3) on removal", async () => {
 		const wtPath = join(repo.dir, "worktree");
 		g(`git worktree add -b feature/login "${wtPath}" main`, repo.local);
