@@ -225,11 +225,38 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 						}
 					});
 
-					// Mobile keyboards use IME composition — characters buffer
-					// in the textarea and only get sent on compositionend (Enter).
-					// Intercept input events to send each character immediately.
+					// Mobile keyboards use IME composition for letters, but
+					// space/digits/punctuation are direct insertText events.
+					// We handle both paths explicitly via beforeinput + input.
 					let lastSentLen = 0;
 
+					// beforeinput: catch direct (non-composition) keystrokes
+					// AND backspace on empty textarea. Called BEFORE the browser
+					// modifies the textarea, so we can preventDefault cleanly.
+					hiddenTextarea.addEventListener("beforeinput", (e) => {
+						if (disposed) return;
+						const ie = e as InputEvent;
+						if (ie.inputType === "insertText" && ie.data) {
+							// Direct input: space, digits, punctuation.
+							// Send immediately and prevent insertion into textarea
+							// so it doesn't desync with composition tracking.
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send(ie.data);
+							}
+							e.preventDefault();
+							return;
+						}
+						if (ie.inputType === "deleteContentBackward" && hiddenTextarea.value === "") {
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send("\x7f");
+							}
+							e.preventDefault();
+						}
+					});
+
+					// input: handle composition text incrementally (letters).
+					// Each composition update changes textarea value — diff to
+					// find new chars and send them one by one.
 					hiddenTextarea.addEventListener("input", () => {
 						if (disposed) return;
 						const val = hiddenTextarea.value;
@@ -249,21 +276,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 						lastSentLen = val.length;
 					});
 
-					// Backspace on empty textarea — input event doesn't fire
-					// because nothing changed, so handle it in beforeinput.
-					hiddenTextarea.addEventListener("beforeinput", (e) => {
-						if (disposed) return;
-						const ie = e as InputEvent;
-						if (ie.inputType === "deleteContentBackward" && hiddenTextarea.value === "") {
-							if (wsRef.current?.readyState === WebSocket.OPEN) {
-								wsRef.current.send("\x7f");
-							}
-							e.preventDefault();
-						}
-					});
-
-					// When composition ends, ghostty-web would send event.data
-					// again (double-sending). Neutralize the data so ghostty-web
+					// compositionend: ghostty-web would send event.data again
+					// (double-sending). Neutralize the data so ghostty-web
 					// skips it, but let the event propagate so it resets isComposing.
 					hiddenTextarea.addEventListener("compositionend", (e) => {
 						Object.defineProperty(e, "data", { value: "", writable: false });
