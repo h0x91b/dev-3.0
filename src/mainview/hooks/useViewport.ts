@@ -4,6 +4,7 @@ import { useMobile } from "./useMobile";
 import { isElectrobun } from "../rpc";
 
 const DESKTOP_VIEWPORT = "width=1280";
+const BROWSER_VIEWPORT = "width=768";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
 /** Screens that require desktop-width viewport even on mobile (terminal). */
@@ -25,9 +26,9 @@ export function useViewport(route: Route): void {
 		const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
 		if (!meta) return;
 
-		// Browser remote access: always desktop viewport — UI is not mobile-responsive
+		// Browser remote access: 768px — readable on phones without being too zoomed out
 		if (!isElectrobun) {
-			meta.content = DESKTOP_VIEWPORT;
+			meta.content = BROWSER_VIEWPORT;
 			return;
 		}
 
