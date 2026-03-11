@@ -52,6 +52,7 @@ function ExtraKeyBar({ handle }: ExtraKeyBarProps) {
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b")}>Esc</button>
 			<button className={btnCtrl} onMouseDown={(e) => e.preventDefault()} onClick={toggleCtrl}>Ctrl</button>
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\t")}>Tab</button>
+			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\r")}>Enter</button>
 
 			<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
 
