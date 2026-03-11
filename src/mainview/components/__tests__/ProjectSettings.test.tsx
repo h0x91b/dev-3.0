@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectSettings from "../ProjectSettings";
 import { I18nProvider } from "../../i18n";
@@ -29,49 +29,53 @@ const mockProject: Project = {
 	createdAt: new Date().toISOString(),
 };
 
-function renderProjectSettings(project: Project = mockProject) {
+async function renderProjectSettings(project: Project = mockProject) {
 	const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
 	const navigate = vi.fn() as (route: Route) => void;
-	return render(
-		<I18nProvider>
-			<ProjectSettings
-				projectId={project.id}
-				projects={[project]}
-				dispatch={dispatch}
-				navigate={navigate}
-			/>
-		</I18nProvider>,
-	);
+	let result: ReturnType<typeof render>;
+	await act(async () => {
+		result = render(
+			<I18nProvider>
+				<ProjectSettings
+					projectId={project.id}
+					projects={[project]}
+					dispatch={dispatch}
+					navigate={navigate}
+				/>
+			</I18nProvider>,
+		);
+	});
+	return result!;
 }
 
 describe("ProjectSettings", () => {
 	describe("autocapitalize disabled on technical inputs", () => {
-		it("setup script textarea has autocapitalize off", () => {
-			renderProjectSettings();
+		it("setup script textarea has autocapitalize off", async () => {
+			await renderProjectSettings();
 			const textarea = screen.getByDisplayValue("bun install");
 			expect(textarea).toHaveAttribute("autocapitalize", "off");
 			expect(textarea).toHaveAttribute("autocorrect", "off");
 			expect(textarea.getAttribute("spellcheck")).toBe("false");
 		});
 
-		it("dev script textarea has autocapitalize off", () => {
-			renderProjectSettings();
+		it("dev script textarea has autocapitalize off", async () => {
+			await renderProjectSettings();
 			const textarea = screen.getByDisplayValue("bun dev");
 			expect(textarea).toHaveAttribute("autocapitalize", "off");
 			expect(textarea).toHaveAttribute("autocorrect", "off");
 			expect(textarea.getAttribute("spellcheck")).toBe("false");
 		});
 
-		it("cleanup script textarea has autocapitalize off", () => {
-			renderProjectSettings();
+		it("cleanup script textarea has autocapitalize off", async () => {
+			await renderProjectSettings();
 			const textarea = screen.getByDisplayValue("rm -rf dist");
 			expect(textarea).toHaveAttribute("autocapitalize", "off");
 			expect(textarea).toHaveAttribute("autocorrect", "off");
 			expect(textarea.getAttribute("spellcheck")).toBe("false");
 		});
 
-		it("base branch input has autocapitalize off", () => {
-			renderProjectSettings();
+		it("base branch input has autocapitalize off", async () => {
+			await renderProjectSettings();
 			const input = screen.getByDisplayValue("main");
 			expect(input).toHaveAttribute("autocapitalize", "off");
 			expect(input).toHaveAttribute("autocorrect", "off");
@@ -80,25 +84,25 @@ describe("ProjectSettings", () => {
 	});
 
 	describe("clone paths section", () => {
-		it("renders the clone paths section", () => {
-			renderProjectSettings();
+		it("renders the clone paths section", async () => {
+			await renderProjectSettings();
 			expect(screen.getByText("Clone Paths (Copy-on-Write)")).toBeInTheDocument();
 			expect(screen.getByText(/Directories and files to clone/)).toBeInTheDocument();
 		});
 
-		it("renders existing clone paths from project", () => {
+		it("renders existing clone paths from project", async () => {
 			const projectWithPaths: Project = {
 				...mockProject,
 				clonePaths: ["node_modules", ".venv"],
 			};
-			renderProjectSettings(projectWithPaths);
+			await renderProjectSettings(projectWithPaths);
 			expect(screen.getByDisplayValue("node_modules")).toBeInTheDocument();
 			expect(screen.getByDisplayValue(".venv")).toBeInTheDocument();
 		});
 
 		it("can add a new clone path", async () => {
 			const user = userEvent.setup();
-			renderProjectSettings();
+			await renderProjectSettings();
 			const addButton = screen.getByText("+ Add Path");
 			await user.click(addButton);
 			// After adding, a new empty input should appear
@@ -112,7 +116,7 @@ describe("ProjectSettings", () => {
 				...mockProject,
 				clonePaths: ["node_modules"],
 			};
-			renderProjectSettings(projectWithPaths);
+			await renderProjectSettings(projectWithPaths);
 			expect(screen.getByDisplayValue("node_modules")).toBeInTheDocument();
 			// Click the × button
 			const removeButton = screen.getByText("×");
@@ -132,16 +136,18 @@ describe("ProjectSettings", () => {
 			};
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
-			render(
-				<I18nProvider>
-					<ProjectSettings
-						projectId={projectWithPaths.id}
-						projects={[projectWithPaths]}
-						dispatch={dispatch as unknown as React.Dispatch<AppAction>}
-						navigate={navigate as (route: Route) => void}
-					/>
-				</I18nProvider>,
-			);
+			await act(async () => {
+				render(
+					<I18nProvider>
+						<ProjectSettings
+							projectId={projectWithPaths.id}
+							projects={[projectWithPaths]}
+							dispatch={dispatch as unknown as React.Dispatch<AppAction>}
+							navigate={navigate as (route: Route) => void}
+						/>
+					</I18nProvider>,
+				);
+			});
 
 			const saveButton = screen.getByText("Save Settings");
 			await user.click(saveButton);
@@ -153,12 +159,12 @@ describe("ProjectSettings", () => {
 			);
 		});
 
-		it("renders auto-detect button", () => {
+		it("renders auto-detect button", async () => {
 			const projectWithPaths: Project = {
 				...mockProject,
 				clonePaths: ["node_modules"],
 			};
-			renderProjectSettings(projectWithPaths);
+			await renderProjectSettings(projectWithPaths);
 			expect(screen.getByText("Auto-detect")).toBeInTheDocument();
 		});
 
@@ -171,7 +177,7 @@ describe("ProjectSettings", () => {
 				...mockProject,
 				clonePaths: [],
 			};
-			renderProjectSettings(emptyProject);
+			await renderProjectSettings(emptyProject);
 
 			// Auto-detect should have been called
 			await vi.waitFor(() => {
@@ -189,7 +195,7 @@ describe("ProjectSettings", () => {
 				...mockProject,
 				clonePaths: ["existing"],
 			};
-			renderProjectSettings(projectWithPaths);
+			await renderProjectSettings(projectWithPaths);
 
 			const detectButton = screen.getByText("Auto-detect");
 			await user.click(detectButton);
@@ -209,7 +215,7 @@ describe("ProjectSettings", () => {
 				...mockProject,
 				clonePaths: ["existing"],
 			};
-			renderProjectSettings(projectWithPaths);
+			await renderProjectSettings(projectWithPaths);
 
 			const detectButton = screen.getByText("Auto-detect");
 			await user.click(detectButton);
@@ -221,21 +227,21 @@ describe("ProjectSettings", () => {
 	});
 
 	describe("peer review toggle", () => {
-		it("toggle is on by default (peerReviewEnabled undefined)", () => {
-			renderProjectSettings();
+		it("toggle is on by default (peerReviewEnabled undefined)", async () => {
+			await renderProjectSettings();
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });
 			expect(toggle).toHaveAttribute("aria-checked", "true");
 		});
 
-		it("toggle reflects peerReviewEnabled: false from project", () => {
-			renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
+		it("toggle reflects peerReviewEnabled: false from project", async () => {
+			await renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });
 			expect(toggle).toHaveAttribute("aria-checked", "false");
 		});
 
 		it("clicking toggle flips state", async () => {
 			const user = userEvent.setup();
-			renderProjectSettings();
+			await renderProjectSettings();
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });
 			expect(toggle).toHaveAttribute("aria-checked", "true");
 			await user.click(toggle);
@@ -248,7 +254,7 @@ describe("ProjectSettings", () => {
 			mockSave.mockResolvedValue({ ...mockProject, peerReviewEnabled: false });
 
 			const user = userEvent.setup();
-			renderProjectSettings();
+			await renderProjectSettings();
 
 			// Turn off the toggle
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });
@@ -270,7 +276,7 @@ describe("ProjectSettings", () => {
 			mockSave.mockResolvedValue({ ...mockProject, peerReviewEnabled: true });
 
 			const user = userEvent.setup();
-			renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
+			await renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
 
 			// Turn on the toggle
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });

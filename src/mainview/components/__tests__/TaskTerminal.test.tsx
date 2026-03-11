@@ -96,6 +96,15 @@ function renderTerminal(
 describe("TaskTerminal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Suppress expected console noise from the component's error handling
+		// (tests intentionally trigger getPtyUrl failures to test error UI)
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	describe("handleMove sets movedAt", () => {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AddProjectModal from "../AddProjectModal";
 import { I18nProvider } from "../../i18n";
@@ -250,7 +250,9 @@ describe("AddProjectModal", () => {
 		expect(btn).toBeDisabled();
 
 		// Resolve addProject
-		resolveAddProject({ ok: true, project: { ...mockProject, path: "/new/path" } });
+		await act(async () => {
+			resolveAddProject({ ok: true, project: { ...mockProject, path: "/new/path" } });
+		});
 		await vi.waitFor(() => {
 			expect(screen.getByText("Browse...")).toBeInTheDocument();
 		});

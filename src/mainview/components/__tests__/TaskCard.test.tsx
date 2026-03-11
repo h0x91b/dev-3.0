@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
@@ -529,21 +529,27 @@ describe("TaskCard", () => {
 			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" });
 			mockedApi.request.getTerminalPreview.mockResolvedValue("$ hello");
 
-			renderCard(task);
+			await act(async () => {
+				renderCard(task);
+			});
 
 			const card = screen.getByText("My task").closest("[draggable]")!;
 
 			// Trigger hover to open preview
-			fireEvent.mouseEnter(card);
-			// Advance past the 400ms hover delay
-			await vi.advanceTimersByTimeAsync(500);
+			await act(async () => {
+				fireEvent.mouseEnter(card);
+				// Advance past the 400ms hover delay
+				await vi.advanceTimersByTimeAsync(500);
+			});
 
 			// Preview should be open
 			expect(mockedApi.request.getTerminalPreview).toHaveBeenCalled();
 
 			// Start dragging — preview should close
 			const mockDataTransfer = { setData: vi.fn(), effectAllowed: "" };
-			fireEvent.dragStart(card, { dataTransfer: mockDataTransfer });
+			await act(async () => {
+				fireEvent.dragStart(card, { dataTransfer: mockDataTransfer });
+			});
 
 			// Preview portal should be gone
 			expect(screen.queryByText("$ hello")).not.toBeInTheDocument();
