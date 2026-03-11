@@ -28,7 +28,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
  * Detect if we're running inside Electrobun (WKWebView) or a regular browser.
  * Electrobun injects __electrobunWebviewId on the window object.
  */
-const isElectrobun = typeof (window as any).__electrobunWebviewId !== "undefined";
+export const isElectrobun = typeof (window as any).__electrobunWebviewId !== "undefined";
 
 // --- RPC API type (matches what components expect) ---
 type BunRequests = AppRPCSchema["bun"]["requests"];
