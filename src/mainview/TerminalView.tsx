@@ -194,11 +194,11 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 
 			// Prevent mobile browser auto-zoom when the hidden textarea gains focus.
 			// ghostty-web creates a 1x1px textarea in the corner for keyboard input.
-			// Chrome auto-zooms to small/offscreen focused elements. Fix:
-			// 1. Stretch textarea over the canvas so it's "in viewport"
-			// 2. Set font-size: 16px (Chrome threshold for auto-zoom)
-			// 3. On focus, temporarily add maximum-scale=1 to viewport meta
-			//    (disables pinch-zoom only while typing — acceptable trade-off)
+			// Chrome auto-zooms to it on focus. Fix:
+			// 1. Stretch textarea over the canvas (not offscreen)
+			// 2. On focus, lock viewport scale to the current initial scale
+			//    (e.g. viewport=1024 on a 360px phone → scale ≈ 0.35;
+			//     setting maximum-scale=1 would allow 3x zoom — wrong!)
 			const hiddenTextarea = containerRef.current.querySelector("textarea");
 			if (hiddenTextarea) {
 				hiddenTextarea.style.fontSize = "16px";
@@ -210,15 +210,32 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 				hiddenTextarea.style.caretColor = "transparent";
 				hiddenTextarea.style.zIndex = "-1";
 
-				// Dynamically toggle maximum-scale on focus/blur to block auto-zoom
+				// Lock viewport scale on focus to prevent auto-zoom.
+				// The initial scale = screen.width / viewport-width. We must use
+				// that exact value as maximum-scale, not "1" (which is zoomed in).
 				const viewportMeta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
 				if (viewportMeta) {
+					function getInitialScale(): string {
+						const viewportWidth = window.innerWidth;
+						// visualViewport.scale tells us the current zoom level
+						const currentScale = window.visualViewport?.scale ?? 1;
+						// screen.width / (innerWidth * currentScale) gives us the
+						// ratio the browser uses to fit the viewport on screen
+						const fitScale = screen.width / (viewportWidth * currentScale);
+						return fitScale.toFixed(4);
+					}
+
 					hiddenTextarea.addEventListener("focus", () => {
-						const content = viewportMeta.content.replace(/,?\s*maximum-scale=[^,]*/g, "");
-						viewportMeta.content = content + ", maximum-scale=1";
+						const scale = getInitialScale();
+						const base = viewportMeta.content
+							.replace(/,?\s*maximum-scale=[^,]*/g, "")
+							.replace(/,?\s*minimum-scale=[^,]*/g, "");
+						viewportMeta.content = `${base}, minimum-scale=${scale}, maximum-scale=${scale}`;
 					});
 					hiddenTextarea.addEventListener("blur", () => {
-						viewportMeta.content = viewportMeta.content.replace(/,?\s*maximum-scale=[^,]*/g, "");
+						viewportMeta.content = viewportMeta.content
+							.replace(/,?\s*maximum-scale=[^,]*/g, "")
+							.replace(/,?\s*minimum-scale=[^,]*/g, "");
 					});
 				}
 			}
