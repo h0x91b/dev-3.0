@@ -1940,6 +1940,7 @@ export const handlers = {
 			if (!line) continue;
 			const [name, cwd, windowsStr, createdStr] = line.split("|");
 			if (!name.startsWith("dev3-")) continue;
+		if (name.startsWith("dev3-dev-")) continue; // dev server sessions are internal, not user-visible
 
 			const isCleanup = name.startsWith("dev3-cl-");
 			const shortId = isCleanup ? name.slice(8) : name.slice(5);
