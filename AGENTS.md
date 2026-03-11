@@ -81,52 +81,11 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 
 ## Feature discovery tips
 
-The app shows **"Did you know?" tip cards** on the Kanban board to help users discover features. Tips are defined in code and must be kept up to date as features are added.
+**Every user-facing feature must include 1–2 "Did you know?" tips** (small feature → 1, large → 2). Bug fixes/refactors — skip. Include tips in the same commit as the feature.
 
-### Architecture
+**Files:** tip registry in `src/mainview/tips.ts` (`ALL_TIPS` array), i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. See existing tips for the pattern.
 
-| What | Where |
-|---|---|
-| Tip registry (data + rotation logic) | `src/mainview/tips.ts` — `ALL_TIPS` array |
-| Tip card component | `src/mainview/components/TipCard.tsx` |
-| i18n keys (title + body per tip) | `src/mainview/i18n/translations/{en,ru,es}.ts` — keys prefixed `tip.<id>.title` / `tip.<id>.body` |
-| Integration | `KanbanBoard.tsx` picks the first column with <2 tasks; `KanbanColumn.tsx` renders the card |
-| Dismissal state | `localStorage("dev3-dismissed-tips")` — set of dismissed tip IDs |
-
-### Tip format
-
-Each tip has four fields:
-
-```ts
-{
-  id: "kebab-case-id",            // unique, stable (used in localStorage)
-  titleKey: "tip.<id>.title",     // i18n key — short headline, 3-6 words
-  bodyKey: "tip.<id>.body",       // i18n key — one sentence, max 120 characters
-  icon: "\u{XXXXXX}",            // Nerd Font glyph (see cheat-sheet)
-}
-```
-
-**Content rules:**
-- **Title:** 3–6 words, imperative or noun phrase. Examples: "Agents can create tasks", "Terminal preview", "Keyboard shortcut".
-- **Body:** One sentence, max ~120 characters. Must tell the user *what to do* or *how it works*. No marketing fluff. Include the specific action, shortcut, or trigger.
-- **Icon:** Pick a relevant Nerd Font glyph from [nerdfonts.com/cheat-sheet](https://www.nerdfonts.com/cheat-sheet). Use `\u{XXXXX}` syntax for codepoints above U+FFFF.
-- **All three locales** (en, ru, es) must be updated. TypeScript will error if you miss one.
-
-### When to add tips
-
-**Mandatory rule: every user-facing feature must include 1–2 tips.**
-
-- **Small feature** (single interaction, shortcut, UI tweak): add **1 tip**.
-- **Large feature** (new panel, new workflow, multi-step capability): add **2 tips** — one for the core concept, one for a non-obvious detail or power-user trick.
-- **Bug fixes, refactors, internal changes:** no tips needed.
-- Include tip changes in the **same commit** as the feature code (just like changelog entries).
-
-### Checklist for adding a tip
-
-1. Add entry to `ALL_TIPS` in `src/mainview/tips.ts`
-2. Add `tip.<id>.title` and `tip.<id>.body` keys to `en.ts`
-3. Add translations to `ru.ts` and `es.ts`
-4. Run `bun run lint` — TypeScript will catch missing translations
+**Content:** title 3–6 words, body one sentence max ~120 chars — tell the user *what to do*, no fluff. Icon: Nerd Font glyph (`\u{XXXXX}`).
 
 ## Decision records
 
