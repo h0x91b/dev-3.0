@@ -1858,6 +1858,95 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
 
   startAutoplay();
 })();
+
+// ======= ANALYTICS EVENTS =======
+(function() {
+  function track(eventName, params) {
+    if (typeof gtag === 'function') {
+      gtag('event', eventName, params);
+    }
+  }
+
+  // --- Button & link clicks ---
+  document.querySelectorAll('a[href], button').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var href = el.getAttribute('href') || '';
+      var text = (el.textContent || '').trim().substring(0, 60);
+      var section = el.closest('section, nav, footer');
+      var sectionId = section ? (section.id || section.className.split(' ')[0]) : 'unknown';
+
+      // Categorize click
+      if (href.includes('/releases')) {
+        track('download_click', { link_text: text, section: sectionId, url: href });
+      } else if (href.includes('github.com/h0x91b/dev-3.0') && !href.includes('/releases') && !href.includes('/issues')) {
+        track('github_repo_click', { link_text: text, section: sectionId });
+      } else if (href.includes('/issues')) {
+        track('issues_click', { link_text: text, section: sectionId });
+      } else if (href.includes('star-history')) {
+        track('star_history_click', { section: sectionId });
+      } else if (href.startsWith('#')) {
+        track('nav_anchor_click', { anchor: href, section: sectionId });
+      } else if (text) {
+        track('element_click', { link_text: text, section: sectionId, url: href });
+      }
+    });
+  });
+
+  // --- Carousel navigation ---
+  var carouselSlides = document.querySelectorAll('#heroCarousel img');
+  var slideNames = [];
+  carouselSlides.forEach(function(img) { slideNames.push(img.alt || img.src.split('/').pop()); });
+
+  document.getElementById('carouselPrev').addEventListener('click', function() {
+    var activeSlide = document.querySelector('#heroCarousel img.active');
+    var idx = Array.prototype.indexOf.call(carouselSlides, activeSlide);
+    track('carousel_navigate', { direction: 'prev', slide_index: idx, slide_name: slideNames[idx] });
+  });
+  document.getElementById('carouselNext').addEventListener('click', function() {
+    var activeSlide = document.querySelector('#heroCarousel img.active');
+    var idx = Array.prototype.indexOf.call(carouselSlides, activeSlide);
+    track('carousel_navigate', { direction: 'next', slide_index: idx, slide_name: slideNames[idx] });
+  });
+  document.querySelectorAll('#carouselDots button').forEach(function(dot, i) {
+    dot.addEventListener('click', function() {
+      track('carousel_dot_click', { slide_index: i, slide_name: slideNames[i] });
+    });
+  });
+
+  // --- Scroll depth tracking ---
+  var scrollMilestones = { 25: false, 50: false, 75: false, 100: false };
+  window.addEventListener('scroll', function() {
+    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+    var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    if (docHeight <= 0) return;
+    var percent = Math.round((scrollTop / docHeight) * 100);
+    [25, 50, 75, 100].forEach(function(milestone) {
+      if (percent >= milestone && !scrollMilestones[milestone]) {
+        scrollMilestones[milestone] = true;
+        track('scroll_depth', { percent: milestone });
+      }
+    });
+  }, { passive: true });
+
+  // --- Section visibility tracking ---
+  var sectionsSeen = {};
+  var sectionObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting && !sectionsSeen[entry.target.id]) {
+        sectionsSeen[entry.target.id] = true;
+        track('section_view', { section: entry.target.id });
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('section[id]').forEach(function(s) { sectionObserver.observe(s); });
+
+  // --- Time on page ---
+  var startTime = Date.now();
+  window.addEventListener('beforeunload', function() {
+    var seconds = Math.round((Date.now() - startTime) / 1000);
+    track('time_on_page', { seconds: seconds, transport_type: 'beacon' });
+  });
+})();
 </script>
 
 </body>
