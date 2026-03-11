@@ -338,6 +338,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiVariantInspiration.body",
 		icon: "\u{F0EB4}", // nf-md-lightbulb_outline
 	},
+	// Batch 12: modal dismiss
+	{
+		id: "modal-quick-dismiss",
+		titleKey: "tip.modalQuickDismiss.title",
+		bodyKey: "tip.modalQuickDismiss.body",
+		icon: "\u{F12B7}", // nf-md-keyboard_esc
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

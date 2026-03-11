@@ -110,6 +110,8 @@ const tips = {
 	"tip.spawnAgentUseCases.body": "Spawn a second agent on the same task to research docs while the first one codes, or run tests in parallel with development — all in one worktree.",
 	"tip.multiVariantInspiration.title": "Not sure what you want? Try variants",
 	"tip.multiVariantInspiration.body": "Write a vague TODO like \"redesign the settings page\" and launch 3–5 variants. Each agent works independently in its own worktree — compare the approaches and keep the winner.",
+	"tip.modalQuickDismiss.title": "Dismiss dialogs quickly",
+	"tip.modalQuickDismiss.body": "Press ESC or click the backdrop to close a dialog. If you have unsaved input, you'll get a confirmation prompt first.",
 } as const;
 
 export default tips;
