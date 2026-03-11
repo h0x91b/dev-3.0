@@ -10,8 +10,8 @@ const tips = {
 	"tip.agentSeesTasks.body": "Mention \"dev3\" in a prompt and the agent can list tasks, check statuses, and find past work.",
 	"tip.agentNotes.title": "Agents leave notes",
 	"tip.agentNotes.body": "Agents record key decisions and findings as task notes. Check the Notes section in the task panel.",
-	"tip.dragColumns.title": "Rearrange board columns",
-	"tip.dragColumns.body": "Grab the handle on any custom column header and drag it to reorder columns on your board.",
+	"tip.dragColumns.title": "Reorder custom columns",
+	"tip.dragColumns.body": "Add custom columns in Project Settings and drag them by the handle to place them anywhere between the built-in columns.",
 	"tip.doubleClickTodo.title": "Quick task creation",
 	"tip.doubleClickTodo.body": "Double-click empty space in the To Do column to instantly open the new task form.",
 	"tip.rightClickOpen.title": "Open in your editor",
@@ -20,8 +20,6 @@ const tips = {
 	"tip.cmdN.body": "Press \u2318N anywhere to create a new task without touching the mouse.",
 	"tip.terminalPreview.title": "Terminal preview",
 	"tip.terminalPreview.body": "Hover over an active task card to see a live preview of what's happening in the terminal.",
-	"tip.splitViewOpen.title": "Terminal beside your board",
-	"tip.splitViewOpen.body": "Click an active task card to open its terminal in a split view — drag the divider to resize, double-click to reset.",
 	"tip.splitViewEscape.title": "Escape closes split view",
 	"tip.splitViewEscape.body": "Press Escape to dismiss the terminal panel and return to the full Kanban board at any time.",
 	"tip.multiVariantTasks.title": "Explore multiple solutions at once",
@@ -118,6 +116,8 @@ const tips = {
 	"tip.taskOpenMode.body": "Switch Task Open Mode to \"Full screen\" in Global Settings to open tasks in a distraction-free terminal instead of split view.",
 	"tip.forkBranchSupport.title": "Review fork PRs",
 	"tip.forkBranchSupport.body": "Type user:branch in the branch field (e.g. yanive:feat/new-tab) and click Fetch to pull a branch from a GitHub fork.",
+	"tip.taskDropPosition.title": "New tasks land on top",
+	"tip.taskDropPosition.body": "By default new and moved tasks appear at the top of a column. Switch to bottom in Global Settings → Task Drop Position.",
 } as const;
 
 export default tips;

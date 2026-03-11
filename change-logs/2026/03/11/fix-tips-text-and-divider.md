@@ -1,0 +1,1 @@
+Fixed split view divider double-click reset by adding a drag threshold so tiny mouse movements during a double-click no longer start a drag. Updated the "Rearrange board columns" tip to clarify it applies to custom columns only. Added a new "Task Drop Position" tip explaining that new tasks appear at the top by default, configurable in Global Settings.
