@@ -519,6 +519,27 @@ const ru: TranslationRecord & Record<string, string> = {
 	"gaugeDemo.themeAuto": "Авто",
 	"gaugeDemo.themeDark": "Тёмная",
 	"gaugeDemo.themeLight": "Светлая",
+
+	// Tips (feature discovery)
+	"tip.badge": "А вы знали?",
+	"tip.dismiss": "Больше не показывать",
+	"tip.next": "Следующий совет",
+	"tip.agentCreateTasks.title": "Агенты создают задачи",
+	"tip.agentCreateTasks.body": "Скажите «создай задачу в dev3 про...» в промпте — агент добавит её на доску.",
+	"tip.agentSeesTasks.title": "Агенты видят вашу доску",
+	"tip.agentSeesTasks.body": "Упомяните «dev3» в промпте — агент может посмотреть задачи, статусы и прошлую работу.",
+	"tip.agentNotes.title": "Агенты оставляют заметки",
+	"tip.agentNotes.body": "Агенты записывают ключевые решения как заметки к задаче. Смотрите секцию «Заметки» в панели задачи.",
+	"tip.dragColumns.title": "Перетаскивание колонок",
+	"tip.dragColumns.body": "Перетащите ручку в заголовке кастомной колонки, чтобы изменить порядок на доске.",
+	"tip.doubleClickTodo.title": "Быстрое создание задачи",
+	"tip.doubleClickTodo.body": "Дважды кликните по пустому месту в колонке «К выполнению», чтобы сразу открыть форму новой задачи.",
+	"tip.rightClickOpen.title": "Откройте в редакторе",
+	"tip.rightClickOpen.body": "Кликните правой кнопкой по активной задаче, чтобы открыть worktree в Finder, VS Code, Cursor или другом приложении.",
+	"tip.cmdN.title": "Горячая клавиша",
+	"tip.cmdN.body": "Нажмите \u2318N в любом месте, чтобы создать задачу без мыши.",
+	"tip.terminalPreview.title": "Превью терминала",
+	"tip.terminalPreview.body": "Наведите на карточку активной задачи — увидите превью того, что происходит в терминале.",
 };
 
 export default ru;

@@ -505,6 +505,27 @@ const en = {
 	"gaugeDemo.themeAuto": "Auto",
 	"gaugeDemo.themeDark": "Dark",
 	"gaugeDemo.themeLight": "Light",
+
+	// Tips (feature discovery)
+	"tip.badge": "Did you know?",
+	"tip.dismiss": "Don't show this tip",
+	"tip.next": "Next tip",
+	"tip.agentCreateTasks.title": "Agents can create tasks",
+	"tip.agentCreateTasks.body": "Just say \"create a task in dev3 about...\" in your prompt and the agent will add it to your board.",
+	"tip.agentSeesTasks.title": "Agents see your board",
+	"tip.agentSeesTasks.body": "Mention \"dev3\" in a prompt and the agent can list tasks, check statuses, and find past work.",
+	"tip.agentNotes.title": "Agents leave notes",
+	"tip.agentNotes.body": "Agents record key decisions and findings as task notes. Check the Notes section in the task panel.",
+	"tip.dragColumns.title": "Reorder columns",
+	"tip.dragColumns.body": "Drag the grip handle on custom column headers to rearrange your board layout.",
+	"tip.doubleClickTodo.title": "Quick task creation",
+	"tip.doubleClickTodo.body": "Double-click empty space in the To Do column to instantly open the new task form.",
+	"tip.rightClickOpen.title": "Open in your editor",
+	"tip.rightClickOpen.body": "Right-click any active task card to open its worktree in Finder, VS Code, Cursor, or other apps.",
+	"tip.cmdN.title": "Keyboard shortcut",
+	"tip.cmdN.body": "Press \u2318N anywhere to create a new task without touching the mouse.",
+	"tip.terminalPreview.title": "Terminal preview",
+	"tip.terminalPreview.body": "Hover over an active task card to see a live preview of what's happening in the terminal.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

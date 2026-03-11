@@ -5,6 +5,8 @@ import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
 import TaskCard from "./TaskCard";
+import TipCard from "./TipCard";
+import type { Tip } from "../tips";
 
 // Module-level variable: set synchronously on dragstart, cleared on dragend.
 // Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
@@ -44,6 +46,9 @@ interface KanbanColumnProps {
 	onColumnDragEnd?: () => void;
 	// Column reorder drop target (left half = "before", right half = "after")
 	onColumnDrop?: (side: "before" | "after") => void;
+	// Feature discovery tip
+	tip?: Tip | null;
+	onTipDismiss?: () => void;
 }
 
 function KanbanColumn({
@@ -78,6 +83,8 @@ function KanbanColumn({
 	onColumnDragStart,
 	onColumnDragEnd,
 	onColumnDrop,
+	tip,
+	onTipDismiss,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -357,10 +364,14 @@ function KanbanColumn({
 					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0 transition-all" />
 				)}
 
-				{tasks.length === 0 && (
+				{tasks.length === 0 && !tip && (
 					<div className="text-fg-muted text-sm text-center py-8">
 						{t("kanban.noTasks")}
 					</div>
+				)}
+
+				{tip && onTipDismiss && (
+					<TipCard tip={tip} onDismiss={onTipDismiss} />
 				)}
 			</div>
 

@@ -508,6 +508,27 @@ const es: TranslationRecord & Record<string, string> = {
 	"gaugeDemo.themeAuto": "Auto",
 	"gaugeDemo.themeDark": "Oscuro",
 	"gaugeDemo.themeLight": "Claro",
+
+	// Tips (feature discovery)
+	"tip.badge": "¿Sabías que...?",
+	"tip.dismiss": "No mostrar este consejo",
+	"tip.next": "Siguiente consejo",
+	"tip.agentCreateTasks.title": "Los agentes crean tareas",
+	"tip.agentCreateTasks.body": "Di \"crea una tarea en dev3 sobre...\" en tu prompt y el agente la agregará al tablero.",
+	"tip.agentSeesTasks.title": "Los agentes ven tu tablero",
+	"tip.agentSeesTasks.body": "Menciona \"dev3\" en un prompt y el agente puede listar tareas, ver estados y encontrar trabajo anterior.",
+	"tip.agentNotes.title": "Los agentes dejan notas",
+	"tip.agentNotes.body": "Los agentes registran decisiones clave como notas de tarea. Revisa la sección de Notas en el panel de tareas.",
+	"tip.dragColumns.title": "Reordena columnas",
+	"tip.dragColumns.body": "Arrastra el asa en los encabezados de columnas personalizadas para reorganizar tu tablero.",
+	"tip.doubleClickTodo.title": "Creación rápida de tareas",
+	"tip.doubleClickTodo.body": "Haz doble clic en el espacio vacío de la columna Por Hacer para abrir el formulario de nueva tarea.",
+	"tip.rightClickOpen.title": "Abre en tu editor",
+	"tip.rightClickOpen.body": "Haz clic derecho en cualquier tarea activa para abrir su worktree en Finder, VS Code, Cursor u otras apps.",
+	"tip.cmdN.title": "Atajo de teclado",
+	"tip.cmdN.body": "Presiona \u2318N en cualquier lugar para crear una tarea sin usar el ratón.",
+	"tip.terminalPreview.title": "Vista previa del terminal",
+	"tip.terminalPreview.body": "Pasa el cursor sobre una tarea activa para ver una vista previa en vivo del terminal.",
 };
 
 export default es;

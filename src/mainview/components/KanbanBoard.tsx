@@ -21,6 +21,7 @@ import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import { getCurrentTip } from "../tips";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -54,6 +55,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
+	const [tipRevision, setTipRevision] = useState(0);
+	const currentTip = useMemo(() => getCurrentTip(), [tipRevision]);
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
@@ -363,6 +366,22 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 		}
 	}
 
+	// Find the first column with <2 tasks for the tip card (only one tip across the board)
+	const tipColumnId: string | null = useMemo(() => {
+		if (!currentTip) return null;
+		const orderedCols = getOrderedColumns();
+		for (const slot of orderedCols) {
+			if (slot.type === "builtin") {
+				const count = tasksByStatus.get(slot.status)?.length ?? 0;
+				if (count < 2) return slot.status;
+			} else {
+				const count = tasksByCustomColumn.get(slot.col.id)?.length ?? 0;
+				if (count < 2) return slot.col.id;
+			}
+		}
+		return null;
+	}, [currentTip, displayTasks]);
+
 	return (
 		<>
 			{onSwitchToSidebar && (
@@ -392,6 +411,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-scroll overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
+					const handleTipDismiss = () => setTipRevision((r) => r + 1);
 					const commonProps = {
 						project,
 						dispatch,
@@ -423,6 +443,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 								description={t(statusDescKey(slot.status))}
 								tasks={tasksByStatus.get(slot.status) || []}
 								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
+								tip={tipColumnId === slot.status ? currentTip : undefined}
+								onTipDismiss={handleTipDismiss}
 								{...commonProps}
 							/>
 						);
@@ -442,6 +464,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 							onColumnDragStart={() => handleColumnDragStart(col.id)}
 							onColumnDragEnd={handleColumnDragEnd}
 							onColumnDrop={(side) => handleColumnDrop(col.id, side)}
+							tip={tipColumnId === col.id ? currentTip : undefined}
+							onTipDismiss={handleTipDismiss}
 							{...commonProps}
 						/>
 					);
