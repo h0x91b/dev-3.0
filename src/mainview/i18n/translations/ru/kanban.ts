@@ -27,6 +27,8 @@ const kanban = {
 	"createTask.branchFetching": "Обновление...",
 	"createTask.branchLocal": "Локальные",
 	"createTask.branchRemote": "Удалённые",
+	"createTask.branchNoneFound": "Ветки не найдены",
+	"createTask.branchForkHint": "Нажмите Обновить, чтобы загрузить ветку из форка",
 	"createTask.useExistingBranch": "Использовать существующую ветку",
 	"createTask.reviewMode": "Это PR ревью",
 	"createTask.reviewModeHint": "Предзаполняет описание промптом для код-ревью",
@@ -79,6 +81,9 @@ const kanban = {
 	"launch.launch": "Запустить",
 	"launch.launching": "Запускается...",
 	"launch.failedLaunch": "Не удалось запустить: {error}",
+
+	// Pipeline
+	"pipeline.current": "текущий",
 };
 
 export default kanban;

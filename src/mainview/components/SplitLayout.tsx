@@ -4,6 +4,7 @@ const DEFAULT_BOARD_WIDTH = 320;
 const DEFAULT_SIDEBAR_WIDTH = 240;
 const MIN_KANBAN_WIDTH = 200;
 const MAX_KANBAN_RATIO = 0.6;
+const DRAG_THRESHOLD_PX = 3;
 const LS_KEY_BOARD = "dev3-split-kanban-width";
 const LS_KEY_SIDEBAR = "dev3-split-sidebar-width";
 
@@ -60,10 +61,16 @@ function SplitLayout({ kanbanContent, terminalContent, mode = "board" }: SplitLa
 		const startX = e.clientX;
 		const startW = panelRef.current?.offsetWidth ?? kanbanWidth;
 		const el = panelRef.current;
-		if (el) el.style.transition = "none";
+		let didDrag = false;
 
 		function onMove(ev: MouseEvent) {
 			if (!dragging.current) return;
+			const dx = Math.abs(ev.clientX - startX);
+			if (!didDrag && dx < DRAG_THRESHOLD_PX) return;
+			if (!didDrag) {
+				didDrag = true;
+				if (el) el.style.transition = "none";
+			}
 			const maxW = window.innerWidth * MAX_KANBAN_RATIO;
 			const newW = Math.min(maxW, Math.max(MIN_KANBAN_WIDTH, startW + (ev.clientX - startX)));
 			if (el) el.style.width = `${newW}px`;
@@ -73,8 +80,8 @@ function SplitLayout({ kanbanContent, terminalContent, mode = "board" }: SplitLa
 			dragging.current = false;
 			document.removeEventListener("mousemove", onMove);
 			document.removeEventListener("mouseup", onUp);
-			if (el) {
-				el.style.transition = "";
+			if (el) el.style.transition = "";
+			if (didDrag && el) {
 				const maxW = window.innerWidth * MAX_KANBAN_RATIO;
 				const finalW = Math.min(maxW, Math.max(MIN_KANBAN_WIDTH, startW + (ev.clientX - startX)));
 				setKanbanWidth(finalW);

@@ -7,6 +7,15 @@ interface BranchInfo {
 	isRemote: boolean;
 }
 
+/** Detect GitHub fork reference format: "user:branch" */
+const FORK_REF_RE = /^([a-zA-Z0-9_-]+):(.+)$/;
+
+export function parseForkRef(query: string): { forkOwner: string; branchName: string } | null {
+	const match = query.match(FORK_REF_RE);
+	if (!match) return null;
+	return { forkOwner: match[1], branchName: match[2] };
+}
+
 /** Split a branch name into words on /, -, _, ., and camelCase boundaries. */
 export function splitBranchWords(name: string): string[] {
 	return name
@@ -65,15 +74,29 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 	const handleFetchBranches = useCallback(async () => {
 		setFetchingBranches(true);
 		try {
-			const result = await api.request.fetchBranches({ projectId });
+			const forkRef = parseForkRef(branchQuery) ? branchQuery : undefined;
+			const result = await api.request.fetchBranches({ projectId, forkRef });
 			setBranches(result);
 			setBranchesLoaded(true);
+			// After fetching a fork branch, auto-select it
+			if (forkRef) {
+				const parsed = parseForkRef(branchQuery);
+				if (parsed) {
+					const expectedRemote = `${parsed.forkOwner}/${parsed.branchName}`;
+					const found = result.find((b) => b.name === expectedRemote);
+					if (found) {
+						onSelectBranch(found.name);
+						setBranchQuery("");
+						setBranchDropdownOpen(false);
+					}
+				}
+			}
 		} catch {
 			// silently fail
 		} finally {
 			setFetchingBranches(false);
 		}
-	}, [projectId]);
+	}, [projectId, branchQuery, onSelectBranch]);
 
 	const filteredBranches = branches.filter((b) =>
 		matchesBranchQuery(b.name, branchQuery),
@@ -231,7 +254,10 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 
 						{filteredBranches.length === 0 && branchesLoaded && (
 							<div className="px-3 py-2 text-sm text-fg-muted">
-								No branches found
+								{parseForkRef(branchQuery)
+									? t("createTask.branchForkHint")
+									: t("createTask.branchNoneFound")
+								}
 							</div>
 						)}
 					</div>

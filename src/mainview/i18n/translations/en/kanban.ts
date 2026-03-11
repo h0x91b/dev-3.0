@@ -27,6 +27,8 @@ const kanban = {
 	"createTask.branchFetching": "Fetching...",
 	"createTask.branchLocal": "Local",
 	"createTask.branchRemote": "Remote",
+	"createTask.branchNoneFound": "No branches found",
+	"createTask.branchForkHint": "Click Fetch to pull this branch from the fork",
 	"createTask.useExistingBranch": "Use existing branch",
 	"createTask.reviewMode": "This is a PR review",
 	"createTask.reviewModeHint": "Pre-fills description with a code review prompt",
@@ -77,6 +79,9 @@ const kanban = {
 	"launch.launch": "Launch",
 	"launch.launching": "Launching...",
 	"launch.failedLaunch": "Failed to launch: {error}",
+
+	// Pipeline
+	"pipeline.current": "current",
 } as const;
 
 export default kanban;

@@ -3,8 +3,7 @@ import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, BranchStatus, PortInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions } from "../../shared/types";
-import { useStatusColors } from "../hooks/useStatusColors";
+import { ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -12,6 +11,8 @@ import { trackEvent } from "../analytics";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import OpenInMenu from "./OpenInMenu";
+import MiniPipeline from "./MiniPipeline";
+import PipelineDropdown from "./PipelineDropdown";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -132,7 +133,6 @@ function DevServerMenu({ position, onRestart, onStop, onClose, t }: DevServerMen
 
 function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPage }: TaskInfoPanelProps) {
 	const t = useT();
-	const statusColors = useStatusColors();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 
@@ -761,7 +761,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	// ---- Shared elements ----
 
-	const statusColor = statusColors[task.status];
 	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
 
 	const statusDropdownButton = (
@@ -771,10 +770,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			disabled={movingStatus}
 			className="flex items-center gap-2 px-2.5 py-1 rounded-lg hover:bg-elevated transition-colors flex-shrink-0"
 		>
-			<div
-				className="w-2 h-2 rounded-full flex-shrink-0"
-				style={{ background: statusColor }}
-			/>
+			<MiniPipeline status={task.status} />
 			<span className="text-[0.6875rem] font-medium text-fg-2">
 				{t(statusKey(task.status))}
 			</span>
@@ -795,42 +791,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			}}
 			onClick={(e) => e.stopPropagation()}
 		>
-			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
-				{t("task.moveTo")}
-			</div>
-			{getAllowedTransitions(task.status).map((s) => (
-				<button
-					key={s}
-					onClick={() => handleStatusMove(s)}
-					className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-				>
-					<div
-						className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-						style={{ background: statusColors[s] }}
-					/>
-					{t(statusKey(s))}
-				</button>
-			))}
-			{project.customColumns && project.customColumns.length > 0 && (
-				<>
-					<div className="border-t border-edge-active mt-1.5 pt-1.5" />
-					{project.customColumns
-						.filter((col) => col.id !== task.customColumnId)
-						.map((col) => (
-							<button
-								key={col.id}
-								onClick={() => handleMoveToCustomColumn(col.id)}
-								className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-							>
-								<div
-									className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-									style={{ background: col.color }}
-								/>
-								{col.name}
-							</button>
-						))}
-				</>
-			)}
+			<PipelineDropdown
+				currentStatus={task.status}
+				onMove={handleStatusMove}
+				onMoveToCustomColumn={handleMoveToCustomColumn}
+				customColumns={project.customColumns}
+				currentCustomColumnId={task.customColumnId}
+			/>
 		</div>,
 		document.body,
 	);

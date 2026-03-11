@@ -404,10 +404,12 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
-			await user.click(screen.getByText("Agent is Working"));
+			// Click the status trigger button (first match — the card's status button)
+			await user.click(screen.getAllByText("Agent is Working")[0]);
 			expect(screen.getByText("Move to")).toBeInTheDocument();
 
-			await user.click(screen.getByText("Agent is Working"));
+			// Click the trigger again to close — it's still the first match
+			await user.click(screen.getAllByText("Agent is Working")[0]);
 			expect(screen.queryByText("Move to")).not.toBeInTheDocument();
 		});
 	});

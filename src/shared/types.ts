@@ -742,7 +742,7 @@ export type AppRPCSchema = {
 				response: Array<{ name: string; isRemote: boolean }>;
 			};
 			fetchBranches: {
-				params: { projectId: string };
+				params: { projectId: string; forkRef?: string };
 				response: Array<{ name: string; isRemote: boolean }>;
 			};
 			getProjectCurrentBranch: {

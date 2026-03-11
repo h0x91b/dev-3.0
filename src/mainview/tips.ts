@@ -59,12 +59,6 @@ const ALL_TIPS: Tip[] = [
 	},
 	// Batch 1: split-view, multi-variant, labels, search, PR
 	{
-		id: "split-view-open",
-		titleKey: "tip.splitViewOpen.title",
-		bodyKey: "tip.splitViewOpen.body",
-		icon: "\u{F0E4E}", // nf-md-view_split_vertical
-	},
-	{
 		id: "split-view-escape",
 		titleKey: "tip.splitViewEscape.title",
 		bodyKey: "tip.splitViewEscape.body",
@@ -363,6 +357,19 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.taskOpenMode.title",
 		bodyKey: "tip.taskOpenMode.body",
 		icon: "\u{F0124}", // nf-md-fullscreen
+	},
+	{
+		id: "fork-branch-support",
+		titleKey: "tip.forkBranchSupport.title",
+		bodyKey: "tip.forkBranchSupport.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
+	// Batch 14: task drop position
+	{
+		id: "task-drop-position",
+		titleKey: "tip.taskDropPosition.title",
+		bodyKey: "tip.taskDropPosition.body",
+		icon: "\u{F0140}", // nf-md-arrow_up_down
 	},
 ];
 

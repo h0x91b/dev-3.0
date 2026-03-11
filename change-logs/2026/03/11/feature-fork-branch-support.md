@@ -1,0 +1,1 @@
+Support fetching branches from GitHub forks in the branch selector. Type `user:branch` (e.g. `yanive:feat/cross-project-activity-tab`) in the branch field and click Fetch — the app automatically adds the fork remote, fetches the branch, and auto-selects it. The worktree creation logic now handles branches from any remote, not just origin.

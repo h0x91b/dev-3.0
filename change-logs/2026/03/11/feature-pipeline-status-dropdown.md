@@ -1,0 +1,3 @@
+Replaced the flat status dropdown with a vertical pipeline visualization showing task progress through stages (Todo → Working → AI Review → Your Review → PR Review → Completed). Added a compact horizontal mini-pipeline next to the status label on task cards and the info panel, providing at-a-glance progress tracking. Side-branch statuses (Has Questions, Cancelled) are displayed separately below the main pipeline.
+
+Suggested by @ZaxYonatan
