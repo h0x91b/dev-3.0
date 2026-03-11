@@ -570,7 +570,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				projectId: project.id,
 			});
 		} catch (err) {
-			alert(t("infoPanel.createPRFailed", { error: String(err) }));
+			alert(t("infoPanel.openPRFailed", { error: String(err) }));
 		}
 		setCreatingPR(false);
 	}
@@ -1035,6 +1035,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const hasPR = branchStatus && branchStatus.prNumber !== null;
 	const needsPushBeforePR = branchStatus && branchStatus.ahead > 0 && branchStatus.unpushed !== 0;
 	const createPRDisabled = hasPR ? (!branchStatus || creatingPR) : (!branchStatus || branchStatus.ahead === 0 || creatingPR || pushing);
+	const prButtonLabel = creatingPR
+		? t("infoPanel.creatingPR")
+		: pushing && pushThenCreatePRRef.current
+			? t("infoPanel.pushingAndCreatingPR")
+			: hasPR
+				? t("infoPanel.openPR")
+				: needsPushBeforePR
+					? t("infoPanel.pushAndCreatePR")
+					: t("infoPanel.createPR");
 	const createPRTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: hasPR
@@ -1069,7 +1078,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
-	const openPRBtnClass = "text-green-400 hover:bg-green-500/20 bg-green-500/10 border border-green-500/25";
+	const openPRBtnClass = "text-success hover:bg-success/20 bg-success/10 border border-success/25";
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
@@ -1132,7 +1141,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				}`}
 				title={createPRTooltip}
 			>
-				{creatingPR ? t("infoPanel.creatingPR") : pushing && pushThenCreatePRRef.current ? t("infoPanel.pushingAndCreatingPR") : hasPR ? t("infoPanel.openPR") : needsPushBeforePR ? t("infoPanel.pushAndCreatePR") : t("infoPanel.createPR")}
+				{prButtonLabel}
 			</button>
 			<button
 				onClick={handleMerge}

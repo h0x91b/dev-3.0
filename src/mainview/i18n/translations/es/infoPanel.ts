@@ -30,6 +30,7 @@ const infoPanel = {
 	"infoPanel.createPR": "Create PR",
 	"infoPanel.openPR": "Open PR",
 	"infoPanel.openPRTooltip": "Abrir PR existente #{number}",
+	"infoPanel.openPRFailed": "Error al abrir PR: {error}",
 	"infoPanel.creatingPR": "Creando PR...",
 	"infoPanel.createPRFailed": "Error al crear PR: {error}",
 	"infoPanel.createPRDisabledNoCommits": "No hay commits para crear PR",

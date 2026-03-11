@@ -190,6 +190,7 @@ const branchStatusInFlight = new Map<string, Promise<{
 	ahead: number; behind: number; canRebase: boolean;
 	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
 	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
+	prNumber: number | null;
 }>>();
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
@@ -770,34 +771,37 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	await git.fetchOrigin(project.path);
 	// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
 	const ref = params.compareRef || `origin/${baseBranch}`;
-	const [status, uncommitted, unpushed, branchDiff] = await Promise.all([
-		git.getBranchStatus(task.worktreePath, ref),
-		git.getUncommittedChanges(task.worktreePath),
-		git.getUnpushedCount(task.worktreePath, branchForPush),
-		git.getBranchDiffStats(task.worktreePath, ref),
-	]);
-	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, ref });
-	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
-	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
-
-	// Detect open PR for this branch (fire-and-forget — graceful degradation on failure)
-	let prNumber: number | null = null;
-	if (unpushed !== -1 && branchForPush) {
+	// Detect open PR in parallel with other git operations (graceful degradation)
+	const prDetection: Promise<number | null> = (async () => {
 		try {
+			// getUnpushedCount runs in parallel; we need its result to know if branch was pushed.
+			// Instead, optimistically try — gh will return empty if branch doesn't exist on remote.
 			const ghResult = await git.run(
 				["gh", "pr", "list", "--head", branchForPush, "--state", "open", "--json", "number", "--limit", "1"],
-				task.worktreePath,
+				task.worktreePath!,
 			);
 			if (ghResult.ok && ghResult.stdout) {
 				const prs = JSON.parse(ghResult.stdout);
 				if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
-					prNumber = prs[0].number;
+					return prs[0].number;
 				}
 			}
 		} catch (err) {
 			log.warn("PR detection failed (non-fatal)", { error: String(err) });
 		}
-	}
+		return null;
+	})();
+
+	const [status, uncommitted, unpushed, branchDiff, prNumber] = await Promise.all([
+		git.getBranchStatus(task.worktreePath, ref),
+		git.getUncommittedChanges(task.worktreePath),
+		git.getUnpushedCount(task.worktreePath, branchForPush),
+		git.getBranchDiffStats(task.worktreePath, ref),
+		prDetection,
+	]);
+	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, ref });
+	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
+	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, mergedByContent,

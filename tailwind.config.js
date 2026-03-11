@@ -29,6 +29,10 @@ export default {
 					hover: "rgb(var(--accent-hover) / <alpha-value>)",
 				},
 				danger: "rgb(var(--danger) / <alpha-value>)",
+				success: {
+					DEFAULT: "rgb(var(--success) / <alpha-value>)",
+					hover: "rgb(var(--success-hover) / <alpha-value>)",
+				},
 			},
 			keyframes: {
 				"slide-in-right": {

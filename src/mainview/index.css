@@ -39,10 +39,12 @@
 	--border-default: 32 38 55;
 	--border-active: 52 58 83;
 
-	/* ---- Accent / Danger ---- */
+	/* ---- Accent / Danger / Success ---- */
 	--accent: 68 150 255;
 	--accent-hover: 43 114 255;
 	--danger: 255 130 130;
+	--success: 74 222 128;
+	--success-hover: 34 197 94;
 
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 115deg;
@@ -98,10 +100,12 @@
 	--border-default: 203 213 225;
 	--border-active: 165 180 202;
 
-	/* ---- Accent / Danger ---- */
+	/* ---- Accent / Danger / Success ---- */
 	--accent: 59 130 246;
 	--accent-hover: 37 99 235;
 	--danger: 220 38 38;
+	--success: 22 163 74;
+	--success-hover: 21 128 61;
 
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 135deg;
