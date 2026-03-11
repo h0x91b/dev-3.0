@@ -669,9 +669,11 @@ export async function removeWorktree(
 	);
 
 	if (branchToDelete) {
-		// Only delete branches that dev3 created (dev3/* prefix).
-		// User-owned branches (e.g. feature/login chosen via branch selector) should be preserved.
-		const isDevBranch = branchToDelete.startsWith("dev3/");
+		// Delete branches that dev3 created. We check task.branchName (the original name
+		// assigned at worktree creation) rather than the live branch name, because agents
+		// may rename branches to conventional prefixes (feat/, fix/, etc.).
+		// A task.branchName starting with "dev3/task-" means dev3 created it.
+		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/");
 		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
 			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
 		if (isDevBranch || isVariantBranch) {
