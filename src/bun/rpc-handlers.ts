@@ -132,8 +132,22 @@ async function isDevServerRunning(taskId: string, socket: string | null): Promis
 	return exitCode === 0;
 }
 
+// Track viewer pane IDs for dev server sessions (task ID → tmux pane ID).
+// Used to kill the viewer pane explicitly before killing the dev session,
+// avoiding a race where the trap-EXIT approach could fire after the new
+// session was created (same name) during a restart.
+const devViewerPaneIds = new Map<string, string>();
+
 async function killDevServerSession(taskId: string, socket: string | null): Promise<void> {
 	const devSession = devServerSessionName(taskId);
+	// Kill the viewer pane first (if tracked) so it can't race with session recreation.
+	const viewerPaneId = devViewerPaneIds.get(taskId);
+	if (viewerPaneId) {
+		const killPane = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", viewerPaneId), { stdout: "pipe", stderr: "pipe" });
+		await killPane.exited;
+		devViewerPaneIds.delete(taskId);
+		log.info("Killed dev server viewer pane", { taskId: taskId.slice(0, 8), viewerPaneId });
+	}
 	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 	await kill.exited;
 	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
@@ -332,6 +346,7 @@ export function clearMergeNotification(taskId: string): void {
 function cleanupTaskState(taskId: string): void {
 	fileBrowserPaneIds.delete(taskId);
 	gitOpPaneIds.delete(taskId);
+	devViewerPaneIds.delete(taskId);
 	mergeNotifiedTasks.delete(taskId);
 	branchStatusInFlight.delete(taskId);
 }
@@ -1157,15 +1172,13 @@ export const handlers = {
 			// Create a viewer pane in the task session that nests the dev server session.
 			// TMUX= bypasses the nesting guard so attach works from inside another session.
 			// Must include -L <socket> so the attach targets the same tmux server.
+			// No trap EXIT here — the viewer pane ID is tracked in devViewerPaneIds and
+			// killed explicitly before the dev session is recreated, avoiding a race where
+			// the trap fires after the new session is already running (same name).
 			const taskSession = `dev3-${task.id.slice(0, 8)}`;
-			// Wrap attach in a trap so the dev session is killed when the viewer pane
-			// exits for any reason: pane killed manually, dev script finished, or detach.
-			const tmuxKill = socket
-				? `tmux -L "${socket}" kill-session -t "${devSession}" 2>/dev/null`
-				: `tmux kill-session -t "${devSession}" 2>/dev/null`;
 			const attachCmd = socket
-				? `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux -L "${socket}" attach-session -t "${devSession}"'`
-				: `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux attach-session -t "${devSession}"'`;
+				? `TMUX= tmux -L "${socket}" attach-session -t "${devSession}"`
+				: `TMUX= tmux attach-session -t "${devSession}"`;
 			const viewerProc = spawn(pty.tmuxArgs(socket,
 				"split-window", "-h",
 				"-t", taskSession,
@@ -1179,6 +1192,8 @@ export const handlers = {
 			const viewerPaneId = viewerOut.trim();
 
 			if (viewerPaneId) {
+				// Track pane ID so killDevServerSession can kill it explicitly (no trap race)
+				devViewerPaneIds.set(task.id, viewerPaneId);
 				// Label the pane so the user knows Ctrl+b is captured by the outer session
 				spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)"));
 				// Enable pane border titles for the task session
