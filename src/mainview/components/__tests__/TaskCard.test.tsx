@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			moveTask: vi.fn(),
+			moveTaskToCustomColumn: vi.fn(),
 			deleteTask: vi.fn(),
 			showConfirm: vi.fn(),
 			setTaskLabels: vi.fn(),
@@ -1026,6 +1027,74 @@ describe("TaskCard", () => {
 					path: "/tmp/worktree",
 				});
 			});
+		});
+	});
+
+	describe("custom columns in status dropdown", () => {
+		const projectWithCustomColumns: Project = {
+			...project,
+			customColumns: [
+				{ id: "col-1", name: "On Hold", color: "#f59e0b", llmInstruction: "When waiting" },
+				{ id: "col-2", name: "Blocked", color: "#ef4444", llmInstruction: "When blocked" },
+			],
+		};
+
+		it("shows custom columns in the move-to dropdown", async () => {
+			const user = userEvent.setup();
+			renderCard(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }),
+				{ projectOverride: projectWithCustomColumns },
+			);
+
+			await user.click(screen.getByText("Agent is Working"));
+
+			await waitFor(() => {
+				expect(screen.getByText("On Hold")).toBeInTheDocument();
+				expect(screen.getByText("Blocked")).toBeInTheDocument();
+			});
+		});
+
+		it("calls moveTaskToCustomColumn when clicking a custom column", async () => {
+			const user = userEvent.setup();
+			const updatedTask = makeTask({ status: "in-progress", customColumnId: "col-1" });
+			mockedApi.request.moveTaskToCustomColumn.mockResolvedValueOnce(updatedTask);
+			const dispatch = vi.fn();
+
+			renderCard(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }),
+				{ projectOverride: projectWithCustomColumns, dispatch },
+			);
+
+			await user.click(screen.getByText("Agent is Working"));
+
+			await waitFor(() => {
+				expect(screen.getByText("On Hold")).toBeInTheDocument();
+			});
+
+			await user.click(screen.getByText("On Hold"));
+
+			await waitFor(() => {
+				expect(mockedApi.request.moveTaskToCustomColumn).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					customColumnId: "col-1",
+				});
+			});
+		});
+
+		it("excludes the current custom column from the dropdown", async () => {
+			const user = userEvent.setup();
+			renderCard(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test", customColumnId: "col-1" }),
+				{ projectOverride: projectWithCustomColumns },
+			);
+
+			await user.click(screen.getByText("Agent is Working"));
+
+			await waitFor(() => {
+				expect(screen.getByText("Blocked")).toBeInTheDocument();
+			});
+			expect(screen.queryByText("On Hold")).not.toBeInTheDocument();
 		});
 	});
 });

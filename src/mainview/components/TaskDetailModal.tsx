@@ -147,6 +147,24 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 		}
 	}
 
+	async function handleMoveToCustomColumn(customColumnId: string) {
+		setMovingStatus(true);
+		setStatusMenuOpen(false);
+		try {
+			const updated = await api.request.moveTaskToCustomColumn({
+				taskId: task.id,
+				projectId: project.id,
+				customColumnId,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
+			onClose();
+		} catch (err) {
+			alert(t("task.failedMove", { error: String(err) }));
+		}
+		setMovingStatus(false);
+	}
+
 	async function handleStatusMove(newStatus: TaskStatus) {
 		setMovingStatus(true);
 		setStatusMenuOpen(false);
@@ -233,6 +251,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			setStatusMenuOpen={setStatusMenuOpen}
 			movingStatus={movingStatus}
 			onStatusMove={handleStatusMove}
+			onMoveToCustomColumn={handleMoveToCustomColumn}
 			onAddNote={handleAddNote}
 			onUpdateNote={handleUpdateNote}
 			onDeleteNote={handleDeleteNote}
@@ -411,6 +430,7 @@ interface ArchivedViewProps {
 	setStatusMenuOpen: (open: boolean) => void;
 	movingStatus: boolean;
 	onStatusMove: (status: TaskStatus) => void;
+	onMoveToCustomColumn: (customColumnId: string) => void;
 	onAddNote: () => void;
 	onUpdateNote: (noteId: string, content: string) => void;
 	onDeleteNote: (noteId: string) => void;
@@ -420,7 +440,7 @@ interface ArchivedViewProps {
 function ArchivedView({
 	task, project, color,
 	statusMenuOpen, setStatusMenuOpen,
-	movingStatus, onStatusMove,
+	movingStatus, onStatusMove, onMoveToCustomColumn,
 	onAddNote, onUpdateNote, onDeleteNote,
 	onClose,
 }: ArchivedViewProps) {
@@ -496,6 +516,26 @@ function ArchivedView({
 											{t(statusKey(s))}
 										</button>
 									))}
+									{project.customColumns && project.customColumns.length > 0 && (
+										<>
+											<div className="border-t border-edge-active mt-1.5 pt-1.5" />
+											{project.customColumns
+												.filter((col) => col.id !== task.customColumnId)
+												.map((col) => (
+													<button
+														key={col.id}
+														onClick={() => onMoveToCustomColumn(col.id)}
+														className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+													>
+														<div
+															className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+															style={{ background: col.color }}
+														/>
+														{col.name}
+													</button>
+												))}
+										</>
+									)}
 								</div>
 							)}
 						</div>

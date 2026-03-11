@@ -1,0 +1,1 @@
+Custom columns defined in Project Settings now appear in all "Move to" status dropdowns (task card, task info panel, and task detail modal). Previously they were only reachable via drag-and-drop on the Kanban board.

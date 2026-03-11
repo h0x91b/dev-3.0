@@ -189,6 +189,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		setMovingStatus(false);
 	}
 
+	async function handleMoveToCustomColumn(customColumnId: string) {
+		setMovingStatus(true);
+		setStatusMenuOpen(false);
+		try {
+			const updated = await api.request.moveTaskToCustomColumn({
+				taskId: task.id,
+				projectId: project.id,
+				customColumnId,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
+		} catch (err) {
+			alert(t("task.failedMove", { error: String(err) }));
+		}
+		setMovingStatus(false);
+	}
+
 	// ---- Tmux hints popover state ----
 	const [hintsOpen, setHintsOpen] = useState(false);
 	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
@@ -671,6 +688,26 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					{t(statusKey(s))}
 				</button>
 			))}
+			{project.customColumns && project.customColumns.length > 0 && (
+				<>
+					<div className="border-t border-edge-active mt-1.5 pt-1.5" />
+					{project.customColumns
+						.filter((col) => col.id !== task.customColumnId)
+						.map((col) => (
+							<button
+								key={col.id}
+								onClick={() => handleMoveToCustomColumn(col.id)}
+								className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+							>
+								<div
+									className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+									style={{ background: col.color }}
+								/>
+								{col.name}
+							</button>
+						))}
+				</>
+			)}
 		</div>,
 		document.body,
 	);
