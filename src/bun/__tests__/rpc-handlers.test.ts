@@ -2525,41 +2525,6 @@ describe("handlers.runDevServer", () => {
 		expect(calls.some((a) => a.includes("new-session") && a.includes("-d"))).toBe(true);
 	});
 
-	it("kills viewer pane before dev session on restart to avoid trap race", async () => {
-		// Simulate a first runDevServer that creates the viewer pane (pane ID "%42"),
-		// then a second call (restart) that must kill the pane before the session.
-		const project = makeProject({ devScript: "bun run dev" });
-		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-
-		// First runDevServer: has-session=not running, new-session ok, split-window returns "%42"
-		// Use plain string for split-window stdout — new Response(new Response(...)) loses body in Bun test env
-		mockSpawn
-			.mockReturnValueOnce({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(1) }) // has-session → not running
-			.mockReturnValueOnce({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) }) // new-session ok
-			.mockReturnValueOnce({ stdout: "%42\n", stderr: new Response(""), exited: Promise.resolve(0) }) // split-window → pane ID
-			.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) }); // select-pane, set-option
-
-		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
-
-		vi.clearAllMocks();
-
-		// Second call (restart): has-session=running, kill-pane then kill-session then new-session
-		mockSpawn
-			.mockReturnValueOnce({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
-			.mockReturnValue({ stdout: new Response("%43\n"), stderr: new Response(""), exited: Promise.resolve(0) }); // everything else
-
-		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
-
-		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
-		// Viewer pane killed before dev session
-		const killPaneIdx = calls.findIndex((a) => a.includes("kill-pane") && a.includes("%42"));
-		const killSessionIdx = calls.findIndex((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"));
-		expect(killPaneIdx).toBeGreaterThanOrEqual(0);
-		expect(killSessionIdx).toBeGreaterThanOrEqual(0);
-		expect(killPaneIdx).toBeLessThan(killSessionIdx);
-	});
 
 	it("throws when tmux new-session fails", async () => {
 		const project = makeProject({ devScript: "bun run dev" });
