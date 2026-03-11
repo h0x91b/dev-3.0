@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
+			getProjectCurrentBranch: vi.fn(),
 		},
 	},
 }));
@@ -75,6 +76,7 @@ describe("CreateTaskModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
 	});
 
 	it("shows Save & Start button when onCreateAndRun is provided", () => {
@@ -418,6 +420,61 @@ describe("CreateTaskModal", () => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
 				projectId: "p1",
 				description: "New task",
+			});
+		});
+	});
+
+	// ---- Auto-fill branch from project's current branch ----
+
+	it("auto-fills branch when project is on a non-base branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		renderModal();
+
+		await waitFor(() => {
+			expect(screen.getByText("feat/login")).toBeInTheDocument();
+		});
+	});
+
+	it("does not auto-fill branch when project is on the base branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
+		renderModal();
+
+		// Wait a tick for the effect to settle
+		await waitFor(() => {
+			expect(mockedApi.request.getProjectCurrentBranch).toHaveBeenCalled();
+		});
+		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
+	});
+
+	it("does not auto-fill branch when getProjectCurrentBranch fails", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockRejectedValue(new Error("fail"));
+		renderModal();
+
+		await waitFor(() => {
+			expect(mockedApi.request.getProjectCurrentBranch).toHaveBeenCalled();
+		});
+		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
+	});
+
+	it("auto-filled branch is passed to createTask", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		renderModal({ dispatch, onClose });
+
+		await waitFor(() => {
+			expect(screen.getByText("feat/login")).toBeInTheDocument();
+		});
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Continue login work");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "Continue login work",
+				existingBranch: "feat/login",
 			});
 		});
 	});

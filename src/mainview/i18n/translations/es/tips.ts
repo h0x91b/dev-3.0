@@ -112,6 +112,8 @@ const tips = {
 	"tip.multiVariantInspiration.body": "Escribe un TODO vago como \"rediseña la página de ajustes\" y lanza 3–5 variantes. Cada agente trabaja independientemente en su propio worktree — compara los enfoques y quédate con el mejor.",
 	"tip.modalQuickDismiss.title": "Cierra diálogos rápidamente",
 	"tip.modalQuickDismiss.body": "Pulsa ESC o haz clic fuera del diálogo para cerrarlo. Si tienes texto sin guardar, verás una confirmación primero.",
+	"tip.autoFillBranch.title": "La rama se completa sola",
+	"tip.autoFillBranch.body": "Cambia a una rama de feature antes de crear la tarea — el selector de rama se auto-completará para que no tengas que buscarla.",
 };
 
 export default tips;

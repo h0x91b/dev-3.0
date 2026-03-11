@@ -112,6 +112,8 @@ const tips = {
 	"tip.multiVariantInspiration.body": "Write a vague TODO like \"redesign the settings page\" and launch 3–5 variants. Each agent works independently in its own worktree — compare the approaches and keep the winner.",
 	"tip.modalQuickDismiss.title": "Dismiss dialogs quickly",
 	"tip.modalQuickDismiss.body": "Press ESC or click the backdrop to close a dialog. If you have unsaved input, you'll get a confirmation prompt first.",
+	"tip.autoFillBranch.title": "Branch auto-fills on create",
+	"tip.autoFillBranch.body": "Switch to a feature branch before creating a task — the branch selector auto-fills so you don't have to search for it.",
 } as const;
 
 export default tips;
