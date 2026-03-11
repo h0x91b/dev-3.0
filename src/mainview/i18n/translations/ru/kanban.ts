@@ -81,6 +81,9 @@ const kanban = {
 	"launch.launch": "Запустить",
 	"launch.launching": "Запускается...",
 	"launch.failedLaunch": "Не удалось запустить: {error}",
+
+	// Pipeline
+	"pipeline.current": "текущий",
 };
 
 export default kanban;

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -15,6 +15,8 @@ import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import TaskDetailModal from "./TaskDetailModal";
+import MiniPipeline from "./MiniPipeline";
+import PipelineDropdown from "./PipelineDropdown";
 
 interface TaskCardProps {
 	task: Task;
@@ -539,17 +541,14 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 			{/* Bottom row */}
 			<div className="flex items-center justify-between mt-3 gap-2">
-				{/* Status dropdown trigger */}
+				{/* Status dropdown trigger with mini-pipeline */}
 				<button
 					ref={triggerRef}
 					onClick={toggleMenu}
 					className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-fg/5 transition-colors flex-shrink-0"
 					disabled={isDisabled}
 				>
-					<div
-						className="w-2 h-2 rounded-full flex-shrink-0"
-						style={{ background: color }}
-					/>
+					<MiniPipeline status={task.status} />
 					<span className="text-xs text-fg-2">
 						{t(statusKey(task.status))}
 					</span>
@@ -642,65 +641,14 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					}}
 					onClick={(e) => e.stopPropagation()}
 				>
-					<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
-						{t("task.moveTo")}
-					</div>
-					{getAllowedTransitions(task.status).map((s) => (
-						<button
-							key={s}
-							onClick={() => handleMove(s)}
-							className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-						>
-							<div
-								className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-								style={{ background: statusColors[s] }}
-							/>
-							{t(statusKey(s))}
-						</button>
-					))}
-					{project.customColumns && project.customColumns.length > 0 && (
-						<>
-							<div className="border-t border-edge-active mt-1.5 pt-1.5" />
-							{project.customColumns
-								.filter((col) => col.id !== task.customColumnId)
-								.map((col) => (
-									<button
-										key={col.id}
-										onClick={() => handleMoveToCustomColumn(col.id)}
-										className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-									>
-										<div
-											className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-											style={{ background: col.color }}
-										/>
-										{col.name}
-									</button>
-								))}
-						</>
-					)}
-					{isCancelled && (
-						<div className="border-t border-edge-active mt-1.5 pt-1.5">
-							<button
-								onClick={handleDelete}
-								className="w-full text-left px-3 py-2 text-sm text-danger hover:bg-danger/10 flex items-center gap-2.5 transition-colors"
-							>
-								<svg
-									className="w-4 h-4 flex-shrink-0"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth={2}
-										d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-									/>
-								</svg>
-								{t("task.delete")}
-							</button>
-						</div>
-					)}
+					<PipelineDropdown
+						currentStatus={task.status}
+						onMove={handleMove}
+						onMoveToCustomColumn={handleMoveToCustomColumn}
+						onDelete={isCancelled ? handleDelete : undefined}
+						customColumns={project.customColumns}
+						currentCustomColumnId={task.customColumnId}
+					/>
 				</div>,
 				document.body
 			)}

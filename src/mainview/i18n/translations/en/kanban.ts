@@ -79,6 +79,9 @@ const kanban = {
 	"launch.launch": "Launch",
 	"launch.launching": "Launching...",
 	"launch.failedLaunch": "Failed to launch: {error}",
+
+	// Pipeline
+	"pipeline.current": "current",
 } as const;
 
 export default kanban;
