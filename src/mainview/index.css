@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent mobile browser auto-zoom on tap while preserving pinch-to-zoom.
+   touch-action: manipulation disables double-tap zoom globally. */
+html {
+	touch-action: manipulation;
+}
+
 /* ---- Bundled terminal font (JetBrainsMono Nerd Font Mono) ---- */
 @font-face {
 	font-family: 'JetBrainsMono Nerd Font Mono';

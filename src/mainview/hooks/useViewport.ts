@@ -4,20 +4,20 @@ import { useMobile } from "./useMobile";
 import { isElectrobun } from "../rpc";
 
 const DESKTOP_VIEWPORT = "width=1280";
-const BROWSER_VIEWPORT = "width=768, maximum-scale=1, user-scalable=no";
+const BROWSER_VIEWPORT = "width=768";
+const BROWSER_TERMINAL_VIEWPORT = "width=1024";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
-/** Screens that require desktop-width viewport even on mobile (terminal). */
-function needsDesktopViewport(route: Route): boolean {
+/** Screens that show the terminal and need a wider viewport in browser mode. */
+function isTerminalScreen(route: Route): boolean {
 	return route.screen === "task" || (route.screen === "project" && !!route.activeTaskId);
 }
 
 /**
  * Dynamically switches the viewport meta tag based on the current route.
- * On desktop this is a no-op (always desktop viewport).
- * On mobile: UI screens get device-width, terminal screens get 1280px.
- * In browser mode (remote access): always 1280px — the UI is not responsive,
- * so the phone scales the full desktop layout to fit the screen.
+ * - Electrobun desktop: always 1280px.
+ * - Electrobun mobile (hypothetical): device-width for UI, 1280 for terminal.
+ * - Browser remote access: 768px for UI screens, 1024px for terminal screens.
  */
 export function useViewport(route: Route): void {
 	const isMobile = useMobile();
@@ -26,9 +26,9 @@ export function useViewport(route: Route): void {
 		const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
 		if (!meta) return;
 
-		// Browser remote access: 768px — readable on phones without being too zoomed out
+		// Browser remote access: wider viewport for terminal, compact for UI
 		if (!isElectrobun) {
-			meta.content = BROWSER_VIEWPORT;
+			meta.content = isTerminalScreen(route) ? BROWSER_TERMINAL_VIEWPORT : BROWSER_VIEWPORT;
 			return;
 		}
 
@@ -37,6 +37,6 @@ export function useViewport(route: Route): void {
 			return;
 		}
 
-		meta.content = needsDesktopViewport(route) ? DESKTOP_VIEWPORT : MOBILE_VIEWPORT;
+		meta.content = isTerminalScreen(route) ? DESKTOP_VIEWPORT : MOBILE_VIEWPORT;
 	}, [isMobile, route]);
 }
