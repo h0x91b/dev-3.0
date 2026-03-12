@@ -446,16 +446,6 @@ nav.scrolled {
   transition: color 0.2s;
 }
 .carousel-btn:hover { color: var(--text-1); }
-.carousel-caption {
-  text-align: center;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-2);
-  letter-spacing: 0.01em;
-  margin-top: 10px;
-  min-height: 20px;
-  transition: opacity 0.3s ease;
-}
 .carousel-progress {
   position: absolute;
   bottom: 0;
@@ -503,6 +493,7 @@ nav.scrolled {
   font-size: 13px;
   color: var(--text-3);
   font-family: var(--font-sans);
+  transition: opacity 0.2s ease;
   margin-right: 52px;
 }
 
@@ -1247,7 +1238,7 @@ footer {
         <div class="window-dot window-dot-red"></div>
         <div class="window-dot window-dot-yellow"></div>
         <div class="window-dot window-dot-green"></div>
-        <div class="window-title">dev-3.0</div>
+        <div class="window-title" id="windowTitle">dev-3.0</div>
       </div>
       <div class="carousel-track" id="heroCarousel">
         <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000" data-caption="Hover any task to peek at its terminal — live, real-time">
@@ -1258,7 +1249,6 @@ footer {
         <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000" data-caption="Pick any agent. Hit Run. That's it.">
         <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000" data-caption="One config for all your agents and projects">
       </div>
-      <div class="carousel-caption" id="carouselCaption"></div>
       <div class="carousel-progress" id="carouselProgress"></div>
     </div>
     <div class="carousel-controls" id="heroControls">
@@ -1860,13 +1850,13 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
   }
   dotsContainer.style.cssText = 'display:flex;gap:6px;align-items:center;';
 
-  var captionEl = document.getElementById('carouselCaption');
+  var titleEl = document.getElementById('windowTitle');
   function updateCaption(index) {
-    var text = slides[index].dataset.caption || '';
-    captionEl.style.opacity = '0';
+    var text = slides[index].dataset.caption || 'dev-3.0';
+    titleEl.style.opacity = '0';
     setTimeout(function() {
-      captionEl.textContent = text;
-      captionEl.style.opacity = '1';
+      titleEl.textContent = text;
+      titleEl.style.opacity = '1';
     }, 150);
   }
   updateCaption(0);
