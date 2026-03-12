@@ -39,6 +39,10 @@ const terminal = {
 	"tmuxSessions.killAllConfirmMessage": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
 	"tmuxSessions.refresh": "Refresh",
 
+	// Spawn Agent
+	"tmux.spawnExtraAgent": "Spawn Agent",
+	"tmux.spawnExtraAgentDesc": "Spawn another agent in a new pane",
+
 	// Ports
 	"ports.title": "Ports",
 	"ports.empty": "No listening ports",

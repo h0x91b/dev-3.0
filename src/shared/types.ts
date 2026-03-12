@@ -753,6 +753,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" };
 				response: void;
 			};
+			spawnAgentInTask: {
+				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null };
+				response: void;
+			};
 			pasteClipboardImage: {
 				params: { projectId: string };
 				response: { path: string } | null;

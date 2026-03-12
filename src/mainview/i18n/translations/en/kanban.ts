@@ -83,6 +83,12 @@ const kanban = {
 	"launch.launching": "Launching...",
 	"launch.failedLaunch": "Failed to launch: {error}",
 
+	// SpawnAgentModal
+	"spawnAgent.title": "Spawn Agent",
+	"spawnAgent.spawn": "Spawn",
+	"spawnAgent.spawning": "Spawning...",
+	"spawnAgent.failed": "Failed to spawn: {error}",
+
 	// Pipeline
 	"pipeline.current": "current",
 } as const;

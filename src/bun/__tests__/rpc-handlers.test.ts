@@ -2906,6 +2906,69 @@ describe("handlers.tmuxAction", () => {
 	});
 });
 
+// ================================================================
+// handlers.spawnAgentInTask
+// ================================================================
+
+describe("handlers.spawnAgentInTask", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("spawns agent with split-window -h in the tmux session", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude --resume", extraEnv: { FOO: "bar" } });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", "claude-default", expect.objectContaining({ worktreePath: "/tmp/wt" }));
+		expect(mockSpawn).toHaveBeenCalledWith(
+			expect.arrayContaining(["tmux", "-L", "dev3", "split-window", "-h", "-c", "/tmp/wt", "-t", "dev3-abcd1234"]),
+			expect.any(Object),
+		);
+	});
+
+	it("uses resolveCommandForProject when agentId is null", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForProject as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: null, configId: null });
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalled();
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("throws when task has no worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: null });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+
+		await expect(
+			handlers.spawnAgentInTask({ taskId: "task-1", projectId: "proj-1", agentId: null, configId: null }),
+		).rejects.toThrow("Task has no worktree");
+	});
+
+	it("throws when tmux split-window fails", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response("no session"), stdout: new Response(""), exited: Promise.resolve(1) });
+
+		await expect(
+			handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null }),
+		).rejects.toThrow("Failed to spawn agent");
+	});
+});
+
 describe("reorderColumns", () => {
 	const colA = { id: "col-aaa", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 	const colB = { id: "col-bbb", name: "Beta", color: "#00ff00", llmInstruction: "" };

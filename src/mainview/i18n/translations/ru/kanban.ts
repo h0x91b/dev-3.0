@@ -85,6 +85,12 @@ const kanban = {
 	"launch.launching": "Запускается...",
 	"launch.failedLaunch": "Не удалось запустить: {error}",
 
+	// SpawnAgentModal
+	"spawnAgent.title": "Запустить агента",
+	"spawnAgent.spawn": "Запустить",
+	"spawnAgent.spawning": "Запускается...",
+	"spawnAgent.failed": "Не удалось запустить: {error}",
+
 	// Pipeline
 	"pipeline.current": "текущий",
 };

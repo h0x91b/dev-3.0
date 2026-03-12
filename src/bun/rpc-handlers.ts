@@ -2695,6 +2695,66 @@ export const handlers = {
 		log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 	},
 
+	async spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null }): Promise<void> {
+		log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId });
+
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) {
+			throw new Error("Task has no worktree — cannot spawn agent");
+		}
+
+		const ctx: agents.TemplateContext = {
+			taskTitle: task.title,
+			taskDescription: task.description,
+			projectName: project.name,
+			projectPath: project.path,
+			worktreePath: task.worktreePath,
+		};
+
+		let tmuxCmd: string;
+		let extraEnv: Record<string, string>;
+
+		if (params.agentId) {
+			const resolved = await agents.resolveCommandForAgent(params.agentId, params.configId, ctx);
+			tmuxCmd = resolved.command;
+			extraEnv = resolved.extraEnv;
+		} else {
+			const resolved = await agents.resolveCommandForProject(
+				project,
+				task.title,
+				task.description,
+				task.worktreePath,
+			);
+			tmuxCmd = resolved.command;
+			extraEnv = resolved.extraEnv;
+		}
+
+		const dev3Bin = `${DEV3_HOME}/bin`;
+		const currentPath = process.env.PATH || "";
+		const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
+		const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+
+		const scriptPath = `/tmp/dev3-${task.id}-spawn-${Date.now()}.sh`;
+		await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));
+
+		const socket = pty.getSessionSocket(params.taskId);
+		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
+
+		const args = pty.tmuxArgs(socket, "split-window", "-h", "-c", task.worktreePath, "-t", tmuxSession, `bash "${scriptPath}"`);
+		const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
+		const stderr = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+
+		if (exitCode !== 0) {
+			log.error("spawnAgentInTask failed", { exitCode, stderr: stderr.trim() });
+			throw new Error(`Failed to spawn agent: ${stderr.trim() || "unknown error"}`);
+		}
+
+		log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
+	},
+
 	async pasteClipboardImage(params: { projectId: string }): Promise<{ path: string } | null> {
 		log.info("→ pasteClipboardImage", { projectId: params.projectId.slice(0, 8) });
 		const formats = Utils.clipboardAvailableFormats();

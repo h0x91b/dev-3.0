@@ -41,6 +41,10 @@ const terminal = {
 	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",
 	"tmuxSessions.refresh": "Обновить",
 
+	// Spawn Agent
+	"tmux.spawnExtraAgent": "Ещё агент",
+	"tmux.spawnExtraAgentDesc": "Запустить ещё одного агента в новой панели",
+
 	// Ports
 	"ports.title": "Порты",
 	"ports.empty": "Нет открытых портов",

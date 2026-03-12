@@ -14,6 +14,7 @@ import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import OpenInMenu from "./OpenInMenu";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
+import SpawnAgentModal from "./SpawnAgentModal";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -364,6 +365,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		setHintsPos({ top, left });
 		setHintsVisible(true);
 	}, [hintsOpen]);
+
+	// ---- Spawn Agent ----
+	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
 
 	// ---- Dev server ----
 	const hasDevScript = !!(project.devScript?.trim());
@@ -1186,6 +1190,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		setOpenInMenuOpen(true);
 	}
 
+	const spawnAgentButton = isTaskActive && task.worktreePath ? (
+		<button
+			onClick={() => setSpawnModalOpen(true)}
+			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
+			title={t("tmux.spawnExtraAgentDesc")}
+		>
+			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0219}"}</span>
+			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>
+		</button>
+	) : null;
+
 	const openInButton = isTaskActive && task.worktreePath ? (
 		<div className="relative flex-shrink-0">
 			<button
@@ -1391,6 +1406,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 						{diffStatsBadge}
 						{prBadge}
 						<div className="flex-1" />
+						{spawnAgentButton}
 						{openInButton}
 						{fileBrowserButton}
 						{tmuxHintsInline}
@@ -1468,6 +1484,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 							{diffStatsBadge}
 							{prBadge}
 							<div className="flex-1" />
+							{spawnAgentButton}
 							{openInButton}
 							{tmuxHintsInline}
 							{tmuxHintsPopover}
@@ -1674,6 +1691,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					</div>
 				</div>
 			)}
+		{spawnModalOpen && <SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />}
 		</div>
 	);
 }
