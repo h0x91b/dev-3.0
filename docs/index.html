@@ -1241,7 +1241,9 @@ footer {
       </div>
       <div class="carousel-track" id="heroCarousel">
         <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000">
+        <img src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000">
         <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" data-duration="3000">
+        <img src="screenshots/completed-column.jpg" alt="286 completed tasks with pipeline progress indicators" data-duration="3000">
         <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000">
         <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000">
         <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000">
@@ -1488,13 +1490,23 @@ footer {
         <p>Move tasks between status columns with drag-and-drop. Visual feedback, smooth animations, intuitive flow.</p>
       </div>
 
-      <!-- Feature: Labels & Search -->
-      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--orange);">
-        <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      <!-- Feature: Labels & Search (with screenshot) -->
+      <div class="feature-card feature-hero reveal reveal-delay-2" style="--card-accent: var(--orange);">
+        <div>
+          <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </div>
+          <h3>Labels, branches &amp; instant search</h3>
+          <p>
+            Organize tasks with colored labels (Bug, Feature, Refactor&hellip;) and find anything instantly
+            with full-text search. Create tasks from
+            <strong style="color:var(--text-1)">remote branches</strong> &mdash; just paste
+            a branch name, hit Fetch, and the agent starts working on it.
+          </p>
         </div>
-        <h3>Labels &amp; instant search</h3>
-        <p>Organize tasks with colored labels (Bug, Feature, Refactor&hellip;) and find anything instantly with full-text search across all tasks.</p>
+        <div class="feature-hero-visual">
+          <img src="screenshots/new-task-modal.jpg" alt="New Task modal with labels and branch fetch" style="width:100%;display:block;border-radius:8px;">
+        </div>
       </div>
 
       <!-- Feature: Multi-variant -->
@@ -1524,8 +1536,36 @@ footer {
         <p>Configure a setup script per project. Install deps, seed data, start services &mdash; runs automatically for each new task.</p>
       </div>
 
+      <!-- Feature: Dev Server (hero with screenshot) -->
+      <div class="feature-card feature-hero reveal reveal-delay-1" style="--card-accent: var(--green);">
+        <div>
+          <div class="feature-icon fi-green">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+          <h3>One-click dev server</h3>
+          <p>
+            Launch your app straight from the task&rsquo;s worktree with a single click.
+            <strong style="color:var(--text-1)">Restart or stop</strong> instantly &mdash;
+            no terminal juggling. Configure the dev command per project and every task
+            gets its own isolated server, ready in seconds.
+          </p>
+        </div>
+        <div class="feature-hero-visual">
+          <img src="screenshots/dev-server.jpg" alt="Dev Server controls — launch, restart, stop in one click" style="width:100%;display:block;border-radius:8px;">
+        </div>
+      </div>
+
+      <!-- Feature: Custom Workflow -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
+        <div class="feature-icon fi-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+        <h3>Custom workflow columns</h3>
+        <p>Define your own pipeline: AI Review, PR Review, On Hold &mdash; whatever stages your team needs. Move tasks through your custom flow with a click.</p>
+      </div>
+
       <!-- Feature: Dark & Light Themes -->
-      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--accent);">
         <div class="feature-icon fi-blue">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </div>

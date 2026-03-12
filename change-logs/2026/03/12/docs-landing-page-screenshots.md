@@ -1,0 +1,1 @@
+Updated landing page with new screenshots and feature cards. Added Activity Dashboard and Completed column (286 tasks) to the hero carousel. Upgraded Labels card to a hero card with New Task modal screenshot showing branch fetch. Added new feature cards for one-click Dev Server and custom workflow columns.
