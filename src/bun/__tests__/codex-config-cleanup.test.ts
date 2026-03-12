@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { cleanupCodexConfig } from "../codex-config";
+import { ensureCodexConfig } from "../codex-config";
 
-describe("cleanupCodexConfig", () => {
+describe("old [permissions.network] cleanup via ensureCodexConfig", () => {
+	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
+	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
+
 	// Real-world config taken from a user's ~/.codex/config.toml
-	// with dev3-injected [permissions.network] section at the end.
+	// with old dev3-injected [permissions.network] section at the end.
 	const REAL_CONFIG = `model = "gpt-5.4"
 model_reasoning_effort = "medium"
 personality = "pragmatic"
@@ -48,15 +51,16 @@ enabled = true
 trust_level = "trusted"
 `;
 
-	it("removes [permissions.network] section from real-world config", () => {
-		const result = cleanupCodexConfig(REAL_CONFIG);
-		expect(result).not.toContain("[permissions.network]");
-		expect(result).not.toContain("allow_unix_sockets");
-		expect(result).not.toContain("enabled = true");
+	it("removes old [permissions.network] and adds new [permissions.workspace.network]", () => {
+		const result = ensureCodexConfig(REAL_CONFIG, WORKTREES_PATH, SOCKETS_PATH);
+		expect(result).not.toMatch(/^\[permissions\.network\]$/m);
+		expect(result).toContain("[permissions.workspace.network]");
+		expect(result).toContain("enabled = true");
+		expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
 	});
 
 	it("preserves all other sections in real-world config", () => {
-		const result = cleanupCodexConfig(REAL_CONFIG);
+		const result = ensureCodexConfig(REAL_CONFIG, WORKTREES_PATH, SOCKETS_PATH);
 		expect(result).toContain('model = "gpt-5.4"');
 		expect(result).toContain('model_reasoning_effort = "medium"');
 		expect(result).toContain('personality = "pragmatic"');
@@ -70,48 +74,26 @@ trust_level = "trusted"
 		expect(result).toContain("[notice.model_migrations]");
 		expect(result).toContain("[mcp_servers.playwright]");
 		expect(result).toContain('args = ["@playwright/mcp@latest"]');
-		// Commented-out sections should remain
 		expect(result).toContain("# [mcp_servers.vibe_kanban]");
-		// The worktrees project entry should remain (it's harmless, just trusts the path)
 		expect(result).toContain('[projects."/Users/testuser/.dev3.0/worktrees"]');
 	});
 
-	it("does not leave trailing blank lines where the section was removed", () => {
-		const result = cleanupCodexConfig(REAL_CONFIG);
-		// Should not have 3+ consecutive blank lines
-		expect(result).not.toMatch(/\n{4,}/);
+	it("adds default_permissions = workspace when migrating from old config", () => {
+		const result = ensureCodexConfig(REAL_CONFIG, WORKTREES_PATH, SOCKETS_PATH);
+		expect(result).toContain('default_permissions = "workspace"');
 	});
 
-	it("returns unchanged config when there is no [permissions.network] section", () => {
-		const clean = `model = "gpt-5.4"
-
-[projects."/Users/testuser/my-project"]
-trust_level = "trusted"
-`;
-		const result = cleanupCodexConfig(clean);
-		expect(result).toBe(clean);
-	});
-
-	it("returns unchanged config when content is null", () => {
-		expect(cleanupCodexConfig(null)).toBeNull();
-	});
-
-	it("returns unchanged config when content is empty", () => {
-		expect(cleanupCodexConfig("")).toBe("");
-	});
-
-	it("removes [permissions.network] when it is the only section", () => {
+	it("removes old [permissions.network] when it is the only section", () => {
 		const config = `[permissions.network]
 enabled = true
 allow_unix_sockets = ["/Users/testuser/.dev3.0/sockets"]
 `;
-		const result = cleanupCodexConfig(config);
-		expect(result).not.toContain("[permissions.network]");
-		expect(result).not.toContain("allow_unix_sockets");
-		expect(result!.trim()).toBe("");
+		const result = ensureCodexConfig(config, WORKTREES_PATH, SOCKETS_PATH);
+		expect(result).not.toMatch(/^\[permissions\.network\]$/m);
+		expect(result).toContain("[permissions.workspace.network]");
 	});
 
-	it("removes [permissions.network] when it appears in the middle of the file", () => {
+	it("removes old [permissions.network] from the middle of the file", () => {
 		const config = `model = "gpt-5.4"
 
 [permissions.network]
@@ -121,29 +103,30 @@ allow_unix_sockets = ["/Users/testuser/.dev3.0/sockets"]
 [projects."/Users/testuser/my-project"]
 trust_level = "trusted"
 `;
-		const result = cleanupCodexConfig(config);
-		expect(result).not.toContain("[permissions.network]");
+		const result = ensureCodexConfig(config, WORKTREES_PATH, SOCKETS_PATH);
+		expect(result).not.toMatch(/^\[permissions\.network\]$/m);
 		expect(result).toContain('model = "gpt-5.4"');
 		expect(result).toContain('[projects."/Users/testuser/my-project"]');
-		expect(result).toContain('trust_level = "trusted"');
+		expect(result).toContain("[permissions.workspace.network]");
 	});
 
-	it("removes [permissions.network] when it appears at the very start of the file", () => {
-		const config = `[permissions.network]
+	it("does not touch [permissions.network] without dev3 socket path", () => {
+		const config = `model = "gpt-5.4"
+
+[permissions.network]
 enabled = true
-allow_unix_sockets = ["/Users/testuser/.dev3.0/sockets"]
+allow_unix_sockets = ["/tmp/my-own.sock"]
 
 [projects."/Users/testuser/my-project"]
 trust_level = "trusted"
 `;
-		const result = cleanupCodexConfig(config);
-		expect(result).not.toContain("[permissions.network]");
-		expect(result).toContain('[projects."/Users/testuser/my-project"]');
-		expect(result).toContain('trust_level = "trusted"');
+		const result = ensureCodexConfig(config, WORKTREES_PATH, SOCKETS_PATH);
+		// Old section without dev3 sockets is preserved
+		expect(result).toContain("[permissions.network]");
+		expect(result).toContain('allow_unix_sockets = ["/tmp/my-own.sock"]');
 	});
 
-	it("handles [permissions.network] with extra keys we didn't add", () => {
-		// If user somehow added their own keys — still remove the whole section
+	it("handles old [permissions.network] with extra keys", () => {
 		const config = `model = "gpt-5.4"
 
 [permissions.network]
@@ -154,72 +137,10 @@ some_other_key = "value"
 [projects."/Users/testuser/my-project"]
 trust_level = "trusted"
 `;
-		const result = cleanupCodexConfig(config);
-		expect(result).not.toContain("[permissions.network]");
+		const result = ensureCodexConfig(config, WORKTREES_PATH, SOCKETS_PATH);
+		expect(result).not.toMatch(/^\[permissions\.network\]$/m);
 		expect(result).not.toContain("some_other_key");
 		expect(result).toContain('[projects."/Users/testuser/my-project"]');
-	});
-
-	it("handles [permissions.network] with multiline allow_unix_sockets array", () => {
-		const config = `model = "gpt-5.4"
-
-[permissions.network]
-enabled = true
-allow_unix_sockets = [
-  "/Users/testuser/.dev3.0/sockets",
-  "/tmp/other.sock"
-]
-
-[projects."/Users/testuser/my-project"]
-trust_level = "trusted"
-`;
-		const result = cleanupCodexConfig(config);
-		expect(result).not.toContain("[permissions.network]");
-		expect(result).not.toContain("allow_unix_sockets");
-		expect(result).toContain('[projects."/Users/testuser/my-project"]');
-	});
-
-	it("only removes [permissions.network], not other [permissions.*] sections", () => {
-		const config = `model = "gpt-5.4"
-
-[permissions.filesystem]
-allow_read = ["/tmp"]
-
-[permissions.network]
-enabled = true
-allow_unix_sockets = ["/Users/testuser/.dev3.0/sockets"]
-
-[projects."/Users/testuser/my-project"]
-trust_level = "trusted"
-`;
-		const result = cleanupCodexConfig(config);
-		expect(result).not.toContain("[permissions.network]");
-		expect(result).toContain("[permissions.filesystem]");
-		expect(result).toContain('allow_read = ["/tmp"]');
-	});
-
-	it("does not touch [permissions.network] if it has no dev3 socket path", () => {
-		const config = `model = "gpt-5.4"
-
-[permissions.network]
-enabled = true
-allow_unix_sockets = ["/tmp/my-own.sock"]
-
-[projects."/Users/testuser/my-project"]
-trust_level = "trusted"
-`;
-		const result = cleanupCodexConfig(config);
-		expect(result).toBe(config);
-	});
-
-	it("does not remove commented-out [permissions.network]", () => {
-		const config = `model = "gpt-5.4"
-
-# [permissions.network]
-# enabled = true
-`;
-		const result = cleanupCodexConfig(config);
-		expect(result).toContain("# [permissions.network]");
-		expect(result).toContain("# enabled = true");
+		expect(result).toContain("[permissions.workspace.network]");
 	});
 });

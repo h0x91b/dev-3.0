@@ -6,18 +6,23 @@ describe("ensureCodexConfig", () => {
 	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
 
 	describe("when config does not exist", () => {
-		it("creates config with project, permissions.network, and worktrees trust", () => {
+		it("creates config with project trust, default_permissions, filesystem, and workspace network", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain('trust_level = "trusted"');
-			expect(result).toContain("[permissions.network]");
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.filesystem]");
+			expect(result).toContain('":minimal" = "read"');
+			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain('"." = "write"');
+			expect(result).toContain("[permissions.workspace.network]");
 			expect(result).toContain("enabled = true");
 			expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
 		});
 	});
 
 	describe("when config exists but has no dev3 settings", () => {
-		it("appends project and permissions.network to existing config", () => {
+		it("appends project, default_permissions, and workspace permissions to existing config", () => {
 			const existing = `model = "gpt-5.4"
 model_reasoning_effort = "medium"
 
@@ -25,59 +30,62 @@ model_reasoning_effort = "medium"
 trust_level = "trusted"
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			// Preserves existing content
 			expect(result).toContain('model = "gpt-5.4"');
 			expect(result).toContain('[projects."/Users/testuser/my-project"]');
-			// Adds dev3 settings
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
-			expect(result).toContain("[permissions.network]");
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.network]");
 			expect(result).toContain("enabled = true");
 			expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
 		});
 	});
 
-	describe("when config already has dev3 worktrees project", () => {
-		it("does not duplicate the project entry", () => {
-			const existing = `model = "gpt-5.4"
+	describe("when config already has all dev3 settings", () => {
+		it("does not duplicate entries", () => {
+			const existing = `default_permissions = "workspace"
+model = "gpt-5.4"
 
 [projects."${WORKTREES_PATH}"]
 trust_level = "trusted"
 
-[permissions.network]
+[permissions.workspace.filesystem]
+":minimal" = "read"
+
+[permissions.workspace.filesystem.":project_roots"]
+"." = "write"
+
+[permissions.workspace.network]
 enabled = true
 allow_unix_sockets = ["${SOCKETS_PATH}"]
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			const matches = result.match(new RegExp(WORKTREES_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"));
-			// worktrees path appears in project header + sockets path in allow_unix_sockets = 2 total from dev3.0 home
-			expect(matches).not.toBeNull();
-			// Should not have duplicate [projects."...worktrees"]
 			const projectMatches = result.match(/\[projects\."[^"]*worktrees"\]/g);
 			expect(projectMatches).toHaveLength(1);
+			const netMatches = result.match(/\[permissions\.workspace\.network\]/g);
+			expect(netMatches).toHaveLength(1);
 		});
 	});
 
-	describe("when config has permissions.network but no allow_unix_sockets", () => {
-		it("adds allow_unix_sockets to existing permissions.network section", () => {
-			const existing = `model = "gpt-5.4"
+	describe("when config has workspace network but no allow_unix_sockets", () => {
+		it("adds allow_unix_sockets to existing workspace network section", () => {
+			const existing = `default_permissions = "workspace"
 
-[permissions.network]
+[permissions.workspace.network]
 enabled = true
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain("enabled = true");
 			expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
-			// Should not duplicate [permissions.network]
-			const sectionMatches = result.match(/\[permissions\.network\]/g);
+			const sectionMatches = result.match(/\[permissions\.workspace\.network\]/g);
 			expect(sectionMatches).toHaveLength(1);
 		});
 	});
 
-	describe("when config has permissions.network with different allow_unix_sockets", () => {
+	describe("when config has workspace network with different allow_unix_sockets", () => {
 		it("adds sockets path to existing array", () => {
-			const existing = `model = "gpt-5.4"
+			const existing = `default_permissions = "workspace"
 
-[permissions.network]
+[permissions.workspace.network]
 enabled = true
 allow_unix_sockets = ["/tmp/other.sock"]
 `;
@@ -86,11 +94,11 @@ allow_unix_sockets = ["/tmp/other.sock"]
 		});
 	});
 
-	describe("when config has permissions.network with sockets path already present", () => {
+	describe("when config has workspace network with sockets path already present", () => {
 		it("does not duplicate the sockets path", () => {
-			const existing = `model = "gpt-5.4"
+			const existing = `default_permissions = "workspace"
 
-[permissions.network]
+[permissions.workspace.network]
 enabled = true
 allow_unix_sockets = ["${SOCKETS_PATH}"]
 `;
@@ -100,15 +108,59 @@ allow_unix_sockets = ["${SOCKETS_PATH}"]
 		});
 	});
 
-	describe("when config has permissions.network without enabled", () => {
+	describe("when config has workspace network without enabled", () => {
 		it("adds enabled = true", () => {
-			const existing = `model = "gpt-5.4"
+			const existing = `default_permissions = "workspace"
 
-[permissions.network]
+[permissions.workspace.network]
 allow_unix_sockets = ["${SOCKETS_PATH}"]
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain("enabled = true");
+		});
+	});
+
+	describe("when config already has default_permissions set to something else", () => {
+		it("overwrites to workspace", () => {
+			const existing = `default_permissions = "read-only"
+model = "gpt-5.4"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).not.toContain('default_permissions = "read-only"');
+		});
+	});
+
+	describe("old [permissions.network] cleanup", () => {
+		it("removes old-style [permissions.network] with dev3 sockets and adds new workspace syntax", () => {
+			const existing = `model = "gpt-5.4"
+
+[permissions.network]
+enabled = true
+allow_unix_sockets = ["${SOCKETS_PATH}"]
+
+[projects."/Users/testuser/my-project"]
+trust_level = "trusted"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).not.toContain("[permissions.network]");
+			expect(result).toContain("[permissions.workspace.network]");
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain('[projects."/Users/testuser/my-project"]');
+		});
+
+		it("does not remove [permissions.network] without dev3 sockets", () => {
+			const existing = `model = "gpt-5.4"
+
+[permissions.network]
+enabled = true
+allow_unix_sockets = ["/tmp/other.sock"]
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			// Old section without dev3 sockets is preserved
+			expect(result).toContain("[permissions.network]");
+			// New workspace section is still added
+			expect(result).toContain("[permissions.workspace.network]");
 		});
 	});
 
@@ -154,12 +206,14 @@ trust_level = "trusted"
 		it("handles empty string config", () => {
 			const result = ensureCodexConfig("", WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
-			expect(result).toContain("[permissions.network]");
+			expect(result).toContain("[permissions.workspace.network]");
+			expect(result).toContain('default_permissions = "workspace"');
 		});
 
 		it("handles config with only whitespace", () => {
 			const result = ensureCodexConfig("  \n\n  ", WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
+			expect(result).toContain('default_permissions = "workspace"');
 		});
 
 		it("handles config ending without newline", () => {
@@ -167,6 +221,13 @@ trust_level = "trusted"
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain('model = "gpt-5.4"');
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
+			expect(result).toContain('default_permissions = "workspace"');
+		});
+
+		it("returns unparseable config unchanged", () => {
+			const broken = "this is not valid toml [[[";
+			const result = ensureCodexConfig(broken, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).toBe(broken);
 		});
 	});
 });

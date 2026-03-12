@@ -1,0 +1,1 @@
+Switch Codex config patching from old `[permissions.network]` syntax to modern `[permissions.workspace.network]` with `default_permissions = "workspace"`. Remove `--sandbox danger-full-access` from all Codex presets — sandbox is now driven by config-level workspace permissions, allowing sandboxed Codex to access the dev3 Unix socket.

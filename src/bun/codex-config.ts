@@ -4,26 +4,38 @@ import { createLogger } from "./logger";
 
 const log = createLogger("codex-config");
 
+interface CodexPermissionsWorkspace {
+	filesystem?: Record<string, unknown>;
+	network?: {
+		enabled?: boolean;
+		allow_unix_sockets?: string[];
+	};
+}
+
 interface CodexConfig {
+	default_permissions?: string;
 	projects?: Record<string, { trust_level?: string; sandbox_mode?: string }>;
 	permissions?: {
+		// Old syntax (pre-0.114)
 		network?: {
 			enabled?: boolean;
 			allow_unix_sockets?: string[];
 		};
+		// New syntax
+		workspace?: CodexPermissionsWorkspace;
 	};
 }
 
 /**
- * Ensure the Codex config.toml has the dev3 worktree project trusted
- * and permissions.network configured for Unix socket access.
+ * Ensure the Codex config.toml has:
+ * 1. The dev3 worktree project trusted
+ * 2. Modern workspace permissions with network access for Unix sockets
  *
  * Uses js-toml to parse and inspect the config, but writes via text
  * manipulation to preserve comments and user formatting.
  *
- * @param content - Existing config content, or null if file doesn't exist.
- * @param worktreesPath - Absolute path to dev3 worktrees directory.
- * @param socketsPath - Absolute path to dev3 sockets directory.
+ * Also cleans up the old [permissions.network] section if present
+ * (it was injected by earlier dev3 versions and is now obsolete).
  */
 export function ensureCodexConfig(
 	content: string | null,
@@ -37,8 +49,18 @@ export function ensureCodexConfig(
 		try {
 			parsed = load(config) as CodexConfig;
 		} catch {
-			// If TOML is unparseable, don't risk corrupting it — bail out.
 			log.warn("Could not parse existing Codex config.toml, skipping patching");
+			return config;
+		}
+	}
+
+	// --- 0. Clean up old [permissions.network] section if it has dev3 sockets ---
+	config = cleanupOldPermissionsNetwork(config);
+	// Re-parse after cleanup
+	if (config.trim().length > 0) {
+		try {
+			parsed = load(config) as CodexConfig;
+		} catch {
 			return config;
 		}
 	}
@@ -50,52 +72,71 @@ export function ensureCodexConfig(
 		config = appendBlock(config, block);
 	}
 
-	// --- 2. Ensure [permissions.network] section with required keys ---
-	const network = parsed.permissions?.network;
-	const hasNetworkSection = network != null;
-	const hasEnabled = network?.enabled === true;
-	const existingSockets = network?.allow_unix_sockets ?? [];
-	const hasSockets = existingSockets.includes(socketsPath);
+	// --- 2. Ensure default_permissions = "workspace" ---
+	if (parsed.default_permissions !== "workspace") {
+		if (parsed.default_permissions != null) {
+			// Replace existing value
+			config = config.replace(
+				/default_permissions\s*=\s*"[^"]*"/,
+				'default_permissions = "workspace"',
+			);
+		} else {
+			// Add at the top (after any leading comments/blank lines, before first section)
+			config = insertTopLevelKey(config, 'default_permissions = "workspace"');
+		}
+	}
 
-	if (!hasNetworkSection) {
-		// Add entire section
-		const block = `\n[permissions.network]\nenabled = true\nallow_unix_sockets = ["${socketsPath}"]\n`;
+	// --- 3. Ensure [permissions.workspace.filesystem] sections ---
+	const wsFs = parsed.permissions?.workspace?.filesystem;
+	if (wsFs == null) {
+		const block = `\n[permissions.workspace.filesystem]\n":minimal" = "read"\n\n[permissions.workspace.filesystem.":project_roots"]\n"." = "write"\n`;
+		config = appendBlock(config, block);
+	}
+
+	// --- 4. Ensure [permissions.workspace.network] section ---
+	const wsNet = parsed.permissions?.workspace?.network;
+	const hasWsNetworkSection = wsNet != null;
+	const hasWsEnabled = wsNet?.enabled === true;
+	const existingWsSockets = wsNet?.allow_unix_sockets ?? [];
+	const hasWsSockets = existingWsSockets.includes(socketsPath);
+
+	if (!hasWsNetworkSection) {
+		const block = `\n[permissions.workspace.network]\nenabled = true\nallow_unix_sockets = ["${socketsPath}"]\n`;
 		config = appendBlock(config, block);
 	} else {
-		// Section exists — patch missing keys
-		if (!hasEnabled) {
-			config = insertAfterSectionHeader(config, "[permissions.network]", "enabled = true");
+		if (!hasWsEnabled) {
+			config = insertAfterSectionHeader(config, "[permissions.workspace.network]", "enabled = true");
 		}
 
-		if (!hasSockets) {
-			if (existingSockets.length === 0) {
-				// No allow_unix_sockets key at all — check if it's in the text
+		if (!hasWsSockets) {
+			if (existingWsSockets.length === 0) {
 				if (config.includes("allow_unix_sockets")) {
-					// Key exists but empty or with other values — append our path
+					// Find the one under [permissions.workspace.network], not other sections
+					// Simple approach: just append if not found
 					config = config.replace(
-						/allow_unix_sockets\s*=\s*\[([^\]]*)\]/,
-						(_, inner) => {
+						/(\[permissions\.workspace\.network\][^\[]*?)allow_unix_sockets\s*=\s*\[([^\]]*)\]/s,
+						(_match, prefix, inner) => {
 							const trimmed = inner.trim();
 							const newValue = trimmed
 								? `${trimmed}, "${socketsPath}"`
 								: `"${socketsPath}"`;
-							return `allow_unix_sockets = [${newValue}]`;
+							return `${prefix}allow_unix_sockets = [${newValue}]`;
 						},
 					);
 				} else {
 					config = insertAfterSectionHeader(
 						config,
-						"[permissions.network]",
+						"[permissions.workspace.network]",
 						`allow_unix_sockets = ["${socketsPath}"]`,
 					);
 				}
 			} else {
-				// Has allow_unix_sockets with other paths — append ours
+				// Has allow_unix_sockets with other paths under workspace.network — append ours
 				config = config.replace(
-					/allow_unix_sockets\s*=\s*\[([^\]]*)\]/,
-					(_, inner) => {
+					/(\[permissions\.workspace\.network\][^\[]*?)allow_unix_sockets\s*=\s*\[([^\]]*)\]/s,
+					(_match, prefix, inner) => {
 						const trimmed = inner.trim();
-						return `allow_unix_sockets = [${trimmed}, "${socketsPath}"]`;
+						return `${prefix}allow_unix_sockets = [${trimmed}, "${socketsPath}"]`;
 					},
 				);
 			}
@@ -103,6 +144,48 @@ export function ensureCodexConfig(
 	}
 
 	return config;
+}
+
+/**
+ * Remove the old-style [permissions.network] section that was injected
+ * by earlier dev3 versions. Only removes if it contains `.dev3.0/sockets`.
+ */
+function cleanupOldPermissionsNetwork(content: string): string {
+	if (!content.includes(".dev3.0/sockets")) return content;
+
+	const lines = content.split("\n");
+	const out: string[] = [];
+	let inSection = false;
+	let trailingBlanks = 0;
+
+	for (const line of lines) {
+		if (!inSection) {
+			if (line.trim() === "[permissions.network]") {
+				inSection = true;
+				while (trailingBlanks > 0) {
+					out.pop();
+					trailingBlanks--;
+				}
+				continue;
+			}
+			if (line.trim() === "") {
+				trailingBlanks++;
+			} else {
+				trailingBlanks = 0;
+			}
+			out.push(line);
+		} else {
+			if (line.startsWith("[")) {
+				inSection = false;
+				trailingBlanks = 0;
+				out.push(line);
+			}
+			// Skip key=value lines, blank lines, and comments within the section
+		}
+	}
+
+	const cleaned = out.join("\n");
+	return cleaned.replace(/\n{3,}/g, "\n\n");
 }
 
 /**
@@ -116,6 +199,32 @@ function appendBlock(config: string, block: string): string {
 		config += "\n";
 	}
 	return config + block;
+}
+
+/**
+ * Insert a top-level key before the first section header.
+ * If no section headers exist, append at the end.
+ */
+function insertTopLevelKey(config: string, keyLine: string): string {
+	// Find first line that starts with '['
+	const lines = config.split("\n");
+	let firstSectionIdx = -1;
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].startsWith("[")) {
+			firstSectionIdx = i;
+			break;
+		}
+	}
+
+	if (firstSectionIdx === -1) {
+		// No sections — append at the end
+		if (config.trim().length === 0) return keyLine + "\n";
+		return config + (config.endsWith("\n") ? "" : "\n") + keyLine + "\n";
+	}
+
+	// Insert before first section, with a blank line separator
+	lines.splice(firstSectionIdx, 0, keyLine, "");
+	return lines.join("\n");
 }
 
 /**
@@ -144,89 +253,31 @@ function insertAfterSectionHeader(
 }
 
 /**
- * Remove the [permissions.network] section that we previously injected.
- * Codex 0.114+ requires `default_permissions` when `[permissions]` is present,
- * and our injected section breaks startup. We now use `--sandbox never` instead.
- *
- * Returns the cleaned content, or null if input was null (file doesn't exist).
- */
-export function cleanupCodexConfig(content: string | null): string | null {
-	if (content == null || content.length === 0) return content;
-
-	// Only clean up if the file contains our specific dev3 socket path.
-	// If the user has their own [permissions.network] for other purposes, leave it alone.
-	if (!content.includes(".dev3.0/sockets")) return content;
-
-	// Find [permissions.network] section and remove it line-by-line.
-	// Section body = non-empty lines that don't start with '[' (a new section header).
-	const lines = content.split("\n");
-	const out: string[] = [];
-	let inSection = false;
-	let trailingBlanks = 0;
-
-	for (const line of lines) {
-		if (!inSection) {
-			// Detect uncommented section header
-			if (line.trim() === "[permissions.network]") {
-				inSection = true;
-				// Drop any trailing blank lines we accumulated before this header
-				while (trailingBlanks > 0) {
-					out.pop();
-					trailingBlanks--;
-				}
-				continue;
-			}
-			// Track trailing blank lines so we can remove the gap before the section
-			if (line.trim() === "") {
-				trailingBlanks++;
-			} else {
-				trailingBlanks = 0;
-			}
-			out.push(line);
-		} else {
-			// Inside the section — skip lines until next section header or non-key content
-			if (line.startsWith("[")) {
-				// Next section starts — stop skipping
-				inSection = false;
-				trailingBlanks = 0;
-				out.push(line);
-			}
-			// Skip key=value lines, blank lines, and comments within the section
-		}
-	}
-
-	const cleaned = out.join("\n");
-
-	// Collapse 3+ consecutive newlines down to 2 (one blank line)
-	return cleaned.replace(/\n{3,}/g, "\n\n");
-}
-
-/**
- * Read, clean up, and write the Codex config.toml.
- * Removes the [permissions.network] section we previously injected.
+ * Read, patch, and write the Codex config.toml.
+ * Ensures modern workspace permissions for dev3 socket access.
  * Called on app startup from installAgentSkills().
  */
-export function cleanupCodexConfigFile(homePath: string): void {
+export function ensureCodexConfigFile(homePath: string): void {
 	const configPath = `${homePath}/.codex/config.toml`;
+	const worktreesPath = `${homePath}/.dev3.0/worktrees`;
+	const socketsPath = `${homePath}/.dev3.0/sockets`;
 
 	try {
 		let content: string | null = null;
 		try {
 			content = readFileSync(configPath, "utf-8");
 		} catch {
-			// File doesn't exist — nothing to clean up
-			return;
+			// File doesn't exist — will create with defaults
 		}
 
-		const updated = cleanupCodexConfig(content);
+		const updated = ensureCodexConfig(content, worktreesPath, socketsPath);
 
-		// Only write if changed
 		if (updated !== content) {
-			writeFileSync(configPath, updated!, "utf-8");
-			log.info("Codex config.toml cleaned up (removed [permissions.network])", { path: configPath });
+			writeFileSync(configPath, updated, "utf-8");
+			log.info("Codex config.toml patched with workspace permissions", { path: configPath });
 		}
 	} catch (err) {
-		log.warn("Failed to clean up Codex config.toml (non-fatal)", {
+		log.warn("Failed to patch Codex config.toml (non-fatal)", {
 			error: String(err),
 		});
 	}
