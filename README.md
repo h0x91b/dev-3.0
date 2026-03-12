@@ -42,16 +42,20 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 4. **See everything at a glance** — hover over any card for a live terminal preview
 
 <p align="center">
-  <img src="docs/screenshots/terminal-view.jpg" width="800" alt="Agent working on code with diff view and active tasks sidebar">
+  <img src="docs/screenshots/terminal-view.jpg" width="800" alt="Four AI agents running in parallel — Claude, Gemini, Codex in split panes">
 </p>
 
 ## Key features
 
 - **Kanban workflow** — drag tasks between columns (To Do → In Progress → Review → Completed)
-- **Git worktree per task** — full repo isolation, no merge conflicts between parallel agents
-- **Multi-agent launch** — run the same task with Claude, Cursor, Codex, Gemini, or any CLI agent — each with its own config
+- **Git worktree per task** — full repo isolation, no merge conflicts between parallel tasks
+- **Multiple agents per task** — run several agents side by side in the same worktree via tmux split panes
+- **Multi-agent launch** — pick any combination of Claude, Cursor, Codex, Gemini, Aider, or any CLI agent — each with its own config
+- **Multi-project dashboard** — manage multiple projects from a single Activity view with live agent status
 - **Live terminal preview** — hover any card to see what the agent is doing right now
 - **Terminal bell alerts** — red badges on cards when an agent needs your attention
+- **One-click dev server** — launch, restart, or stop your app from the task's worktree in a single click
+- **Custom workflow columns** — define your own pipeline stages (AI Review, PR Review, On Hold, etc.)
 - **Labels & search** — organize tasks with colored labels and instant full-text search
 - **Dark & light themes** — full theme support for both dark and light environments
 - **Automated setup** — configure a setup script per project that runs for every new task
@@ -59,11 +63,15 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **PR review mode** — check out any remote branch and toggle "PR review" to pre-fill a structured code-review prompt for the agent
 
 <p align="center">
+  <img src="docs/screenshots/activity-dashboard.jpg" width="800" alt="Multi-project activity dashboard with live agent status">
+</p>
+
+<p align="center">
   <img src="docs/screenshots/multi-agent-launch.jpg" width="600" alt="Launch task with multiple AI agents: Claude, Cursor, Codex, Gemini">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/light-theme-kanban.jpg" width="800" alt="Light theme — Kanban board">
+  <img src="docs/screenshots/light-theme-kanban.jpg" width="800" alt="Light theme — Kanban board with labels and tips">
 </p>
 
 <p align="center">

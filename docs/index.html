@@ -404,20 +404,20 @@ nav.scrolled {
   transition: opacity 0.4s ease, transform 0.4s ease;
 }
 .carousel-controls {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  z-index: 10;
+  margin-top: 16px;
   background: rgba(4, 7, 18, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 20px;
   padding: 6px 14px;
   border: 1px solid var(--border);
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
 }
 .carousel-dot {
   width: 8px; height: 8px;
@@ -493,6 +493,7 @@ nav.scrolled {
   font-size: 13px;
   color: var(--text-3);
   font-family: var(--font-sans);
+  transition: opacity 0.2s ease;
   margin-right: 52px;
 }
 
@@ -1205,11 +1206,12 @@ footer {
   </h1>
 
   <p class="hero-subtitle reveal reveal-delay-2">
-    Terminal-centric project manager where each task gets its own
-    <strong style="color:var(--text-1)">git worktree</strong>,
-    <strong style="color:var(--text-1)">tmux session</strong>, and
-    <strong style="color:var(--text-1)">full terminal</strong> &mdash;
-    all orchestrated from a Kanban board.
+    Think <strong style="color:var(--text-1)">iTerm2</strong> meets
+    <strong style="color:var(--text-1)">Kanban</strong> meets
+    <strong style="color:var(--text-1)">tmux</strong>.
+    A next-gen terminal with built-in task management for any shell-based
+    AI coding agent. No opinionated workflows, no magic &mdash;
+    just proper infrastructure for running N agents at once.
   </p>
 
   <div class="hero-actions reveal reveal-delay-3">
@@ -1237,25 +1239,29 @@ footer {
         <div class="window-dot window-dot-red"></div>
         <div class="window-dot window-dot-yellow"></div>
         <div class="window-dot window-dot-green"></div>
-        <div class="window-title">dev-3.0</div>
+        <div class="window-title" id="windowTitle">dev-3.0</div>
       </div>
       <div class="carousel-track" id="heroCarousel">
-        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000">
-        <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" data-duration="3000">
-        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000">
-        <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000">
-        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000">
-      </div>
-      <div class="carousel-controls" id="heroControls">
-        <button class="carousel-btn" id="carouselPrev" aria-label="Previous">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <div id="carouselDots"></div>
-        <button class="carousel-btn" id="carouselNext" aria-label="Next">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
+        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000" data-caption="Hover any task to peek at its terminal — live, real-time">
+        <img src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000" data-caption="All your projects and agents — one dashboard">
+        <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel — Claude, Gemini, Codex in one window" data-duration="4000" data-caption="Every task is an isolated worktree. Run multiple agents inside each.">
+        <img src="screenshots/completed-column.jpg" alt="286 completed tasks with pipeline progress indicators" data-duration="3000" data-caption="286 tasks done by AI — and counting">
+        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000" data-caption="Dark or light — your workspace, your rules">
+        <img src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts by different agents" data-duration="4000" data-caption="One task. Multiple attempts. Pick the best result.">
+        <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000" data-caption="Pick any agent. Hit Run. That's it.">
+        <img src="screenshots/file-browser.jpg" alt="Built-in file browser with tree view and diff preview" data-duration="3500" data-caption="Browse files, review diffs, manage tasks — all without leaving the app">
+        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000" data-caption="One config for all your agents and projects">
       </div>
       <div class="carousel-progress" id="carouselProgress"></div>
+    </div>
+    <div class="carousel-controls" id="heroControls">
+      <button class="carousel-btn" id="carouselPrev" aria-label="Previous">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div id="carouselDots"></div>
+      <button class="carousel-btn" id="carouselNext" aria-label="Next">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
     </div>
   </div>
 </section>
@@ -1298,7 +1304,9 @@ footer {
     </h2>
     <p class="section-desc reveal reveal-delay-2">
       You're running 5+ agents across different terminals, repos, and branches.
-      Switching context takes forever. You lose track of what's where.
+      Switching context takes forever. You lose track of what&rsquo;s where.
+      We tried every tool in the space &mdash; each had cool ideas, but something
+      was always missing. So we built our own.
     </p>
 
     <div class="problem-grid">
@@ -1370,11 +1378,13 @@ footer {
       <div class="step reveal">
         <div class="step-content">
           <div class="step-number step-number-purple">2</div>
-          <h3>Launch multiple agents at once</h3>
+          <h3>Each task is an isolated git worktree</h3>
           <p>
-            Pick any combination of agents &mdash; Claude, Cursor, Codex, Gemini &mdash;
-            each with its own config. dev-3.0 creates isolated git worktrees
-            and launches them all in parallel. Zero conflicts, full isolation.
+            Every task on the board gets its own
+            <strong style="color:var(--text-1)">isolated git worktree</strong>.
+            Inside that worktree you can run as many agents as you want &mdash;
+            in parallel, same codebase, without stepping on each other&rsquo;s toes.
+            Claude, Cursor, Codex, Gemini &mdash; all at once on the same task if needed.
           </p>
         </div>
         <div class="step-visual">
@@ -1394,12 +1404,13 @@ footer {
       <div class="step reveal">
         <div class="step-content">
           <div class="step-number step-number-green">3</div>
-          <h3>Full terminal with tmux inside</h3>
+          <h3>Full terminal — run multiple agents per task</h3>
           <p>
-            Click any task to enter its terminal &mdash; powered by Ghostty's
-            rendering engine with tmux preconfigured. Split panes, scroll history,
-            copy-paste &mdash; everything you expect from a real terminal.
-            AI agents run natively, with all their features intact.
+            Each task opens a real terminal powered by Ghostty&rsquo;s rendering engine
+            with tmux preconfigured. Split panes to run
+            <strong style="color:var(--text-1)">several agents side by side</strong>
+            in the same worktree &mdash; Claude, Gemini, Codex, whatever you need.
+            Scroll history, copy-paste, all native features intact.
           </p>
         </div>
         <div class="step-visual">
@@ -1407,10 +1418,10 @@ footer {
             <div class="window-dot window-dot-red"></div>
             <div class="window-dot window-dot-yellow"></div>
             <div class="window-dot window-dot-green"></div>
-            <div class="window-title">Terminal &mdash; Claude Code session</div>
+            <div class="window-title">Terminal &mdash; multiple agents in one task</div>
           </div>
-          <!-- Agent working on code with diff view -->
-          <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" class="step-screenshot"
+          <!-- Multiple agents running in parallel in split panes -->
+          <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel in split panes" class="step-screenshot"
                onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.jpg</span></div>'">
         </div>
       </div>
@@ -1488,22 +1499,43 @@ footer {
         <p>Move tasks between status columns with drag-and-drop. Visual feedback, smooth animations, intuitive flow.</p>
       </div>
 
-      <!-- Feature: Labels & Search -->
-      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--orange);">
-        <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      <!-- Feature: Labels & Search (with screenshot) -->
+      <div class="feature-card feature-hero reveal reveal-delay-2" style="--card-accent: var(--orange);">
+        <div>
+          <div class="feature-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </div>
+          <h3>Labels, branches &amp; instant search</h3>
+          <p>
+            Organize tasks with colored labels (Bug, Feature, Refactor&hellip;) and find anything instantly
+            with full-text search. Create tasks from
+            <strong style="color:var(--text-1)">remote branches</strong> &mdash; just paste
+            a branch name, hit Fetch, and the agent starts working on it.
+          </p>
         </div>
-        <h3>Labels &amp; instant search</h3>
-        <p>Organize tasks with colored labels (Bug, Feature, Refactor&hellip;) and find anything instantly with full-text search across all tasks.</p>
+        <div class="feature-hero-visual">
+          <img src="screenshots/new-task-modal.jpg" alt="New Task modal with labels and branch fetch" style="width:100%;display:block;border-radius:8px;">
+        </div>
       </div>
 
-      <!-- Feature: Multi-variant -->
-      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--purple);">
-        <div class="feature-icon fi-purple">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg>
+      <!-- Feature: Multi-attempt (hero with screenshot) -->
+      <div class="feature-card feature-hero reveal reveal-delay-3" style="--card-accent: var(--purple);">
+        <div>
+          <div class="feature-icon fi-purple">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg>
+          </div>
+          <h3>One task, many attempts &mdash; pick the best</h3>
+          <p>
+            Don&rsquo;t know exactly how something should look? Run the same task
+            <strong style="color:var(--text-1)">3, 5, or 10 times</strong> &mdash;
+            with different agents, models, or prompts. Each attempt gets its
+            own isolated worktree. Browse the results, keep the winner,
+            delete the rest.
+          </p>
         </div>
-        <h3>Multi-agent attempts</h3>
-        <p>Run the same task with different agents or configs. Compare approaches side-by-side and pick the best result.</p>
+        <div class="feature-hero-visual">
+          <img src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts running simultaneously" style="width:100%;display:block;border-radius:8px;">
+        </div>
       </div>
 
       <!-- Feature: PR Review Mode -->
@@ -1524,8 +1556,36 @@ footer {
         <p>Configure a setup script per project. Install deps, seed data, start services &mdash; runs automatically for each new task.</p>
       </div>
 
+      <!-- Feature: Dev Server (hero with screenshot) -->
+      <div class="feature-card feature-hero reveal reveal-delay-1" style="--card-accent: var(--green);">
+        <div>
+          <div class="feature-icon fi-green">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+          <h3>One-click dev server</h3>
+          <p>
+            Launch your app straight from the task&rsquo;s worktree with a single click.
+            <strong style="color:var(--text-1)">Restart or stop</strong> instantly &mdash;
+            no terminal juggling. Configure the dev command per project and every task
+            gets its own isolated server, ready in seconds.
+          </p>
+        </div>
+        <div class="feature-hero-visual">
+          <img src="screenshots/dev-server.jpg" alt="Dev Server controls — launch, restart, stop in one click" style="width:100%;display:block;border-radius:8px;">
+        </div>
+      </div>
+
+      <!-- Feature: Custom Workflow -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
+        <div class="feature-icon fi-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+        <h3>Custom workflow columns</h3>
+        <p>Define your own pipeline: AI Review, PR Review, On Hold &mdash; whatever stages your team needs. Move tasks through your custom flow with a click.</p>
+      </div>
+
       <!-- Feature: Dark & Light Themes -->
-      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--accent);">
         <div class="feature-icon fi-blue">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </div>
@@ -1657,8 +1717,9 @@ footer {
       Your agent, your rules
     </h2>
     <p class="section-desc reveal reveal-delay-2" style="margin:0 auto 16px">
-      dev-3.0 doesn't integrate with agents &mdash; it hosts them. Any tool that runs
-      in a terminal works out of the box. When agents ship new features, you get them instantly.
+      dev-3.0 doesn&rsquo;t integrate with agents &mdash; it hosts them. Any tool that runs
+      in a terminal works out of the box. When agents ship new features &mdash; like
+      Claude&rsquo;s multi-agent teams &mdash; you get them instantly, no update needed.
     </p>
 
     <div class="agents-grid reveal reveal-delay-3">
@@ -1809,6 +1870,17 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
   }
   dotsContainer.style.cssText = 'display:flex;gap:6px;align-items:center;';
 
+  var titleEl = document.getElementById('windowTitle');
+  function updateCaption(index) {
+    var text = slides[index].dataset.caption || 'dev-3.0';
+    titleEl.style.opacity = '0';
+    setTimeout(function() {
+      titleEl.textContent = text;
+      titleEl.style.opacity = '1';
+    }, 150);
+  }
+  updateCaption(0);
+
   function getDuration(index) {
     return parseInt(slides[index].dataset.duration) || 4000;
   }
@@ -1826,6 +1898,7 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     dotsContainer.children[current].classList.add('active');
     // Clean up leaving class after transition
     setTimeout(function() { slides[prev].classList.remove('leaving'); }, 500);
+    updateCaption(current);
     startAutoplay();
   }
 
