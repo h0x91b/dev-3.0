@@ -10,6 +10,15 @@ const common = {
 	"quit.dontShowAgain": "Больше не показывать",
 	"quit.confirm": "Выйти",
 	"quit.cancel": "Отмена",
+	"quit.hibernateTitle": "Как вы хотите выйти?",
+	"quit.hibernateMessage": "У вас {count} активных сессий агентов.",
+	"quit.hibernateButton": "Гибернация и выход",
+	"quit.hibernateChecking": "Проверка...",
+	"quit.hibernateBlocked": "Некоторые агенты всё ещё активно работают. Дождитесь завершения или остановите их вручную.",
+	"quit.hibernateDisabled": "Нет активных сессий для гибернации",
+	"quit.quitExplain": "Выйти — сессии останутся в tmux, но агенты не возобновятся автоматически",
+	"quit.hibernateExplain": "Гибернация — сохранить сессии и возобновить агентов при следующем запуске",
+	"quit.hibernateMultiPane": "Задачи с разделёнными панелями: дополнительные панели будут закрыты, основная сессия агента сохранится.",
 
 	// Status labels
 	"status.todo": "К выполнению",

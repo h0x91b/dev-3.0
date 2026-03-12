@@ -10,6 +10,15 @@ const common = {
 	"quit.dontShowAgain": "No mostrar de nuevo",
 	"quit.confirm": "Salir",
 	"quit.cancel": "Cancelar",
+	"quit.hibernateTitle": "¿Cómo deseas salir?",
+	"quit.hibernateMessage": "Tienes {count} sesiones de agente activas.",
+	"quit.hibernateButton": "Hibernar y salir",
+	"quit.hibernateChecking": "Verificando...",
+	"quit.hibernateBlocked": "Algunos agentes aún están ejecutándose activamente. Espera a que terminen o detenlos manualmente.",
+	"quit.hibernateDisabled": "No hay sesiones activas para hibernar",
+	"quit.quitExplain": "Salir — las sesiones permanecen en tmux pero los agentes no se reanudarán",
+	"quit.hibernateExplain": "Hibernar y salir — guardar sesiones y reanudar agentes en el próximo inicio",
+	"quit.hibernateMultiPane": "Tareas con paneles divididos: los paneles adicionales se cerrarán, la sesión principal del agente se conservará.",
 
 	// Status labels
 	"status.todo": "Por hacer",

@@ -41,6 +41,10 @@ import {
 	getPtyPort,
 	setOnPtyDied,
 	setOnBell,
+	getActiveBusySessions,
+	destroyAllSessionsGracefully,
+	killSessionMainPaneLast,
+	countPanes,
 	TMUX_CONF_PATH,
 } from "../pty-server";
 
@@ -739,6 +743,147 @@ describe("pty-server", () => {
 			expect(() => vi.advanceTimersByTime(200)).not.toThrow();
 
 			vi.useRealTimers();
+		});
+	});
+
+	// ------- getActiveBusySessions -------
+
+	describe("getActiveBusySessions", () => {
+		it("returns empty array when no sessions exist", () => {
+			expect(getActiveBusySessions()).toEqual([]);
+		});
+
+		it("returns sessions with active proc that have not gone idle", () => {
+			const id = track("task-busy-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash");
+			// Session was just created, proc is alive, idleNotified is false
+			const busy = getActiveBusySessions();
+			expect(busy).toHaveLength(1);
+			expect(busy[0].taskId).toBe(id);
+		});
+
+		it("excludes dead sessions (proc is null)", () => {
+			const id = track("task-busy-02");
+			createSession(id, "proj-1", "/tmp/cwd", "bash");
+			// Simulate proc exit by destroying and re-checking
+			// Dead sessions have proc = null
+			destroySession(id);
+			expect(getActiveBusySessions()).toEqual([]);
+		});
+	});
+
+	// ------- destroyAllSessionsGracefully -------
+
+	describe("destroyAllSessionsGracefully", () => {
+		it("clears all sessions from the map", () => {
+			const id1 = track("task-graceful-01");
+			const id2 = track("task-graceful-02");
+			createSession(id1, "proj-1", "/tmp/cwd", "bash");
+			createSession(id2, "proj-1", "/tmp/cwd2", "bash");
+
+			expect(hasSession(id1)).toBe(true);
+			expect(hasSession(id2)).toBe(true);
+
+			destroyAllSessionsGracefully();
+
+			expect(hasSession(id1)).toBe(false);
+			expect(hasSession(id2)).toBe(false);
+			// Clear tracking since sessions are already gone
+			activeSessions.length = 0;
+		});
+
+		it("does nothing when no sessions exist", () => {
+			expect(() => destroyAllSessionsGracefully()).not.toThrow();
+		});
+	});
+
+	// ------- killSessionMainPaneLast -------
+
+	describe("killSessionMainPaneLast", () => {
+		it("does nothing for a single-pane session", async () => {
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode("%0\n"),
+			} as any);
+
+			await killSessionMainPaneLast("task-kill-01", "dev3");
+
+			// Should list panes but NOT kill any (only 1 pane)
+			const killCalls = mockSpawnSync.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("kill-pane"),
+			);
+			expect(killCalls).toHaveLength(0);
+		});
+
+		it("kills extra panes but not the first (main) one", async () => {
+			mockSpawnSync.mockImplementation((args: any) => {
+				if (Array.isArray(args) && args.includes("list-panes")) {
+					return {
+						exitCode: 0,
+						stdout: new TextEncoder().encode("%0\n%1\n%2\n"),
+					} as any;
+				}
+				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
+			});
+
+			await killSessionMainPaneLast("task-kill-02", "dev3");
+
+			const killCalls = mockSpawnSync.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("kill-pane"),
+			);
+			// Should kill %2 and %1 (in reverse order), NOT %0
+			expect(killCalls).toHaveLength(2);
+			expect(killCalls[0][0]).toContain("%2");
+			expect(killCalls[1][0]).toContain("%1");
+		});
+
+		it("handles tmux list-panes failure gracefully", async () => {
+			mockSpawnSync.mockReturnValue({
+				exitCode: 1,
+				stdout: new Uint8Array(0),
+			} as any);
+
+			// Should not throw
+			await expect(killSessionMainPaneLast("task-kill-03", "dev3")).resolves.toBeUndefined();
+		});
+	});
+
+	// ------- countPanes -------
+
+	describe("countPanes", () => {
+		it("returns pane count for an existing session", () => {
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode("%0\n%1\n%2\n"),
+			} as any);
+
+			expect(countPanes("task-count-01", "dev3")).toBe(3);
+		});
+
+		it("returns 1 for a single-pane session", () => {
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode("%0\n"),
+			} as any);
+
+			expect(countPanes("task-count-02", "dev3")).toBe(1);
+		});
+
+		it("returns 0 when tmux session does not exist", () => {
+			mockSpawnSync.mockReturnValue({
+				exitCode: 1,
+				stdout: new Uint8Array(0),
+			} as any);
+
+			expect(countPanes("task-count-03", "dev3")).toBe(0);
+		});
+
+		it("returns 0 when spawnSync throws", () => {
+			mockSpawnSync.mockImplementation(() => {
+				throw new Error("tmux not found");
+			});
+
+			expect(countPanes("task-count-04", "dev3")).toBe(0);
 		});
 	});
 

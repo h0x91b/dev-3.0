@@ -470,6 +470,40 @@ export async function reorderTasksInColumn(
 	});
 }
 
+// ---- Hibernate State ----
+
+const HIBERNATE_FILE = `${DEV3_HOME}/hibernate-state.json`;
+
+export async function saveHibernateState(taskIds: string[]): Promise<void> {
+	await ensureDir(HIBERNATE_FILE);
+	await Bun.write(HIBERNATE_FILE, JSON.stringify({ taskIds }, null, 2));
+	log.info("Hibernate state saved", { count: taskIds.length });
+}
+
+export async function loadHibernateState(): Promise<string[]> {
+	try {
+		const file = Bun.file(HIBERNATE_FILE);
+		if (!(await file.exists())) return [];
+		const data = await file.json();
+		return Array.isArray(data?.taskIds) ? data.taskIds : [];
+	} catch {
+		return [];
+	}
+}
+
+export async function clearHibernateState(): Promise<void> {
+	try {
+		const file = Bun.file(HIBERNATE_FILE);
+		if (await file.exists()) {
+			const { unlinkSync } = await import("node:fs");
+			unlinkSync(HIBERNATE_FILE);
+			log.info("Hibernate state cleared");
+		}
+	} catch (err) {
+		log.warn("Failed to clear hibernate state", { error: String(err) });
+	}
+}
+
 // ---- Tip State ----
 
 const TIP_STATE_FILE = `${DEV3_HOME}/tip-state.json`;

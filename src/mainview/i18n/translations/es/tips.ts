@@ -126,6 +126,8 @@ const tips = {
 	"tip.restartTaskFromScratch.body": "Mueve una tarea a Cancelado y luego de vuelta a Todo — obtiene un worktree nuevo y una sesión de agente limpia.",
 	"tip.columnLoadMore.title": "Columnas grandes se colapsan",
 	"tip.columnLoadMore.body": "Las columnas con 15+ tareas muestran solo las más recientes. Haz clic en \"Mostrar más\" abajo para ver el resto.",
+	"tip.hibernateQuit.title": "Hibernar antes de reiniciar",
+	"tip.hibernateQuit.body": "Presiona Cmd+Q y elige Hibernar y salir — los agentes se reanudan automáticamente en el próximo inicio.",
 };
 
 export default tips;

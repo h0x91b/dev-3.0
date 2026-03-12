@@ -253,6 +253,78 @@ export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: strin
 	return result;
 }
 
+/** Returns sessions where the process is alive and has not gone idle yet. */
+export function getActiveBusySessions(): Array<{ taskId: string }> {
+	const result: Array<{ taskId: string }> = [];
+	for (const session of sessions.values()) {
+		if (session.proc && !session.idleNotified) {
+			result.push({ taskId: session.taskId });
+		}
+	}
+	return result;
+}
+
+/** Close all PTY processes and websockets. Does NOT kill tmux sessions. */
+export function destroyAllSessionsGracefully(): void {
+	for (const session of sessions.values()) {
+		if (session.proc) {
+			session.proc.terminal?.close();
+			session.proc.kill();
+		}
+		if (session.ws) {
+			try { session.ws.close(); } catch { /* already closed */ }
+		}
+	}
+	sessions.clear();
+	log.info("All PTY sessions destroyed gracefully");
+}
+
+/**
+ * Kill a tmux session's extra panes first, then the main pane last.
+ * This ensures the main agent's session file has the most recent timestamp
+ * so --continue / resume --last picks up the right one.
+ */
+export async function killSessionMainPaneLast(taskId: string, socket: string): Promise<void> {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		// List all pane IDs
+		const result = spawnSync(
+			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"),
+		);
+		if (result.exitCode !== 0) return;
+
+		const panes = new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
+		if (panes.length <= 1) return; // nothing extra to kill
+
+		// Kill all panes except the first (main) one
+		for (let i = panes.length - 1; i >= 1; i--) {
+			spawnSync(tmuxArgs(socket, "kill-pane", "-t", panes[i]));
+		}
+
+		// Wait briefly for agents to write exit state
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	} catch (err) {
+		log.warn("killSessionMainPaneLast failed (best-effort)", {
+			taskId: shortId(taskId),
+			error: String(err),
+		});
+	}
+}
+
+/** Count panes in a tmux session. Returns 0 if session doesn't exist. */
+export function countPanes(taskId: string, socket: string): number {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		const result = spawnSync(
+			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"),
+		);
+		if (result.exitCode !== 0) return 0;
+		return new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean).length;
+	} catch {
+		return 0;
+	}
+}
+
 function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }

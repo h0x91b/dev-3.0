@@ -889,6 +889,84 @@ export const handlers = {
 		Utils.quit();
 	},
 
+	async checkHibernateReady(): Promise<{
+		ready: boolean;
+		busyTaskIds: string[];
+		activeTaskCount: number;
+		multiPaneTasks: Array<{ taskId: string; paneCount: number }>;
+	}> {
+		log.info("→ checkHibernateReady");
+		const projects = await data.loadProjects();
+		const activeTaskIds: string[] = [];
+		const busySessions = pty.getActiveBusySessions();
+		const busyIds = new Set(busySessions.map((s) => s.taskId));
+		const busyTaskIds: string[] = [];
+		const multiPaneTasks: Array<{ taskId: string; paneCount: number }> = [];
+
+		for (const project of projects) {
+			const tasks = await data.loadTasks(project);
+			for (const task of tasks) {
+				if (!pty.hasSession(task.id)) continue;
+				activeTaskIds.push(task.id);
+				if (busyIds.has(task.id)) {
+					busyTaskIds.push(task.id);
+				}
+				const socket = pty.getSessionSocket(task.id);
+				const paneCount = pty.countPanes(task.id, socket);
+				if (paneCount > 1) {
+					multiPaneTasks.push({ taskId: task.id, paneCount });
+				}
+			}
+		}
+
+		return {
+			ready: busyTaskIds.length === 0,
+			busyTaskIds,
+			activeTaskCount: activeTaskIds.length,
+			multiPaneTasks,
+		};
+	},
+
+	async hibernateAndQuit(): Promise<void> {
+		log.info("→ hibernateAndQuit");
+
+		// Re-check readiness (race guard)
+		const busySessions = pty.getActiveBusySessions();
+		if (busySessions.length > 0) {
+			throw new Error("Cannot hibernate: agents are still actively running");
+		}
+
+		// Collect all task IDs with active PTY sessions
+		const projects = await data.loadProjects();
+		const taskIds: string[] = [];
+
+		for (const project of projects) {
+			const tasks = await data.loadTasks(project);
+			for (const task of tasks) {
+				if (pty.hasSession(task.id)) {
+					taskIds.push(task.id);
+				}
+			}
+		}
+
+		log.info("Hibernating tasks", { count: taskIds.length, taskIds: taskIds.map((id) => id.slice(0, 8)) });
+
+		// Save hibernate state
+		await data.saveHibernateState(taskIds);
+
+		// Kill extra panes first, main pane last for each session
+		for (const taskId of taskIds) {
+			const socket = pty.getSessionSocket(taskId);
+			await pty.killSessionMainPaneLast(taskId, socket);
+		}
+
+		// Clean up in-memory state
+		pty.destroyAllSessionsGracefully();
+
+		// Quit
+		Utils.quit();
+	},
+
 	async hideApp(): Promise<void> {
 		log.info("→ hideApp (Cmd+H from renderer)");
 		// Electrobun doesn't expose a hide() API. The menu has { role: "hide" }

@@ -370,7 +370,14 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.forkBranchSupport.body",
 		icon: "\u{F062C}", // nf-md-source_branch
 	},
-	// Batch 14: task drop position
+	// Batch 14: hibernate & quit
+	{
+		id: "hibernate-quit",
+		titleKey: "tip.hibernateQuit.title",
+		bodyKey: "tip.hibernateQuit.body",
+		icon: "\u{F0A7C}", // nf-md-power_sleep
+	},
+	// Batch 15: task drop position
 	{
 		id: "task-drop-position",
 		titleKey: "tip.taskDropPosition.title",
