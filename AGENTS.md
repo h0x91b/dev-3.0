@@ -26,11 +26,17 @@ This applies to:
 
 The user may communicate with agents in Russian, but everything written into the codebase or git history must be in English only.
 
-## Parallelism — prefer TeamCreate over sub-agents
+## Parallelism — TeamCreate over Agent tool (MANDATORY)
 
-When you need to delegate work to other agents, **use `TeamCreate` (team members) instead of the `Agent` tool (sub-agents)** whenever possible. Team members run as independent peers and are more efficient for parallel workloads.
+**STOP before calling the `Agent` tool.** If you are about to spawn one or more agents for research, investigation, or parallel work — **use `TeamCreate` instead.** This is not a suggestion; it is the default. Team members run as independent peers with full tool access and are the correct mechanism for delegation in this project.
 
-**Exception:** If a team member itself needs to spawn a helper for its own sub-task, it may use the `Agent` tool internally. The rule applies to **your** direct delegation decisions — not to what team members do inside their own execution.
+**Self-check trigger:** Every time you are about to type `Agent` in a tool call, ask yourself: "Can this be a team member?" If yes — use `TeamCreate`. If you catch yourself having already used `Agent` where `TeamCreate` would work — note the mistake and correct course.
+
+**The only valid reasons to use `Agent` directly:**
+- A team member itself needs a sub-agent for its own internal sub-task (you are not the one spawning it).
+- The task is trivially small (single file read, single grep) where a dedicated tool (`Read`, `Grep`, `Glob`) is more appropriate than any delegation at all.
+
+**If in doubt, use `TeamCreate`.** Defaulting to `Agent` out of habit is exactly what this rule prevents.
 
 ## Git
 
