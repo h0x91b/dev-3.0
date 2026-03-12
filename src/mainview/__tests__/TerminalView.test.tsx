@@ -5,9 +5,11 @@ import { KEYMAP_LS_KEY } from "../terminal-keymaps";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
-const { mockFocus, mockInput, mockTermInstance } = vi.hoisted(() => {
+const { mockFocus, mockInput, mockTermInstance, mockOnDataDispose, mockOnResizeDispose } = vi.hoisted(() => {
 	const mockFocus = vi.fn();
 	const mockInput = vi.fn();
+	const mockOnDataDispose = vi.fn();
+	const mockOnResizeDispose = vi.fn();
 	// Plain object — avoids document.createElement at hoist time
 	const mockCanvas = {
 		addEventListener: vi.fn(),
@@ -19,8 +21,8 @@ const { mockFocus, mockInput, mockTermInstance } = vi.hoisted(() => {
 		open: vi.fn(),
 		focus: mockFocus,
 		input: mockInput,
-		onData: vi.fn(),
-		onResize: vi.fn(),
+		onData: vi.fn(() => ({ dispose: mockOnDataDispose })),
+		onResize: vi.fn(() => ({ dispose: mockOnResizeDispose })),
 		attachCustomKeyEventHandler: vi.fn(),
 		attachCustomWheelEventHandler: vi.fn(),
 		hasMouseTracking: vi.fn(() => false),
@@ -38,7 +40,7 @@ const { mockFocus, mockInput, mockTermInstance } = vi.hoisted(() => {
 		rows: 24,
 		options: {} as Record<string, unknown>,
 	};
-	return { mockFocus, mockInput, mockCanvas, mockTermInstance };
+	return { mockFocus, mockInput, mockCanvas, mockTermInstance, mockOnDataDispose, mockOnResizeDispose };
 });
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -372,5 +374,134 @@ describe("TerminalView – keymap shortcuts", () => {
 		});
 
 		expect(mockedTmuxAction).not.toHaveBeenCalled();
+	});
+});
+
+// ── Terminal disposal safety ──────────────────────────────────────────────────
+
+describe("TerminalView – disposal safety (no 'Terminal has been disposed' errors)", () => {
+	it("disposes onData and onResize subscriptions on unmount", async () => {
+		const { unmount } = await renderAndSetup();
+
+		expect(mockTermInstance.onData).toHaveBeenCalledTimes(1);
+		expect(mockTermInstance.onResize).toHaveBeenCalledTimes(1);
+
+		await act(async () => {
+			unmount();
+		});
+
+		expect(mockOnDataDispose).toHaveBeenCalledTimes(1);
+		expect(mockOnResizeDispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not throw when mouse events fire after unmount", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { unmount } = await renderAndSetup();
+
+		// Capture the mouse event handlers registered on the canvas
+		const canvasAddEventListener = mockTermInstance.renderer.getCanvas().addEventListener;
+		const mousedownHandler = canvasAddEventListener.mock.calls.find(
+			(c: unknown[]) => c[0] === "mousedown",
+		)?.[1] as ((e: MouseEvent) => void) | undefined;
+		const mousemoveHandler = canvasAddEventListener.mock.calls.find(
+			(c: unknown[]) => c[0] === "mousemove",
+		)?.[1] as ((e: MouseEvent) => void) | undefined;
+
+		// Unmount to trigger disposal
+		await act(async () => {
+			unmount();
+		});
+
+		// Simulate terminal methods throwing after disposal
+		mockTermInstance.hasMouseTracking.mockImplementation(() => {
+			throw new Error("Terminal has been disposed");
+		});
+		mockInput.mockImplementation(() => {
+			throw new Error("Terminal has been disposed");
+		});
+
+		// These should NOT throw — the disposed guard should prevent it
+		expect(() => mousedownHandler?.({ button: 0, clientX: 50, clientY: 50, preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as MouseEvent)).not.toThrow();
+		expect(() => mousemoveHandler?.({ button: 0, clientX: 60, clientY: 60, stopPropagation: vi.fn() } as unknown as MouseEvent)).not.toThrow();
+
+		// Restore normal behavior
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+		mockInput.mockReset();
+	});
+
+	it("does not throw when wheel handler fires after unmount", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { unmount } = await renderAndSetup();
+
+		// Capture the wheel handler
+		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
+			| ((e: WheelEvent) => boolean)
+			| undefined;
+
+		await act(async () => {
+			unmount();
+		});
+
+		// Simulate terminal methods throwing after disposal
+		mockTermInstance.hasMouseTracking.mockImplementation(() => {
+			throw new Error("Terminal has been disposed");
+		});
+
+		// Should return false (not throw) after disposal
+		expect(wheelHandler?.({ deltaY: 100, clientX: 50, clientY: 50 } as WheelEvent)).toBe(false);
+
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+	});
+
+	it("does not throw when onData callback fires after unmount", async () => {
+		const { unmount } = await renderAndSetup();
+
+		// Capture the onData callback
+		const onDataCallback = (mockTermInstance.onData.mock.calls as unknown[][])[0]?.[0] as
+			| ((data: string) => void)
+			| undefined;
+
+		await act(async () => {
+			unmount();
+		});
+
+		// Should silently return — disposed guard prevents WS send
+		expect(() => onDataCallback?.("hello")).not.toThrow();
+	});
+
+	it("does not throw when onResize callback fires after unmount", async () => {
+		const { unmount } = await renderAndSetup();
+
+		// Capture the onResize callback
+		const onResizeCallback = (mockTermInstance.onResize.mock.calls as unknown[][])[0]?.[0] as
+			| ((dims: { cols: number; rows: number }) => void)
+			| undefined;
+
+		await act(async () => {
+			unmount();
+		});
+
+		// Should silently return — disposed guard prevents WS send
+		expect(() => onResizeCallback?.({ cols: 100, rows: 30 })).not.toThrow();
+	});
+
+	it("does not throw when focus-on-type keydown fires after unmount", async () => {
+		const { unmount } = await renderAndSetup();
+
+		// Make focus throw to simulate disposed terminal
+		mockFocus.mockImplementation(() => {
+			throw new Error("Terminal has been disposed");
+		});
+
+		await act(async () => {
+			unmount();
+		});
+
+		// keydown on body should not propagate the error
+		expect(() => {
+			document.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+		}).not.toThrow();
+
+		mockFocus.mockReset();
 	});
 });
