@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { load } from "js-toml";
 import { createLogger } from "./logger";
 
@@ -44,6 +45,8 @@ export function ensureCodexConfig(
 ): string {
 	let config = content ?? "";
 	let parsed: CodexConfig = {};
+	// Derive absolute dev3 home from worktreesPath (e.g. /Users/x/.dev3.0/worktrees -> /Users/x/.dev3.0)
+	const dev3Home = dirname(worktreesPath);
 
 	if (config.trim().length > 0) {
 		try {
@@ -83,7 +86,7 @@ export function ensureCodexConfig(
 			'":minimal" = "read"',
 			'"~/.codex/skills" = "read"',
 			'"~/.agents/skills" = "read"',
-			'"~/.dev3.0" = "write"',
+			`"${dev3Home}" = "write"`,
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.filesystem.":project_roots"]`,
 			'"." = "write"',
@@ -132,7 +135,7 @@ export function ensureCodexConfig(
 		const requiredFsPaths = [
 			'"~/.codex/skills" = "read"',
 			'"~/.agents/skills" = "read"',
-			'"~/.dev3.0" = "write"',
+			`"${dev3Home}" = "write"`,
 		];
 		for (const fsLine of requiredFsPaths) {
 			if (!config.includes(fsLine)) {
