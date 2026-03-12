@@ -15,9 +15,13 @@ export type Route =
 
 // ---- State ----
 
+/** Maximum number of entries kept in the navigation history stack. */
+export const HISTORY_LIMIT = 15;
+
 export interface AppState {
 	route: Route;
-	previousRoute: Route | null;
+	routeHistory: Route[];
+	historyIndex: number;
 	projects: Project[];
 	currentProjectTasks: Task[];
 	loading: boolean;
@@ -27,7 +31,8 @@ export interface AppState {
 
 export const initialState: AppState = {
 	route: { screen: "dashboard" },
-	previousRoute: null,
+	routeHistory: [{ screen: "dashboard" }],
+	historyIndex: 0,
 	projects: [],
 	currentProjectTasks: [],
 	loading: true,
@@ -39,6 +44,8 @@ export const initialState: AppState = {
 
 export type AppAction =
 	| { type: "navigate"; route: Route }
+	| { type: "goBack" }
+	| { type: "goForward" }
 	| { type: "setProjects"; projects: Project[] }
 	| { type: "setTasks"; tasks: Task[] }
 	| { type: "updateTask"; task: Task }
@@ -54,21 +61,45 @@ export type AppAction =
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
 	| { type: "clearPorts"; taskId: string };
 
+function clearBellForRoute(bellCounts: Map<string, number>, route: Route): Map<string, number> {
+	if (route.screen === "task" && bellCounts.has(route.taskId)) {
+		const next = new Map(bellCounts);
+		next.delete(route.taskId);
+		return next;
+	}
+	if (route.screen === "project" && route.activeTaskId && bellCounts.has(route.activeTaskId)) {
+		const next = new Map(bellCounts);
+		next.delete(route.activeTaskId);
+		return next;
+	}
+	return bellCounts;
+}
+
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate": {
-			// Auto-clear bell when user opens the task terminal
-			let bellCounts = state.bellCounts;
-			if (action.route.screen === "task" && bellCounts.has(action.route.taskId)) {
-				bellCounts = new Map(bellCounts);
-				bellCounts.delete(action.route.taskId);
-			}
-			// Also clear bell when opening task in split view
-			if (action.route.screen === "project" && action.route.activeTaskId && bellCounts.has(action.route.activeTaskId)) {
-				bellCounts = new Map(bellCounts);
-				bellCounts.delete(action.route.activeTaskId);
-			}
-			return { ...state, route: action.route, previousRoute: state.route, bellCounts };
+			const bellCounts = clearBellForRoute(state.bellCounts, action.route);
+			// Truncate any forward history beyond the current index, then push
+			const base = state.routeHistory.slice(0, state.historyIndex + 1);
+			base.push(action.route);
+			// Trim oldest entries if over the limit
+			const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
+			const historyIndex = routeHistory.length - 1;
+			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts };
+		}
+		case "goBack": {
+			if (state.historyIndex <= 0) return state;
+			const newIndex = state.historyIndex - 1;
+			const route = state.routeHistory[newIndex];
+			const bellCounts = clearBellForRoute(state.bellCounts, route);
+			return { ...state, route, historyIndex: newIndex, bellCounts };
+		}
+		case "goForward": {
+			if (state.historyIndex >= state.routeHistory.length - 1) return state;
+			const newIndex = state.historyIndex + 1;
+			const route = state.routeHistory[newIndex];
+			const bellCounts = clearBellForRoute(state.bellCounts, route);
+			return { ...state, route, historyIndex: newIndex, bellCounts };
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };
@@ -184,6 +215,14 @@ export function reducer(state: AppState, action: AppAction): AppState {
 		default:
 			return state;
 	}
+}
+
+export function canGoBack(state: AppState): boolean {
+	return state.historyIndex > 0;
+}
+
+export function canGoForward(state: AppState): boolean {
+	return state.historyIndex < state.routeHistory.length - 1;
 }
 
 export function useAppState() {

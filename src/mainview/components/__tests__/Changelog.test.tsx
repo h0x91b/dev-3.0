@@ -18,7 +18,7 @@ const mockedApi = vi.mocked(api, true);
 function renderChangelog() {
 	return render(
 		<I18nProvider>
-			<Changelog navigate={vi.fn()} previousRoute={null} />
+			<Changelog navigate={vi.fn()} goBack={vi.fn()} canGoBack={false} />
 		</I18nProvider>,
 	);
 }

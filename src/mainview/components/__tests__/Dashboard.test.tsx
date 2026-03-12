@@ -60,6 +60,7 @@ const mockProject: Project = {
 describe("Dashboard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		localStorage.removeItem("dev3-dashboard-tab");
 	});
 
 	describe("empty state", () => {
@@ -188,6 +189,36 @@ describe("Dashboard", () => {
 
 			expect(mockedApi.request.removeProject).not.toHaveBeenCalled();
 			expect(dispatch).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("tab persistence", () => {
+		it("defaults to activity tab when no saved preference", () => {
+			renderDashboard([mockProject]);
+			// Activity tab should be active (has bg-elevated class)
+			const activityBtn = screen.getByText("Activity");
+			expect(activityBtn.className).toContain("bg-elevated");
+		});
+
+		it("restores saved tab from localStorage", () => {
+			localStorage.setItem("dev3-dashboard-tab", "projects");
+			renderDashboard([mockProject]);
+			const projectsBtn = screen.getByText("Projects");
+			expect(projectsBtn.className).toContain("bg-elevated");
+		});
+
+		it("saves tab to localStorage when switched", async () => {
+			const user = userEvent.setup();
+			renderDashboard([mockProject]);
+			await user.click(screen.getByText("Projects"));
+			expect(localStorage.getItem("dev3-dashboard-tab")).toBe("projects");
+		});
+
+		it("ignores invalid saved tab values", () => {
+			localStorage.setItem("dev3-dashboard-tab", "bogus");
+			renderDashboard([mockProject]);
+			const activityBtn = screen.getByText("Activity");
+			expect(activityBtn.className).toContain("bg-elevated");
 		});
 	});
 
