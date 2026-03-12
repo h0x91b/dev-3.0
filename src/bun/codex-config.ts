@@ -89,8 +89,26 @@ export function ensureCodexConfig(
 	// --- 3. Ensure [permissions.workspace.filesystem] sections ---
 	const wsFs = parsed.permissions?.workspace?.filesystem;
 	if (wsFs == null) {
-		const block = `\n[permissions.workspace.filesystem]\n":minimal" = "read"\n\n[permissions.workspace.filesystem.":project_roots"]\n"." = "write"\n`;
+		const block = [
+			"",
+			"[permissions.workspace.filesystem]",
+			'":minimal" = "read"',
+			'"~/.codex/skills" = "read"',
+			'"~/.agents/skills" = "read"',
+			"",
+			'[permissions.workspace.filesystem.":project_roots"]',
+			'"." = "write"',
+			"",
+		].join("\n");
 		config = appendBlock(config, block);
+	} else {
+		// Ensure skill directories are readable even if filesystem section already exists
+		const skillPaths = ['"~/.codex/skills" = "read"', '"~/.agents/skills" = "read"'];
+		for (const skillLine of skillPaths) {
+			if (!config.includes(skillLine)) {
+				config = insertAfterSectionHeader(config, "[permissions.workspace.filesystem]", skillLine);
+			}
+		}
 	}
 
 	// --- 4. Ensure [permissions.workspace.network] section ---

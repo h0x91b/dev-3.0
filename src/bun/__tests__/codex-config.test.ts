@@ -13,6 +13,8 @@ describe("ensureCodexConfig", () => {
 			expect(result).toContain('default_permissions = "workspace"');
 			expect(result).toContain("[permissions.workspace.filesystem]");
 			expect(result).toContain('":minimal" = "read"');
+			expect(result).toContain('"~/.codex/skills" = "read"');
+			expect(result).toContain('"~/.agents/skills" = "read"');
 			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
 			expect(result).toContain('"." = "write"');
 			expect(result).toContain("[permissions.workspace.network]");
@@ -117,6 +119,26 @@ allow_unix_sockets = ["${SOCKETS_PATH}"]
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain("enabled = true");
+		});
+	});
+
+	describe("when filesystem section exists but skills directories are missing", () => {
+		it("adds skill directory read permissions to existing filesystem section", () => {
+			const existing = `default_permissions = "workspace"
+
+[permissions.workspace.filesystem]
+":minimal" = "read"
+
+[permissions.workspace.filesystem.":project_roots"]
+"." = "write"
+
+[permissions.workspace.network]
+enabled = true
+allow_unix_sockets = ["${SOCKETS_PATH}"]
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).toContain('"~/.codex/skills" = "read"');
+			expect(result).toContain('"~/.agents/skills" = "read"');
 		});
 	});
 
