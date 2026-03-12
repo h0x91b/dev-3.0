@@ -1196,7 +1196,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
 			title={t("tmux.spawnExtraAgentDesc")}
 		>
-			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0219}"}</span>
+			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0313}"}</span>
 			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>
 		</button>
 	) : null;

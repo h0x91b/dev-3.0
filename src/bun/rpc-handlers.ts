@@ -2705,9 +2705,10 @@ export const handlers = {
 			throw new Error("Task has no worktree — cannot spawn agent");
 		}
 
+		// Empty description = bare agent with all flags but no task prompt
 		const ctx: agents.TemplateContext = {
-			taskTitle: task.title,
-			taskDescription: task.description,
+			taskTitle: "",
+			taskDescription: "",
 			projectName: project.name,
 			projectPath: project.path,
 			worktreePath: task.worktreePath,
