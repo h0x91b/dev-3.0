@@ -88,6 +88,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.pushAndCreatePr.body",
 		icon: "\u{F0544}", // nf-md-source_pull
 	},
+	{
+		id: "pr-awareness",
+		titleKey: "tip.prAwareness.title",
+		bodyKey: "tip.prAwareness.body",
+		icon: "\u{F0408}", // nf-md-source_pull
+	},
 	// Batch 2: diff, images, custom columns, clone
 	{
 		id: "show-diff-button",

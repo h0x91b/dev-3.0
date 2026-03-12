@@ -1,0 +1,1 @@
+The "Create PR" button in the task info panel now detects when a branch already has an open PR on GitHub. When a PR exists, the button changes to "Open PR" with a green accent and opens the existing PR directly instead of trying to create a new one. PR detection happens during branch status refresh via `gh pr list`.

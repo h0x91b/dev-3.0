@@ -30,6 +30,8 @@ const tips = {
 	"tip.taskSearch.body": "Press Ctrl/Cmd+F to focus the search box and filter by title, description, #number, or UUID.",
 	"tip.pushAndCreatePr.title": "Push and open a PR",
 	"tip.pushAndCreatePr.body": "When your branch has unpushed commits, click \"Push & Create PR\" to push and open a pull request in one click.",
+	"tip.prAwareness.title": "Existing PR? One click away",
+	"tip.prAwareness.body": "When your branch has an open PR, the button turns green — click it to jump straight to the PR in your browser.",
 	"tip.showDiffButton.title": "Review your diff inline",
 	"tip.showDiffButton.body": "Click the \"Show Diff\" button in the task panel to open an interactive side-by-side git diff right in the terminal.",
 	"tip.imagePasteAttach.title": "Paste images into notes",

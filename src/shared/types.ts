@@ -384,6 +384,7 @@ export interface BranchStatus {
 	diffInsertions: number; // total lines added in branch vs base
 	diffDeletions: number; // total lines removed in branch vs base
 	diffFileNames: string[]; // list of changed file paths in branch vs base
+	prNumber: number | null; // open PR number for this branch, null if none
 }
 
 // ---- Listening ports ----
@@ -601,6 +602,10 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			createPullRequest: {
+				params: { taskId: string; projectId: string };
+				response: void;
+			};
+			openPullRequest: {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};

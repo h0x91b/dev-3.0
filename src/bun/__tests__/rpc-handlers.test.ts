@@ -1473,7 +1473,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [] });
+		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null });
 	});
 
 	it("returns branch status with canRebase=true when behind", async () => {
@@ -1556,6 +1556,91 @@ describe("handlers.getBranchStatus", () => {
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("returns prNumber when gh pr list finds an open non-draft PR", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42 }]), stderr: "" });
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+		expect(result.prNumber).toBe(42);
+	});
+
+	it("returns prNumber=null when gh pr list returns empty array", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: "[]", stderr: "" });
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+		expect(result.prNumber).toBeNull();
+	});
+
+	it("returns prNumber=null when gh pr list fails", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
+		vi.mocked(git.run).mockResolvedValue({ ok: false, stdout: "", stderr: "gh not found" });
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+		expect(result.prNumber).toBeNull();
+	});
+
+	it("returns prNumber=null when gh returns invalid JSON", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: "not json", stderr: "" });
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+		expect(result.prNumber).toBeNull();
+	});
+
+	it("returns prNumber for draft PRs (drafts are included)", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
+		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 10 }]), stderr: "" });
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+		expect(result.prNumber).toBe(10);
 	});
 });
 

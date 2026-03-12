@@ -190,6 +190,7 @@ const branchStatusInFlight = new Map<string, Promise<{
 	ahead: number; behind: number; canRebase: boolean;
 	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
 	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
+	prNumber: number | null;
 }>>();
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
@@ -751,7 +752,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const task = await data.getTask(project, params.taskId);
 
 	if (!task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [] };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null };
 	}
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -770,19 +771,40 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	await git.fetchOrigin(project.path);
 	// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
 	const ref = params.compareRef || `origin/${baseBranch}`;
-	const [status, uncommitted, unpushed, branchDiff] = await Promise.all([
+	// Detect open PR (including drafts) in parallel with other git operations (graceful degradation)
+	const prDetection: Promise<number | null> = (async () => {
+		try {
+			const ghResult = await git.run(
+				["gh", "pr", "list", "--head", branchForPush, "--state", "open", "--json", "number", "--limit", "1"],
+				task.worktreePath!,
+			);
+			if (ghResult.ok && ghResult.stdout) {
+				const prs = JSON.parse(ghResult.stdout);
+				if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
+					return prs[0].number;
+				}
+			}
+		} catch (err) {
+			log.warn("PR detection failed (non-fatal)", { error: String(err) });
+		}
+		return null;
+	})();
+
+	const [status, uncommitted, unpushed, branchDiff, prNumber] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpushedCount(task.worktreePath, branchForPush),
 		git.getBranchDiffStats(task.worktreePath, ref),
+		prDetection,
 	]);
-	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, ref });
+	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
 	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
+		prNumber,
 	};
 	log.info("← getBranchStatus", result);
 
@@ -1703,6 +1725,45 @@ export const handlers = {
 		monitorGitPane(paneId, task.id, params.projectId, "createPR", socket);
 
 		log.info("← createPullRequest (pane opened)", { paneId });
+	},
+
+	async openPullRequest(params: { taskId: string; projectId: string }): Promise<void> {
+		log.info("→ openPullRequest", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+
+		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const scriptPath = `/tmp/dev3-${task.id}-git-openPR.sh`;
+
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		await killExistingGitPane(task.id, tmuxSession, socket);
+
+		const script = [
+			`#!/bin/bash`,
+			`set -x`,
+			`gh pr view --web 2>&1`,
+			`EXIT_CODE=$?`,
+			`set +x`,
+			`echo $EXIT_CODE > "${scriptPath}.exit"`,
+			`echo ""`,
+			`if [ $EXIT_CODE -eq 0 ]; then`,
+			`  printf '\\033[1;32m✓ PR opened in browser\\033[0m\\n'`,
+			`  sleep 5`,
+			`else`,
+			`  printf '\\033[1;31m✗ Failed to open PR (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
+			`  echo "Press any key to close."`,
+			`  read -n 1 -s`,
+			`fi`,
+		].join("\n") + "\n";
+		await Bun.write(scriptPath, script);
+
+		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		monitorGitPane(paneId, task.id, params.projectId, "openPR", socket);
+
+		log.info("← openPullRequest (pane opened)", { paneId });
 	},
 
 	async showDiff(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {

@@ -561,6 +561,20 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		setCreatingPR(false);
 	}
 
+	async function handleOpenPR() {
+		if (creatingPR) return;
+		setCreatingPR(true);
+		try {
+			await api.request.openPullRequest({
+				taskId: task.id,
+				projectId: project.id,
+			});
+		} catch (err) {
+			alert(t("infoPanel.openPRFailed", { error: String(err) }));
+		}
+		setCreatingPR(false);
+	}
+
 	async function handleShowDiff() {
 		try {
 			await api.request.showDiff({
@@ -985,15 +999,28 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			? t("infoPanel.pushDisabled")
 			: t("infoPanel.push");
 
+	const hasPR = branchStatus && branchStatus.prNumber !== null;
 	const needsPushBeforePR = branchStatus && branchStatus.ahead > 0 && branchStatus.unpushed !== 0;
-	const createPRDisabled = !branchStatus || branchStatus.ahead === 0 || creatingPR || pushing;
-	const createPRTooltip = !branchStatus
-		? t("infoPanel.statusLoading")
-		: branchStatus.ahead === 0
-			? t("infoPanel.createPRDisabledNoCommits")
-			: needsPushBeforePR
-				? t("infoPanel.pushAndCreatePR")
-				: t("infoPanel.createPR");
+	const createPRDisabled = hasPR ? (!branchStatus || creatingPR || pushing) : (!branchStatus || branchStatus.ahead === 0 || creatingPR || pushing);
+
+	function getPRButtonLabel(): string {
+		if (creatingPR) return t("infoPanel.creatingPR");
+		if (pushing && pushThenCreatePRRef.current) return t("infoPanel.pushingAndCreatingPR");
+		if (hasPR) return t("infoPanel.openPR");
+		if (needsPushBeforePR) return t("infoPanel.pushAndCreatePR");
+		return t("infoPanel.createPR");
+	}
+
+	function getPRTooltip(): string {
+		if (!branchStatus) return t("infoPanel.statusLoading");
+		if (hasPR) return t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) });
+		if (branchStatus.ahead === 0) return t("infoPanel.createPRDisabledNoCommits");
+		if (needsPushBeforePR) return t("infoPanel.pushAndCreatePR");
+		return t("infoPanel.createPR");
+	}
+
+	const prButtonLabel = getPRButtonLabel();
+	const createPRTooltip = getPRTooltip();
 
 	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.behind > 0 || merging;
 	const mergeTooltip = !branchStatus
@@ -1019,6 +1046,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
+	const openPRBtnClass = "text-success hover:bg-success/20 bg-success/10 border border-success/25";
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
@@ -1066,7 +1094,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			</button>
 			<button
 				onClick={() => {
-					if (needsPushBeforePR) {
+					if (hasPR) {
+						handleOpenPR();
+					} else if (needsPushBeforePR) {
 						pushThenCreatePRRef.current = true;
 						handlePush();
 					} else {
@@ -1075,11 +1105,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				}}
 				disabled={createPRDisabled}
 				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					createPRDisabled ? disabledBtnClass : enabledBtnClass
+					createPRDisabled ? disabledBtnClass : hasPR ? openPRBtnClass : enabledBtnClass
 				}`}
 				title={createPRTooltip}
 			>
-				{creatingPR ? t("infoPanel.creatingPR") : pushing && pushThenCreatePRRef.current ? t("infoPanel.pushingAndCreatingPR") : needsPushBeforePR ? t("infoPanel.pushAndCreatePR") : t("infoPanel.createPR")}
+				{prButtonLabel}
 			</button>
 			<button
 				onClick={handleMerge}
