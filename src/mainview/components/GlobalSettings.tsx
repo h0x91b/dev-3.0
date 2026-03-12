@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
 import type { CodingAgent, AgentConfiguration, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
@@ -107,6 +107,11 @@ function GlobalSettings() {
 	}
 
 	const [tipsResetDone, setTipsResetDone] = useState(false);
+	const resetTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+	useEffect(() => {
+		return () => clearTimeout(resetTimerRef.current);
+	}, []);
 
 	function handleTipsDisabledToggle(disabled: boolean) {
 		const updated = { ...globalSettings, tipsDisabled: disabled };
@@ -117,7 +122,8 @@ function GlobalSettings() {
 	function handleTipsReset() {
 		api.request.resetTipState().then(() => {
 			setTipsResetDone(true);
-			setTimeout(() => setTipsResetDone(false), 3000);
+			clearTimeout(resetTimerRef.current);
+			resetTimerRef.current = setTimeout(() => setTipsResetDone(false), 3000);
 		}).catch(() => {});
 	}
 

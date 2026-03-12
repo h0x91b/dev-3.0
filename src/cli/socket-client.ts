@@ -41,6 +41,7 @@ export async function sendRequest(
 		});
 
 		socket.on("error", (err) => {
+			socket.destroy();
 			if ((err as NodeJS.ErrnoException).code === "ECONNREFUSED" ||
 				(err as NodeJS.ErrnoException).code === "ENOENT") {
 				reject(new Error("APP_NOT_RUNNING"));

@@ -530,17 +530,17 @@ export async function getUncommittedChanges(
 				// Skip empty files and files larger than 1 MB (likely binary or generated)
 				if (size === 0 || size > 1_048_576) continue;
 
+				// Read the file once for both binary detection and line counting
+				const content = await bunFile.text();
+
 				// Detect binary: check first 8 KB for null bytes
-				const chunk = new Uint8Array(
-					await bunFile.slice(0, Math.min(size, 8192)).arrayBuffer(),
-				);
+				const checkLen = Math.min(content.length, 8192);
 				let isBinary = false;
-				for (let i = 0; i < chunk.length; i++) {
-					if (chunk[i] === 0) { isBinary = true; break; }
+				for (let i = 0; i < checkLen; i++) {
+					if (content.charCodeAt(i) === 0) { isBinary = true; break; }
 				}
 				if (isBinary) continue;
 
-				const content = await bunFile.text();
 				const lines = content.split("\n");
 				// Don't count trailing empty line from final newline
 				insertions += content.endsWith("\n") ? lines.length - 1 : lines.length;

@@ -46,13 +46,16 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	useEffect(() => {
+		let cancelled = false;
 		(async () => {
 			console.log("[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
 			try {
 				const url = await api.request.getPtyUrl({ taskId });
+				if (cancelled) return;
 				console.log("[TaskTerminal] Got PTY URL:", url);
 				setPtyUrl(url);
 			} catch (err) {
+				if (cancelled) return;
 				console.error("[TaskTerminal] getPtyUrl FAILED:", err);
 				console.error("[TaskTerminal] Error details:", {
 					message: (err as Error)?.message,
@@ -63,6 +66,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				await classifyAndSetError();
 			}
 		})();
+		return () => { cancelled = true; };
 	}, [taskId]);
 
 	// For getPtyUrl success + broken session: listen for ptyDied.

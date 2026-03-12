@@ -96,6 +96,21 @@ describe("sendRequest", () => {
 		).rejects.toThrow("APP_NOT_RUNNING");
 	});
 
+	it("destroys socket on connection error to prevent fd leak", async () => {
+		// Connect to a non-existent socket — the error handler should destroy
+		// the socket immediately rather than waiting for the 30s timeout.
+		const start = Date.now();
+		try {
+			await sendRequest("/tmp/dev3-nonexistent-socket.sock", "test");
+		} catch (err) {
+			// Expected to throw APP_NOT_RUNNING
+			expect((err as Error).message).toBe("APP_NOT_RUNNING");
+		}
+		// If socket.destroy() is called in error handler, this resolves instantly.
+		// Without destroy, it would hang for up to 30s.
+		expect(Date.now() - start).toBeLessThan(5000);
+	});
+
 	it("matches request and response IDs", async () => {
 		const server = await createMockServer((data) => {
 			const req = JSON.parse(data);

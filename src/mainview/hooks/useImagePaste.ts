@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "../rpc";
 
 export function useImagePaste(
@@ -6,6 +6,12 @@ export function useImagePaste(
 	onImagePasted: (path: string) => void,
 ): { handlePaste: (e: React.ClipboardEvent) => void; isPasting: boolean } {
 	const [isPasting, setIsPasting] = useState(false);
+	const mountedRef = useRef(true);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => { mountedRef.current = false; };
+	}, []);
 
 	const handlePaste = useCallback(
 		(e: React.ClipboardEvent) => {
@@ -26,11 +32,13 @@ export function useImagePaste(
 			setIsPasting(true);
 
 			api.request.pasteClipboardImage({ projectId }).then((result) => {
+				if (!mountedRef.current) return;
 				if (result) {
 					onImagePasted(result.path);
 				}
 				setIsPasting(false);
 			}).catch(() => {
+				if (!mountedRef.current) return;
 				setIsPasting(false);
 			});
 		},

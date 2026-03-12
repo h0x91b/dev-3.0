@@ -63,12 +63,15 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	}, []);
 
 	// Load tip state on mount + auto-rotate every 60s
+	const tipMountedRef = useRef(true);
+	const tipTimerRef = useRef<ReturnType<typeof setTimeout>>();
 	useEffect(() => {
+		tipMountedRef.current = true;
 		if (globalSettings.tipsDisabled) return;
 		reloadTipState();
-		let timer: ReturnType<typeof setTimeout>;
 		function scheduleRotation() {
-			timer = setTimeout(() => {
+			tipTimerRef.current = setTimeout(() => {
+				if (!tipMountedRef.current) return;
 				if (!tipState) {
 					scheduleRotation();
 					return;
@@ -77,15 +80,20 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 					seen: currentTip ? { [currentTip.id]: Date.now() } : {},
 					rotationIndex: (tipState?.rotationIndex ?? 0) + 1,
 				}).then((state) => {
+					if (!tipMountedRef.current) return;
 					setTipState(state);
 					scheduleRotation();
 				}).catch(() => {
+					if (!tipMountedRef.current) return;
 					scheduleRotation();
 				});
 			}, ROTATION_INTERVAL_MS);
 		}
 		scheduleRotation();
-		return () => clearTimeout(timer);
+		return () => {
+			tipMountedRef.current = false;
+			clearTimeout(tipTimerRef.current);
+		};
 	}, [globalSettings.tipsDisabled]);
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
