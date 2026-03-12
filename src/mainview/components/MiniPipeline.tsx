@@ -1,6 +1,6 @@
 import type { TaskStatus } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
-import { PIPELINE_STAGES, getStageStates, isSideBranch } from "./StatusPipeline";
+import { PIPELINE_STAGES, getStageStates } from "./StatusPipeline";
 
 interface MiniPipelineProps {
 	status: TaskStatus;
@@ -14,7 +14,6 @@ interface MiniPipelineProps {
 export default function MiniPipeline({ status }: MiniPipelineProps) {
 	const statusColors = useStatusColors();
 	const states = getStageStates(status);
-	const isSide = isSideBranch(status);
 	const isCancelled = status === "cancelled";
 	const cancelledColor = statusColors["cancelled"];
 
@@ -60,18 +59,6 @@ export default function MiniPipeline({ status }: MiniPipelineProps) {
 										: undefined,
 								}}
 							/>
-							{/* Side-branch indicator on current dot (not for cancelled) */}
-							{isCurrent && isSide && !isCancelled && (
-								<div
-									className="absolute -top-1 -right-1 w-2 h-2 rounded-full flex items-center justify-center text-[5px] font-bold leading-none"
-									style={{
-										background: statusColors[status],
-										color: "#000",
-									}}
-								>
-									{status === "user-questions" ? "?" : "×"}
-								</div>
-							)}
 						</div>
 					</div>
 				);
