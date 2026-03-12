@@ -19,7 +19,15 @@ interface DashboardProps {
 function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps) {
 	const t = useT();
 	const [showAddModal, setShowAddModal] = useState(false);
-	const [tab, setTab] = useState<DashboardTab>(projects.length > 0 ? "activity" : "projects");
+	const [tab, setTabRaw] = useState<DashboardTab>(() => {
+		if (projects.length === 0) return "projects";
+		const saved = localStorage.getItem("dev3-dashboard-tab");
+		return saved === "activity" || saved === "projects" ? saved : "activity";
+	});
+	const setTab = (t: DashboardTab) => {
+		localStorage.setItem("dev3-dashboard-tab", t);
+		setTabRaw(t);
+	};
 
 	async function handleRemoveProject(projectId: string) {
 		const confirmed = await api.request.showConfirm({
