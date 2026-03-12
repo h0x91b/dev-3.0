@@ -1,0 +1,1 @@
+Fixed changelog date groups appearing out of order. The type-based sort (feature before fix) was breaking Map insertion order, causing some dates to display below older ones instead of in descending chronological order.
