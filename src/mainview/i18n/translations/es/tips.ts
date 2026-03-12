@@ -120,6 +120,8 @@ const tips = {
 	"tip.forkBranchSupport.body": "Escribe user:branch en el campo de rama (ej. yanive:feat/new-tab) y haz clic en Actualizar para descargar la rama de un fork de GitHub.",
 	"tip.taskDropPosition.title": "Tareas nuevas arriba",
 	"tip.taskDropPosition.body": "Por defecto las tareas nuevas y movidas aparecen arriba de la columna. Cámbialo en Ajustes globales → Posición al mover tareas.",
+	"tip.restartTaskFromScratch.title": "Reinicia una tarea desde cero",
+	"tip.restartTaskFromScratch.body": "Mueve una tarea a Cancelado y luego de vuelta a Todo — obtiene un worktree nuevo y una sesión de agente limpia.",
 	"tip.columnLoadMore.title": "Columnas grandes se colapsan",
 	"tip.columnLoadMore.body": "Las columnas con 15+ tareas muestran solo las más recientes. Haz clic en \"Mostrar más\" abajo para ver el resto.",
 };

@@ -371,7 +371,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskDropPosition.body",
 		icon: "\u{F0140}", // nf-md-arrow_up_down
 	},
-	// Batch 15: column load more
+	// Batch 15: column load more, restart task
+	{
+		id: "restart-task-from-scratch",
+		titleKey: "tip.restartTaskFromScratch.title",
+		bodyKey: "tip.restartTaskFromScratch.body",
+		icon: "\u{F0450}", // nf-md-refresh
+	},
 	{
 		id: "column-load-more",
 		titleKey: "tip.columnLoadMore.title",

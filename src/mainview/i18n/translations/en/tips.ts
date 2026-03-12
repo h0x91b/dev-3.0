@@ -120,6 +120,8 @@ const tips = {
 	"tip.forkBranchSupport.body": "Type user:branch in the branch field (e.g. yanive:feat/new-tab) and click Fetch to pull a branch from a GitHub fork.",
 	"tip.taskDropPosition.title": "New tasks land on top",
 	"tip.taskDropPosition.body": "By default new and moved tasks appear at the top of a column. Switch to bottom in Global Settings → Task Drop Position.",
+	"tip.restartTaskFromScratch.title": "Restart a task from scratch",
+	"tip.restartTaskFromScratch.body": "Move a task to Cancelled, then back to Todo — it gets a fresh worktree and a clean agent session.",
 	"tip.columnLoadMore.title": "Large columns auto-collapse",
 	"tip.columnLoadMore.body": "Columns with 15+ tasks show only the most recent ones. Click \"Show more\" at the bottom to reveal the rest.",
 } as const;
