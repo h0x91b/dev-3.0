@@ -94,6 +94,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.prAwareness.body",
 		icon: "\u{F0408}", // nf-md-source_pull
 	},
+	{
+		id: "pr-badge-on-card",
+		titleKey: "tip.prBadgeOnCard.title",
+		bodyKey: "tip.prBadgeOnCard.body",
+		icon: "\u{F0401}", // nf-md-source_branch
+	},
 	// Batch 2: diff, images, custom columns, clone
 	{
 		id: "show-diff-button",

@@ -61,6 +61,7 @@ const kanban = {
 	"task.resetTitle": "Сбросить на авто",
 	"task.failedRename": "Не удалось переименовать: {error}",
 	"task.reopenTo": "Переоткрыть как",
+	"task.openPR": "Открыть PR #{number}",
 	"task.bellTooltip": "Требует внимания",
 	"task.siblings": "Варианты",
 	"task.siblingsCount_one": "{count} вариант-сиблинг",

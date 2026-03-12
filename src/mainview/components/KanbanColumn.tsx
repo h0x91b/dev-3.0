@@ -48,6 +48,8 @@ interface KanbanColumnProps {
 	onColumnDragEnd?: () => void;
 	// Column reorder drop target (left half = "before", right half = "after")
 	onColumnDrop?: (side: "before" | "after") => void;
+	// PR numbers for task cards
+	taskPrMap?: Map<string, { number: number; url: string }>;
 	// Feature discovery tip
 	tip?: Tip | null;
 	tipState?: TipState;
@@ -79,6 +81,7 @@ function KanbanColumn({
 	movingTaskIds,
 	onSetMoving,
 	siblingMap,
+	taskPrMap,
 	isCustomColumn,
 	customColumnId,
 	colorOverride,
@@ -371,6 +374,7 @@ function KanbanColumn({
 							isMoving={movingTaskIds.has(task.id)}
 							onSetMoving={onSetMoving}
 							siblingMap={siblingMap}
+							prInfo={taskPrMap?.get(task.id)}
 						/>
 					</div>
 				))}

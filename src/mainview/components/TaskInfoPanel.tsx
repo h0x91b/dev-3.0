@@ -963,6 +963,20 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		document.body,
 	);
 
+	const prBadge = branchStatus && branchStatus.prNumber !== null ? (
+		<button
+			onClick={(e) => {
+				e.stopPropagation();
+				handleOpenPR();
+			}}
+			className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-green-400 bg-green-500/10 hover:bg-green-500/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+			title={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })}
+		>
+			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+			PR #{branchStatus.prNumber}
+		</button>
+	) : null;
+
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-[0.6875rem] flex-shrink-0">
 			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
@@ -1428,9 +1442,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 								{task.branchName}
 							</span>
 						)}
-						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
+						{prBadge && (
 							<>
 								{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
+								{prBadge}
+							</>
+						)}
+						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
+							<>
+								{(task.branchName || prBadge) && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 								{branchStatusBadge || branchStatusLoading}
 								{refDropdownButton}
 							</>
@@ -1503,9 +1523,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 									{task.branchName}
 								</span>
 							)}
-							{(branchStatusBadge || refDropdownButton) && (
+							{prBadge && (
 								<>
 									{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
+									{prBadge}
+								</>
+							)}
+							{(branchStatusBadge || refDropdownButton) && (
+								<>
+									{(task.branchName || prBadge) && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 									{branchStatusBadge}
 									{refDropdownButton}
 								</>
@@ -1547,6 +1573,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 								<>
 									<span className="text-fg-3">{t("infoPanel.branch")}</span>
 									<span className="text-fg-2 font-mono">{task.branchName}</span>
+								</>
+							)}
+
+							{branchStatus && branchStatus.prNumber !== null && (
+								<>
+									<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
+									<button
+										onClick={handleOpenPR}
+										className="text-green-400 font-mono font-semibold hover:underline text-left"
+									>
+										PR #{branchStatus.prNumber}
+									</button>
 								</>
 							)}
 

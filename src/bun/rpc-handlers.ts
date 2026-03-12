@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -2824,6 +2824,37 @@ export const handlers = {
 
 	async resetTipState(): Promise<TipState> {
 		return data.resetTipState();
+	},
+
+	async getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
+		log.info("→ getProjectPRs", params);
+		const project = await data.getProject(params.projectId);
+
+		try {
+			const result = await git.run(
+				["gh", "pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "100"],
+				project.path,
+			);
+			if (result.ok && result.stdout) {
+				const prs = JSON.parse(result.stdout);
+				if (Array.isArray(prs)) {
+					const infos: PRInfo[] = prs
+						.filter((pr: { number?: number; headRefName?: string; url?: string }) =>
+							typeof pr.number === "number" && typeof pr.headRefName === "string" && typeof pr.url === "string",
+						)
+						.map((pr: { number: number; headRefName: string; url: string }) => ({
+							number: pr.number,
+							url: pr.url,
+							headRefName: pr.headRefName,
+						}));
+					log.info("← getProjectPRs", { count: infos.length });
+					return infos;
+				}
+			}
+		} catch (err) {
+			log.warn("getProjectPRs failed (non-fatal)", { error: String(err) });
+		}
+		return [];
 	},
 
 };

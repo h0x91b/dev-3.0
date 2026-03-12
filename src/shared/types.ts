@@ -387,6 +387,12 @@ export interface BranchStatus {
 	prNumber: number | null; // open PR number for this branch, null if none
 }
 
+export interface PRInfo {
+	number: number;
+	url: string;
+	headRefName: string;
+}
+
 // ---- Listening ports ----
 
 export interface PortInfo {
@@ -760,6 +766,10 @@ export type AppRPCSchema = {
 			resetTipState: {
 				params: void;
 				response: TipState;
+			};
+			getProjectPRs: {
+				params: { projectId: string };
+				response: PRInfo[];
 			};
 		};
 		messages: {

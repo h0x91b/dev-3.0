@@ -33,9 +33,10 @@ interface TaskCardProps {
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
+	prInfo?: { number: number; url: string };
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -553,6 +554,21 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{t(statusKey(task.status))}
 					</span>
 				</button>
+
+				{/* PR badge */}
+				{prInfo && (
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							window.open(prInfo.url, "_blank");
+						}}
+						className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-green-400 bg-green-500/10 hover:bg-green-500/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+						title={t("task.openPR", { number: String(prInfo.number) })}
+					>
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+						#{prInfo.number}
+					</button>
+				)}
 
 				{/* Sibling variant dots */}
 				{hasSiblings && (
