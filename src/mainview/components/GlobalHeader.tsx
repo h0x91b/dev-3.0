@@ -4,8 +4,8 @@ import { getTaskTitle, ACTIVE_STATUSES } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { api } from "../rpc";
-import { trackEvent } from "../analytics";
 import TmuxSessionManager from "./TmuxSessionManager";
+import InlineRename from "./InlineRename";
 
 interface GlobalHeaderProps {
 	route: Route;
@@ -21,8 +21,7 @@ interface BreadcrumbSegment {
 	badge?: string;
 	onClick?: () => void;
 	isProjectDropdown?: boolean;
-	taskId?: string;
-	projectId?: string;
+	task?: Task;
 }
 
 /** Cache TTL for project task counts (30 seconds) */
@@ -151,7 +150,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 		const task = tasks.find((t) => t.id === route.activeTaskId);
 		if (task) {
 			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
-			segments.push({ badge, label: getTaskTitle(task), taskId: task.id, projectId: task.projectId });
+			segments.push({ badge, label: getTaskTitle(task), task });
 		}
 	}
 
@@ -160,7 +159,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 		const task = tasks.find((t) => t.id === route.taskId);
 		if (task) {
 			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
-			segments.push({ badge, label: getTaskTitle(task), taskId: task.id, projectId: task.projectId });
+			segments.push({ badge, label: getTaskTitle(task), task });
 		} else {
 			segments.push({ label: t("header.task") });
 		}
@@ -173,45 +172,6 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	} else if (route.screen === "gauge-demo") {
 		segments.push({ label: t("gaugeDemo.title") });
 	}
-
-	// ---- Inline rename in breadcrumb ----
-	const [renamingTaskId, setRenamingTaskId] = useState<string | null>(null);
-	const [renameValue, setRenameValue] = useState("");
-	const [renameSaving, setRenameSaving] = useState(false);
-	const renameInputRef = useRef<HTMLInputElement>(null);
-
-	function handleStartBreadcrumbRename(seg: BreadcrumbSegment) {
-		if (!seg.taskId) return;
-		setRenameValue(seg.label);
-		setRenamingTaskId(seg.taskId);
-		setTimeout(() => renameInputRef.current?.focus(), 0);
-	}
-
-	async function handleBreadcrumbRenameSave(seg: BreadcrumbSegment) {
-		const trimmed = renameValue.trim();
-		if (!trimmed || trimmed === seg.label || !seg.taskId || !seg.projectId) {
-			setRenamingTaskId(null);
-			return;
-		}
-		setRenameSaving(true);
-		try {
-			await api.request.renameTask({
-				taskId: seg.taskId,
-				projectId: seg.projectId,
-				customTitle: trimmed,
-			});
-			trackEvent("task_renamed", { project_id: seg.projectId });
-			setRenamingTaskId(null);
-		} catch (err) {
-			alert(t("task.failedRename", { error: String(err) }));
-		}
-		setRenameSaving(false);
-	}
-
-	// Reset rename state when route changes
-	useEffect(() => {
-		setRenamingTaskId(null);
-	}, [route]);
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;
 	const availableProjects = projects.filter((p) => !p.deleted);
@@ -319,43 +279,20 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 							>
 								{seg.label}
 							</button>
-						) : seg.taskId && renamingTaskId === seg.taskId ? (
-							<span className="flex items-center gap-1.5 min-w-0">
-								{seg.badge && (
-									<span className="font-mono text-[0.6875rem] text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
-								)}
-								<input
-									ref={renameInputRef}
-									type="text"
-									value={renameValue}
-									onChange={(e) => setRenameValue(e.target.value)}
-									onKeyDown={(e) => {
-										if (e.key === "Enter") handleBreadcrumbRenameSave(seg);
-										if (e.key === "Escape") setRenamingTaskId(null);
-									}}
-									onBlur={() => {
-										if (!renameSaving) handleBreadcrumbRenameSave(seg);
-									}}
-									disabled={renameSaving}
-									className="bg-base border border-edge-active rounded px-1.5 py-0.5 text-sm text-fg font-semibold focus:outline-none focus:border-accent min-w-[10rem]"
-								/>
-							</span>
 						) : (
-							<span className="flex items-center gap-1.5 min-w-0 overflow-hidden group/title">
+							<span className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
 								{seg.badge && (
 									<span className="font-mono text-[0.6875rem] text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
 								)}
-								<span className="text-fg font-semibold truncate">{seg.label}</span>
-								{seg.taskId && (
-									<button
-										onClick={() => handleStartBreadcrumbRename(seg)}
-										className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted opacity-0 group-hover/title:opacity-100"
-										title={t("task.renameTitle")}
-									>
-										<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-										</svg>
-									</button>
+								{seg.task ? (
+									<InlineRename
+										taskId={seg.task.id}
+										projectId={seg.task.projectId}
+										currentTitle={seg.label}
+										hasCustomTitle={!!seg.task.customTitle}
+									/>
+								) : (
+									<span className="text-fg font-semibold truncate">{seg.label}</span>
 								)}
 							</span>
 						)}

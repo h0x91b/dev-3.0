@@ -1444,7 +1444,6 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByDisplayValue("My task")).toBeInTheDocument();
 
 			await user.keyboard("{Escape}");
-			// Input should be gone, title text is back
 			expect(screen.queryByDisplayValue("My task")).not.toBeInTheDocument();
 			expect(screen.getByText("My task")).toBeInTheDocument();
 		});
