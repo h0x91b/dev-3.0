@@ -182,6 +182,53 @@ describe("mergeWithDefaults", () => {
 		}
 	});
 
+	it("fills missing fields from defaults for stored default configs", () => {
+		// Stored Codex agent with a bare "Default" config (no model, no additionalArgs)
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [{ id: "codex-default", name: "Default" }],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+
+		// Default model should be filled in
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+		expect(cfg.model).toBe(defCfg.model);
+		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
+
+		// User's explicit name should still win
+		expect(cfg.name).toBe("Default");
+	});
+
+	it("user overrides still win over defaults in merged configs", () => {
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					{ id: "codex-default", name: "My Codex", model: "o3", additionalArgs: ["--search"] },
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+
+		// User's explicit values should win
+		expect(cfg.name).toBe("My Codex");
+		expect(cfg.model).toBe("o3");
+		expect(cfg.additionalArgs).toEqual(["--search"]);
+	});
+
 	it("preserves user-created (non-default) agents after defaults", () => {
 		const userAgent = makeAgent({ id: "user-aider", name: "Aider", baseCommand: "aider" });
 		const stored: CodingAgent[] = [userAgent];

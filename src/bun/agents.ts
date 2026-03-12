@@ -22,13 +22,26 @@ export function mergeWithDefaults(stored: CodingAgent[]): CodingAgent[] {
 	for (const def of DEFAULT_AGENTS) {
 		const existing = byId.get(def.id);
 		if (existing) {
-			// Stored version wins, but merge in any new default configurations
+			// Build a map of default configs for field-level merging
+			const defConfigById = new Map(def.configurations.map((c) => [c.id, c]));
+
+			// Merge existing configs: use default as base, user overrides on top.
+			// This ensures updated defaults (new args, model changes) propagate
+			// to users who haven't explicitly customized those fields.
+			const mergedConfigs = existing.configurations.map((storedCfg) => {
+				const defCfg = defConfigById.get(storedCfg.id);
+				if (!defCfg) return storedCfg; // user-created config, keep as-is
+				return { ...defCfg, ...stripUndefined(storedCfg) };
+			});
+
+			// Append any brand-new default configurations not yet in stored
 			const existingConfigIds = new Set(existing.configurations.map((c) => c.id));
 			const newConfigs = def.configurations.filter((c) => !existingConfigIds.has(c.id));
+
 			const merged = {
 				...existing,
 				isDefault: true,
-				configurations: [...existing.configurations, ...newConfigs],
+				configurations: [...mergedConfigs, ...newConfigs],
 			};
 			result.push(merged);
 			byId.delete(def.id);
@@ -42,6 +55,17 @@ export function mergeWithDefaults(stored: CodingAgent[]): CodingAgent[] {
 		result.push(agent);
 	}
 
+	return result;
+}
+
+/** Remove keys with undefined values so they don't shadow defaults in spread. */
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+	const result: any = {};
+	for (const [key, value] of Object.entries(obj)) {
+		if (value !== undefined) {
+			result[key] = value;
+		}
+	}
 	return result;
 }
 

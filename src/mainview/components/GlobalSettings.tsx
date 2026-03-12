@@ -1073,7 +1073,7 @@ function ConfigEditor({
 							onChange={(e) =>
 								onChange({ model: e.target.value || undefined })
 							}
-							placeholder="opus, sonnet, etc."
+							placeholder={agentBaseCommand === "codex" ? "gpt-5.4, o3, etc." : agentBaseCommand === "gemini" ? "gemini-2.5-pro, etc." : "opus, sonnet, etc."}
 							autoCapitalize="off"
 							autoCorrect="off"
 							spellCheck={false}
