@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ImageLightbox } from "../ImageLightbox";
+import { ImageLightbox, cacheSet, cacheGet, dataUrlCache, DATA_URL_CACHE_MAX } from "../ImageLightbox";
 import { I18nProvider } from "../../i18n";
 
 vi.mock("../../rpc", () => ({
@@ -68,5 +68,53 @@ describe("ImageLightbox keyboard shortcuts", () => {
 		await userEvent.keyboard("{ArrowRight}");
 		await userEvent.keyboard("{ArrowRight}");
 		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+	});
+});
+
+describe("ImageLightbox LRU cache", () => {
+	beforeEach(() => {
+		dataUrlCache.clear();
+	});
+
+	it("stores and retrieves values", () => {
+		cacheSet("a", "data-a");
+		expect(cacheGet("a")).toBe("data-a");
+	});
+
+	it("returns undefined for missing keys", () => {
+		expect(cacheGet("missing")).toBeUndefined();
+	});
+
+	it("evicts oldest entries when exceeding max size", () => {
+		for (let i = 0; i < DATA_URL_CACHE_MAX + 5; i++) {
+			cacheSet(`key-${i}`, `val-${i}`);
+		}
+		expect(dataUrlCache.size).toBe(DATA_URL_CACHE_MAX);
+		// First 5 keys should be evicted
+		for (let i = 0; i < 5; i++) {
+			expect(cacheGet(`key-${i}`)).toBeUndefined();
+		}
+		// Last entries should still exist
+		expect(cacheGet(`key-${DATA_URL_CACHE_MAX + 4}`)).toBe(`val-${DATA_URL_CACHE_MAX + 4}`);
+	});
+
+	it("accessing a key promotes it (LRU behavior)", () => {
+		for (let i = 0; i < DATA_URL_CACHE_MAX; i++) {
+			cacheSet(`key-${i}`, `val-${i}`);
+		}
+		// Access the oldest key to promote it
+		cacheGet("key-0");
+		// Add one more to trigger eviction — key-1 should be evicted, not key-0
+		cacheSet("new-key", "new-val");
+		expect(dataUrlCache.size).toBe(DATA_URL_CACHE_MAX);
+		expect(cacheGet("key-0")).toBe("val-0");
+		expect(cacheGet("key-1")).toBeUndefined();
+	});
+
+	it("updating an existing key does not increase size", () => {
+		cacheSet("a", "v1");
+		cacheSet("a", "v2");
+		expect(dataUrlCache.size).toBe(1);
+		expect(cacheGet("a")).toBe("v2");
 	});
 });

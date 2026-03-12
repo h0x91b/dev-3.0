@@ -1,0 +1,1 @@
+Fix 5 memory-related issues: add LRU eviction to ImageLightbox data URL cache (max 30 entries), add stop functions for merge/PR detection pollers to prevent interval stacking, await fire-and-forget tmux spawn calls to prevent zombie processes, and add periodic sweep to clean stale entries from mergeNotifiedTasks/prPromotedTasks Sets.

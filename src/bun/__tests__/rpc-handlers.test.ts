@@ -155,6 +155,10 @@ const {
 	getPushMessage,
 	checkOpenPRsForPromotion,
 	_resetPRPollerState,
+	startMergeDetectionPoller,
+	stopMergeDetectionPoller,
+	startPRDetectionPoller,
+	stopPRDetectionPoller,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -3197,5 +3201,81 @@ describe("getChangelogs", () => {
 
 		const result = await handlers.getChangelogs();
 		expect(result).toEqual(fakeEntries);
+	});
+});
+
+describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		stopMergeDetectionPoller();
+	});
+
+	afterEach(() => {
+		stopMergeDetectionPoller();
+		vi.useRealTimers();
+	});
+
+	it("can be stopped after starting", () => {
+		startMergeDetectionPoller();
+		// Should not throw
+		stopMergeDetectionPoller();
+	});
+
+	it("stopMergeDetectionPoller is a no-op when not started", () => {
+		// Should not throw
+		stopMergeDetectionPoller();
+	});
+
+	it("does not stack intervals when called multiple times", () => {
+		const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+		const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+
+		startMergeDetectionPoller();
+		startMergeDetectionPoller();
+		startMergeDetectionPoller();
+
+		// Each start clears the previous, so setInterval called 3 times, clearInterval called 3 times (once per start)
+		expect(setIntervalSpy).toHaveBeenCalledTimes(3);
+		// First call: stop before start (no-op since null), second: clears first, third: clears second
+		expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+
+		setIntervalSpy.mockRestore();
+		clearIntervalSpy.mockRestore();
+	});
+});
+
+describe("startPRDetectionPoller / stopPRDetectionPoller", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		stopPRDetectionPoller();
+	});
+
+	afterEach(() => {
+		stopPRDetectionPoller();
+		vi.useRealTimers();
+	});
+
+	it("can be stopped after starting", () => {
+		startPRDetectionPoller();
+		stopPRDetectionPoller();
+	});
+
+	it("stopPRDetectionPoller is a no-op when not started", () => {
+		stopPRDetectionPoller();
+	});
+
+	it("does not stack intervals when called multiple times", () => {
+		const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+		const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+
+		startPRDetectionPoller();
+		startPRDetectionPoller();
+		startPRDetectionPoller();
+
+		expect(setIntervalSpy).toHaveBeenCalledTimes(3);
+		expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+
+		setIntervalSpy.mockRestore();
+		clearIntervalSpy.mockRestore();
 	});
 });

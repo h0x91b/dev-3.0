@@ -3,7 +3,32 @@ import { createPortal } from "react-dom";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 
-const dataUrlCache = new Map<string, string>();
+export const DATA_URL_CACHE_MAX = 30;
+export const dataUrlCache = new Map<string, string>();
+
+/** Move key to end (most-recently-used) and evict oldest if over limit. */
+export function cacheSet(key: string, value: string): void {
+	// Re-insert to move to end of iteration order
+	dataUrlCache.delete(key);
+	dataUrlCache.set(key, value);
+	// Evict oldest entries (first in iteration order)
+	while (dataUrlCache.size > DATA_URL_CACHE_MAX) {
+		const oldest = dataUrlCache.keys().next().value;
+		if (oldest !== undefined) dataUrlCache.delete(oldest);
+		else break;
+	}
+}
+
+/** Touch key to mark as recently used. */
+export function cacheGet(key: string): string | undefined {
+	const value = dataUrlCache.get(key);
+	if (value !== undefined) {
+		// Re-insert to move to end
+		dataUrlCache.delete(key);
+		dataUrlCache.set(key, value);
+	}
+	return value;
+}
 
 interface ImageLightboxProps {
 	paths: string[];
@@ -24,8 +49,9 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 	}, [currentIndex]);
 
 	useEffect(() => {
-		if (dataUrlCache.has(path)) {
-			setDataUrl(dataUrlCache.get(path)!);
+		const cached = cacheGet(path);
+		if (cached !== undefined) {
+			setDataUrl(cached);
 			setLoading(false);
 			return;
 		}
@@ -36,7 +62,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 		api.request.readImageBase64({ path }).then((result) => {
 			if (cancelled) return;
 			if (result) {
-				dataUrlCache.set(path, result.dataUrl);
+				cacheSet(path, result.dataUrl);
 				setDataUrl(result.dataUrl);
 			}
 			setLoading(false);

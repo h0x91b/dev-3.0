@@ -302,7 +302,8 @@ export function isActive(status: TaskStatus): boolean {
 let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startMergeDetectionPoller(): void {
-	if (mergePollerInterval) return;
+	// Clear any existing poller to prevent stacking
+	stopMergeDetectionPoller();
 	const POLL_INTERVAL = 5 * 60_000; // 5 minutes
 
 	mergePollerInterval = setInterval(async () => {
@@ -316,10 +317,35 @@ export function startMergeDetectionPoller(): void {
 	log.info("Merge detection poller started", { intervalMs: POLL_INTERVAL });
 }
 
+export function stopMergeDetectionPoller(): void {
+	if (mergePollerInterval) {
+		clearInterval(mergePollerInterval);
+		mergePollerInterval = null;
+		log.info("Merge detection poller stopped");
+	}
+}
+
 async function checkMergedBranches(): Promise<void> {
 	if (!pushMessage) return;
 
 	const projects = await data.loadProjects();
+
+	// Sweep: remove stale entries from mergeNotifiedTasks and prPromotedTasks
+	// for task IDs that no longer exist in any project.
+	if (mergeNotifiedTasks.size > 0 || prPromotedTasks.size > 0) {
+		const allTaskIds = new Set<string>();
+		for (const p of projects) {
+			const tasks = await data.loadTasks(p);
+			for (const t of tasks) allTaskIds.add(t.id);
+		}
+		for (const id of mergeNotifiedTasks) {
+			if (!allTaskIds.has(id)) mergeNotifiedTasks.delete(id);
+		}
+		for (const id of prPromotedTasks) {
+			if (!allTaskIds.has(id)) prPromotedTasks.delete(id);
+		}
+	}
+
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
@@ -379,7 +405,8 @@ let prPollerInterval: ReturnType<typeof setInterval> | null = null;
 const prPromotedTasks = new Set<string>();
 
 export function startPRDetectionPoller(): void {
-	if (prPollerInterval) return;
+	// Clear any existing poller to prevent stacking
+	stopPRDetectionPoller();
 	const POLL_INTERVAL = 5 * 60_000; // 5 minutes
 
 	prPollerInterval = setInterval(async () => {
@@ -391,6 +418,14 @@ export function startPRDetectionPoller(): void {
 	}, POLL_INTERVAL);
 
 	log.info("PR detection poller started", { intervalMs: POLL_INTERVAL });
+}
+
+export function stopPRDetectionPoller(): void {
+	if (prPollerInterval) {
+		clearInterval(prPollerInterval);
+		prPollerInterval = null;
+		log.info("PR detection poller stopped");
+	}
 }
 
 export function _resetPRPollerState(): void {
@@ -1374,9 +1409,11 @@ export const handlers = {
 				// Track so killDevServerSession can kill this pane before the dev session
 				devViewerPaneIds.set(task.id, viewerPaneId);
 				// Label the pane so the user knows Ctrl+b is captured by the outer session
-				spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)"));
+				const selectPane = spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)"));
+				await selectPane.exited;
 				// Enable pane border titles for the task session
-				spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top"));
+				const setOption = spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top"));
+				await setOption.exited;
 			}
 
 			log.info("← runDevServer done", { devSession, viewerPaneId });
@@ -1413,7 +1450,8 @@ export const handlers = {
 			await killDevServerSession(task.id, socket);
 			// Remove pane border titles from the task session now that the viewer pane is gone
 			const taskSession = `dev3-${task.id.slice(0, 8)}`;
-			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off"));
+			const setOption = spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off"));
+			await setOption.exited;
 			log.info("← stopDevServer done");
 		} catch (err) {
 			log.error("stopDevServer FAILED", {
