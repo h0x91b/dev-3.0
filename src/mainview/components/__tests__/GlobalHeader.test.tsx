@@ -10,8 +10,13 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTasks: vi.fn(),
 			applyUpdate: vi.fn(),
+			renameTask: vi.fn(),
 		},
 	},
+}));
+
+vi.mock("../../analytics", () => ({
+	trackEvent: vi.fn(),
 }));
 
 import { api } from "../../rpc";
@@ -289,5 +294,116 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		// Close
 		await user.click(chevron);
 		expect(screen.queryByText("Project Beta")).not.toBeInTheDocument();
+	});
+});
+
+describe("GlobalHeader — breadcrumb inline rename", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	const taskForRename: Task = {
+		id: "t1",
+		seq: 42,
+		projectId: "p1",
+		title: "My Task Title",
+		description: "",
+		status: "in-progress",
+		baseBranch: "main",
+		worktreePath: "/tmp/wt",
+		branchName: "feat/test",
+		groupId: null,
+		variantIndex: null,
+		agentId: null,
+		configId: null,
+		createdAt: "2025-01-01T00:00:00Z",
+		updatedAt: "2025-01-01T00:00:00Z",
+	};
+
+	it("shows pencil icon on hover for task segment in full-page view", () => {
+		renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[taskForRename],
+		);
+		expect(screen.getByText("My Task Title")).toBeInTheDocument();
+		expect(screen.getByTitle("Edit title")).toBeInTheDocument();
+	});
+
+	it("shows pencil icon for task segment in split view", () => {
+		renderHeader(
+			{ screen: "project", projectId: "p1", activeTaskId: "t1" },
+			[project1],
+			vi.fn(),
+			[taskForRename],
+		);
+		expect(screen.getByText("My Task Title")).toBeInTheDocument();
+		expect(screen.getByTitle("Edit title")).toBeInTheDocument();
+	});
+
+	it("opens inline input on pencil click", async () => {
+		const user = userEvent.setup();
+		renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[taskForRename],
+		);
+		await user.click(screen.getByTitle("Edit title"));
+		expect(screen.getByDisplayValue("My Task Title")).toBeInTheDocument();
+	});
+
+	it("saves new title on Enter", async () => {
+		const user = userEvent.setup();
+		const updatedTask = { ...taskForRename, customTitle: "New Name" };
+		mockedApi.request.renameTask.mockResolvedValue(updatedTask);
+
+		renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[taskForRename],
+		);
+		await user.click(screen.getByTitle("Edit title"));
+		const input = screen.getByDisplayValue("My Task Title");
+		await user.clear(input);
+		await user.type(input, "New Name{Enter}");
+
+		expect(mockedApi.request.renameTask).toHaveBeenCalledWith({
+			taskId: "t1",
+			projectId: "p1",
+			customTitle: "New Name",
+		});
+	});
+
+	it("cancels rename on Escape", async () => {
+		const user = userEvent.setup();
+		renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[taskForRename],
+		);
+		await user.click(screen.getByTitle("Edit title"));
+		expect(screen.getByDisplayValue("My Task Title")).toBeInTheDocument();
+
+		await user.keyboard("{Escape}");
+		expect(screen.queryByDisplayValue("My Task Title")).not.toBeInTheDocument();
+		expect(screen.getByText("My Task Title")).toBeInTheDocument();
+	});
+
+	it("does not save when title is unchanged", async () => {
+		const user = userEvent.setup();
+		renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[taskForRename],
+		);
+		await user.click(screen.getByTitle("Edit title"));
+		await user.keyboard("{Enter}");
+		expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
 	});
 });
