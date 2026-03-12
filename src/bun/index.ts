@@ -19,6 +19,7 @@ import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
+import { existsSync } from "node:fs";
 
 const log = createLogger("main");
 
@@ -124,6 +125,26 @@ if (shellEnv.path) {
 } else {
 	log.warn("Could not resolve shell PATH, using original", { path: originalPath });
 }
+
+// Ensure well-known user binary directories are in PATH.
+// Some shells/configs don't add these, but tools like pip, pipx, and
+// Claude CLI install binaries there. Append missing dirs that exist on disk.
+{
+	const home = process.env.HOME;
+	if (home) {
+		const userBinDirs = [
+			`${home}/.local/bin`,
+			`${home}/bin`,
+		];
+		for (const dir of userBinDirs) {
+			if (!process.env.PATH?.includes(dir) && existsSync(dir)) {
+				process.env.PATH = `${process.env.PATH}:${dir}`;
+				log.info("Appended user bin dir to PATH", { dir });
+			}
+		}
+	}
+}
+
 if (shellEnv.lang) {
 	process.env.LANG = shellEnv.lang;
 	log.info("Shell LANG resolved", {
