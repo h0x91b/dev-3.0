@@ -13,6 +13,9 @@ vi.mock("../../rpc", () => ({
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
+			getRepoConfigSources: vi.fn().mockResolvedValue([]),
+			exportRepoConfig: vi.fn().mockResolvedValue(undefined),
+			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));

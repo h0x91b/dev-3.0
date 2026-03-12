@@ -2,8 +2,8 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { BranchStatus, ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
+import type { BranchStatus, ChangelogEntry, CodingAgent, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -18,6 +18,7 @@ import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
 import { setupAgentHooks } from "./agent-hooks";
 import { BUNDLED_CHANGELOG } from "./changelog-bundled";
+import * as repoConfig from "./repo-config";
 
 const log = createLogger("rpc");
 
@@ -551,16 +552,17 @@ export async function activateTask(
 	opts?: { isReopen?: boolean },
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
-	const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
-	if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
-		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: project.sparseCheckoutPaths });
-		await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+	const merged = await repoConfig.mergeRepoConfig(project);
+	const wt = await git.createWorktree(merged, task, task.existingBranch ?? undefined);
+	if (merged.sparseCheckoutEnabled && merged.sparseCheckoutPaths?.length) {
+		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: merged.sparseCheckoutPaths });
+		await git.applySparseCheckout(wt.worktreePath, merged.sparseCheckoutPaths);
 	} else {
-		log.info("activateTask: sparse checkout disabled or no paths", { enabled: project.sparseCheckoutEnabled, pathCount: project.sparseCheckoutPaths?.length ?? 0 });
+		log.info("activateTask: sparse checkout disabled or no paths", { enabled: merged.sparseCheckoutEnabled, pathCount: merged.sparseCheckoutPaths?.length ?? 0 });
 	}
-	await runCowClones(project, wt.worktreePath);
+	await runCowClones(merged, wt.worktreePath);
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-	await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+	await launchTaskPty(merged, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
 
@@ -618,7 +620,8 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 		return;
 	}
 
-	const script = project.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
+	const merged = await repoConfig.mergeRepoConfig(project);
+	const script = merged.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
 
@@ -950,7 +953,8 @@ export const handlers = {
 
 	async getProjects(): Promise<Project[]> {
 		log.info("→ getProjects");
-		const projects = await data.loadProjects();
+		const rawProjects = await data.loadProjects();
+		const projects = await Promise.all(rawProjects.map((p) => repoConfig.mergeRepoConfig(p)));
 		log.info(`← getProjects: ${projects.length} project(s)`);
 		return projects;
 	},
@@ -1085,6 +1089,42 @@ export const handlers = {
 		const paths = await detect(project.path);
 		log.info("← detectClonePaths", { count: paths.length });
 		return paths;
+	},
+
+	async exportRepoConfig(params: { projectId: string }): Promise<void> {
+		log.info("→ exportRepoConfig", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const config: Dev3RepoConfig = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (project as any)[key];
+			if (val !== undefined) {
+				(config as any)[key] = val;
+			}
+		}
+		await repoConfig.saveRepoConfig(project.path, config);
+		log.info("← exportRepoConfig done");
+	},
+
+	async saveRepoConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveRepoConfig", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const config: Dev3RepoConfig = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(config as any)[key] = val;
+			}
+		}
+		await repoConfig.saveRepoConfig(project.path, config);
+		log.info("← saveRepoConfig done");
+	},
+
+	async getRepoConfigSources(params: { projectId: string }): Promise<ConfigSourceEntry[]> {
+		log.info("→ getRepoConfigSources", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const sources = await repoConfig.getConfigSources(project.path, project);
+		log.info("← getRepoConfigSources", { count: sources.length });
+		return sources;
 	},
 
 	async getGlobalSettings(): Promise<GlobalSettings> {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
-import type { CustomColumn, Label, Project } from "../../shared/types";
+import type { ConfigSourceEntry, CustomColumn, Label, Project } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -215,11 +215,28 @@ function ProjectSettings({
 	const [sparseCheckoutEnabled, setSparseCheckoutEnabled] = useState(project?.sparseCheckoutEnabled ?? false);
 	const [sparseCheckoutPaths, setSparseCheckoutPaths] = useState<string[]>(project?.sparseCheckoutPaths ?? []);
 	const [saving, setSaving] = useState(false);
+	const [savingToRepo, setSavingToRepo] = useState(false);
+	const [exporting, setExporting] = useState(false);
+	const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+	const [configSources, setConfigSources] = useState<Record<string, string>>({});
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
 	const autoDetectRan = useRef(false);
+	const configSourcesLoaded = useRef(false);
+
+	// Load config sources on mount
+	useEffect(() => {
+		if (!configSourcesLoaded.current && project) {
+			configSourcesLoaded.current = true;
+			api.request.getRepoConfigSources({ projectId }).then((sources: ConfigSourceEntry[]) => {
+				const map: Record<string, string> = {};
+				for (const s of sources) map[s.field] = s.source;
+				setConfigSources(map);
+			}).catch(() => {});
+		}
+	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const arraysEqual = (a: string[], b: string[]) =>
 		a.length === b.length && a.every((v, i) => v === b[i]);
@@ -412,6 +429,58 @@ function ProjectSettings({
 
 	const dirty = isDirty();
 
+	async function handleSaveToRepo() {
+		setSavingToRepo(true);
+		try {
+			await api.request.saveRepoConfig({
+				projectId,
+				setupScript,
+				devScript,
+				cleanupScript,
+				defaultBaseBranch,
+				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
+				peerReviewEnabled,
+			});
+			// Refresh sources
+			const sources = await api.request.getRepoConfigSources({ projectId });
+			const map: Record<string, string> = {};
+			for (const s of sources) map[s.field] = s.source;
+			setConfigSources(map);
+		} catch (err) {
+			alert(t("projectSettings.failedSaveToRepo", { error: String(err) }));
+		}
+		setSavingToRepo(false);
+	}
+
+	async function handleExportToRepo() {
+		setExporting(true);
+		setExportFeedback(null);
+		try {
+			await api.request.exportRepoConfig({ projectId });
+			setExportFeedback(t("projectSettings.exportSuccess"));
+			// Refresh sources
+			const sources = await api.request.getRepoConfigSources({ projectId });
+			const map: Record<string, string> = {};
+			for (const s of sources) map[s.field] = s.source;
+			setConfigSources(map);
+		} catch (err) {
+			alert(t("projectSettings.failedExport", { error: String(err) }));
+		}
+		setExporting(false);
+	}
+
+	function sourceBadge(field: string) {
+		const source = configSources[field];
+		if (!source || source === "global") return null;
+		const label = source === "repo" ? t("projectSettings.sourceRepo") : t("projectSettings.sourceLocal");
+		const color = source === "repo" ? "text-accent bg-accent/10" : "text-fg-3 bg-elevated";
+		return (
+			<span className={`ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded ${color}`}>
+				{label}
+			</span>
+		);
+	}
+
 	return (
 		<div className="h-full w-full flex flex-col">
 			{dirty && (
@@ -431,7 +500,7 @@ function ProjectSettings({
 					{/* Setup Script */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("projectSettings.setupScript")}
+							{t("projectSettings.setupScript")}{sourceBadge("setupScript")}
 						</label>
 						<p className="text-fg-3 text-sm mb-3">
 							{t("projectSettings.setupScriptDesc")}
@@ -451,7 +520,7 @@ function ProjectSettings({
 					{/* Clone Paths (CoW) */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("projectSettings.clonePaths")}
+							{t("projectSettings.clonePaths")}{sourceBadge("clonePaths")}
 						</label>
 						<div className="flex items-start gap-3 mb-3">
 							<p className="text-fg-3 text-sm flex-1">
@@ -539,7 +608,7 @@ function ProjectSettings({
 					{/* Dev Script */}
 				<div>
 					<label className="block text-fg text-sm font-semibold mb-2">
-						{t("projectSettings.devScript")}
+						{t("projectSettings.devScript")}{sourceBadge("devScript")}
 					</label>
 					<p className="text-fg-3 text-sm mb-3">
 						{t("projectSettings.devScriptDesc")}
@@ -559,7 +628,7 @@ function ProjectSettings({
 				{/* Cleanup Script */}
 				<div>
 					<label className="block text-fg text-sm font-semibold mb-2">
-						{t("projectSettings.cleanupScript")}
+						{t("projectSettings.cleanupScript")}{sourceBadge("cleanupScript")}
 					</label>
 					<p className="text-fg-3 text-sm mb-3">
 						{t("projectSettings.cleanupScriptDesc")}
@@ -579,7 +648,7 @@ function ProjectSettings({
 				{/* Default Base Branch */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("projectSettings.baseBranch")}
+							{t("projectSettings.baseBranch")}{sourceBadge("defaultBaseBranch")}
 						</label>
 						<p className="text-fg-3 text-sm mb-3">
 							{t("projectSettings.baseBranchDesc")}
@@ -601,7 +670,7 @@ function ProjectSettings({
 						<div className="flex items-center justify-between">
 							<div>
 								<label className="block text-fg text-sm font-semibold mb-1">
-									{t("projectSettings.peerReview")}
+									{t("projectSettings.peerReview")}{sourceBadge("peerReviewEnabled")}
 								</label>
 								<p className="text-fg-3 text-sm">
 									{t("projectSettings.peerReviewDesc")}
@@ -692,14 +761,33 @@ function ProjectSettings({
 						</button>
 					</div>
 
-					{/* Save Button */}
-					<button
-						onClick={handleSave}
-						disabled={saving}
-						className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
-					>
-						{saving ? t("projectSettings.saving") : t("projectSettings.save")}
-					</button>
+					{/* Save Buttons */}
+					<div className="flex items-center gap-3 flex-wrap">
+						<button
+							onClick={handleSave}
+							disabled={saving}
+							className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
+						>
+							{saving ? t("projectSettings.saving") : t("projectSettings.save")}
+						</button>
+						<button
+							onClick={handleSaveToRepo}
+							disabled={savingToRepo}
+							className="px-5 py-2.5 bg-raised border border-accent/30 text-accent text-sm font-semibold rounded-xl hover:bg-accent/10 hover:border-accent/50 disabled:opacity-50 transition-all active:scale-95"
+						>
+							{savingToRepo ? t("projectSettings.savingToRepo") : t("projectSettings.saveToRepo")}
+						</button>
+						<button
+							onClick={handleExportToRepo}
+							disabled={exporting}
+							className="px-5 py-2.5 bg-raised border border-edge text-fg-2 text-sm font-medium rounded-xl hover:bg-elevated hover:border-edge-active disabled:opacity-50 transition-all active:scale-95"
+						>
+							{exporting ? t("projectSettings.exporting") : t("projectSettings.exportToRepo")}
+						</button>
+					</div>
+					{exportFeedback && (
+						<p className="text-accent text-sm">{exportFeedback}</p>
+					)}
 				</div>
 			</div>
 		</div>

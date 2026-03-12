@@ -361,6 +361,35 @@ export const LABEL_COLORS = [
 	"#6366f1", // indigo  239°
 ] as const;
 
+// ---- Repo-local config (.dev3/config.json) ----
+
+/** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
+export interface Dev3RepoConfig {
+	setupScript?: string;
+	devScript?: string;
+	cleanupScript?: string;
+	clonePaths?: string[];
+	defaultBaseBranch?: string;
+	peerReviewEnabled?: boolean;
+}
+
+/** Keys of Dev3RepoConfig — used for merge logic. */
+export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
+	"setupScript",
+	"devScript",
+	"cleanupScript",
+	"clonePaths",
+	"defaultBaseBranch",
+	"peerReviewEnabled",
+];
+
+export type ConfigSource = "repo" | "local" | "global";
+
+export interface ConfigSourceEntry {
+	field: string;
+	source: ConfigSource;
+}
+
 export interface Project {
 	id: string;
 	name: string;
@@ -577,6 +606,18 @@ export type AppRPCSchema = {
 			detectClonePaths: {
 				params: { projectId: string };
 				response: string[];
+			};
+			exportRepoConfig: {
+				params: { projectId: string };
+				response: void;
+			};
+			saveRepoConfig: {
+				params: { projectId: string } & Dev3RepoConfig;
+				response: void;
+			};
+			getRepoConfigSources: {
+				params: { projectId: string };
+				response: ConfigSourceEntry[];
 			};
 			getGlobalSettings: {
 				params: void;
