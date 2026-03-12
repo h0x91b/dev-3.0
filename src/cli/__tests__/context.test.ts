@@ -130,3 +130,254 @@ describe("detectContext with sandbox HOME mismatch", () => {
 		expect(diag).toContain(`${REAL_HOME}/.dev3.0`);
 	});
 });
+
+describe("detectFromWorktreePath — realDev3Home extraction", () => {
+	// These tests verify pure path parsing logic — no filesystem access needed.
+	// Each test simulates a different HOME + cwd combination.
+
+	const REAL_HOME = process.env.HOME || "/tmp";
+
+	afterEach(() => {
+		process.env.HOME = REAL_HOME;
+		vi.resetModules();
+	});
+
+	// ---- macOS standard ----
+
+	it("macOS: HOME matches cwd — uses HOME-based path", async () => {
+		process.env.HOME = "/Users/alice";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("my-project");
+		expect(result!.taskShortId).toBe("abcd1234");
+		expect(result!.realDev3Home).toBe("/Users/alice/.dev3.0");
+	});
+
+	it("macOS: HOME=/tmp, cwd under /Users/alice — sandbox fallback", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("my-project");
+		expect(result!.taskShortId).toBe("abcd1234");
+		expect(result!.realDev3Home).toBe("/Users/alice/.dev3.0");
+	});
+
+	it("macOS: nested cwd inside worktree — walks up to find marker", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234/worktree/src/lib/utils");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("my-project");
+		expect(result!.taskShortId).toBe("abcd1234");
+		expect(result!.realDev3Home).toBe("/Users/alice/.dev3.0");
+	});
+
+	// ---- Linux standard (/home/user) ----
+
+	it("Linux: HOME=/home/dev, cwd matches — standard detection", async () => {
+		process.env.HOME = "/home/dev";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/home/dev/.dev3.0/worktrees/Users-dev-projects-myapp/ff001122/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("Users-dev-projects-myapp");
+		expect(result!.taskShortId).toBe("ff001122");
+		expect(result!.realDev3Home).toBe("/home/dev/.dev3.0");
+	});
+
+	it("Linux: HOME=/tmp, cwd under /home/dev — sandbox fallback", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/home/dev/.dev3.0/worktrees/Users-dev-projects-myapp/ff001122/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("Users-dev-projects-myapp");
+		expect(result!.taskShortId).toBe("ff001122");
+		expect(result!.realDev3Home).toBe("/home/dev/.dev3.0");
+	});
+
+	// ---- NixOS / non-standard home ----
+
+	it("NixOS: HOME=/home/nixuser/.local/share, cwd under that path", async () => {
+		process.env.HOME = "/home/nixuser/.local/share";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/home/nixuser/.local/share/.dev3.0/worktrees/my-nix-proj/aabb0011/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/home/nixuser/.local/share/.dev3.0");
+	});
+
+	it("NixOS: HOME=/tmp, cwd under deep non-standard path — sandbox fallback", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/home/nixuser/.local/share/.dev3.0/worktrees/my-nix-proj/aabb0011/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("my-nix-proj");
+		expect(result!.realDev3Home).toBe("/home/nixuser/.local/share/.dev3.0");
+	});
+
+	// ---- Root user ----
+
+	it("root: HOME=/root — standard detection", async () => {
+		process.env.HOME = "/root";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/root/.dev3.0/worktrees/some-project/deadbeef/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/root/.dev3.0");
+	});
+
+	it("root: HOME=/tmp sandbox, cwd under /root", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/root/.dev3.0/worktrees/some-project/deadbeef/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/root/.dev3.0");
+	});
+
+	// ---- Docker / custom home ----
+
+	it("Docker: HOME=/app — custom container home", async () => {
+		process.env.HOME = "/app";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/app/.dev3.0/worktrees/container-proj/11223344/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/app/.dev3.0");
+	});
+
+	it("Docker: HOME=/tmp sandbox, cwd under /app", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/app/.dev3.0/worktrees/container-proj/11223344/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/app/.dev3.0");
+	});
+
+	// ---- WSL ----
+
+	it("WSL: HOME=/home/wsluser — standard Linux-style", async () => {
+		process.env.HOME = "/home/wsluser";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/home/wsluser/.dev3.0/worktrees/win-proj-slug/cafe0000/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/home/wsluser/.dev3.0");
+	});
+
+	it("WSL: HOME mismatch — cwd under /mnt/c/Users path", async () => {
+		process.env.HOME = "/home/wsluser";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		// User might store worktrees on the Windows drive
+		const result = detectFromWorktreePath("/mnt/c/Users/WinUser/.dev3.0/worktrees/cross-os-proj/babe1234/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("cross-os-proj");
+		expect(result!.realDev3Home).toBe("/mnt/c/Users/WinUser/.dev3.0");
+	});
+
+	// ---- Sandbox with different non-/tmp HOMEs ----
+
+	it("sandbox HOME=/var/sandbox, cwd under /Users/bob", async () => {
+		process.env.HOME = "/var/sandbox";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/Users/bob/.dev3.0/worktrees/bob-project/12345678/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/Users/bob/.dev3.0");
+	});
+
+	it("sandbox HOME=/run/user/1000, cwd under /home/carol", async () => {
+		process.env.HOME = "/run/user/1000";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath("/home/carol/.dev3.0/worktrees/carol-proj/abcdef01/worktree");
+		expect(result).not.toBeNull();
+		expect(result!.realDev3Home).toBe("/home/carol/.dev3.0");
+	});
+
+	// ---- Negative cases ----
+
+	it("returns null for paths without /.dev3.0/worktrees/ marker", async () => {
+		process.env.HOME = "/Users/alice";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		expect(detectFromWorktreePath("/Users/alice/projects/myapp")).toBeNull();
+		expect(detectFromWorktreePath("/tmp/random")).toBeNull();
+		expect(detectFromWorktreePath("/")).toBeNull();
+	});
+
+	it("returns null when path has marker but wrong structure (no worktree dir)", async () => {
+		process.env.HOME = "/Users/alice";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		// Only slug, no taskId/worktree
+		expect(detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project")).toBeNull();
+		// slug + taskId but no /worktree
+		expect(detectFromWorktreePath("/Users/alice/.dev3.0/worktrees/my-project/abcd1234")).toBeNull();
+	});
+
+	it("returns null for /.dev3.0/ without /worktrees/", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		expect(detectFromWorktreePath("/Users/alice/.dev3.0/sockets/1234.sock")).toBeNull();
+		expect(detectFromWorktreePath("/Users/alice/.dev3.0/data/my-project/tasks.json")).toBeNull();
+	});
+
+	// ---- Slugs with complex characters ----
+
+	it("handles slugs with many dashes (typical path-derived slugs)", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath(
+			"/Users/arsenyp/.dev3.0/worktrees/Users-arsenyp-Desktop-src-shared-dev-3.0/1c173543/worktree",
+		);
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("Users-arsenyp-Desktop-src-shared-dev-3.0");
+		expect(result!.taskShortId).toBe("1c173543");
+		expect(result!.realDev3Home).toBe("/Users/arsenyp/.dev3.0");
+	});
+
+	it("handles slug with dots and numbers", async () => {
+		process.env.HOME = "/tmp";
+		vi.resetModules();
+		const { detectFromWorktreePath } = await import("../context");
+
+		const result = detectFromWorktreePath(
+			"/home/user/.dev3.0/worktrees/home-user-my.project.v2/a1b2c3d4/worktree",
+		);
+		expect(result).not.toBeNull();
+		expect(result!.projectSlug).toBe("home-user-my.project.v2");
+		expect(result!.taskShortId).toBe("a1b2c3d4");
+		expect(result!.realDev3Home).toBe("/home/user/.dev3.0");
+	});
+});

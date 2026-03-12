@@ -24,7 +24,7 @@ const WORKTREE_MARKER = "/.dev3.0/worktrees/";
  * sandbox rewrites HOME=/tmp while cwd still uses the real home), falls back
  * to searching for the `/.dev3.0/worktrees/` marker anywhere in the path.
  */
-function detectFromWorktreePath(cwd: string): { projectSlug: string; taskShortId: string; realDev3Home: string } | null {
+export function detectFromWorktreePath(cwd: string): { projectSlug: string; taskShortId: string; realDev3Home: string } | null {
 	// Strategy 1: HOME-based prefix match
 	const prefix = `${WORKTREES_DIR}/`;
 	const result = matchWorktreePrefix(cwd, prefix);
