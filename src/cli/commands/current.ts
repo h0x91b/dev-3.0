@@ -1,6 +1,6 @@
 import type { Project, Task } from "../../shared/types";
 import { STATUS_LABELS } from "../../shared/types";
-import { detectContext, readProjectDirect, readTaskDirect } from "../context";
+import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError } from "../output";
 
@@ -12,9 +12,10 @@ import { printDetail, exitError } from "../output";
 export async function handleCurrent(socketPath: string | null): Promise<void> {
 	const context = detectContext();
 	if (!context) {
+		const diag = detectContextDiagnostics();
 		exitError(
 			"not inside a dev3 worktree",
-			"Run this command from inside a dev3-managed worktree directory.",
+			`Run this command from inside a dev3-managed worktree directory.\n\nDiagnostics:\n${diag}`,
 		);
 	}
 
