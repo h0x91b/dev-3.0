@@ -562,20 +562,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		setCreatingPR(false);
 	}
 
-	async function handleOpenPR() {
-		if (creatingPR) return;
-		setCreatingPR(true);
-		try {
-			await api.request.openPullRequest({
-				taskId: task.id,
-				projectId: project.id,
-			});
-		} catch (err) {
-			alert(t("infoPanel.openPRFailed", { error: String(err) }));
-		}
-		setCreatingPR(false);
-	}
-
 	async function handleShowDiff() {
 		try {
 			await api.request.showDiff({
@@ -967,7 +953,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		<button
 			onClick={(e) => {
 				e.stopPropagation();
-				handleOpenPR();
+				if (branchStatus.prUrl) {
+					window.open(branchStatus.prUrl, "_blank");
+				}
 			}}
 			className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-green-400 bg-green-500/10 hover:bg-green-500/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
 			title={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })}
@@ -1016,19 +1004,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const hasPR = branchStatus && branchStatus.prNumber !== null;
 	const needsPushBeforePR = branchStatus && branchStatus.ahead > 0 && branchStatus.unpushed !== 0;
-	const createPRDisabled = hasPR ? (!branchStatus || creatingPR || pushing) : (!branchStatus || branchStatus.ahead === 0 || creatingPR || pushing);
+	const createPRDisabled = !branchStatus || branchStatus.ahead === 0 || creatingPR || pushing;
 
 	function getPRButtonLabel(): string {
 		if (creatingPR) return t("infoPanel.creatingPR");
 		if (pushing && pushThenCreatePRRef.current) return t("infoPanel.pushingAndCreatingPR");
-		if (hasPR) return t("infoPanel.openPR");
 		if (needsPushBeforePR) return t("infoPanel.pushAndCreatePR");
 		return t("infoPanel.createPR");
 	}
 
 	function getPRTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
-		if (hasPR) return t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) });
 		if (branchStatus.ahead === 0) return t("infoPanel.createPRDisabledNoCommits");
 		if (needsPushBeforePR) return t("infoPanel.pushAndCreatePR");
 		return t("infoPanel.createPR");
@@ -1061,7 +1047,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
-	const openPRBtnClass = "text-success hover:bg-success/20 bg-success/10 border border-success/25";
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
@@ -1107,25 +1092,25 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			>
 				{pushing ? t("infoPanel.pushing") : t("infoPanel.push")}
 			</button>
-			<button
-				onClick={() => {
-					if (hasPR) {
-						handleOpenPR();
-					} else if (needsPushBeforePR) {
-						pushThenCreatePRRef.current = true;
-						handlePush();
-					} else {
-						handleCreatePR();
-					}
-				}}
-				disabled={createPRDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					createPRDisabled ? disabledBtnClass : hasPR ? openPRBtnClass : enabledBtnClass
-				}`}
-				title={createPRTooltip}
-			>
-				{prButtonLabel}
-			</button>
+			{!hasPR && (
+				<button
+					onClick={() => {
+						if (needsPushBeforePR) {
+							pushThenCreatePRRef.current = true;
+							handlePush();
+						} else {
+							handleCreatePR();
+						}
+					}}
+					disabled={createPRDisabled}
+					className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						createPRDisabled ? disabledBtnClass : enabledBtnClass
+					}`}
+					title={createPRTooltip}
+				>
+					{prButtonLabel}
+				</button>
+			)}
 			<button
 				onClick={handleMerge}
 				disabled={mergeDisabled}
@@ -1570,7 +1555,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 								<>
 									<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
 									<button
-										onClick={handleOpenPR}
+										onClick={() => branchStatus.prUrl && window.open(branchStatus.prUrl, "_blank")}
 										className="text-green-400 font-mono font-semibold hover:underline text-left"
 									>
 										PR #{branchStatus.prNumber}

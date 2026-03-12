@@ -96,6 +96,7 @@ const defaultBranchStatus: BranchStatus = {
 	diffDeletions: 0,
 	diffFileNames: [],
 	prNumber: null,
+	prUrl: null,
 };
 
 function renderPanel(
@@ -1150,63 +1151,62 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByText("Open PR")).not.toBeInTheDocument();
 		});
 
-		it("shows 'Open PR' when an open PR exists", async () => {
+		it("shows PR badge when an open PR exists and hides Create PR button", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
+				prUrl: "https://github.com/org/repo/pull/42",
 			});
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const openPRButtons = screen.getAllByText("Open PR");
-			expect(openPRButtons.length).toBeGreaterThanOrEqual(1);
+			const badges = screen.getAllByText(/PR #42/);
+			expect(badges.length).toBeGreaterThanOrEqual(1);
 			expect(screen.queryByText("Create PR")).not.toBeInTheDocument();
 		});
 
-		it("Open PR button is enabled even when ahead=0", async () => {
+		it("shows PR badge even when ahead=0", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 0,
 				unpushed: 0,
 				prNumber: 99,
+				prUrl: "https://github.com/org/repo/pull/99",
 			});
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const openPRButtons = screen.getAllByText("Open PR");
-			const enabledBtn = openPRButtons.find(b => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
+			const badges = screen.getAllByText(/PR #99/);
+			expect(badges.length).toBeGreaterThanOrEqual(1);
 		});
 
-		it("calls openPullRequest when Open PR is clicked", async () => {
+		it("opens PR URL in new tab when PR badge is clicked", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const openSpy = vi.fn();
+			window.open = openSpy;
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
+				prUrl: "https://github.com/org/repo/pull/42",
 			});
-			mockedApi.request.openPullRequest.mockResolvedValue(undefined);
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const openPRButtons = screen.getAllByText("Open PR");
-			const enabledBtn = openPRButtons.find(b => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
+			const badges = screen.getAllByText(/PR #42/);
+			const btn = badges[0].closest("button")!;
+			await user.click(btn);
 
-			expect(mockedApi.request.openPullRequest).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-			});
+			expect(openSpy).toHaveBeenCalledWith("https://github.com/org/repo/pull/42", "_blank");
 		});
 
 		it("calls createPullRequest when Create PR is clicked (no existing PR)", async () => {
@@ -1234,43 +1234,45 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("shows Open PR tooltip with PR number", async () => {
+		it("shows PR badge tooltip with PR number", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
+				prUrl: "https://github.com/org/repo/pull/42",
 			});
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const openPRButtons = screen.getAllByText("Open PR");
-			const btn = openPRButtons[0].closest("button")!;
+			const badges = screen.getAllByText(/PR #42/);
+			const btn = badges[0].closest("button")!;
 			expect(btn.title).toContain("42");
 		});
 
-		it("shows alert on openPullRequest failure", async () => {
+		it("does not open window when prUrl is null", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const openSpy = vi.fn();
+			window.open = openSpy;
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
+				prUrl: null,
 			});
-			mockedApi.request.openPullRequest.mockRejectedValue(new Error("network error"));
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const openPRButtons = screen.getAllByText("Open PR");
-			const enabledBtn = openPRButtons.find(b => !b.closest("button")!.disabled);
-			await user.click(enabledBtn!.closest("button")!);
+			const badges = screen.getAllByText(/PR #42/);
+			const btn = badges[0].closest("button")!;
+			await user.click(btn);
 
-			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+			expect(openSpy).not.toHaveBeenCalled();
 		});
 	});
 
