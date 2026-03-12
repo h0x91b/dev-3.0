@@ -462,6 +462,12 @@ export async function fetchFork(
 	return true;
 }
 
+/** Remove fetch cache for a specific project path (call on project deletion). */
+export function removeFetchCache(projectPath: string): void {
+	fetchInFlight.delete(projectPath);
+	fetchLastSuccess.delete(projectPath);
+}
+
 /** Reset fetch dedup state — for tests only. */
 export function _resetFetchState(): void {
 	fetchInFlight.clear();
@@ -622,14 +628,14 @@ export async function isContentMergedInto(
 			["bash", "-c", `{ echo "commit ${"0".repeat(40)}"; echo; git diff "${mergeBase}" HEAD; } | git patch-id --stable`],
 			worktreePath,
 		),
-		// Per-commit patch-ids from the task branch
+		// Per-commit patch-ids from the task branch (capped to prevent unbounded memory)
 		run(
-			["bash", "-c", `git log -p --no-merges "${mergeBase}..HEAD" | git patch-id --stable`],
+			["bash", "-c", `git log -p --no-merges --max-count=500 "${mergeBase}..HEAD" | git patch-id --stable`],
 			worktreePath,
 		),
-		// Per-commit patch-ids from the base branch
+		// Per-commit patch-ids from the base branch (capped to prevent unbounded memory)
 		run(
-			["bash", "-c", `git log -p --no-merges "${mergeBase}..${ref}" | git patch-id --stable`],
+			["bash", "-c", `git log -p --no-merges --max-count=500 "${mergeBase}..${ref}" | git patch-id --stable`],
 			worktreePath,
 		),
 	]);
@@ -741,6 +747,27 @@ export async function saveDiffSnapshot(
 	const dir = `${taskDir(project, task)}/diffs`;
 	mkdirSync(dir, { recursive: true });
 
+	// Pre-check: use --stat to estimate diff size before buffering the full diff.
+	// The shortstat line reports total insertions+deletions; if that exceeds our
+	// byte limit (assuming ~80 chars per line), skip the expensive full diff.
+	const statResult = await run(
+		["git", "diff", "--no-ext-diff", "--shortstat", `${ref}...HEAD`],
+		task.worktreePath!,
+	);
+	if (!statResult.ok || !statResult.stdout.trim()) {
+		log.debug("saveDiffSnapshot: no diff (shortstat empty), skipping");
+		return;
+	}
+	const lineMatch = statResult.stdout.match(/(\d+) insertion|\d+ deletion/g);
+	const estimatedLines = lineMatch
+		? lineMatch.reduce((sum, m) => sum + Number(m.match(/\d+/)?.[0] ?? 0), 0)
+		: 0;
+	const estimatedBytes = estimatedLines * 80;
+	if (estimatedBytes > MAX_DIFF_SIZE_BYTES) {
+		log.info("saveDiffSnapshot: estimated diff too large, skipping", { estimatedLines, estimatedBytes });
+		return;
+	}
+
 	// Get full diff (text only — skip binary content to avoid memory bloat)
 	const result = await run(["git", "diff", "--no-ext-diff", `${ref}...HEAD`], task.worktreePath!);
 	const diff = result.ok ? result.stdout : "";
@@ -751,7 +778,7 @@ export async function saveDiffSnapshot(
 		return;
 	}
 
-	// Skip if diff is too large
+	// Final size check (the estimate above is a heuristic — verify the actual size)
 	if (Buffer.byteLength(diff, "utf-8") > MAX_DIFF_SIZE_BYTES) {
 		log.info("saveDiffSnapshot: diff too large, skipping", { bytes: Buffer.byteLength(diff, "utf-8") });
 		return;

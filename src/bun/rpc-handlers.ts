@@ -435,6 +435,12 @@ export function _resetPRPollerState(): void {
 export async function checkOpenPRsForPromotion(): Promise<void> {
 	if (!pushMessage) return;
 
+	// Safety valve: if the Set grows unreasonably large, clear it entirely
+	if (prPromotedTasks.size > 500) {
+		log.warn("prPromotedTasks exceeded 500 entries, clearing", { size: prPromotedTasks.size });
+		prPromotedTasks.clear();
+	}
+
 	const projects = await data.loadProjects();
 	for (const project of projects) {
 		// Only check projects with peer review enabled (default: true)
@@ -982,6 +988,11 @@ export const handlers = {
 
 	async removeProject(params: { projectId: string }): Promise<void> {
 		log.info("→ removeProject", params);
+		// Clean up fetch cache before removing the project
+		try {
+			const project = await data.getProject(params.projectId);
+			git.removeFetchCache(project.path);
+		} catch { /* project may already be gone */ }
 		await data.removeProject(params.projectId);
 		log.info("← removeProject done");
 	},
@@ -1119,6 +1130,8 @@ export const handlers = {
 
 		// Clear merge notification flag so it can re-trigger if task comes back to review-by-user
 		clearMergeNotification(task.id);
+		// Allow re-promotion if the task returns to review-by-user later
+		prPromotedTasks.delete(task.id);
 
 		// todo → active: create worktree + PTY session
 		if (!isActive(oldStatus) && isActive(newStatus)) {

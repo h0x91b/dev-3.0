@@ -150,6 +150,14 @@ export function initAnalytics(appVersion: string): void {
 	setupErrorTracking();
 }
 
+/** Tear down analytics (clears heartbeat interval). */
+export function destroyAnalytics(): void {
+	if (heartbeatInterval) {
+		clearInterval(heartbeatInterval);
+		heartbeatInterval = null;
+	}
+}
+
 /** Track a virtual page view (for SPA navigation). */
 export function trackPageView(screenName: string): void {
 	currentScreen = screenName;
