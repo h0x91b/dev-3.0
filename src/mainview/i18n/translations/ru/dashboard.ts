@@ -17,6 +17,8 @@ const dashboard = {
 
 	// Activity overview
 	"activity.noActiveTasks": "Нет активных задач ни в одном проекте",
+	"activity.searchPlaceholder": "Поиск по названию, #ID или номеру PR...",
+	"activity.noSearchResults": "Ничего не найдено",
 	"activity.taskCount_one": "{count} активная",
 	"activity.taskCount_few": "{count} активных",
 	"activity.taskCount_many": "{count} активных",

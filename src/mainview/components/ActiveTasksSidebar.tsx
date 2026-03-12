@@ -1,10 +1,11 @@
-import type { Dispatch } from "react";
+import { useState, useRef, useEffect, type Dispatch } from "react";
 import type { PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import type { AppAction, Route } from "../state";
 import { useT, statusKey } from "../i18n";
+import { matchesSearchQuery } from "../utils/taskSearch";
 import LabelChip from "./LabelChip";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 
@@ -40,8 +41,25 @@ function ActiveTasksSidebar({
 	const t = useT();
 	const statusColors = useStatusColors();
 	const preview = useTerminalPreview();
+	const [searchQuery, setSearchQuery] = useState("");
+	const searchRef = useRef<HTMLInputElement>(null);
 
-	const activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+	// Ctrl/Cmd+F focuses the search input when sidebar is visible
+	useEffect(() => {
+		function handleKeyDown(e: KeyboardEvent) {
+			if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+				e.preventDefault();
+				searchRef.current?.focus();
+			}
+		}
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, []);
+
+	let activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+	if (searchQuery.trim()) {
+		activeTasks = activeTasks.filter((task) => matchesSearchQuery(task, searchQuery));
+	}
 
 	// Group by status in display order
 	const grouped = STATUS_ORDER
@@ -83,11 +101,50 @@ function ActiveTasksSidebar({
 				</button>
 			</div>
 
+			{/* Search input */}
+			<div className="px-2 py-1.5 border-b border-edge flex-shrink-0">
+				<div className="relative">
+					<svg
+						className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-3 pointer-events-none"
+						fill="none"
+						viewBox="0 0 24 24"
+						strokeWidth={2}
+						stroke="currentColor"
+					>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+					</svg>
+					<input
+						ref={searchRef}
+						type="text"
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Escape") {
+								e.stopPropagation();
+								setSearchQuery("");
+								searchRef.current?.blur();
+							}
+						}}
+						placeholder={t("sidebar.searchPlaceholder")}
+						className="w-full pl-6 pr-5 py-1 text-xs bg-base border border-edge rounded-md text-fg placeholder:text-fg-muted focus:outline-none focus:border-edge-active transition-colors"
+					/>
+					{searchQuery && (
+						<button
+							type="button"
+							onClick={() => setSearchQuery("")}
+							className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg text-xs leading-none"
+						>
+							×
+						</button>
+					)}
+				</div>
+			</div>
+
 			{/* Task list */}
 			<div className="flex-1 overflow-y-auto overflow-x-hidden">
 				{grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
-						{t("sidebar.noActiveTasks")}
+						{searchQuery.trim() ? t("sidebar.noSearchResults") : t("sidebar.noActiveTasks")}
 					</div>
 				) : (
 					grouped.map(({ status, tasks: groupTasks }, groupIdx) => (
