@@ -1193,7 +1193,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const spawnAgentButton = isTaskActive && task.worktreePath ? (
 		<button
 			onClick={() => setSpawnModalOpen(true)}
-			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
+			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
 			title={t("tmux.spawnExtraAgentDesc")}
 		>
 			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0219}"}</span>
