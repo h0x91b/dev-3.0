@@ -571,7 +571,7 @@ export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
 	if (settings.playSoundOnTaskComplete === false) return;
 
 	const filename = status === "completed" ? "task-completed.mp3" : "task-cancelled.mp3";
-	const volume = status === "completed" ? "0.4" : "0.7";
+	const volume = status === "completed" ? "0.3" : "0.7";
 	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", filename);
 	const devPath = join(import.meta.dir, "..", "assets", "sounds", filename);
 	const soundPath = existsSync(prodPath) ? prodPath : existsSync(devPath) ? devPath : null;
