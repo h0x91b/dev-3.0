@@ -137,40 +137,6 @@ async function isDevServerRunning(taskId: string, socket: string): Promise<boole
 	return exitCode === 0;
 }
 
-// TTL-guarded map: stores a value and auto-removes it after a timeout.
-// Used for pane ID tracking where hung operations could leave stale entries.
-const PANE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const paneIdTtlTimers = new Map<Map<string, string>, Map<string, ReturnType<typeof setTimeout>>>();
-
-function setWithTtl(map: Map<string, string>, key: string, value: string): void {
-	let timers = paneIdTtlTimers.get(map);
-	if (!timers) {
-		timers = new Map();
-		paneIdTtlTimers.set(map, timers);
-	}
-	// Cancel any existing TTL timer for this key
-	const existing = timers.get(key);
-	if (existing) clearTimeout(existing);
-
-	map.set(key, value);
-	timers.set(key, setTimeout(() => {
-		map.delete(key);
-		timers!.delete(key);
-	}, PANE_TTL_MS));
-}
-
-function deleteWithTtl(map: Map<string, string>, key: string): void {
-	map.delete(key);
-	const timers = paneIdTtlTimers.get(map);
-	if (timers) {
-		const timer = timers.get(key);
-		if (timer) {
-			clearTimeout(timer);
-			timers.delete(key);
-		}
-	}
-}
-
 // Track viewer pane IDs for dev server sessions (task ID → tmux pane ID).
 // Used to kill the viewer pane before the dev session so the trap EXIT in the
 // viewer pane shell cannot fire after the new session is already running (restart race).
@@ -198,7 +164,7 @@ async function killDevServerViewerPane(taskId: string, taskSession: string, devS
 	if (viewerPaneId) {
 		const killPane = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", viewerPaneId), { stdout: "pipe", stderr: "pipe" });
 		await killPane.exited;
-		deleteWithTtl(devViewerPaneIds, taskId);
+		devViewerPaneIds.delete(taskId);
 		log.info("Killed dev server viewer pane", { taskId: taskId.slice(0, 8), viewerPaneId });
 	}
 }
@@ -234,7 +200,7 @@ async function killExistingGitPane(taskId: string, tmuxSession: string, socket: 
 	if (existingPane) {
 		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
 		await kill.exited;
-		deleteWithTtl(gitOpPaneIds, taskId);
+		gitOpPaneIds.delete(taskId);
 		log.info("Killed existing git op pane (from map)", { taskId: taskId.slice(0, 8), paneId: existingPane });
 	} else {
 		// Fallback: find panes running git op scripts for this task
@@ -307,7 +273,7 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 				if (!paneStillExists) {
 					// Pane no longer exists — operation finished
 					cleanup();
-					deleteWithTtl(gitOpPaneIds, taskId);
+					gitOpPaneIds.delete(taskId);
 
 					let ok = false;
 					try {
@@ -545,9 +511,9 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 /** Clean up all in-memory tracking state for a task (pane IDs, merge flags). */
 function cleanupTaskState(taskId: string): void {
-	deleteWithTtl(fileBrowserPaneIds, taskId);
-	deleteWithTtl(gitOpPaneIds, taskId);
-	deleteWithTtl(devViewerPaneIds, taskId);
+	fileBrowserPaneIds.delete(taskId);
+	gitOpPaneIds.delete(taskId);
+	devViewerPaneIds.delete(taskId);
 	mergeNotifiedTasks.delete(taskId);
 	prPromotedTasks.delete(taskId);
 	branchStatusInFlight.delete(taskId);
@@ -1468,13 +1434,12 @@ export const handlers = {
 
 			if (viewerPaneId) {
 				// Track so killDevServerSession can kill this pane before the dev session
-				setWithTtl(devViewerPaneIds, task.id, viewerPaneId);
+				devViewerPaneIds.set(task.id, viewerPaneId);
 				// Label the pane so the user knows Ctrl+b is captured by the outer session
-				const selectPane = spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)"));
-				await selectPane.exited;
+				// Fire-and-forget: these are instant tmux commands, no need to block the handler
+				spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)")).exited.catch(() => {});
 				// Enable pane border titles for the task session
-				const setOption = spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top"));
-				await setOption.exited;
+				spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top")).exited.catch(() => {});
 			}
 
 			log.info("← runDevServer done", { devSession, viewerPaneId });
@@ -1511,8 +1476,7 @@ export const handlers = {
 			await killDevServerSession(task.id, socket);
 			// Remove pane border titles from the task session now that the viewer pane is gone
 			const taskSession = `dev3-${task.id.slice(0, 8)}`;
-			const setOption = spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off"));
-			await setOption.exited;
+			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited.catch(() => {});
 			log.info("← stopDevServer done");
 		} catch (err) {
 			log.error("stopDevServer FAILED", {
@@ -1551,7 +1515,7 @@ export const handlers = {
 			if (existingPane) {
 				const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
 				await kill.exited;
-				deleteWithTtl(fileBrowserPaneIds, task.id);
+				fileBrowserPaneIds.delete(task.id);
 				log.info("← openFileBrowser: toggled off (killed pane)", { taskId: task.id.slice(0, 8), paneId: existingPane });
 				return;
 			}
@@ -1593,7 +1557,7 @@ export const handlers = {
 
 			const paneId = output.trim();
 			if (paneId) {
-				setWithTtl(fileBrowserPaneIds, task.id, paneId);
+				fileBrowserPaneIds.set(task.id, paneId);
 				log.info("← openFileBrowser done", { paneId });
 			} else {
 				log.info("← openFileBrowser done (no pane id captured)");
@@ -1670,7 +1634,7 @@ export const handlers = {
 		await Bun.write(scriptPath, script);
 
 		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		monitorGitPane(paneId, task.id, params.projectId, "rebase", socket);
 
 		log.info("← rebaseTask (pane opened)", { paneId });
@@ -1736,7 +1700,7 @@ export const handlers = {
 		await Bun.write(scriptPath, script);
 
 		const paneId = await openGitOpPane(tmuxSession, project.path, scriptPath, socket);
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		monitorGitPane(paneId, task.id, params.projectId, "merge", socket);
 
 		log.info("← mergeTask (pane opened)", { paneId });
@@ -1775,7 +1739,7 @@ export const handlers = {
 		await Bun.write(scriptPath, script);
 
 		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		monitorGitPane(paneId, task.id, params.projectId, "push", socket);
 
 		log.info("← pushTask (pane opened)", { paneId });
@@ -1824,7 +1788,7 @@ export const handlers = {
 		await Bun.write(scriptPath, script);
 
 		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		monitorGitPane(paneId, task.id, params.projectId, "createPR", socket);
 
 		log.info("← createPullRequest (pane opened)", { paneId });
@@ -1863,7 +1827,7 @@ export const handlers = {
 		await Bun.write(scriptPath, script);
 
 		const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		monitorGitPane(paneId, task.id, params.projectId, "openPR", socket);
 
 		log.info("← openPullRequest (pane opened)", { paneId });
@@ -1919,7 +1883,7 @@ export const handlers = {
 		}
 
 		const paneId = output.trim() || null;
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		log.info("← showDiff (pane opened)", { paneId });
 	},
 
@@ -1967,7 +1931,7 @@ export const handlers = {
 		}
 
 		const paneId = output.trim() || null;
-		if (paneId) setWithTtl(gitOpPaneIds, task.id, paneId);
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
 		log.info("← showUncommittedDiff (pane opened)", { paneId });
 	},
 
