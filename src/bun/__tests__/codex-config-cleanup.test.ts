@@ -198,6 +198,20 @@ trust_level = "trusted"
 		expect(result).toContain('allow_read = ["/tmp"]');
 	});
 
+	it("does not touch [permissions.network] if it has no dev3 socket path", () => {
+		const config = `model = "gpt-5.4"
+
+[permissions.network]
+enabled = true
+allow_unix_sockets = ["/tmp/my-own.sock"]
+
+[projects."/Users/testuser/my-project"]
+trust_level = "trusted"
+`;
+		const result = cleanupCodexConfig(config);
+		expect(result).toBe(config);
+	});
+
 	it("does not remove commented-out [permissions.network]", () => {
 		const config = `model = "gpt-5.4"
 

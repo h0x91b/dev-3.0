@@ -153,6 +153,10 @@ function insertAfterSectionHeader(
 export function cleanupCodexConfig(content: string | null): string | null {
 	if (content == null || content.length === 0) return content;
 
+	// Only clean up if the file contains our specific dev3 socket path.
+	// If the user has their own [permissions.network] for other purposes, leave it alone.
+	if (!content.includes(".dev3.0/sockets")) return content;
+
 	// Find [permissions.network] section and remove it line-by-line.
 	// Section body = non-empty lines that don't start with '[' (a new section header).
 	const lines = content.split("\n");
