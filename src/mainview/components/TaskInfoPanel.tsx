@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, BranchStatus, PortInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
@@ -138,6 +138,56 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
+
+	// ---- Inline rename state ----
+	const [isRenaming, setIsRenaming] = useState(false);
+	const [renameValue, setRenameValue] = useState("");
+	const [renameSaving, setRenameSaving] = useState(false);
+	const renameInputRef = useRef<HTMLInputElement>(null);
+
+	function handleStartRename() {
+		setRenameValue(getTaskTitle(task));
+		setIsRenaming(true);
+		setTimeout(() => renameInputRef.current?.focus(), 0);
+	}
+
+	async function handleRenameSave() {
+		const trimmed = renameValue.trim();
+		if (!trimmed || trimmed === getTaskTitle(task)) {
+			setIsRenaming(false);
+			return;
+		}
+		setRenameSaving(true);
+		try {
+			const updated = await api.request.renameTask({
+				taskId: task.id,
+				projectId: project.id,
+				customTitle: trimmed,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_renamed", { project_id: project.id });
+			setIsRenaming(false);
+		} catch (err) {
+			alert(t("task.failedRename", { error: String(err) }));
+		}
+		setRenameSaving(false);
+	}
+
+	async function handleResetTitle() {
+		setRenameSaving(true);
+		try {
+			const updated = await api.request.renameTask({
+				taskId: task.id,
+				projectId: project.id,
+				customTitle: null,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			setIsRenaming(false);
+		} catch (err) {
+			alert(t("task.failedRename", { error: String(err) }));
+		}
+		setRenameSaving(false);
+	}
 
 	// ---- Status dropdown state ----
 	const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -1527,6 +1577,65 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					{/* Metadata grid */}
 					<div className="flex-1 overflow-auto px-4 pb-2">
 						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+							<span className="text-fg-3 pt-0.5">{t("infoPanel.title")}</span>
+							<div className="flex items-start gap-1 min-w-0">
+								{isRenaming ? (
+									<div className="flex flex-col gap-1 flex-1 min-w-0">
+										<input
+											ref={renameInputRef}
+											type="text"
+											value={renameValue}
+											onChange={(e) => setRenameValue(e.target.value)}
+											onKeyDown={(e) => {
+												if (e.key === "Enter") handleRenameSave();
+												if (e.key === "Escape") setIsRenaming(false);
+											}}
+											disabled={renameSaving}
+											className="w-full bg-base border border-edge-active rounded px-1.5 py-0.5 text-xs text-fg focus:outline-none focus:border-accent"
+										/>
+										<div className="flex items-center gap-1">
+											{task.customTitle && (
+												<button
+													onClick={handleResetTitle}
+													disabled={renameSaving}
+													className="text-[0.625rem] text-fg-3 hover:text-fg-2 transition-colors"
+												>
+													{t("task.resetTitle")}
+												</button>
+											)}
+											<div className="flex-1" />
+											<button
+												onClick={() => setIsRenaming(false)}
+												disabled={renameSaving}
+												className="text-[0.625rem] text-fg-3 hover:text-fg-2 transition-colors"
+											>
+												{t("task.cancel")}
+											</button>
+											<button
+												onClick={handleRenameSave}
+												disabled={renameSaving}
+												className="text-[0.625rem] text-accent hover:text-accent-hover transition-colors font-semibold"
+											>
+												{t("task.rename")}
+											</button>
+										</div>
+									</div>
+								) : (
+									<>
+										<span className="text-fg-2 font-semibold truncate">{getTaskTitle(task)}</span>
+										<button
+											onClick={handleStartRename}
+											className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+											title={t("task.renameTitle")}
+										>
+											<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+											</svg>
+										</button>
+									</>
+								)}
+							</div>
+
 							<span className="text-fg-3">{t("infoPanel.taskNumber")}</span>
 							<span className="text-fg-2 font-mono font-semibold">#{task.seq}</span>
 

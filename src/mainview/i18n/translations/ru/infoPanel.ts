@@ -1,5 +1,6 @@
 const infoPanel = {
 	// TaskInfoPanel
+	"infoPanel.title": "Название",
 	"infoPanel.taskNumber": "Задача #",
 	"infoPanel.status": "Статус",
 	"infoPanel.branch": "Ветка",

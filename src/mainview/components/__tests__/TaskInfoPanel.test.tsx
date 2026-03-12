@@ -24,6 +24,7 @@ vi.mock("../../rpc", () => ({
 			showConfirm: vi.fn(),
 			createPullRequest: vi.fn(),
 			openPullRequest: vi.fn(),
+			renameTask: vi.fn(),
 		},
 	},
 }));
@@ -1376,6 +1377,127 @@ describe("TaskInfoPanel", () => {
 			});
 
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+		});
+	});
+
+	describe("inline rename", () => {
+		beforeEach(() => {
+			localStorage.setItem("dev3-panel-collapsed", "false");
+		});
+
+		it("shows task title with edit button in expanded view", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ title: "My task title" }));
+			});
+			expect(screen.getByText("My task title")).toBeInTheDocument();
+			expect(screen.getByTitle("Edit title")).toBeInTheDocument();
+		});
+
+		it("shows customTitle when set", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ title: "Auto title", customTitle: "Custom name" }));
+			});
+			expect(screen.getByText("Custom name")).toBeInTheDocument();
+		});
+
+		it("opens rename input on pencil click", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ title: "My task" }));
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			const input = screen.getByDisplayValue("My task");
+			expect(input).toBeInTheDocument();
+		});
+
+		it("saves new title on Enter", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const dispatch = vi.fn();
+			const updatedTask = makeTask({ title: "My task", customTitle: "New name" });
+			mockedApi.request.renameTask.mockResolvedValue(updatedTask);
+
+			await act(async () => {
+				renderPanel(makeTask({ title: "My task" }), { dispatch });
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			const input = screen.getByDisplayValue("My task");
+			await user.clear(input);
+			await user.type(input, "New name{Enter}");
+
+			await waitFor(() => {
+				expect(mockedApi.request.renameTask).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					customTitle: "New name",
+				});
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
+			expect(mockedTrackEvent).toHaveBeenCalledWith("task_renamed", { project_id: "p1" });
+		});
+
+		it("cancels rename on Escape", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ title: "My task" }));
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.getByDisplayValue("My task")).toBeInTheDocument();
+
+			await user.keyboard("{Escape}");
+			// Input should be gone, title text is back
+			expect(screen.queryByDisplayValue("My task")).not.toBeInTheDocument();
+			expect(screen.getByText("My task")).toBeInTheDocument();
+		});
+
+		it("shows reset button when customTitle is set", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ title: "Auto title", customTitle: "Custom name" }));
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.getByText("Reset to auto")).toBeInTheDocument();
+		});
+
+		it("does not show reset button when no customTitle", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ title: "Auto title" }));
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.queryByText("Reset to auto")).not.toBeInTheDocument();
+		});
+
+		it("resets title to auto-generated", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const dispatch = vi.fn();
+			const updatedTask = makeTask({ title: "Auto title", customTitle: null });
+			mockedApi.request.renameTask.mockResolvedValue(updatedTask);
+
+			await act(async () => {
+				renderPanel(makeTask({ title: "Auto title", customTitle: "Custom name" }), { dispatch });
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			await user.click(screen.getByText("Reset to auto"));
+
+			await waitFor(() => {
+				expect(mockedApi.request.renameTask).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					customTitle: null,
+				});
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
+		});
+
+		it("does not save when title is unchanged", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ title: "My task" }));
+			});
+			await user.click(screen.getByTitle("Edit title"));
+			// Press Enter without changing value
+			await user.keyboard("{Enter}");
+			expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
 		});
 	});
 });
