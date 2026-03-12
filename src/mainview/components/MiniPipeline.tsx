@@ -15,6 +15,8 @@ export default function MiniPipeline({ status }: MiniPipelineProps) {
 	const statusColors = useStatusColors();
 	const states = getStageStates(status);
 	const isSide = isSideBranch(status);
+	const isCancelled = status === "cancelled";
+	const cancelledColor = statusColors["cancelled"];
 
 	return (
 		<div className="flex items-center gap-0.5" title={`Pipeline: ${status}`}>
@@ -30,32 +32,36 @@ export default function MiniPipeline({ status }: MiniPipelineProps) {
 							<div
 								className="h-[1.5px] w-1.5 flex-shrink-0"
 								style={{
-									background: state === "future"
-										? "var(--color-fg-muted, #555)"
-										: color,
-									opacity: state === "future" ? 0.3 : 0.6,
+									background: isCancelled
+										? cancelledColor
+										: state === "future"
+											? "var(--color-fg-muted, #555)"
+											: color,
+									opacity: isCancelled ? 0.2 : state === "future" ? 0.3 : 0.6,
 								}}
 							/>
 						)}
 						{/* Dot */}
 						<div
 							className="relative flex-shrink-0"
-							style={{ width: isCurrent ? 7 : 5, height: isCurrent ? 7 : 5 }}
+							style={{ width: isCurrent && !isCancelled ? 7 : 5, height: isCurrent && !isCancelled ? 7 : 5 }}
 						>
 							<div
 								className="absolute inset-0 rounded-full"
 								style={{
-									background: state === "future"
-										? "var(--color-fg-muted, #555)"
-										: isCurrent ? statusColors[status] : color,
-									opacity: state === "future" ? 0.25 : state === "done" ? 0.5 : 1,
-									boxShadow: isCurrent
+									background: isCancelled
+										? cancelledColor
+										: state === "future"
+											? "var(--color-fg-muted, #555)"
+											: isCurrent ? statusColors[status] : color,
+									opacity: isCancelled ? 0.25 : state === "future" ? 0.25 : state === "done" ? 0.5 : 1,
+									boxShadow: isCurrent && !isCancelled
 										? `0 0 4px ${statusColors[status]}80`
 										: undefined,
 								}}
 							/>
-							{/* Side-branch indicator on current dot */}
-							{isCurrent && isSide && (
+							{/* Side-branch indicator on current dot (not for cancelled) */}
+							{isCurrent && isSide && !isCancelled && (
 								<div
 									className="absolute -top-1 -right-1 w-2 h-2 rounded-full flex items-center justify-center text-[5px] font-bold leading-none"
 									style={{
