@@ -102,8 +102,10 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): s
 		"__EC=$?",
 		"if [ $__EC -ne 0 ]; then",
 		`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
-		"  exec bash",
+		"else",
+		`  printf '\\n\\033[2mAgent session ended (exit 0). You are in the worktree shell.\\033[0m\\n'`,
 		"fi",
+		`exec "\${SHELL:-bash}"`,
 		"",
 	].join("\n");
 }

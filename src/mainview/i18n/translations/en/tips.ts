@@ -126,6 +126,8 @@ const tips = {
 	"tip.restartTaskFromScratch.body": "Move a task to Cancelled, then back to Todo — it gets a fresh worktree and a clean agent session.",
 	"tip.columnLoadMore.title": "Large columns auto-collapse",
 	"tip.columnLoadMore.body": "Columns with 15+ tasks show only the most recent ones. Click \"Show more\" at the bottom to reveal the rest.",
+	"tip.shellAfterAgentExit.title": "Shell stays after agent exits",
+	"tip.shellAfterAgentExit.body": "When your agent exits (/exit), you stay in a live shell in the worktree. Run commands, switch agents, or type exit to finish.",
 } as const;
 
 export default tips;

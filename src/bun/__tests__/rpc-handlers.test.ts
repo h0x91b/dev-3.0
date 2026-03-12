@@ -358,15 +358,25 @@ describe("buildCmdScript", () => {
 		const result = buildCmdScript(cmd);
 		expect(result).toContain(`&& ${cmd}`);
 		expect(result).toContain("echo \"Starting:");
-		// Should NOT exec the agent command (only exec bash on failure)
+		// Should NOT exec the agent command (exec shell is at the end for post-agent shell)
 		expect(result).not.toContain(`exec ${cmd}`);
 	});
 
-	it("includes exit code handler that keeps shell alive on failure", () => {
+	it("always drops into user shell after command finishes", () => {
 		const result = buildCmdScript("claude");
 		expect(result).toContain("__EC=$?");
 		expect(result).toContain("if [ $__EC -ne 0 ]; then");
-		expect(result).toContain("exec bash");
+		expect(result).toContain('exec "${SHELL:-bash}"');
+	});
+
+	it("shows error message on non-zero exit", () => {
+		const result = buildCmdScript("claude");
+		expect(result).toContain("Process exited with code");
+	});
+
+	it("shows dim message on zero exit", () => {
+		const result = buildCmdScript("claude");
+		expect(result).toContain("Agent session ended (exit 0)");
 	});
 
 	it("ends with a newline", () => {
