@@ -41,7 +41,9 @@ Permission entries like `"~/.dev3.0" = "write"` may not work because the sandbox
 
 Codex's seatbelt sandbox blocks `/opt/homebrew/bin/zsh` when running tool calls. If the user's `$SHELL` points to homebrew zsh, tool execution fails with `sandbox-exec: execvp() of '/opt/homebrew/bin/zsh' failed: Operation not permitted`.
 
-**Attempted fix**: injecting `SHELL=/bin/bash` into the launch environment — this does NOT work because Codex's tool runner uses its own shell detection mechanism, not `$SHELL`. This remains an **open issue** — Codex agents with homebrew zsh will hit this in sandboxed mode. The workaround is for the user to configure their default shell to `/bin/bash` system-wide or use bypass presets.
+**Attempted fix**: injecting `SHELL=/bin/bash` into the launch environment — this does NOT work because Codex's tool runner uses its own shell detection mechanism, not `$SHELL`.
+
+**Working workaround**: the agent itself must set `shell="/bin/bash"` and `login=false` in its `exec_command` calls. This is communicated via the dev3 skill — both in the skill description (frontmatter, read before the body is loaded) and in the skill body. The hint is also added to `~/.agents/AGENTS.md`.
 
 ### 6. `allow_unix_sockets` uses directory-level matching on macOS
 
