@@ -130,8 +130,8 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("saves a .patch file when there are changes", async () => {
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, "diff --git a/feature.ts b/feature.ts\n+export const add = 1;\n");
-		// spawn for mkdir -p (taskDir creates it)
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
@@ -145,7 +145,7 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("skips saving when there is no diff", async () => {
-		queueResponse(0, ""); // empty diff
+		queueResponse(0, ""); // empty shortstat → no diff
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
@@ -155,9 +155,11 @@ describe("saveDiffSnapshot", () => {
 
 	it("skips saving when diff is unchanged from the last snapshot", async () => {
 		const diffContent = "diff --git a/f.ts b/f.ts\n+line\n";
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, diffContent);
 		await saveDiffSnapshot(project, task, "origin/main");
 
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, diffContent); // same diff
 		await saveDiffSnapshot(project, task, "origin/main");
 
@@ -167,12 +169,14 @@ describe("saveDiffSnapshot", () => {
 	});
 
 	it("saves a new file when diff changes", async () => {
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, "diff v1\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		// Advance time to get a different timestamp
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		vi.advanceTimersByTime(60_000);
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, "diff v2\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 		vi.useRealTimers();
@@ -191,6 +195,7 @@ describe("saveDiffSnapshot", () => {
 			writeFileSync(join(diffsDir, name), `patch-${i}`);
 		}
 
+		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, "new diff content\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
@@ -198,8 +203,21 @@ describe("saveDiffSnapshot", () => {
 		expect(files.length).toBeLessThanOrEqual(50);
 	});
 
-	it("skips saving when diff exceeds 1 MB", async () => {
-		queueResponse(0, "x".repeat(1_100_000) + "\n");
+	it("skips saving when shortstat estimates diff exceeds 1 MB", async () => {
+		// 20000 insertions × 80 bytes/line = ~1.6 MB → exceeds 1 MB limit
+		queueResponse(0, " 100 files changed, 20000 insertions(+), 5000 deletions(-)");
+		// No second spawn should happen — pre-check aborts early
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const diffsDir = join(taskDir(project, task), "diffs");
+		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		expect(files).toHaveLength(0);
+	});
+
+	it("skips saving when actual diff exceeds 1 MB despite small shortstat estimate", async () => {
+		// shortstat looks small but actual diff is huge (e.g. binary-like content)
+		queueResponse(0, " 1 file changed, 10 insertions(+)"); // shortstat
+		queueResponse(0, "x".repeat(1_100_000) + "\n"); // actual diff exceeds limit
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
