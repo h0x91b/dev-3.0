@@ -405,6 +405,10 @@ Local documentation for key dependencies lives in `vendor-docs/`:
 
 **Before writing code that touches a dependency, check `vendor-docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
 
+## Recent large-scale changes
+
+**Memory leak audit (March 2026):** PRs #294, #295, #296 touched many files across `src/bun/rpc-handlers.ts`, `src/bun/git.ts`, `src/mainview/components/`, `src/mainview/hooks/`, `src/cli/socket-client.ts`, and `src/mainview/analytics.ts`. If you encounter a regression or unexpected behavior in any of these areas, **read [`decisions/015-memory-leak-fixes-side-effects.md`](decisions/015-memory-leak-fixes-side-effects.md) first** — it documents every change and its potential side effects.
+
 ## Landing page (GitHub Pages)
 
 The `docs/` directory hosts the **public landing page** served via GitHub Pages at `https://h0x91b.github.io/dev-3.0/`. Source: `docs/index.html`. Screenshots live in `docs/screenshots/`.
