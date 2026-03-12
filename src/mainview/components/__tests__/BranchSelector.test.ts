@@ -89,4 +89,12 @@ describe("matchesBranchQuery", () => {
 	it("matches slash-containing query via substring fallback", () => {
 		expect(matchesBranchQuery("origin/feat/login", "origin/feat")).toBe(true);
 	});
+
+	it("matches fork ref with colon by normalizing to slash", () => {
+		expect(matchesBranchQuery("roiros/feat/collapsible-kanban-columns", "roiros:feat/collapsible-kanban-columns")).toBe(true);
+	});
+
+	it("matches partial fork ref with colon", () => {
+		expect(matchesBranchQuery("roiros/feat/collapsible-kanban-columns", "roiros:feat")).toBe(true);
+	});
 });

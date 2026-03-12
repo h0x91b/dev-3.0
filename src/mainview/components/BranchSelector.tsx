@@ -29,13 +29,15 @@ export function splitBranchWords(name: string): string[] {
 /** Check if any word in the branch name starts with any query token. */
 export function matchesBranchQuery(branchName: string, query: string): boolean {
 	if (!query) return true;
+	// Normalize fork ref format: "user:branch" → "user/branch" for matching
+	const normalizedQuery = query.replace(":", "/");
 	const nameLower = branchName.toLowerCase();
 	const words = splitBranchWords(branchName);
-	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+	const tokens = normalizedQuery.toLowerCase().split(/\s+/).filter(Boolean);
 	return tokens.every((token) => {
 		// Word-level prefix match (default behavior)
 		if (words.some((w) => w.startsWith(token))) return true;
-		// Substring fallback for tokens containing "/" (e.g., "origin/dev")
+		// Substring fallback for tokens containing "/" (e.g., "origin/dev", "user:branch")
 		if (token.includes("/") && nameLower.includes(token)) return true;
 		return false;
 	});
