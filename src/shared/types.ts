@@ -143,6 +143,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		baseCommand: "codex",
 		isDefault: true,
 		configurations: [
+			// --- General ---
 			{
 				id: "codex-default",
 				name: "Default (GPT-5.4 Medium)",
@@ -157,35 +158,61 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
-				id: "codex-heavy",
-				name: "Heavy (GPT-5.4 High)",
-				model: "gpt-5.4",
-				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
-			},
-			{
-				id: "codex-heavy-confirm",
-				name: "Heavy (GPT-5.4 High Confirm)",
-				model: "gpt-5.4",
-				additionalArgs: ["--search", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
-			},
-			{
 				id: "codex-plan-then-bypass",
 				name: "Plan then Bypass (GPT-5.4)",
 				model: "gpt-5.4",
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
+			// --- GPT-5.4 ---
 			{
-				id: "codex-codex-medium",
-				name: "GPT-5.3 Codex Medium",
+				id: "codex-5.4-heavy-bypass",
+				name: "GPT-5.4 Heavy Bypass",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-5.4-heavy",
+				name: "GPT-5.4 Heavy",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-5.4-medium-bypass",
+				name: "GPT-5.4 Medium Bypass",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
+			},
+			{
+				id: "codex-5.4-medium",
+				name: "GPT-5.4 Medium",
+				model: "gpt-5.4",
+				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
+			},
+			// --- GPT-5.3 Codex ---
+			{
+				id: "codex-5.3-heavy-bypass",
+				name: "GPT-5.3 Codex Heavy Bypass",
+				model: "gpt-5.3-codex",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-5.3-heavy",
+				name: "GPT-5.3 Codex Heavy",
+				model: "gpt-5.3-codex",
+				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-5.3-medium-bypass",
+				name: "GPT-5.3 Codex Medium Bypass",
 				model: "gpt-5.3-codex",
 				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
-				id: "codex-codex-high",
-				name: "GPT-5.3 Codex High",
+				id: "codex-5.3-medium",
+				name: "GPT-5.3 Codex Medium",
 				model: "gpt-5.3-codex",
-				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
 			},
 		],
 		defaultConfigId: "codex-default",
