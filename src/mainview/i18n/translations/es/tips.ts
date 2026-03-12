@@ -27,7 +27,7 @@ const tips = {
 	"tip.taskLabels.title": "Etiqueta y filtra tareas",
 	"tip.taskLabels.body": "Añade etiquetas de colores a las tarjetas y usa la barra de filtros sobre el tablero para mostrar solo las tareas que coincidan.",
 	"tip.taskSearch.title": "Busca tareas en todas partes",
-	"tip.taskSearch.body": "Usa Ctrl/Cmd+F para buscar en el tablero, panel lateral y dashboard por nombre, #ID, número de PR o descripción.",
+	"tip.taskSearch.body": "Usa Ctrl/Cmd+F para buscar en el tablero y panel lateral por nombre, #ID, número de PR o descripción.",
 	"tip.pushAndCreatePr.title": "Push y crear PR en un clic",
 	"tip.pushAndCreatePr.body": "Cuando tu rama tenga commits sin subir, haz clic en \"Push & Create PR\" para publicar y abrir un pull request de una vez.",
 	"tip.prAwareness.title": "¿Ya tienes PR? Un clic",

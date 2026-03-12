@@ -27,7 +27,7 @@ const tips = {
 	"tip.taskLabels.title": "Метки и фильтрация задач",
 	"tip.taskLabels.body": "Добавляйте цветные метки на карточки и используйте панель фильтров над доской, чтобы показывать только нужные задачи.",
 	"tip.taskSearch.title": "Поиск задач везде",
-	"tip.taskSearch.body": "Ctrl/Cmd+F для поиска на доске, в боковой панели и на дашборде — по названию, #ID, номеру PR или описанию.",
+	"tip.taskSearch.body": "Ctrl/Cmd+F для поиска на доске и в боковой панели — по названию, #ID, номеру PR или описанию.",
 	"tip.pushAndCreatePr.title": "Запушить и создать PR",
 	"tip.pushAndCreatePr.body": "Если в ветке есть незапушенные коммиты, нажмите «Push & Create PR», чтобы запушить и создать pull request одним кликом.",
 	"tip.prAwareness.title": "Есть PR? Один клик",

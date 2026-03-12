@@ -27,7 +27,7 @@ const tips = {
 	"tip.taskLabels.title": "Label and filter tasks",
 	"tip.taskLabels.body": "Add colored labels to task cards and use the filter bar above the board to show only matching tasks.",
 	"tip.taskSearch.title": "Search tasks everywhere",
-	"tip.taskSearch.body": "Use Ctrl/Cmd+F to search on the board, sidebar, and dashboard by name, #ID, PR number, or description.",
+	"tip.taskSearch.body": "Press Ctrl/Cmd+F to search on the board and sidebar by name, #ID, PR number, or description.",
 	"tip.pushAndCreatePr.title": "Push and open a PR",
 	"tip.pushAndCreatePr.body": "When your branch has unpushed commits, click \"Push & Create PR\" to push and open a pull request in one click.",
 	"tip.prAwareness.title": "Existing PR? One click away",

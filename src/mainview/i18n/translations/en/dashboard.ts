@@ -15,8 +15,6 @@ const dashboard = {
 
 	// Activity overview
 	"activity.noActiveTasks": "No active tasks across any project",
-	"activity.searchPlaceholder": "Search by task name, #ID, or PR number...",
-	"activity.noSearchResults": "No tasks match your search",
 	"activity.taskCount_one": "{count} active",
 	"activity.taskCount_other": "{count} active",
 	"activity.noActiveInProject": "no active tasks",

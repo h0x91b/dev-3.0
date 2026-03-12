@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
-import { matchesSearchQuery } from "../utils/taskSearch";
 
 interface ActivityOverviewProps {
 	projects: Project[];
@@ -36,8 +35,6 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 	const statusColors = useStatusColors();
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	const [loading, setLoading] = useState(true);
-	const [searchQuery, setSearchQuery] = useState("");
-	const searchRef = useRef<HTMLInputElement>(null);
 
 	const fetchAllTasks = useCallback(async () => {
 		try {
@@ -91,32 +88,19 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 		);
 	}
 
-	// Apply search filter to tasks by project
-	const filteredTasksByProject = new Map<string, Task[]>();
-	for (const [projectId, tasks] of tasksByProject) {
-		if (searchQuery.trim()) {
-			const filtered = tasks.filter((task) => matchesSearchQuery(task, searchQuery));
-			filteredTasksByProject.set(projectId, filtered);
-		} else {
-			filteredTasksByProject.set(projectId, tasks);
-		}
-	}
-
 	const sortedProjects = projects
 		.filter((p) => !p.deleted)
 		.sort((a, b) => {
-			const aCount = filteredTasksByProject.get(a.id)?.length ?? 0;
-			const bCount = filteredTasksByProject.get(b.id)?.length ?? 0;
+			const aCount = tasksByProject.get(a.id)?.length ?? 0;
+			const bCount = tasksByProject.get(b.id)?.length ?? 0;
 			// Projects with active tasks first, then by count descending
 			if (aCount === 0 && bCount > 0) return 1;
 			if (aCount > 0 && bCount === 0) return -1;
 			return bCount - aCount;
 		});
-	const totalActive = Array.from(filteredTasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
+	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
-	const hasAnyTasks = Array.from(tasksByProject.values()).some((tasks) => tasks.length > 0);
-
-	if (!hasAnyTasks) {
+	if (totalActive === 0) {
 		return (
 			<div className="h-full flex flex-col items-center justify-center">
 				<p className="text-fg-3 text-sm">{t("activity.noActiveTasks")}</p>
@@ -127,50 +111,8 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 	return (
 		<div className="h-full overflow-y-auto p-7">
 			<div className="max-w-3xl mx-auto space-y-4">
-				{/* Search bar */}
-				<div className="relative">
-					<svg
-						className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-3 pointer-events-none"
-						fill="none"
-						viewBox="0 0 24 24"
-						strokeWidth={2}
-						stroke="currentColor"
-					>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-					</svg>
-					<input
-						ref={searchRef}
-						type="text"
-						value={searchQuery}
-						onChange={(e) => setSearchQuery(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Escape") {
-								e.stopPropagation();
-								setSearchQuery("");
-								searchRef.current?.blur();
-							}
-						}}
-						placeholder={t("activity.searchPlaceholder")}
-						className="w-full pl-9 pr-8 py-2 text-sm bg-raised border border-edge rounded-xl text-fg placeholder:text-fg-muted focus:outline-none focus:border-edge-active transition-colors"
-					/>
-					{searchQuery && (
-						<button
-							type="button"
-							onClick={() => setSearchQuery("")}
-							className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg text-sm leading-none"
-						>
-							×
-						</button>
-					)}
-				</div>
-
-				{totalActive === 0 && searchQuery.trim() && (
-					<div className="text-center py-8">
-						<p className="text-fg-3 text-sm">{t("activity.noSearchResults")}</p>
-					</div>
-				)}
 				{sortedProjects.map((project) => {
-					const tasks = filteredTasksByProject.get(project.id) ?? [];
+					const tasks = tasksByProject.get(project.id) ?? [];
 					const hasActiveTasks = tasks.length > 0;
 
 					// Split into attention tasks (shown individually) and background tasks (summarized)
