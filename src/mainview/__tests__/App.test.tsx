@@ -12,6 +12,7 @@ vi.mock("../rpc", () => ({
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			checkHibernateReady: vi.fn().mockResolvedValue({ ready: true, busyTaskIds: [], activeTaskCount: 0, multiPaneTasks: [] }),
+			hibernateAndQuit: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 		},
 	},
@@ -112,6 +113,99 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("{Meta>}q{/Meta}");
 			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
 			expect(api.request.quitApp).toHaveBeenCalled();
+		});
+	});
+
+	describe("hibernate quit dialog", () => {
+		it("shows hibernate dialog when active sessions exist", async () => {
+			vi.mocked(api.request.checkHibernateReady).mockResolvedValue({
+				ready: true,
+				busyTaskIds: [],
+				activeTaskCount: 3,
+				multiPaneTasks: [],
+			});
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			await waitFor(() => {
+				expect(screen.getByText("How would you like to quit?")).toBeInTheDocument();
+			});
+		});
+
+		it("shows Hibernate & Quit button when active sessions exist", async () => {
+			vi.mocked(api.request.checkHibernateReady).mockResolvedValue({
+				ready: true,
+				busyTaskIds: [],
+				activeTaskCount: 2,
+				multiPaneTasks: [],
+			});
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			await waitFor(() => {
+				expect(screen.getByRole("button", { name: "Hibernate & Quit" })).toBeInTheDocument();
+			});
+		});
+
+		it("shows original dialog when no active sessions", async () => {
+			vi.mocked(api.request.checkHibernateReady).mockResolvedValue({
+				ready: true,
+				busyTaskIds: [],
+				activeTaskCount: 0,
+				multiPaneTasks: [],
+			});
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
+		});
+
+		it("Hibernate & Quit calls hibernateAndQuit when ready", async () => {
+			vi.mocked(api.request.checkHibernateReady).mockResolvedValue({
+				ready: true,
+				busyTaskIds: [],
+				activeTaskCount: 1,
+				multiPaneTasks: [],
+			});
+			vi.mocked((api.request as any).hibernateAndQuit).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			await waitFor(() => {
+				expect(screen.getByRole("button", { name: "Hibernate & Quit" })).toBeInTheDocument();
+			});
+			await userEvent.click(screen.getByRole("button", { name: "Hibernate & Quit" }));
+			await waitFor(() => {
+				expect(api.request.checkHibernateReady).toHaveBeenCalledTimes(2); // once on dialog open, once on button click
+			});
+		});
+
+		it("Quit button still works in hibernate dialog", async () => {
+			vi.mocked(api.request.checkHibernateReady).mockResolvedValue({
+				ready: true,
+				busyTaskIds: [],
+				activeTaskCount: 2,
+				multiPaneTasks: [],
+			});
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			await waitFor(() => {
+				expect(screen.getByText("How would you like to quit?")).toBeInTheDocument();
+			});
+			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
+			expect(api.request.quitApp).toHaveBeenCalled();
+		});
+
+		it("Cancel button closes the hibernate dialog", async () => {
+			vi.mocked(api.request.checkHibernateReady).mockResolvedValue({
+				ready: true,
+				busyTaskIds: [],
+				activeTaskCount: 1,
+				multiPaneTasks: [],
+			});
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			await waitFor(() => {
+				expect(screen.getByText("How would you like to quit?")).toBeInTheDocument();
+			});
+			await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+			expect(screen.queryByText("How would you like to quit?")).not.toBeInTheDocument();
 		});
 	});
 

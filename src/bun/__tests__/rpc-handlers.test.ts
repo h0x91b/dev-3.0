@@ -32,6 +32,9 @@ vi.mock("../data", () => ({
 	updateProject: vi.fn(),
 	getLastPickedFolder: vi.fn(),
 	setLastPickedFolder: vi.fn(),
+	saveHibernateState: vi.fn(),
+	loadHibernateState: vi.fn(),
+	clearHibernateState: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -67,6 +70,10 @@ vi.mock("../pty-server", () => ({
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
+	getActiveBusySessions: vi.fn(() => []),
+	destroyAllSessionsGracefully: vi.fn(),
+	killSessionMainPaneLast: vi.fn(() => Promise.resolve()),
+	countPanes: vi.fn(() => 1),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
 }));
@@ -3277,5 +3284,135 @@ describe("startPRDetectionPoller / stopPRDetectionPoller", () => {
 
 		setIntervalSpy.mockRestore();
 		clearIntervalSpy.mockRestore();
+	});
+});
+
+// ================================================================
+// handlers.checkHibernateReady
+// ================================================================
+
+describe("handlers.checkHibernateReady", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(data.loadProjects).mockResolvedValue([]);
+	});
+
+	it("returns ready with 0 active tasks when no projects exist", async () => {
+		const result = await handlers.checkHibernateReady();
+		expect(result.ready).toBe(true);
+		expect(result.activeTaskCount).toBe(0);
+		expect(result.busyTaskIds).toEqual([]);
+		expect(result.multiPaneTasks).toEqual([]);
+	});
+
+	it("counts tasks with active PTY sessions", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "t1", status: "in-progress" });
+		const task2 = makeTask({ id: "t2", status: "user-questions" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1, task2]);
+		vi.mocked(pty.hasSession).mockImplementation((id: string) => id === "t1" || id === "t2");
+
+		const result = await handlers.checkHibernateReady();
+		expect(result.activeTaskCount).toBe(2);
+		expect(result.ready).toBe(true);
+	});
+
+	it("reports busy when agents are actively running", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "t1" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.getActiveBusySessions).mockReturnValue([{ taskId: "t1" }]);
+
+		const result = await handlers.checkHibernateReady();
+		expect(result.ready).toBe(false);
+		expect(result.busyTaskIds).toEqual(["t1"]);
+	});
+
+	it("skips tasks without PTY sessions", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "t1" });
+		const task2 = makeTask({ id: "t2" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1, task2]);
+		vi.mocked(pty.hasSession).mockImplementation((id: string) => id === "t1");
+
+		const result = await handlers.checkHibernateReady();
+		expect(result.activeTaskCount).toBe(1);
+	});
+
+	it("detects multi-pane sessions", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "t1" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.countPanes).mockReturnValue(3);
+
+		const result = await handlers.checkHibernateReady();
+		expect(result.multiPaneTasks).toEqual([{ taskId: "t1", paneCount: 3 }]);
+	});
+});
+
+// ================================================================
+// handlers.hibernateAndQuit
+// ================================================================
+
+describe("handlers.hibernateAndQuit", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(data.loadProjects).mockResolvedValue([]);
+		vi.mocked(pty.getActiveBusySessions).mockReturnValue([]);
+	});
+
+	it("rejects when agents are busy (race guard)", async () => {
+		vi.mocked(pty.getActiveBusySessions).mockReturnValue([{ taskId: "t1" }]);
+
+		await expect(handlers.hibernateAndQuit()).rejects.toThrow("Cannot hibernate");
+	});
+
+	it("saves hibernate state and quits when no active sessions", async () => {
+		await handlers.hibernateAndQuit();
+
+		expect(data.saveHibernateState).toHaveBeenCalledWith([]);
+		expect(pty.destroyAllSessionsGracefully).toHaveBeenCalled();
+		expect(Utils.quit).toHaveBeenCalled();
+	});
+
+	it("saves task IDs of sessions that have active PTY", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "t1" });
+		const task2 = makeTask({ id: "t2" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1, task2]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+
+		await handlers.hibernateAndQuit();
+
+		expect(data.saveHibernateState).toHaveBeenCalledWith(["t1", "t2"]);
+	});
+
+	it("calls killSessionMainPaneLast for each session", async () => {
+		const project = makeProject();
+		const task1 = makeTask({ id: "t1" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task1]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.getSessionSocket).mockReturnValue("dev3");
+
+		await handlers.hibernateAndQuit();
+
+		expect(pty.killSessionMainPaneLast).toHaveBeenCalledWith("t1", "dev3");
+	});
+
+	it("destroys all sessions gracefully before quitting", async () => {
+		await handlers.hibernateAndQuit();
+
+		// destroyAllSessionsGracefully must be called before Utils.quit
+		const destroyOrder = vi.mocked(pty.destroyAllSessionsGracefully).mock.invocationCallOrder[0];
+		const quitOrder = vi.mocked(Utils.quit).mock.invocationCallOrder[0];
+		expect(destroyOrder).toBeLessThan(quitOrder);
 	});
 });
