@@ -10,6 +10,15 @@ const common = {
 	"quit.dontShowAgain": "Don't show again",
 	"quit.confirm": "Quit",
 	"quit.cancel": "Cancel",
+	"quit.hibernateTitle": "How would you like to quit?",
+	"quit.hibernateMessage": "You have {count} active agent sessions.",
+	"quit.hibernateButton": "Hibernate & Quit",
+	"quit.hibernateChecking": "Checking...",
+	"quit.hibernateBlocked": "Some agents are still actively running. Wait for them to finish or stop them manually.",
+	"quit.hibernateDisabled": "No active sessions to hibernate",
+	"quit.quitExplain": "Quit — sessions stay in tmux but agents won't auto-resume",
+	"quit.hibernateExplain": "Hibernate & Quit — save sessions and resume agents on next launch",
+	"quit.hibernateMultiPane": "Tasks with split panes: extra panes will be closed, main agent session will be preserved.",
 
 	// Status labels
 	"status.todo": "To Do",

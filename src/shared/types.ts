@@ -674,6 +674,19 @@ export type AppRPCSchema = {
 				params: void;
 				response: ChangelogEntry[];
 			};
+			checkHibernateReady: {
+				params: void;
+				response: {
+					ready: boolean;
+					busyTaskIds: string[];
+					activeTaskCount: number;
+					multiPaneTasks: Array<{ taskId: string; paneCount: number }>;
+				};
+			};
+			hibernateAndQuit: {
+				params: void;
+				response: void;
+			};
 			quitApp: {
 				params: void;
 				response: void;

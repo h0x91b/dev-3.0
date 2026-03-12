@@ -11,6 +11,7 @@ vi.mock("../rpc", () => ({
 			getProjects: vi.fn().mockResolvedValue([]),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
+			checkHibernateReady: vi.fn().mockResolvedValue({ ready: true, busyTaskIds: [], activeTaskCount: 0, multiPaneTasks: [] }),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 		},
 	},

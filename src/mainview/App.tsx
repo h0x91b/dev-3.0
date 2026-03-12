@@ -29,6 +29,12 @@ function App() {
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);
+	const [hibernateStatus, setHibernateStatus] = useState<"idle" | "checking" | "blocked">("idle");
+	const [hibernateInfo, setHibernateInfo] = useState<{
+		busyTaskIds: string[];
+		activeTaskCount: number;
+		multiPaneTasks: Array<{ taskId: string; paneCount: number }>;
+	} | null>(null);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -88,6 +94,12 @@ function App() {
 				if (localStorage.getItem(SKIP_QUIT_DIALOG_KEY) === "true") {
 					api.request.quitApp().catch(() => {});
 				} else {
+					setHibernateStatus("idle");
+					setHibernateInfo(null);
+					// Pre-check for active sessions when opening dialog
+					api.request.checkHibernateReady().then((info) => {
+						setHibernateInfo(info);
+					}).catch(() => {});
 					setShowQuitDialog(true);
 				}
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
@@ -418,31 +430,86 @@ function App() {
 					}}
 				>
 					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4">
-						<h2 className="text-fg text-lg font-semibold">{t("quit.dialogTitle")}</h2>
-						<p className="text-fg-2 text-sm leading-relaxed">{t("quit.dialogMessage")}</p>
-						<label className="flex items-center gap-2.5 cursor-pointer select-none">
-							<input
-								type="checkbox"
-								checked={dontShowAgain}
-								onChange={(e) => setDontShowAgain(e.target.checked)}
-								className="w-4 h-4 rounded accent-accent"
-							/>
-							<span className="text-fg-2 text-sm">{t("quit.dontShowAgain")}</span>
-						</label>
-						<div className="flex justify-end gap-2 pt-1">
-							<button
-								onClick={() => setShowQuitDialog(false)}
-								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
-							>
-								{t("quit.cancel")}
-							</button>
-							<button
-								onClick={handleConfirmQuit}
-								className="px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
-							>
-								{t("quit.confirm")}
-							</button>
-						</div>
+						{hibernateInfo && hibernateInfo.activeTaskCount > 0 ? (
+							<>
+								<h2 className="text-fg text-lg font-semibold">{t("quit.hibernateTitle")}</h2>
+								<p className="text-fg-2 text-sm leading-relaxed">
+									{t("quit.hibernateMessage", { count: String(hibernateInfo.activeTaskCount) })}
+								</p>
+								<div className="space-y-1.5">
+									<p className="text-fg-3 text-xs">{t("quit.quitExplain")}</p>
+									<p className="text-fg-3 text-xs">{t("quit.hibernateExplain")}</p>
+								</div>
+								{hibernateStatus === "blocked" && (
+									<p className="text-danger text-xs">{t("quit.hibernateBlocked")}</p>
+								)}
+								{hibernateInfo.multiPaneTasks.length > 0 && hibernateStatus !== "blocked" && (
+									<p className="text-fg-3 text-xs italic">{t("quit.hibernateMultiPane")}</p>
+								)}
+								<div className="flex justify-end gap-2 pt-1">
+									<button
+										onClick={() => setShowQuitDialog(false)}
+										className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+									>
+										{t("quit.cancel")}
+									</button>
+									<button
+										onClick={handleConfirmQuit}
+										className="px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
+									>
+										{t("quit.confirm")}
+									</button>
+									<button
+										onClick={async () => {
+											setHibernateStatus("checking");
+											try {
+												const info = await api.request.checkHibernateReady();
+												if (info.ready) {
+													await api.request.hibernateAndQuit();
+												} else {
+													setHibernateInfo(info);
+													setHibernateStatus("blocked");
+												}
+											} catch {
+												setHibernateStatus("blocked");
+											}
+										}}
+										disabled={hibernateStatus === "checking"}
+										className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent/80 transition-colors disabled:opacity-50"
+									>
+										{hibernateStatus === "checking" ? t("quit.hibernateChecking") : t("quit.hibernateButton")}
+									</button>
+								</div>
+							</>
+						) : (
+							<>
+								<h2 className="text-fg text-lg font-semibold">{t("quit.dialogTitle")}</h2>
+								<p className="text-fg-2 text-sm leading-relaxed">{t("quit.dialogMessage")}</p>
+								<label className="flex items-center gap-2.5 cursor-pointer select-none">
+									<input
+										type="checkbox"
+										checked={dontShowAgain}
+										onChange={(e) => setDontShowAgain(e.target.checked)}
+										className="w-4 h-4 rounded accent-accent"
+									/>
+									<span className="text-fg-2 text-sm">{t("quit.dontShowAgain")}</span>
+								</label>
+								<div className="flex justify-end gap-2 pt-1">
+									<button
+										onClick={() => setShowQuitDialog(false)}
+										className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+									>
+										{t("quit.cancel")}
+									</button>
+									<button
+										onClick={handleConfirmQuit}
+										className="px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
+									>
+										{t("quit.confirm")}
+									</button>
+								</div>
+							</>
+						)}
 					</div>
 				</div>
 			)}

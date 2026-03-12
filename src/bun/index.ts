@@ -542,3 +542,59 @@ startAutoCheck(
 );
 
 log.info("=== dev-3.0 ready ===");
+
+// ── Resume hibernated tasks ──
+(async () => {
+	const { loadHibernateState, clearHibernateState, loadProjects, loadTasks } = await import("./data");
+	const { launchTaskPty } = await import("./rpc-handlers");
+
+	const hibernatedIds = await loadHibernateState();
+	if (!hibernatedIds.length) return;
+	log.info("Resuming hibernated tasks", { count: hibernatedIds.length });
+
+	const projects = await loadProjects();
+	for (const taskId of hibernatedIds) {
+		try {
+			let foundTask = null;
+			let foundProject = null;
+			for (const project of projects) {
+				const tasks = await loadTasks(project);
+				const task = tasks.find((t) => t.id === taskId);
+				if (task) {
+					foundTask = task;
+					foundProject = project;
+					break;
+				}
+			}
+
+			if (!foundTask || !foundProject) {
+				log.warn("Hibernated task not found, skipping", { taskId: taskId.slice(0, 8) });
+				continue;
+			}
+
+			const { existsSync } = await import("node:fs");
+		if (!foundTask.worktreePath || !existsSync(foundTask.worktreePath)) {
+				log.warn("Hibernated task worktree missing, skipping", { taskId: taskId.slice(0, 8), worktreePath: foundTask.worktreePath });
+				continue;
+			}
+
+			// Check task has an active-ish status (not completed/cancelled)
+			const { ACTIVE_STATUSES } = await import("../shared/types");
+			const isActive = ACTIVE_STATUSES.includes(foundTask.status) || foundTask.customColumnId;
+			if (!isActive) {
+				log.warn("Hibernated task no longer active, skipping", { taskId: taskId.slice(0, 8), status: foundTask.status });
+				continue;
+			}
+
+			log.info("Resuming hibernated task", { taskId: taskId.slice(0, 8), title: foundTask.title.slice(0, 40) });
+			await launchTaskPty(foundProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, true);
+		} catch (err) {
+			log.error("Failed to resume hibernated task", { taskId: taskId.slice(0, 8), error: String(err) });
+		}
+	}
+
+	// Always clear — prevent infinite retry loops
+	await clearHibernateState();
+})().catch((err) => {
+	log.error("Hibernate resume failed", { error: String(err) });
+});
