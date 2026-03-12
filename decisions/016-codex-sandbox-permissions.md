@@ -41,7 +41,7 @@ Permission entries like `"~/.dev3.0" = "write"` may not work because the sandbox
 
 Codex's seatbelt sandbox blocks `/opt/homebrew/bin/zsh` when running tool calls. If the user's `$SHELL` points to homebrew zsh, tool execution fails with `sandbox-exec: execvp() of '/opt/homebrew/bin/zsh' failed: Operation not permitted`.
 
-**Fix**: inject `SHELL=/bin/bash` into Codex agent launch environment via `CODEX_DEFAULT_ENV` in `getDefaultEnvForAgent()`.
+**Attempted fix**: injecting `SHELL=/bin/bash` into the launch environment — this does NOT work because Codex's tool runner uses its own shell detection mechanism, not `$SHELL`. This remains an **open issue** — Codex agents with homebrew zsh will hit this in sandboxed mode. The workaround is for the user to configure their default shell to `/bin/bash` system-wide or use bypass presets.
 
 ### 6. `allow_unix_sockets` uses directory-level matching on macOS
 
@@ -96,10 +96,6 @@ Two-strategy approach:
 2. Fall back to `/.dev3.0/worktrees/` marker search in cwd (sandbox fallback)
 
 The fallback derives `realDev3Home` from the marker position and uses it for all file reads.
-
-### Environment (`src/bun/agents.ts`)
-
-`CODEX_DEFAULT_ENV = { SHELL: "/bin/bash" }` — injected for all Codex agent launches.
 
 ## Risks
 

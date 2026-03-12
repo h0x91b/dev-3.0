@@ -302,21 +302,11 @@ export const CLAUDE_DEFAULT_ENV: Record<string, string> = {
 	CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
 };
 
-/** Default env vars injected for Codex agents.
- *  SHELL=/bin/bash avoids macOS seatbelt blocking /opt/homebrew/bin/zsh
- *  inside sandboxed Codex sessions. */
-export const CODEX_DEFAULT_ENV: Record<string, string> = {
-	SHELL: "/bin/bash",
-};
-
 /** Build default env vars for an agent based on its base command. */
 export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfiguration): Record<string, string> {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	if (isClaudeCommand(baseCmd)) {
 		return { ...CLAUDE_DEFAULT_ENV };
-	}
-	if (isCodexCommand(baseCmd)) {
-		return { ...CODEX_DEFAULT_ENV };
 	}
 	return {};
 }

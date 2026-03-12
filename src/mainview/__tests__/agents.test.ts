@@ -24,7 +24,6 @@ import {
 	isClaudeCommand,
 	getDefaultEnvForAgent,
 	CLAUDE_DEFAULT_ENV,
-	CODEX_DEFAULT_ENV,
 } from "../../bun/agents";
 import type { TemplateContext } from "../../bun/agents";
 import type { CodingAgent, AgentConfiguration, Project } from "../../shared/types";
@@ -906,23 +905,11 @@ describe("getDefaultEnvForAgent", () => {
 		expect(getDefaultEnvForAgent(agent)).toEqual(CLAUDE_DEFAULT_ENV);
 	});
 
-	it("returns CODEX_DEFAULT_ENV for codex agents", () => {
+	it("returns empty env for non-claude agents", () => {
 		const agent: CodingAgent = {
 			id: "test-codex",
 			name: "Codex",
 			baseCommand: "codex",
-			configurations: [{ id: "c1", name: "Default" }],
-			defaultConfigId: "c1",
-		};
-		expect(getDefaultEnvForAgent(agent)).toEqual(CODEX_DEFAULT_ENV);
-		expect(CODEX_DEFAULT_ENV.SHELL).toBe("/bin/bash");
-	});
-
-	it("returns empty env for non-claude non-codex agents", () => {
-		const agent: CodingAgent = {
-			id: "test-custom",
-			name: "Custom Agent",
-			baseCommand: "my-agent",
 			configurations: [{ id: "c1", name: "Default" }],
 			defaultConfigId: "c1",
 		};
