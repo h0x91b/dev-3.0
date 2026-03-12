@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import type { BranchStatus, ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -806,12 +806,12 @@ export async function launchTaskPty(
 	}
 }
 
-async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }) {
+async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }): Promise<BranchStatus> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
 	if (!task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null, prUrl: null };
 	}
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -831,16 +831,16 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// compareRef lets the UI choose: origin/<baseBranch> (default) or local baseBranch
 	const ref = params.compareRef || `origin/${baseBranch}`;
 	// Detect open PR (including drafts) in parallel with other git operations (graceful degradation)
-	const prDetection: Promise<number | null> = (async () => {
+	const prDetection: Promise<{ number: number; url: string } | null> = (async () => {
 		try {
 			const ghResult = await git.run(
-				["gh", "pr", "list", "--head", branchForPush, "--state", "open", "--json", "number", "--limit", "1"],
+				["gh", "pr", "list", "--head", branchForPush, "--state", "open", "--json", "number,url", "--limit", "1"],
 				task.worktreePath!,
 			);
 			if (ghResult.ok && ghResult.stdout) {
 				const prs = JSON.parse(ghResult.stdout);
 				if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
-					return prs[0].number;
+					return { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" };
 				}
 			}
 		} catch (err) {
@@ -849,21 +849,23 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		return null;
 	})();
 
-	const [status, uncommitted, unpushed, branchDiff, prNumber] = await Promise.all([
+	const [status, uncommitted, unpushed, branchDiff, prInfo] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpushedCount(task.worktreePath, branchForPush),
 		git.getBranchDiffStats(task.worktreePath, ref),
 		prDetection,
 	]);
-	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, ref });
+	const prNumber = prInfo?.number ?? null;
+	const prUrl = prInfo?.url ?? null;
+	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
 	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
-		prNumber,
+		prNumber, prUrl,
 	};
 	log.info("← getBranchStatus", result);
 
@@ -2824,6 +2826,35 @@ export const handlers = {
 
 	async resetTipState(): Promise<TipState> {
 		return data.resetTipState();
+	},
+
+	async getProjectPRs(params: { projectId: string }) {
+		log.info("→ getProjectPRs", params);
+		const project = await data.getProject(params.projectId);
+
+		try {
+			const result = await git.run(
+				["gh", "pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "100"],
+				project.path,
+			);
+			if (result.ok && result.stdout) {
+				const prs = JSON.parse(result.stdout);
+				if (Array.isArray(prs)) {
+					const infos: PRInfo[] = [];
+					for (const pr of prs) {
+						if (typeof pr.number === "number" && typeof pr.headRefName === "string" && typeof pr.url === "string") {
+							infos.push({ number: pr.number, url: pr.url, headRefName: pr.headRefName });
+						}
+					}
+					log.info("← getProjectPRs", { count: infos.length });
+					return infos;
+				}
+			}
+		} catch (err) {
+			log.warn("getProjectPRs failed (non-fatal)", { error: String(err) });
+		}
+		const empty: PRInfo[] = [];
+		return empty;
 	},
 
 };

@@ -32,6 +32,8 @@ const tips = {
 	"tip.pushAndCreatePr.body": "Если в ветке есть незапушенные коммиты, нажмите «Push & Create PR», чтобы запушить и создать pull request одним кликом.",
 	"tip.prAwareness.title": "Есть PR? Один клик",
 	"tip.prAwareness.body": "Если у ветки есть открытый PR, кнопка станет зелёной — нажмите, чтобы перейти к PR в браузере.",
+	"tip.prBadgeOnCard.title": "Номер PR на карточке",
+	"tip.prBadgeOnCard.body": "На карточках задач отображается кликабельный бейдж PR — нажмите, чтобы перейти на GitHub.",
 	"tip.showDiffButton.title": "Просматривайте diff прямо в задаче",
 	"tip.showDiffButton.body": "Нажмите кнопку «Show Diff» в панели задачи — откроется интерактивный git diff в терминале.",
 	"tip.imagePasteAttach.title": "Вставляйте картинки в заметки",

@@ -194,7 +194,7 @@ log.info("Loading URL", { url });
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	maxRequestTime: 120_000,
 	handlers: {
-		requests: handlers,
+		requests: handlers as any,
 		messages: {},
 	},
 });

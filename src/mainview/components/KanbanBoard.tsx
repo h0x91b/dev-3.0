@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
-import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
@@ -57,6 +57,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	const draggedColumnIdRef = useRef<string | null>(null);
 	const [tipState, setTipState] = useState<TipState | null>(null);
 	const currentTip = useMemo(() => tipState ? selectTip(tipState) : null, [tipState]);
+
+	// PR numbers for task cards: taskId → { number, url }
+	const [taskPrMap, setTaskPrMap] = useState<Map<string, { number: number; url: string }>>(new Map());
 
 	const reloadTipState = useCallback(() => {
 		api.request.getTipState().then(setTipState).catch(() => {});
@@ -128,6 +131,42 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
 	}, []);
+
+	// Fetch open PRs for the project and map branch names to task IDs
+	const fetchPRs = useCallback(() => {
+		api.request.getProjectPRs({ projectId: project.id }).then((prs: PRInfo[]) => {
+			const branchToPR = new Map<string, { number: number; url: string }>();
+			for (const pr of prs) {
+				branchToPR.set(pr.headRefName, { number: pr.number, url: pr.url });
+			}
+			const map = new Map<string, { number: number; url: string }>();
+			for (const task of tasks) {
+				if (task.branchName) {
+					const pr = branchToPR.get(task.branchName);
+					if (pr) map.set(task.id, pr);
+				}
+			}
+			setTaskPrMap(map);
+		}).catch(() => {});
+	}, [project.id, tasks]);
+
+	useEffect(() => {
+		fetchPRs();
+		const interval = setInterval(fetchPRs, 60_000);
+		return () => clearInterval(interval);
+	}, [fetchPRs]);
+
+	// Also refresh PRs when a git operation completes (e.g. PR created)
+	useEffect(() => {
+		function handleGitOp(e: Event) {
+			const detail = (e as CustomEvent).detail;
+			if (detail?.operation === "createPR" && detail?.ok) {
+				setTimeout(fetchPRs, 2000);
+			}
+		}
+		window.addEventListener("rpc:gitOpCompleted", handleGitOp);
+		return () => window.removeEventListener("rpc:gitOpCompleted", handleGitOp);
+	}, [fetchPRs]);
 
 	// Global dragend listener to clear drag state
 	useEffect(() => {
@@ -471,6 +510,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 						movingTaskIds,
 						siblingMap,
 						onSetMoving: handleSetMoving,
+						taskPrMap,
 					};
 					if (slot.type === "builtin") {
 						return (

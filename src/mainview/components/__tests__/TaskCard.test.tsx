@@ -135,6 +135,7 @@ function renderCard(
 		isActiveInSplit?: boolean;
 		isMoving?: boolean;
 		projectOverride?: Project;
+		prInfo?: { number: number; url: string };
 	},
 ) {
 	return render(
@@ -151,6 +152,7 @@ function renderCard(
 				bellCount={opts?.bellCount}
 				isActiveInSplit={opts?.isActiveInSplit}
 				isMoving={opts?.isMoving}
+				prInfo={opts?.prInfo}
 			/>
 		</I18nProvider>,
 	);
@@ -1103,6 +1105,39 @@ describe("TaskCard", () => {
 				expect(screen.getByText("Blocked")).toBeInTheDocument();
 			});
 			expect(screen.queryByText("On Hold")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("PR badge", () => {
+		it("shows PR badge when prInfo is provided", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
+				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
+			});
+			expect(screen.getByText("#42")).toBeInTheDocument();
+		});
+
+		it("does not show PR badge when prInfo is undefined", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }));
+			expect(screen.queryByText(/#\d+.*PR/)).not.toBeInTheDocument();
+		});
+
+		it("opens PR URL in new tab on click", async () => {
+			const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+			const user = userEvent.setup();
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
+				prInfo: { number: 99, url: "https://github.com/test/repo/pull/99" },
+			});
+			await user.click(screen.getByText("#99"));
+			expect(openSpy).toHaveBeenCalledWith("https://github.com/test/repo/pull/99", "_blank");
+			openSpy.mockRestore();
+		});
+
+		it("has correct tooltip with PR number", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
+				prInfo: { number: 123, url: "https://github.com/test/repo/pull/123" },
+			});
+			const badge = screen.getByText("#123").closest("button");
+			expect(badge).toHaveAttribute("title", "Open PR #123");
 		});
 	});
 });

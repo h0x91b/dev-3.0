@@ -36,6 +36,7 @@ const infoPanel = {
 	"infoPanel.createPRFailed": "Не удалось создать PR: {error}",
 	"infoPanel.createPRDisabledNoCommits": "Нет коммитов для создания PR",
 	"infoPanel.createPRDisabledNotPushed": "Сначала сделайте Push",
+	"infoPanel.pullRequest": "Pull Request",
 	"infoPanel.pushAndCreatePR": "Push & Create PR",
 	"infoPanel.pushingAndCreatingPR": "Пушим...",
 	"infoPanel.showDiff": "Show Diff",
