@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createLogger } from "./logger";
+import { cleanupCodexConfigFile } from "./codex-config";
 
 const log = createLogger("agent-skills");
 
@@ -291,4 +292,5 @@ export function installAgentSkills(): void {
 
 	installAgentsMd();
 	ensureClaudePermission();
+	cleanupCodexConfigFile(home);
 }

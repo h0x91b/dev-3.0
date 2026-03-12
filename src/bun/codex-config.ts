@@ -145,35 +145,85 @@ function insertAfterSectionHeader(
 }
 
 /**
- * Read, patch, and write the Codex config.toml.
+ * Remove the [permissions.network] section that we previously injected.
+ * Codex 0.114+ requires `default_permissions` when `[permissions]` is present,
+ * and our injected section breaks startup. We now use `--sandbox never` instead.
+ *
+ * Returns the cleaned content, or null if input was null (file doesn't exist).
+ */
+export function cleanupCodexConfig(content: string | null): string | null {
+	if (content == null || content.length === 0) return content;
+
+	// Find [permissions.network] section and remove it line-by-line.
+	// Section body = non-empty lines that don't start with '[' (a new section header).
+	const lines = content.split("\n");
+	const out: string[] = [];
+	let inSection = false;
+	let trailingBlanks = 0;
+
+	for (const line of lines) {
+		if (!inSection) {
+			// Detect uncommented section header
+			if (line.trim() === "[permissions.network]") {
+				inSection = true;
+				// Drop any trailing blank lines we accumulated before this header
+				while (trailingBlanks > 0) {
+					out.pop();
+					trailingBlanks--;
+				}
+				continue;
+			}
+			// Track trailing blank lines so we can remove the gap before the section
+			if (line.trim() === "") {
+				trailingBlanks++;
+			} else {
+				trailingBlanks = 0;
+			}
+			out.push(line);
+		} else {
+			// Inside the section — skip lines until next section header or non-key content
+			if (line.startsWith("[")) {
+				// Next section starts — stop skipping
+				inSection = false;
+				trailingBlanks = 0;
+				out.push(line);
+			}
+			// Skip key=value lines, blank lines, and comments within the section
+		}
+	}
+
+	const cleaned = out.join("\n");
+
+	// Collapse 3+ consecutive newlines down to 2 (one blank line)
+	return cleaned.replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Read, clean up, and write the Codex config.toml.
+ * Removes the [permissions.network] section we previously injected.
  * Called on app startup from installAgentSkills().
  */
-export function ensureCodexConfigFile(homePath: string): void {
+export function cleanupCodexConfigFile(homePath: string): void {
 	const configPath = `${homePath}/.codex/config.toml`;
-	const worktreesPath = `${homePath}/.dev3.0/worktrees`;
-	const socketsPath = `${homePath}/.dev3.0/sockets`;
 
 	try {
 		let content: string | null = null;
 		try {
 			content = readFileSync(configPath, "utf-8");
 		} catch {
-			// File doesn't exist
+			// File doesn't exist — nothing to clean up
+			return;
 		}
 
-		const updated = ensureCodexConfig(content, worktreesPath, socketsPath);
+		const updated = cleanupCodexConfig(content);
 
 		// Only write if changed
 		if (updated !== content) {
-			const dir = dirname(configPath);
-			if (!existsSync(dir)) {
-				mkdirSync(dir, { recursive: true });
-			}
-			writeFileSync(configPath, updated, "utf-8");
-			log.info("Codex config.toml updated for dev3 socket access", { path: configPath });
+			writeFileSync(configPath, updated!, "utf-8");
+			log.info("Codex config.toml cleaned up (removed [permissions.network])", { path: configPath });
 		}
 	} catch (err) {
-		log.warn("Failed to update Codex config.toml (non-fatal)", {
+		log.warn("Failed to clean up Codex config.toml (non-fatal)", {
 			error: String(err),
 		});
 	}
