@@ -6,88 +6,91 @@ describe("ensureCodexConfig", () => {
 	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
 
 	describe("when config does not exist", () => {
-		it("creates config with project trust, default_permissions, filesystem, and workspace network", () => {
+		it("creates config with project trust, permissions.dev3, and profiles.dev3", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain('trust_level = "trusted"');
-			expect(result).toContain('default_permissions = "workspace"');
-			expect(result).toContain("[permissions.workspace.filesystem]");
+			// Permission profile
+			expect(result).toContain("[permissions.dev3.filesystem]");
 			expect(result).toContain('":minimal" = "read"');
 			expect(result).toContain('"~/.codex/skills" = "read"');
 			expect(result).toContain('"~/.agents/skills" = "read"');
-			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain('[permissions.dev3.filesystem.":project_roots"]');
 			expect(result).toContain('"." = "write"');
-			expect(result).toContain("[permissions.workspace.network]");
+			expect(result).toContain("[permissions.dev3.network]");
 			expect(result).toContain("enabled = true");
 			expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
+			// Config profile
+			expect(result).toContain("[profiles.dev3]");
+			expect(result).toContain('web_search = "live"');
+		});
+
+		it("does NOT set default_permissions", () => {
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).not.toContain("default_permissions");
 		});
 	});
 
-	describe("when config exists but has no dev3 settings", () => {
-		it("appends project, default_permissions, and workspace permissions to existing config", () => {
+	describe("when config exists with user settings", () => {
+		it("preserves user's default_permissions and adds dev3 profiles", () => {
 			const existing = `model = "gpt-5.4"
-model_reasoning_effort = "medium"
+default_permissions = "workspace"
 
 [projects."/Users/testuser/my-project"]
 trust_level = "trusted"
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).toContain('model = "gpt-5.4"');
+			expect(result).toContain('default_permissions = "workspace"');
 			expect(result).toContain('[projects."/Users/testuser/my-project"]');
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
-			expect(result).toContain('default_permissions = "workspace"');
-			expect(result).toContain("[permissions.workspace.network]");
-			expect(result).toContain("enabled = true");
-			expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
+			expect(result).toContain("[permissions.dev3.network]");
+			expect(result).toContain("[profiles.dev3]");
 		});
 	});
 
-	describe("when config already has all dev3 settings", () => {
+	describe("when config already has dev3 profiles", () => {
 		it("does not duplicate entries", () => {
-			const existing = `default_permissions = "workspace"
-model = "gpt-5.4"
+			const existing = `model = "gpt-5.4"
 
 [projects."${WORKTREES_PATH}"]
 trust_level = "trusted"
 
-[permissions.workspace.filesystem]
+[permissions.dev3.filesystem]
 ":minimal" = "read"
+"~/.codex/skills" = "read"
+"~/.agents/skills" = "read"
 
-[permissions.workspace.filesystem.":project_roots"]
+[permissions.dev3.filesystem.":project_roots"]
 "." = "write"
 
-[permissions.workspace.network]
+[permissions.dev3.network]
 enabled = true
 allow_unix_sockets = ["${SOCKETS_PATH}"]
+
+[profiles.dev3]
+web_search = "live"
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			const projectMatches = result.match(/\[projects\."[^"]*worktrees"\]/g);
 			expect(projectMatches).toHaveLength(1);
-			const netMatches = result.match(/\[permissions\.workspace\.network\]/g);
+			const netMatches = result.match(/\[permissions\.dev3\.network\]/g);
 			expect(netMatches).toHaveLength(1);
+			const profileMatches = result.match(/\[profiles\.dev3\]/g);
+			expect(profileMatches).toHaveLength(1);
 		});
 	});
 
-	describe("when config has workspace network but no allow_unix_sockets", () => {
-		it("adds allow_unix_sockets to existing workspace network section", () => {
-			const existing = `default_permissions = "workspace"
+	describe("when dev3 permission profile exists but missing socket", () => {
+		it("adds socket path to existing network section", () => {
+			const existing = `[permissions.dev3.filesystem]
+":minimal" = "read"
+"~/.codex/skills" = "read"
+"~/.agents/skills" = "read"
 
-[permissions.workspace.network]
-enabled = true
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).toContain("enabled = true");
-			expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
-			const sectionMatches = result.match(/\[permissions\.workspace\.network\]/g);
-			expect(sectionMatches).toHaveLength(1);
-		});
-	});
+[permissions.dev3.filesystem.":project_roots"]
+"." = "write"
 
-	describe("when config has workspace network with different allow_unix_sockets", () => {
-		it("adds sockets path to existing array", () => {
-			const existing = `default_permissions = "workspace"
-
-[permissions.workspace.network]
+[permissions.dev3.network]
 enabled = true
 allow_unix_sockets = ["/tmp/other.sock"]
 `;
@@ -96,93 +99,21 @@ allow_unix_sockets = ["/tmp/other.sock"]
 		});
 	});
 
-	describe("when config has workspace network with sockets path already present", () => {
-		it("does not duplicate the sockets path", () => {
-			const existing = `default_permissions = "workspace"
-
-[permissions.workspace.network]
-enabled = true
-allow_unix_sockets = ["${SOCKETS_PATH}"]
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			const sockMatches = result.match(new RegExp(SOCKETS_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"));
-			expect(sockMatches).toHaveLength(1);
-		});
-	});
-
-	describe("when config has workspace network without enabled", () => {
-		it("adds enabled = true", () => {
-			const existing = `default_permissions = "workspace"
-
-[permissions.workspace.network]
-allow_unix_sockets = ["${SOCKETS_PATH}"]
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).toContain("enabled = true");
-		});
-	});
-
-	describe("when filesystem section exists but skills directories are missing", () => {
-		it("adds skill directory read permissions to existing filesystem section", () => {
-			const existing = `default_permissions = "workspace"
-
-[permissions.workspace.filesystem]
+	describe("when dev3 permission profile exists but missing skill dirs", () => {
+		it("adds skill directory read permissions", () => {
+			const existing = `[permissions.dev3.filesystem]
 ":minimal" = "read"
 
-[permissions.workspace.filesystem.":project_roots"]
+[permissions.dev3.filesystem.":project_roots"]
 "." = "write"
 
-[permissions.workspace.network]
+[permissions.dev3.network]
 enabled = true
 allow_unix_sockets = ["${SOCKETS_PATH}"]
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain('"~/.codex/skills" = "read"');
 			expect(result).toContain('"~/.agents/skills" = "read"');
-		});
-	});
-
-	describe("when config already has default_permissions set to something else", () => {
-		it("overwrites to workspace", () => {
-			const existing = `default_permissions = "read-only"
-model = "gpt-5.4"
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).toContain('default_permissions = "workspace"');
-			expect(result).not.toContain('default_permissions = "read-only"');
-		});
-	});
-
-	describe("old [permissions.network] cleanup", () => {
-		it("removes old-style [permissions.network] with dev3 sockets and adds new workspace syntax", () => {
-			const existing = `model = "gpt-5.4"
-
-[permissions.network]
-enabled = true
-allow_unix_sockets = ["${SOCKETS_PATH}"]
-
-[projects."/Users/testuser/my-project"]
-trust_level = "trusted"
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).not.toContain("[permissions.network]");
-			expect(result).toContain("[permissions.workspace.network]");
-			expect(result).toContain('default_permissions = "workspace"');
-			expect(result).toContain('[projects."/Users/testuser/my-project"]');
-		});
-
-		it("does not remove [permissions.network] without dev3 sockets", () => {
-			const existing = `model = "gpt-5.4"
-
-[permissions.network]
-enabled = true
-allow_unix_sockets = ["/tmp/other.sock"]
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			// Old section without dev3 sockets is preserved
-			expect(result).toContain("[permissions.network]");
-			// New workspace section is still added
-			expect(result).toContain("[permissions.workspace.network]");
 		});
 	});
 
@@ -204,7 +135,6 @@ args = ["@playwright/mcp@latest"]
 			expect(result).toContain("# My codex config");
 			expect(result).toContain("# MCP servers");
 			expect(result).toContain("# Disabled for now");
-			expect(result).toContain("# [mcp_servers.vibe_kanban]");
 		});
 	});
 
@@ -228,14 +158,13 @@ trust_level = "trusted"
 		it("handles empty string config", () => {
 			const result = ensureCodexConfig("", WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
-			expect(result).toContain("[permissions.workspace.network]");
-			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.dev3.network]");
+			expect(result).toContain("[profiles.dev3]");
 		});
 
 		it("handles config with only whitespace", () => {
 			const result = ensureCodexConfig("  \n\n  ", WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
-			expect(result).toContain('default_permissions = "workspace"');
 		});
 
 		it("handles config ending without newline", () => {
@@ -243,7 +172,6 @@ trust_level = "trusted"
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain('model = "gpt-5.4"');
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
-			expect(result).toContain('default_permissions = "workspace"');
 		});
 
 		it("returns unparseable config unchanged", () => {

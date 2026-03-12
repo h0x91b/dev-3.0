@@ -4,7 +4,13 @@ import { createLogger } from "./logger";
 
 const log = createLogger("codex-config");
 
-interface CodexPermissionsWorkspace {
+/**
+ * The name of the dev3 permission profile and config profile in Codex config.
+ * Used as [permissions.dev3] and [profiles.dev3].
+ */
+export const DEV3_CODEX_PROFILE = "dev3";
+
+interface CodexPermissionsProfile {
 	filesystem?: Record<string, unknown>;
 	network?: {
 		enabled?: boolean;
@@ -15,27 +21,21 @@ interface CodexPermissionsWorkspace {
 interface CodexConfig {
 	default_permissions?: string;
 	projects?: Record<string, { trust_level?: string; sandbox_mode?: string }>;
-	permissions?: {
-		// Old syntax (pre-0.114)
-		network?: {
-			enabled?: boolean;
-			allow_unix_sockets?: string[];
-		};
-		// New syntax
-		workspace?: CodexPermissionsWorkspace;
-	};
+	profiles?: Record<string, Record<string, unknown>>;
+	permissions?: Record<string, CodexPermissionsProfile | undefined>;
 }
 
 /**
  * Ensure the Codex config.toml has:
  * 1. The dev3 worktree project trusted
- * 2. Modern workspace permissions with network access for Unix sockets
+ * 2. A dedicated [permissions.dev3] permission profile with filesystem + network access
+ * 3. A dedicated [profiles.dev3] config profile for dev3 launches
+ *
+ * Does NOT touch the user's `default_permissions` — dev3 selects its own
+ * permission profile at launch time via `-c 'default_permissions="dev3"'`.
  *
  * Uses js-toml to parse and inspect the config, but writes via text
  * manipulation to preserve comments and user formatting.
- *
- * Also cleans up the old [permissions.network] section if present
- * (it was injected by earlier dev3 versions and is now obsolete).
  */
 export function ensureCodexConfig(
 	content: string | null,
@@ -54,8 +54,8 @@ export function ensureCodexConfig(
 		}
 	}
 
-	// --- 0. Clean up old [permissions.network] section if it has dev3 sockets ---
-	config = cleanupOldPermissionsNetwork(config);
+	// --- 0. Clean up legacy sections ---
+	config = cleanupLegacySections(config);
 	// Re-parse after cleanup
 	if (config.trim().length > 0) {
 		try {
@@ -72,105 +72,117 @@ export function ensureCodexConfig(
 		config = appendBlock(config, block);
 	}
 
-	// --- 2. Ensure default_permissions = "workspace" ---
-	if (parsed.default_permissions !== "workspace") {
-		if (parsed.default_permissions != null) {
-			// Replace existing value
-			config = config.replace(
-				/default_permissions\s*=\s*"[^"]*"/,
-				'default_permissions = "workspace"',
-			);
-		} else {
-			// Add at the top (after any leading comments/blank lines, before first section)
-			config = insertTopLevelKey(config, 'default_permissions = "workspace"');
-		}
-	}
+	// --- 2. Ensure [permissions.dev3] permission profile ---
+	const dev3Perm = parsed.permissions?.[DEV3_CODEX_PROFILE] as CodexPermissionsProfile | undefined;
 
-	// --- 3. Ensure [permissions.workspace.filesystem] sections ---
-	const wsFs = parsed.permissions?.workspace?.filesystem;
-	if (wsFs == null) {
+	if (dev3Perm == null) {
+		// Add entire permissions.dev3 block
 		const block = [
 			"",
-			"[permissions.workspace.filesystem]",
+			`[permissions.${DEV3_CODEX_PROFILE}.filesystem]`,
 			'":minimal" = "read"',
 			'"~/.codex/skills" = "read"',
 			'"~/.agents/skills" = "read"',
 			"",
-			'[permissions.workspace.filesystem.":project_roots"]',
+			`[permissions.${DEV3_CODEX_PROFILE}.filesystem.":project_roots"]`,
 			'"." = "write"',
+			"",
+			`[permissions.${DEV3_CODEX_PROFILE}.network]`,
+			"enabled = true",
+			`allow_unix_sockets = ["${socketsPath}"]`,
 			"",
 		].join("\n");
 		config = appendBlock(config, block);
 	} else {
-		// Ensure skill directories are readable even if filesystem section already exists
+		// Permission profile exists — ensure network section has our socket
+		const dev3Net = dev3Perm.network;
+		const netHeader = `[permissions.${DEV3_CODEX_PROFILE}.network]`;
+
+		if (dev3Net == null) {
+			const block = `\n${netHeader}\nenabled = true\nallow_unix_sockets = ["${socketsPath}"]\n`;
+			config = appendBlock(config, block);
+		} else {
+			if (dev3Net.enabled !== true) {
+				config = insertAfterSectionHeader(config, netHeader, "enabled = true");
+			}
+			const existingSockets = dev3Net.allow_unix_sockets ?? [];
+			if (!existingSockets.includes(socketsPath)) {
+				if (existingSockets.length === 0 && !config.includes("allow_unix_sockets")) {
+					config = insertAfterSectionHeader(config, netHeader, `allow_unix_sockets = ["${socketsPath}"]`);
+				} else {
+					// Append to existing array under dev3.network specifically
+					const pattern = new RegExp(
+						`(\\[permissions\\.${DEV3_CODEX_PROFILE}\\.network\\][^\\[]*?)allow_unix_sockets\\s*=\\s*\\[([^\\]]*)\\]`,
+						"s",
+					);
+					config = config.replace(pattern, (_match, prefix, inner) => {
+						const trimmed = inner.trim();
+						const newValue = trimmed
+							? `${trimmed}, "${socketsPath}"`
+							: `"${socketsPath}"`;
+						return `${prefix}allow_unix_sockets = [${newValue}]`;
+					});
+				}
+			}
+		}
+
+		// Ensure skill directories are readable
+		const fsHeader = `[permissions.${DEV3_CODEX_PROFILE}.filesystem]`;
 		const skillPaths = ['"~/.codex/skills" = "read"', '"~/.agents/skills" = "read"'];
 		for (const skillLine of skillPaths) {
 			if (!config.includes(skillLine)) {
-				config = insertAfterSectionHeader(config, "[permissions.workspace.filesystem]", skillLine);
+				config = insertAfterSectionHeader(config, fsHeader, skillLine);
 			}
 		}
 	}
 
-	// --- 4. Ensure [permissions.workspace.network] section ---
-	const wsNet = parsed.permissions?.workspace?.network;
-	const hasWsNetworkSection = wsNet != null;
-	const hasWsEnabled = wsNet?.enabled === true;
-	const existingWsSockets = wsNet?.allow_unix_sockets ?? [];
-	const hasWsSockets = existingWsSockets.includes(socketsPath);
-
-	if (!hasWsNetworkSection) {
-		const block = `\n[permissions.workspace.network]\nenabled = true\nallow_unix_sockets = ["${socketsPath}"]\n`;
+	// --- 3. Ensure [profiles.dev3] config profile ---
+	const dev3Profile = parsed.profiles?.[DEV3_CODEX_PROFILE];
+	if (dev3Profile == null) {
+		const block = [
+			"",
+			`[profiles.${DEV3_CODEX_PROFILE}]`,
+			'web_search = "live"',
+			"",
+		].join("\n");
 		config = appendBlock(config, block);
-	} else {
-		if (!hasWsEnabled) {
-			config = insertAfterSectionHeader(config, "[permissions.workspace.network]", "enabled = true");
-		}
-
-		if (!hasWsSockets) {
-			if (existingWsSockets.length === 0) {
-				if (config.includes("allow_unix_sockets")) {
-					// Find the one under [permissions.workspace.network], not other sections
-					// Simple approach: just append if not found
-					config = config.replace(
-						/(\[permissions\.workspace\.network\][^\[]*?)allow_unix_sockets\s*=\s*\[([^\]]*)\]/s,
-						(_match, prefix, inner) => {
-							const trimmed = inner.trim();
-							const newValue = trimmed
-								? `${trimmed}, "${socketsPath}"`
-								: `"${socketsPath}"`;
-							return `${prefix}allow_unix_sockets = [${newValue}]`;
-						},
-					);
-				} else {
-					config = insertAfterSectionHeader(
-						config,
-						"[permissions.workspace.network]",
-						`allow_unix_sockets = ["${socketsPath}"]`,
-					);
-				}
-			} else {
-				// Has allow_unix_sockets with other paths under workspace.network — append ours
-				config = config.replace(
-					/(\[permissions\.workspace\.network\][^\[]*?)allow_unix_sockets\s*=\s*\[([^\]]*)\]/s,
-					(_match, prefix, inner) => {
-						const trimmed = inner.trim();
-						return `${prefix}allow_unix_sockets = [${trimmed}, "${socketsPath}"]`;
-					},
-				);
-			}
-		}
 	}
 
 	return config;
 }
 
 /**
- * Remove the old-style [permissions.network] section that was injected
- * by earlier dev3 versions. Only removes if it contains `.dev3.0/sockets`.
+ * Remove legacy sections injected by earlier dev3 versions:
+ * - [permissions.network] (old flat syntax, pre-0.114)
+ * - [permissions.workspace.*] if they contain dev3 markers (previous iteration)
+ *
+ * Only removes if content contains `.dev3.0/sockets` or dev3-specific skill paths.
  */
-function cleanupOldPermissionsNetwork(content: string): string {
-	if (!content.includes(".dev3.0/sockets")) return content;
+function cleanupLegacySections(content: string): string {
+	// Clean up old [permissions.network]
+	if (content.includes(".dev3.0/sockets")) {
+		content = removeSectionByHeader(content, "[permissions.network]");
+	}
 
+	// Clean up [permissions.workspace.*] sections if they contain our markers
+	// (from the previous iteration that wrote to workspace instead of dev3)
+	if (content.includes('"~/.codex/skills" = "read"') || content.includes('"~/.agents/skills" = "read"')) {
+		const hasWorkspaceFs = content.includes("[permissions.workspace.filesystem]");
+		if (hasWorkspaceFs) {
+			content = removeSectionByHeader(content, '[permissions.workspace.filesystem.":project_roots"]');
+			content = removeSectionByHeader(content, "[permissions.workspace.filesystem]");
+			content = removeSectionByHeader(content, "[permissions.workspace.network]");
+		}
+	}
+
+	return content;
+}
+
+/**
+ * Remove a TOML section by its header. Removes the header line and all
+ * key=value/blank/comment lines until the next section header.
+ */
+function removeSectionByHeader(content: string, header: string): string {
 	const lines = content.split("\n");
 	const out: string[] = [];
 	let inSection = false;
@@ -178,7 +190,7 @@ function cleanupOldPermissionsNetwork(content: string): string {
 
 	for (const line of lines) {
 		if (!inSection) {
-			if (line.trim() === "[permissions.network]") {
+			if (line.trim() === header) {
 				inSection = true;
 				while (trailingBlanks > 0) {
 					out.pop();
@@ -198,12 +210,10 @@ function cleanupOldPermissionsNetwork(content: string): string {
 				trailingBlanks = 0;
 				out.push(line);
 			}
-			// Skip key=value lines, blank lines, and comments within the section
 		}
 	}
 
-	const cleaned = out.join("\n");
-	return cleaned.replace(/\n{3,}/g, "\n\n");
+	return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 /**
@@ -217,32 +227,6 @@ function appendBlock(config: string, block: string): string {
 		config += "\n";
 	}
 	return config + block;
-}
-
-/**
- * Insert a top-level key before the first section header.
- * If no section headers exist, append at the end.
- */
-function insertTopLevelKey(config: string, keyLine: string): string {
-	// Find first line that starts with '['
-	const lines = config.split("\n");
-	let firstSectionIdx = -1;
-	for (let i = 0; i < lines.length; i++) {
-		if (lines[i].startsWith("[")) {
-			firstSectionIdx = i;
-			break;
-		}
-	}
-
-	if (firstSectionIdx === -1) {
-		// No sections — append at the end
-		if (config.trim().length === 0) return keyLine + "\n";
-		return config + (config.endsWith("\n") ? "" : "\n") + keyLine + "\n";
-	}
-
-	// Insert before first section, with a blank line separator
-	lines.splice(firstSectionIdx, 0, keyLine, "");
-	return lines.join("\n");
 }
 
 /**
@@ -272,7 +256,7 @@ function insertAfterSectionHeader(
 
 /**
  * Read, patch, and write the Codex config.toml.
- * Ensures modern workspace permissions for dev3 socket access.
+ * Ensures a dedicated dev3 permission profile and config profile.
  * Called on app startup from installAgentSkills().
  */
 export function ensureCodexConfigFile(homePath: string): void {
@@ -292,7 +276,7 @@ export function ensureCodexConfigFile(homePath: string): void {
 
 		if (updated !== content) {
 			writeFileSync(configPath, updated, "utf-8");
-			log.info("Codex config.toml patched with workspace permissions", { path: configPath });
+			log.info("Codex config.toml patched with dev3 profiles", { path: configPath });
 		}
 	} catch (err) {
 		log.warn("Failed to patch Codex config.toml (non-fatal)", {
