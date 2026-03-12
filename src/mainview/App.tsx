@@ -333,7 +333,7 @@ function App() {
 		trackPageView(screen);
 	}, [state.route]);
 
-	// Escape: close quit dialog or navigate back
+	// Escape: close quit dialog or navigate back from settings screens
 	// (skipped when a terminal has focus — Escape must reach the shell)
 	useGlobalShortcut(
 		(e) => {
@@ -345,18 +345,17 @@ function App() {
 				return;
 			}
 			const { route } = state;
-			if (route.screen === "project-settings") {
-				// "Close settings" — go to project board, not history back
+			if (route.screen === "settings") {
+				navigate({ screen: "dashboard" });
+			} else if (route.screen === "project-settings") {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project" && route.activeTaskId) {
-				// "Close split panel" — go to project board without split
 				navigate({ screen: "project", projectId: route.projectId });
-			} else if (route.screen === "settings" || route.screen === "project") {
-				// True "go back" — use history
-				dispatch({ type: "goBack" });
+			} else if (route.screen === "project") {
+				navigate({ screen: "dashboard" });
 			}
 		},
-		[state, navigate, dispatch, showQuitDialog],
+		[state, navigate, showQuitDialog],
 	);
 
 	if (reqStatus === "checking") {
