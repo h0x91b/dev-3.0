@@ -111,3 +111,54 @@ The fallback derives `realDev3Home` from the marker position and uses it for all
 2. **Use `~` (tilde) paths** — rejected because sandbox sets HOME=/tmp, so `~` resolves incorrectly.
 3. **Keep `--full-auto` and just add network permissions** — rejected because `--full-auto` triggers the legacy sandbox path that bypasses permission profiles entirely.
 4. **Set HOME in Codex env** — rejected because the sandbox forcibly overwrites HOME at the process level, not from the env.
+
+---
+# Suggested bug report about zsh
+
+## Title
+macOS seatbelt selects user default shell from pw_shell but may fail to exec Homebrew zsh because /opt/homebrew/bin is not in the runtime allowlist
+
+## Summary
+On macOS, Codex prefers the user’s login shell from pw_shell for shell tool execution. If the user’s default shell is Homebrew zsh at /opt/homebrew/bin/
+zsh, sandboxed shell tool calls can fail before the command runs with:
+
+sandbox-exec: execvp() of '/opt/homebrew/bin/zsh' failed: Operation not permitted
+
+This happens because shell selection prefers the user shell path, but the seatbelt runtime allowlist only includes system executable directories like /
+bin and /usr/bin, not /opt/homebrew/bin.
+
+Expected
+If the user’s default shell lives outside the seatbelt runtime allowlist, Codex should fall back to an allowed system shell such as /bin/zsh, /bin/bash,
+or /bin/sh instead of failing before command execution.
+
+Actual
+Codex selects /opt/homebrew/bin/zsh and attempts to execute it inside seatbelt. The process can fail at execvp() before the shell command starts.
+
+Code pointers
+
+- user shell discovery: codex-rs/core/src/shell.rs:92
+- prefers user shell path when it exists: codex-rs/core/src/shell.rs:178
+- default shell selection on macOS: codex-rs/core/src/shell.rs:292
+- shell argv construction: codex-rs/core/src/shell.rs:43
+- seatbelt wrapping: codex-rs/core/src/sandboxing/mod.rs:647
+- runtime allowlist only includes system bins: codex-rs/core/src/restricted_read_only_platform_defaults.sbpl:159
+
+Minimal reproduce
+
+1. On macOS, set the user login shell to Homebrew zsh:
+
+chsh -s /opt/homebrew/bin/zsh
+
+2. Start a fresh sandboxed Codex session without bypass flags.
+3. Trigger any shell tool call that uses the default shell, for example a simple pwd or echo hello.
+4. Observe that the command may fail before execution with:
+
+sandbox-exec: execvp() of '/opt/homebrew/bin/zsh' failed: Operation not permitted
+
+Suggested fix
+Before using the discovered user shell path under macOS seatbelt, check whether it lives in an allowed executable runtime directory. If not, fall back to
+an allowed system shell (/bin/zsh, /bin/bash, /bin/sh) and optionally emit a warning.
+
+Why this fix is better than widening the allowlist
+It preserves the tighter security posture of the current seatbelt policy and avoids broadly allowing arbitrary Homebrew executables under /opt/homebrew/
+bin.
