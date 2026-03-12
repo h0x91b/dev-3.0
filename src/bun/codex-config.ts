@@ -152,29 +152,15 @@ export function ensureCodexConfig(
 }
 
 /**
- * Remove legacy sections injected by earlier dev3 versions:
- * - [permissions.network] (old flat syntax, pre-0.114)
- * - [permissions.workspace.*] if they contain dev3 markers (previous iteration)
+ * Remove legacy [permissions.network] section injected by early dev3 versions
+ * (old flat syntax, pre-0.114). Only removes if it contains `.dev3.0/sockets`.
  *
- * Only removes if content contains `.dev3.0/sockets` or dev3-specific skill paths.
+ * Does NOT touch [permissions.workspace.*] — those may be the user's own config.
  */
 function cleanupLegacySections(content: string): string {
-	// Clean up old [permissions.network]
 	if (content.includes(".dev3.0/sockets")) {
 		content = removeSectionByHeader(content, "[permissions.network]");
 	}
-
-	// Clean up [permissions.workspace.*] sections if they contain our markers
-	// (from the previous iteration that wrote to workspace instead of dev3)
-	if (content.includes('"~/.codex/skills" = "read"') || content.includes('"~/.agents/skills" = "read"')) {
-		const hasWorkspaceFs = content.includes("[permissions.workspace.filesystem]");
-		if (hasWorkspaceFs) {
-			content = removeSectionByHeader(content, '[permissions.workspace.filesystem.":project_roots"]');
-			content = removeSectionByHeader(content, "[permissions.workspace.filesystem]");
-			content = removeSectionByHeader(content, "[permissions.workspace.network]");
-		}
-	}
-
 	return content;
 }
 

@@ -35,38 +35,8 @@ allow_unix_sockets = ["/tmp/my-own.sock"]
 		});
 	});
 
-	describe("old [permissions.workspace.*] cleanup", () => {
-		it("removes workspace sections with dev3 skill markers and replaces with dev3 profile", () => {
-			const existing = `model = "gpt-5.4"
-default_permissions = "workspace"
-
-[permissions.workspace.filesystem]
-":minimal" = "read"
-"~/.codex/skills" = "read"
-"~/.agents/skills" = "read"
-
-[permissions.workspace.filesystem.":project_roots"]
-"." = "write"
-
-[permissions.workspace.network]
-enabled = true
-allow_unix_sockets = ["${SOCKETS_PATH}"]
-
-[projects."${WORKTREES_PATH}"]
-trust_level = "trusted"
-`;
-			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			// Old workspace sections should be removed
-			expect(result).not.toContain("[permissions.workspace.filesystem]");
-			expect(result).not.toContain("[permissions.workspace.network]");
-			// New dev3 sections should be present
-			expect(result).toContain("[permissions.dev3.filesystem]");
-			expect(result).toContain("[permissions.dev3.network]");
-			// User's default_permissions should be preserved
-			expect(result).toContain('default_permissions = "workspace"');
-		});
-
-		it("does not remove workspace sections without dev3 skill markers", () => {
+	describe("preserves user's [permissions.workspace.*] sections", () => {
+		it("does not touch workspace sections even when dev3 profile exists alongside", () => {
 			const existing = `default_permissions = "workspace"
 
 [permissions.workspace.filesystem]
@@ -77,13 +47,24 @@ trust_level = "trusted"
 
 [permissions.workspace.network]
 enabled = true
+allow_unix_sockets = ["${SOCKETS_PATH}"]
+
+[permissions.dev3.filesystem]
+":minimal" = "read"
+"~/.codex/skills" = "read"
+"~/.agents/skills" = "read"
+
+[permissions.dev3.network]
+enabled = true
+allow_unix_sockets = ["${SOCKETS_PATH}"]
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
-			// User's own workspace sections should remain
+			// User's workspace sections must remain untouched
 			expect(result).toContain("[permissions.workspace.filesystem]");
 			expect(result).toContain("[permissions.workspace.network]");
-			// dev3 sections should also be added
+			// dev3 sections still present
 			expect(result).toContain("[permissions.dev3.network]");
+			expect(result).toContain('default_permissions = "workspace"');
 		});
 	});
 
