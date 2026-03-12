@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 
 const HOME = process.env.HOME || "/tmp";
@@ -91,5 +91,42 @@ describe("detectContext", () => {
 		expect(ctx).not.toBeNull();
 		expect(ctx!.projectId).toBe(TEST_PROJECT_ID);
 		expect(ctx!.taskId).toBe(TEST_TASK_ID);
+	});
+});
+
+describe("detectContext with sandbox HOME mismatch", () => {
+	const REAL_HOME = process.env.HOME || "/tmp";
+	const SANDBOX_HOME = "/tmp";
+
+	afterEach(() => {
+		// Restore real HOME
+		process.env.HOME = REAL_HOME;
+		vi.resetModules();
+	});
+
+	it("detects context when HOME=/tmp but cwd is under real user home", async () => {
+		// Simulate Codex sandbox: HOME=/tmp, but cwd is the real worktree path
+		process.env.HOME = SANDBOX_HOME;
+		vi.resetModules();
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_WORKTREE);
+
+		// Should still detect via the /.dev3.0/worktrees/ marker fallback
+		expect(ctx).not.toBeNull();
+		expect(ctx!.projectId).toBe(TEST_PROJECT_ID);
+		expect(ctx!.taskId).toBe(TEST_TASK_ID);
+	});
+
+	it("diagnostics show realDev3Home when HOME differs from cwd", async () => {
+		process.env.HOME = SANDBOX_HOME;
+		vi.resetModules();
+
+		const { detectContextDiagnostics } = await import("../context");
+		const diag = detectContextDiagnostics(TEST_WORKTREE);
+
+		expect(diag).toContain(`HOME: ${SANDBOX_HOME}`);
+		expect(diag).toContain("realDev3Home=");
+		expect(diag).toContain(`${REAL_HOME}/.dev3.0`);
 	});
 });
