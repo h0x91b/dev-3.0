@@ -28,10 +28,15 @@ export function mergeWithDefaults(stored: CodingAgent[]): CodingAgent[] {
 			// Merge existing configs: use default as base, user overrides on top.
 			// This ensures updated defaults (new args, model changes) propagate
 			// to users who haven't explicitly customized those fields.
+			// Preset-owned fields (additionalArgs) always come from defaults —
+			// they are internal to the preset definition and not user-editable.
 			const mergedConfigs = existing.configurations.map((storedCfg) => {
 				const defCfg = defConfigById.get(storedCfg.id);
 				if (!defCfg) return storedCfg; // user-created config, keep as-is
-				return { ...defCfg, ...stripUndefined(storedCfg) };
+				const userOverrides = stripUndefined(storedCfg);
+				// Remove preset-owned fields from stored data so defaults always win
+				delete userOverrides.additionalArgs;
+				return { ...defCfg, ...userOverrides };
 			});
 
 			// Append any brand-new default configurations not yet in stored
