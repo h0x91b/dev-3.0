@@ -113,12 +113,14 @@ const SYSTEM_REQUIREMENTS = [
 	{ id: "tmux", name: "tmux", checkCommand: "tmux", installHint: "requirements.installTmux", installCommand: "brew install tmux", brewInstallable: true },
 ];
 
-// Common paths where Homebrew installs binaries (Apple Silicon + Intel)
-const HOMEBREW_FALLBACK_PATHS = [
+// Common paths where package managers install binaries
+const FALLBACK_BIN_PATHS = [
 	"/opt/homebrew/bin",
 	"/usr/local/bin",
 	"/opt/homebrew/sbin",
 	"/usr/local/sbin",
+	// User-local dirs (pip, pipx, Claude CLI, etc.)
+	...(process.env.HOME ? [`${process.env.HOME}/.local/bin`, `${process.env.HOME}/bin`] : []),
 ];
 
 // Will be set by index.ts after window creation
@@ -2298,7 +2300,7 @@ export const handlers = {
 
 			// 3. Fallback: check common Homebrew paths
 			if (!resolvedPath) {
-				for (const dir of HOMEBREW_FALLBACK_PATHS) {
+				for (const dir of FALLBACK_BIN_PATHS) {
 					const candidate = `${dir}/${req.checkCommand}`;
 					if (existsSync(candidate)) {
 						resolvedPath = candidate;

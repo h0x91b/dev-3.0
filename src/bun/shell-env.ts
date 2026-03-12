@@ -59,11 +59,3 @@ export async function resolveShellEnv(): Promise<{ path?: string; lang?: string 
 		return {};
 	}
 }
-
-/**
- * @deprecated Use resolveShellEnv() instead, which also resolves LANG.
- */
-export async function resolveShellPath(): Promise<string | undefined> {
-	const env = await resolveShellEnv();
-	return env.path;
-}
