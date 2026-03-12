@@ -137,6 +137,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		let ws: WebSocket | null = null;
 		let layoutObserver: ResizeObserver | null = null;
 		let mouseCleanup: (() => void) | undefined;
+		const termSubs: Array<{ dispose(): void }> = [];
 
 		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
@@ -286,28 +287,37 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			}
 
 			function onMouseDown(e: MouseEvent) {
-				if (!term.hasMouseTracking() || e.button > 2) return;
-				trackedButton = e.button;
-				const [col, row] = cellCoords(e);
-				sgrMouse(e.button, col, row, true);
-				e.preventDefault();
-				e.stopPropagation();
+				if (disposed) return;
+				try {
+					if (!term.hasMouseTracking() || e.button > 2) return;
+					trackedButton = e.button;
+					const [col, row] = cellCoords(e);
+					sgrMouse(e.button, col, row, true);
+					e.preventDefault();
+					e.stopPropagation();
+				} catch { /* disposed */ }
 			}
 
 			function onMouseUp(e: MouseEvent) {
-				if (trackedButton < 0) return;
-				const btn = trackedButton;
-				trackedButton = -1;
-				if (!term.hasMouseTracking()) return;
-				const [col, row] = cellCoords(e);
-				sgrMouse(btn, col, row, false);
+				if (disposed) return;
+				try {
+					if (trackedButton < 0) return;
+					const btn = trackedButton;
+					trackedButton = -1;
+					if (!term.hasMouseTracking()) return;
+					const [col, row] = cellCoords(e);
+					sgrMouse(btn, col, row, false);
+				} catch { /* disposed */ }
 			}
 
 			function onMouseMove(e: MouseEvent) {
-				if (!term.hasMouseTracking() || trackedButton < 0) return;
-				const [col, row] = cellCoords(e);
-				sgrMouse(trackedButton + 32, col, row, true);
-				e.stopPropagation();
+				if (disposed) return;
+				try {
+					if (!term.hasMouseTracking() || trackedButton < 0) return;
+					const [col, row] = cellCoords(e);
+					sgrMouse(trackedButton + 32, col, row, true);
+					e.stopPropagation();
+				} catch { /* disposed */ }
 			}
 
 			canvas.addEventListener("mousedown", onMouseDown, {
@@ -322,20 +332,23 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			const SCROLL_THRESHOLD = 50;
 
 			term.attachCustomWheelEventHandler((e: WheelEvent) => {
-				if (!term.hasMouseTracking()) return false;
-				const [col, row] = cellCoords(e);
+				if (disposed) return false;
+				try {
+					if (!term.hasMouseTracking()) return false;
+					const [col, row] = cellCoords(e);
 
-				scrollAccumulator += e.deltaY;
-				const lines = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
-				if (lines !== 0) {
-					scrollAccumulator -= lines * SCROLL_THRESHOLD;
-					const code = lines < 0 ? 64 : 65;
-					const count = Math.abs(lines);
-					for (let i = 0; i < count; i++) {
-						sgrMouse(code, col, row, true);
+					scrollAccumulator += e.deltaY;
+					const lines = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
+					if (lines !== 0) {
+						scrollAccumulator -= lines * SCROLL_THRESHOLD;
+						const code = lines < 0 ? 64 : 65;
+						const count = Math.abs(lines);
+						for (let i = 0; i < count; i++) {
+							sgrMouse(code, col, row, true);
+						}
 					}
-				}
-				return true;
+					return true;
+				} catch { return false; /* disposed */ }
 			});
 
 			return () => {
@@ -420,17 +433,20 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 				try { term.writeln("\x1b[31mFailed to connect to PTY server\x1b[0m"); } catch { /* disposed */ }
 			};
 
-			term.onData((data) => {
-				if (ws?.readyState === WebSocket.OPEN) {
-					ws.send(data);
-				}
-			});
-
-			term.onResize(({ cols, rows }) => {
-				if (ws?.readyState === WebSocket.OPEN) {
-					ws.send(`\x1b]resize;${cols};${rows}\x07`);
-				}
-			});
+			termSubs.push(
+				term.onData((data) => {
+					if (disposed) return;
+					if (ws?.readyState === WebSocket.OPEN) {
+						ws.send(data);
+					}
+				}),
+				term.onResize(({ cols, rows }) => {
+					if (disposed) return;
+					if (ws?.readyState === WebSocket.OPEN) {
+						ws.send(`\x1b]resize;${cols};${rows}\x07`);
+					}
+				}),
+			);
 		}
 
 		// setup() is called after font preload above — not here directly
@@ -440,6 +456,13 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			disposed = true;
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
+			// Dispose terminal event subscriptions (onData, onResize) before
+			// closing the WebSocket or disposing the terminal to prevent
+			// callbacks from firing on a disposed terminal.
+			for (const sub of termSubs) {
+				try { sub.dispose(); } catch { /* already disposed */ }
+			}
+			termSubs.length = 0;
 			// Neutralize WS handlers before closing to prevent callbacks
 			// from firing on a disposed terminal (race condition: close
 			// handshake is async, messages can still arrive).
@@ -614,7 +637,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 					const escaped = result.path.replace(/ /g, "\\ ");
 					wsRef.current.send(escaped);
 				}
-				termRef.current?.focus();
+				try { termRef.current?.focus(); } catch { /* disposed */ }
 			}).catch((err) => {
 				console.error("[TerminalView] Image paste failed:", err);
 			});
@@ -653,7 +676,7 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
 			wsRef.current.send(text);
 		}
-		termRef.current?.focus();
+		try { termRef.current?.focus(); } catch { /* disposed */ }
 	}
 
 	const termBg = resolvedTheme === "light"
