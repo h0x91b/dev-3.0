@@ -509,7 +509,7 @@ export async function getUncommittedChanges(
 		}
 	}
 
-	// Untracked files — every line counts as an insertion
+	// Untracked files — count lines for text files only, skip binary
 	const untrackedResult = await run(
 		["git", "ls-files", "--others", "--exclude-standard"],
 		worktreePath,
@@ -518,7 +518,23 @@ export async function getUncommittedChanges(
 		const files = untrackedResult.stdout.trim().split("\n");
 		for (const file of files) {
 			try {
-				const content = await Bun.file(`${worktreePath}/${file}`).text();
+				const bunFile = Bun.file(`${worktreePath}/${file}`);
+				const size = bunFile.size;
+
+				// Skip empty files and files larger than 1 MB (likely binary or generated)
+				if (size === 0 || size > 1_048_576) continue;
+
+				// Detect binary: check first 8 KB for null bytes
+				const chunk = new Uint8Array(
+					await bunFile.slice(0, Math.min(size, 8192)).arrayBuffer(),
+				);
+				let isBinary = false;
+				for (let i = 0; i < chunk.length; i++) {
+					if (chunk[i] === 0) { isBinary = true; break; }
+				}
+				if (isBinary) continue;
+
+				const content = await bunFile.text();
 				const lines = content.split("\n");
 				// Don't count trailing empty line from final newline
 				insertions += content.endsWith("\n") ? lines.length - 1 : lines.length;
@@ -725,8 +741,8 @@ export async function saveDiffSnapshot(
 	const dir = `${taskDir(project, task)}/diffs`;
 	mkdirSync(dir, { recursive: true });
 
-	// Get full diff
-	const result = await run(["git", "diff", `${ref}...HEAD`], task.worktreePath!);
+	// Get full diff (text only — skip binary content to avoid memory bloat)
+	const result = await run(["git", "diff", "--no-ext-diff", `${ref}...HEAD`], task.worktreePath!);
 	const diff = result.ok ? result.stdout : "";
 
 	// Skip if empty (no changes)

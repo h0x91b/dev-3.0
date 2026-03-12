@@ -5,7 +5,10 @@
  * spinning up real git repos, we mock spawn() with recorded responses
  * — making tests instant (~0ms each).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -205,6 +208,53 @@ describe("getUncommittedChanges", () => {
 		const result = await getUncommittedChanges("/repo");
 		expect(result.insertions).toBe(2);
 		expect(result.deletions).toBe(1);
+	});
+
+	// Tests for untracked file handling require real files on disk
+	describe("untracked files", () => {
+		const tmpDir = join(tmpdir(), `git-branch-ops-test-${Date.now()}`);
+
+		beforeEach(() => {
+			mkdirSync(tmpDir, { recursive: true });
+		});
+
+		afterAll(() => {
+			rmSync(tmpDir, { recursive: true, force: true });
+		});
+
+		it("counts lines in untracked text files", async () => {
+			writeFileSync(join(tmpDir, "readme.txt"), "line1\nline2\nline3\n");
+			queueResponse(0, "");               // git diff --numstat HEAD
+			queueResponse(0, "readme.txt\n");   // git ls-files --others
+			const result = await getUncommittedChanges(tmpDir);
+			expect(result.insertions).toBe(3);
+			expect(result.deletions).toBe(0);
+		});
+
+		it("skips untracked binary files (null bytes)", async () => {
+			// Binary file with null bytes — should be excluded
+			const binaryContent = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00]);
+			writeFileSync(join(tmpDir, "image.png"), binaryContent);
+			// Text file — should be counted
+			writeFileSync(join(tmpDir, "app.ts"), "const x = 1;\n");
+			queueResponse(0, "");                           // git diff --numstat HEAD
+			queueResponse(0, "image.png\napp.ts\n");       // git ls-files --others
+			const result = await getUncommittedChanges(tmpDir);
+			expect(result.insertions).toBe(1); // only app.ts line, not binary
+			expect(result.deletions).toBe(0);
+		});
+
+		it("skips untracked files larger than 1 MB", async () => {
+			// Create a file larger than 1 MB
+			const largeContent = "x".repeat(1_048_577) + "\n";
+			writeFileSync(join(tmpDir, "huge.txt"), largeContent);
+			writeFileSync(join(tmpDir, "small.ts"), "ok\n");
+			queueResponse(0, "");                           // git diff --numstat HEAD
+			queueResponse(0, "huge.txt\nsmall.ts\n");      // git ls-files --others
+			const result = await getUncommittedChanges(tmpDir);
+			expect(result.insertions).toBe(1); // only small.ts
+			expect(result.deletions).toBe(0);
+		});
 	});
 });
 

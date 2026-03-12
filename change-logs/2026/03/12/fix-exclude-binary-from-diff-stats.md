@@ -1,0 +1,1 @@
+Fixed binary files (images, etc.) being counted in uncommitted diff line statistics. Binary files and files larger than 1 MB are now excluded from untracked file line counting, preventing inflated +/- numbers and reducing memory usage from loading large binary files into memory.
