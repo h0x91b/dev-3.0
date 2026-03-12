@@ -1,0 +1,1 @@
+Added a rule to AGENTS.md instructing agents to prefer TeamCreate (team members) over the Agent tool (sub-agents) for delegating parallel work. Team members may still use sub-agents internally for their own sub-tasks.

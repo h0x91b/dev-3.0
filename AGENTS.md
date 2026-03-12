@@ -26,6 +26,12 @@ This applies to:
 
 The user may communicate with agents in Russian, but everything written into the codebase or git history must be in English only.
 
+## Parallelism — prefer TeamCreate over sub-agents
+
+When you need to delegate work to other agents, **use `TeamCreate` (team members) instead of the `Agent` tool (sub-agents)** whenever possible. Team members run as independent peers and are more efficient for parallel workloads.
+
+**Exception:** If a team member itself needs to spawn a helper for its own sub-task, it may use the `Agent` tool internally. The rule applies to **your** direct delegation decisions — not to what team members do inside their own execution.
+
 ## Git
 
 ### Worktree
