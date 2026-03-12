@@ -128,6 +128,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		configurations: [
 			{ id: "claude-default", name: "Default", model: "sonnet" },
 			{ id: "claude-plan", name: "Plan (Opus)", model: "opus", permissionMode: "plan" },
+			{ id: "claude-plan-then-bypass-opus", name: "Plan then Bypass (Opus)", model: "opus", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"] },
+			{ id: "claude-plan-then-bypass-sonnet", name: "Plan then Bypass (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"] },
 			{ id: "claude-approvals-opus", name: "Approvals (Opus)", model: "opus", permissionMode: "acceptEdits" },
 			{ id: "claude-approvals-sonnet", name: "Approvals (Sonnet)", model: "sonnet", permissionMode: "acceptEdits" },
 			{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus", permissionMode: "bypassPermissions" },
@@ -167,6 +169,13 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
+				id: "codex-plan-then-bypass",
+				name: "Plan then Bypass (GPT-5.4)",
+				model: "gpt-5.4",
+				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
+				additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
 				id: "codex-codex-medium",
 				name: "GPT-5.3 Codex Medium",
 				model: "gpt-5.3-codex",
@@ -197,6 +206,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		configurations: [
 			{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
 			{ id: "cursor-plan", name: "Plan (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan" },
+			{ id: "cursor-plan-then-bypass", name: "Plan then Bypass (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan", additionalArgs: ["--force"] },
 			{ id: "cursor-yolo", name: "YOLO (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "bypassPermissions" },
 			{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex-high" },
 			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.3 Codex", model: "gpt-5.3-codex-high", permissionMode: "bypassPermissions" },
