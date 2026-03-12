@@ -446,6 +446,16 @@ nav.scrolled {
   transition: color 0.2s;
 }
 .carousel-btn:hover { color: var(--text-1); }
+.carousel-caption {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.01em;
+  margin-top: 10px;
+  min-height: 20px;
+  transition: opacity 0.3s ease;
+}
 .carousel-progress {
   position: absolute;
   bottom: 0;
@@ -1240,14 +1250,15 @@ footer {
         <div class="window-title">dev-3.0</div>
       </div>
       <div class="carousel-track" id="heroCarousel">
-        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000">
-        <img src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000">
-        <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel — Claude, Gemini, Codex in one window" data-duration="4000">
-        <img src="screenshots/completed-column.jpg" alt="286 completed tasks with pipeline progress indicators" data-duration="3000">
-        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000">
-        <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000">
-        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000">
+        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000" data-caption="Hover any task to peek at its terminal — live, real-time">
+        <img src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000" data-caption="All your projects and agents — one dashboard">
+        <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel — Claude, Gemini, Codex in one window" data-duration="4000" data-caption="Four agents. One window. Zero context switching.">
+        <img src="screenshots/completed-column.jpg" alt="286 completed tasks with pipeline progress indicators" data-duration="3000" data-caption="286 tasks done by AI — and counting">
+        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000" data-caption="Dark or light — your workspace, your rules">
+        <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000" data-caption="Pick any agent. Hit Run. That's it.">
+        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000" data-caption="One config for all your agents and projects">
       </div>
+      <div class="carousel-caption" id="carouselCaption"></div>
       <div class="carousel-progress" id="carouselProgress"></div>
     </div>
     <div class="carousel-controls" id="heroControls">
@@ -1849,6 +1860,17 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
   }
   dotsContainer.style.cssText = 'display:flex;gap:6px;align-items:center;';
 
+  var captionEl = document.getElementById('carouselCaption');
+  function updateCaption(index) {
+    var text = slides[index].dataset.caption || '';
+    captionEl.style.opacity = '0';
+    setTimeout(function() {
+      captionEl.textContent = text;
+      captionEl.style.opacity = '1';
+    }, 150);
+  }
+  updateCaption(0);
+
   function getDuration(index) {
     return parseInt(slides[index].dataset.duration) || 4000;
   }
@@ -1866,6 +1888,7 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     dotsContainer.children[current].classList.add('active');
     // Clean up leaving class after transition
     setTimeout(function() { slides[prev].classList.remove('leaving'); }, 500);
+    updateCaption(current);
     startAutoplay();
   }
 
