@@ -95,7 +95,9 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 			group.push(entry);
 			map.set(entry.date, group);
 		}
-		return Array.from(map.entries()).map(([date, items]) => ({ date, items }));
+		return Array.from(map.entries())
+			.map(([date, items]) => ({ date, items }))
+			.sort((a, b) => b.date.localeCompare(a.date));
 	}, [entries, activeFilter]);
 
 	if (loading) {
