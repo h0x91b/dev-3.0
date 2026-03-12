@@ -15,6 +15,7 @@ describe("ensureCodexConfig", () => {
 			expect(result).toContain('":minimal" = "read"');
 			expect(result).toContain('"~/.codex/skills" = "read"');
 			expect(result).toContain('"~/.agents/skills" = "read"');
+			expect(result).toContain('"~/.dev3.0" = "write"');
 			expect(result).toContain('[permissions.dev3.filesystem.":project_roots"]');
 			expect(result).toContain('"." = "write"');
 			expect(result).toContain("[permissions.dev3.network]");
@@ -100,7 +101,7 @@ allow_unix_sockets = ["/tmp/other.sock"]
 	});
 
 	describe("when dev3 permission profile exists but missing skill dirs", () => {
-		it("adds skill directory read permissions", () => {
+		it("adds skill directory read permissions and dev3 data write access", () => {
 			const existing = `[permissions.dev3.filesystem]
 ":minimal" = "read"
 
@@ -114,6 +115,7 @@ allow_unix_sockets = ["${SOCKETS_PATH}"]
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain('"~/.codex/skills" = "read"');
 			expect(result).toContain('"~/.agents/skills" = "read"');
+			expect(result).toContain('"~/.dev3.0" = "write"');
 		});
 	});
 

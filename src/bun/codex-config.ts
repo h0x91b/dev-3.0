@@ -83,6 +83,7 @@ export function ensureCodexConfig(
 			'":minimal" = "read"',
 			'"~/.codex/skills" = "read"',
 			'"~/.agents/skills" = "read"',
+			'"~/.dev3.0" = "write"',
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.filesystem.":project_roots"]`,
 			'"." = "write"',
@@ -126,12 +127,16 @@ export function ensureCodexConfig(
 			}
 		}
 
-		// Ensure skill directories are readable
+		// Ensure skill directories are readable and dev3 data dir is writable
 		const fsHeader = `[permissions.${DEV3_CODEX_PROFILE}.filesystem]`;
-		const skillPaths = ['"~/.codex/skills" = "read"', '"~/.agents/skills" = "read"'];
-		for (const skillLine of skillPaths) {
-			if (!config.includes(skillLine)) {
-				config = insertAfterSectionHeader(config, fsHeader, skillLine);
+		const requiredFsPaths = [
+			'"~/.codex/skills" = "read"',
+			'"~/.agents/skills" = "read"',
+			'"~/.dev3.0" = "write"',
+		];
+		for (const fsLine of requiredFsPaths) {
+			if (!config.includes(fsLine)) {
+				config = insertAfterSectionHeader(config, fsHeader, fsLine);
 			}
 		}
 	}
