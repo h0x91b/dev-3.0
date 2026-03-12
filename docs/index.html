@@ -404,20 +404,20 @@ nav.scrolled {
   transition: opacity 0.4s ease, transform 0.4s ease;
 }
 .carousel-controls {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  z-index: 10;
+  margin-top: 16px;
   background: rgba(4, 7, 18, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 20px;
   padding: 6px 14px;
   border: 1px solid var(--border);
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
 }
 .carousel-dot {
   width: 8px; height: 8px;
@@ -1248,16 +1248,16 @@ footer {
         <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000">
         <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000">
       </div>
-      <div class="carousel-controls" id="heroControls">
-        <button class="carousel-btn" id="carouselPrev" aria-label="Previous">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <div id="carouselDots"></div>
-        <button class="carousel-btn" id="carouselNext" aria-label="Next">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
       <div class="carousel-progress" id="carouselProgress"></div>
+    </div>
+    <div class="carousel-controls" id="heroControls">
+      <button class="carousel-btn" id="carouselPrev" aria-label="Previous">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <div id="carouselDots"></div>
+      <button class="carousel-btn" id="carouselNext" aria-label="Next">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
     </div>
   </div>
 </section>
