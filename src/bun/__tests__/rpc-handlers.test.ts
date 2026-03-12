@@ -362,21 +362,34 @@ describe("buildCmdScript", () => {
 		expect(result).not.toContain(`exec ${cmd}`);
 	});
 
-	it("always drops into user shell after command finishes", () => {
+	it("defaults to keepShell=false: drops into bash only on failure", () => {
 		const result = buildCmdScript("claude");
 		expect(result).toContain("__EC=$?");
 		expect(result).toContain("if [ $__EC -ne 0 ]; then");
-		expect(result).toContain('exec "${SHELL:-bash}"');
+		expect(result).toContain("exec bash");
+		expect(result).not.toContain('exec "${SHELL:-bash}"');
 	});
 
-	it("shows error message on non-zero exit", () => {
-		const result = buildCmdScript("claude");
+	it("keepShell=true: always drops into user shell after command finishes", () => {
+		const result = buildCmdScript("claude", undefined, true);
+		expect(result).toContain("__EC=$?");
+		expect(result).toContain('exec "${SHELL:-bash}"');
+		expect(result).not.toContain("exec bash\n");
+	});
+
+	it("keepShell=true: shows error message on non-zero exit", () => {
+		const result = buildCmdScript("claude", undefined, true);
 		expect(result).toContain("Process exited with code");
 	});
 
-	it("shows dim message on zero exit", () => {
-		const result = buildCmdScript("claude");
+	it("keepShell=true: shows dim message on zero exit", () => {
+		const result = buildCmdScript("claude", undefined, true);
 		expect(result).toContain("Agent session ended (exit 0)");
+	});
+
+	it("keepShell=false: no success message on zero exit", () => {
+		const result = buildCmdScript("claude");
+		expect(result).not.toContain("Agent session ended");
 	});
 
 	it("ends with a newline", () => {
