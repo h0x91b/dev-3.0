@@ -566,16 +566,17 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 	log.info("Cleanup session finished", { session: sessionName });
 }
 
-export function playTaskCompleteSound(): void {
+export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
 	const settings = loadSettingsSync();
 	if (settings.playSoundOnTaskComplete === false) return;
 
-	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", "task-complete.mp3");
-	const devPath = join(import.meta.dir, "..", "assets", "sounds", "task-complete.mp3");
+	const filename = status === "completed" ? "task-completed.mp3" : "task-cancelled.mp3";
+	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", filename);
+	const devPath = join(import.meta.dir, "..", "assets", "sounds", filename);
 	const soundPath = existsSync(prodPath) ? prodPath : existsSync(devPath) ? devPath : null;
 
 	if (!soundPath) {
-		log.warn("Task complete sound file not found", { prodPath, devPath });
+		log.warn("Task complete sound file not found", { prodPath, devPath, status });
 		return;
 	}
 
@@ -1137,7 +1138,7 @@ export const handlers = {
 					});
 				}
 
-				playTaskCompleteSound();
+				playTaskCompleteSound(newStatus as "completed" | "cancelled");
 
 				try {
 					await git.removeWorktree(project, task);
