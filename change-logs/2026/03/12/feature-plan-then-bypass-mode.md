@@ -1,0 +1,1 @@
+Added "Plan then Bypass" agent configurations for Claude (Opus and Sonnet), Cursor (Opus 4.6), and Codex (GPT-5.4). These configs start in plan mode so the agent presents a plan for review, then execute without per-action permission prompts once approved.
