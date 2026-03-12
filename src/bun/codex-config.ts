@@ -45,8 +45,9 @@ export function ensureCodexConfig(
 ): string {
 	let config = content ?? "";
 	let parsed: CodexConfig = {};
-	// Derive absolute dev3 home from worktreesPath (e.g. /Users/x/.dev3.0/worktrees -> /Users/x/.dev3.0)
-	const dev3Home = dirname(worktreesPath);
+	// Derive absolute paths from worktreesPath (e.g. /Users/x/.dev3.0/worktrees)
+	const dev3Home = dirname(worktreesPath); // /Users/x/.dev3.0
+	const userHome = dirname(dev3Home); // /Users/x
 
 	if (config.trim().length > 0) {
 		try {
@@ -84,8 +85,8 @@ export function ensureCodexConfig(
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.filesystem]`,
 			'":minimal" = "read"',
-			'"~/.codex/skills" = "read"',
-			'"~/.agents/skills" = "read"',
+			`"${userHome}/.codex/skills" = "read"`,
+			`"${userHome}/.agents/skills" = "read"`,
 			`"${dev3Home}" = "write"`,
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.filesystem.":project_roots"]`,
@@ -133,8 +134,8 @@ export function ensureCodexConfig(
 		// Ensure skill directories are readable and dev3 data dir is writable
 		const fsHeader = `[permissions.${DEV3_CODEX_PROFILE}.filesystem]`;
 		const requiredFsPaths = [
-			'"~/.codex/skills" = "read"',
-			'"~/.agents/skills" = "read"',
+			`"${userHome}/.codex/skills" = "read"`,
+			`"${userHome}/.agents/skills" = "read"`,
 			`"${dev3Home}" = "write"`,
 		];
 		for (const fsLine of requiredFsPaths) {
