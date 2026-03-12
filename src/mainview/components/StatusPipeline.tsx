@@ -18,13 +18,13 @@ export const PIPELINE_STAGES: TaskStatus[] = [
  * Returns the pipeline stage index for a given status.
  * Side-branch statuses map to their "parent" stage:
  *   user-questions → in-progress (index 1)
- *   cancelled → last stage (completed)
+ *   cancelled → in-progress (index 1) — task was stopped, not completed
  */
 export function getPipelineIndex(status: TaskStatus): number {
 	const direct = PIPELINE_STAGES.indexOf(status);
 	if (direct >= 0) return direct;
 	if (status === "user-questions") return PIPELINE_STAGES.indexOf("in-progress");
-	if (status === "cancelled") return PIPELINE_STAGES.length - 1;
+	if (status === "cancelled") return PIPELINE_STAGES.indexOf("in-progress");
 	return 0;
 }
 

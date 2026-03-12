@@ -1,0 +1,1 @@
+Fixed the pipeline status indicator for cancelled tasks. Previously, cancelled tasks showed all pipeline stages as completed (dots colored through to the end), making them visually identical to completed tasks. Now cancelled renders all pipeline dots uniformly dimmed in the cancelled color, conveying "abandoned" without implying any progress through the stages.
