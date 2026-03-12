@@ -36,8 +36,12 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				defaultAgentId = agent.id;
 			}
 			setAgentId(defaultAgentId);
+			// Only use gs.defaultConfigId if it belongs to the resolved agent
+			const globalConfig = gs.defaultConfigId && agent?.configurations.some((c) => c.id === gs.defaultConfigId)
+				? gs.defaultConfigId
+				: null;
 			setConfigId(
-				gs.defaultConfigId ??
+				globalConfig ??
 				agent?.defaultConfigId ??
 				agent?.configurations[0]?.id ??
 				null,

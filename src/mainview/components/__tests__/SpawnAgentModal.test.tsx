@@ -200,6 +200,27 @@ describe("SpawnAgentModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it("ignores stale defaultConfigId that belongs to a removed agent", async () => {
+		// defaultAgentId points to a deleted agent, defaultConfigId belongs to it
+		mockedApi.request.getGlobalSettings.mockResolvedValue({
+			defaultAgentId: "deleted-agent",
+			defaultConfigId: "deleted-config",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		});
+		renderModal();
+
+		await vi.waitFor(() => {
+			const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
+			// Falls back to first agent (Claude)
+			expect(agentBtn?.textContent?.trim()).toBe("Claude");
+		});
+
+		const configBtn = document.getElementById("spawn-config") as HTMLButtonElement;
+		// Should NOT show blank — should fall back to Claude's defaultConfigId
+		expect(configBtn?.textContent?.trim()).toBe("Default");
+	});
+
 	it("switches agent and resets config", async () => {
 		const user = userEvent.setup();
 		renderModal();
