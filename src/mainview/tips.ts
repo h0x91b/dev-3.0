@@ -371,6 +371,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskDropPosition.body",
 		icon: "\u{F0140}", // nf-md-arrow_up_down
 	},
+	// Batch 15: column load more
+	{
+		id: "column-load-more",
+		titleKey: "tip.columnLoadMore.title",
+		bodyKey: "tip.columnLoadMore.body",
+		icon: "\u{F0063}", // nf-md-arrow_down
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -120,6 +120,8 @@ const tips = {
 	"tip.forkBranchSupport.body": "Введите user:branch в поле ветки (напр. yanive:feat/new-tab) и нажмите Обновить, чтобы загрузить ветку из форка на GitHub.",
 	"tip.taskDropPosition.title": "Новые задачи — наверх",
 	"tip.taskDropPosition.body": "По умолчанию новые и перемещённые задачи появляются вверху колонки. Переключите на «Вниз» в Глобальных настройках → Позиция при перемещении.",
+	"tip.columnLoadMore.title": "Большие колонки сворачиваются",
+	"tip.columnLoadMore.body": "Колонки с 15+ задачами показывают только свежие. Нажмите «Показать ещё» внизу, чтобы увидеть остальные.",
 };
 
 export default tips;

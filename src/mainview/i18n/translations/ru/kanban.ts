@@ -5,6 +5,8 @@ const kanban = {
 	"kanban.cancel": "Отмена",
 	"kanban.newTask": "+ Новая задача",
 	"kanban.failedCreate": "Не удалось создать задачу: {error}",
+	"kanban.showMore": "Показать ещё ({count})",
+	"kanban.showLess": "Свернуть",
 
 	// CreateTaskModal
 	"createTask.title": "Новая задача",

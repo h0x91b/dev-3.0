@@ -1,0 +1,1 @@
+Kanban columns now show only the 15 most recent tasks by default. A "Show more" button at the bottom reveals the rest, and a "Show less" button collapses them back, improving rendering performance for columns with hundreds of tasks.

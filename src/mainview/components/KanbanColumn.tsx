@@ -8,6 +8,8 @@ import TaskCard from "./TaskCard";
 import TipCard from "./TipCard";
 import type { Tip } from "../tips";
 
+const COLUMN_TASK_LIMIT = 15;
+
 // Module-level variable: set synchronously on dragstart, cleared on dragend.
 // Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
 let _activeDragColumnId: string | null = null;
@@ -96,9 +98,16 @@ function KanbanColumn({
 	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
 	const [showInfo, setShowInfo] = useState(false);
 	const [infoPos, setInfoPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+	const [expanded, setExpanded] = useState(false);
 	const infoBtnRef = useRef<HTMLButtonElement>(null);
 	const infoPopupRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
+
+	// Auto-collapse when column identity changes (e.g. project switch)
+	const columnKey = `${status}:${customColumnId ?? ""}`;
+	useEffect(() => {
+		setExpanded(false);
+	}, [columnKey]);
 
 	// Close info popup on outside click
 	useEffect(() => {
@@ -239,6 +248,9 @@ function KanbanColumn({
 
 	const showDropHighlight = dragOver && isCrossColumnTarget;
 
+	const visibleTasks = expanded ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
+	const hiddenCount = tasks.length - visibleTasks.length;
+
 	return (
 		<>
 		<div
@@ -339,7 +351,7 @@ function KanbanColumn({
 					onAddTask();
 				} : undefined}
 			>
-				{tasks.map((task, index) => (
+				{visibleTasks.map((task, index) => (
 					<div key={task.id} data-task-id={task.id}>
 						{isSameColumnDrag && dropIndex === index && task.id !== draggedTaskId && (
 							<div className="h-0.5 bg-accent rounded-full mx-1 mb-2 transition-all" />
@@ -362,8 +374,28 @@ function KanbanColumn({
 						/>
 					</div>
 				))}
-				{isSameColumnDrag && dropIndex === tasks.length && (
+				{isSameColumnDrag && dropIndex === visibleTasks.length && (
 					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0 transition-all" />
+				)}
+
+				{hiddenCount > 0 && (
+					<button
+						onClick={() => setExpanded(true)}
+						className="w-full text-fg-muted hover:text-fg-2 text-xs text-center py-2 mt-1 rounded-lg hover:bg-raised-hover transition-colors"
+					>
+						{t("kanban.showMore", { count: String(hiddenCount) })}
+					</button>
+				)}
+				{expanded && tasks.length > COLUMN_TASK_LIMIT && (
+					<button
+						onClick={() => {
+							setExpanded(false);
+							taskListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+						}}
+						className="w-full text-fg-muted hover:text-fg-2 text-xs text-center py-2 mt-1 rounded-lg hover:bg-raised-hover transition-colors"
+					>
+						{t("kanban.showLess")}
+					</button>
 				)}
 
 				{tasks.length === 0 && !tip && (
