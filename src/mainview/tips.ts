@@ -390,6 +390,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.columnLoadMore.body",
 		icon: "\u{F0063}", // nf-md-arrow_down
 	},
+	// Batch 16: shell after agent exit
+	{
+		id: "shell-after-agent-exit",
+		titleKey: "tip.shellAfterAgentExit.title",
+		bodyKey: "tip.shellAfterAgentExit.body",
+		icon: "\u{F0313}", // nf-md-console
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

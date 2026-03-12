@@ -92,9 +92,24 @@ export function buildEnvExports(env: Record<string, string>): string[] {
  * so the process sees config-level environment variables even when the tmux
  * server was started by a different task.
  */
-export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>): string {
+export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, keepShell = false): string {
 	const escaped = escapeForDoubleQuotes(tmuxCmd);
 	const exportLines = env && Object.keys(env).length > 0 ? buildEnvExports(env) : [];
+	if (keepShell) {
+		return [
+			"#!/bin/bash",
+			...exportLines,
+			`echo "Starting: ${escaped}" && ${tmuxCmd}`,
+			"__EC=$?",
+			"if [ $__EC -ne 0 ]; then",
+			`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
+			"else",
+			`  printf '\\n\\033[2mAgent session ended (exit 0). You are in the worktree shell.\\033[0m\\n'`,
+			"fi",
+			`exec "\${SHELL:-bash}"`,
+			"",
+		].join("\n");
+	}
 	return [
 		"#!/bin/bash",
 		...exportLines,
@@ -740,6 +755,7 @@ export async function launchTaskPty(
 	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
 	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
 
+	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
 		const prefix = `/tmp/dev3-${task.id}`;
 		const setupPath = `${prefix}-setup.sh`;
@@ -750,7 +766,7 @@ export async function launchTaskPty(
 		// to avoid tmux env var propagation issues (tmux server doesn't
 		// inherit custom env vars from the client process)
 		await Bun.write(setupPath, project.setupScript + "\n");
-		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env));
+		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env, true));
 
 		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "bash '${claudePath}'"`;
 		const setupFail = [
@@ -777,13 +793,14 @@ export async function launchTaskPty(
 
 		await Bun.write(startupPath, startupScript + "\n");
 		tmuxCmd = `bash "${startupPath}"`;
+		isSetupWrapper = true;
 	}
 
 	// Write the command to a temp script instead of passing inline.
 	// tmux 3.x limits the shell-command for new-session to ~16 KB;
 	// inline commands with long task descriptions easily exceed that.
 	const runScriptPath = `/tmp/dev3-${task.id}-run.sh`;
-	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env));
+	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env, !isSetupWrapper));
 	const wrapperCmd = `bash "${runScriptPath}"`;
 
 	log.info("Creating PTY session", {

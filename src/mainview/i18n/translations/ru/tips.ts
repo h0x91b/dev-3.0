@@ -126,6 +126,8 @@ const tips = {
 	"tip.restartTaskFromScratch.body": "Переместите задачу в Отменено, затем обратно в Todo — она получит новый worktree и чистую сессию агента.",
 	"tip.columnLoadMore.title": "Большие колонки сворачиваются",
 	"tip.columnLoadMore.body": "Колонки с 15+ задачами показывают только свежие. Нажмите «Показать ещё» внизу, чтобы увидеть остальные.",
+	"tip.shellAfterAgentExit.title": "Шелл остаётся после выхода агента",
+	"tip.shellAfterAgentExit.body": "Когда агент завершается (/exit), вы остаётесь в шелле внутри worktree. Запускайте команды, меняйте агентов или введите exit для завершения.",
 };
 
 export default tips;
