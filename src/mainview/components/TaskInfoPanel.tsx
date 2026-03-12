@@ -582,6 +582,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		setCreatingPR(false);
 	}
 
+	function handleOpenPR() {
+		if (branchStatus?.prUrl) {
+			window.open(branchStatus.prUrl, "_blank");
+		}
+	}
+
+
 	async function handleShowDiff() {
 		try {
 			await api.request.showDiff({
@@ -1024,7 +1031,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const hasPR = branchStatus && branchStatus.prNumber !== null;
 	const needsPushBeforePR = branchStatus && branchStatus.ahead > 0 && branchStatus.unpushed !== 0;
-	const createPRDisabled = !branchStatus || branchStatus.ahead === 0 || creatingPR || pushing;
+	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (!branchStatus || branchStatus.ahead === 0 || creatingPR || pushing);
 
 	function getPRButtonLabel(): string {
 		if (creatingPR) return t("infoPanel.creatingPR");
@@ -1112,7 +1119,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			>
 				{pushing ? t("infoPanel.pushing") : t("infoPanel.push")}
 			</button>
-			{!hasPR && (
+			{hasPR ? (
+				<button
+					onClick={handleOpenPR}
+					disabled={!branchStatus?.prUrl}
+					className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						!branchStatus?.prUrl ? disabledBtnClass : "text-success hover:bg-success/20 bg-success/10 border border-success/25"
+					}`}
+					title={branchStatus?.prUrl ? `PR #${branchStatus.prNumber}` : ""}
+				>
+					{t("infoPanel.openPR")}
+				</button>
+			) : (
 				<button
 					onClick={() => {
 						if (needsPushBeforePR) {

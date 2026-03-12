@@ -454,7 +454,7 @@ export interface BranchStatus {
 	diffDeletions: number; // total lines removed in branch vs base
 	diffFileNames: string[]; // list of changed file paths in branch vs base
 	prNumber: number | null; // open PR number for this branch, null if none
-	prUrl: string | null; // GitHub PR URL, null if no PR
+	prUrl: string | null; // full GitHub PR URL, null if no PR
 }
 
 export interface PRInfo {

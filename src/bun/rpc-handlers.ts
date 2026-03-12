@@ -203,12 +203,7 @@ const gitOpPaneIds = new Map<string, string>();
 const mergeNotifiedTasks = new Set<string>();
 
 // Dedup in-flight getBranchStatus requests per task to prevent stampedes
-const branchStatusInFlight = new Map<string, Promise<{
-	ahead: number; behind: number; canRebase: boolean;
-	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
-	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
-	prNumber: number | null;
-}>>();
+const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);

@@ -53,6 +53,7 @@ vi.mock("../git", () => ({
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
 	run: vi.fn(),
+	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
 }));
 
 vi.mock("../pty-server", () => ({
