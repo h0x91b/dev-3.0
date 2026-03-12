@@ -6,7 +6,8 @@ import { api } from "../rpc";
 
 interface ChangelogProps {
 	navigate: (route: Route) => void;
-	previousRoute: Route | null;
+	goBack: () => void;
+	canGoBack: boolean;
 }
 
 const ENTRY_TYPES = ["feature", "fix", "refactor", "docs", "chore"] as const;
@@ -49,7 +50,7 @@ function formatDate(dateStr: string): string {
 	}).format(new Date(y, m - 1, d));
 }
 
-function Changelog({ navigate, previousRoute }: ChangelogProps) {
+function Changelog({ navigate, goBack, canGoBack }: ChangelogProps) {
 	const t = useT();
 	const [entries, setEntries] = useState<ChangelogEntry[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -68,12 +69,16 @@ function Changelog({ navigate, previousRoute }: ChangelogProps) {
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
-				navigate(previousRoute ?? { screen: "dashboard" });
+				if (canGoBack) {
+					goBack();
+				} else {
+					navigate({ screen: "dashboard" });
+				}
 			}
 		}
 		document.addEventListener("keydown", handleKey);
 		return () => document.removeEventListener("keydown", handleKey);
-	}, [navigate, previousRoute]);
+	}, [navigate, goBack, canGoBack]);
 
 	const toggleFilter = useCallback((type: EntryType) => {
 		setActiveFilter((prev) => (prev === type ? null : type));

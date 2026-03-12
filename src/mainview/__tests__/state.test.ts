@@ -1,4 +1,4 @@
-import { reducer, initialState } from "../state";
+import { reducer, initialState, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
 import type { AppState, AppAction } from "../state";
 import type { Project, Task } from "../../shared/types";
 
@@ -35,7 +35,8 @@ describe("initialState", () => {
 	it("has expected defaults", () => {
 		expect(initialState).toEqual({
 			route: { screen: "dashboard" },
-			previousRoute: null,
+			routeHistory: [{ screen: "dashboard" }],
+			historyIndex: 0,
 			projects: [],
 			currentProjectTasks: [],
 			loading: true,
@@ -54,16 +55,118 @@ describe("reducer", () => {
 		expect(next.route).toEqual({ screen: "project", projectId: "p1" });
 	});
 
-	it("navigate: sets previousRoute to the old route", () => {
-		const state: AppState = {
-			...initialState,
-			route: { screen: "dashboard" },
-		};
-		const next = reducer(state, {
+	it("navigate: pushes to routeHistory and advances historyIndex", () => {
+		const next = reducer(initialState, {
 			type: "navigate",
 			route: { screen: "settings" },
 		});
-		expect(next.previousRoute).toEqual({ screen: "dashboard" });
+		expect(next.routeHistory).toEqual([
+			{ screen: "dashboard" },
+			{ screen: "settings" },
+		]);
+		expect(next.historyIndex).toBe(1);
+	});
+
+	it("navigate: truncates forward history when navigating from middle of stack", () => {
+		let state = initialState;
+		state = reducer(state, { type: "navigate", route: { screen: "settings" } });
+		state = reducer(state, { type: "navigate", route: { screen: "changelog" } });
+		// Go back to settings
+		state = reducer(state, { type: "goBack" });
+		expect(state.route).toEqual({ screen: "settings" });
+		// Navigate somewhere new — forward history (changelog) should be gone
+		state = reducer(state, { type: "navigate", route: { screen: "dashboard" } });
+		expect(state.routeHistory).toEqual([
+			{ screen: "dashboard" },
+			{ screen: "settings" },
+			{ screen: "dashboard" },
+		]);
+		expect(state.historyIndex).toBe(2);
+	});
+
+	it("navigate: caps history at HISTORY_LIMIT entries", () => {
+		let state = initialState;
+		for (let i = 0; i < HISTORY_LIMIT + 5; i++) {
+			state = reducer(state, {
+				type: "navigate",
+				route: { screen: "project", projectId: `p${i}` },
+			});
+		}
+		expect(state.routeHistory.length).toBe(HISTORY_LIMIT);
+		expect(state.historyIndex).toBe(HISTORY_LIMIT - 1);
+	});
+
+	it("goBack: moves to previous route", () => {
+		let state = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "settings" },
+		});
+		state = reducer(state, { type: "goBack" });
+		expect(state.route).toEqual({ screen: "dashboard" });
+		expect(state.historyIndex).toBe(0);
+		// History stack stays intact
+		expect(state.routeHistory).toEqual([
+			{ screen: "dashboard" },
+			{ screen: "settings" },
+		]);
+	});
+
+	it("goBack: no-op when already at beginning", () => {
+		const next = reducer(initialState, { type: "goBack" });
+		expect(next).toBe(initialState);
+	});
+
+	it("goForward: moves to next route", () => {
+		let state = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "settings" },
+		});
+		state = reducer(state, { type: "goBack" });
+		state = reducer(state, { type: "goForward" });
+		expect(state.route).toEqual({ screen: "settings" });
+		expect(state.historyIndex).toBe(1);
+	});
+
+	it("goForward: no-op when at end of history", () => {
+		const state = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "settings" },
+		});
+		const next = reducer(state, { type: "goForward" });
+		expect(next).toBe(state);
+	});
+
+	it("goBack: clears bell for target route", () => {
+		const bellCounts = new Map([["t1", 3]]);
+		let state: AppState = { ...initialState, bellCounts };
+		state = reducer(state, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		});
+		state = reducer(state, {
+			type: "navigate",
+			route: { screen: "dashboard" },
+		});
+		// Bell was cleared on first navigate, re-add it
+		state = { ...state, bellCounts: new Map([["t1", 2]]) };
+		state = reducer(state, { type: "goBack" });
+		expect(state.bellCounts.has("t1")).toBe(false);
+	});
+
+	it("canGoBack/canGoForward helpers", () => {
+		expect(canGoBack(initialState)).toBe(false);
+		expect(canGoForward(initialState)).toBe(false);
+
+		let state = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "settings" },
+		});
+		expect(canGoBack(state)).toBe(true);
+		expect(canGoForward(state)).toBe(false);
+
+		state = reducer(state, { type: "goBack" });
+		expect(canGoBack(state)).toBe(false);
+		expect(canGoForward(state)).toBe(true);
 	});
 
 	it("navigate: clears bell when opening task terminal", () => {

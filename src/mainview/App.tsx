@@ -496,7 +496,13 @@ function App() {
 			case "settings":
 				return <GlobalSettings />;
 			case "changelog":
-				return <Changelog navigate={navigate} previousRoute={state.previousRoute} />;
+				return (
+					<Changelog
+						navigate={navigate}
+						goBack={() => dispatch({ type: "goBack" })}
+						canGoBack={state.historyIndex > 0}
+					/>
+				);
 			case "gauge-demo":
 				return <GaugeDemo navigate={navigate} />;
 			case "viewport-lab":

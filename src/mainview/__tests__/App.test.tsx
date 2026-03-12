@@ -41,7 +41,7 @@ vi.mock("../components/GlobalSettings", () => ({
 	default: () => <div data-testid="settings-screen" />,
 }));
 vi.mock("../components/Changelog", () => ({
-	default: (_props: { navigate: unknown; previousRoute: unknown }) => <div data-testid="changelog-screen" />,
+	default: (_props: { navigate: unknown; goBack: unknown; canGoBack: unknown }) => <div data-testid="changelog-screen" />,
 }));
 vi.mock("../components/ProjectView", () => ({
 	default: () => <div data-testid="project-screen" />,
