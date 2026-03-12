@@ -207,7 +207,7 @@ describe("mergeWithDefaults", () => {
 		expect(cfg.name).toBe("Default");
 	});
 
-	it("user overrides win for user-editable fields but not additionalArgs", () => {
+	it("user overrides still win over defaults in merged configs", () => {
 		const stored: CodingAgent[] = [
 			{
 				id: "builtin-codex",
@@ -223,41 +223,10 @@ describe("mergeWithDefaults", () => {
 		const codex = result.find((a) => a.id === "builtin-codex")!;
 		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
 
-		// User-editable fields should win
+		// User's explicit values should win
 		expect(cfg.name).toBe("My Codex");
 		expect(cfg.model).toBe("o3");
-
-		// additionalArgs is preset-owned — always comes from defaults
-		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
-		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
-		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
-	});
-
-	it("stored additionalArgs are ignored for default configs (preset updates propagate)", () => {
-		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
-		const stored: CodingAgent[] = [
-			{
-				id: "builtin-codex",
-				name: "Codex",
-				baseCommand: "codex",
-				configurations: [
-					{
-						id: "codex-default",
-						name: "Default",
-						additionalArgs: ["--old-flag", "--stale-arg"],
-					},
-				],
-				defaultConfigId: "codex-default",
-			},
-		];
-		const result = mergeWithDefaults(stored);
-		const codex = result.find((a) => a.id === "builtin-codex")!;
-		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
-		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
-
-		// Default additionalArgs should always win over stored ones
-		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
-		expect(cfg.additionalArgs).not.toContain("--old-flag");
+		expect(cfg.additionalArgs).toEqual(["--search"]);
 	});
 
 	it("preserves user-created (non-default) agents after defaults", () => {

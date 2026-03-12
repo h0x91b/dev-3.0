@@ -1,1 +1,0 @@
-Fixed default agent preset `additionalArgs` being overridden by stale cached values in `agents.json`. The `mergeWithDefaults` function now treats `additionalArgs` as a preset-owned field that always comes from the code defaults, ensuring preset updates (e.g., replacing `--full-auto` with new flags) propagate correctly to users.
