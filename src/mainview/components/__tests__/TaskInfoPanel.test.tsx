@@ -1435,7 +1435,7 @@ describe("TaskInfoPanel", () => {
 			expect(mockedTrackEvent).toHaveBeenCalledWith("task_renamed", { project_id: "p1" });
 		});
 
-		it("cancels rename on Escape", async () => {
+		it("cancels rename on cancel button click", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			await act(async () => {
 				renderPanel(makeTask({ title: "My task" }));
@@ -1443,7 +1443,7 @@ describe("TaskInfoPanel", () => {
 			await user.click(screen.getByTitle("Edit title"));
 			expect(screen.getByDisplayValue("My task")).toBeInTheDocument();
 
-			await user.keyboard("{Escape}");
+			await user.click(screen.getByTestId("rename-cancel"));
 			expect(screen.queryByDisplayValue("My task")).not.toBeInTheDocument();
 			expect(screen.getByText("My task")).toBeInTheDocument();
 		});

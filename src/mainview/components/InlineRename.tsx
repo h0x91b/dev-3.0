@@ -81,7 +81,7 @@ export default function InlineRename({
 
 	if (editing) {
 		return (
-			<span ref={wrapperRef} className="flex items-center gap-1 min-w-0">
+			<span ref={wrapperRef} className="flex items-center gap-0.5 min-w-0">
 				<input
 					ref={inputRef}
 					type="text"
@@ -90,11 +90,33 @@ export default function InlineRename({
 					onChange={(e) => setValue(e.target.value)}
 					onKeyDown={(e) => {
 						if (e.key === "Enter") save(value);
-						if (e.key === "Escape") setEditing(false);
+						if (e.key === "Escape") { e.stopPropagation(); setEditing(false); }
 					}}
 					disabled={saving}
 					className={inputClassName}
 				/>
+				<button
+					onClick={() => save(value)}
+					disabled={saving}
+					className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-green-400 hover:text-green-300"
+					title={t("task.rename")}
+					data-testid="rename-save"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+					</svg>
+				</button>
+				<button
+					onClick={() => setEditing(false)}
+					disabled={saving}
+					className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-danger hover:text-red-400"
+					title={t("task.cancel")}
+					data-testid="rename-cancel"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
 				{showReset && hasCustomTitle && (
 					<button
 						onClick={() => save(null)}

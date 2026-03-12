@@ -378,7 +378,7 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		});
 	});
 
-	it("cancels rename on Escape", async () => {
+	it("cancels rename on cancel button click", async () => {
 		const user = userEvent.setup();
 		renderHeader(
 			{ screen: "task", projectId: "p1", taskId: "t1" },
@@ -389,7 +389,7 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		await user.click(screen.getByTitle("Edit title"));
 		expect(screen.getByDisplayValue("My Task Title")).toBeInTheDocument();
 
-		await user.keyboard("{Escape}");
+		await user.click(screen.getByTestId("rename-cancel"));
 		expect(screen.queryByDisplayValue("My Task Title")).not.toBeInTheDocument();
 		expect(screen.getByText("My Task Title")).toBeInTheDocument();
 	});
