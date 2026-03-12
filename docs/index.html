@@ -1376,8 +1376,10 @@ footer {
           <h3>Launch multiple agents at once</h3>
           <p>
             Pick any combination of agents &mdash; Claude, Cursor, Codex, Gemini &mdash;
-            each with its own config. dev-3.0 creates isolated git worktrees
-            and launches them all in parallel. Zero conflicts, full isolation.
+            each with its own config. Every task gets an
+            <strong style="color:var(--text-1)">isolated git worktree</strong>,
+            so parallel tasks never conflict. Launch multiple agents inside
+            the same task or across different tasks &mdash; your call.
           </p>
         </div>
         <div class="step-visual">
@@ -1397,12 +1399,13 @@ footer {
       <div class="step reveal">
         <div class="step-content">
           <div class="step-number step-number-green">3</div>
-          <h3>Full terminal with tmux inside</h3>
+          <h3>Full terminal — run multiple agents per task</h3>
           <p>
-            Click any task to enter its terminal &mdash; powered by Ghostty's
-            rendering engine with tmux preconfigured. Split panes, scroll history,
-            copy-paste &mdash; everything you expect from a real terminal.
-            AI agents run natively, with all their features intact.
+            Each task opens a real terminal powered by Ghostty&rsquo;s rendering engine
+            with tmux preconfigured. Split panes to run
+            <strong style="color:var(--text-1)">several agents side by side</strong>
+            in the same worktree &mdash; Claude, Gemini, Codex, whatever you need.
+            Scroll history, copy-paste, all native features intact.
           </p>
         </div>
         <div class="step-visual">
@@ -1410,10 +1413,10 @@ footer {
             <div class="window-dot window-dot-red"></div>
             <div class="window-dot window-dot-yellow"></div>
             <div class="window-dot window-dot-green"></div>
-            <div class="window-title">Terminal &mdash; Claude Code session</div>
+            <div class="window-title">Terminal &mdash; multiple agents in one task</div>
           </div>
-          <!-- Agent working on code with diff view -->
-          <img src="screenshots/terminal-view.jpg" alt="Agent working on code with diff view" class="step-screenshot"
+          <!-- Multiple agents running in parallel in split panes -->
+          <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel in split panes" class="step-screenshot"
                onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.jpg</span></div>'">
         </div>
       </div>
