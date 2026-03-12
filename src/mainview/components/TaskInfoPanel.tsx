@@ -1404,6 +1404,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 						})}
 						{diffStatsBadge}
+						{prBadge}
 						<div className="flex-1" />
 						{openInButton}
 						{fileBrowserButton}
@@ -1442,15 +1443,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 								{task.branchName}
 							</span>
 						)}
-						{prBadge && (
-							<>
-								{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
-								{prBadge}
-							</>
-						)}
 						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
 							<>
-								{(task.branchName || prBadge) && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
+								{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 								{branchStatusBadge || branchStatusLoading}
 								{refDropdownButton}
 							</>
@@ -1486,6 +1481,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
 							})}
 							{diffStatsBadge}
+							{prBadge}
 							<div className="flex-1" />
 							{openInButton}
 							{tmuxHintsInline}
@@ -1523,15 +1519,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 									{task.branchName}
 								</span>
 							)}
-							{prBadge && (
-								<>
-									{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
-									{prBadge}
-								</>
-							)}
 							{(branchStatusBadge || refDropdownButton) && (
 								<>
-									{(task.branchName || prBadge) && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
+									{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
 									{branchStatusBadge}
 									{refDropdownButton}
 								</>
