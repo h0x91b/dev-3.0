@@ -1691,7 +1691,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					</div>
 				</div>
 			)}
-		{spawnModalOpen && <SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />}
+		{spawnModalOpen && createPortal(
+			<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
+			document.body,
+		)}
 		</div>
 	);
 }
