@@ -323,7 +323,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 		displayTasks = displayTasks.filter((t) => activeFilters.some((id) => t.labelIds?.includes(id)));
 	}
 	if (searchQuery.trim()) {
-		displayTasks = displayTasks.filter((t) => matchesSearchQuery(t, searchQuery));
+		displayTasks = displayTasks.filter((t) => matchesSearchQuery(t, searchQuery, { prNumber: taskPrMap.get(t.id)?.number }));
 	}
 
 	// Built-in column tasks (exclude tasks in custom columns)

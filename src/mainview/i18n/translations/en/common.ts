@@ -34,6 +34,8 @@ const common = {
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Active Tasks",
 	"sidebar.noActiveTasks": "No active tasks",
+	"sidebar.noSearchResults": "No tasks match your search",
+	"sidebar.searchPlaceholder": "Search tasks...",
 	"sidebar.switchToBoard": "Show board",
 	"sidebar.switchToSidebar": "Show sidebar",
 

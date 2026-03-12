@@ -212,6 +212,76 @@ describe("matchesSearchQuery", () => {
 		).toBe(true);
 	});
 
+	// ---- PR number matching (via options) ----
+
+	it("matches by exact PR number", () => {
+		expect(matchesSearchQuery(makeTask(), "456", { prNumber: 456 })).toBe(true);
+	});
+
+	it("matches by PR number with # prefix", () => {
+		expect(matchesSearchQuery(makeTask(), "#456", { prNumber: 456 })).toBe(true);
+	});
+
+	it("matches by PR number prefix (partial)", () => {
+		expect(matchesSearchQuery(makeTask(), "45", { prNumber: 456 })).toBe(true);
+	});
+
+	it("matches by PR number with 'PR' prefix", () => {
+		expect(matchesSearchQuery(makeTask(), "PR789", { prNumber: 789 })).toBe(true);
+	});
+
+	it("matches by PR number with 'pr' prefix (case-insensitive)", () => {
+		expect(matchesSearchQuery(makeTask(), "pr789", { prNumber: 789 })).toBe(true);
+	});
+
+	it("matches by PR number with 'PR ' prefix (with space)", () => {
+		expect(matchesSearchQuery(makeTask(), "PR 789", { prNumber: 789 })).toBe(true);
+	});
+
+	it("does not match different PR number", () => {
+		expect(
+			matchesSearchQuery(
+				makeTask({
+					title: "No match",
+					description: "No match",
+					seq: 1,
+					id: "00000000-0000-0000-0000-000000000000",
+				}),
+				"456",
+				{ prNumber: 123 },
+			),
+		).toBe(false);
+	});
+
+	it("does not match PR number when prNumber is null", () => {
+		expect(
+			matchesSearchQuery(
+				makeTask({
+					title: "No match",
+					description: "No match",
+					seq: 1,
+					id: "00000000-0000-0000-0000-000000000000",
+				}),
+				"pr123",
+				{ prNumber: null },
+			),
+		).toBe(false);
+	});
+
+	it("does not match PR number when options not provided", () => {
+		expect(
+			matchesSearchQuery(
+				makeTask({
+					title: "No match",
+					description: "No match",
+					seq: 1,
+					id: "00000000-0000-0000-0000-000000000000",
+				}),
+				"pr123",
+			),
+		).toBe(false);
+	});
+
 	// ---- Edge cases ----
 
 	it("handles query with leading/trailing spaces", () => {
