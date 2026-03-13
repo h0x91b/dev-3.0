@@ -22,6 +22,7 @@ const terminal = {
 	"tmux.closePaneDesc": "Закрыть панель",
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
+	"tmux.keyboardMode": "Режим клавиш",
 
 	// Tmux Session Manager
 	"tmuxSessions.title": "Сессии tmux",

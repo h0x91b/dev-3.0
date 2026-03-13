@@ -1,0 +1,1 @@
+Added iTerm2 compatibility toggle to the tmux shortcuts popover (the ⓘ info button in the task panel header). Users can now enable or disable the iTerm2 keymap preset directly from the hints tooltip without navigating to global settings.
