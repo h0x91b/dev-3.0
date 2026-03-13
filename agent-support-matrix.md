@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-03-09
+Last updated: 2026-03-13
 
 ## Agents
 
@@ -21,11 +21,11 @@ Last updated: 2026-03-09
 | **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) |
 | **System prompt injection** | `--append-system-prompt` | via prompt arg | — | — |
 | **Session resume** | `--continue` | `--continue` | `resume --last` | `--resume latest` |
-| **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--permission-mode` |
-| **Effort level** | `--effort` | — | `--effort` | `--effort` |
-| **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | `--max-budget-usd` |
+| **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` |
+| **Effort level** | `--effort` | — | `--effort` | — |
+| **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — |
 | **Model selection** | `--model` | `--model` | `--model` | `--model` |
-| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | — | — |
+| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | — | Yes (`ensureGeminiTrust`) |
 | **Status hooks (automatic)** | Yes (4 hooks) | — | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Manual (SKILL.md) | Manual (SKILL.md) |
 

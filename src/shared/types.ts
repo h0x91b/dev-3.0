@@ -236,7 +236,20 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Gemini",
 		baseCommand: "gemini",
 		isDefault: true,
-		configurations: [{ id: "gemini-default", name: "Default" }],
+		configurations: [
+			// --- Gemini 3.1 Pro (heavy) ---
+			{ id: "gemini-default", name: "Default (3.1 Pro)", model: "gemini-3.1-pro-preview", version: 1 },
+			{ id: "gemini-plan", name: "Plan (3.1 Pro)", model: "gemini-3.1-pro-preview", permissionMode: "plan", version: 1 },
+			{ id: "gemini-yolo", name: "YOLO (3.1 Pro)", model: "gemini-3.1-pro-preview", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "gemini-auto-edit", name: "Auto Edit (3.1 Pro)", model: "gemini-3.1-pro-preview", permissionMode: "acceptEdits", version: 1 },
+			// --- Gemini 3 Flash (medium) ---
+			{ id: "gemini-flash", name: "Default (3 Flash)", model: "gemini-3-flash-preview", version: 1 },
+			{ id: "gemini-flash-yolo", name: "YOLO (3 Flash)", model: "gemini-3-flash-preview", permissionMode: "bypassPermissions", version: 1 },
+			{ id: "gemini-flash-auto-edit", name: "Auto Edit (3 Flash)", model: "gemini-3-flash-preview", permissionMode: "acceptEdits", version: 1 },
+			// --- Gemini 3.1 Flash Lite (light) ---
+			{ id: "gemini-flash-lite", name: "Default (3.1 Flash Lite)", model: "gemini-3.1-flash-lite-preview", version: 1 },
+			{ id: "gemini-flash-lite-yolo", name: "YOLO (3.1 Flash Lite)", model: "gemini-3.1-flash-lite-preview", permissionMode: "bypassPermissions", version: 1 },
+		],
 		defaultConfigId: "gemini-default",
 	},
 	{

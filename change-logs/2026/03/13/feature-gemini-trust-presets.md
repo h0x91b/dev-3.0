@@ -1,0 +1,1 @@
+Add Gemini CLI auto-trust and configuration presets. New worktrees are automatically registered in ~/.gemini/trustedFolders.json, eliminating the trust dialog. Gemini now has 9 presets across three model tiers (3.1 Pro, 3 Flash, 3.1 Flash Lite) with approval mode mapping (default, plan, yolo, auto_edit).

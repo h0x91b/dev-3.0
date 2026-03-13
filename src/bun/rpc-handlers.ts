@@ -738,6 +738,20 @@ export async function launchTaskPty(
 		});
 	}
 
+	// Pre-register worktree as trusted so gemini skips the trust dialog
+	if (agents.isGeminiCommand(resolvedBaseCmd)) {
+		try {
+			await agents.ensureGeminiTrust(worktreePath);
+			log.info("Gemini trust ensured", { worktreePath });
+		} catch (err) {
+			log.error("ensureGeminiTrust failed (non-fatal)", {
+				worktreePath,
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+		}
+	}
+
 	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop)
 	try {
 		setupAgentHooks(worktreePath, task.id, resolvedBaseCmd);

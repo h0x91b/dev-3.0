@@ -73,6 +73,8 @@ vi.mock("../pty-server", () => ({
 
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
+	ensureGeminiTrust: vi.fn(),
+	isGeminiCommand: vi.fn(() => false),
 	resolveCommandForAgent: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	resolveCommandForProject: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	getAllAgents: vi.fn(() => []),

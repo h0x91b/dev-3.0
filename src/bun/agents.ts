@@ -231,6 +231,7 @@ export function resolveAgentCommand(
 	}
 
 	const cursorAgent = isCursorCommand(baseCmd);
+	const geminiAgent = isGeminiCommand(baseCmd);
 
 	if (config?.permissionMode && config.permissionMode !== "default" && !codexAgent) {
 		if (cursorAgent) {
@@ -241,16 +242,25 @@ export function resolveAgentCommand(
 				args.push("--force");
 			}
 			// "acceptEdits" and "dontAsk" have no cursor equivalent — skip
+		} else if (geminiAgent) {
+			// Gemini CLI uses --approval-mode with its own value set
+			const geminiModeMap: Record<string, string> = {
+				acceptEdits: "auto_edit",
+				bypassPermissions: "yolo",
+				dontAsk: "yolo",
+				plan: "plan",
+			};
+			args.push("--approval-mode", geminiModeMap[config.permissionMode] ?? config.permissionMode);
 		} else {
 			args.push("--permission-mode", config.permissionMode);
 		}
 	}
 
-	if (config?.effort && !cursorAgent && !codexAgent) {
+	if (config?.effort && !cursorAgent && !codexAgent && !geminiAgent) {
 		args.push("--effort", config.effort);
 	}
 
-	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent) {
+	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent && !geminiAgent) {
 		args.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
@@ -408,6 +418,38 @@ export function buildTaskEnv(
 	}
 
 	return env;
+}
+
+// ---- Gemini Trust ----
+
+const GEMINI_TRUSTED_FOLDERS = `${homedir()}/.gemini/trustedFolders.json`;
+
+/**
+ * Ensure a directory is marked as trusted in ~/.gemini/trustedFolders.json so
+ * that `gemini` CLI skips the "Do you trust the files in this folder?" dialog.
+ * Resolves symlinks (e.g. /tmp → /private/tmp on macOS).
+ */
+export async function ensureGeminiTrust(dirPath: string): Promise<void> {
+	try {
+		const resolved = await realpath(dirPath);
+		const file = Bun.file(GEMINI_TRUSTED_FOLDERS);
+		let data: Record<string, string> = {};
+		if (await file.exists()) {
+			data = await file.json();
+		}
+
+		if (data[resolved] === "TRUST_FOLDER") {
+			return; // already trusted
+		}
+
+		data[resolved] = "TRUST_FOLDER";
+
+		await Bun.write(GEMINI_TRUSTED_FOLDERS, JSON.stringify(data, null, 2));
+		log.info("Registered worktree as trusted in ~/.gemini/trustedFolders.json", { path: resolved });
+	} catch (err) {
+		// Non-fatal — worst case the user sees the trust dialog
+		log.warn("Failed to register Gemini worktree trust", { error: String(err) });
+	}
 }
 
 // ---- Claude Trust ----
