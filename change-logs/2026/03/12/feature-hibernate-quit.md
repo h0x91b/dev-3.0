@@ -1,1 +1,3 @@
 Added Hibernate & Quit option to the quit dialog. When active agent sessions are running, Cmd+Q now shows a 3-button dialog: Cancel, Quit, or Hibernate & Quit. Choosing hibernate saves all active task IDs to disk, gracefully shuts down PTY sessions (closing extra split panes first), and on next app launch automatically resumes all hibernated agents with --continue in their existing worktrees.
+
+Added nightly integration tests (`bun run test:nightly`) that verify assumptions about agent conversation storage paths, CLI resume flag support, and tmux pane identity stability across swaps. Discovered that tmux 3.6a does not support `#{pane_created}` — tests document using `#{pane_pid}` as a reliable fallback for identifying the original pane.
