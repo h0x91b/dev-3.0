@@ -264,7 +264,7 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
-	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; existingBranch?: string },
+	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; existingBranch?: string; preparing?: boolean },
 ): Promise<Task> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
@@ -291,6 +291,7 @@ export async function addTask(
 			tmuxSocket: "dev3",
 			labelIds: [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
+			...(extras?.preparing ? { preparing: true } : {}),
 		};
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);

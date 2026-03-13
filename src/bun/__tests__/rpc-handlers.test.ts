@@ -1398,7 +1398,7 @@ describe("handlers.spawnVariants", () => {
 	it("spawns variants into active status with worktree + PTY", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
-		const variantTask = makeTask({ id: "variant-1", status: "in-progress" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
 		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -1417,15 +1417,21 @@ describe("handlers.spawnVariants", () => {
 			],
 		});
 
+		// Phase 1: returns tasks immediately with preparing flag
 		expect(result).toHaveLength(2);
 		expect(data.addTask).toHaveBeenCalledTimes(2);
-		expect(git.createWorktree).toHaveBeenCalledTimes(2);
+		expect(result[0].preparing).toBe(true);
+
+		// Phase 2: background worktree creation runs asynchronously
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	it("inherits existingBranch from source task into single variant", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, existingBranch: "feature/login" });
-		const variantTask = makeTask({ id: "variant-1", status: "in-progress", existingBranch: "feature/login" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", existingBranch: "feature/login", preparing: true });
 		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", branchName: "feature/login" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -1445,16 +1451,18 @@ describe("handlers.spawnVariants", () => {
 			project,
 			sourceTask.description,
 			"in-progress",
-			expect.objectContaining({ existingBranch: "feature/login" }),
+			expect.objectContaining({ existingBranch: "feature/login", preparing: true }),
 		);
-		// Single variant: use existing branch directly, no variantBranchName
-		expect(git.createWorktree).toHaveBeenCalledWith(project, variantTask, "feature/login", undefined);
+		// Background: single variant uses existing branch directly, no variantBranchName
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledWith(project, variantTask, "feature/login", undefined);
+		});
 	});
 
 	it("creates per-variant branches when spawning multiple variants with existingBranch", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, existingBranch: "feature/login" });
-		const variantTask = makeTask({ id: "variant-1", status: "in-progress", existingBranch: "feature/login" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", existingBranch: "feature/login", preparing: true });
 		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -1476,8 +1484,13 @@ describe("handlers.spawnVariants", () => {
 		// Both variants store existingBranch for reference
 		const addTaskCalls = vi.mocked(data.addTask).mock.calls;
 		expect(addTaskCalls).toHaveLength(2);
-		expect(addTaskCalls[0][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login" }));
-		expect(addTaskCalls[1][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login" }));
+		expect(addTaskCalls[0][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login", preparing: true }));
+		expect(addTaskCalls[1][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login", preparing: true }));
+
+		// Wait for background worktree creation
+		await vi.waitFor(() => {
+			expect(vi.mocked(git.createWorktree).mock.calls).toHaveLength(2);
+		});
 
 		// Each variant gets its own branch name derived from the existing branch
 		const createWtCalls = vi.mocked(git.createWorktree).mock.calls;

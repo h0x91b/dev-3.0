@@ -404,6 +404,8 @@ export interface Task {
 	existingBranch?: string | null;
 	notes?: TaskNote[];
 	customColumnId?: string | null;
+	/** True while the worktree is being created (heavy I/O in progress). */
+	preparing?: boolean;
 }
 
 /** Returns the display title: custom override if set, otherwise auto-generated. */

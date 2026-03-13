@@ -128,6 +128,8 @@ const tips = {
 	"tip.columnLoadMore.body": "Las columnas con 15+ tareas muestran solo las más recientes. Haz clic en \"Mostrar más\" abajo para ver el resto.",
 	"tip.shellAfterAgentExit.title": "Shell persiste tras salir el agente",
 	"tip.shellAfterAgentExit.body": "Cuando tu agente termina (/exit), te quedas en un shell dentro del worktree. Ejecuta comandos, cambia agentes o escribe exit para finalizar.",
+	"tip.asyncTaskLaunch.title": "Lanzamiento no bloqueante",
+	"tip.asyncTaskLaunch.body": "Lanzar una tarea cierra el diálogo al instante. La tarjeta muestra un spinner mientras el worktree se prepara en segundo plano.",
 };
 
 export default tips;

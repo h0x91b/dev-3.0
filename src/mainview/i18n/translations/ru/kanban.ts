@@ -43,6 +43,7 @@ const kanban = {
 	"task.failedMove": "Не удалось переместить задачу: {error}",
 	"task.failedDelete": "Не удалось удалить задачу: {error}",
 	"task.run": "Запустить",
+	"task.preparing": "Подготовка…",
 	"task.cancel": "Отменить",
 	"task.confirmCancel": "Отменить задачу «{title}»?",
 	"task.variant": "#{n}",

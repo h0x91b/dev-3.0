@@ -72,11 +72,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [ctxMenuOpen, setCtxMenuOpen] = useState(false);
 	const [ctxMenuPos, setCtxMenuPos] = useState({ top: 0, left: 0 });
 
-	const isDisabled = moving || isMovingProp;
+	const isPreparing = task.preparing === true;
+	const isDisabled = moving || isMovingProp || isPreparing;
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
-	const isCompleting = isDisabled && (task.status === "completed" || task.status === "cancelled");
+	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
 	const color = statusColors[task.status];
 
 	// Close menu on click outside
@@ -369,7 +370,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${isCompleting ? "grayscale opacity-40 pointer-events-none" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
+			} ${isCompleting ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60 pointer-events-none" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
 			style={{ borderLeftColor: isCompleting ? "#888" : color }}
 			onClick={handleClick}
 		>
@@ -377,6 +378,14 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{isMovingProp && (
 				<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-base/40">
 					<div className="w-4 h-4 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+				</div>
+			)}
+
+			{/* Preparing spinner overlay — worktree is being created */}
+			{isPreparing && (
+				<div className="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-xl bg-base/40">
+					<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+					<span className="text-xs text-fg-2 font-medium">{t("task.preparing")}</span>
 				</div>
 			)}
 

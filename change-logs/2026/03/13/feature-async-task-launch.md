@@ -1,0 +1,1 @@
+Task launch is now non-blocking: clicking "Launch" closes the modal immediately and shows the task card with a preparing spinner. Worktree creation, CoW cloning, and PTY setup run in the background. This eliminates UI freezes on large monorepos where worktree operations can take minutes.

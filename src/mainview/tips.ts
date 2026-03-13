@@ -397,6 +397,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.shellAfterAgentExit.body",
 		icon: "\u{F0313}", // nf-md-console
 	},
+	{
+		id: "async-task-launch",
+		titleKey: "tip.asyncTaskLaunch.title",
+		bodyKey: "tip.asyncTaskLaunch.body",
+		icon: "\u{F0F26}", // nf-md-rocket_launch
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

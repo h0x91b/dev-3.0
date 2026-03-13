@@ -43,6 +43,7 @@ const kanban = {
 	"task.failedMove": "Failed to move task: {error}",
 	"task.failedDelete": "Failed to delete task: {error}",
 	"task.run": "Run",
+	"task.preparing": "Preparing…",
 	"task.cancel": "Cancel",
 	"task.confirmCancel": "Cancel task \"{title}\"?",
 	"task.variant": "#{n}",

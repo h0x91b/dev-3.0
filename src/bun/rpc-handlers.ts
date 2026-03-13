@@ -1316,7 +1316,9 @@ export const handlers = {
 		const resultTasks: Task[] = [];
 		const srcBranch = sourceTask.existingBranch ?? undefined;
 		const isMultiVariant = params.variants.length > 1;
+		const needsWorktree = isActive(params.targetStatus);
 
+		// Phase 1: Create all tasks in DB immediately (fast)
 		for (let i = 0; i < params.variants.length; i++) {
 			const variant = params.variants[i];
 
@@ -1331,35 +1333,51 @@ export const handlers = {
 					configId: variant.configId,
 					seq: sharedSeq,
 					existingBranch: srcBranch,
+					preparing: needsWorktree,
 				},
 			);
 
-			if (isActive(params.targetStatus)) {
-				// Multi-variant with existingBranch: create per-variant branches
-				// (e.g. feature/login-v1, feature/login-v2) from the existing branch's HEAD.
-				// Single variant: check out the existing branch directly.
-				const variantBranchName = (isMultiVariant && srcBranch)
-					? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
-					: undefined;
-				const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
-				await runCowClones(project, wt.worktreePath);
-				await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
-
-				const updated = await data.updateTask(project, task.id, {
-					worktreePath: wt.worktreePath,
-					branchName: wt.branchName,
-				});
-				pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
-				resultTasks.push(updated);
-			} else {
-				resultTasks.push(task);
-			}
+			resultTasks.push(task);
 		}
 
 		// Delete the original TODO task
 		await data.deleteTask(project, params.taskId);
 
-		log.info("← spawnVariants done", { count: resultTasks.length, groupId });
+		log.info("← spawnVariants returning immediately", { count: resultTasks.length, groupId, needsWorktree });
+
+		// Phase 2: Heavy I/O (worktree + CoW + PTY) runs in the background
+		if (needsWorktree) {
+			(async () => {
+				for (let i = 0; i < resultTasks.length; i++) {
+					const task = resultTasks[i];
+					const variant = params.variants[i];
+					try {
+						const variantBranchName = (isMultiVariant && srcBranch)
+							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+							: undefined;
+						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
+						await runCowClones(project, wt.worktreePath);
+						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
+
+						const updated = await data.updateTask(project, task.id, {
+							worktreePath: wt.worktreePath,
+							branchName: wt.branchName,
+							preparing: false,
+						});
+						pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+						log.info("Variant ready", { taskId: task.id, worktreePath: wt.worktreePath });
+					} catch (err) {
+						log.error("Failed to prepare variant", { taskId: task.id, error: String(err) });
+						// Mark as no longer preparing so the card isn't stuck
+						try {
+							const updated = await data.updateTask(project, task.id, { preparing: false });
+							pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+						} catch { /* best effort */ }
+					}
+				}
+			})();
+		}
+
 		return resultTasks;
 	},
 
