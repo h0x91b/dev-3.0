@@ -87,9 +87,9 @@ The patching logic:
 ### Preset CLI flags (`src/shared/types.ts`)
 
 Non-bypass presets: `-p dev3 -a on-request --no-alt-screen -c 'default_permissions="dev3"' -c 'model_reasoning_effort="..."'`
-Bypass presets: `-p dev3 --full-auto --no-alt-screen --sandbox danger-full-access -c 'model_reasoning_effort="..."'`
+Bypass presets: `-p dev3 -a on-request --no-alt-screen --sandbox danger-full-access -c 'model_reasoning_effort="..."'`
 
-Note: bypass presets use `-p dev3` (config profile) but skip `-c 'default_permissions="dev3"'` (permission profile) because `--sandbox danger-full-access` overrides permissions anyway.
+Note: bypass presets use `-a on-request` (auto-approve) explicitly instead of `--full-auto`, because `--full-auto` implies `--sandbox workspace-write` which would conflict with the explicit `--sandbox danger-full-access`. Bypass presets skip `-c 'default_permissions="dev3"'` (permission profile) because `--sandbox danger-full-access` overrides permissions anyway.
 
 ### CLI context detection (`src/cli/context.ts`)
 

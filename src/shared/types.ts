@@ -168,7 +168,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				model: "gpt-5.4",
 				version: 2,
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
-				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
 			// --- GPT-5.4 ---
 			{
@@ -176,7 +176,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				name: "GPT-5.4 Heavy Bypass",
 				model: "gpt-5.4",
 				version: 2,
-				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-5.4-heavy",
@@ -190,7 +190,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				name: "GPT-5.4 Medium Bypass",
 				model: "gpt-5.4",
 				version: 2,
-				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
 				id: "codex-5.4-medium",
@@ -205,7 +205,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				name: "GPT-5.3 Codex Heavy Bypass",
 				model: "gpt-5.3-codex",
 				version: 2,
-				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-5.3-heavy",
@@ -219,7 +219,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				name: "GPT-5.3 Codex Medium Bypass",
 				model: "gpt-5.3-codex",
 				version: 2,
-				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
 				id: "codex-5.3-medium",
