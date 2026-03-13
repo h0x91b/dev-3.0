@@ -207,14 +207,46 @@ describe("mergeWithDefaults", () => {
 		expect(cfg.name).toBe("Default");
 	});
 
-	it("user overrides still win over defaults in merged configs", () => {
+	it("user overrides still win over defaults when versions match", () => {
 		const stored: CodingAgent[] = [
 			{
 				id: "builtin-codex",
 				name: "Codex",
 				baseCommand: "codex",
 				configurations: [
-					{ id: "codex-default", name: "My Codex", model: "o3", additionalArgs: ["--search"] },
+					{ id: "codex-default", name: "My Codex", model: "o3", additionalArgs: ["--my-custom-flag"], version: 2 },
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
+		// When stored version matches default version, user overrides win
+		expect(cfg.name).toBe("My Codex");
+		expect(cfg.model).toBe("o3");
+		expect(cfg.additionalArgs).toEqual(["--my-custom-flag"]);
+		// Version should be preserved
+		expect(cfg.version).toBe(defCfg.version);
+	});
+
+	// ---- version-based preset update tests ----
+
+	it("resets additionalArgs when stored has no version (legacy data)", () => {
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					// No version field — legacy stored data
+					{ id: "codex-default", name: "Default", additionalArgs: ["--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access"] },
 				],
 				defaultConfigId: "codex-default",
 			},
@@ -223,10 +255,164 @@ describe("mergeWithDefaults", () => {
 		const codex = result.find((a) => a.id === "builtin-codex")!;
 		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
 
-		// User's explicit values should win
+		// additionalArgs should be reset to defaults because stored has no version
+		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
+		// version should be set to default
+		expect(cfg.version).toBe(defCfg.version);
+	});
+
+	it("resets additionalArgs when stored version < default version", () => {
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					{ id: "codex-default", name: "My Codex", model: "o3", additionalArgs: ["--old-stale-flag"], version: 1 },
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+
+		// additionalArgs reset to default because stored version is older
+		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
+		// User-editable fields still preserved
 		expect(cfg.name).toBe("My Codex");
 		expect(cfg.model).toBe("o3");
-		expect(cfg.additionalArgs).toEqual(["--search"]);
+		// version bumped to default
+		expect(cfg.version).toBe(defCfg.version);
+	});
+
+	it("preserves user additionalArgs when stored version == default version", () => {
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					{ id: "codex-default", name: "Default", additionalArgs: ["--my-custom-flag"], version: defCfg.version },
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+
+		// Same version — user's customization wins
+		expect(cfg.additionalArgs).toEqual(["--my-custom-flag"]);
+	});
+
+	it("preserves user additionalArgs when stored version > default version (future-proof)", () => {
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					{ id: "codex-default", name: "Default", additionalArgs: ["--future-flag"], version: 999 },
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+
+		// Stored version is higher — user's args are preserved
+		expect(cfg.additionalArgs).toEqual(["--future-flag"]);
+	});
+
+	it("resets additionalArgs only for outdated configs, not all configs of same agent", () => {
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfgDefault = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					// This config is outdated — should be reset
+					{ id: "codex-default", name: "Default", additionalArgs: ["--stale"], version: 1 },
+					// User-created config — should not be touched
+					{ id: "my-custom-codex", name: "My Setup", additionalArgs: ["--my-flag"] },
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+
+		const defaultCfg = codex.configurations.find((c) => c.id === "codex-default")!;
+		expect(defaultCfg.additionalArgs).toEqual(defCfgDefault.additionalArgs);
+
+		const customCfg = codex.configurations.find((c) => c.id === "my-custom-codex")!;
+		expect(customCfg.additionalArgs).toEqual(["--my-flag"]);
+	});
+
+	it("does not reset user-editable fields even when version is outdated", () => {
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-codex",
+				name: "Codex",
+				baseCommand: "codex",
+				configurations: [
+					{
+						id: "codex-default",
+						name: "My Custom Name",
+						model: "o3-mini",
+						permissionMode: "plan" as any,
+						effort: "low" as any,
+						maxBudgetUsd: 42,
+						appendPrompt: "Be careful",
+						additionalArgs: ["--stale-flag"],
+						envVars: { MY_VAR: "hello" },
+						version: 1,
+					},
+				],
+				defaultConfigId: "codex-default",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const codex = result.find((a) => a.id === "builtin-codex")!;
+		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
+
+		// additionalArgs reset
+		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
+		// All user-editable fields preserved
+		expect(cfg.name).toBe("My Custom Name");
+		expect(cfg.model).toBe("o3-mini");
+		expect(cfg.permissionMode).toBe("plan");
+		expect(cfg.effort).toBe("low");
+		expect(cfg.maxBudgetUsd).toBe(42);
+		expect(cfg.appendPrompt).toBe("Be careful");
+		expect(cfg.envVars).toEqual({ MY_VAR: "hello" });
+	});
+
+	it("version field is included in merged output for fresh defaults (no stored data)", () => {
+		const result = mergeWithDefaults([]);
+		for (const agent of result) {
+			for (const cfg of agent.configurations) {
+				// All default configs should have a version
+				if (cfg.version !== undefined) {
+					expect(typeof cfg.version).toBe("number");
+					expect(cfg.version).toBeGreaterThan(0);
+				}
+			}
+		}
 	});
 
 	it("preserves user-created (non-default) agents after defaults", () => {

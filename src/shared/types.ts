@@ -108,6 +108,9 @@ export interface AgentConfiguration {
 	additionalArgs?: string[];
 	envVars?: Record<string, string>;
 	baseCommandOverride?: string;
+	/** Preset version. When the default version is bumped, stored additionalArgs
+	 *  are reset to the new defaults. User-editable fields are preserved. */
+	version?: number;
 }
 
 export interface CodingAgent {
@@ -148,12 +151,14 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				id: "codex-default",
 				name: "Default (GPT-5.4 Medium)",
 				model: "gpt-5.4",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
 				id: "codex-plan",
 				name: "Plan (GPT-5.4)",
 				model: "gpt-5.4",
+				version: 2,
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
@@ -161,6 +166,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				id: "codex-plan-then-bypass",
 				name: "Plan then Bypass (GPT-5.4)",
 				model: "gpt-5.4",
+				version: 2,
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
@@ -169,24 +175,28 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				id: "codex-5.4-heavy-bypass",
 				name: "GPT-5.4 Heavy Bypass",
 				model: "gpt-5.4",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-5.4-heavy",
 				name: "GPT-5.4 Heavy",
 				model: "gpt-5.4",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-5.4-medium-bypass",
 				name: "GPT-5.4 Medium Bypass",
 				model: "gpt-5.4",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
 				id: "codex-5.4-medium",
 				name: "GPT-5.4 Medium",
 				model: "gpt-5.4",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="medium"'],
 			},
 			// --- GPT-5.3 Codex ---
@@ -194,24 +204,28 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				id: "codex-5.3-heavy-bypass",
 				name: "GPT-5.3 Codex Heavy Bypass",
 				model: "gpt-5.3-codex",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-5.3-heavy",
 				name: "GPT-5.3 Codex Heavy",
 				model: "gpt-5.3-codex",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-5.3-medium-bypass",
 				name: "GPT-5.3 Codex Medium Bypass",
 				model: "gpt-5.3-codex",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "--full-auto", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
 				id: "codex-5.3-medium",
 				name: "GPT-5.3 Codex Medium",
 				model: "gpt-5.3-codex",
+				version: 2,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="medium"'],
 			},
 		],
