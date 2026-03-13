@@ -36,7 +36,7 @@ import { join, resolve } from "node:path";
 // The test must use the identical config so we catch regressions that only
 // manifest with the real settings (e.g. escape-time 0, mouse on).
 // If you change pty-server.ts, keep this in sync.
-const TMUX_CONFIG_FOR_TEST = `# Mouse support
+const TMUX_CONFIG_FOR_TEST = String.raw`# Mouse support
 setw -g mouse on
 
 # Window/pane numbering starts at 1
@@ -60,7 +60,7 @@ set -g renumber-windows on
 
 # Intuitive splits (open in same directory)
 bind | split-window -h -c "#{pane_current_path}"
-bind \\\\ split-window -h -c "#{pane_current_path}"
+bind \\ split-window -h -c "#{pane_current_path}"
 bind - split-window -v -c "#{pane_current_path}"
 
 # Alt+arrow pane switching (no prefix required)

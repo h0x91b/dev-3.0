@@ -9,7 +9,7 @@ import { spawn, spawnSync } from "./spawn";
 
 export const TMUX_CONF_PATH = "/tmp/dev3-tmux.conf";
 
-const TMUX_CONFIG = `# Mouse support
+const TMUX_CONFIG = String.raw`# Mouse support
 setw -g mouse on
 
 # Window/pane numbering starts at 1
@@ -33,7 +33,7 @@ set -g renumber-windows on
 
 # Intuitive splits (open in same directory)
 bind | split-window -h -c "#{pane_current_path}"
-bind \\\\ split-window -h -c "#{pane_current_path}"
+bind \\ split-window -h -c "#{pane_current_path}"
 bind - split-window -v -c "#{pane_current_path}"
 
 # Alt+arrow pane switching (no prefix required)

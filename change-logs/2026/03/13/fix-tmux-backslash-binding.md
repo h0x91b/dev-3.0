@@ -1,0 +1,1 @@
+Make the bundled tmux config use String.raw so the backslash split binding is emitted as a literal `bind \\ split-window ...` line. Added a regression test for the generated config text and kept the shift-keys e2e tmux fixture in sync.

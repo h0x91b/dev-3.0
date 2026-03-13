@@ -748,5 +748,41 @@ describe("pty-server", () => {
 		it("equals /tmp/dev3-tmux.conf", () => {
 			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux.conf");
 		});
+
+		it("writes a backslash split binding with a literal double backslash", async () => {
+			vi.resetModules();
+
+			const writeFileSyncMock = vi.fn();
+
+			vi.doMock("node:fs", async (importOriginal) => {
+				const actual = await importOriginal<typeof import("node:fs")>();
+				return {
+					...actual,
+					existsSync: vi.fn(() => true),
+					writeFileSync: writeFileSyncMock,
+				};
+			});
+
+			vi.doMock("../logger", () => ({
+				createLogger: () => ({
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+				}),
+			}));
+
+			vi.doMock("../spawn", () => ({
+				spawn: vi.fn(),
+				spawnSync: vi.fn(),
+			}));
+
+			const { TMUX_CONF_PATH: configPath } = await import("../pty-server");
+
+			expect(writeFileSyncMock).toHaveBeenCalledWith(
+				configPath,
+				expect.stringContaining(String.raw`bind \\ split-window -h -c "#{pane_current_path}"`),
+			);
+		});
 	});
 });
