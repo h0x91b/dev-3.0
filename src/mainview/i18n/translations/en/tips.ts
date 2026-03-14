@@ -138,6 +138,8 @@ const tips = {
 	"tip.repoLocalConfig.body": "Use \"Save to Repo\" in Project Settings to store scripts and paths in .dev3/config.json — teammates get the setup automatically.",
 	"tip.aiReviewDrag.title": "Manual AI Review",
 	"tip.aiReviewDrag.body": "Drag a task to the AI Review column to trigger an automated code review. The agent reviews your branch and fixes medium/high issues.",
+	"tip.aiReviewCustomize.title": "Customize AI Review",
+	"tip.aiReviewCustomize.body": "Change the review prompt or disable AI Review entirely in Project Settings. Works per-project.",
 	"tip.customColumnAgents.title": "Column agents",
 	"tip.customColumnAgents.body": "Any custom column can auto-spawn an agent when a task enters it. Configure agent and prompt in Project Settings.",
 } as const;

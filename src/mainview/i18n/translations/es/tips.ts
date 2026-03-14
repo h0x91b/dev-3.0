@@ -138,6 +138,8 @@ const tips = {
 	"tip.repoLocalConfig.body": "Usa \"Guardar en repo\" en Configuracion del Proyecto para almacenar scripts en .dev3/config.json — el equipo obtiene la config automaticamente.",
 	"tip.aiReviewDrag.title": "AI Review manual",
 	"tip.aiReviewDrag.body": "Arrastra una tarea a la columna AI Review para lanzar una revisión automática. El agente revisa tu rama y corrige problemas medios/altos.",
+	"tip.aiReviewCustomize.title": "Personaliza AI Review",
+	"tip.aiReviewCustomize.body": "Cambia el prompt de revisión o desactiva AI Review en Ajustes del proyecto. Se configura por proyecto.",
 	"tip.customColumnAgents.title": "Agentes en columnas",
 	"tip.customColumnAgents.body": "Cualquier columna personalizada puede lanzar un agente automáticamente cuando entra una tarea. Configúralo en Ajustes del proyecto.",
 };

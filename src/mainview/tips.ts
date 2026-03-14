@@ -430,6 +430,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0804}", // nf-md-code_review
 	},
 	{
+		id: "ai-review-customize",
+		titleKey: "tip.aiReviewCustomize.title",
+		bodyKey: "tip.aiReviewCustomize.body",
+		icon: "\u{F0493}", // nf-md-tune_variant
+	},
+	{
 		id: "custom-column-agents",
 		titleKey: "tip.customColumnAgents.title",
 		bodyKey: "tip.customColumnAgents.body",
