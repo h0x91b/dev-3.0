@@ -167,115 +167,90 @@ const GENERIC_SKILL_DIRS = [
 const PROJECT_CONFIG_SKILL_DESCRIPTION =
 	"Use when you need to create, read, or modify a dev-3.0 project config file (.dev3/config.json or .dev3/config.local.json). Trigger: the user asks to configure project settings, you see a .dev3/ directory, or the task involves setup/dev/cleanup scripts, clone paths, base branch, or peer review settings.";
 
-const PROJECT_CONFIG_SKILL_BODY = `# dev3-project-config — Project Configuration Files
+const PROJECT_CONFIG_SKILL_BODY = `# dev3-project-config — Automated Project Setup
 
-## What is .dev3/config.json?
+## Your job
 
-The **primary source of project settings** for dev-3.0. This file is committed to git,
-letting the whole team share project configuration (scripts, clone paths, base branch)
-without manual per-machine setup.
+When invoked, **fully configure the project** by analyzing it and writing \`.dev3/config.json\`.
+Do NOT ask the user what to put in each field — figure it out yourself. Only ask if something
+is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch).
 
-## File locations
+## Step-by-step
 
-| File | Committed? | Purpose |
-|------|-----------|---------|
-| \`.dev3/config.json\` | Yes (git) | Primary project settings — shared with the team |
-| \`.dev3/config.local.json\` | No (git-ignored) | Machine-specific overrides |
+1. **Check if \`.dev3/config.json\` already exists.** If it does and all fields are populated, tell the user it's already configured and stop (unless they asked to change something specific).
 
-## Merge priority (lowest → highest)
+2. **Analyze the project.** Read these files (whichever exist):
+   - \`package.json\` — scripts, dependencies, devDependencies, workspaces
+   - \`Makefile\` / \`Justfile\` — build targets
+   - \`pyproject.toml\` / \`setup.py\` / \`requirements.txt\` — Python projects
+   - \`Cargo.toml\` — Rust projects
+   - \`go.mod\` — Go projects
+   - \`.gitignore\` — hints about build artifacts and deps
+   - \`docker-compose.yml\` / \`Dockerfile\` — container-based dev
+   - Root-level config files (\`vite.config.*\`, \`next.config.*\`, \`turbo.json\`, etc.)
 
-1. **Repo** — \`.dev3/config.json\` (committed, shared via git)
-2. **Local** — \`.dev3/config.local.json\` (git-ignored, personal overrides)
+3. **Determine all config fields:**
 
-Fields not set in either file use defaults (empty string / empty array / "main" / true).
+   | Field | How to determine |
+   |-------|-----------------|
+   | \`setupScript\` | Package manager install command. Detect from lockfile: \`bun.lockb\` → \`bun install\`, \`pnpm-lock.yaml\` → \`pnpm install\`, \`yarn.lock\` → \`yarn\`, \`package-lock.json\` → \`npm install\`. For Python: \`pip install -e .\` or \`poetry install\`. For Rust: \`cargo build\`. Chain multiple steps with \`&&\` if needed. |
+   | \`devScript\` | The dev server command. Check \`package.json\` scripts for \`dev\`, \`start\`, \`serve\`. Use the full command: \`bun run dev\`, \`npm run dev\`, etc. If no dev server exists, leave empty. |
+   | \`cleanupScript\` | Clean build artifacts and caches. E.g., \`rm -rf node_modules/.cache dist .next\`. Tailor to what the project actually generates. If unsure, leave empty. |
+   | \`clonePaths\` | Heavy directories that should be CoW-cloned into new worktrees instead of re-downloaded. Common: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Only include dirs that actually exist in the project. |
+   | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
+   | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
 
-**Important:** Settings in \`~/.dev3.0/projects.json\` are NOT used for scripts/config.
-That file only stores project metadata (id, name, path). All settings live in \`.dev3/\`.
-
-## Schema
-
-All fields are **optional**. Only include fields you want to set.
-
-\`\`\`json
-{
-  "setupScript": "bun install",
-  "devScript": "bun run dev",
-  "cleanupScript": "rm -rf node_modules/.cache",
-  "clonePaths": ["node_modules", ".next"],
-  "defaultBaseBranch": "main",
-  "peerReviewEnabled": true
-}
-\`\`\`
-
-### Field reference
-
-| Field | Type | Description |
-|-------|------|-------------|
-| \`setupScript\` | string | Runs after a new worktree is created for a task |
-| \`devScript\` | string | Dev server command (reserved for future use) |
-| \`cleanupScript\` | string | Runs when a task is cancelled or archived |
-| \`clonePaths\` | string[] | Paths to copy (not symlink) into new worktrees (e.g. \`node_modules\`) |
-| \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
-| \`peerReviewEnabled\` | boolean | Whether peer review is required before completing tasks |
-
-## When to create .dev3/config.json
-
-- The user asks to configure project settings
-- You are setting up a new project and know the correct scripts/paths
-- The user asks to share settings with the team
-
-## When to use .dev3/config.local.json
-
-- Machine-specific paths (e.g. absolute paths that differ per developer)
-- Personal preferences that shouldn't be shared
-- Temporary overrides during development
-
-## Choosing repo vs local — ask the user
-
-When the user asks to save or change project settings, **always ask** whether they want
-to save to the repo config (shared with team) or local config (this machine only):
-
-- "Where should I save this — to the repo config (shared) or local (just for you)?"
-- Default to \`.dev3/config.json\` (repo) for most settings
-- Use \`.dev3/config.local.json\` only when the user explicitly wants a personal override
-
-## How to create
-
-1. Create the \`.dev3/\` directory if it doesn't exist
-2. Write the config file as pretty-printed JSON
-3. If creating \`.dev3/config.local.json\`, ensure it's in \`.gitignore\`
+4. **Ask where to save.** Before writing, ask: "Save to repo config (shared with team, committed to git) or local config (just this machine, git-ignored)?" Default suggestion is repo.
 
 \`\`\`bash
 mkdir -p .dev3
 cat > .dev3/config.json << 'EOF'
 {
   "setupScript": "bun install",
+  "devScript": "bun run dev",
+  "cleanupScript": "rm -rf dist node_modules/.cache",
+  "clonePaths": ["node_modules"],
   "defaultBaseBranch": "main"
 }
 EOF
 \`\`\`
 
-## .gitignore
+5. **Run the setupScript once.** Execute it right now in your shell to install dependencies / generate files. This validates the script works and also produces the heavy directories (node_modules, .venv, etc.) needed for the next step.
 
-\`.dev3/config.local.json\` must be git-ignored. The app does this automatically,
-but if creating manually, add this to \`.gitignore\`:
+6. **Update clonePaths after setup.** After the setupScript finishes, check which heavy directories now exist (node_modules, .venv, target, build, dist, .next, etc.) and add any missing ones to \`clonePaths\` in the config. Re-write the config if needed.
 
-\`\`\`
-# dev-3.0 local config
-.dev3/config.local.json
-\`\`\`
+7. **Verify** by running \`dev3 config show\` and confirm all fields show the correct source.
+
+8. **Commit** the config file: \`git add .dev3/config.json && git commit -m "chore: add dev3 project config"\`
+
+## Schema reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.) |
+| \`devScript\` | string | Dev server command (powers the "Dev Server" button in the UI) |
+| \`cleanupScript\` | string | Runs when a task is cancelled or archived |
+| \`clonePaths\` | string[] | Dirs to CoW-clone into worktrees (faster than re-downloading) |
+| \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
+| \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
+| \`sparseCheckoutEnabled\` | boolean | Enable sparse checkout for worktrees (default: \`false\`) |
+| \`sparseCheckoutPaths\` | string[] | Paths to include in sparse checkout |
+
+**Only include these fields.** Unknown keys are silently ignored. Do NOT include project metadata (id, name, path).
+
+## Files
+
+| File | Committed? | Purpose |
+|------|-----------|---------|
+| \`.dev3/config.json\` | Yes | Shared project settings (team-wide) |
+| \`.dev3/config.local.json\` | No (git-ignored) | Machine-specific overrides (personal) |
+
+**Always ask the user** which file to save to before writing. Suggest repo config as default.
 
 ## CLI commands
 
-- \`dev3 config show\` — display effective merged settings with source indicators
-- \`dev3 config export\` — migrate settings from projects.json to \`.dev3/config.json\`
-
-## Important notes
-
-- **Do NOT include non-config fields** (id, name, path, createdAt) — only the 6 fields above are valid
-- **Unknown keys are silently ignored** by the merge logic
-- The app UI has two tabs: "Repo Config" and "Local Overrides"
-- Changes to \`.dev3/config.json\` take effect immediately on next app refresh (no restart needed)
+- \`dev3 config show\` — display effective config with source per field
+- \`dev3 config export\` — migrate legacy settings from projects.json
 `;
 
 const CLAUDE_PROJECT_CONFIG_SKILL = `---
