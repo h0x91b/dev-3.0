@@ -22,6 +22,7 @@ import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
+import { useColumnCollapse } from "../hooks/useColumnCollapse";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -57,6 +58,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	const draggedColumnIdRef = useRef<string | null>(null);
 	const [tipState, setTipState] = useState<TipState | null>(null);
 	const currentTip = useMemo(() => tipState ? selectTip(tipState) : null, [tipState]);
+	const collapseState = useColumnCollapse(project.id);
 
 	// PR numbers for task cards: taskId → { number, url }
 	const [taskPrMap, setTaskPrMap] = useState<Map<string, { number: number; url: string }>>(new Map());
@@ -444,10 +446,13 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	}
 
 	// Find the first column with <2 tasks for the tip card (only one tip across the board)
+	// Exclude collapsed columns from tip placement
 	const tipColumnId: string | null = useMemo(() => {
 		if (!currentTip) return null;
 		const orderedCols = getOrderedColumns();
 		for (const slot of orderedCols) {
+			const colId = slot.type === "builtin" ? slot.status : slot.col.id;
+			if (collapseState.isCollapsed(colId)) continue;
 			if (slot.type === "builtin") {
 				const count = tasksByStatus.get(slot.status)?.length ?? 0;
 				if (count < 3) return slot.status;
@@ -457,7 +462,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 			}
 		}
 		return null;
-	}, [currentTip, displayTasks]);
+	}, [currentTip, displayTasks, collapseState]);
 
 	return (
 		<>
@@ -486,7 +491,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 			/>
-			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-scroll overflow-y-hidden kanban-scroll">
+			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
 					const handleTipChanged = () => reloadTipState();
 					const commonProps = {
@@ -513,6 +518,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 						taskPrMap,
 					};
 					if (slot.type === "builtin") {
+						const colId = slot.status;
 						return (
 							<KanbanColumn
 								key={slot.status}
@@ -524,6 +530,9 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 								tip={tipColumnId === slot.status ? currentTip : undefined}
 								onTipChanged={handleTipChanged}
 								tipState={tipState ?? undefined}
+								collapsed={collapseState.isCollapsed(colId)}
+								onCollapseToggle={() => collapseState.toggle(colId)}
+								collapseDragHandlers={collapseState.dragExpandHandlers(colId)}
 								{...commonProps}
 							/>
 						);
@@ -545,7 +554,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 							onColumnDrop={(side) => handleColumnDrop(col.id, side)}
 							tip={tipColumnId === col.id ? currentTip : undefined}
 							onTipChanged={handleTipChanged}
-								tipState={tipState ?? undefined}
+							tipState={tipState ?? undefined}
 							{...commonProps}
 						/>
 					);

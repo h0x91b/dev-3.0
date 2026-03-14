@@ -120,6 +120,8 @@ const tips = {
 	"tip.taskOpenMode.body": "Включите «Полный экран» в режиме открытия задач (Глобальные настройки), чтобы открывать задачи без разделённого вида.",
 	"tip.forkBranchSupport.title": "Ревью PR из форков",
 	"tip.forkBranchSupport.body": "Введите user:branch в поле ветки (напр. yanive:feat/new-tab) и нажмите Обновить, чтобы загрузить ветку из форка на GitHub.",
+	"tip.collapsibleColumns.title": "Сворачиваемые колонки",
+	"tip.collapsibleColumns.body": "Нажмите на свёрнутую колонку, чтобы закрепить её открытой, или наведите курсор для быстрого просмотра.",
 	"tip.taskDropPosition.title": "Новые задачи — наверх",
 	"tip.taskDropPosition.body": "По умолчанию новые и перемещённые задачи появляются вверху колонки. Переключите на «Вниз» в Глобальных настройках → Позиция при перемещении.",
 	"tip.restartTaskFromScratch.title": "Перезапуск задачи с нуля",

@@ -54,6 +54,10 @@ interface KanbanColumnProps {
 	tip?: Tip | null;
 	tipState?: TipState;
 	onTipChanged?: () => void;
+	// Collapse support
+	collapsed?: boolean;
+	onCollapseToggle?: () => void;
+	collapseDragHandlers?: { onDragEnter: () => void; onDragLeave: () => void; onDragEnd: () => void };
 }
 
 function KanbanColumn({
@@ -92,6 +96,9 @@ function KanbanColumn({
 	tip,
 	tipState,
 	onTipChanged,
+	collapsed,
+	onCollapseToggle,
+	collapseDragHandlers,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -254,6 +261,86 @@ function KanbanColumn({
 	const visibleTasks = expanded ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
 	const hiddenCount = tasks.length - visibleTasks.length;
 
+	// Collapsed column rendering
+	if (collapsed) {
+		return (
+			<>
+			<div
+				className={`group/col relative flex flex-col flex-shrink-0 w-12 glass-column column-glow rounded-2xl border cursor-pointer select-none ${
+					showDropHighlight
+						? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
+						: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
+							? "border-edge-active"
+							: "border-transparent"
+				} ${isDraggedColumn ? "opacity-40" : ""}`}
+				style={{
+					"--col-rgb": hexToRgb(color),
+					...(columnDragSide === "before" && { boxShadow: "-4px 0 0 0 rgb(var(--accent))" }),
+					...(columnDragSide === "after" && { boxShadow: "4px 0 0 0 rgb(var(--accent))" }),
+				} as React.CSSProperties}
+				onClick={onCollapseToggle}
+				onDragOver={handleDragOver}
+				onDragEnter={(e) => {
+					handleDragEnter(e);
+					collapseDragHandlers?.onDragEnter();
+				}}
+				onDragLeave={(e) => {
+					handleDragLeave(e);
+					collapseDragHandlers?.onDragLeave();
+				}}
+				onDrop={(e) => {
+					handleDrop(e);
+					collapseDragHandlers?.onDragEnd();
+				}}
+				data-collapsed-column
+			>
+				{/* Color dot */}
+				<div className="flex justify-center pt-4 pb-2">
+					<div
+						className="w-3 h-3 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+				</div>
+
+				{/* Task count badge */}
+				{tasks.length > 0 && (
+					<div className="flex justify-center pb-2">
+						<span
+							className="text-xs font-bold px-1.5 py-0.5 rounded-full"
+							style={{ color, background: `${color}18` }}
+						>
+							{tasks.length}
+						</span>
+					</div>
+				)}
+
+				{/* Vertical label */}
+				<div className="flex-1 flex justify-center items-start pt-1 overflow-hidden">
+					<span
+						className="kanban-col-vertical-label text-fg-3 text-xs font-semibold whitespace-nowrap"
+					>
+						{label}
+					</span>
+				</div>
+
+				{/* New Task button (Todo column only) */}
+				{!isCustomColumn && status === "todo" && (
+					<div className="flex justify-center pb-3">
+						<button
+							onClick={(e) => { e.stopPropagation(); onAddTask(); }}
+							className="text-fg-3 hover:text-accent transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 text-base leading-none"
+							aria-label={t("kanban.newTask")}
+							title={t("kanban.newTask")}
+						>
+							+
+						</button>
+					</div>
+				)}
+			</div>
+			</>
+		);
+	}
+
 	return (
 		<>
 		<div
@@ -272,9 +359,18 @@ function KanbanColumn({
 				...(columnDragSide === "after" && { boxShadow: "4px 0 0 0 rgb(var(--accent))" }),
 			} as React.CSSProperties}
 			onDragOver={handleDragOver}
-			onDragEnter={handleDragEnter}
-			onDragLeave={handleDragLeave}
-			onDrop={handleDrop}
+			onDragEnter={(e) => {
+				handleDragEnter(e);
+				collapseDragHandlers?.onDragEnter();
+			}}
+			onDragLeave={(e) => {
+				handleDragLeave(e);
+				collapseDragHandlers?.onDragLeave();
+			}}
+			onDrop={(e) => {
+				handleDrop(e);
+				collapseDragHandlers?.onDragEnd();
+			}}
 		>
 			{/* Column header */}
 			<div
@@ -330,6 +426,7 @@ function KanbanColumn({
 							</button>
 						)}
 					</div>
+					<div className="flex items-center gap-1.5">
 					{tasks.length > 0 && (
 						<span
 							className="text-xs font-bold px-2 py-0.5 rounded-full"
@@ -341,6 +438,18 @@ function KanbanColumn({
 							{tasks.length}
 						</span>
 					)}
+					{onCollapseToggle && (
+						<button
+							onClick={(e) => { e.stopPropagation(); onCollapseToggle(); }}
+							className="text-fg-muted hover:text-fg-3 transition-colors w-6 h-6 flex items-center justify-center rounded-full text-lg leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label={t("kanban.collapseColumn")}
+							title={t("kanban.collapseColumn")}
+						>
+							{"\u{F0403}"}
+						</button>
+					)}
+				</div>
 				</div>
 			</div>
 

@@ -113,12 +113,21 @@ async function renderBoardWith(props: Partial<React.ComponentProps<typeof Kanban
 
 function getColumnLabels() {
 	const columns = document.querySelectorAll("[class*='glass-column']");
-	return Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent ?? "");
+	return Array.from(columns).map((c) => {
+		// Expanded column: normal header label
+		const expanded = c.querySelector(".text-fg.text-sm.font-semibold");
+		if (expanded) return expanded.textContent ?? "";
+		// Collapsed column: vertical label
+		const collapsed = c.querySelector(".kanban-col-vertical-label");
+		if (collapsed) return collapsed.textContent ?? "";
+		return "";
+	});
 }
 
 describe("column ordering", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		localStorage.clear();
 	});
 
 	it("review-by-colleague appears before completed in default order", async () => {
@@ -187,9 +196,8 @@ describe("column ordering", () => {
 		await renderBoardWith({ project: { ...project, customColumns: [customColA] } });
 		// Default order: built-ins before custom, then completed/cancelled
 		// The custom column "Alpha" should appear between review-by-user and completed
-		const columns = document.querySelectorAll("[class*='glass-column']");
-		const labels = Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent);
-		// Built-in columns before custom: To Do, In Progress, User Questions, Review by AI, Review by User
+		const labels = getColumnLabels();
+		// First column is To Do (collapsed, but label still present)
 		expect(labels[0]).toMatch(/To Do/i);
 		// Custom column appears after review-by-user and before completed
 		const alphaIndex = labels.findIndex((l) => l === "Alpha");
@@ -208,8 +216,7 @@ describe("column ordering", () => {
 				columnOrder: ["col-a", "todo", "in-progress", "col-b", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
 			},
 		});
-		const columns = document.querySelectorAll("[class*='glass-column']");
-		const labels = Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent);
+		const labels = getColumnLabels();
 		const alphaIdx = labels.findIndex((l) => l === "Alpha");
 		const todoIdx = labels.findIndex((l) => l === "To Do");
 		const betaIdx = labels.findIndex((l) => l === "Beta");
@@ -226,8 +233,7 @@ describe("column ordering", () => {
 				columnOrder: ["todo", "in-progress", "col-a"],
 			},
 		});
-		const columns = document.querySelectorAll("[class*='glass-column']");
-		const labels = Array.from(columns).map((c) => c.querySelector(".text-fg.text-sm.font-semibold")?.textContent);
+		const labels = getColumnLabels();
 		const todoIdx = labels.findIndex((l) => l === "To Do");
 		const inProgressIdx = labels.findIndex((l) => l === "Agent is Working");
 		const alphaIdx = labels.findIndex((l) => l === "Alpha");
@@ -296,6 +302,36 @@ describe("column ordering", () => {
 		const betaIdx = newOrder.indexOf("col-b");
 		// Alpha moved after Beta
 		expect(alphaIdx).toBeGreaterThan(betaIdx);
+	});
+});
+
+describe("collapsible columns", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	it("renders todo, completed, cancelled as collapsed by default", async () => {
+		await renderBoardWith();
+		const collapsedCols = document.querySelectorAll("[data-collapsed-column]");
+		expect(collapsedCols.length).toBe(3);
+	});
+
+	it("active columns are always expanded", async () => {
+		await renderBoardWith();
+		// "Agent is Working" (in-progress) should not be collapsed
+		const labels = getColumnLabels();
+		expect(labels).toContain("Agent is Working");
+	});
+
+	it("collapsed columns are excluded from tip placement", async () => {
+		// Tip should not be placed in collapsed todo column
+		await renderBoardWith();
+		const collapsedCols = document.querySelectorAll("[data-collapsed-column]");
+		for (const col of collapsedCols) {
+			// Collapsed columns should not contain TipCard content
+			expect(col.querySelector("[class*='tip']")).toBeNull();
+		}
 	});
 });
 

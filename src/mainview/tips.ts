@@ -372,6 +372,12 @@ const ALL_TIPS: Tip[] = [
 	},
 	// Batch 14: task drop position
 	{
+		id: "collapsible-columns",
+		titleKey: "tip.collapsibleColumns.title",
+		bodyKey: "tip.collapsibleColumns.body",
+		icon: "\u{F0142}", // nf-md-arrow_collapse_horizontal
+	},
+	{
 		id: "task-drop-position",
 		titleKey: "tip.taskDropPosition.title",
 		bodyKey: "tip.taskDropPosition.body",

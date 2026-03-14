@@ -120,6 +120,8 @@ const tips = {
 	"tip.taskOpenMode.body": "Switch Task Open Mode to \"Full screen\" in Global Settings to open tasks in a distraction-free terminal instead of split view.",
 	"tip.forkBranchSupport.title": "Review fork PRs",
 	"tip.forkBranchSupport.body": "Type user:branch in the branch field (e.g. yanive:feat/new-tab) and click Fetch to pull a branch from a GitHub fork.",
+	"tip.collapsibleColumns.title": "Collapsible columns",
+	"tip.collapsibleColumns.body": "Click a collapsed column strip to pin it open, or hover to peek inside.",
 	"tip.taskDropPosition.title": "New tasks land on top",
 	"tip.taskDropPosition.body": "By default new and moved tasks appear at the top of a column. Switch to bottom in Global Settings → Task Drop Position.",
 	"tip.restartTaskFromScratch.title": "Restart a task from scratch",
