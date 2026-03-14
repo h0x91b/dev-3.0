@@ -723,6 +723,8 @@ describe("pty-server", () => {
 				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
 			);
 			expect(sourceCall).toBeDefined();
+			// Should use the default "dev3" socket
+			expect(sourceCall![0]).toContain("dev3");
 
 			vi.useRealTimers();
 		});

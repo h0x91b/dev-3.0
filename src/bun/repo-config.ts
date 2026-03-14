@@ -10,7 +10,7 @@ const CONFIG_FILE = `${CONFIG_DIR}/config.json`;
 const LOCAL_CONFIG_FILE = `${CONFIG_DIR}/config.local.json`;
 
 /** Default values for settings fields when nothing is configured. */
-const DEFAULTS: Required<Dev3RepoConfig> = {
+const DEFAULTS: Dev3RepoConfig = {
 	setupScript: "",
 	devScript: "",
 	cleanupScript: "",

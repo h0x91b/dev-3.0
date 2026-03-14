@@ -422,6 +422,25 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.repoLocalConfig.body",
 		icon: "\u{F0493}", // nf-md-share_variant
 	},
+	// Batch 18: column agents
+	{
+		id: "ai-review-drag",
+		titleKey: "tip.aiReviewDrag.title",
+		bodyKey: "tip.aiReviewDrag.body",
+		icon: "\u{F0804}", // nf-md-code_review
+	},
+	{
+		id: "ai-review-customize",
+		titleKey: "tip.aiReviewCustomize.title",
+		bodyKey: "tip.aiReviewCustomize.body",
+		icon: "\u{F0493}", // nf-md-tune_variant
+	},
+	{
+		id: "custom-column-agents",
+		titleKey: "tip.customColumnAgents.title",
+		bodyKey: "tip.customColumnAgents.body",
+		icon: "\u{F0219}", // nf-md-robot
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

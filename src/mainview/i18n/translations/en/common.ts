@@ -25,7 +25,7 @@ const common = {
 	"status.todo.desc": "Tasks waiting to be picked up by an agent.",
 	"status.inProgress.desc": "An AI agent is actively working on this task.",
 	"status.userQuestions.desc": "The agent needs your input before it can continue.",
-	"status.reviewByAi.desc": "Automated AI review of completed work. May return to the agent for fixes.",
+	"status.reviewByAi.desc": "Drag a task here to trigger an AI review agent. It checks for bugs and fixes medium/high issues.",
 	"status.reviewByUser.desc": "Ready for your review. Create a PR when satisfied.",
 	"status.reviewByColleague.desc": "PR is created and under review by bots or teammates.",
 	"status.completed.desc": "Done — PR merged or task finished.",

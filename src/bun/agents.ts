@@ -198,6 +198,9 @@ export interface CommandOptions {
 	 *  Supported agents: Claude (--continue), Codex (resume --last),
 	 *  Gemini (--resume latest), Cursor Agent (--continue). */
 	resume?: boolean;
+	/** When true, skip injecting the DEV3_SYSTEM_PROMPT via --append-system-prompt.
+	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
+	skipSystemPrompt?: boolean;
 }
 
 /** Returns true when the agent CLI supports session resumption. */
@@ -264,8 +267,8 @@ export function resolveAgentCommand(
 		args.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
-	// Inject --append-system-prompt for Claude-based agents
-	if (isClaudeCommand(baseCmd)) {
+	// Inject --append-system-prompt for Claude-based agents (unless skipped)
+	if (isClaudeCommand(baseCmd) && !options?.skipSystemPrompt) {
 		args.push("--append-system-prompt", shellEscape(DEV3_SYSTEM_PROMPT));
 	}
 

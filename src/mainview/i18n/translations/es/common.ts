@@ -25,7 +25,7 @@ const common = {
 	"status.todo.desc": "Tareas esperando ser asignadas a un agente.",
 	"status.inProgress.desc": "Un agente de IA está trabajando activamente en esta tarea.",
 	"status.userQuestions.desc": "El agente necesita tu respuesta para continuar.",
-	"status.reviewByAi.desc": "Revisión automática del trabajo completado. Puede devolver al agente para correcciones.",
+	"status.reviewByAi.desc": "Arrastra una tarea aquí para lanzar un agente de revisión IA. Busca errores y corrige problemas medios/altos.",
 	"status.reviewByUser.desc": "Listo para tu revisión. Crea un PR cuando estés satisfecho.",
 	"status.reviewByColleague.desc": "PR creado y en revisión por bots o compañeros.",
 	"status.completed.desc": "Listo — PR fusionado o tarea terminada.",

@@ -4,6 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { TaskStatus } from "./types";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
@@ -15,9 +16,12 @@ export interface HookEntry {
 /**
  * Build the Claude Code hooks object for a given task.
  *
- * - PreToolUse: agent is about to call a tool → in-progress (idempotent)
- * - PermissionRequest: agent is blocked waiting for user approval → user-questions
- * - Stop: agent finished its turn → review-by-user
+ * Unified hooks that work for both the primary agent and the review agent
+ * running in the same worktree (they share .claude/settings.local.json).
+ *
+ * - PreToolUse/UserPromptSubmit: → in-progress (skipped when in review-by-ai)
+ * - PermissionRequest: → user-questions
+ * - Stop: primary agent → stopTarget; review agent → review-by-user
  */
 export interface MatcherGroup {
 	hooks: HookEntry[];
@@ -25,49 +29,43 @@ export interface MatcherGroup {
 
 export function buildClaudeHooks(
 	taskId: string,
+	options?: { stopTarget?: TaskStatus },
 ): Record<string, MatcherGroup[]> {
-	const inProgressCmd = `${DEV3_CLI} task move ${taskId} --status in-progress`;
+	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
+	const move = (status: string, extra?: string) =>
+		`${DEV3_CLI} task move ${taskId} --status ${status}${extra ? ` ${extra}` : ""}`;
+
+	// Working hook: move to in-progress, but NOT when in review stages
+	// (the review agent shares the same hooks file)
+	const workingCmd = move("in-progress", "--if-status-not review-by-ai,review-by-user");
+
+	// Primary Stop hook: only fires when task is in-progress (primary agent working).
+	// This prevents it from firing after the review agent has already moved the task.
+	const stopGroups: MatcherGroup[] = [
+		{
+			hooks: [{ type: "command", command: move(stopTarget, "--if-status in-progress") }],
+		},
+	];
+	// When AI review is enabled (stopTarget != review-by-user), add a second
+	// Stop hook for the review agent: move to review-by-user only if currently
+	// in review-by-ai.
+	if (stopTarget !== "review-by-user") {
+		stopGroups.push({
+			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
+		});
+	}
+
 	return {
 		UserPromptSubmit: [
-			{
-				hooks: [
-					{
-						type: "command",
-						command: inProgressCmd,
-					},
-				],
-			},
+			{ hooks: [{ type: "command", command: workingCmd }] },
 		],
 		PreToolUse: [
-			{
-				hooks: [
-					{
-						type: "command",
-						command: inProgressCmd,
-					},
-				],
-			},
+			{ hooks: [{ type: "command", command: workingCmd }] },
 		],
 		PermissionRequest: [
-			{
-				hooks: [
-					{
-						type: "command",
-						command: `${DEV3_CLI} task move ${taskId} --status user-questions`,
-					},
-				],
-			},
+			{ hooks: [{ type: "command", command: move("user-questions") }] },
 		],
-		Stop: [
-			{
-				hooks: [
-					{
-						type: "command",
-						command: `${DEV3_CLI} task move ${taskId} --status review-by-user`,
-					},
-				],
-			},
-		],
+		Stop: stopGroups,
 	};
 }
 
@@ -92,8 +90,9 @@ function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
 export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
 	taskId: string,
+	options?: { stopTarget?: TaskStatus },
 ): Record<string, unknown> {
-	const newHooks = buildClaudeHooks(taskId);
+	const newHooks = buildClaudeHooks(taskId, options);
 	const existingHooks = (existing.hooks ?? {}) as Record<string, MatcherGroup[]>;
 	const merged: Record<string, MatcherGroup[]> = { ...existingHooks };
 
@@ -111,7 +110,7 @@ export function mergeClaudeHooks(
  * Read .claude/settings.local.json, merge dev3 hooks, write back.
  * Creates the .claude/ directory if it doesn't exist.
  */
-export function writeClaudeHooks(worktreePath: string, taskId: string): void {
+export function writeClaudeHooks(worktreePath: string, taskId: string, options?: { stopTarget?: TaskStatus }): void {
 	const claudeDir = join(worktreePath, ".claude");
 	const settingsPath = join(claudeDir, "settings.local.json");
 
@@ -124,7 +123,7 @@ export function writeClaudeHooks(worktreePath: string, taskId: string): void {
 		// Corrupted file — overwrite
 	}
 
-	const updated = mergeClaudeHooks(existing, taskId);
+	const updated = mergeClaudeHooks(existing, taskId, options);
 
 	mkdirSync(claudeDir, { recursive: true });
 	writeFileSync(settingsPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");

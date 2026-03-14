@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
-import type { CustomColumn, Dev3RepoConfig, Label, Project } from "../../shared/types";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, LABEL_COLORS } from "../../shared/types";
+import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project } from "../../shared/types";
+import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -86,24 +86,30 @@ function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel }:
 interface CustomColumnRowProps {
 	column: CustomColumn;
 	saving: boolean;
-	onUpdate: (name: string, color: string, llmInstruction: string) => void;
+	onUpdate: (name: string, color: string, llmInstruction: string, agentConfig?: ColumnAgentConfig | null) => void;
 	onDelete: () => void;
+	availableAgents: CodingAgent[];
 }
 
-function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRowProps) {
+function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }: CustomColumnRowProps) {
 	const t = useT();
 	const [name, setName] = useState(column.name);
 	const [color, setColor] = useState(column.color);
 	const [llmInstruction, setLlmInstruction] = useState(column.llmInstruction);
+	const [agentEnabled, setAgentEnabled] = useState(!!column.agentConfig);
+	const [agentId, setAgentId] = useState(column.agentConfig?.agentId ?? "builtin-claude");
+	const [configId, setConfigId] = useState(column.agentConfig?.configId ?? "claude-default");
+	const [agentPrompt, setAgentPrompt] = useState(column.agentConfig?.prompt ?? "");
 
-	function commitUpdate(newName = name, newColor = color, newInstruction = llmInstruction) {
+	function buildAgentConfig(): ColumnAgentConfig | null {
+		if (!agentEnabled) return null;
+		return { agentId, configId, prompt: agentPrompt };
+	}
+
+	function commitUpdate(newName = name, newColor = color, newInstruction = llmInstruction, newAgentConfig?: ColumnAgentConfig | null) {
 		const trimmedName = newName.trim();
-		if (
-			trimmedName &&
-			(trimmedName !== column.name || newColor !== column.color || newInstruction !== column.llmInstruction)
-		) {
-			onUpdate(trimmedName, newColor, newInstruction);
-		}
+		if (!trimmedName) return;
+		onUpdate(trimmedName, newColor, newInstruction, newAgentConfig !== undefined ? newAgentConfig : buildAgentConfig());
 	}
 
 	const isOverLimit = llmInstruction.length > CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS;
@@ -176,6 +182,81 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRow
 				<div className={`text-right text-xs mt-0.5 ${isOverLimit ? "text-danger" : "text-fg-muted"}`}>
 					{t("customColumns.charCount", { count: String(llmInstruction.length), max: String(CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS) })}
 				</div>
+			</div>
+			{/* Column Agent */}
+			<div className="border-t border-edge/50 pt-2.5">
+				<div className="flex items-center justify-between mb-2">
+					<div>
+						<label className="text-fg-3 text-xs font-medium">{t("columnAgent.title")}</label>
+						<p className="text-fg-muted text-[0.65rem]">{t("columnAgent.desc")}</p>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={agentEnabled}
+						aria-label={t("columnAgent.enable")}
+						onClick={() => {
+							const next = !agentEnabled;
+							setAgentEnabled(next);
+							commitUpdate(name, color, llmInstruction, next ? { agentId, configId, prompt: agentPrompt } : null);
+						}}
+						className={`relative flex-shrink-0 ml-3 w-8 h-5 rounded-full transition-colors focus:outline-none ${agentEnabled ? "bg-accent" : "bg-edge-active"}`}
+					>
+						<span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${agentEnabled ? "translate-x-3" : "translate-x-0"}`} />
+					</button>
+				</div>
+				{agentEnabled && (
+					<div className="space-y-2 pl-1">
+						<div className="flex items-center gap-2">
+							<label className="text-fg-3 text-xs w-20 flex-shrink-0">{t("columnAgent.agent")}</label>
+							<select
+								value={agentId}
+								onChange={(e) => {
+									setAgentId(e.target.value);
+									const agent = availableAgents.find((a) => a.id === e.target.value);
+									if (agent?.configurations?.length) {
+										setConfigId(agent.configurations[0].id);
+									}
+								}}
+								onBlur={() => commitUpdate()}
+								className="flex-1 px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors"
+							>
+								{availableAgents.map((a) => (
+									<option key={a.id} value={a.id}>{a.name}</option>
+								))}
+							</select>
+						</div>
+						<div className="flex items-center gap-2">
+							<label className="text-fg-3 text-xs w-20 flex-shrink-0">{t("columnAgent.config")}</label>
+							<select
+								value={configId}
+								onChange={(e) => setConfigId(e.target.value)}
+								onBlur={() => commitUpdate()}
+								className="flex-1 px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors"
+							>
+								{(availableAgents.find((a) => a.id === agentId)?.configurations ?? []).map((c) => (
+									<option key={c.id} value={c.id}>{c.name || c.id}</option>
+								))}
+							</select>
+						</div>
+						<div>
+							<label className="block text-fg-3 text-xs mb-1">{t("columnAgent.prompt")}</label>
+							<textarea
+								value={agentPrompt}
+								onChange={(e) => setAgentPrompt(e.target.value)}
+								onBlur={() => commitUpdate()}
+								placeholder={t("columnAgent.promptPlaceholder")}
+								disabled={saving}
+								rows={3}
+								autoCapitalize="off"
+								autoCorrect="off"
+								spellCheck={false}
+								className="w-full px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y font-mono"
+							/>
+							<p className="text-fg-muted text-[0.6rem] mt-1">{t("columnAgent.hint")}</p>
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);
@@ -534,6 +615,19 @@ function ProjectSettings({
 		};
 	}, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
+	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
+	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
+	const [aiReviewEnabled, setAiReviewEnabled] = useState(!!reviewConfig || !project?.builtinColumnAgents);
+	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
+	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
+	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
+	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
+
+	// Load available agents for AI Review dropdowns
+	useEffect(() => {
+		api.request.getAgents().then(setAvailableAgents).catch(() => {});
+	}, []);
+
 	if (!project) {
 		return (
 			<div className="h-full w-full flex items-center justify-center">
@@ -600,11 +694,11 @@ function ProjectSettings({
 		setColumnSaving(null);
 	}
 
-	async function handleUpdateColumn(columnId: string, name: string, color: string, llmInstruction: string) {
+	async function handleUpdateColumn(columnId: string, name: string, color: string, llmInstruction: string, agentConfig?: ColumnAgentConfig | null) {
 		if (!project) return;
 		setColumnSaving(columnId);
 		try {
-			const column = await api.request.updateCustomColumn({ projectId, columnId, name, color, llmInstruction });
+			const column = await api.request.updateCustomColumn({ projectId, columnId, name, color, llmInstruction, agentConfig });
 			const updated: Project = {
 				...project,
 				customColumns: (project.customColumns ?? []).map((c) => (c.id === columnId ? column : c)),
@@ -635,10 +729,20 @@ function ProjectSettings({
 	async function handleSaveRepo() {
 		setSavingRepo(true);
 		try {
+			const builtinColumnAgents: Record<string, ColumnAgentConfig> | undefined = aiReviewEnabled
+				? {
+					"review-by-ai": {
+						agentId: aiReviewAgentId,
+						configId: aiReviewConfigId,
+						prompt: aiReviewPrompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : aiReviewPrompt.trim(),
+					},
+				}
+				: undefined;
 			const toSave = {
 				...repoConfig,
 				clonePaths: (repoConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
 				sparseCheckoutPaths: (repoConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+				builtinColumnAgents,
 			};
 			await api.request.saveRepoConfig({ projectId, ...toSave });
 			loadedRepoConfig.current = toSave;
@@ -740,6 +844,86 @@ function ProjectSettings({
 						/>
 					)}
 
+					{/* AI Review */}
+					<div className="space-y-4">
+						<div className="flex items-center justify-between">
+							<div>
+								<label className="block text-fg text-sm font-semibold mb-1">
+									{t("projectSettings.aiReview")}
+								</label>
+								<p className="text-fg-3 text-sm">
+									{t("projectSettings.aiReviewDesc")}
+								</p>
+							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={aiReviewEnabled}
+								aria-label={t("projectSettings.aiReviewEnabled")}
+								onClick={() => setAiReviewEnabled((v) => !v)}
+								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+									aiReviewEnabled ? "bg-accent" : "bg-edge-active"
+								}`}
+							>
+								<span
+									className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+										aiReviewEnabled ? "translate-x-4" : "translate-x-0"
+									}`}
+								/>
+							</button>
+						</div>
+						{aiReviewEnabled && (
+							<div className="space-y-3 pl-1">
+								{/* Agent selector */}
+								<div className="flex items-center gap-3">
+									<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewAgent")}</label>
+									<select
+										value={aiReviewAgentId}
+										onChange={(e) => {
+											setAiReviewAgentId(e.target.value);
+											const agent = availableAgents.find((a) => a.id === e.target.value);
+											if (agent?.configurations?.length) {
+												setAiReviewConfigId(agent.configurations[0].id);
+											}
+										}}
+										className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+									>
+										{availableAgents.map((a) => (
+											<option key={a.id} value={a.id}>{a.name}</option>
+										))}
+									</select>
+								</div>
+								{/* Config selector */}
+								<div className="flex items-center gap-3">
+									<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewConfig")}</label>
+									<select
+										value={aiReviewConfigId}
+										onChange={(e) => setAiReviewConfigId(e.target.value)}
+										className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+									>
+										{(availableAgents.find((a) => a.id === aiReviewAgentId)?.configurations ?? []).map((c) => (
+											<option key={c.id} value={c.id}>{c.name || c.id}</option>
+										))}
+									</select>
+								</div>
+								{/* Review prompt */}
+								<div>
+									<label className="block text-fg-2 text-sm mb-2">{t("projectSettings.aiReviewPrompt")}</label>
+									<textarea
+										value={aiReviewPrompt}
+										onChange={(e) => setAiReviewPrompt(e.target.value)}
+										rows={5}
+										placeholder={t("projectSettings.aiReviewPromptPlaceholder")}
+										autoCapitalize="off"
+										autoCorrect="off"
+										spellCheck={false}
+										className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+									/>
+								</div>
+							</div>
+						)}
+					</div>
+
 					{/* Custom Columns */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
@@ -754,8 +938,9 @@ function ProjectSettings({
 									key={col.id}
 									column={col}
 									saving={columnSaving === col.id}
-									onUpdate={(name, color, llmInstruction) => handleUpdateColumn(col.id, name, color, llmInstruction)}
+									onUpdate={(name, color, llmInstruction, agentConfig) => handleUpdateColumn(col.id, name, color, llmInstruction, agentConfig)}
 									onDelete={() => handleDeleteColumn(col.id)}
+									availableAgents={availableAgents}
 								/>
 							))}
 							{(project.customColumns ?? []).length === 0 && (

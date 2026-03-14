@@ -80,10 +80,10 @@ const SKILL_STATUS_MANUAL = `
 
 ### Status transitions — every turn:
 
-1. **Start of every turn** — run \`~/.dev3.0/bin/dev3 task move --status in-progress\` when you receive a message and begin working.
+1. **Start of every turn** — run \`~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai\` when you receive a message and begin working.
 2. **End of every turn** — before your final response, you MUST move the task to one of exactly two states:
    - **\`user-questions\`** — you need user input, clarification, or the ball is on the user's side for any reason. **This is the default if the task is not yet complete.** (shown in UI as "Has Questions")
-   - **\`review-by-user\`** — you believe the task is fully complete from your side.
+   - **\`review-by-ai\`** — you believe the task is fully complete from your side. (triggers AI review before human review)
 3. **\`in-progress\` is transient** — it MUST NEVER remain after you finish responding. It only exists while you are actively working. (shown in UI as "Agent is Working")
 
 ### Rules:
@@ -95,7 +95,7 @@ ${SKILL_CUSTOM_COLUMNS}`;
 const SKILL_STATUS_HOOKS = `
 ## Task status management
 
-Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-user\`).
+Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
 Do NOT call \`dev3 task move\` for status changes — hooks handle it. You can still use it for custom columns.
 ${SKILL_CUSTOM_COLUMNS}`;
 
@@ -122,7 +122,7 @@ user-invocable: true
 ${CLAUDE_SKILL_BODY}
 ## Status (auto-set on skill load)
 
-!\`~/.dev3.0/bin/dev3 task move --status in-progress 2>&1\`
+!\`~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai 2>&1\`
 
 ## CLI reference
 
@@ -298,8 +298,8 @@ If your working directory (PWD) is inside \`~/.dev3.0/worktrees/\` (i.e. \`$HOME
 **MANDATORY — do this BEFORE any other work:**
 
 1. Invoke the \`/dev3\` skill (or load \`~/.agents/skills/dev3/SKILL.md\` if skills are not supported).
-2. Run \`~/.dev3.0/bin/dev3 task move --status in-progress\` at the START of every turn.
-3. At the END of every turn, move the task to \`user-questions\` (need input) or \`review-by-user\` (fully complete). Never leave it in \`in-progress\`.
+2. Run \`~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai\` at the START of every turn.
+3. At the END of every turn, move the task to \`user-questions\` (need input) or \`review-by-ai\` (fully complete). Never leave it in \`in-progress\`.
 
 Do NOT skip these steps, even if the user gives a direct command.
 

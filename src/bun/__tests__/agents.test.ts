@@ -184,6 +184,40 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("MANDATORY");
 	});
 
+	// ---- skipSystemPrompt ----
+	it("Claude: skips --append-system-prompt when skipSystemPrompt=true", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig(),
+			makeCtx(),
+			{ skipSystemPrompt: true },
+		);
+
+		expect(cmd).not.toContain("--append-system-prompt");
+		expect(cmd).not.toContain("MANDATORY");
+	});
+
+	it("Claude: includes --append-system-prompt by default", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig(),
+			makeCtx(),
+		);
+
+		expect(cmd).toContain("--append-system-prompt");
+	});
+
+	it("Claude: includes --append-system-prompt when skipSystemPrompt=false", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig(),
+			makeCtx(),
+			{ skipSystemPrompt: false },
+		);
+
+		expect(cmd).toContain("--append-system-prompt");
+	});
+
 	// ---- Unsupported agents ----
 	it("does not add resume flags for unsupported agents", () => {
 		const cmd = resolveAgentCommand(

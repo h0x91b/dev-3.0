@@ -8,8 +8,8 @@ vi.mock("../spawn", () => ({
 
 // Mock pty-server to avoid side-effects
 vi.mock("../pty-server", () => ({
-	tmuxArgs: (socket: string | null, ...args: string[]) =>
-		socket ? ["tmux", "-L", socket, ...args] : ["tmux", ...args],
+	tmuxArgs: (socket: string, ...args: string[]) =>
+		["tmux", "-L", socket, ...args],
 }));
 
 // Mock logger
