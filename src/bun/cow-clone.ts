@@ -230,7 +230,6 @@ export const WELL_KNOWN_CLONE_PATHS = [
 	// .NET / C#
 	"bin",
 	"obj",
-	"packages",
 
 	// PHP (Composer)
 	"vendor",
