@@ -139,6 +139,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 
+	// Resolve project config from worktree path (picks up .dev3/config.json on branch)
+	const [resolvedProject, setResolvedProject] = useState(project);
+	useEffect(() => {
+		if (task.worktreePath) {
+			api.request.getResolvedProject({ projectId: project.id, worktreePath: task.worktreePath })
+				.then(setResolvedProject)
+				.catch(() => setResolvedProject(project));
+		} else {
+			setResolvedProject(project);
+		}
+	}, [project.id, task.worktreePath, project]);
+
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
 
@@ -386,7 +398,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
 
 	// ---- Dev server ----
-	const hasDevScript = !!(project.devScript?.trim());
+	const hasDevScript = !!(resolvedProject.devScript?.trim());
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	const devServerDisabled = !hasDevScript || !isTaskActive;
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);

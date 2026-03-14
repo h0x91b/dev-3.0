@@ -597,6 +597,11 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: string[];
 			};
+			/** Resolve a project's settings from a worktree path (merges .dev3/ configs). */
+			getResolvedProject: {
+				params: { projectId: string; worktreePath: string };
+				response: Project;
+			};
 			/** Load raw contents of .dev3/config.json and .dev3/config.local.json. */
 			getProjectConfigs: {
 				params: { projectId: string; worktreePath?: string };

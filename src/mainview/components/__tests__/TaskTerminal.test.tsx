@@ -11,6 +11,8 @@ vi.mock("../../rpc", () => ({
 			getPtyUrl: vi.fn(),
 			moveTask: vi.fn(),
 			checkWorktreeExists: vi.fn(),
+			getResolvedProject: vi.fn().mockResolvedValue({}),
+			getBranchStatus: vi.fn().mockResolvedValue({}),
 		},
 	},
 }));

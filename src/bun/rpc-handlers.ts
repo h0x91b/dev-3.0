@@ -1068,6 +1068,14 @@ export const handlers = {
 		return paths;
 	},
 
+	async getResolvedProject(params: { projectId: string; worktreePath: string }): Promise<Project> {
+		log.info("→ getResolvedProject", { projectId: params.projectId, worktreePath: params.worktreePath });
+		const project = await data.getProject(params.projectId);
+		const resolved = await repoConfig.resolveProjectConfig(project, params.worktreePath);
+		log.info("← getResolvedProject");
+		return resolved;
+	},
+
 	async getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
 		log.info("→ getProjectConfigs", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
@@ -1457,8 +1465,9 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
+			const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath ?? undefined);
 
-			if (!project.devScript.trim()) throw new Error("No dev script configured");
+			if (!resolved.devScript.trim()) throw new Error("No dev script configured");
 			if (!task.worktreePath) throw new Error("Task has no worktree");
 
 			const devSession = devServerSessionName(task.id);
@@ -1473,7 +1482,7 @@ export const handlers = {
 			const wrappedScript = [
 				`#!/bin/bash`,
 				`set -x`,
-				project.devScript,
+				resolved.devScript,
 				`EXIT_CODE=$?`,
 				`set +x`,
 				`if [ $EXIT_CODE -ne 0 ]; then`,

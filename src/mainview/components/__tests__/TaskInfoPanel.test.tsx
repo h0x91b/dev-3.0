@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			addTaskNote: vi.fn(),
 			updateTaskNote: vi.fn(),
 			deleteTaskNote: vi.fn(),
+			getResolvedProject: vi.fn(),
 			runDevServer: vi.fn(),
 			checkDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
@@ -110,11 +111,14 @@ function renderPanel(
 ) {
 	const dispatch = opts?.dispatch ?? vi.fn();
 	const navigate = opts?.navigate ?? vi.fn();
+	const usedProject = opts?.project ?? project;
+	// Ensure getResolvedProject returns the same project used in this render
+	mockedApi.request.getResolvedProject.mockResolvedValue(usedProject);
 	return render(
 		<I18nProvider>
 			<TaskInfoPanel
 				task={task}
-				project={opts?.project ?? project}
+				project={usedProject}
 				dispatch={dispatch}
 				navigate={navigate}
 				isFullPage={opts?.isFullPage}
@@ -130,6 +134,8 @@ describe("TaskInfoPanel", () => {
 		localStorage.clear();
 		// Default: getBranchStatus resolves immediately
 		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
+		// Default: getResolvedProject returns the project as-is
+		mockedApi.request.getResolvedProject.mockResolvedValue(project);
 	});
 
 	afterEach(() => {
@@ -740,6 +746,70 @@ describe("TaskInfoPanel", () => {
 
 			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 			// alertSpy cleanup handled by clearAllMocks
+		});
+	});
+
+	describe("dev server button with worktree-resolved config", () => {
+		it("enables button when worktree config has devScript but project does not", async () => {
+			const projectWithoutDev = { ...project, devScript: "" };
+			const resolvedWithDev = { ...project, devScript: "bun run dev" };
+			// Set mock BEFORE renderPanel (renderPanel will override, so use mockResolvedValueOnce in sequence)
+			mockedApi.request.getResolvedProject.mockResolvedValue(resolvedWithDev);
+
+			await act(async () => {
+				// renderPanel overrides getResolvedProject — re-set after
+				render(
+					<I18nProvider>
+						<TaskInfoPanel
+							task={makeTask()}
+							project={projectWithoutDev}
+							dispatch={vi.fn()}
+							navigate={vi.fn()}
+						/>
+					</I18nProvider>,
+				);
+			});
+
+			await waitFor(() => {
+				const buttons = screen.getAllByText("Dev Server");
+				const btn = buttons[0].closest("button")!;
+				expect(btn).not.toBeDisabled();
+			});
+		});
+
+		it("disables button when resolved config has no devScript", async () => {
+			mockedApi.request.getResolvedProject.mockResolvedValue({ ...project, devScript: "" });
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
+			});
+
+			const buttons = screen.getAllByText("Dev Server");
+			const btn = buttons[0].closest("button")!;
+			expect(btn).toBeDisabled();
+		});
+
+		it("falls back to project prop when getResolvedProject fails", async () => {
+			mockedApi.request.getResolvedProject.mockRejectedValue(new Error("fail"));
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const buttons = screen.getAllByText("Dev Server");
+			const btn = buttons[0].closest("button")!;
+			expect(btn).not.toBeDisabled();
+		});
+
+		it("skips resolve when task has no worktreePath", async () => {
+			await act(async () => {
+				renderPanel(
+					makeTask({ worktreePath: null }),
+					{ project: { ...project, devScript: "bun run dev" } },
+				);
+			});
+
+			expect(mockedApi.request.getResolvedProject).not.toHaveBeenCalled();
 		});
 	});
 

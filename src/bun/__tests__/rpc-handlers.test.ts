@@ -2616,6 +2616,26 @@ describe("handlers.runDevServer", () => {
 		).rejects.toThrow("Task has no worktree");
 	});
 
+	it("resolves devScript from worktree config", async () => {
+		const project = makeProject({ devScript: "" });
+		const task = makeTask({ worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const repoConfig = await import("../repo-config");
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce({
+			...project,
+			devScript: "bun run dev",
+		});
+
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		// Should NOT throw — devScript comes from worktree config
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/wt");
+	});
+
 	it("starts new-session -d when no dev server running", async () => {
 		const project = makeProject({ devScript: "bun run dev" });
 		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
