@@ -1366,6 +1366,9 @@ export const handlers = {
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
 						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
+						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						}
 						await runCowClones(project, wt.worktreePath);
 						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
