@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { TaskStatus } from "../../shared/types";
 
-const DEFAULT_COLLAPSED: TaskStatus[] = ["todo", "completed", "cancelled"];
+const DEFAULT_COLLAPSED: TaskStatus[] = ["completed", "cancelled"];
 
 function storageKey(projectId: string) {
 	return `dev3-kanban-collapsed-${projectId}`;
