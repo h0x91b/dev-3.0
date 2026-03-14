@@ -162,10 +162,10 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			// --- General ---
 			{
 				id: "codex-default",
-				name: "Default (GPT-5.4 Medium)",
+				name: "Default (GPT-5.4 Heavy Bypass)",
 				model: "gpt-5.4",
-				version: 2,
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="medium"'],
+				version: 3,
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-plan",

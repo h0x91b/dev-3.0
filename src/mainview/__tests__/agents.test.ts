@@ -208,13 +208,16 @@ describe("mergeWithDefaults", () => {
 	});
 
 	it("user overrides still win over defaults when versions match", () => {
+		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
+
 		const stored: CodingAgent[] = [
 			{
 				id: "builtin-codex",
 				name: "Codex",
 				baseCommand: "codex",
 				configurations: [
-					{ id: "codex-default", name: "My Codex", model: "o3", additionalArgs: ["--my-custom-flag"], version: 2 },
+					{ id: "codex-default", name: "My Codex", model: "o3", additionalArgs: ["--my-custom-flag"], version: defCfg.version },
 				],
 				defaultConfigId: "codex-default",
 			},
@@ -222,8 +225,6 @@ describe("mergeWithDefaults", () => {
 		const result = mergeWithDefaults(stored);
 		const codex = result.find((a) => a.id === "builtin-codex")!;
 		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
-		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
-		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
 
 		// When stored version matches default version, user overrides win
 		expect(cfg.name).toBe("My Codex");
