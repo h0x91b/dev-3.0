@@ -129,7 +129,7 @@ const settings = {
 	"projectSettings.sparseCheckoutAll": "Incluir todos los archivos",
 	"projectSettings.sparseCheckoutAddPath": "Agregar directorio",
 	"projectSettings.sparseCheckoutPlaceholder": "packages/my-service",
-	"projectSettings.sparseCheckoutOpenFinder": "Abrir carpeta del proyecto en Finder para explorar directorios",
+	"projectSettings.sparseCheckoutOpenFinder": "Abrir en Finder",
 	"projectSettings.save": "Guardar configuración",
 	"projectSettings.saving": "Guardando...",
 	"projectSettings.failedSave": "Error al guardar configuración: {error}",

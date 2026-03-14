@@ -424,9 +424,20 @@ function ProjectSettings({
 						<label className="block text-fg text-sm font-semibold mb-2">
 							{t("projectSettings.sparseCheckout")}
 						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("projectSettings.sparseCheckoutDesc")}
-						</p>
+						<div className="flex items-start gap-3 mb-3">
+							<p className="text-fg-3 text-sm flex-1">
+								{t("projectSettings.sparseCheckoutDesc")}
+							</p>
+							{sparseCheckoutEnabled && project && (
+								<button
+									type="button"
+									onClick={() => api.request.openFolder({ path: project.path })}
+									className="flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 hover:border-accent/50 transition-all"
+								>
+									{t("projectSettings.sparseCheckoutOpenFinder")}
+								</button>
+							)}
+						</div>
 						<div className="flex items-center justify-between mb-3">
 							<span className="text-fg-2 text-sm">{t("projectSettings.sparseCheckoutAll")}</span>
 							<button
@@ -455,23 +466,12 @@ function ProjectSettings({
 							</button>
 						</div>
 						{sparseCheckoutEnabled && (
-							<>
-								<ListEditor
-									items={sparseCheckoutPaths}
-									onChange={setSparseCheckoutPaths}
-									placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
-									addLabel={t("projectSettings.sparseCheckoutAddPath")}
-								/>
-								{project && (
-									<button
-										type="button"
-										onClick={() => api.request.openFolder({ path: project.path })}
-										className="mt-2 text-xs text-fg-3 hover:text-accent transition-colors"
-									>
-										{t("projectSettings.sparseCheckoutOpenFinder")}
-									</button>
-								)}
-							</>
+							<ListEditor
+								items={sparseCheckoutPaths}
+								onChange={setSparseCheckoutPaths}
+								placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
+								addLabel={t("projectSettings.sparseCheckoutAddPath")}
+							/>
 						)}
 					</div>
 
