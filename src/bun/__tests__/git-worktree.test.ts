@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Project, Task } from "../../shared/types";
@@ -651,9 +651,15 @@ describe("applySparseCheckout", () => {
 		g(`git worktree remove --force "${wtPath}"`, repo.local);
 	});
 
-	it("throws on init failure for invalid path", async () => {
-		await expect(
-			applySparseCheckout("/nonexistent/path", ["src"]),
-		).rejects.toThrow("Failed to init sparse checkout");
+	it("throws on init failure for non-git directory", async () => {
+		const tmpDir = join(tmpdir(), `sparse-test-${Date.now()}`);
+		mkdirSync(tmpDir, { recursive: true });
+		try {
+			await expect(
+				applySparseCheckout(tmpDir, ["src"]),
+			).rejects.toThrow("Failed to init sparse checkout");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
 	});
 });
