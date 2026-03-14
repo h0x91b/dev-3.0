@@ -131,6 +131,23 @@ bun run test         # Run tests
 See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.
 See [agent-support-matrix.md](agent-support-matrix.md) for feature compatibility across AI agents.
 
+## Troubleshooting
+
+### Git errors inside worktrees (`fatal: not a git repository`)
+
+dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system may block file access for these processes even if the app itself has folder permissions. Symptoms:
+
+- `git status` fails with `fatal: not a git repository: .../.git/worktrees/...`
+- Commands work in a regular terminal but fail inside dev-3.0 task terminals
+
+**Fix:** Grant **Full Disk Access** to the dev-3.0 app:
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**
+2. Click **+** and add `dev-3.0` (from `/Applications` or your build directory)
+3. Restart dev-3.0
+
+This is needed because macOS evaluates file access per-binary — `tmux` and `git` spawned by the app don't inherit the app's folder permissions. Full Disk Access covers the app and all its child processes.
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/image?repos=h0x91b/dev-3.0&type=timeline&legend=top-left)](https://www.star-history.com/?repos=h0x91b%2Fdev-3.0&type=timeline&logscale=&legend=top-left)
