@@ -68,6 +68,12 @@ const SKILL_NOTES = `
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
 `;
 
+const SKILL_PROJECT_CONFIG_REDIRECT = `
+## Project configuration (.dev3/config.json)
+
+For ANY question about project configuration — setting up scripts (setup, dev, cleanup), clone paths, base branch, sparse checkout, or anything related to \`.dev3/config.json\` / \`.dev3/config.local.json\` — you MUST invoke the \`/dev3-project-config\` skill. Do NOT attempt to configure the project without it. The dedicated skill knows the full schema, auto-detection logic, and correct workflow.
+`;
+
 // Full manual status management — for agents without hooks (Cursor, Codex, Gemini, etc.)
 const SKILL_STATUS_MANUAL = `
 ## Task status management (CRITICAL — NON-NEGOTIABLE)
@@ -100,8 +106,8 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 `;
 
 // Composed bodies for each agent type
-const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES;
-const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_CODEX_SHELL;
+const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT;
+const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
