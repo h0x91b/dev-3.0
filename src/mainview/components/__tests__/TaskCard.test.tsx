@@ -1092,19 +1092,27 @@ describe("TaskCard", () => {
 			});
 		});
 
-		it("excludes the current custom column from the dropdown", async () => {
+		it("shows the current custom column as disabled with current marker", async () => {
 			const user = userEvent.setup();
 			renderCard(
 				makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test", customColumnId: "col-1" }),
 				{ projectOverride: projectWithCustomColumns },
 			);
 
-			await user.click(screen.getByText("Agent is Working"));
+			// Card status button now shows custom column name instead of built-in status
+			await user.click(screen.getByText("On Hold"));
 
 			await waitFor(() => {
 				expect(screen.getByText("Blocked")).toBeInTheDocument();
 			});
-			expect(screen.queryByText("On Hold")).not.toBeInTheDocument();
+			// Current custom column is shown in dropdown but disabled
+			const onHoldButtons = screen.getAllByText("On Hold");
+			// One is the card button, others are in the dropdown
+			const dropdownOnHold = onHoldButtons.find((el) => {
+				const btn = el.closest("button");
+				return btn?.disabled;
+			});
+			expect(dropdownOnHold).toBeTruthy();
 		});
 	});
 

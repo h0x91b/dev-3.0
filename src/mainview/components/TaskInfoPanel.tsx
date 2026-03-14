@@ -819,6 +819,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
 
+	const activeCustomColumn = task.customColumnId
+		? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
+		: null;
+
 	const statusDropdownButton = (
 		<button
 			ref={statusTriggerRef}
@@ -826,9 +830,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			disabled={movingStatus}
 			className="flex items-center gap-2 px-2.5 py-1 rounded-lg hover:bg-elevated transition-colors flex-shrink-0"
 		>
-			<MiniPipeline status={task.status} />
+			{activeCustomColumn ? (
+				<div
+					className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+					style={{ background: activeCustomColumn.color, boxShadow: `0 0 6px ${activeCustomColumn.color}60` }}
+				/>
+			) : (
+				<MiniPipeline status={task.status} />
+			)}
 			<span className="text-[0.6875rem] font-medium text-fg-2">
-				{t(statusKey(task.status))}
+				{activeCustomColumn ? activeCustomColumn.name : t(statusKey(task.status))}
 			</span>
 			<svg className="w-3 h-3 text-fg-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

@@ -552,17 +552,31 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{/* Bottom row */}
 			<div data-testid="task-card-footer" className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
 				{/* Status dropdown trigger with mini-pipeline */}
-				<button
-					ref={triggerRef}
-					onClick={toggleMenu}
-					className="mr-auto flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-fg/5"
-					disabled={isDisabled}
-				>
-					<MiniPipeline status={task.status} />
-					<span className="min-w-0 truncate text-xs text-fg-2">
-						{t(statusKey(task.status))}
-					</span>
-				</button>
+				{(() => {
+					const activeCol = task.customColumnId
+						? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
+						: null;
+					return (
+						<button
+							ref={triggerRef}
+							onClick={toggleMenu}
+							className="mr-auto flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-fg/5"
+							disabled={isDisabled}
+						>
+							{activeCol ? (
+								<div
+									className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+									style={{ background: activeCol.color, boxShadow: `0 0 6px ${activeCol.color}60` }}
+								/>
+							) : (
+								<MiniPipeline status={task.status} />
+							)}
+							<span className="min-w-0 truncate text-xs text-fg-2">
+								{activeCol ? activeCol.name : t(statusKey(task.status))}
+							</span>
+						</button>
+					);
+				})()}
 
 				<div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
 					{/* PR badge */}

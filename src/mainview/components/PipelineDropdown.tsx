@@ -148,21 +148,35 @@ export default function PipelineDropdown({
 				<>
 					<div className="border-t border-edge-active mx-3 my-1" />
 					<div className="px-3 pb-1">
-						{customColumns
-							.filter((col) => col.id !== currentCustomColumnId)
-							.map((col) => (
+						{customColumns.map((col) => {
+							const isCurrent = col.id === currentCustomColumnId;
+							return (
 								<button
 									key={col.id}
-									onClick={() => onMoveToCustomColumn?.(col.id)}
-									className="w-full text-left flex items-center gap-2.5 py-1.5 px-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg rounded-md transition-colors cursor-pointer"
+									onClick={!isCurrent ? () => onMoveToCustomColumn?.(col.id) : undefined}
+									disabled={isCurrent}
+									className={`w-full text-left flex items-center gap-2.5 py-1.5 px-1.5 text-sm rounded-md transition-colors ${
+										isCurrent
+											? "text-fg font-semibold cursor-default"
+											: "text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+									}`}
 								>
 									<div
 										className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-										style={{ background: col.color }}
+										style={{
+											background: col.color,
+											boxShadow: isCurrent ? `0 0 6px ${col.color}60` : undefined,
+										}}
 									/>
 									{col.name}
+									{isCurrent && (
+										<span className="ml-1 text-[0.625rem] text-fg-3 font-normal">
+											{"\u2190"} {t("pipeline.current")}
+										</span>
+									)}
 								</button>
-							))}
+							);
+						})}
 					</div>
 				</>
 			)}

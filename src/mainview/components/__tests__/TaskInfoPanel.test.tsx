@@ -1585,4 +1585,37 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("custom column status display", () => {
+		const projectWithCustomColumns: Project = {
+			...project,
+			customColumns: [
+				{ id: "col-1", name: "On Hold", color: "#f59e0b", llmInstruction: "" },
+				{ id: "col-2", name: "Blocked", color: "#ef4444", llmInstruction: "" },
+			],
+		};
+
+		it("shows custom column name instead of built-in status when task is in a custom column", async () => {
+			await act(async () => {
+				renderPanel(
+					makeTask({ status: "review-by-user", customColumnId: "col-1" }),
+					{ project: projectWithCustomColumns },
+				);
+			});
+			// Should show the custom column name, not the built-in status
+			expect(screen.getByText("On Hold")).toBeInTheDocument();
+			// The built-in status "Your Review" should NOT appear in the status button
+			expect(screen.queryByText("Your Review")).not.toBeInTheDocument();
+		});
+
+		it("shows built-in status when task is not in a custom column", async () => {
+			await act(async () => {
+				renderPanel(
+					makeTask({ status: "review-by-user" }),
+					{ project: projectWithCustomColumns },
+				);
+			});
+			expect(screen.getByText("Your Review")).toBeInTheDocument();
+		});
+	});
 });
