@@ -1,0 +1,9 @@
+{
+  "setupScript": "echo setup\nbun install",
+  "devScript": "bun install\nbun run dev",
+  "clonePaths": [
+    "node_modules",
+    "build",
+    "dist"
+  ]
+}

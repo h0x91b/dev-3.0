@@ -8,3 +8,6 @@ src/shared/build-info.generated.ts
 src/bun/changelog-bundled.ts
 changelog.json
 *.bun-build
+
+# dev-3.0 local config
+.dev3/config.local.json
