@@ -9,6 +9,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT, statusKey } from "../i18n";
 import { trackEvent } from "../analytics";
+import { getKeymapPreset, setKeymapPreset, KEYMAP_CHANGED_EVENT } from "../terminal-keymaps";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import OpenInMenu from "./OpenInMenu";
@@ -288,6 +289,21 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	}
 
 	// ---- Tmux hints popover state ----
+	const [keymapPreset, setKeymapPresetState] = useState(() => getKeymapPreset());
+
+	useEffect(() => {
+		function onKeymapChanged(e: Event) {
+			setKeymapPresetState((e as CustomEvent).detail);
+		}
+		window.addEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
+		return () => window.removeEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
+	}, []);
+
+	function toggleItermCompat(e: React.MouseEvent) {
+		e.stopPropagation();
+		setKeymapPreset(keymapPreset === "iterm2" ? "default" : "iterm2");
+	}
+
 	const [hintsOpen, setHintsOpen] = useState(false);
 	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
 	const [hintsVisible, setHintsVisible] = useState(false);
@@ -1378,6 +1394,33 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
 				<span className={popoverDesc + " col-span-2 mt-1.5 text-fg-muted"}>{t("tmux.selectPaneDesc")}</span>
 				<span className={popoverDesc + " col-span-2 text-fg-muted"}>{t("tmux.resizePaneDesc")}</span>
+			</div>
+
+			{/* iTerm2 compatibility toggle */}
+			<div className="border-t border-edge mt-3 pt-3">
+				<div className={popoverSection}>{t("tmux.keyboardMode")}</div>
+				<button
+					onClick={toggleItermCompat}
+					className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
+						keymapPreset === "iterm2"
+							? "bg-accent/10 border border-accent/20"
+							: "hover:bg-elevated border border-transparent"
+					}`}
+				>
+					<div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
+						keymapPreset === "iterm2" ? "border-accent bg-accent" : "border-edge-active"
+					}`}>
+						{keymapPreset === "iterm2" && (
+							<svg width="7" height="6" viewBox="0 0 7 6" fill="none">
+								<path d="M0.5 3L2.5 5L6.5 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+							</svg>
+						)}
+					</div>
+					<div>
+						<div className={`text-xs font-medium ${keymapPreset === "iterm2" ? "text-accent" : "text-fg-2"}`}>{t("settings.keymapIterm2")}</div>
+						<div className="text-[0.625rem] text-fg-muted mt-0.5">{t("settings.keymapIterm2Desc")}</div>
+					</div>
+				</button>
 			</div>
 		</div>,
 		document.body,

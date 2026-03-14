@@ -22,6 +22,7 @@ const terminal = {
 	"tmux.closePaneDesc": "Close pane",
 	"tmux.selectPaneDesc": "Click on a pane to select it",
 	"tmux.resizePaneDesc": "Drag pane border to resize",
+	"tmux.keyboardMode": "Keyboard Mode",
 
 	// Tmux Session Manager
 	"tmuxSessions.title": "tmux Sessions",

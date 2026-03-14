@@ -22,6 +22,7 @@ const terminal = {
 	"tmux.closePaneDesc": "Cerrar panel",
 	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
 	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",
+	"tmux.keyboardMode": "Modo de teclado",
 
 	// Tmux Session Manager
 	"tmuxSessions.title": "Sesiones tmux",
