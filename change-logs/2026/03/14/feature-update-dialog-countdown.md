@@ -1,0 +1,1 @@
+The silent update toast now shows a 5-minute (300s) countdown. If the user doesn't click "Postpone", the app auto-restarts to apply the update. The current page is saved before restart and restored on next launch, so the user picks up right where they left off.

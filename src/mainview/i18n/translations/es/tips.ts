@@ -136,6 +136,7 @@ const tips = {
 	"tip.asyncTaskLaunch.body": "Lanzar una tarea cierra el diálogo al instante. La tarjeta muestra un spinner mientras el worktree se prepara en segundo plano.",
 	"tip.repoLocalConfig.title": "Comparte config del proyecto via git",
 	"tip.repoLocalConfig.body": "Usa \"Guardar en repo\" en Configuracion del Proyecto para almacenar scripts en .dev3/config.json — el equipo obtiene la config automaticamente.",
+
 };
 
 export default tips;

@@ -12,6 +12,8 @@ const updates = {
 	"update.readyTitle": "v{version} готова к установке",
 	"update.sessionsNote": "Все терминальные сессии сохранятся — tmux продолжит работать в фоне.",
 	"update.restartBtn": "Перезапустить",
+	"update.restartCountdown": "Перезапустить ({seconds}с)",
+	"update.postponeBtn": "Отложить",
 	"update.restarting": "Перезапуск...",
 	"update.checking": "Проверка...",
 	"update.downloading": "Загрузка...",

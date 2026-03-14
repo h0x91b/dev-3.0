@@ -764,6 +764,14 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			saveUpdateRoute: {
+				params: { route: string };
+				response: void;
+			};
+			getUpdateRoute: {
+				params: void;
+				response: { route: string | null };
+			};
 			getAppVersion: {
 				params: void;
 				response: { version: string; channel: string; buildChannel: string };
