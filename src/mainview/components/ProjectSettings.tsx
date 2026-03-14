@@ -734,7 +734,7 @@ function ProjectSettings({
 					"review-by-ai": {
 						agentId: aiReviewAgentId,
 						configId: aiReviewConfigId,
-						prompt: aiReviewPrompt.trim(),
+						prompt: aiReviewPrompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : aiReviewPrompt.trim(),
 					},
 				}
 				: undefined;
