@@ -599,22 +599,22 @@ export type AppRPCSchema = {
 			};
 			/** Load raw contents of .dev3/config.json and .dev3/config.local.json. */
 			getProjectConfigs: {
-				params: { projectId: string };
+				params: { projectId: string; worktreePath?: string };
 				response: { repo: Dev3RepoConfig; local: Dev3RepoConfig };
 			};
 			/** Save to .dev3/config.json. */
 			saveRepoConfig: {
-				params: { projectId: string } & Dev3RepoConfig;
+				params: { projectId: string; worktreePath?: string } & Dev3RepoConfig;
 				response: void;
 			};
 			/** Save to .dev3/config.local.json. */
 			saveLocalConfig: {
-				params: { projectId: string } & Dev3RepoConfig;
+				params: { projectId: string; worktreePath?: string } & Dev3RepoConfig;
 				response: void;
 			};
 			/** Per-field source provenance (repo or local). */
 			getRepoConfigSources: {
-				params: { projectId: string };
+				params: { projectId: string; worktreePath?: string };
 				response: ConfigSourceEntry[];
 			};
 			getGlobalSettings: {

@@ -374,3 +374,121 @@ describe("hasLocalConfig", () => {
 		expect(hasLocalConfig(TEST_DIR)).toBe(true);
 	});
 });
+
+describe("resolveProjectConfig with configPath override (worktree)", () => {
+	const WORKTREE_DIR = join(tmpdir(), `dev3-worktree-test-${process.pid}`);
+
+	beforeEach(() => {
+		mkdirSync(WORKTREE_DIR, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(WORKTREE_DIR, { recursive: true, force: true });
+	});
+
+	it("reads config from worktree path instead of project.path", async () => {
+		// Main project has no .dev3/
+		const project = makeProject();
+
+		// Worktree has .dev3/config.json
+		const wtConfigDir = join(WORKTREE_DIR, ".dev3");
+		mkdirSync(wtConfigDir, { recursive: true });
+		writeFileSync(join(wtConfigDir, "config.json"), JSON.stringify({
+			setupScript: "worktree-setup",
+			defaultBaseBranch: "feature-branch",
+		}));
+
+		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
+		expect(resolved.setupScript).toBe("worktree-setup");
+		expect(resolved.defaultBaseBranch).toBe("feature-branch");
+	});
+
+	it("falls back to project.path when configPath is undefined", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "project-setup",
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project, undefined);
+		expect(resolved.setupScript).toBe("project-setup");
+	});
+
+	it("uses worktree config.local.json over worktree config.json", async () => {
+		const wtConfigDir = join(WORKTREE_DIR, ".dev3");
+		mkdirSync(wtConfigDir, { recursive: true });
+		writeFileSync(join(wtConfigDir, "config.json"), JSON.stringify({
+			setupScript: "repo-script",
+		}));
+		writeFileSync(join(wtConfigDir, "config.local.json"), JSON.stringify({
+			setupScript: "local-worktree-script",
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
+		expect(resolved.setupScript).toBe("local-worktree-script");
+	});
+
+	it("returns defaults when worktree has no .dev3/ directory", async () => {
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
+		expect(resolved.setupScript).toBe("");
+		expect(resolved.defaultBaseBranch).toBe("main");
+	});
+
+	it("preserves non-config project fields", async () => {
+		const wtConfigDir = join(WORKTREE_DIR, ".dev3");
+		mkdirSync(wtConfigDir, { recursive: true });
+		writeFileSync(join(wtConfigDir, "config.json"), JSON.stringify({
+			setupScript: "wt-script",
+		}));
+
+		const project = makeProject({ name: "my-project", id: "proj-42" });
+		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
+		expect(resolved.name).toBe("my-project");
+		expect(resolved.id).toBe("proj-42");
+		expect(resolved.setupScript).toBe("wt-script");
+	});
+});
+
+describe("migrateProjectConfig with configPath override", () => {
+	const WORKTREE_DIR = join(tmpdir(), `dev3-migrate-wt-test-${process.pid}`);
+
+	beforeEach(() => {
+		mkdirSync(WORKTREE_DIR, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(WORKTREE_DIR, { recursive: true, force: true });
+	});
+
+	it("migrates to worktree path when configPath is provided", async () => {
+		const project = makeProject({
+			setupScript: "bun install",
+			defaultBaseBranch: "develop",
+		});
+
+		await migrateProjectConfig(project, WORKTREE_DIR);
+
+		const filePath = join(WORKTREE_DIR, ".dev3", "config.json");
+		expect(existsSync(filePath)).toBe(true);
+		const written = JSON.parse(readFileSync(filePath, "utf-8"));
+		expect(written.setupScript).toBe("bun install");
+
+		// Original project.path should NOT have config
+		expect(existsSync(join(TEST_DIR, ".dev3", "config.json"))).toBe(false);
+	});
+
+	it("skips if worktree already has config", async () => {
+		const wtConfigDir = join(WORKTREE_DIR, ".dev3");
+		mkdirSync(wtConfigDir, { recursive: true });
+		writeFileSync(join(wtConfigDir, "config.json"), JSON.stringify({ setupScript: "existing" }));
+
+		const project = makeProject({ setupScript: "should-not-overwrite" });
+		await migrateProjectConfig(project, WORKTREE_DIR);
+
+		const written = JSON.parse(readFileSync(join(wtConfigDir, "config.json"), "utf-8"));
+		expect(written.setupScript).toBe("existing");
+	});
+});

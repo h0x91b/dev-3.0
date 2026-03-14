@@ -11,6 +11,8 @@ export interface CliContext {
 	projectId: string;
 	taskId: string;
 	socketPath: string;
+	/** Worktree root path (e.g. ~/.dev3.0/worktrees/slug/taskId/worktree) if detected from CWD. */
+	worktreePath?: string;
 }
 
 /** Marker that appears in every dev3 worktree path. */
@@ -95,10 +97,14 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 		// Try to find a live socket (check real sockets dir first, then HOME-based)
 		const socketPath = discoverSocketIn(socketsDir) || discoverSocket() || "";
 
+		// Derive worktree root path from the parsed info
+		const worktreeBase = `${effectiveHome}/worktrees/${pathInfo.projectSlug}/${pathInfo.taskShortId}/worktree`;
+
 		return {
 			projectId: project.id,
 			taskId: task.id,
 			socketPath,
+			worktreePath: existsSync(worktreeBase) ? worktreeBase : undefined,
 		};
 	} catch {
 		return null;

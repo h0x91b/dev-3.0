@@ -129,9 +129,12 @@ export async function getConfigSources(
  * Resolve project settings from .dev3/ config files only.
  * Does NOT fall back to projects.json settings fields.
  * Priority: .dev3/config.json < .dev3/config.local.json < defaults for missing.
+ *
+ * @param configPath Optional path override to read .dev3/ files from (e.g. worktree path).
+ *                   Falls back to project.path when not provided.
  */
-export async function resolveProjectConfig(project: Project): Promise<Project> {
-	const config = await loadRepoConfig(project.path);
+export async function resolveProjectConfig(project: Project, configPath?: string): Promise<Project> {
+	const config = await loadRepoConfig(configPath ?? project.path);
 
 	const resolved = { ...project };
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
@@ -147,10 +150,13 @@ export async function resolveProjectConfig(project: Project): Promise<Project> {
 /**
  * One-time migration: if no .dev3/config.json exists, create it from
  * settings stored in projects.json. Runs automatically on project load.
+ *
+ * @param configPath Optional path override for .dev3/ files (e.g. worktree path).
  */
-export async function migrateProjectConfig(project: Project): Promise<void> {
-	const repoPath = `${project.path}/${CONFIG_FILE}`;
-	const localPath = `${project.path}/${LOCAL_CONFIG_FILE}`;
+export async function migrateProjectConfig(project: Project, configPath?: string): Promise<void> {
+	const basePath = configPath ?? project.path;
+	const repoPath = `${basePath}/${CONFIG_FILE}`;
+	const localPath = `${basePath}/${LOCAL_CONFIG_FILE}`;
 
 	// Skip if any .dev3/ config already exists
 	if (existsSync(repoPath) || existsSync(localPath)) return;
@@ -173,10 +179,10 @@ export async function migrateProjectConfig(project: Project): Promise<void> {
 	if (!hasSettings) return;
 
 	log.info("Migrating project settings to .dev3/config.json", {
-		path: project.path,
+		path: basePath,
 		fields: Object.keys(config),
 	});
-	await saveRepoConfig(project.path, config);
+	await saveRepoConfig(basePath, config);
 }
 
 /** Check if a .dev3/config.json file exists in the project. */

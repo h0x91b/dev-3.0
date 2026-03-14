@@ -10,10 +10,11 @@ export async function handleConfig(
 	context: CliContext | null,
 ): Promise<void> {
 	const projectId = args.flags?.project || context?.projectId;
+	const worktreePath = context?.worktreePath;
 
 	if (subcommand === "export") {
 		if (!projectId) exitError("Could not detect project. Use --project <id> or run from a worktree.");
-		const resp = await sendRequest(socketPath, "config.export", { projectId });
+		const resp = await sendRequest(socketPath, "config.export", { projectId, worktreePath });
 		if (!resp.ok) exitError(resp.error || "Failed to export config");
 		const result = resp.data as { path: string };
 		process.stdout.write(`Exported project settings to ${result.path}\n`);
@@ -22,7 +23,7 @@ export async function handleConfig(
 
 	if (subcommand === "show" || !subcommand) {
 		if (!projectId) exitError("Could not detect project. Use --project <id> or run from a worktree.");
-		const resp = await sendRequest(socketPath, "config.show", { projectId });
+		const resp = await sendRequest(socketPath, "config.show", { projectId, worktreePath });
 		if (!resp.ok) exitError(resp.error || "Failed to get config");
 
 		const result = resp.data as {

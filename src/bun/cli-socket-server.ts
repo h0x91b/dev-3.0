@@ -459,18 +459,22 @@ const handlers: Record<string, Handler> = {
 	"config.export": async (params) => {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
+		const worktreePath = params.worktreePath as string | undefined;
 		const project = await data.getProject(projectId);
-		await repoConfig.migrateProjectConfig(project);
-		return { path: `${project.path}/.dev3/config.json` };
+		const configPath = worktreePath || project.path;
+		await repoConfig.migrateProjectConfig(project, configPath);
+		return { path: `${configPath}/.dev3/config.json` };
 	},
 
 	"config.show": async (params) => {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
+		const worktreePath = params.worktreePath as string | undefined;
 		const project = await data.getProject(projectId);
-		const resolved = await repoConfig.resolveProjectConfig(project);
-		const sources = await repoConfig.getConfigSources(project.path);
-		const hasRepoFile = repoConfig.hasRepoConfig(project.path);
+		const configPath = worktreePath || project.path;
+		const resolved = await repoConfig.resolveProjectConfig(project, configPath);
+		const sources = await repoConfig.getConfigSources(configPath);
+		const hasRepoFile = repoConfig.hasRepoConfig(configPath);
 		return {
 			settings: Object.fromEntries(
 				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key]]),

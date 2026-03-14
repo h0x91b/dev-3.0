@@ -552,8 +552,11 @@ export async function activateTask(
 	opts?: { isReopen?: boolean },
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
-	const resolved = await repoConfig.resolveProjectConfig(project);
-	const wt = await git.createWorktree(resolved, task, task.existingBranch ?? undefined);
+	// Resolve config from project.path for worktree creation (defaultBaseBranch, etc.)
+	const preResolved = await repoConfig.resolveProjectConfig(project);
+	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
+	// Re-resolve from the worktree to pick up any .dev3/config.json on the branch
+	const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
 	if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: resolved.sparseCheckoutPaths });
 		await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
@@ -620,7 +623,7 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 		return;
 	}
 
-	const resolved = await repoConfig.resolveProjectConfig(project);
+	const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
 	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
@@ -1065,18 +1068,20 @@ export const handlers = {
 		return paths;
 	},
 
-	async getProjectConfigs(params: { projectId: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
-		log.info("→ getProjectConfigs", { projectId: params.projectId });
+	async getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
+		log.info("→ getProjectConfigs", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
-		const repo = repoConfig.loadRepoConfigRaw(project.path);
-		const local = repoConfig.loadLocalConfigRaw(project.path);
+		const configPath = params.worktreePath || project.path;
+		const repo = repoConfig.loadRepoConfigRaw(configPath);
+		const local = repoConfig.loadLocalConfigRaw(configPath);
 		log.info("← getProjectConfigs");
 		return { repo, local };
 	},
 
-	async saveRepoConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
-		log.info("→ saveRepoConfig", { projectId: params.projectId });
+	async saveRepoConfig(params: { projectId: string; worktreePath?: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveRepoConfig", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
+		const configPath = params.worktreePath || project.path;
 		const config: Dev3RepoConfig = {};
 		for (const key of DEV3_REPO_CONFIG_KEYS) {
 			const val = (params as any)[key];
@@ -1084,13 +1089,14 @@ export const handlers = {
 				(config as any)[key] = val;
 			}
 		}
-		await repoConfig.saveRepoConfig(project.path, config);
+		await repoConfig.saveRepoConfig(configPath, config);
 		log.info("← saveRepoConfig done");
 	},
 
-	async saveLocalConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
-		log.info("→ saveLocalConfig", { projectId: params.projectId });
+	async saveLocalConfig(params: { projectId: string; worktreePath?: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveLocalConfig", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
+		const configPath = params.worktreePath || project.path;
 		const config: Dev3RepoConfig = {};
 		for (const key of DEV3_REPO_CONFIG_KEYS) {
 			const val = (params as any)[key];
@@ -1098,14 +1104,15 @@ export const handlers = {
 				(config as any)[key] = val;
 			}
 		}
-		await repoConfig.saveRepoLocalConfig(project.path, config);
+		await repoConfig.saveRepoLocalConfig(configPath, config);
 		log.info("← saveLocalConfig done");
 	},
 
-	async getRepoConfigSources(params: { projectId: string }): Promise<ConfigSourceEntry[]> {
-		log.info("→ getRepoConfigSources", { projectId: params.projectId });
+	async getRepoConfigSources(params: { projectId: string; worktreePath?: string }): Promise<ConfigSourceEntry[]> {
+		log.info("→ getRepoConfigSources", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
-		const sources = await repoConfig.getConfigSources(project.path);
+		const configPath = params.worktreePath || project.path;
+		const sources = await repoConfig.getConfigSources(configPath);
 		log.info("← getRepoConfigSources", { count: sources.length });
 		return sources;
 	},
