@@ -51,6 +51,14 @@ const common = {
 	"ghWarning.messageNotAuthenticated": "Algunas funciones no estarán disponibles sin autenticación: detección automática de PR, promoción de tareas a \"Revisión PR\" y detección de fusiones vía GitHub. Ejecuta `gh auth login`.",
 	"ghWarning.dismiss": "Entendido",
 	"ghWarning.dontShowAgain": "No mostrar de nuevo",
+
+	// Unsaved changes guard
+	"unsavedChanges.title": "Cambios sin guardar",
+	"unsavedChanges.message": "Tienes cambios sin guardar en la configuración del proyecto. ¿Qué deseas hacer?",
+	"unsavedChanges.save": "Guardar",
+	"unsavedChanges.discard": "Descartar",
+	"unsavedChanges.cancel": "Cancelar",
+	"unsavedChanges.banner": "Tienes cambios sin guardar",
 };
 
 export default common;

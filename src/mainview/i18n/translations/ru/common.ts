@@ -51,6 +51,14 @@ const common = {
 	"ghWarning.messageNotAuthenticated": "Без авторизации некоторые функции не будут работать: автоматическое обнаружение PR, перевод задачи в статус «Ревью PR» и определение слияния через GitHub. Выполните `gh auth login`.",
 	"ghWarning.dismiss": "Понятно",
 	"ghWarning.dontShowAgain": "Больше не показывать",
+
+	// Unsaved changes guard
+	"unsavedChanges.title": "Несохранённые изменения",
+	"unsavedChanges.message": "В настройках проекта есть несохранённые изменения. Что сделать?",
+	"unsavedChanges.save": "Сохранить",
+	"unsavedChanges.discard": "Отменить",
+	"unsavedChanges.cancel": "Назад",
+	"unsavedChanges.banner": "Есть несохранённые изменения",
 };
 
 export default common;

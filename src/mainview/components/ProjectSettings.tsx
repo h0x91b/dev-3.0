@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
 import type { CustomColumn, Label, Project } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -181,11 +181,17 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRow
 	);
 }
 
+interface NavigationGuard {
+	isDirty: () => boolean;
+	onSave: () => Promise<void>;
+}
+
 interface ProjectSettingsProps {
 	projectId: string;
 	projects: Project[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
+	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
 function ProjectSettings({
@@ -193,6 +199,7 @@ function ProjectSettings({
 	projects,
 	dispatch,
 	navigate,
+	navigationGuardRef,
 }: ProjectSettingsProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -213,6 +220,39 @@ function ProjectSettings({
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
 	const autoDetectRan = useRef(false);
+
+	const arraysEqual = (a: string[], b: string[]) =>
+		a.length === b.length && a.every((v, i) => v === b[i]);
+
+	const isDirty = useCallback(() => {
+		if (!project) return false;
+		return (
+			setupScript !== (project.setupScript || "") ||
+			devScript !== (project.devScript || "") ||
+			cleanupScript !== (project.cleanupScript || "") ||
+			defaultBaseBranch !== (project.defaultBaseBranch || "main") ||
+			peerReviewEnabled !== (project.peerReviewEnabled !== false) ||
+			sparseCheckoutEnabled !== (project.sparseCheckoutEnabled ?? false) ||
+			!arraysEqual(clonePaths, project.clonePaths || []) ||
+			!arraysEqual(sparseCheckoutPaths, project.sparseCheckoutPaths ?? [])
+		);
+	}, [project, setupScript, devScript, cleanupScript, defaultBaseBranch, peerReviewEnabled, sparseCheckoutEnabled, clonePaths, sparseCheckoutPaths]);
+
+	// Use a ref so the navigation guard always calls the latest handleSave
+	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
+
+	// Register navigation guard
+	useEffect(() => {
+		if (navigationGuardRef) {
+			navigationGuardRef.current = {
+				isDirty,
+				onSave: () => handleSaveRef.current(),
+			};
+		}
+		return () => {
+			if (navigationGuardRef) navigationGuardRef.current = null;
+		};
+	}, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	async function runAutoDetect() {
 		if (!project) return;
@@ -341,7 +381,7 @@ function ProjectSettings({
 		setColumnSaving(null);
 	}
 
-	async function handleSave() {
+	async function doSave(andNavigate = true) {
 		setSaving(true);
 		try {
 			const updated = await api.request.updateProjectSettings({
@@ -356,15 +396,36 @@ function ProjectSettings({
 				sparseCheckoutPaths: sparseCheckoutPaths.filter((p) => p.trim() !== ""),
 			});
 			dispatch({ type: "updateProject", project: updated });
-			navigate({ screen: "project", projectId });
+			if (andNavigate) navigate({ screen: "project", projectId });
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
 		}
 		setSaving(false);
 	}
 
+	// Keep the ref in sync for the navigation guard
+	handleSaveRef.current = () => doSave(false);
+
+	function handleSave() {
+		doSave(true);
+	}
+
+	const dirty = isDirty();
+
 	return (
 		<div className="h-full w-full flex flex-col">
+			{dirty && (
+				<div className="flex-shrink-0 px-7 py-2 bg-accent/10 border-b border-accent/20 flex items-center justify-between">
+					<span className="text-fg-2 text-sm">{t("unsavedChanges.banner")}</span>
+					<button
+						onClick={handleSave}
+						disabled={saving}
+						className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-all active:scale-95"
+					>
+						{saving ? t("projectSettings.saving") : t("projectSettings.save")}
+					</button>
+				</div>
+			)}
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 					{/* Setup Script */}
