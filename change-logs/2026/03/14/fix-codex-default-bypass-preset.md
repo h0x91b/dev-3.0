@@ -1,0 +1,1 @@
+Changed the built-in Codex default preset to GPT-5.4 Heavy Bypass and bumped its preset version so existing stored default configs pick up the new sandbox arguments automatically. Updated tests to lock in the new default selection and naming.

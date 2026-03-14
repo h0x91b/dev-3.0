@@ -44,9 +44,9 @@ const codexAgent: CodingAgent = {
 	configurations: [
 		{
 			id: "codex-default",
-			name: "Default (GPT-5.4 Medium)",
+			name: "Default (GPT-5.4 Heavy Bypass)",
 			model: "gpt-5.4",
-			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
+			additionalArgs: ["--search", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 		},
 		{
 			id: "codex-plan",
@@ -293,7 +293,7 @@ describe("LaunchVariantsModal", () => {
 
 			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options).toHaveLength(6);
-			expect(options[0]).toBe("Default (GPT-5.4 Medium)");
+			expect(options[0]).toBe("Default (GPT-5.4 Heavy Bypass)");
 			expect(options[1]).toBe("Plan (GPT-5.4)");
 			expect(options[2]).toBe("Heavy (GPT-5.4 High)");
 			expect(options[3]).toBe("Heavy (GPT-5.4 High Confirm)");
@@ -332,12 +332,12 @@ describe("LaunchVariantsModal", () => {
 			await selectOption(user, agentBtn, "Codex");
 
 			const configBtnAfter = getConfigButtons()[0];
-			expect(getSelectedText(configBtnAfter)).toBe("Default (GPT-5.4 Medium)");
+			expect(getSelectedText(configBtnAfter)).toBe("Default (GPT-5.4 Heavy Bypass)");
 
 			// Config dropdown should show Codex curated configs
 			const options = await getDropdownOptions(user, configBtnAfter);
 			expect(options).toHaveLength(6);
-			expect(options[0]).toBe("Default (GPT-5.4 Medium)");
+			expect(options[0]).toBe("Default (GPT-5.4 Heavy Bypass)");
 		});
 
 		it("switching back to Claude restores all Claude configs", async () => {
