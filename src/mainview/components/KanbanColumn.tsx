@@ -446,7 +446,7 @@ function KanbanColumn({
 							aria-label={t("kanban.collapseColumn")}
 							title={t("kanban.collapseColumn")}
 						>
-							{"\u{F0142}"}
+							{"\u{F0403}"}
 						</button>
 					)}
 				</div>
