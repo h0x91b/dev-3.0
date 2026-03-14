@@ -636,6 +636,17 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("Configure dev3 devScript for this project")).toBeInTheDocument();
 		});
 
+		it("userEvent click on Setup Dev Server shows hint popover", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
+			});
+			const btn = screen.getByText("Setup Dev Server").closest("button")!;
+			await user.click(btn);
+			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
+			expect(screen.getByText("Configure dev3 devScript for this project")).toBeInTheDocument();
+		});
+
 		it("shows not-allowed style when task is not active", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
 			await act(async () => {
