@@ -1239,7 +1239,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					className="fixed z-[9999] bg-overlay border border-edge rounded-lg shadow-lg p-3 w-72"
 					style={{ top: devServerHintPos.top, left: devServerHintPos.left }}
 				>
-					<p className="text-fg-2 text-xs mb-2">{t("header.devServerHint")}</p>
+					<div className="flex items-center justify-between mb-2">
+						<p className="text-fg-2 text-xs">{t("header.devServerHint")}</p>
+						<button
+							onClick={() => { setDevServerHintOpen(false); setDevServerHintCopied(false); }}
+							className="text-fg-muted hover:text-fg text-xs leading-none ml-2 -mr-1 -mt-1"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>{"\uF00D"}</button>
+					</div>
 					<div className="flex items-center gap-1.5">
 						<code className="flex-1 text-xs bg-base rounded px-2 py-1.5 text-fg font-mono select-all break-all">
 							{devServerHintPrompt}
