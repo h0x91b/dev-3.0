@@ -115,8 +115,29 @@ export async function downloadUpdateForChannel(
 
 			// Step 2: download the update (patch or full bundle)
 			await Updater.downloadUpdate();
-			onProgress?.("complete", 100);
-			return { ok: true };
+
+			// Step 3: verify the update is actually ready after download.
+			// Electrobun may not mark updateReady synchronously after downloadUpdate resolves.
+			const postDownload = Updater.updateInfo?.();
+			if (postDownload?.updateReady) {
+				onProgress?.("complete", 100);
+				return { ok: true };
+			}
+
+			// Give Electrobun a moment to finalize, then re-check
+			log.warn("downloadUpdate resolved but updateReady is false, retrying check...");
+			await new Promise((r) => setTimeout(r, 1000));
+			const refreshed = await Updater.checkForUpdate();
+			if (refreshed?.updateReady) {
+				log.info("Update ready after re-check");
+				onProgress?.("complete", 100);
+				return { ok: true };
+			}
+
+			const msg = "Download completed but update not marked as ready";
+			log.error(msg, { updateReady: refreshed?.updateReady });
+			onProgress?.("error");
+			return { ok: false, error: msg };
 		} catch (err) {
 			const msg = `Download failed: ${err}`;
 			log.error(msg);
@@ -178,15 +199,24 @@ export async function applyUpdate(): Promise<void> {
 	// Verify the update is actually ready before attempting to apply.
 	// Without this guard, applyUpdate() may just restart the app
 	// without applying anything — causing an infinite update loop.
-	const info = Updater.updateInfo?.();
+	let info = Updater.updateInfo?.();
 	log.info("Applying update...", {
 		updateReady: info?.updateReady,
 		version: info?.version,
 	});
 
 	if (info && !info.updateReady) {
-		log.error("applyUpdate called but updateReady is false — skipping to avoid restart loop");
-		throw new Error("Update not ready to apply");
+		// Try refreshing Electrobun's internal state — the download may have
+		// completed but the ready flag wasn't propagated yet.
+		log.warn("updateReady is false, refreshing via checkForUpdate...");
+		const refreshed = await Updater.checkForUpdate();
+		if (refreshed?.updateReady) {
+			log.info("Update now ready after re-check");
+			info = refreshed;
+		} else {
+			log.error("applyUpdate called but updateReady is still false after re-check — skipping to avoid restart loop");
+			throw new Error("Update not ready to apply");
+		}
 	}
 
 	await Updater.applyUpdate();
