@@ -162,6 +162,136 @@ const GENERIC_SKILL_DIRS = [
 	".opencode/skills/dev3",
 ];
 
+// ---- dev3-project-config skill ----
+
+const PROJECT_CONFIG_SKILL_DESCRIPTION =
+	"Use when you need to create, read, or modify a dev-3.0 project config file (.dev3/config.json or .dev3/config.local.json). Trigger: the user asks to configure project settings, you see a .dev3/ directory, or the task involves setup/dev/cleanup scripts, clone paths, base branch, or peer review settings.";
+
+const PROJECT_CONFIG_SKILL_BODY = `# dev3-project-config — Project Configuration Files
+
+## What is .dev3/config.json?
+
+A **shareable project configuration** file committed to git. It lets the whole team share
+project settings (scripts, clone paths, base branch) without manual per-machine setup.
+
+## File locations
+
+| File | Committed? | Purpose |
+|------|-----------|---------|
+| \`.dev3/config.json\` | Yes (git) | Shared team settings |
+| \`.dev3/config.local.json\` | No (git-ignored) | Machine-specific overrides |
+
+## Merge priority (lowest → highest)
+
+1. **Global** — \`~/.dev3.0/projects.json\` (per-machine, managed by the app UI)
+2. **Repo** — \`.dev3/config.json\` (committed, shared via git)
+3. **Local** — \`.dev3/config.local.json\` (git-ignored, personal overrides)
+
+Higher priority wins per-field. Fields not set at a higher level fall through to lower levels.
+
+## Schema
+
+All fields are **optional**. Only include fields you want to set.
+
+\`\`\`json
+{
+  "setupScript": "bun install",
+  "devScript": "bun run dev",
+  "cleanupScript": "rm -rf node_modules/.cache",
+  "clonePaths": ["node_modules", ".next"],
+  "defaultBaseBranch": "main",
+  "peerReviewEnabled": true
+}
+\`\`\`
+
+### Field reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| \`setupScript\` | string | Runs after a new worktree is created for a task |
+| \`devScript\` | string | Dev server command (reserved for future use) |
+| \`cleanupScript\` | string | Runs when a task is cancelled or archived |
+| \`clonePaths\` | string[] | Paths to copy (not symlink) into new worktrees (e.g. \`node_modules\`) |
+| \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
+| \`peerReviewEnabled\` | boolean | Whether peer review is required before completing tasks |
+
+## When to create .dev3/config.json
+
+- The user asks to share project settings with the team
+- You are setting up a new project and know the correct scripts/paths
+- The user asks to configure dev-3.0 for a repo
+
+## When to use .dev3/config.local.json
+
+- Machine-specific paths (e.g. absolute paths that differ per developer)
+- Personal preferences that shouldn't be shared
+- Temporary overrides during development
+
+## How to create
+
+1. Create the \`.dev3/\` directory if it doesn't exist
+2. Write the config file as pretty-printed JSON
+3. If creating \`.dev3/config.local.json\`, ensure it's in \`.gitignore\`
+
+\`\`\`bash
+mkdir -p .dev3
+cat > .dev3/config.json << 'EOF'
+{
+  "setupScript": "bun install",
+  "defaultBaseBranch": "main"
+}
+EOF
+\`\`\`
+
+## .gitignore
+
+\`.dev3/config.local.json\` must be git-ignored. The app does this automatically,
+but if creating manually, add this to \`.gitignore\`:
+
+\`\`\`
+# dev-3.0 local config
+.dev3/config.local.json
+\`\`\`
+
+## CLI commands
+
+- \`dev3 config show\` — display effective merged settings with source indicators
+- \`dev3 config export\` — export current project settings to \`.dev3/config.json\`
+
+## Important notes
+
+- **Do NOT include non-config fields** (id, name, path, createdAt) — only the 6 fields above are valid
+- **Unknown keys are silently ignored** by the merge logic
+- The app UI shows source badges (repo/local/global) next to each setting
+- Changes to \`.dev3/config.json\` take effect immediately on next RPC call (no restart needed)
+`;
+
+const CLAUDE_PROJECT_CONFIG_SKILL = `---
+name: dev3-project-config
+description: "${PROJECT_CONFIG_SKILL_DESCRIPTION}"
+---
+
+${PROJECT_CONFIG_SKILL_BODY}`;
+
+const GENERIC_PROJECT_CONFIG_SKILL = `---
+name: dev3-project-config
+description: "${PROJECT_CONFIG_SKILL_DESCRIPTION}"
+---
+
+${PROJECT_CONFIG_SKILL_BODY}`;
+
+/** Claude Code project-config skill directory. */
+const CLAUDE_PROJECT_CONFIG_DIR = ".claude/skills/dev3-project-config";
+
+/** Generic agent project-config skill directories. */
+const GENERIC_PROJECT_CONFIG_DIRS = [
+	".cursor/skills/dev3-project-config",
+	".agents/skills/dev3-project-config",
+	".codex/skills/dev3-project-config",
+	".gemini/skills/dev3-project-config",
+	".opencode/skills/dev3-project-config",
+];
+
 // ---- ~/.agents/AGENTS.md rule block ----
 
 const AGENTS_MD_MARKER_START = "<!-- dev3:start -->";
@@ -292,6 +422,36 @@ export function installAgentSkills(): void {
 			log.info("Agent skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install agent skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	// Install Claude-specific project-config skill
+	const claudeProjectConfigDir = `${home}/${CLAUDE_PROJECT_CONFIG_DIR}`;
+	const claudeProjectConfigFile = `${claudeProjectConfigDir}/SKILL.md`;
+	try {
+		mkdirSync(claudeProjectConfigDir, { recursive: true });
+		writeFileSync(claudeProjectConfigFile, CLAUDE_PROJECT_CONFIG_SKILL, "utf-8");
+		log.info("Claude project-config skill installed", { path: claudeProjectConfigFile });
+	} catch (err) {
+		log.warn("Failed to install Claude project-config skill (non-fatal)", {
+			path: claudeProjectConfigFile,
+			error: String(err),
+		});
+	}
+
+	// Install generic project-config skill for all other agents
+	for (const dir of GENERIC_PROJECT_CONFIG_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, GENERIC_PROJECT_CONFIG_SKILL, "utf-8");
+			log.info("Agent project-config skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install agent project-config skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});

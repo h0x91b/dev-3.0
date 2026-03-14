@@ -2,17 +2,17 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-03-13
+Last updated: 2026-03-14
 
 ## Agents
 
-| Agent | CLI binary | Skill directory |
-|-------|-----------|-----------------|
-| Claude Code | `claude` | `~/.claude/skills/dev3/` |
-| Cursor Agent | `agent` | `~/.cursor/skills/dev3/` |
-| Codex | `codex` | `~/.codex/skills/dev3/` |
-| Gemini CLI | `gemini` | `~/.gemini/skills/dev3/` |
-| OpenCode | — | `~/.opencode/skills/dev3/` |
+| Agent | CLI binary | Skill directories |
+|-------|-----------|-------------------|
+| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/` |
+| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/` |
+| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/` |
+| Gemini CLI | `gemini` | `~/.gemini/skills/dev3/`, `~/.gemini/skills/dev3-project-config/` |
+| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/` |
 
 ## Feature Matrix
 
@@ -42,10 +42,16 @@ Injected into `.claude/settings.local.json` per-worktree at task launch.
 
 ## Skill Differences
 
+### dev3 (task lifecycle)
+
 The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Two variants exist:
 
 - **Claude variant** — simplified status section (hooks handle transitions automatically), uses `!` command injection for zero-tool-call startup
 - **Generic variant** — full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
+
+### dev3-project-config (project configuration)
+
+A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/config.local.json`. Covers the schema, merge priority, when to create/modify config files, and CLI commands (`dev3 config show`, `dev3 config export`). Same content for all agents (no variant differences).
 
 ## Additional Integrations
 
