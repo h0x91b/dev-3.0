@@ -54,7 +54,7 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 					project.builtinColumnAgents = {
 						"review-by-ai": {
 							agentId: legacy.agentId ?? "builtin-claude",
-							configId: legacy.configId ?? "claude-review",
+							configId: legacy.configId ?? "claude-bypass-sonnet",
 							prompt: legacy.reviewPrompt ?? "",
 						},
 					};

@@ -351,8 +351,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	function getOrderedColumns(): ColumnSlot[] {
 		const cols = customColumns;
 		const peerReviewEnabled = project.peerReviewEnabled !== false;
-		// Show AI Review column when enabled (builtinColumnAgents has config) or when it has tasks
-		const aiReviewEnabled = !!project.builtinColumnAgents?.["review-by-ai"];
+		// Show AI Review column by default (on when builtinColumnAgents is unset or has review-by-ai config)
+		const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
 		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !t.customColumnId);
 		const shouldHide = (s: TaskStatus) =>
 			(s === "review-by-colleague" && !peerReviewEnabled) ||

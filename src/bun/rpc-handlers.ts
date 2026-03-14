@@ -997,7 +997,7 @@ export async function triggerColumnAgentIfNeeded(
 		const config = project.builtinColumnAgents?.["review-by-ai"];
 		agentConfig = config ?? {
 			agentId: "builtin-claude",
-			configId: "claude-review",
+			configId: "claude-bypass-sonnet",
 			prompt: DEFAULT_REVIEW_PROMPT,
 		};
 		paneTitle = "AI Review";

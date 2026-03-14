@@ -96,7 +96,7 @@ export function getAllowedTransitions(current: TaskStatus): TaskStatus[] {
 
 export interface ColumnAgentConfig {
 	agentId: string; // e.g. "builtin-claude"
-	configId: string; // e.g. "claude-review"
+	configId: string; // e.g. "claude-bypass-sonnet"
 	prompt: string; // prompt sent to the agent
 }
 
@@ -150,7 +150,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-approvals-sonnet", name: "Approvals (Sonnet)", model: "sonnet", permissionMode: "acceptEdits" },
 			{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus", permissionMode: "bypassPermissions" },
 			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
-			{ id: "claude-review", name: "Review (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
 		],
 		defaultConfigId: "claude-default",
 	},
