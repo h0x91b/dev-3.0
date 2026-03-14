@@ -13,7 +13,7 @@ Tried three approaches:
 
 ## Decision
 
-Used `split-window -h -l 30%` to create a right-side pane (`launchColumnAgent()` in `src/bun/rpc-handlers.ts`, formerly `launchReviewAgent`). The pane ID is saved to `/tmp/dev3-{taskId}-col-agent-pane` for cleanup on re-runs. After creating the split, focus returns to the main pane via `select-pane -t :0`.
+Used `split-window -h -l 40%` to create a right-side pane (`launchColumnAgent()` in `src/bun/rpc-handlers.ts`, formerly `launchReviewAgent`). The pane ID is saved to `/tmp/dev3-{taskId}-col-agent-pane` for cleanup on re-runs. After creating the split, focus returns to the main pane via `select-pane -t :0`.
 
 > **Update (decision 017):** `launchReviewAgent` was generalized into `launchColumnAgent` to support any column (not just AI Review). The mechanics are identical; the function now accepts a `ColumnAgentConfig` and an optional `onExitCommand`.
 
@@ -22,7 +22,7 @@ Pane title (`printf '\033]2;...\033\\'` in the wrapper script) is set but not re
 ## Risks
 
 - If the user manually closes/rearranges panes, the saved pane ID may be stale. `kill-pane` on a non-existent pane is silently ignored.
-- The 30% width may be too narrow for some terminal sizes. Not configurable yet.
+- The 40% width may be too narrow for some terminal sizes. Not configurable yet.
 - **Stop hook parallel execution assumption:** The two Stop hook groups in `.claude/settings.local.json` rely on Claude Code launching both hook subprocesses *concurrently* (not sequentially). Both processes read the task status before either has written a new value, so their `--if-status` / `--if-status-not` guards are mutually exclusive by race. If Claude Code ever switches to sequential hook execution, the primary-agent Stop would transition to `review-by-ai` and then immediately to `review-by-user`, skipping AI review entirely. This has been manually verified to work with the current Claude Code version but is not covered by automated tests.
 
 ## Alternatives Considered

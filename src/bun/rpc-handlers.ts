@@ -937,10 +937,10 @@ export async function launchColumnAgent(
 		// No previous pane — fine
 	}
 
-	// Create pane as a horizontal split (30% width on the right)
+	// Create pane as a horizontal split (40% width on the right)
 	const splitArgs = pty.tmuxArgs(
 		socket, "split-window",
-		"-h", "-l", "30%",
+		"-h", "-l", "40%",
 		"-P", "-F", "#{pane_id}",
 		"-t", tmuxSession,
 		"-c", worktreePath,
