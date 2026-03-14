@@ -552,6 +552,9 @@ export async function activateTask(
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
 	const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
+	if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
+		await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+	}
 	await runCowClones(project, wt.worktreePath);
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 	await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
@@ -1052,6 +1055,8 @@ export const handlers = {
 		defaultBaseBranch: string;
 		clonePaths: string[];
 		peerReviewEnabled: boolean;
+		sparseCheckoutEnabled: boolean;
+		sparseCheckoutPaths: string[];
 	}): Promise<Project> {
 		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
@@ -1062,6 +1067,8 @@ export const handlers = {
 			defaultBaseBranch: params.defaultBaseBranch,
 			clonePaths: params.clonePaths,
 			peerReviewEnabled: params.peerReviewEnabled,
+			sparseCheckoutEnabled: params.sparseCheckoutEnabled,
+			sparseCheckoutPaths: params.sparseCheckoutPaths,
 		});
 		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
 		log.info("← updateProjectSettings done");

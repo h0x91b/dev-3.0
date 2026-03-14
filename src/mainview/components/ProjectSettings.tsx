@@ -205,6 +205,8 @@ function ProjectSettings({
 		project?.defaultBaseBranch || "main",
 	);
 	const [peerReviewEnabled, setPeerReviewEnabled] = useState(project?.peerReviewEnabled !== false);
+	const [sparseCheckoutEnabled, setSparseCheckoutEnabled] = useState(project?.sparseCheckoutEnabled ?? false);
+	const [sparseCheckoutPaths, setSparseCheckoutPaths] = useState<string[]>(project?.sparseCheckoutPaths ?? []);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
@@ -350,6 +352,8 @@ function ProjectSettings({
 				defaultBaseBranch,
 				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
 				peerReviewEnabled,
+				sparseCheckoutEnabled,
+				sparseCheckoutPaths: sparseCheckoutPaths.filter((p) => p.trim() !== ""),
 			});
 			dispatch({ type: "updateProject", project: updated });
 			navigate({ screen: "project", projectId });
@@ -413,6 +417,43 @@ function ProjectSettings({
 							placeholder="node_modules"
 							addLabel={t("projectSettings.addClonePath")}
 						/>
+					</div>
+
+					{/* Worktree File Filter (Sparse Checkout) */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("projectSettings.sparseCheckout")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("projectSettings.sparseCheckoutDesc")}
+						</p>
+						<div className="flex items-center justify-between mb-3">
+							<span className="text-fg-2 text-sm">{t("projectSettings.sparseCheckoutAll")}</span>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={!sparseCheckoutEnabled}
+								aria-label={t("projectSettings.sparseCheckoutAll")}
+								onClick={() => setSparseCheckoutEnabled((v) => !v)}
+								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+									!sparseCheckoutEnabled ? "bg-accent" : "bg-edge-active"
+								}`}
+							>
+								<span
+									className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+										!sparseCheckoutEnabled ? "translate-x-4" : "translate-x-0"
+									}`}
+								/>
+							</button>
+						</div>
+						{sparseCheckoutEnabled && (
+							<ListEditor
+								items={sparseCheckoutPaths}
+								onChange={setSparseCheckoutPaths}
+								placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
+								addLabel={t("projectSettings.sparseCheckoutAddPath")}
+							/>
+						)}
 					</div>
 
 					{/* Dev Script */}
