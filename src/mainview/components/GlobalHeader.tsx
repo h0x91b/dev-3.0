@@ -44,7 +44,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	useEffect(() => {
 		if (updateVersion) {
 			setShowToast(true);
-			setCountdown(60);
+			setCountdown(300);
 			countdownRef.current = setInterval(() => {
 				setCountdown((prev) => {
 					if (prev <= 1) return 0;
