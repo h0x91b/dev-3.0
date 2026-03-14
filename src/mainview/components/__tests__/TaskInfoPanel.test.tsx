@@ -625,13 +625,16 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("dev server button", () => {
-		it("is disabled when project has no devScript", async () => {
+		it("shows hint popover when project has no devScript", async () => {
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
 			});
 			const buttons = screen.getAllByText("Dev Server");
 			const btn = buttons[0].closest("button")!;
-			expect(btn).toBeDisabled();
+			expect(btn).not.toBeDisabled();
+			await act(async () => { btn.click(); });
+			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
+			expect(screen.getByText("Configure dev3 devScript for this project")).toBeInTheDocument();
 		});
 
 		it("is disabled when task is not active", async () => {
@@ -777,7 +780,7 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("disables button when resolved config has no devScript", async () => {
+		it("shows hint popover when resolved config has no devScript", async () => {
 			mockedApi.request.getResolvedProject.mockResolvedValue({ ...project, devScript: "" });
 
 			await act(async () => {
@@ -786,7 +789,9 @@ describe("TaskInfoPanel", () => {
 
 			const buttons = screen.getAllByText("Dev Server");
 			const btn = buttons[0].closest("button")!;
-			expect(btn).toBeDisabled();
+			expect(btn).not.toBeDisabled();
+			await act(async () => { btn.click(); });
+			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
 		});
 
 		it("falls back to project prop when getResolvedProject fails", async () => {

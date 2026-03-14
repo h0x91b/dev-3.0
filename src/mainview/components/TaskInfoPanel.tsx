@@ -411,9 +411,30 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
 	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
 	const [devServerMenuPos, setDevServerMenuPos] = useState({ top: 0, left: 0 });
+	const [devServerHintOpen, setDevServerHintOpen] = useState(false);
+	const [devServerHintCopied, setDevServerHintCopied] = useState(false);
+	const devServerHintRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!devServerHintOpen) return;
+		function onClickOutside(e: MouseEvent) {
+			if (devServerHintRef.current && !devServerHintRef.current.contains(e.target as Node) &&
+				devServerBtnRef.current && !devServerBtnRef.current.contains(e.target as Node)) {
+				setDevServerHintOpen(false);
+				setDevServerHintCopied(false);
+			}
+		}
+		document.addEventListener("mousedown", onClickOutside);
+		return () => document.removeEventListener("mousedown", onClickOutside);
+	}, [devServerHintOpen]);
 
 	async function handleDevServer() {
-		if (devServerDisabled) return;
+		if (!hasDevScript) {
+			setDevServerHintOpen((v) => !v);
+			setDevServerHintCopied(false);
+			return;
+		}
+		if (!isTaskActive) return;
 		try {
 			const { running } = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
 			if (running) {
@@ -1179,16 +1200,20 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		</span>
 	) : null;
 
+	const devServerHintPrompt = t("header.devServerHintPrompt");
+
 	const devServerButton = (
-		<>
+		<div className="relative flex-shrink-0">
 			<button
 				ref={devServerBtnRef}
 				onClick={handleDevServer}
-				disabled={devServerDisabled}
-				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-					devServerDisabled
-						? "text-fg-muted/50 cursor-not-allowed"
-						: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
+				disabled={!isTaskActive}
+				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
+					!hasDevScript
+						? "text-fg-muted/50 hover:text-fg-muted/70 hover:bg-raised-hover cursor-pointer"
+						: devServerDisabled
+							? "text-fg-muted/50 cursor-not-allowed"
+							: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
 				}`}
 				title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
 			>
@@ -1198,6 +1223,29 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				</svg>
 				<span className="text-[0.6875rem] font-semibold">{t("header.devServer")}</span>
 			</button>
+			{devServerHintOpen && (
+				<div
+					ref={devServerHintRef}
+					className="absolute top-full left-0 mt-1 z-50 bg-overlay border border-edge rounded-lg shadow-lg p-3 w-72"
+				>
+					<p className="text-fg-2 text-xs mb-2">{t("header.devServerHint")}</p>
+					<div className="flex items-center gap-1.5">
+						<code className="flex-1 text-xs bg-base rounded px-2 py-1.5 text-fg font-mono select-all break-all">
+							{devServerHintPrompt}
+						</code>
+						<button
+							onClick={() => {
+								navigator.clipboard.writeText(devServerHintPrompt);
+								setDevServerHintCopied(true);
+								setTimeout(() => setDevServerHintCopied(false), 2000);
+							}}
+							className="flex-shrink-0 px-2 py-1.5 rounded text-xs bg-accent hover:bg-accent-hover text-white transition-colors"
+						>
+							{devServerHintCopied ? t("header.devServerHintCopied") : "\u{F0C5D}"}
+						</button>
+					</div>
+				</div>
+			)}
 			{devServerMenuOpen && createPortal(
 				<DevServerMenu
 					position={devServerMenuPos}
@@ -1208,7 +1256,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				/>,
 				document.body,
 			)}
-		</>
+		</div>
 	);
 
 	// ---- "Open in..." button ----
