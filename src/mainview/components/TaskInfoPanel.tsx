@@ -139,16 +139,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 
-	// Resolve project config from worktree path (picks up .dev3/config.json on branch)
+	// Resolve project config from worktree path (picks up .dev3/config.json on branch).
+	// Polls every 10s so the Dev Server button activates when config is created mid-session.
 	const [resolvedProject, setResolvedProject] = useState(project);
 	useEffect(() => {
-		if (task.worktreePath) {
-			api.request.getResolvedProject({ projectId: project.id, worktreePath: task.worktreePath })
-				.then(setResolvedProject)
-				.catch(() => setResolvedProject(project));
-		} else {
+		if (!task.worktreePath) {
 			setResolvedProject(project);
+			return;
 		}
+		let cancelled = false;
+		const fetchResolved = () => {
+			api.request.getResolvedProject({ projectId: project.id, worktreePath: task.worktreePath! })
+				.then((p) => { if (!cancelled) setResolvedProject(p); })
+				.catch(() => { if (!cancelled) setResolvedProject(project); });
+		};
+		fetchResolved();
+		const timer = setInterval(fetchResolved, 10_000);
+		return () => { cancelled = true; clearInterval(timer); };
 	}, [project.id, task.worktreePath, project]);
 
 	const panelRef = useRef<HTMLDivElement>(null);
