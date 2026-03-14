@@ -553,7 +553,10 @@ export async function activateTask(
 	const isReopen = opts?.isReopen ?? false;
 	const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
 	if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
+		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: project.sparseCheckoutPaths });
 		await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+	} else {
+		log.info("activateTask: sparse checkout disabled or no paths", { enabled: project.sparseCheckoutEnabled, pathCount: project.sparseCheckoutPaths?.length ?? 0 });
 	}
 	await runCowClones(project, wt.worktreePath);
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
