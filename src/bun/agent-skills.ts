@@ -171,23 +171,26 @@ const PROJECT_CONFIG_SKILL_BODY = `# dev3-project-config — Project Configurati
 
 ## What is .dev3/config.json?
 
-A **shareable project configuration** file committed to git. It lets the whole team share
-project settings (scripts, clone paths, base branch) without manual per-machine setup.
+The **primary source of project settings** for dev-3.0. This file is committed to git,
+letting the whole team share project configuration (scripts, clone paths, base branch)
+without manual per-machine setup.
 
 ## File locations
 
 | File | Committed? | Purpose |
 |------|-----------|---------|
-| \`.dev3/config.json\` | Yes (git) | Shared team settings |
+| \`.dev3/config.json\` | Yes (git) | Primary project settings — shared with the team |
 | \`.dev3/config.local.json\` | No (git-ignored) | Machine-specific overrides |
 
 ## Merge priority (lowest → highest)
 
-1. **Global** — \`~/.dev3.0/projects.json\` (per-machine, managed by the app UI)
-2. **Repo** — \`.dev3/config.json\` (committed, shared via git)
-3. **Local** — \`.dev3/config.local.json\` (git-ignored, personal overrides)
+1. **Repo** — \`.dev3/config.json\` (committed, shared via git)
+2. **Local** — \`.dev3/config.local.json\` (git-ignored, personal overrides)
 
-Higher priority wins per-field. Fields not set at a higher level fall through to lower levels.
+Fields not set in either file use defaults (empty string / empty array / "main" / true).
+
+**Important:** Settings in \`~/.dev3.0/projects.json\` are NOT used for scripts/config.
+That file only stores project metadata (id, name, path). All settings live in \`.dev3/\`.
 
 ## Schema
 
@@ -217,15 +220,24 @@ All fields are **optional**. Only include fields you want to set.
 
 ## When to create .dev3/config.json
 
-- The user asks to share project settings with the team
+- The user asks to configure project settings
 - You are setting up a new project and know the correct scripts/paths
-- The user asks to configure dev-3.0 for a repo
+- The user asks to share settings with the team
 
 ## When to use .dev3/config.local.json
 
 - Machine-specific paths (e.g. absolute paths that differ per developer)
 - Personal preferences that shouldn't be shared
 - Temporary overrides during development
+
+## Choosing repo vs local — ask the user
+
+When the user asks to save or change project settings, **always ask** whether they want
+to save to the repo config (shared with team) or local config (this machine only):
+
+- "Where should I save this — to the repo config (shared) or local (just for you)?"
+- Default to \`.dev3/config.json\` (repo) for most settings
+- Use \`.dev3/config.local.json\` only when the user explicitly wants a personal override
 
 ## How to create
 
@@ -256,14 +268,14 @@ but if creating manually, add this to \`.gitignore\`:
 ## CLI commands
 
 - \`dev3 config show\` — display effective merged settings with source indicators
-- \`dev3 config export\` — export current project settings to \`.dev3/config.json\`
+- \`dev3 config export\` — migrate settings from projects.json to \`.dev3/config.json\`
 
 ## Important notes
 
 - **Do NOT include non-config fields** (id, name, path, createdAt) — only the 6 fields above are valid
 - **Unknown keys are silently ignored** by the merge logic
-- The app UI shows source badges (repo/local/global) next to each setting
-- Changes to \`.dev3/config.json\` take effect immediately on next RPC call (no restart needed)
+- The app UI has two tabs: "Repo Config" and "Local Overrides"
+- Changes to \`.dev3/config.json\` take effect immediately on next app refresh (no restart needed)
 `;
 
 const CLAUDE_PROJECT_CONFIG_SKILL = `---

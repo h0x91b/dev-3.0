@@ -478,6 +478,8 @@ function ProjectSettings({
 	const [localConfig, setLocalConfig] = useState<Dev3RepoConfig>({});
 	const [savingRepo, setSavingRepo] = useState(false);
 	const [savingLocal, setSavingLocal] = useState(false);
+	const [labelSaving, setLabelSaving] = useState<string | null>(null);
+	const [columnSaving, setColumnSaving] = useState<string | null>(null);
 	const configsLoaded = useRef(false);
 	const loadedRepoConfig = useRef<Dev3RepoConfig>({});
 	const loadedLocalConfig = useRef<Dev3RepoConfig>({});
