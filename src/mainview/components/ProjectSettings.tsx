@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project } from "../../shared/types";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, LABEL_COLORS } from "../../shared/types";
+import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -620,7 +620,7 @@ function ProjectSettings({
 	const [aiReviewEnabled, setAiReviewEnabled] = useState(reviewConfig !== undefined ? true : project?.builtinColumnAgents === undefined);
 	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
 	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
-	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt ?? "");
+	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
 	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
 
 	// Load available agents for AI Review dropdowns
