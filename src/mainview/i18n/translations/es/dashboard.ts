@@ -32,6 +32,7 @@ const dashboard = {
 	"header.projLabel": "Proy",
 	"header.globalLabel": "Global",
 	"header.devServer": "Servidor Dev",
+	"header.setupDevServer": "Configurar Servidor Dev",
 	"header.devServerDisabled": "Configure el script dev en la configuración del proyecto",
 	"header.devServerHint": "Dile a tu agente AI:",
 	"header.devServerHintPrompt": "Configure dev3 devScript for this project",

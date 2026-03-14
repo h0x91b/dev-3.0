@@ -625,12 +625,11 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("dev server button", () => {
-		it("shows hint popover when project has no devScript", async () => {
+		it("shows Setup Dev Server button with hint popover when no devScript", async () => {
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
 			});
-			const buttons = screen.getAllByText("Dev Server");
-			const btn = buttons[0].closest("button")!;
+			const btn = screen.getByText("Setup Dev Server").closest("button")!;
 			expect(btn).not.toBeDisabled();
 			await act(async () => { btn.click(); });
 			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();
@@ -787,8 +786,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "" } });
 			});
 
-			const buttons = screen.getAllByText("Dev Server");
-			const btn = buttons[0].closest("button")!;
+			const btn = screen.getByText("Setup Dev Server").closest("button")!;
 			expect(btn).not.toBeDisabled();
 			await act(async () => { btn.click(); });
 			expect(screen.getByText("Tell your AI agent:")).toBeInTheDocument();

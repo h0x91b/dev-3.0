@@ -1207,10 +1207,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			<button
 				ref={devServerBtnRef}
 				onClick={handleDevServer}
-				disabled={!isTaskActive}
+				disabled={hasDevScript && !isTaskActive}
 				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
 					!hasDevScript
-						? "text-fg-muted/50 hover:text-fg-muted/70 hover:bg-raised-hover cursor-pointer"
+						? "text-fg-muted/70 hover:text-fg-muted hover:bg-raised-hover cursor-pointer border border-dashed border-edge"
 						: devServerDisabled
 							? "text-fg-muted/50 cursor-not-allowed"
 							: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
@@ -1221,12 +1221,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
 						d="M5 12h14M12 5l7 7-7 7" />
 				</svg>
-				<span className="text-[0.6875rem] font-semibold">{t("header.devServer")}</span>
+				<span className="text-[0.6875rem] font-semibold">
+					{hasDevScript ? t("header.devServer") : t("header.setupDevServer")}
+				</span>
 			</button>
 			{devServerHintOpen && (
 				<div
 					ref={devServerHintRef}
-					className="absolute top-full left-0 mt-1 z-50 bg-overlay border border-edge rounded-lg shadow-lg p-3 w-72"
+					className="absolute bottom-full left-0 mb-1 z-50 bg-overlay border border-edge rounded-lg shadow-lg p-3 w-72"
 				>
 					<p className="text-fg-2 text-xs mb-2">{t("header.devServerHint")}</p>
 					<div className="flex items-center gap-1.5">
