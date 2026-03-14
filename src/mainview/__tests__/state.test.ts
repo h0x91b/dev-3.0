@@ -508,6 +508,71 @@ describe("reducer", () => {
 		expect(next.currentProjectTasks.find((t) => t.id === "v1")).toBeDefined();
 	});
 
+	// ---- addAttempts ----
+
+	it("addAttempts: adds new attempts and updates source task", () => {
+		const sourceTask: Task = {
+			...mockTask,
+			status: "in-progress",
+			worktreePath: "/tmp/wt",
+			branchName: "feat/test",
+		};
+		const state: AppState = {
+			...initialState,
+			currentProjectTasks: [sourceTask],
+		};
+		const updatedSource: Task = {
+			...sourceTask,
+			groupId: "g1",
+			variantIndex: 1,
+		};
+		const attempt: Task = {
+			...mockTask,
+			id: "a1",
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 2,
+			agentId: "builtin-claude",
+			configId: "claude-default",
+		};
+		const next = reducer(state, {
+			type: "addAttempts",
+			sourceTaskId: "t1",
+			newAttempts: [attempt],
+			updatedSource,
+		});
+		expect(next.currentProjectTasks).toHaveLength(2);
+		expect(next.currentProjectTasks.find((t) => t.id === "t1")?.groupId).toBe("g1");
+		expect(next.currentProjectTasks.find((t) => t.id === "a1")).toBeDefined();
+	});
+
+	it("addAttempts: deduplicates attempts already added by pushMessage race", () => {
+		const sourceTask: Task = {
+			...mockTask,
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 1,
+		};
+		const attempt: Task = {
+			...mockTask,
+			id: "a1",
+			status: "in-progress",
+			groupId: "g1",
+			variantIndex: 2,
+		};
+		const state: AppState = {
+			...initialState,
+			currentProjectTasks: [sourceTask, attempt],
+		};
+		const next = reducer(state, {
+			type: "addAttempts",
+			sourceTaskId: "t1",
+			newAttempts: [attempt],
+			updatedSource: sourceTask,
+		});
+		expect(next.currentProjectTasks).toHaveLength(2);
+	});
+
 	it("setLoading: updates loading flag", () => {
 		const next = reducer(initialState, {
 			type: "setLoading",

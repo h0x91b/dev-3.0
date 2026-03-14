@@ -44,6 +44,7 @@ const kanban = {
 	"task.failedMove": "Не удалось переместить задачу: {error}",
 	"task.failedDelete": "Не удалось удалить задачу: {error}",
 	"task.run": "Запустить",
+	"task.retry": "Повторить",
 	"task.preparing": "Подготовка…",
 	"task.cancel": "Отменить",
 	"task.confirmCancel": "Отменить задачу «{title}»?",
@@ -79,11 +80,13 @@ const kanban = {
 
 	// LaunchVariantsModal
 	"launch.title": "Запуск задачи",
+	"launch.retryTitle": "Новая попытка",
 	"launch.agent": "Агент",
 	"launch.config": "Конфигурация",
 	"launch.addVariant": "+ Добавить вариант",
 	"launch.removeVariant": "Удалить",
 	"launch.launch": "Запустить",
+	"launch.retry": "Начать",
 	"launch.launching": "Запускается...",
 	"launch.failedLaunch": "Не удалось запустить: {error}",
 

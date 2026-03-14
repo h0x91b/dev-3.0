@@ -12,6 +12,8 @@ interface VariantRow {
 	configId: string | null;
 }
 
+type LaunchMode = "spawn" | "addAttempts";
+
 interface LaunchVariantsModalProps {
 	task: Task;
 	project: Project;
@@ -20,6 +22,7 @@ interface LaunchVariantsModalProps {
 	globalSettings: GlobalSettings;
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
+	mode?: LaunchMode;
 }
 
 function LaunchVariantsModal({
@@ -30,6 +33,7 @@ function LaunchVariantsModal({
 	globalSettings,
 	dispatch,
 	onClose,
+	mode = "spawn",
 }: LaunchVariantsModalProps) {
 	const t = useT();
 
@@ -97,20 +101,38 @@ function LaunchVariantsModal({
 		setLaunching(true);
 		setError(null);
 		try {
-			const resultTasks = await api.request.spawnVariants({
-				taskId: task.id,
-				projectId: project.id,
-				targetStatus,
-				variants,
-			});
-			dispatch({ type: "spawnVariants", sourceTaskId: task.id, variants: resultTasks });
-			trackEvent("task_spawned", { project_id: project.id, variant_count: resultTasks.length });
+			if (mode === "addAttempts") {
+				const result = await api.request.addAttempts({
+					taskId: task.id,
+					projectId: project.id,
+					variants,
+				});
+				// First element is the updated source task, rest are new attempts
+				const [updatedSource, ...newAttempts] = result;
+				dispatch({ type: "addAttempts", sourceTaskId: task.id, newAttempts, updatedSource });
+				trackEvent("task_add_attempts", { project_id: project.id, attempt_count: newAttempts.length });
+			} else {
+				const resultTasks = await api.request.spawnVariants({
+					taskId: task.id,
+					projectId: project.id,
+					targetStatus,
+					variants,
+				});
+				dispatch({ type: "spawnVariants", sourceTaskId: task.id, variants: resultTasks });
+				trackEvent("task_spawned", { project_id: project.id, variant_count: resultTasks.length });
+			}
 			onClose();
 		} catch (err) {
 			setError(String(err));
 		}
 		setLaunching(false);
 	}
+
+	const isRetry = mode === "addAttempts";
+	const title = isRetry ? t("launch.retryTitle") : t("launch.title");
+	const launchLabel = isRetry
+		? (launching ? t("launch.launching") : t("launch.retry"))
+		: (launching ? t("launch.launching") : t("launch.launch"));
 
 	return (
 		<div
@@ -123,7 +145,7 @@ function LaunchVariantsModal({
 			>
 				{/* Header */}
 				<div className="px-6 py-4 border-b border-edge">
-					<h2 className="text-fg text-lg font-semibold">{t("launch.title")}</h2>
+					<h2 className="text-fg text-lg font-semibold">{title}</h2>
 					<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 				</div>
 
@@ -225,7 +247,7 @@ function LaunchVariantsModal({
 							disabled={launching || variants.length === 0}
 							className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
 						>
-							{launching ? t("launch.launching") : t("launch.launch")}
+							{launchLabel}
 						</button>
 					</div>
 				</div>

@@ -142,6 +142,8 @@ const tips = {
 	"tip.aiReviewCustomize.body": "Change the review prompt or disable AI Review entirely in Project Settings. Works per-project.",
 	"tip.customColumnAgents.title": "Column agents",
 	"tip.customColumnAgents.body": "Any custom column can auto-spawn an agent when a task enters it. Configure agent and prompt in Project Settings.",
+	"tip.retryTaskAttempts.title": "Add more variants",
+	"tip.retryTaskAttempts.body": "Click + Variant on an active task card to launch a fresh attempt with a new worktree, using the same description.",
 } as const;
 
 export default tips;

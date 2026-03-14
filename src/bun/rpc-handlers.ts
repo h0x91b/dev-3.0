@@ -1636,6 +1636,101 @@ export const handlers = {
 		return resultTasks;
 	},
 
+	async addAttempts(params: {
+		taskId: string;
+		projectId: string;
+		variants: Array<{ agentId: string | null; configId: string | null }>;
+	}): Promise<Task[]> {
+		log.info("→ addAttempts", { taskId: params.taskId, count: params.variants.length });
+		const project = await data.getProject(params.projectId);
+		const sourceTask = await data.getTask(project, params.taskId);
+
+		// Determine groupId — reuse existing or create new
+		let groupId = sourceTask.groupId;
+		const allTasks = await data.loadTasks(project);
+		let maxVariantIndex = 0;
+
+		if (groupId) {
+			// Find max variantIndex among existing group members
+			for (const t of allTasks) {
+				if (t.groupId === groupId && t.variantIndex !== null && t.variantIndex > maxVariantIndex) {
+					maxVariantIndex = t.variantIndex;
+				}
+			}
+		} else {
+			// Source task has no group yet — create one and update source task
+			groupId = crypto.randomUUID();
+			maxVariantIndex = 1;
+			await data.updateTask(project, sourceTask.id, { groupId, variantIndex: 1 });
+		}
+
+		const sharedSeq = sourceTask.seq;
+		const resultTasks: Task[] = [];
+		const targetStatus: TaskStatus = sourceTask.status !== "todo" ? sourceTask.status : "in-progress";
+		const needsWorktree = isActive(targetStatus);
+
+		// Phase 1: Create all new attempt tasks in DB
+		for (let i = 0; i < params.variants.length; i++) {
+			const variant = params.variants[i];
+			const variantIndex = maxVariantIndex + i + 1;
+
+			const task = await data.addTask(
+				project,
+				sourceTask.description,
+				targetStatus,
+				{
+					groupId,
+					variantIndex,
+					agentId: variant.agentId,
+					configId: variant.configId,
+					seq: sharedSeq,
+					preparing: needsWorktree,
+				},
+			);
+
+			resultTasks.push(task);
+		}
+
+		// Re-read the updated source task (may have been updated with groupId)
+		const updatedSource = await data.getTask(project, sourceTask.id);
+
+		log.info("← addAttempts returning", { count: resultTasks.length, groupId, needsWorktree });
+
+		// Phase 2: Heavy I/O in background
+		if (needsWorktree) {
+			(async () => {
+				for (let i = 0; i < resultTasks.length; i++) {
+					const task = resultTasks[i];
+					const variant = params.variants[i];
+					try {
+						const wt = await git.createWorktree(project, task);
+						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						}
+						await runCowClones(project, wt.worktreePath);
+						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
+
+						const updated = await data.updateTask(project, task.id, {
+							worktreePath: wt.worktreePath,
+							branchName: wt.branchName,
+							preparing: false,
+						});
+						pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+						log.info("Attempt ready", { taskId: task.id, worktreePath: wt.worktreePath });
+					} catch (err) {
+						log.error("Failed to prepare attempt", { taskId: task.id, error: String(err) });
+						try {
+							const updated = await data.updateTask(project, task.id, { preparing: false });
+							pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+						} catch { /* best effort */ }
+					}
+				}
+			})();
+		}
+
+		return [updatedSource, ...resultTasks];
+	},
+
 	async editTask(params: { taskId: string; projectId: string; description: string }): Promise<Task> {
 		log.info("→ editTask", { taskId: params.taskId });
 		const project = await data.getProject(params.projectId);

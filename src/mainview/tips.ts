@@ -441,6 +441,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.customColumnAgents.body",
 		icon: "\u{F0219}", // nf-md-robot
 	},
+	// Batch 19: add variant attempts
+	{
+		id: "retry-task-attempts",
+		titleKey: "tip.retryTaskAttempts.title",
+		bodyKey: "tip.retryTaskAttempts.body",
+		icon: "\u{F0453}", // nf-md-cursor_move
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

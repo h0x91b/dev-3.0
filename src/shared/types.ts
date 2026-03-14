@@ -702,6 +702,14 @@ export type AppRPCSchema = {
 				};
 				response: Task[];
 			};
+			addAttempts: {
+				params: {
+					taskId: string;
+					projectId: string;
+					variants: Array<{ agentId: string | null; configId: string | null }>;
+				};
+				response: Task[];
+			};
 			showConfirm: {
 				params: { title: string; message: string };
 				response: boolean;

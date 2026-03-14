@@ -25,6 +25,7 @@ interface TaskCardProps {
 	navigate: (route: Route) => void;
 	agents: CodingAgent[];
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
+	onAddAttempts: (task: Task) => void;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCount?: number;
@@ -36,7 +37,7 @@ interface TaskCardProps {
 	prInfo?: { number: number; url: string };
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -665,6 +666,20 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								<path d="M8 5v14l11-7z" />
 							</svg>
 							{t("task.run")}
+						</button>
+					) : isActive ? (
+						/* Retry button for active cards */
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								onAddAttempts(task);
+							}}
+							className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-accent opacity-0 transition-all hover:bg-accent/15 group-hover:opacity-100"
+							title={t("task.retry")}
+							disabled={isDisabled}
+						>
+							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0453}"}</span>
+							{t("task.retry")}
 						</button>
 					) : null}
 				</div>
