@@ -630,6 +630,11 @@ export type AppRPCSchema = {
 				params: GlobalSettings;
 				response: void;
 			};
+			/** Symlink the bundled dev3 CLI to ~/.dev3.0/bin/dev3 (for dev/debug). */
+			installDev3Cli: {
+				params: void;
+				response: { installedFrom: string };
+			};
 			getAgents: {
 				params: void;
 				response: CodingAgent[];

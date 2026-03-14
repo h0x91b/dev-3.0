@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
@@ -1136,6 +1136,23 @@ export const handlers = {
 		log.info("→ saveGlobalSettings", { params });
 		await saveSettings(params);
 		log.info("← saveGlobalSettings done");
+	},
+
+	async installDev3Cli(): Promise<{ installedFrom: string }> {
+		log.info("→ installDev3Cli");
+		const cliBinDir = `${DEV3_HOME}/bin`;
+		const cliDest = `${cliBinDir}/dev3`;
+		const prodCli = join(PATHS.VIEWS_FOLDER, "..", "cli", "dev3");
+		const devCli = join(import.meta.dir, "..", "cli", "dev3");
+		const source = existsSync(prodCli) ? prodCli : devCli;
+		if (!existsSync(source)) throw new Error(`CLI binary not found: ${source}`);
+		mkdirSync(cliBinDir, { recursive: true });
+		// Remove existing file/symlink before creating the new symlink
+		try { unlinkSync(cliDest); } catch {}
+		symlinkSync(source, cliDest);
+		chmodSync(cliDest, 0o755);
+		log.info("← installDev3Cli", { from: source, to: cliDest });
+		return { installedFrom: source };
 	},
 
 	async getAgents(): Promise<CodingAgent[]> {
