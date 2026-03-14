@@ -636,7 +636,7 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("Configure dev3 devScript for this project")).toBeInTheDocument();
 		});
 
-		it("is disabled when task is not active", async () => {
+		it("shows not-allowed style when task is not active", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
 			await act(async () => {
 				renderPanel(
@@ -646,7 +646,7 @@ describe("TaskInfoPanel", () => {
 			});
 			const buttons = screen.getAllByText("Dev Server");
 			const btn = buttons[0].closest("button")!;
-			expect(btn).toBeDisabled();
+			expect(btn.className).toContain("cursor-not-allowed");
 		});
 
 		it("calls runDevServer when clicked and no server is running", async () => {

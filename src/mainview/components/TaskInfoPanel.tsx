@@ -407,7 +407,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	// ---- Dev server ----
 	const hasDevScript = !!(resolvedProject.devScript?.trim());
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
-	const devServerDisabled = !hasDevScript || !isTaskActive;
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
 	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
 	const [devServerMenuPos, setDevServerMenuPos] = useState({ top: 0, left: 0 });
@@ -1207,15 +1206,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			<button
 				ref={devServerBtnRef}
 				onClick={handleDevServer}
-				disabled={hasDevScript && !isTaskActive}
 				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
 					!hasDevScript
-						? "text-fg-muted/70 hover:text-fg-muted hover:bg-raised-hover cursor-pointer border border-dashed border-edge"
-						: devServerDisabled
+						? "text-[#eab308] hover:text-[#facc15] hover:bg-[#eab308]/15 cursor-pointer border border-dashed border-[#eab308]/40"
+						: !isTaskActive
 							? "text-fg-muted/50 cursor-not-allowed"
 							: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
 				}`}
-				title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
+				title={!hasDevScript ? t("header.devServerDisabled") : t("header.devServer")}
 			>
 				<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
