@@ -123,7 +123,7 @@ const settings = {
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.peerReview": "Peer Review Column",
 	"projectSettings.peerReviewDesc": "Show the \"PR Review\" column. Disable for projects that don't use peer code review.",
-	"projectSettings.sparseCheckout": "Worktree File Filter",
+	"projectSettings.sparseCheckout": "Worktree File Filter (Large Monorepos)",
 	"projectSettings.sparseCheckoutDesc": "For large monorepos: limit which directories are checked out into worktrees. This speeds up worktree creation and saves disk space. If your repository is small, leave \"Include All Files\" enabled.",
 	"projectSettings.sparseCheckoutAll": "Include All Files",
 	"projectSettings.sparseCheckoutAddPath": "Add Directory",
