@@ -30,6 +30,7 @@ vi.mock("../rpc-handlers", () => {
 		runCleanupScript: vi.fn(),
 		playTaskCompleteSound: vi.fn(),
 		getPushMessage: vi.fn(() => null),
+		triggerColumnAgentIfNeeded: vi.fn(),
 	};
 });
 

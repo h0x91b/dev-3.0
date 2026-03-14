@@ -2,8 +2,8 @@ import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, 
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { BranchStatus, ChangelogEntry, CodingAgent, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
+import type { BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -93,12 +93,17 @@ export function buildEnvExports(env: Record<string, string>): string[] {
  * so the process sees config-level environment variables even when the tmux
  * server was started by a different task.
  */
-export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, keepShell = false): string {
+export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, options?: { paneTitle?: string; keepShell?: boolean; onExitCommand?: string }): string {
 	const escaped = escapeForDoubleQuotes(tmuxCmd);
 	const exportLines = env && Object.keys(env).length > 0 ? buildEnvExports(env) : [];
-	if (keepShell) {
+	// Strip single quotes to prevent shell injection — paneTitle is embedded inside single-quoted printf.
+	const safePaneTitle = options?.paneTitle?.replace(/'/g, "") ?? "";
+	const titleLine = safePaneTitle ? `printf '\\033]2;${safePaneTitle}\\033\\\\'` : "";
+	const onExitLines = options?.onExitCommand ? [options.onExitCommand] : [];
+	if (options?.keepShell) {
 		return [
 			"#!/bin/bash",
+			...(titleLine ? [titleLine] : []),
 			...exportLines,
 			`echo "Starting: ${escaped}" && ${tmuxCmd}`,
 			"__EC=$?",
@@ -106,6 +111,7 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, ke
 			`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
 			"else",
 			`  printf '\\n\\033[2mAgent session ended (exit 0). You are in the worktree shell.\\033[0m\\n'`,
+			...onExitLines,
 			"fi",
 			`exec "\${SHELL:-bash}"`,
 			"",
@@ -113,6 +119,7 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, ke
 	}
 	return [
 		"#!/bin/bash",
+		...(titleLine ? [titleLine] : []),
 		...exportLines,
 		`echo "Starting: ${escaped}" && ${tmuxCmd}`,
 		"__EC=$?",
@@ -120,6 +127,7 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, ke
 		`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
 		"  exec bash",
 		"fi",
+		...onExitLines,
 		"",
 	].join("\n");
 }
@@ -210,6 +218,14 @@ const branchStatusInFlight = new Map<string, Promise<{
 	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
 	prNumber: number | null;
 }>>();
+
+/** Build the env object for a task's wrapper script, ensuring dev3 binary is on PATH. */
+function buildAgentEnv(extraEnv: Record<string, string>, taskId: string): Record<string, string> {
+	const dev3Bin = `${DEV3_HOME}/bin`;
+	const currentPath = process.env.PATH || "";
+	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
+	return { ...extraEnv, DEV3_TASK_ID: taskId, PATH: pathWithDev3 };
+}
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
@@ -765,8 +781,10 @@ export async function launchTaskPty(
 	}
 
 	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop)
+	// Primary agent always stops at review-by-user; AI review is triggered manually.
+	const stopTarget: TaskStatus = "review-by-user";
 	try {
-		setupAgentHooks(worktreePath, task.id, resolvedBaseCmd);
+		setupAgentHooks(worktreePath, task.id, resolvedBaseCmd, { stopTarget });
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,
@@ -776,10 +794,7 @@ export async function launchTaskPty(
 
 	// Build env early so both setup and normal paths can embed exports
 	// in their wrapper scripts (tmux server doesn't propagate client env).
-	const dev3Bin = `${DEV3_HOME}/bin`;
-	const currentPath = process.env.PATH || "";
-	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
-	const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+	const env = buildAgentEnv(extraEnv, task.id);
 
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
@@ -792,7 +807,7 @@ export async function launchTaskPty(
 		// to avoid tmux env var propagation issues (tmux server doesn't
 		// inherit custom env vars from the client process)
 		await Bun.write(setupPath, project.setupScript + "\n");
-		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env, true));
+		await Bun.write(claudePath, buildCmdScript(tmuxCmd, env, { keepShell: true }));
 
 		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "bash '${claudePath}'"`;
 		const setupFail = [
@@ -826,7 +841,7 @@ export async function launchTaskPty(
 	// tmux 3.x limits the shell-command for new-session to ~16 KB;
 	// inline commands with long task descriptions easily exceed that.
 	const runScriptPath = `/tmp/dev3-${task.id}-run.sh`;
-	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env, !isSetupWrapper));
+	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper }));
 	const wrapperCmd = `bash "${runScriptPath}"`;
 
 	log.info("Creating PTY session", {
@@ -846,6 +861,174 @@ export async function launchTaskPty(
 			stack: (err as Error)?.stack ?? "no stack",
 		});
 		throw err;
+	}
+}
+
+/**
+ * Launch a column agent in a new tmux split pane within the task's existing session.
+ * Kills any previous column-agent pane first to ensure a fresh start.
+ */
+export async function launchColumnAgent(
+	project: Project,
+	task: Task,
+	agentConfig: ColumnAgentConfig,
+	options: { paneTitle: string; onExitCommand?: string },
+): Promise<void> {
+	const worktreePath = task.worktreePath;
+	if (!worktreePath) {
+		log.warn("launchColumnAgent: no worktreePath, skipping", { taskId: task.id.slice(0, 8) });
+		return;
+	}
+
+	const { agentId, configId, prompt: rawPrompt } = agentConfig;
+	const baseBranch = task.baseBranch || "main";
+	const prompt = rawPrompt.replace(/\{baseBranch\}/g, `origin/${baseBranch}`);
+
+	log.info("launchColumnAgent START", {
+		taskId: task.id.slice(0, 8),
+		agentId,
+		configId,
+		paneTitle: options.paneTitle,
+	});
+
+	const socket = pty.getSessionSocket(task.id);
+	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+
+	// Resolve the agent command
+	const ctx: agents.TemplateContext = {
+		taskTitle: `${options.paneTitle}: ${task.title}`,
+		taskDescription: prompt,
+		projectName: project.name,
+		projectPath: project.path,
+		worktreePath,
+	};
+
+	let tmuxCmd: string;
+	let extraEnv: Record<string, string>;
+
+	try {
+		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, { skipSystemPrompt: true });
+		tmuxCmd = resolved.command;
+		extraEnv = resolved.extraEnv;
+	} catch (err) {
+		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
+		throw err;
+	}
+
+	// Build wrapper script
+	const env = buildAgentEnv(extraEnv, task.id);
+
+	const scriptPath = `/tmp/dev3-${task.id}-col-agent.sh`;
+	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env, {
+		paneTitle: options.paneTitle,
+		onExitCommand: options.onExitCommand,
+	}));
+
+	// Kill previous column-agent pane by saved pane ID
+	const paneFile = `/tmp/dev3-${task.id}-col-agent-pane`;
+	try {
+		const oldPaneId = (await Bun.file(paneFile).text()).trim();
+		if (oldPaneId) {
+			log.info("launchColumnAgent: killing old pane", { paneId: oldPaneId });
+			const killArgs = pty.tmuxArgs(socket, "kill-pane", "-t", oldPaneId);
+			spawnSync(killArgs, { stdout: "pipe", stderr: "pipe" });
+		}
+	} catch {
+		// No previous pane — fine
+	}
+
+	// Create pane as a horizontal split (30% width on the right)
+	const splitArgs = pty.tmuxArgs(
+		socket, "split-window",
+		"-h", "-l", "30%",
+		"-P", "-F", "#{pane_id}",
+		"-t", tmuxSession,
+		"-c", worktreePath,
+		`bash "${scriptPath}"`,
+	);
+	const proc = spawn(splitArgs, { stdout: "pipe", stderr: "pipe" });
+	const stdout = await new Response(proc.stdout).text();
+	const stderr = await new Response(proc.stderr).text();
+	const exitCode = await proc.exited;
+
+	if (exitCode !== 0) {
+		log.error("launchColumnAgent: tmux split-window failed", { exitCode, stderr: stderr.trim() });
+		throw new Error(`tmux split-window failed: ${stderr.trim() || "unknown error"}`);
+	}
+
+	// Save pane ID for cleanup on next run
+	const newPaneId = stdout.trim();
+	if (newPaneId) {
+		await Bun.write(paneFile, newPaneId);
+		log.info("launchColumnAgent: pane created", { paneId: newPaneId });
+	}
+
+	// Switch focus back to the main pane (left)
+	try {
+		const focusArgs = pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.0`);
+		spawnSync(focusArgs, { stdout: "pipe", stderr: "pipe" });
+	} catch {
+		// Non-fatal
+	}
+
+	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8) });
+}
+
+/**
+ * Trigger a column agent if the task just entered a column with an agent configured.
+ * For review-by-ai: uses builtinColumnAgents config, with onExitCommand to move to review-by-user.
+ * For custom columns: uses column.agentConfig, no onExitCommand (task stays).
+ * Shared between CLI socket and RPC moveTask handlers.
+ */
+export async function triggerColumnAgentIfNeeded(
+	newStatus: TaskStatus,
+	project: Project,
+	task: Task,
+	options?: { customColumn?: CustomColumn },
+): Promise<void> {
+	if (!task.worktreePath) return;
+
+	let agentConfig: ColumnAgentConfig | undefined;
+	let paneTitle = "";
+	let onExitCommand: string | undefined;
+
+	if (newStatus === "review-by-ai") {
+		// Built-in review-by-ai column
+		const config = project.builtinColumnAgents?.["review-by-ai"];
+		agentConfig = config ?? {
+			agentId: "builtin-claude",
+			configId: "claude-review",
+			prompt: DEFAULT_REVIEW_PROMPT,
+		};
+		paneTitle = "AI Review";
+		// After successful exit, move task to review-by-user (only if still in review-by-ai)
+		onExitCommand = `${DEV3_HOME}/bin/dev3 task move ${task.id} --status review-by-user --if-status review-by-ai`;
+	} else if (options?.customColumn?.agentConfig) {
+		// Custom column with agent configured
+		agentConfig = options.customColumn.agentConfig;
+		paneTitle = options.customColumn.name;
+		// No onExitCommand — task stays in custom column
+	}
+
+	if (!agentConfig) return;
+
+	try {
+		await launchColumnAgent(project, task, agentConfig, { paneTitle, onExitCommand });
+	} catch (err) {
+		log.error("launchColumnAgent failed", {
+			taskId: task.id,
+			status: newStatus,
+			error: String(err),
+		});
+		// For review-by-ai: fall back to review-by-user so the task doesn't get stuck
+		if (newStatus === "review-by-ai") {
+			try {
+				const fallback = await data.updateTask(project, task.id, { status: "review-by-user" });
+				pushMessage?.("taskUpdated", { projectId: project.id, task: fallback });
+			} catch (fallbackErr) {
+				log.error("Failed to fall back to review-by-user", { taskId: task.id, error: String(fallbackErr) });
+			}
+		}
 	}
 }
 
@@ -1330,6 +1513,10 @@ export const handlers = {
 			customColumnId: null,
 		}, dropOpts);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+
+		// Trigger column agent if entering review-by-ai
+		await triggerColumnAgentIfNeeded(newStatus, project, updated);
+
 		log.info("← moveTask done (status only)", { taskId: task.id });
 		return updated;
 	},
@@ -2628,7 +2815,7 @@ export const handlers = {
 		return column;
 	},
 
-	async updateCustomColumn(params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string }): Promise<CustomColumn> {
+	async updateCustomColumn(params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string; agentConfig?: ColumnAgentConfig | null }): Promise<CustomColumn> {
 		log.info("→ updateCustomColumn", { projectId: params.projectId, columnId: params.columnId });
 		const project = await data.getProject(params.projectId);
 		const columns = project.customColumns ?? [];
@@ -2639,6 +2826,7 @@ export const handlers = {
 			...(params.name !== undefined ? { name: params.name.trim() } : {}),
 			...(params.color !== undefined ? { color: params.color } : {}),
 			...(params.llmInstruction !== undefined ? { llmInstruction: params.llmInstruction } : {}),
+			...(params.agentConfig !== undefined ? { agentConfig: params.agentConfig ?? undefined } : {}),
 		};
 		const newColumns = [...columns];
 		newColumns[idx] = updated;
@@ -2667,8 +2855,9 @@ export const handlers = {
 	async moveTaskToCustomColumn(params: { taskId: string; projectId: string; customColumnId: string | null }): Promise<Task> {
 		log.info("→ moveTaskToCustomColumn", params);
 		const project = await data.getProject(params.projectId);
+		let column: CustomColumn | undefined;
 		if (params.customColumnId !== null) {
-			const column = (project.customColumns ?? []).find((c) => c.id === params.customColumnId);
+			column = (project.customColumns ?? []).find((c) => c.id === params.customColumnId);
 			if (!column) throw new Error(`Custom column not found: ${params.customColumnId}`);
 		}
 		const task = await data.getTask(project, params.taskId);
@@ -2685,12 +2874,20 @@ export const handlers = {
 				customColumnId: params.customColumnId,
 			}, { dropPosition: settings.taskDropPosition });
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			// Trigger column agent if configured
+			if (column?.agentConfig && updated.worktreePath) {
+				await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn: column });
+			}
 			log.info("← moveTaskToCustomColumn done (reopened)", { taskId: params.taskId });
 			return updated;
 		}
 
 		const updated = await data.updateTask(project, params.taskId, { customColumnId: params.customColumnId });
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		// Trigger column agent if configured
+		if (column?.agentConfig && updated.worktreePath) {
+			await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn: column });
+		}
 		log.info("← moveTaskToCustomColumn done", { taskId: params.taskId, customColumnId: params.customColumnId });
 		return updated;
 	},

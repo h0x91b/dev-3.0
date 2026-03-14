@@ -19,6 +19,7 @@ const DEFAULTS: Required<Dev3RepoConfig> = {
 	peerReviewEnabled: true,
 	sparseCheckoutEnabled: false,
 	sparseCheckoutPaths: [],
+	builtinColumnAgents: undefined as any,
 };
 
 /** Read and parse a JSON file, returning null if missing or corrupt. */

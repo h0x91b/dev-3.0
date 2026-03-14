@@ -47,6 +47,21 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 				project.cleanupScript = "";
 				needsSave = true;
 			}
+			// Migrate legacy aiReview → builtinColumnAgents
+			const legacy = (project as any).aiReview;
+			if (legacy && !project.builtinColumnAgents) {
+				if (legacy.enabled !== false) {
+					project.builtinColumnAgents = {
+						"review-by-ai": {
+							agentId: legacy.agentId ?? "builtin-claude",
+							configId: legacy.configId ?? "claude-review",
+							prompt: legacy.reviewPrompt ?? "",
+						},
+					};
+				}
+				delete (project as any).aiReview;
+				needsSave = true;
+			}
 		}
 		if (needsSave) {
 			log.info("Migrated legacy 'say' cleanup scripts, saving projects");
@@ -146,7 +161,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths">>,
+	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents">>,
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project", { projectId, updates });

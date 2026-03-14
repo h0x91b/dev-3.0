@@ -22,22 +22,24 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.Stop).toHaveLength(1);
 	});
 
-	it("UserPromptSubmit hook moves to in-progress", () => {
+	it("UserPromptSubmit hook moves to in-progress with --if-status-not guard", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
 		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
 
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai,review-by-user");
 	});
 
-	it("PreToolUse hook moves to in-progress", () => {
+	it("PreToolUse hook moves to in-progress with --if-status-not guard", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
 		const cmd = hooks.PreToolUse[0].hooks[0].command;
 
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai,review-by-user");
 	});
 
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
@@ -60,18 +62,52 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain("--status user-questions");
 	});
 
-	it("Stop hook moves to review-by-user unconditionally", () => {
+	it("Stop hook defaults to review-by-user with --if-status in-progress guard", () => {
 		const hooks = buildClaudeHooks(TASK_ID);
-		const cmd = hooks.Stop[0].hooks[0].command;
 
+		expect(hooks.Stop).toHaveLength(1);
+		const cmd = hooks.Stop[0].hooks[0].command;
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status review-by-user");
-		expect(cmd).not.toContain("--if-status");
+		expect(cmd).toContain("--if-status in-progress");
+	});
+
+	it("Stop hook with review-by-ai stopTarget creates two matcher groups (primary + review)", () => {
+		const hooks = buildClaudeHooks(TASK_ID, { stopTarget: "review-by-ai" });
+
+		// Two Stop groups: primary agent → review-by-ai, review agent → review-by-user
+		expect(hooks.Stop).toHaveLength(2);
+
+		const primaryCmd = hooks.Stop[0].hooks[0].command;
+		expect(primaryCmd).toContain("--status review-by-ai");
+		expect(primaryCmd).toContain("--if-status in-progress");
+
+		const reviewCmd = hooks.Stop[1].hooks[0].command;
+		expect(reviewCmd).toContain("--status review-by-user");
+		expect(reviewCmd).toContain("--if-status review-by-ai");
+	});
+
+	it("Stop hook with custom non-review-by-user stopTarget also creates two groups", () => {
+		const hooks = buildClaudeHooks(TASK_ID, { stopTarget: "user-questions" });
+
+		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop[0].hooks[0].command).toContain("--status user-questions");
+		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+	});
+
+	it("working hooks use --if-status-not to skip during AI review", () => {
+		const hooks = buildClaudeHooks(TASK_ID, { stopTarget: "review-by-ai" });
+
+		const preCmd = hooks.PreToolUse[0].hooks[0].command;
+		const userCmd = hooks.UserPromptSubmit[0].hooks[0].command;
+
+		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-user");
+		expect(userCmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-user");
 	});
 
 	it("all hooks use command type", () => {
-		const hooks = buildClaudeHooks(TASK_ID);
+		const hooks = buildClaudeHooks(TASK_ID, { stopTarget: "review-by-ai" });
 
 		for (const groups of Object.values(hooks)) {
 			for (const group of groups) {
@@ -145,6 +181,23 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.Stop).toHaveLength(1);
 	});
 
+	it("is idempotent with review-by-ai stopTarget (two Stop groups)", () => {
+		const first = mergeClaudeHooks({}, TASK_ID, { stopTarget: "review-by-ai" });
+		const second = mergeClaudeHooks(first as Record<string, unknown>, TASK_ID, { stopTarget: "review-by-ai" });
+		const hooks = second.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.Stop).toHaveLength(2);
+	});
+
+	it("passes stopTarget through to buildClaudeHooks", () => {
+		const result = mergeClaudeHooks({}, TASK_ID, { stopTarget: "review-by-ai" });
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai");
+		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+	});
+
 	it("replaces dev3 hooks from a different task ID", () => {
 		const first = mergeClaudeHooks({}, "old-task-id");
 		const second = mergeClaudeHooks(first as Record<string, unknown>, "new-task-id");
@@ -192,6 +245,29 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
 		expect(content.permissions).toEqual({ allow: ["Bash(*)"] });
 		expect(content.hooks).toBeDefined();
+	});
+
+	it("writes hooks with stopTarget review-by-ai (two Stop groups)", () => {
+		writeClaudeHooks(tmp, TASK_ID, { stopTarget: "review-by-ai" });
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
+		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+	});
+
+	it("writes working hooks with --if-status-not guard", () => {
+		writeClaudeHooks(tmp, TASK_ID, { stopTarget: "review-by-ai" });
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-user");
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-user");
 	});
 
 	it("overwrites corrupted JSON gracefully", () => {

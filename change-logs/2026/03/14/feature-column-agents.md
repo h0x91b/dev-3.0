@@ -1,0 +1,1 @@
+Generalized AI Review into Column Agents — any Kanban column (built-in or custom) can now auto-spawn an agent with a configurable prompt when a task enters it. The primary agent always stops at "Your Review" (no automatic AI review); users drag tasks to "AI Review" manually to trigger it. Custom columns gain an optional agent config section in Project Settings.

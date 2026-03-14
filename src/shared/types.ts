@@ -92,6 +92,19 @@ export function getAllowedTransitions(current: TaskStatus): TaskStatus[] {
 	return ALL_STATUSES.filter((s) => s !== current);
 }
 
+// ---- Column Agents ----
+
+export interface ColumnAgentConfig {
+	agentId: string; // e.g. "builtin-claude"
+	configId: string; // e.g. "claude-review"
+	prompt: string; // prompt sent to the agent
+}
+
+export const DEFAULT_REVIEW_PROMPT = `Review all changes on this branch (use git diff against {baseBranch}).
+Focus on: bugs, logic errors, runtime failures, duplicated code, security issues.
+For medium/high severity: fix directly and commit.
+For minor/cosmetic: leave alone. Do NOT break existing functionality.`;
+
 // ---- Coding Agents ----
 
 export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan";
@@ -137,6 +150,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-approvals-sonnet", name: "Approvals (Sonnet)", model: "sonnet", permissionMode: "acceptEdits" },
 			{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus", permissionMode: "bypassPermissions" },
 			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
+			{ id: "claude-review", name: "Review (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
 		],
 		defaultConfigId: "claude-default",
 	},
@@ -342,6 +356,7 @@ export interface CustomColumn {
 	name: string;
 	color: string; // hex color
 	llmInstruction: string; // guidance for LLM on when to move tasks here
+	agentConfig?: ColumnAgentConfig; // auto-spawn agent when task enters this column
 }
 
 // Colors ordered to maximize perceptual distance between consecutive picks
@@ -373,6 +388,7 @@ export interface Dev3RepoConfig {
 	peerReviewEnabled?: boolean;
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
+	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
 }
 
 /** Keys of Dev3RepoConfig — used for merge logic. */
@@ -385,6 +401,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"peerReviewEnabled",
 	"sparseCheckoutEnabled",
 	"sparseCheckoutPaths",
+	"builtinColumnAgents",
 ];
 
 export type ConfigSource = "repo" | "local";
@@ -414,6 +431,8 @@ export interface Project {
 	// Sparse checkout: when enabled, only specified directories are checked out in worktrees
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
+	// Column agent configs for built-in columns (keyed by TaskStatus)
+	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
 }
 
 export interface Task {
@@ -566,7 +585,7 @@ export type AppRPCSchema = {
 				response: CustomColumn;
 			};
 			updateCustomColumn: {
-				params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string };
+				params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string; agentConfig?: ColumnAgentConfig | null };
 				response: CustomColumn;
 			};
 			deleteCustomColumn: {

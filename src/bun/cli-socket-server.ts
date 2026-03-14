@@ -4,7 +4,7 @@ import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransition
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
-import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage } from "./rpc-handlers";
+import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage, triggerColumnAgentIfNeeded } from "./rpc-handlers";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
@@ -385,10 +385,18 @@ const handlers: Record<string, Handler> = {
 					customColumnId: customColumn.id,
 				}, { dropPosition: settings.taskDropPosition });
 				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				// Trigger column agent if configured
+				if (customColumn.agentConfig && updated.worktreePath) {
+					await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn });
+				}
 				return updated;
 			}
 			const updated = await data.updateTask(project, task.id, { customColumnId: customColumn.id });
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			// Trigger column agent if configured
+			if (customColumn.agentConfig && updated.worktreePath) {
+				await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn });
+			}
 			return updated;
 		}
 
@@ -453,6 +461,9 @@ const handlers: Record<string, Handler> = {
 		// active → active or status-only change
 		const updated = await data.updateTask(project, task.id, { status: builtinStatus, customColumnId: null }, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+
+		await triggerColumnAgentIfNeeded(builtinStatus, project, updated);
+
 		return updated;
 	},
 

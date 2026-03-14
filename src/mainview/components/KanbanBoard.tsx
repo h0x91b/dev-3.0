@@ -351,11 +351,12 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 	function getOrderedColumns(): ColumnSlot[] {
 		const cols = customColumns;
 		const peerReviewEnabled = project.peerReviewEnabled !== false;
-		// Hide AI Review column unless it has tasks (feature not yet implemented)
+		// Show AI Review column when enabled (builtinColumnAgents has config) or when it has tasks
+		const aiReviewEnabled = !!project.builtinColumnAgents?.["review-by-ai"];
 		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !t.customColumnId);
 		const shouldHide = (s: TaskStatus) =>
 			(s === "review-by-colleague" && !peerReviewEnabled) ||
-			(s === "review-by-ai" && !aiReviewHasItems);
+			(s === "review-by-ai" && !aiReviewEnabled && !aiReviewHasItems);
 		const filterBuiltin = (statuses: TaskStatus[]) =>
 			statuses.filter((s) => !shouldHide(s));
 		if (!project.columnOrder || project.columnOrder.length === 0) {
@@ -376,6 +377,18 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 				const col = cols.find((c) => c.id === id);
 				if (col) { result.push({ type: "custom", col }); used.add(id); }
 			}
+		}
+		// review-by-ai: if missing from stored order, insert right before "review-by-user"
+		// so it stays in the correct lifecycle position for existing users.
+		if (!used.has("review-by-ai") && !shouldHide("review-by-ai")) {
+			const reviewByUserIdx = result.findIndex((c) => c.type === "builtin" && c.status === "review-by-user");
+			const slot = { type: "builtin" as const, status: "review-by-ai" as TaskStatus };
+			if (reviewByUserIdx !== -1) {
+				result.splice(reviewByUserIdx, 0, slot);
+			} else {
+				result.push(slot);
+			}
+			used.add("review-by-ai");
 		}
 		// review-by-colleague: if missing from stored order, insert right before "completed"
 		// (not at the tail) so it stays in a logical position for existing users.

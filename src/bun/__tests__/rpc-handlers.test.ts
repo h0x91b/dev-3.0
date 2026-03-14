@@ -385,19 +385,19 @@ describe("buildCmdScript", () => {
 	});
 
 	it("keepShell=true: always drops into user shell after command finishes", () => {
-		const result = buildCmdScript("claude", undefined, true);
+		const result = buildCmdScript("claude", undefined, { keepShell: true });
 		expect(result).toContain("__EC=$?");
 		expect(result).toContain('exec "${SHELL:-bash}"');
 		expect(result).not.toContain("exec bash\n");
 	});
 
 	it("keepShell=true: shows error message on non-zero exit", () => {
-		const result = buildCmdScript("claude", undefined, true);
+		const result = buildCmdScript("claude", undefined, { keepShell: true });
 		expect(result).toContain("Process exited with code");
 	});
 
 	it("keepShell=true: shows dim message on zero exit", () => {
-		const result = buildCmdScript("claude", undefined, true);
+		const result = buildCmdScript("claude", undefined, { keepShell: true });
 		expect(result).toContain("Agent session ended (exit 0)");
 	});
 
@@ -462,6 +462,30 @@ describe("buildCmdScript", () => {
 		const result = buildCmdScript("claude", env);
 		expect(result).toContain("export PATH='/usr/bin:/usr/local/bin'");
 		expect(result).toContain("export TITLE='it'\\''s a test'");
+	});
+
+	it("includes onExitCommand after successful exit (keepShell=false)", () => {
+		const result = buildCmdScript("claude", undefined, { onExitCommand: "dev3 task move abc --status review-by-user" });
+		const lines = result.split("\n");
+		const exitCmdIdx = lines.findIndex((l) => l.includes("dev3 task move abc"));
+		// onExitCommand should be present in the script
+		expect(exitCmdIdx).toBeGreaterThan(-1);
+		expect(result).toContain("dev3 task move abc --status review-by-user");
+	});
+
+	it("includes onExitCommand inside else block (keepShell=true)", () => {
+		const result = buildCmdScript("claude", undefined, { keepShell: true, onExitCommand: "dev3 task move abc --status done" });
+		expect(result).toContain("dev3 task move abc --status done");
+		// onExitCommand should be in the else (success) branch
+		const lines = result.split("\n");
+		const elseIdx = lines.findIndex((l) => l.includes("else"));
+		const exitCmdIdx = lines.findIndex((l) => l.includes("dev3 task move abc"));
+		expect(exitCmdIdx).toBeGreaterThan(elseIdx);
+	});
+
+	it("does not include onExitCommand when not provided", () => {
+		const result = buildCmdScript("claude", undefined, { keepShell: true });
+		expect(result).not.toContain("dev3 task move");
 	});
 });
 
