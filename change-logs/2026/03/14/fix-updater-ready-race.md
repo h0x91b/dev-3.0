@@ -1,0 +1,1 @@
+Fixed a race condition in the auto-updater where the app would notify the user that an update was ready to apply, but Electrobun's internal `updateReady` flag hadn't been set yet. Clicking "Apply" would silently fail. The updater now verifies the ready state after download and retries via `checkForUpdate()` before reporting success.
