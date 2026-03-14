@@ -464,13 +464,17 @@ describe("buildCmdScript", () => {
 		expect(result).toContain("export TITLE='it'\\''s a test'");
 	});
 
-	it("includes onExitCommand after successful exit (keepShell=false)", () => {
+	it("includes onExitCommand inside else block on success (keepShell=false)", () => {
 		const result = buildCmdScript("claude", undefined, { onExitCommand: "dev3 task move abc --status review-by-user" });
-		const lines = result.split("\n");
-		const exitCmdIdx = lines.findIndex((l) => l.includes("dev3 task move abc"));
-		// onExitCommand should be present in the script
-		expect(exitCmdIdx).toBeGreaterThan(-1);
 		expect(result).toContain("dev3 task move abc --status review-by-user");
+		// onExitCommand must be inside the else branch (after "else", before "fi")
+		const lines = result.split("\n");
+		const elseIdx = lines.findIndex((l) => l.trim() === "else");
+		const fiIdx = lines.findIndex((l) => l.trim() === "fi");
+		const exitCmdIdx = lines.findIndex((l) => l.includes("dev3 task move abc"));
+		expect(elseIdx).toBeGreaterThan(-1);
+		expect(exitCmdIdx).toBeGreaterThan(elseIdx);
+		expect(exitCmdIdx).toBeLessThan(fiIdx);
 	});
 
 	it("includes onExitCommand inside else block (keepShell=true)", () => {

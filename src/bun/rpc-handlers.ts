@@ -126,8 +126,8 @@ export function buildCmdScript(tmuxCmd: string, env?: Record<string, string>, op
 		"if [ $__EC -ne 0 ]; then",
 		`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
 		"  exec bash",
+		...(onExitLines.length > 0 ? ["else", ...onExitLines] : []),
 		"fi",
-		...onExitLines,
 		"",
 	].join("\n");
 }
