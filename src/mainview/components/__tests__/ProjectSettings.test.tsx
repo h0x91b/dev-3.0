@@ -261,7 +261,7 @@ describe("ProjectSettings", () => {
 			await user.click(toggle);
 
 			// Save
-			await user.click(screen.getByText("Save Settings"));
+			await user.click(screen.getAllByText("Save Settings")[0]);
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
@@ -283,7 +283,7 @@ describe("ProjectSettings", () => {
 			await user.click(toggle);
 
 			// Save
-			await user.click(screen.getByText("Save Settings"));
+			await user.click(screen.getAllByText("Save Settings")[0]);
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
 import type { CustomColumn, Label, Project } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -181,11 +181,17 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete }: CustomColumnRow
 	);
 }
 
+interface NavigationGuard {
+	isDirty: () => boolean;
+	onSave: () => Promise<void>;
+}
+
 interface ProjectSettingsProps {
 	projectId: string;
 	projects: Project[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
+	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
 function ProjectSettings({
@@ -193,6 +199,7 @@ function ProjectSettings({
 	projects,
 	dispatch,
 	navigate,
+	navigationGuardRef,
 }: ProjectSettingsProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -205,12 +212,47 @@ function ProjectSettings({
 		project?.defaultBaseBranch || "main",
 	);
 	const [peerReviewEnabled, setPeerReviewEnabled] = useState(project?.peerReviewEnabled !== false);
+	const [sparseCheckoutEnabled, setSparseCheckoutEnabled] = useState(project?.sparseCheckoutEnabled ?? false);
+	const [sparseCheckoutPaths, setSparseCheckoutPaths] = useState<string[]>(project?.sparseCheckoutPaths ?? []);
 	const [saving, setSaving] = useState(false);
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
 	const autoDetectRan = useRef(false);
+
+	const arraysEqual = (a: string[], b: string[]) =>
+		a.length === b.length && a.every((v, i) => v === b[i]);
+
+	const isDirty = useCallback(() => {
+		if (!project) return false;
+		return (
+			setupScript !== (project.setupScript || "") ||
+			devScript !== (project.devScript || "") ||
+			cleanupScript !== (project.cleanupScript || "") ||
+			defaultBaseBranch !== (project.defaultBaseBranch || "main") ||
+			peerReviewEnabled !== (project.peerReviewEnabled !== false) ||
+			sparseCheckoutEnabled !== (project.sparseCheckoutEnabled ?? false) ||
+			!arraysEqual(clonePaths, project.clonePaths || []) ||
+			!arraysEqual(sparseCheckoutPaths, project.sparseCheckoutPaths ?? [])
+		);
+	}, [project, setupScript, devScript, cleanupScript, defaultBaseBranch, peerReviewEnabled, sparseCheckoutEnabled, clonePaths, sparseCheckoutPaths]);
+
+	// Use a ref so the navigation guard always calls the latest handleSave
+	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
+
+	// Register navigation guard
+	useEffect(() => {
+		if (navigationGuardRef) {
+			navigationGuardRef.current = {
+				isDirty,
+				onSave: () => handleSaveRef.current(),
+			};
+		}
+		return () => {
+			if (navigationGuardRef) navigationGuardRef.current = null;
+		};
+	}, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	async function runAutoDetect() {
 		if (!project) return;
@@ -339,7 +381,7 @@ function ProjectSettings({
 		setColumnSaving(null);
 	}
 
-	async function handleSave() {
+	async function doSave(andNavigate = true) {
 		setSaving(true);
 		try {
 			const updated = await api.request.updateProjectSettings({
@@ -350,17 +392,40 @@ function ProjectSettings({
 				defaultBaseBranch,
 				clonePaths: clonePaths.filter((p) => p.trim() !== ""),
 				peerReviewEnabled,
+				sparseCheckoutEnabled,
+				sparseCheckoutPaths: sparseCheckoutPaths.filter((p) => p.trim() !== ""),
 			});
 			dispatch({ type: "updateProject", project: updated });
-			navigate({ screen: "project", projectId });
+			if (andNavigate) navigate({ screen: "project", projectId });
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
 		}
 		setSaving(false);
 	}
 
+	// Keep the ref in sync for the navigation guard
+	handleSaveRef.current = () => doSave(false);
+
+	function handleSave() {
+		doSave(true);
+	}
+
+	const dirty = isDirty();
+
 	return (
 		<div className="h-full w-full flex flex-col">
+			{dirty && (
+				<div className="flex-shrink-0 px-7 py-2 bg-accent/10 border-b border-accent/20 flex items-center justify-between">
+					<span className="text-fg-2 text-sm">{t("unsavedChanges.banner")}</span>
+					<button
+						onClick={handleSave}
+						disabled={saving}
+						className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-all active:scale-95"
+					>
+						{saving ? t("projectSettings.saving") : t("projectSettings.save")}
+					</button>
+				</div>
+			)}
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 					{/* Setup Script */}
@@ -413,6 +478,62 @@ function ProjectSettings({
 							placeholder="node_modules"
 							addLabel={t("projectSettings.addClonePath")}
 						/>
+					</div>
+
+					{/* Worktree File Filter (Sparse Checkout) */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("projectSettings.sparseCheckout")}
+						</label>
+						<div className="flex items-start gap-3 mb-3">
+							<p className="text-fg-3 text-sm flex-1">
+								{t("projectSettings.sparseCheckoutDesc")}
+							</p>
+							{sparseCheckoutEnabled && project && (
+								<button
+									type="button"
+									onClick={() => api.request.openFolder({ path: project.path })}
+									className="flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 hover:border-accent/50 transition-all"
+								>
+									{t("projectSettings.sparseCheckoutOpenFinder")}
+								</button>
+							)}
+						</div>
+						<div className="flex items-center justify-between mb-3">
+							<span className="text-fg-2 text-sm">{t("projectSettings.sparseCheckoutAll")}</span>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={!sparseCheckoutEnabled}
+								aria-label={t("projectSettings.sparseCheckoutAll")}
+								onClick={() => {
+									setSparseCheckoutEnabled((v) => {
+										const next = !v;
+										if (next && sparseCheckoutPaths.length === 0) {
+											setSparseCheckoutPaths([""]);
+										}
+										return next;
+									});
+								}}
+								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+									!sparseCheckoutEnabled ? "bg-accent" : "bg-edge-active"
+								}`}
+							>
+								<span
+									className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+										!sparseCheckoutEnabled ? "translate-x-4" : "translate-x-0"
+									}`}
+								/>
+							</button>
+						</div>
+						{sparseCheckoutEnabled && (
+							<ListEditor
+								items={sparseCheckoutPaths}
+								onChange={setSparseCheckoutPaths}
+								placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
+								addLabel={t("projectSettings.sparseCheckoutAddPath")}
+							/>
+						)}
 					</div>
 
 					{/* Dev Script */}

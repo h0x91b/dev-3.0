@@ -51,6 +51,14 @@ const common = {
 	"ghWarning.messageNotAuthenticated": "Some features won't work without authentication: automatic PR detection, task promotion to \"PR Review\", and merge detection via GitHub. Run `gh auth login` to enable them.",
 	"ghWarning.dismiss": "Got it",
 	"ghWarning.dontShowAgain": "Don't show this again",
+
+	// Unsaved changes guard
+	"unsavedChanges.title": "Unsaved Changes",
+	"unsavedChanges.message": "You have unsaved changes in project settings. What would you like to do?",
+	"unsavedChanges.save": "Save",
+	"unsavedChanges.discard": "Discard",
+	"unsavedChanges.cancel": "Cancel",
+	"unsavedChanges.banner": "You have unsaved changes",
 } as const;
 
 export default common;

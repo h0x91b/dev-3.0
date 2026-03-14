@@ -815,6 +815,30 @@ export async function saveDiffSnapshot(
 	}
 }
 
+export async function applySparseCheckout(
+	worktreePath: string,
+	paths: string[],
+): Promise<void> {
+	log.info("Applying sparse checkout", { worktreePath, paths });
+	const initResult = await run(
+		["git", "sparse-checkout", "init", "--cone"],
+		worktreePath,
+	);
+	if (!initResult.ok) {
+		log.error("sparse-checkout init failed", { stderr: initResult.stderr });
+		throw new Error(`Failed to init sparse checkout: ${initResult.stderr}`);
+	}
+	const setResult = await run(
+		["git", "sparse-checkout", "set", ...paths],
+		worktreePath,
+	);
+	if (!setResult.ok) {
+		log.error("sparse-checkout set failed", { stderr: setResult.stderr });
+		throw new Error(`Failed to set sparse checkout paths: ${setResult.stderr}`);
+	}
+	log.info("Sparse checkout applied", { worktreePath, pathCount: paths.length });
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,

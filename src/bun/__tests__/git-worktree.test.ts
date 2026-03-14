@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Project, Task } from "../../shared/types";
@@ -28,6 +28,7 @@ import {
 	_resetFetchState,
 	getDefaultBranch,
 	isGitRepo,
+	applySparseCheckout,
 } from "../git";
 import { createTestRepo, cleanup, makeTaskCommits, g, type TestRepo } from "./git-test-helpers";
 
@@ -618,6 +619,47 @@ describe("getDefaultBranch", () => {
 			);
 		} finally {
 			cleanupLocal(r);
+		}
+	});
+});
+
+// ─── applySparseCheckout ─────────────────────────────────────────────────────
+
+describe("applySparseCheckout", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("applies sparse checkout with specified paths", async () => {
+		const wtPath = join(repo.dir, "wt-sparse");
+		g(`git worktree add -b dev3/sparse-test "${wtPath}" main`, repo.local);
+
+		await applySparseCheckout(wtPath, ["src", "docs"]);
+
+		// Verify sparse-checkout config exists and contains the paths
+		const sparseList = g("git sparse-checkout list", wtPath);
+		expect(sparseList).toContain("src");
+		expect(sparseList).toContain("docs");
+
+		// Clean up worktree
+		g(`git worktree remove --force "${wtPath}"`, repo.local);
+	});
+
+	it("throws on init failure for non-git directory", async () => {
+		const tmpDir = join(tmpdir(), `sparse-test-${Date.now()}`);
+		mkdirSync(tmpDir, { recursive: true });
+		try {
+			await expect(
+				applySparseCheckout(tmpDir, ["src"]),
+			).rejects.toThrow("Failed to init sparse checkout");
+		} finally {
+			rmSync(tmpDir, { recursive: true, force: true });
 		}
 	});
 });

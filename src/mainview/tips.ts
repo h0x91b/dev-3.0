@@ -398,6 +398,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0313}", // nf-md-console
 	},
 	{
+		id: "worktree-file-filter",
+		titleKey: "tip.worktreeFileFilter.title",
+		bodyKey: "tip.worktreeFileFilter.body",
+		icon: "\u{F024B}", // nf-md-filter
+	},
+	{
 		id: "async-task-launch",
 		titleKey: "tip.asyncTaskLaunch.title",
 		bodyKey: "tip.asyncTaskLaunch.body",

@@ -74,8 +74,21 @@ function App() {
 		checkRequirements();
 	}, [checkRequirements]);
 
+	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings)
+	const navigationGuardRef = useRef<{
+		isDirty: () => boolean;
+		onSave: () => Promise<void>;
+	} | null>(null);
+	const [pendingNavigation, setPendingNavigation] = useState<Route | null>(null);
+
 	const navigate = useCallback(
-		(route: Route) => dispatch({ type: "navigate", route }),
+		(route: Route) => {
+			if (navigationGuardRef.current?.isDirty()) {
+				setPendingNavigation(route);
+				return;
+			}
+			dispatch({ type: "navigate", route });
+		},
 		[dispatch],
 	);
 
@@ -410,6 +423,52 @@ function App() {
 				/>
 			)}
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
+			{pendingNavigation && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+					onMouseDown={(e) => {
+						if (e.target === e.currentTarget) setPendingNavigation(null);
+					}}
+				>
+					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4">
+						<h2 className="text-fg text-lg font-semibold">{t("unsavedChanges.title")}</h2>
+						<p className="text-fg-2 text-sm leading-relaxed">{t("unsavedChanges.message")}</p>
+						<div className="flex justify-end gap-2 pt-1">
+							<button
+								onClick={() => setPendingNavigation(null)}
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							>
+								{t("unsavedChanges.cancel")}
+							</button>
+							<button
+								onClick={() => {
+									const route = pendingNavigation;
+									navigationGuardRef.current = null;
+									setPendingNavigation(null);
+									dispatch({ type: "navigate", route });
+								}}
+								className="px-4 py-2 text-sm rounded-lg text-danger hover:bg-danger/10 transition-colors"
+							>
+								{t("unsavedChanges.discard")}
+							</button>
+							<button
+								onClick={async () => {
+									const route = pendingNavigation;
+									if (navigationGuardRef.current) {
+										await navigationGuardRef.current.onSave();
+									}
+									navigationGuardRef.current = null;
+									setPendingNavigation(null);
+									dispatch({ type: "navigate", route });
+								}}
+								className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+							>
+								{t("unsavedChanges.save")}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 			{showQuitDialog && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -491,6 +550,7 @@ function App() {
 						projects={state.projects}
 						dispatch={dispatch}
 						navigate={navigate}
+						navigationGuardRef={navigationGuardRef}
 					/>
 				);
 			case "settings":

@@ -827,6 +827,8 @@ describe("handlers.updateProjectSettings", () => {
 			defaultBaseBranch: "main",
 			clonePaths: ["node_modules"],
 			peerReviewEnabled: true,
+			sparseCheckoutEnabled: false,
+			sparseCheckoutPaths: [],
 		});
 
 		expect(result).toEqual(updated);
@@ -837,6 +839,8 @@ describe("handlers.updateProjectSettings", () => {
 			defaultBaseBranch: "main",
 			clonePaths: ["node_modules"],
 			peerReviewEnabled: true,
+			sparseCheckoutEnabled: false,
+			sparseCheckoutPaths: [],
 		});
 	});
 });

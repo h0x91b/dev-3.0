@@ -378,6 +378,9 @@ export interface Project {
 	columnOrder?: string[];
 	// When false, the "PR Review" column is hidden (default: true)
 	peerReviewEnabled?: boolean;
+	// Sparse checkout: when enabled, only specified directories are checked out in worktrees
+	sparseCheckoutEnabled?: boolean;
+	sparseCheckoutPaths?: string[];
 }
 
 export interface Task {
@@ -566,6 +569,8 @@ export type AppRPCSchema = {
 					defaultBaseBranch: string;
 					clonePaths: string[];
 					peerReviewEnabled: boolean;
+					sparseCheckoutEnabled: boolean;
+					sparseCheckoutPaths: string[];
 				};
 				response: Project;
 			};

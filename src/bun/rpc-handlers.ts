@@ -552,6 +552,12 @@ export async function activateTask(
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
 	const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
+	if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
+		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: project.sparseCheckoutPaths });
+		await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+	} else {
+		log.info("activateTask: sparse checkout disabled or no paths", { enabled: project.sparseCheckoutEnabled, pathCount: project.sparseCheckoutPaths?.length ?? 0 });
+	}
 	await runCowClones(project, wt.worktreePath);
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 	await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
@@ -1052,6 +1058,8 @@ export const handlers = {
 		defaultBaseBranch: string;
 		clonePaths: string[];
 		peerReviewEnabled: boolean;
+		sparseCheckoutEnabled: boolean;
+		sparseCheckoutPaths: string[];
 	}): Promise<Project> {
 		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
@@ -1062,6 +1070,8 @@ export const handlers = {
 			defaultBaseBranch: params.defaultBaseBranch,
 			clonePaths: params.clonePaths,
 			peerReviewEnabled: params.peerReviewEnabled,
+			sparseCheckoutEnabled: params.sparseCheckoutEnabled,
+			sparseCheckoutPaths: params.sparseCheckoutPaths,
 		});
 		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
 		log.info("← updateProjectSettings done");
@@ -1356,6 +1366,9 @@ export const handlers = {
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
 						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
+						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						}
 						await runCowClones(project, wt.worktreePath);
 						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
 

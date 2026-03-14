@@ -128,6 +128,8 @@ const tips = {
 	"tip.columnLoadMore.body": "Columns with 15+ tasks show only the most recent ones. Click \"Show more\" at the bottom to reveal the rest.",
 	"tip.shellAfterAgentExit.title": "Shell stays after agent exits",
 	"tip.shellAfterAgentExit.body": "When your agent exits (/exit), you stay in a live shell in the worktree. Run commands, switch agents, or type exit to finish.",
+	"tip.worktreeFileFilter.title": "Filter worktree files",
+	"tip.worktreeFileFilter.body": "In Project Settings, toggle off \"Include All Files\" to check out only the directories you need — great for large monorepos.",
 	"tip.asyncTaskLaunch.title": "Non-blocking task launch",
 	"tip.asyncTaskLaunch.body": "Launching a task closes the dialog instantly. The card shows a spinner while the worktree is being prepared in the background.",
 } as const;
