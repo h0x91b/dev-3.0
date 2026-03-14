@@ -371,6 +371,8 @@ export interface Dev3RepoConfig {
 	clonePaths?: string[];
 	defaultBaseBranch?: string;
 	peerReviewEnabled?: boolean;
+	sparseCheckoutEnabled?: boolean;
+	sparseCheckoutPaths?: string[];
 }
 
 /** Keys of Dev3RepoConfig — used for merge logic. */
@@ -381,9 +383,11 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"clonePaths",
 	"defaultBaseBranch",
 	"peerReviewEnabled",
+	"sparseCheckoutEnabled",
+	"sparseCheckoutPaths",
 ];
 
-export type ConfigSource = "repo" | "local" | "global";
+export type ConfigSource = "repo" | "local";
 
 export interface ConfigSourceEntry {
 	field: string;
@@ -589,32 +593,26 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
-			updateProjectSettings: {
-				params: {
-					projectId: string;
-					setupScript: string;
-					devScript: string;
-					cleanupScript: string;
-					defaultBaseBranch: string;
-					clonePaths: string[];
-					peerReviewEnabled: boolean;
-					sparseCheckoutEnabled: boolean;
-					sparseCheckoutPaths: string[];
-				};
-				response: Project;
-			};
 			detectClonePaths: {
 				params: { projectId: string };
 				response: string[];
 			};
-			exportRepoConfig: {
+			/** Load raw contents of .dev3/config.json and .dev3/config.local.json. */
+			getProjectConfigs: {
 				params: { projectId: string };
-				response: void;
+				response: { repo: Dev3RepoConfig; local: Dev3RepoConfig };
 			};
+			/** Save to .dev3/config.json. */
 			saveRepoConfig: {
 				params: { projectId: string } & Dev3RepoConfig;
 				response: void;
 			};
+			/** Save to .dev3/config.local.json. */
+			saveLocalConfig: {
+				params: { projectId: string } & Dev3RepoConfig;
+				response: void;
+			};
+			/** Per-field source provenance (repo or local). */
 			getRepoConfigSources: {
 				params: { projectId: string };
 				response: ConfigSourceEntry[];

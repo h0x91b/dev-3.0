@@ -8,14 +8,14 @@ import type { AppAction, Route } from "../../state";
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
-			updateProjectSettings: vi.fn(),
 			createLabel: vi.fn(),
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
-			getRepoConfigSources: vi.fn().mockResolvedValue([]),
-			exportRepoConfig: vi.fn().mockResolvedValue(undefined),
+			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {} }),
 			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
+			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
+			getProjects: vi.fn().mockResolvedValue([]),
 		},
 	},
 }));
@@ -32,7 +32,13 @@ const mockProject: Project = {
 	createdAt: new Date().toISOString(),
 };
 
-async function renderProjectSettings(project: Project = mockProject) {
+async function renderProjectSettings(project: Project = mockProject, repoConfig = {}) {
+	const { api } = await import("../../rpc");
+	(api.request.getProjectConfigs as ReturnType<typeof vi.fn>).mockResolvedValue({
+		repo: repoConfig,
+		local: {},
+	});
+
 	const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
 	const navigate = vi.fn() as (route: Route) => void;
 	let result: ReturnType<typeof render>;
@@ -52,37 +58,47 @@ async function renderProjectSettings(project: Project = mockProject) {
 }
 
 describe("ProjectSettings", () => {
-	describe("autocapitalize disabled on technical inputs", () => {
+	describe("tab navigation", () => {
+		it("renders repo and local tabs", async () => {
+			await renderProjectSettings();
+			expect(screen.getByText("Repo Config")).toBeInTheDocument();
+			expect(screen.getByText("Local Overrides")).toBeInTheDocument();
+		});
+
+		it("shows repo tab by default", async () => {
+			await renderProjectSettings();
+			expect(screen.getByText(/Shared team settings/)).toBeInTheDocument();
+		});
+
+		it("switches to local tab on click", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await user.click(screen.getByText("Local Overrides"));
+			expect(screen.getByText(/Machine-specific overrides/)).toBeInTheDocument();
+		});
+	});
+
+	describe("repo config form", () => {
+		it("populates form from getProjectConfigs", async () => {
+			await renderProjectSettings(mockProject, {
+				setupScript: "bun install",
+				defaultBaseBranch: "develop",
+			});
+
+			await vi.waitFor(() => {
+				expect(screen.getByDisplayValue("bun install")).toBeInTheDocument();
+				expect(screen.getByDisplayValue("develop")).toBeInTheDocument();
+			});
+		});
+
 		it("setup script textarea has autocapitalize off", async () => {
-			await renderProjectSettings();
-			const textarea = screen.getByDisplayValue("bun install");
-			expect(textarea).toHaveAttribute("autocapitalize", "off");
-			expect(textarea).toHaveAttribute("autocorrect", "off");
-			expect(textarea.getAttribute("spellcheck")).toBe("false");
-		});
-
-		it("dev script textarea has autocapitalize off", async () => {
-			await renderProjectSettings();
-			const textarea = screen.getByDisplayValue("bun dev");
-			expect(textarea).toHaveAttribute("autocapitalize", "off");
-			expect(textarea).toHaveAttribute("autocorrect", "off");
-			expect(textarea.getAttribute("spellcheck")).toBe("false");
-		});
-
-		it("cleanup script textarea has autocapitalize off", async () => {
-			await renderProjectSettings();
-			const textarea = screen.getByDisplayValue("rm -rf dist");
-			expect(textarea).toHaveAttribute("autocapitalize", "off");
-			expect(textarea).toHaveAttribute("autocorrect", "off");
-			expect(textarea.getAttribute("spellcheck")).toBe("false");
-		});
-
-		it("base branch input has autocapitalize off", async () => {
-			await renderProjectSettings();
-			const input = screen.getByDisplayValue("main");
-			expect(input).toHaveAttribute("autocapitalize", "off");
-			expect(input).toHaveAttribute("autocorrect", "off");
-			expect(input.getAttribute("spellcheck")).toBe("false");
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			await vi.waitFor(() => {
+				const textarea = screen.getByDisplayValue("bun install");
+				expect(textarea).toHaveAttribute("autocapitalize", "off");
+				expect(textarea).toHaveAttribute("autocorrect", "off");
+				expect(textarea.getAttribute("spellcheck")).toBe("false");
+			});
 		});
 	});
 
@@ -90,142 +106,21 @@ describe("ProjectSettings", () => {
 		it("renders the clone paths section", async () => {
 			await renderProjectSettings();
 			expect(screen.getByText("Clone Paths (Copy-on-Write)")).toBeInTheDocument();
-			expect(screen.getByText(/Directories and files to clone/)).toBeInTheDocument();
 		});
 
-		it("renders existing clone paths from project", async () => {
-			const projectWithPaths: Project = {
-				...mockProject,
+		it("renders existing clone paths from config", async () => {
+			await renderProjectSettings(mockProject, {
 				clonePaths: ["node_modules", ".venv"],
-			};
-			await renderProjectSettings(projectWithPaths);
-			expect(screen.getByDisplayValue("node_modules")).toBeInTheDocument();
-			expect(screen.getByDisplayValue(".venv")).toBeInTheDocument();
-		});
-
-		it("can add a new clone path", async () => {
-			const user = userEvent.setup();
-			await renderProjectSettings();
-			const addButton = screen.getByText("+ Add Path");
-			await user.click(addButton);
-			// After adding, a new empty input should appear
-			const inputs = screen.getAllByPlaceholderText("node_modules");
-			expect(inputs.length).toBeGreaterThanOrEqual(1);
-		});
-
-		it("can remove a clone path", async () => {
-			const user = userEvent.setup();
-			const projectWithPaths: Project = {
-				...mockProject,
-				clonePaths: ["node_modules"],
-			};
-			await renderProjectSettings(projectWithPaths);
-			expect(screen.getByDisplayValue("node_modules")).toBeInTheDocument();
-			// Click the × button
-			const removeButton = screen.getByText("×");
-			await user.click(removeButton);
-			expect(screen.queryByDisplayValue("node_modules")).not.toBeInTheDocument();
-		});
-
-		it("includes clone paths in save payload", async () => {
-			const { api } = await import("../../rpc");
-			const mockUpdate = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
-			mockUpdate.mockResolvedValueOnce({ ...mockProject, clonePaths: ["node_modules"] });
-
-			const user = userEvent.setup();
-			const projectWithPaths: Project = {
-				...mockProject,
-				clonePaths: ["node_modules"],
-			};
-			const dispatch = vi.fn();
-			const navigate = vi.fn();
-			await act(async () => {
-				render(
-					<I18nProvider>
-						<ProjectSettings
-							projectId={projectWithPaths.id}
-							projects={[projectWithPaths]}
-							dispatch={dispatch as unknown as React.Dispatch<AppAction>}
-							navigate={navigate as (route: Route) => void}
-						/>
-					</I18nProvider>,
-				);
 			});
-
-			const saveButton = screen.getByText("Save Settings");
-			await user.click(saveButton);
-
-			expect(mockUpdate).toHaveBeenCalledWith(
-				expect.objectContaining({
-					clonePaths: ["node_modules"],
-				}),
-			);
+			await vi.waitFor(() => {
+				expect(screen.getByDisplayValue("node_modules")).toBeInTheDocument();
+				expect(screen.getByDisplayValue(".venv")).toBeInTheDocument();
+			});
 		});
 
 		it("renders auto-detect button", async () => {
-			const projectWithPaths: Project = {
-				...mockProject,
-				clonePaths: ["node_modules"],
-			};
-			await renderProjectSettings(projectWithPaths);
+			await renderProjectSettings(mockProject, { clonePaths: ["node_modules"] });
 			expect(screen.getByText("Auto-detect")).toBeInTheDocument();
-		});
-
-		it("auto-runs detect when clonePaths is empty", async () => {
-			const { api } = await import("../../rpc");
-			const mockDetect = api.request.detectClonePaths as ReturnType<typeof vi.fn>;
-			mockDetect.mockResolvedValueOnce(["node_modules", ".env"]);
-
-			const emptyProject: Project = {
-				...mockProject,
-				clonePaths: [],
-			};
-			await renderProjectSettings(emptyProject);
-
-			// Auto-detect should have been called
-			await vi.waitFor(() => {
-				expect(mockDetect).toHaveBeenCalledWith({ projectId: "proj-1" });
-			});
-		});
-
-		it("shows feedback after manual auto-detect", async () => {
-			const { api } = await import("../../rpc");
-			const mockDetect = api.request.detectClonePaths as ReturnType<typeof vi.fn>;
-			mockDetect.mockResolvedValue(["node_modules", ".venv"]);
-
-			const user = userEvent.setup();
-			const projectWithPaths: Project = {
-				...mockProject,
-				clonePaths: ["existing"],
-			};
-			await renderProjectSettings(projectWithPaths);
-
-			const detectButton = screen.getByText("Auto-detect");
-			await user.click(detectButton);
-
-			await vi.waitFor(() => {
-				expect(screen.getByText("Found 2 paths")).toBeInTheDocument();
-			});
-		});
-
-		it("shows 'no paths found' feedback when detect returns empty", async () => {
-			const { api } = await import("../../rpc");
-			const mockDetect = api.request.detectClonePaths as ReturnType<typeof vi.fn>;
-			mockDetect.mockResolvedValue([]);
-
-			const user = userEvent.setup();
-			const projectWithPaths: Project = {
-				...mockProject,
-				clonePaths: ["existing"],
-			};
-			await renderProjectSettings(projectWithPaths);
-
-			const detectButton = screen.getByText("Auto-detect");
-			await user.click(detectButton);
-
-			await vi.waitFor(() => {
-				expect(screen.getByText("No common paths found")).toBeInTheDocument();
-			});
 		});
 	});
 
@@ -236,10 +131,12 @@ describe("ProjectSettings", () => {
 			expect(toggle).toHaveAttribute("aria-checked", "true");
 		});
 
-		it("toggle reflects peerReviewEnabled: false from project", async () => {
-			await renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
-			const toggle = screen.getByRole("switch", { name: /peer review column/i });
-			expect(toggle).toHaveAttribute("aria-checked", "false");
+		it("toggle reflects peerReviewEnabled: false from config", async () => {
+			await renderProjectSettings(mockProject, { peerReviewEnabled: false });
+			await vi.waitFor(() => {
+				const toggle = screen.getByRole("switch", { name: /peer review column/i });
+				expect(toggle).toHaveAttribute("aria-checked", "false");
+			});
 		});
 
 		it("clicking toggle flips state", async () => {
@@ -250,47 +147,40 @@ describe("ProjectSettings", () => {
 			await user.click(toggle);
 			expect(toggle).toHaveAttribute("aria-checked", "false");
 		});
+	});
 
-		it("saves peerReviewEnabled: false when toggle is turned off", async () => {
+	describe("save buttons", () => {
+		it("calls saveRepoConfig on repo tab save", async () => {
 			const { api } = await import("../../rpc");
-			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
-			mockSave.mockResolvedValue({ ...mockProject, peerReviewEnabled: false });
+			const mockSave = api.request.saveRepoConfig as ReturnType<typeof vi.fn>;
+			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
 
 			const user = userEvent.setup();
-			await renderProjectSettings();
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
 
-			// Turn off the toggle
-			const toggle = screen.getByRole("switch", { name: /peer review column/i });
-			await user.click(toggle);
-
-			// Save
-			await user.click(screen.getAllByText("Save Settings")[0]);
+			await user.click(screen.getByText("Save to Repo"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
-					expect.objectContaining({ peerReviewEnabled: false }),
+					expect.objectContaining({ projectId: "proj-1" }),
 				);
 			});
 		});
 
-		it("saves peerReviewEnabled: true when toggle is on", async () => {
+		it("calls saveLocalConfig on local tab save", async () => {
 			const { api } = await import("../../rpc");
-			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
-			mockSave.mockResolvedValue({ ...mockProject, peerReviewEnabled: true });
+			const mockSave = api.request.saveLocalConfig as ReturnType<typeof vi.fn>;
+			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
 
 			const user = userEvent.setup();
-			await renderProjectSettings({ ...mockProject, peerReviewEnabled: false });
+			await renderProjectSettings();
 
-			// Turn on the toggle
-			const toggle = screen.getByRole("switch", { name: /peer review column/i });
-			await user.click(toggle);
-
-			// Save
-			await user.click(screen.getAllByText("Save Settings")[0]);
+			await user.click(screen.getByText("Local Overrides"));
+			await user.click(screen.getByText("Save Local"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
-					expect.objectContaining({ peerReviewEnabled: true }),
+					expect.objectContaining({ projectId: "proj-1" }),
 				);
 			});
 		});

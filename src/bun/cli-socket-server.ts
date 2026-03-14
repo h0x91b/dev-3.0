@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, CustomColumn, Dev3RepoConfig, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
+import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -460,14 +460,7 @@ const handlers: Record<string, Handler> = {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
 		const project = await data.getProject(projectId);
-		const config: Dev3RepoConfig = {};
-		for (const key of DEV3_REPO_CONFIG_KEYS) {
-			const val = (project as any)[key];
-			if (val !== undefined) {
-				(config as any)[key] = val;
-			}
-		}
-		await repoConfig.saveRepoConfig(project.path, config);
+		await repoConfig.migrateProjectConfig(project);
 		return { path: `${project.path}/.dev3/config.json` };
 	},
 
@@ -475,12 +468,12 @@ const handlers: Record<string, Handler> = {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
 		const project = await data.getProject(projectId);
-		const merged = await repoConfig.mergeRepoConfig(project);
-		const sources = await repoConfig.getConfigSources(project.path, project);
-		const hasRepoFile = await repoConfig.hasRepoConfig(project.path);
+		const resolved = await repoConfig.resolveProjectConfig(project);
+		const sources = await repoConfig.getConfigSources(project.path);
+		const hasRepoFile = repoConfig.hasRepoConfig(project.path);
 		return {
 			settings: Object.fromEntries(
-				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (merged as any)[key]]),
+				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key]]),
 			),
 			sources: Object.fromEntries(sources.map((s) => [s.field, s.source])),
 			hasRepoConfig: hasRepoFile,

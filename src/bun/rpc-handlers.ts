@@ -552,17 +552,17 @@ export async function activateTask(
 	opts?: { isReopen?: boolean },
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
-	const merged = await repoConfig.mergeRepoConfig(project);
-	const wt = await git.createWorktree(merged, task, task.existingBranch ?? undefined);
-	if (merged.sparseCheckoutEnabled && merged.sparseCheckoutPaths?.length) {
-		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: merged.sparseCheckoutPaths });
-		await git.applySparseCheckout(wt.worktreePath, merged.sparseCheckoutPaths);
+	const resolved = await repoConfig.resolveProjectConfig(project);
+	const wt = await git.createWorktree(resolved, task, task.existingBranch ?? undefined);
+	if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: resolved.sparseCheckoutPaths });
+		await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 	} else {
-		log.info("activateTask: sparse checkout disabled or no paths", { enabled: merged.sparseCheckoutEnabled, pathCount: merged.sparseCheckoutPaths?.length ?? 0 });
+		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
 	}
-	await runCowClones(merged, wt.worktreePath);
+	await runCowClones(resolved, wt.worktreePath);
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-	await launchTaskPty(merged, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
 
@@ -620,8 +620,8 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 		return;
 	}
 
-	const merged = await repoConfig.mergeRepoConfig(project);
-	const script = merged.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
+	const resolved = await repoConfig.resolveProjectConfig(project);
+	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
 
@@ -954,7 +954,9 @@ export const handlers = {
 	async getProjects(): Promise<Project[]> {
 		log.info("→ getProjects");
 		const rawProjects = await data.loadProjects();
-		const projects = await Promise.all(rawProjects.map((p) => repoConfig.mergeRepoConfig(p)));
+		// One-time migration: create .dev3/config.json from projects.json settings
+		await Promise.all(rawProjects.map((p) => repoConfig.migrateProjectConfig(p)));
+		const projects = await Promise.all(rawProjects.map((p) => repoConfig.resolveProjectConfig(p)));
 		log.info(`← getProjects: ${projects.length} project(s)`);
 		return projects;
 	},
@@ -1054,34 +1056,6 @@ export const handlers = {
 		log.info("← removeProject done");
 	},
 
-	async updateProjectSettings(params: {
-		projectId: string;
-		setupScript: string;
-		devScript: string;
-		cleanupScript: string;
-		defaultBaseBranch: string;
-		clonePaths: string[];
-		peerReviewEnabled: boolean;
-		sparseCheckoutEnabled: boolean;
-		sparseCheckoutPaths: string[];
-	}): Promise<Project> {
-		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
-		log.info("→ updateProjectSettings", { projectId: params.projectId });
-		const project = await data.updateProject(params.projectId, {
-			setupScript: params.setupScript,
-			devScript: params.devScript,
-			cleanupScript: params.cleanupScript,
-			defaultBaseBranch: params.defaultBaseBranch,
-			clonePaths: params.clonePaths,
-			peerReviewEnabled: params.peerReviewEnabled,
-			sparseCheckoutEnabled: params.sparseCheckoutEnabled,
-			sparseCheckoutPaths: params.sparseCheckoutPaths,
-		});
-		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
-		log.info("← updateProjectSettings done");
-		return project;
-	},
-
 	async detectClonePaths(params: { projectId: string }): Promise<string[]> {
 		log.info("→ detectClonePaths", { projectId: params.projectId });
 		const project = await data.getProject(params.projectId);
@@ -1091,18 +1065,13 @@ export const handlers = {
 		return paths;
 	},
 
-	async exportRepoConfig(params: { projectId: string }): Promise<void> {
-		log.info("→ exportRepoConfig", { projectId: params.projectId });
+	async getProjectConfigs(params: { projectId: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
+		log.info("→ getProjectConfigs", { projectId: params.projectId });
 		const project = await data.getProject(params.projectId);
-		const config: Dev3RepoConfig = {};
-		for (const key of DEV3_REPO_CONFIG_KEYS) {
-			const val = (project as any)[key];
-			if (val !== undefined) {
-				(config as any)[key] = val;
-			}
-		}
-		await repoConfig.saveRepoConfig(project.path, config);
-		log.info("← exportRepoConfig done");
+		const repo = repoConfig.loadRepoConfigRaw(project.path);
+		const local = repoConfig.loadLocalConfigRaw(project.path);
+		log.info("← getProjectConfigs");
+		return { repo, local };
 	},
 
 	async saveRepoConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
@@ -1119,10 +1088,24 @@ export const handlers = {
 		log.info("← saveRepoConfig done");
 	},
 
+	async saveLocalConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveLocalConfig", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const config: Dev3RepoConfig = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(config as any)[key] = val;
+			}
+		}
+		await repoConfig.saveRepoLocalConfig(project.path, config);
+		log.info("← saveLocalConfig done");
+	},
+
 	async getRepoConfigSources(params: { projectId: string }): Promise<ConfigSourceEntry[]> {
 		log.info("→ getRepoConfigSources", { projectId: params.projectId });
 		const project = await data.getProject(params.projectId);
-		const sources = await repoConfig.getConfigSources(project.path, project);
+		const sources = await repoConfig.getConfigSources(project.path);
 		log.info("← getRepoConfigSources", { count: sources.length });
 		return sources;
 	},
