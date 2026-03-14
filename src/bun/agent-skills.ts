@@ -206,7 +206,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
 
-4. **Ask where to save.** Before writing, ask: "Save to repo config (shared with team, committed to git) or local config (just this machine, git-ignored)?" Default suggestion is repo.
+4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
 \`\`\`bash
 mkdir -p .dev3
