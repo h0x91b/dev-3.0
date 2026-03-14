@@ -311,10 +311,10 @@ describe("collapsible columns", () => {
 		localStorage.clear();
 	});
 
-	it("renders todo, completed, cancelled as collapsed by default", async () => {
+	it("renders completed, cancelled as collapsed by default", async () => {
 		await renderBoardWith();
 		const collapsedCols = document.querySelectorAll("[data-collapsed-column]");
-		expect(collapsedCols.length).toBe(3);
+		expect(collapsedCols.length).toBe(2);
 	});
 
 	it("active columns are always expanded", async () => {
