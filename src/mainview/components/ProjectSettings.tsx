@@ -617,7 +617,7 @@ function ProjectSettings({
 
 	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
 	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
-	const [aiReviewEnabled, setAiReviewEnabled] = useState(reviewConfig !== undefined ? true : project?.builtinColumnAgents === undefined);
+	const [aiReviewEnabled, setAiReviewEnabled] = useState(!!reviewConfig || !project?.builtinColumnAgents);
 	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
 	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
 	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
