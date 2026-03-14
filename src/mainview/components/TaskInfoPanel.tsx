@@ -139,6 +139,25 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 
+	// Resolve project config from worktree path (picks up .dev3/config.json on branch).
+	// Polls every 10s so the Dev Server button activates when config is created mid-session.
+	const [resolvedProject, setResolvedProject] = useState(project);
+	useEffect(() => {
+		if (!task.worktreePath) {
+			setResolvedProject(project);
+			return;
+		}
+		let cancelled = false;
+		const fetchResolved = () => {
+			api.request.getResolvedProject({ projectId: project.id, worktreePath: task.worktreePath! })
+				.then((p) => { if (!cancelled) setResolvedProject(p); })
+				.catch(() => { if (!cancelled) setResolvedProject(project); });
+		};
+		fetchResolved();
+		const timer = setInterval(fetchResolved, 10_000);
+		return () => { cancelled = true; clearInterval(timer); };
+	}, [project.id, task.worktreePath, project]);
+
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
 
@@ -386,15 +405,45 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
 
 	// ---- Dev server ----
-	const hasDevScript = !!(project.devScript?.trim());
+	const hasDevScript = !!(resolvedProject.devScript?.trim());
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
-	const devServerDisabled = !hasDevScript || !isTaskActive;
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
 	const [devServerMenuOpen, setDevServerMenuOpen] = useState(false);
 	const [devServerMenuPos, setDevServerMenuPos] = useState({ top: 0, left: 0 });
+	const [devServerHintOpen, setDevServerHintOpen] = useState(false);
+	const [devServerHintCopied, setDevServerHintCopied] = useState(false);
+	const [devServerHintPos, setDevServerHintPos] = useState({ top: 0, left: 0 });
+	const devServerHintRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!devServerHintOpen) return;
+		function onClickOutside(e: MouseEvent) {
+			if (!devServerHintRef.current?.contains(e.target as Node) &&
+				!devServerBtnRef.current?.contains(e.target as Node)) {
+				setDevServerHintOpen(false);
+				setDevServerHintCopied(false);
+			}
+		}
+		document.addEventListener("mousedown", onClickOutside);
+		return () => document.removeEventListener("mousedown", onClickOutside);
+	}, [devServerHintOpen]);
 
 	async function handleDevServer() {
-		if (devServerDisabled) return;
+		if (!hasDevScript) {
+			if (!devServerHintOpen && devServerBtnRef.current) {
+				const rect = devServerBtnRef.current.getBoundingClientRect();
+				const popoverHeight = 100;
+				const fitsBelow = rect.bottom + popoverHeight + 8 < window.innerHeight;
+				setDevServerHintPos({
+					top: fitsBelow ? rect.bottom + 4 : rect.top - popoverHeight - 4,
+					left: Math.min(rect.left, window.innerWidth - 300),
+				});
+			}
+			setDevServerHintOpen((v) => !v);
+			setDevServerHintCopied(false);
+			return;
+		}
+		if (!isTaskActive) return;
 		try {
 			const { running } = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
 			if (running) {
@@ -1160,25 +1209,64 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		</span>
 	) : null;
 
+	const devServerHintPrompt = t("header.devServerHintPrompt");
+
 	const devServerButton = (
 		<>
 			<button
 				ref={devServerBtnRef}
 				onClick={handleDevServer}
-				disabled={devServerDisabled}
 				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-					devServerDisabled
-						? "text-fg-muted/50 cursor-not-allowed"
-						: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
+					!hasDevScript
+						? "text-[#eab308] hover:text-[#facc15] hover:bg-[#eab308]/15 cursor-pointer border border-dashed border-[#eab308]/40"
+						: !isTaskActive
+							? "text-fg-muted/50 cursor-not-allowed"
+							: "text-[#10b981] hover:text-[#34d399] hover:bg-[#10b981]/15 border border-[#10b981]/30"
 				}`}
-				title={devServerDisabled ? t("header.devServerDisabled") : t("header.devServer")}
+				title={!hasDevScript ? t("header.devServerDisabled") : t("header.devServer")}
 			>
 				<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
 						d="M5 12h14M12 5l7 7-7 7" />
 				</svg>
-				<span className="text-[0.6875rem] font-semibold">{t("header.devServer")}</span>
+				<span className="text-[0.6875rem] font-semibold">
+					{hasDevScript ? t("header.devServer") : t("header.setupDevServer")}
+				</span>
 			</button>
+			{devServerHintOpen && createPortal(
+				<div
+					ref={devServerHintRef}
+					className="fixed z-[9999] bg-overlay border border-edge rounded-lg shadow-lg p-3 w-72"
+					style={{ top: devServerHintPos.top, left: devServerHintPos.left }}
+				>
+					<div className="flex items-center justify-between mb-2">
+						<p className="text-fg-2 text-xs">{t("header.devServerHint")}</p>
+						<button
+							onClick={() => { setDevServerHintOpen(false); setDevServerHintCopied(false); }}
+							className="text-fg-muted hover:text-fg text-xs leading-none ml-2 -mr-1 -mt-1"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>{"\uF00D"}</button>
+					</div>
+					<div className="flex items-center gap-1.5">
+						<code className="flex-1 text-xs bg-base rounded px-2 py-1.5 text-fg font-mono select-all break-all">
+							{devServerHintPrompt}
+						</code>
+						<button
+							onClick={() => {
+								navigator.clipboard.writeText(devServerHintPrompt);
+								setDevServerHintCopied(true);
+								setTimeout(() => setDevServerHintCopied(false), 2000);
+							}}
+							className="flex-shrink-0 px-2 py-1.5 rounded text-xs bg-accent hover:bg-accent-hover text-white transition-colors"
+						>
+							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{devServerHintCopied ? "\uF00C" : "\uF0C5"}
+							</span>
+						</button>
+					</div>
+				</div>,
+				document.body,
+			)}
 			{devServerMenuOpen && createPortal(
 				<DevServerMenu
 					position={devServerMenuPos}

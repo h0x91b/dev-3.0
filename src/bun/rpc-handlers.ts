@@ -1,9 +1,9 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { BranchStatus, ChangelogEntry, CodingAgent, CustomColumn, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
+import type { BranchStatus, ChangelogEntry, CodingAgent, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -18,6 +18,7 @@ import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
 import { setupAgentHooks } from "./agent-hooks";
 import { BUNDLED_CHANGELOG } from "./changelog-bundled";
+import * as repoConfig from "./repo-config";
 
 const log = createLogger("rpc");
 
@@ -551,16 +552,20 @@ export async function activateTask(
 	opts?: { isReopen?: boolean },
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
-	const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined);
-	if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
-		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: project.sparseCheckoutPaths });
-		await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+	// Resolve config from project.path for worktree creation (defaultBaseBranch, etc.)
+	const preResolved = await repoConfig.resolveProjectConfig(project);
+	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
+	// Re-resolve from the worktree to pick up any .dev3/config.json on the branch
+	const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+	if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: resolved.sparseCheckoutPaths });
+		await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 	} else {
-		log.info("activateTask: sparse checkout disabled or no paths", { enabled: project.sparseCheckoutEnabled, pathCount: project.sparseCheckoutPaths?.length ?? 0 });
+		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
 	}
-	await runCowClones(project, wt.worktreePath);
+	await runCowClones(resolved, wt.worktreePath);
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-	await launchTaskPty(project, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
 
@@ -618,7 +623,8 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 		return;
 	}
 
-	const script = project.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
+	const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
 
@@ -950,7 +956,10 @@ export const handlers = {
 
 	async getProjects(): Promise<Project[]> {
 		log.info("→ getProjects");
-		const projects = await data.loadProjects();
+		const rawProjects = await data.loadProjects();
+		// One-time migration: create .dev3/config.json from projects.json settings
+		await Promise.all(rawProjects.map((p) => repoConfig.migrateProjectConfig(p)));
+		const projects = await Promise.all(rawProjects.map((p) => repoConfig.resolveProjectConfig(p)));
 		log.info(`← getProjects: ${projects.length} project(s)`);
 		return projects;
 	},
@@ -1050,34 +1059,6 @@ export const handlers = {
 		log.info("← removeProject done");
 	},
 
-	async updateProjectSettings(params: {
-		projectId: string;
-		setupScript: string;
-		devScript: string;
-		cleanupScript: string;
-		defaultBaseBranch: string;
-		clonePaths: string[];
-		peerReviewEnabled: boolean;
-		sparseCheckoutEnabled: boolean;
-		sparseCheckoutPaths: string[];
-	}): Promise<Project> {
-		console.log("[updateProjectSettings] params received:", JSON.stringify(params));
-		log.info("→ updateProjectSettings", { projectId: params.projectId });
-		const project = await data.updateProject(params.projectId, {
-			setupScript: params.setupScript,
-			devScript: params.devScript,
-			cleanupScript: params.cleanupScript,
-			defaultBaseBranch: params.defaultBaseBranch,
-			clonePaths: params.clonePaths,
-			peerReviewEnabled: params.peerReviewEnabled,
-			sparseCheckoutEnabled: params.sparseCheckoutEnabled,
-			sparseCheckoutPaths: params.sparseCheckoutPaths,
-		});
-		console.log("[updateProjectSettings] saved project:", JSON.stringify(project));
-		log.info("← updateProjectSettings done");
-		return project;
-	},
-
 	async detectClonePaths(params: { projectId: string }): Promise<string[]> {
 		log.info("→ detectClonePaths", { projectId: params.projectId });
 		const project = await data.getProject(params.projectId);
@@ -1085,6 +1066,63 @@ export const handlers = {
 		const paths = await detect(project.path);
 		log.info("← detectClonePaths", { count: paths.length });
 		return paths;
+	},
+
+	async getResolvedProject(params: { projectId: string; worktreePath: string }): Promise<Project> {
+		log.info("→ getResolvedProject", { projectId: params.projectId, worktreePath: params.worktreePath });
+		const project = await data.getProject(params.projectId);
+		const resolved = await repoConfig.resolveProjectConfig(project, params.worktreePath);
+		log.info("← getResolvedProject");
+		return resolved;
+	},
+
+	async getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
+		log.info("→ getProjectConfigs", { projectId: params.projectId, worktreePath: params.worktreePath });
+		const project = await data.getProject(params.projectId);
+		const configPath = params.worktreePath || project.path;
+		const repo = repoConfig.loadRepoConfigRaw(configPath);
+		const local = repoConfig.loadLocalConfigRaw(configPath);
+		log.info("← getProjectConfigs");
+		return { repo, local };
+	},
+
+	async saveRepoConfig(params: { projectId: string; worktreePath?: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveRepoConfig", { projectId: params.projectId, worktreePath: params.worktreePath });
+		const project = await data.getProject(params.projectId);
+		const configPath = params.worktreePath || project.path;
+		const config: Dev3RepoConfig = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(config as any)[key] = val;
+			}
+		}
+		await repoConfig.saveRepoConfig(configPath, config);
+		log.info("← saveRepoConfig done");
+	},
+
+	async saveLocalConfig(params: { projectId: string; worktreePath?: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveLocalConfig", { projectId: params.projectId, worktreePath: params.worktreePath });
+		const project = await data.getProject(params.projectId);
+		const configPath = params.worktreePath || project.path;
+		const config: Dev3RepoConfig = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(config as any)[key] = val;
+			}
+		}
+		await repoConfig.saveRepoLocalConfig(configPath, config);
+		log.info("← saveLocalConfig done");
+	},
+
+	async getRepoConfigSources(params: { projectId: string; worktreePath?: string }): Promise<ConfigSourceEntry[]> {
+		log.info("→ getRepoConfigSources", { projectId: params.projectId, worktreePath: params.worktreePath });
+		const project = await data.getProject(params.projectId);
+		const configPath = params.worktreePath || project.path;
+		const sources = await repoConfig.getConfigSources(configPath);
+		log.info("← getRepoConfigSources", { count: sources.length });
+		return sources;
 	},
 
 	async getGlobalSettings(): Promise<GlobalSettings> {
@@ -1098,6 +1136,23 @@ export const handlers = {
 		log.info("→ saveGlobalSettings", { params });
 		await saveSettings(params);
 		log.info("← saveGlobalSettings done");
+	},
+
+	async installDev3Cli(): Promise<{ installedFrom: string }> {
+		log.info("→ installDev3Cli");
+		const cliBinDir = `${DEV3_HOME}/bin`;
+		const cliDest = `${cliBinDir}/dev3`;
+		const prodCli = join(PATHS.VIEWS_FOLDER, "..", "cli", "dev3");
+		const devCli = join(import.meta.dir, "..", "cli", "dev3");
+		const source = existsSync(prodCli) ? prodCli : devCli;
+		if (!existsSync(source)) throw new Error(`CLI binary not found: ${source}`);
+		mkdirSync(cliBinDir, { recursive: true });
+		// Remove existing file/symlink before creating the new symlink
+		try { unlinkSync(cliDest); } catch {}
+		symlinkSync(source, cliDest);
+		chmodSync(cliDest, 0o755);
+		log.info("← installDev3Cli", { from: source, to: cliDest });
+		return { installedFrom: source };
 	},
 
 	async getAgents(): Promise<CodingAgent[]> {
@@ -1427,8 +1482,9 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
+			const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath ?? undefined);
 
-			if (!project.devScript.trim()) throw new Error("No dev script configured");
+			if (!resolved.devScript.trim()) throw new Error("No dev script configured");
 			if (!task.worktreePath) throw new Error("Task has no worktree");
 
 			const devSession = devServerSessionName(task.id);
@@ -1443,7 +1499,7 @@ export const handlers = {
 			const wrappedScript = [
 				`#!/bin/bash`,
 				`set -x`,
-				project.devScript,
+				resolved.devScript,
 				`EXIT_CODE=$?`,
 				`set +x`,
 				`if [ $EXIT_CODE -ne 0 ]; then`,

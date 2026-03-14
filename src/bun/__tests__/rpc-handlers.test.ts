@@ -94,6 +94,18 @@ vi.mock("../settings", () => ({
 	saveSettings: vi.fn(),
 }));
 
+vi.mock("../repo-config", () => ({
+	resolveProjectConfig: vi.fn((project: any) => project),
+	migrateProjectConfig: vi.fn(),
+	loadRepoConfigRaw: vi.fn(() => ({})),
+	loadLocalConfigRaw: vi.fn(() => ({})),
+	saveRepoConfig: vi.fn(),
+	saveRepoLocalConfig: vi.fn(),
+	getConfigSources: vi.fn(() => []),
+	hasRepoConfig: vi.fn(() => false),
+	hasLocalConfig: vi.fn(() => false),
+}));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -808,42 +820,7 @@ describe("handlers.removeProject", () => {
 	});
 });
 
-// ================================================================
-// handlers.updateProjectSettings
-// ================================================================
-
-describe("handlers.updateProjectSettings", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("updates project with new settings", async () => {
-		const updated = makeProject({ setupScript: "bun install" });
-		vi.mocked(data.updateProject).mockResolvedValue(updated);
-
-		const result = await handlers.updateProjectSettings({
-			projectId: "proj-1",
-			setupScript: "bun install",
-			devScript: "",
-			cleanupScript: "echo done",
-			defaultBaseBranch: "main",
-			clonePaths: ["node_modules"],
-			peerReviewEnabled: true,
-			sparseCheckoutEnabled: false,
-			sparseCheckoutPaths: [],
-		});
-
-		expect(result).toEqual(updated);
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
-			setupScript: "bun install",
-			devScript: "",
-			cleanupScript: "echo done",
-			defaultBaseBranch: "main",
-			clonePaths: ["node_modules"],
-			peerReviewEnabled: true,
-			sparseCheckoutEnabled: false,
-			sparseCheckoutPaths: [],
-		});
-	});
-});
+// handlers.updateProjectSettings was removed — settings now live in .dev3/config.json
 
 // ================================================================
 // handlers.getGlobalSettings / saveGlobalSettings
@@ -2637,6 +2614,26 @@ describe("handlers.runDevServer", () => {
 		await expect(
 			handlers.runDevServer({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Task has no worktree");
+	});
+
+	it("resolves devScript from worktree config", async () => {
+		const project = makeProject({ devScript: "" });
+		const task = makeTask({ worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const repoConfig = await import("../repo-config");
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce({
+			...project,
+			devScript: "bun run dev",
+		});
+
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		// Should NOT throw — devScript comes from worktree config
+		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/wt");
 	});
 
 	it("starts new-session -d when no dev server running", async () => {

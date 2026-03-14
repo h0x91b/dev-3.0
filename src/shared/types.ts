@@ -361,6 +361,39 @@ export const LABEL_COLORS = [
 	"#6366f1", // indigo  239°
 ] as const;
 
+// ---- Repo-local config (.dev3/config.json) ----
+
+/** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
+export interface Dev3RepoConfig {
+	setupScript?: string;
+	devScript?: string;
+	cleanupScript?: string;
+	clonePaths?: string[];
+	defaultBaseBranch?: string;
+	peerReviewEnabled?: boolean;
+	sparseCheckoutEnabled?: boolean;
+	sparseCheckoutPaths?: string[];
+}
+
+/** Keys of Dev3RepoConfig — used for merge logic. */
+export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
+	"setupScript",
+	"devScript",
+	"cleanupScript",
+	"clonePaths",
+	"defaultBaseBranch",
+	"peerReviewEnabled",
+	"sparseCheckoutEnabled",
+	"sparseCheckoutPaths",
+];
+
+export type ConfigSource = "repo" | "local";
+
+export interface ConfigSourceEntry {
+	field: string;
+	source: ConfigSource;
+}
+
 export interface Project {
 	id: string;
 	name: string;
@@ -560,23 +593,34 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
-			updateProjectSettings: {
-				params: {
-					projectId: string;
-					setupScript: string;
-					devScript: string;
-					cleanupScript: string;
-					defaultBaseBranch: string;
-					clonePaths: string[];
-					peerReviewEnabled: boolean;
-					sparseCheckoutEnabled: boolean;
-					sparseCheckoutPaths: string[];
-				};
-				response: Project;
-			};
 			detectClonePaths: {
 				params: { projectId: string };
 				response: string[];
+			};
+			/** Resolve a project's settings from a worktree path (merges .dev3/ configs). */
+			getResolvedProject: {
+				params: { projectId: string; worktreePath: string };
+				response: Project;
+			};
+			/** Load raw contents of .dev3/config.json and .dev3/config.local.json. */
+			getProjectConfigs: {
+				params: { projectId: string; worktreePath?: string };
+				response: { repo: Dev3RepoConfig; local: Dev3RepoConfig };
+			};
+			/** Save to .dev3/config.json. */
+			saveRepoConfig: {
+				params: { projectId: string; worktreePath?: string } & Dev3RepoConfig;
+				response: void;
+			};
+			/** Save to .dev3/config.local.json. */
+			saveLocalConfig: {
+				params: { projectId: string; worktreePath?: string } & Dev3RepoConfig;
+				response: void;
+			};
+			/** Per-field source provenance (repo or local). */
+			getRepoConfigSources: {
+				params: { projectId: string; worktreePath?: string };
+				response: ConfigSourceEntry[];
 			};
 			getGlobalSettings: {
 				params: void;
@@ -585,6 +629,11 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
+			};
+			/** Symlink the bundled dev3 CLI to ~/.dev3.0/bin/dev3 (for dev/debug). */
+			installDev3Cli: {
+				params: void;
+				response: { installedFrom: string };
 			};
 			getAgents: {
 				params: void;

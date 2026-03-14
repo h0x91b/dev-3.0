@@ -415,6 +415,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.asyncTaskLaunch.body",
 		icon: "\u{F0F26}", // nf-md-rocket_launch
 	},
+	// Batch 17: repo-local config
+	{
+		id: "repo-local-config",
+		titleKey: "tip.repoLocalConfig.title",
+		bodyKey: "tip.repoLocalConfig.body",
+		icon: "\u{F0493}", // nf-md-share_variant
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

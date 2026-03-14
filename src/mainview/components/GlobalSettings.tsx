@@ -21,6 +21,7 @@ function GlobalSettings() {
 	);
 
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
+	const [cliInstallStatus, setCliInstallStatus] = useState<string | null>(null);
 	const [keymapPreset, setKeymapPresetState] = useState<TerminalKeymapPreset>(() => getKeymapPreset());
 
 	useEffect(() => {
@@ -825,6 +826,37 @@ function GlobalSettings() {
 								/>
 							))}
 						</div>
+					</div>
+
+					{/* Developer tools */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-3">
+							{t("settings.devTools")}
+						</label>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={async () => {
+									try {
+										setCliInstallStatus(null);
+										const { installedFrom } = await api.request.installDev3Cli();
+										setCliInstallStatus(installedFrom);
+									} catch (err) {
+										setCliInstallStatus(`Error: ${err}`);
+									}
+								}}
+								className="px-4 py-2 bg-raised hover:bg-raised-hover text-fg text-sm rounded-lg transition-colors border border-edge"
+							>
+								{t("settings.installDev3Cli")}
+							</button>
+							{cliInstallStatus && (
+								<span className="text-fg-muted text-xs truncate max-w-md" title={cliInstallStatus}>
+									→ {cliInstallStatus}
+								</span>
+							)}
+						</div>
+						<p className="text-fg-muted text-xs mt-1">
+							{t("settings.installDev3CliDesc")}
+						</p>
 					</div>
 				</div>
 			</div>

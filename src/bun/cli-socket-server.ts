@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
-import { ALL_STATUSES, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
 import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage } from "./rpc-handlers";
+import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -453,6 +454,34 @@ const handlers: Record<string, Handler> = {
 		const updated = await data.updateTask(project, task.id, { status: builtinStatus, customColumnId: null }, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
+	},
+
+	"config.export": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		const worktreePath = params.worktreePath as string | undefined;
+		const project = await data.getProject(projectId);
+		const configPath = worktreePath || project.path;
+		await repoConfig.migrateProjectConfig(project, configPath);
+		return { path: `${configPath}/.dev3/config.json` };
+	},
+
+	"config.show": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		const worktreePath = params.worktreePath as string | undefined;
+		const project = await data.getProject(projectId);
+		const configPath = worktreePath || project.path;
+		const resolved = await repoConfig.resolveProjectConfig(project, configPath);
+		const sources = await repoConfig.getConfigSources(configPath);
+		const hasRepoFile = repoConfig.hasRepoConfig(configPath);
+		return {
+			settings: Object.fromEntries(
+				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key]]),
+			),
+			sources: Object.fromEntries(sources.map((s) => [s.field, s.source])),
+			hasRepoConfig: hasRepoFile,
+		};
 	},
 };
 

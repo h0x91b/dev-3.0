@@ -134,6 +134,8 @@ const tips = {
 	"tip.worktreeFileFilter.body": "In Project Settings, toggle off \"Include All Files\" to check out only the directories you need — great for large monorepos.",
 	"tip.asyncTaskLaunch.title": "Non-blocking task launch",
 	"tip.asyncTaskLaunch.body": "Launching a task closes the dialog instantly. The card shows a spinner while the worktree is being prepared in the background.",
+	"tip.repoLocalConfig.title": "Share project config via git",
+	"tip.repoLocalConfig.body": "Use \"Save to Repo\" in Project Settings to store scripts and paths in .dev3/config.json — teammates get the setup automatically.",
 } as const;
 
 export default tips;
