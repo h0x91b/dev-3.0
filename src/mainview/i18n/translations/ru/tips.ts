@@ -136,6 +136,7 @@ const tips = {
 	"tip.asyncTaskLaunch.body": "Запуск задачи мгновенно закрывает диалог. Карточка показывает спиннер, пока worktree подготавливается в фоне.",
 	"tip.repoLocalConfig.title": "Общий конфиг через git",
 	"tip.repoLocalConfig.body": "Нажмите «Сохранить в репо» в настройках проекта — скрипты и пути попадут в .dev3/config.json, и команда получит настройки автоматически.",
+
 };
 
 export default tips;

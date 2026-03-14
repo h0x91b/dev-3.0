@@ -136,6 +136,7 @@ const tips = {
 	"tip.asyncTaskLaunch.body": "Launching a task closes the dialog instantly. The card shows a spinner while the worktree is being prepared in the background.",
 	"tip.repoLocalConfig.title": "Share project config via git",
 	"tip.repoLocalConfig.body": "Use \"Save to Repo\" in Project Settings to store scripts and paths in .dev3/config.json — teammates get the setup automatically.",
+
 } as const;
 
 export default tips;

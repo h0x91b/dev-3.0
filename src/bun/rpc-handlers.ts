@@ -2241,6 +2241,17 @@ export const handlers = {
 		await updater.applyUpdate();
 	},
 
+	async saveUpdateRoute({ route }: { route: string }): Promise<void> {
+		log.info("-> saveUpdateRoute");
+		await data.saveUpdateRoute(route);
+	},
+
+	async getUpdateRoute(): Promise<{ route: string | null }> {
+		log.info("-> getUpdateRoute");
+		const route = await data.loadAndClearUpdateRoute();
+		return { route };
+	},
+
 	async getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string }> {
 		log.info("-> getAppVersion");
 		const local = await updater.getLocalVersion();

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalHeader from "../GlobalHeader";
 import { I18nProvider } from "../../i18n";
@@ -10,6 +10,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTasks: vi.fn(),
 			applyUpdate: vi.fn(),
+			saveUpdateRoute: vi.fn(),
 			renameTask: vi.fn(),
 		},
 	},
@@ -405,5 +406,104 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		await user.click(screen.getByTitle("Edit title"));
 		await user.keyboard("{Enter}");
 		expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
+	});
+});
+
+describe("GlobalHeader — update countdown", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.useFakeTimers();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+		mockedApi.request.applyUpdate.mockResolvedValue(undefined as any);
+		mockedApi.request.saveUpdateRoute.mockResolvedValue(undefined as any);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("shows countdown on restart button when update is available", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+		expect(screen.getByText(/Restart to Update \(60s\)/)).toBeInTheDocument();
+	});
+
+	it("decrements countdown every second", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+		expect(screen.getByText(/\(60s\)/)).toBeInTheDocument();
+
+		act(() => { vi.advanceTimersByTime(3000); });
+		expect(screen.getByText(/\(57s\)/)).toBeInTheDocument();
+	});
+
+	it("shows Postpone button instead of Later", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+		expect(screen.getByText("Postpone")).toBeInTheDocument();
+		expect(screen.queryByText("Later")).not.toBeInTheDocument();
+	});
+
+	it("dismisses toast and stops countdown on Postpone click", () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+		expect(screen.getByText(/Restart to Update/)).toBeInTheDocument();
+
+		act(() => { fireEvent.click(screen.getByText("Postpone")); });
+
+		// Toast should be dismissed
+		expect(screen.queryByText(/Restart to Update \(\d+s\)/)).not.toBeInTheDocument();
+	});
+
+	it("auto-restarts when countdown reaches 0", async () => {
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+
+		act(() => { vi.advanceTimersByTime(60_000); });
+		// Flush the async handleRestart (saveUpdateRoute → applyUpdate)
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		expect(mockedApi.request.applyUpdate).toHaveBeenCalled();
+	});
+
+	it("saves current route via RPC before applying update", () => {
+		renderHeader(
+			{ screen: "project", projectId: "p1" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+
+		act(() => { vi.advanceTimersByTime(60_000); });
+
+		expect(mockedApi.request.saveUpdateRoute).toHaveBeenCalledWith({
+			route: JSON.stringify({ screen: "project", projectId: "p1" }),
+		});
 	});
 });

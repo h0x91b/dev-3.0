@@ -12,6 +12,8 @@ const updates = {
 	"update.readyTitle": "v{version} lista para instalar",
 	"update.sessionsNote": "Todas las sesiones de terminal se conservarán — tmux sigue ejecutándose en segundo plano.",
 	"update.restartBtn": "Reiniciar para actualizar",
+	"update.restartCountdown": "Reiniciar para actualizar ({seconds}s)",
+	"update.postponeBtn": "Posponer",
 	"update.restarting": "Reiniciando...",
 	"update.checking": "Verificando...",
 	"update.downloading": "Descargando...",

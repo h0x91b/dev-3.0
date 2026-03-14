@@ -167,6 +167,17 @@ function App() {
 			try {
 				const projects = await api.request.getProjects();
 				dispatch({ type: "setProjects", projects });
+
+				// Restore route saved before an update restart
+				try {
+					const { route: savedRoute } = await api.request.getUpdateRoute();
+					if (savedRoute) {
+						const route = JSON.parse(savedRoute) as Route;
+						dispatch({ type: "navigate", route });
+					}
+				} catch {
+					// Ignore — file may not exist or be malformed
+				}
 			} catch (err) {
 				console.error("Failed to load projects:", err);
 			}

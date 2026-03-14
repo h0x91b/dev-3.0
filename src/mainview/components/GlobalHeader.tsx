@@ -32,20 +32,38 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
 	const [showToast, setShowToast] = useState(false);
+	const [countdown, setCountdown] = useState(0);
+	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const [showProjectDropdown, setShowProjectDropdown] = useState(false);
 	const [projectTaskCounts, setProjectTaskCounts] = useState<Record<string, number>>({});
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
 	const countsCacheTimeRef = useRef<number>(0);
 
-	// Show toast when updateVersion first appears
+	// Show toast with 60s countdown when updateVersion first appears
 	useEffect(() => {
 		if (updateVersion) {
 			setShowToast(true);
-			const timer = setTimeout(() => setShowToast(false), 15_000);
-			return () => clearTimeout(timer);
+			setCountdown(60);
+			countdownRef.current = setInterval(() => {
+				setCountdown((prev) => {
+					if (prev <= 1) return 0;
+					return prev - 1;
+				});
+			}, 1000);
+			return () => {
+				if (countdownRef.current) clearInterval(countdownRef.current);
+			};
 		}
 	}, [updateVersion]);
+
+	// Auto-restart when countdown reaches 0
+	useEffect(() => {
+		if (countdown === 0 && showToast) {
+			if (countdownRef.current) clearInterval(countdownRef.current);
+			handleRestart();
+		}
+	}, [countdown, showToast]);
 
 	// Close dropdowns on outside click or Escape
 	useEffect(() => {
@@ -104,9 +122,23 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 		setShowProjectDropdown(false);
 	}, [route]);
 
+	function dismissToast() {
+		setShowToast(false);
+		setCountdown(0);
+		if (countdownRef.current) {
+			clearInterval(countdownRef.current);
+			countdownRef.current = null;
+		}
+	}
+
 	async function handleRestart() {
 		setRestarting(true);
+		if (countdownRef.current) {
+			clearInterval(countdownRef.current);
+			countdownRef.current = null;
+		}
 		try {
+			await api.request.saveUpdateRoute({ route: JSON.stringify(route) });
 			await api.request.applyUpdate();
 		} catch {
 			setRestarting(false);
@@ -488,21 +520,21 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						</div>
 						<div className="flex items-center gap-2 mt-2.5">
 							<button
-								onClick={() => { setShowToast(false); handleRestart(); }}
+								onClick={() => { dismissToast(); handleRestart(); }}
 								className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
 							>
-								{t("update.restartBtn")}
+								{countdown > 0 ? t("update.restartCountdown", { seconds: String(countdown) }) : t("update.restartBtn")}
 							</button>
 							<button
-								onClick={() => setShowToast(false)}
+								onClick={dismissToast}
 								className="px-3 py-1.5 text-xs font-medium rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
 							>
-								{t("update.laterBtn")}
+								{t("update.postponeBtn")}
 							</button>
 						</div>
 					</div>
 					<button
-						onClick={() => setShowToast(false)}
+						onClick={dismissToast}
 						className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 					>
 						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

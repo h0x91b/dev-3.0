@@ -1,3 +1,4 @@
+import { unlink } from "node:fs/promises";
 import type { Project, Task, TaskStatus, TipState } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
@@ -519,4 +520,25 @@ export async function resetTipState(): Promise<TipState> {
 		await rawSaveTipState(fresh);
 		return fresh;
 	});
+}
+
+// ---- Update Route (persisted across app restarts for auto-update) ----
+
+const UPDATE_ROUTE_FILE = `${DEV3_HOME}/update-route.json`;
+
+export async function saveUpdateRoute(route: string): Promise<void> {
+	await ensureDir(UPDATE_ROUTE_FILE);
+	await Bun.write(UPDATE_ROUTE_FILE, route);
+}
+
+export async function loadAndClearUpdateRoute(): Promise<string | null> {
+	try {
+		const file = Bun.file(UPDATE_ROUTE_FILE);
+		if (!(await file.exists())) return null;
+		const data = await file.text();
+		await unlink(UPDATE_ROUTE_FILE);
+		return data || null;
+	} catch {
+		return null;
+	}
 }
