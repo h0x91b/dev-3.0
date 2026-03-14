@@ -434,7 +434,15 @@ function ProjectSettings({
 								role="switch"
 								aria-checked={!sparseCheckoutEnabled}
 								aria-label={t("projectSettings.sparseCheckoutAll")}
-								onClick={() => setSparseCheckoutEnabled((v) => !v)}
+								onClick={() => {
+									setSparseCheckoutEnabled((v) => {
+										const next = !v;
+										if (next && sparseCheckoutPaths.length === 0) {
+											setSparseCheckoutPaths([""]);
+										}
+										return next;
+									});
+								}}
 								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
 									!sparseCheckoutEnabled ? "bg-accent" : "bg-edge-active"
 								}`}
@@ -447,12 +455,23 @@ function ProjectSettings({
 							</button>
 						</div>
 						{sparseCheckoutEnabled && (
-							<ListEditor
-								items={sparseCheckoutPaths}
-								onChange={setSparseCheckoutPaths}
-								placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
-								addLabel={t("projectSettings.sparseCheckoutAddPath")}
-							/>
+							<>
+								<ListEditor
+									items={sparseCheckoutPaths}
+									onChange={setSparseCheckoutPaths}
+									placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
+									addLabel={t("projectSettings.sparseCheckoutAddPath")}
+								/>
+								{project && (
+									<button
+										type="button"
+										onClick={() => api.request.openFolder({ path: project.path })}
+										className="mt-2 text-xs text-fg-3 hover:text-accent transition-colors"
+									>
+										{t("projectSettings.sparseCheckoutOpenFinder")}
+									</button>
+								)}
+							</>
 						)}
 					</div>
 
