@@ -460,12 +460,12 @@ function KanbanColumn({
 						{!editing && onRenameColumn && (
 							<button
 								onClick={startEditing}
-								className="text-fg-muted hover:text-fg-3 transition-colors w-5 h-5 flex items-center justify-center rounded-full text-sm leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
+								className="text-fg-muted hover:text-fg-3 transition-colors w-5 h-5 flex items-center justify-center rounded-full text-base leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
 								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 								aria-label={t("kanban.renameColumn")}
 								title={t("kanban.renameColumn")}
 							>
-								{"\u{F0B5B}"}
+								{"\u{F11E7}"}
 							</button>
 						)}
 						{description && (
