@@ -1666,7 +1666,7 @@ export const handlers = {
 
 		const sharedSeq = sourceTask.seq;
 		const resultTasks: Task[] = [];
-		const targetStatus: TaskStatus = sourceTask.status !== "todo" ? sourceTask.status : "in-progress";
+		const targetStatus: TaskStatus = "in-progress";
 		const needsWorktree = isActive(targetStatus);
 
 		// Phase 1: Create all new attempt tasks in DB
