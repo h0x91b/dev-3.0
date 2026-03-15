@@ -45,7 +45,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});
-	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus } | null>(null);
+	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; mode?: "spawn" | "addAttempts" } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
 	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
@@ -515,6 +515,8 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 						agents,
 						onLaunchVariants: (task: Task, targetStatus: TaskStatus) =>
 							setLaunchModal({ task, targetStatus }),
+						onAddAttempts: (task: Task) =>
+							setLaunchModal({ task, targetStatus: task.status, mode: "addAttempts" }),
 						onTaskDrop: handleTaskDrop,
 						onReorderTask: handleReorderTask,
 						dragFromStatus,
@@ -595,6 +597,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 					globalSettings={globalSettings}
 					dispatch={dispatch}
 					onClose={() => setLaunchModal(null)}
+					mode={launchModal.mode}
 				/>
 			)}
 		</>

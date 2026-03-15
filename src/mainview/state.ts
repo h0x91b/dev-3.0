@@ -52,6 +52,7 @@ export type AppAction =
 	| { type: "addTask"; task: Task }
 	| { type: "removeTask"; taskId: string }
 	| { type: "spawnVariants"; sourceTaskId: string; variants: Task[] }
+	| { type: "addAttempts"; sourceTaskId: string; newAttempts: Task[]; updatedSource: Task }
 	| { type: "addProject"; project: Project }
 	| { type: "removeProject"; projectId: string }
 	| { type: "updateProject"; project: Project }
@@ -153,6 +154,18 @@ export function reducer(state: AppState, action: AppAction): AppState {
 						(t) => t.id !== action.sourceTaskId && !variantIds.has(t.id),
 					),
 					...action.variants,
+				],
+			};
+		}
+		case "addAttempts": {
+			const attemptIds = new Set(action.newAttempts.map((v) => v.id));
+			return {
+				...state,
+				currentProjectTasks: [
+					...state.currentProjectTasks
+						.filter((t) => !attemptIds.has(t.id))
+						.map((t) => t.id === action.sourceTaskId ? action.updatedSource : t),
+					...action.newAttempts,
 				],
 			};
 		}

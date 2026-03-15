@@ -25,6 +25,7 @@ interface KanbanColumnProps {
 	onAddTask: () => void;
 	agents: CodingAgent[];
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
+	onAddAttempts: (task: Task) => void;
 	onTaskDrop: (taskId: string, targetStatus: TaskStatus) => void;
 	onTaskDropToCustomColumn?: (taskId: string, customColumnId: string) => void;
 	onReorderTask: (taskId: string, targetIndex: number) => void;
@@ -71,6 +72,7 @@ function KanbanColumn({
 	onAddTask,
 	agents,
 	onLaunchVariants,
+	onAddAttempts,
 	onTaskDrop,
 	onTaskDropToCustomColumn,
 	onReorderTask,
@@ -475,6 +477,7 @@ function KanbanColumn({
 							navigate={navigate}
 							agents={agents}
 							onLaunchVariants={onLaunchVariants}
+							onAddAttempts={onAddAttempts}
 							onDragStart={onDragStart}
 							onTaskMoved={onTaskMoved}
 							bellCount={bellCounts.get(task.id) ?? 0}

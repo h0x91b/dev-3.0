@@ -129,6 +129,7 @@ function renderCard(
 		dispatch?: React.Dispatch<AppAction>;
 		navigate?: (route: Route) => void;
 		onLaunchVariants?: (task: Task, targetStatus: TaskStatus) => void;
+		onAddAttempts?: (task: Task) => void;
 		onDragStart?: (taskId: string) => void;
 		onTaskMoved?: (taskId: string) => void;
 		bellCount?: number;
@@ -147,6 +148,7 @@ function renderCard(
 				navigate={opts?.navigate ?? vi.fn()}
 				agents={agents}
 				onLaunchVariants={opts?.onLaunchVariants ?? vi.fn()}
+				onAddAttempts={opts?.onAddAttempts ?? vi.fn()}
 				onDragStart={opts?.onDragStart ?? vi.fn()}
 				onTaskMoved={opts?.onTaskMoved ?? vi.fn()}
 				bellCount={opts?.bellCount}
@@ -255,6 +257,7 @@ describe("TaskCard", () => {
 						navigate={vi.fn()}
 						agents={[agentNoDefault]}
 						onLaunchVariants={vi.fn()}
+						onAddAttempts={vi.fn()}
 						onDragStart={vi.fn()}
 						onTaskMoved={vi.fn()}
 					/>
@@ -283,6 +286,17 @@ describe("TaskCard", () => {
 
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
+		});
+
+		it("+ Variant button triggers onAddAttempts for active tasks", async () => {
+			const user = userEvent.setup();
+			const onAddAttempts = vi.fn();
+			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" });
+			renderCard(task, { onAddAttempts });
+
+			await user.click(screen.getByTitle("+ Variant"));
+
+			expect(onAddAttempts).toHaveBeenCalledWith(task);
 		});
 
 		it("X button asks for confirmation before cancelling", async () => {
@@ -1117,12 +1131,12 @@ describe("TaskCard", () => {
 	});
 
 	describe("PR badge", () => {
-		it("keeps the footer wrap-safe when a PR badge is shown", () => {
+		it("keeps the footer layout stable when a PR badge is shown", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
 			});
 
-			expect(screen.getByTestId("task-card-footer")).toHaveClass("flex-wrap");
+			expect(screen.getByTestId("task-card-footer")).toHaveClass("flex", "items-center");
 			expect(screen.getByRole("button", { name: "Agent is Working" })).toHaveClass("min-w-0");
 		});
 

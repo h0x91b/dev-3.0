@@ -44,6 +44,7 @@ const kanban = {
 	"task.failedMove": "Error al mover tarea: {error}",
 	"task.failedDelete": "Error al eliminar tarea: {error}",
 	"task.run": "Ejecutar",
+	"task.addVariant": "+ Variante",
 	"task.preparing": "Preparando…",
 	"task.cancel": "Cancelar",
 	"task.confirmCancel": "¿Cancelar tarea \"{title}\"?",
@@ -77,11 +78,13 @@ const kanban = {
 
 	// LaunchVariantsModal
 	"launch.title": "Lanzar tarea",
+	"launch.retryTitle": "Nueva variante",
 	"launch.agent": "Agente",
 	"launch.config": "Configuración",
 	"launch.addVariant": "+ Agregar variante",
 	"launch.removeVariant": "Eliminar",
 	"launch.launch": "Lanzar",
+	"launch.launchVariant": "Lanzar",
 	"launch.launching": "Lanzando...",
 	"launch.failedLaunch": "Error al lanzar: {error}",
 

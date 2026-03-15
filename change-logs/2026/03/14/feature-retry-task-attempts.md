@@ -1,0 +1,1 @@
+Added ability to create new attempts for already running tasks. Active task cards now show a "Retry" button that opens the same launch dialog used for initial task start, creating additional attempts with fresh worktrees using the original task description.

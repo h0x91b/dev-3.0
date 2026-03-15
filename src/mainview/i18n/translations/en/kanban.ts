@@ -44,6 +44,7 @@ const kanban = {
 	"task.failedMove": "Failed to move task: {error}",
 	"task.failedDelete": "Failed to delete task: {error}",
 	"task.run": "Run",
+	"task.addVariant": "+ Variant",
 	"task.preparing": "Preparing…",
 	"task.cancel": "Cancel",
 	"task.confirmCancel": "Cancel task \"{title}\"?",
@@ -77,11 +78,13 @@ const kanban = {
 
 	// LaunchVariantsModal
 	"launch.title": "Launch Task",
+	"launch.retryTitle": "New Variant",
 	"launch.agent": "Agent",
 	"launch.config": "Configuration",
 	"launch.addVariant": "+ Add Variant",
 	"launch.removeVariant": "Remove",
 	"launch.launch": "Launch",
+	"launch.launchVariant": "Launch",
 	"launch.launching": "Launching...",
 	"launch.failedLaunch": "Failed to launch: {error}",
 

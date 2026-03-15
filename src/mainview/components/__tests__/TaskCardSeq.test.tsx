@@ -68,6 +68,7 @@ function renderCard(task: Task) {
 				navigate={vi.fn()}
 				agents={agents}
 				onLaunchVariants={vi.fn()}
+				onAddAttempts={vi.fn()}
 				onDragStart={vi.fn()}
 				onTaskMoved={vi.fn()}
 			/>
