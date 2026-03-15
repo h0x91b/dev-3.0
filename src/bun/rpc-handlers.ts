@@ -77,6 +77,27 @@ export function shellQuote(s: string): string {
 }
 
 /**
+ * Set DEV3_PORT* environment variables on a tmux session so that ALL new
+ * panes/windows in the session inherit them automatically (not just the
+ * initial process that was started with the env).
+ */
+async function setTmuxSessionPortEnv(taskId: string, socket: string): Promise<void> {
+	const ports = portPool.getPortAssignments(taskId);
+	if (ports.length === 0) return;
+
+	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
+	const envVars = portPool.buildPortEnv(ports);
+
+	for (const [key, value] of Object.entries(envVars)) {
+		const args = pty.tmuxArgs(socket, "set-environment", "-t", tmuxSession, key, value);
+		const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
+		await proc.exited;
+	}
+
+	log.info("Port env vars set on tmux session", { taskId: taskId.slice(0, 8), vars: Object.keys(envVars) });
+}
+
+/**
  * Build `export KEY='value'` lines for a set of environment variables.
  * These are placed at the top of wrapper scripts so that the agent command
  * running inside a shared tmux server always sees the correct env vars,
@@ -869,8 +890,12 @@ export async function launchTaskPty(
 		envKeys: Object.keys(env),
 	});
 	try {
-		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET);
+		const sessionSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
+
+		// Propagate port env vars to the tmux session so all new panes inherit them
+		await setTmuxSessionPortEnv(task.id, sessionSocket);
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
 			taskId: task.id.slice(0, 8),
