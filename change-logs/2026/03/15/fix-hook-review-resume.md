@@ -1,0 +1,1 @@
+Fixed UserPromptSubmit/PreToolUse hooks not moving tasks from "Your Review" back to "Agent is Working" when the user leaves feedback and the agent resumes. The `--if-status-not` guard now only excludes `review-by-ai` (the AI review agent), allowing the primary agent to correctly transition out of `review-by-user`.

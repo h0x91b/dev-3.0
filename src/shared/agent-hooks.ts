@@ -35,9 +35,11 @@ export function buildClaudeHooks(
 	const move = (status: string, extra?: string) =>
 		`${DEV3_CLI} task move ${taskId} --status ${status}${extra ? ` ${extra}` : ""}`;
 
-	// Working hook: move to in-progress, but NOT when in review stages
-	// (the review agent shares the same hooks file)
-	const workingCmd = move("in-progress", "--if-status-not review-by-ai,review-by-user");
+	// Working hook: move to in-progress, but NOT when in review-by-ai
+	// (the review agent shares the same hooks file and must not flip status).
+	// review-by-user is intentionally allowed: when the user leaves feedback
+	// and the primary agent resumes, UserPromptSubmit should move the task back.
+	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
 
 	// Primary Stop hook: only fires when task is in-progress (primary agent working).
 	// This prevents it from firing after the review agent has already moved the task.
