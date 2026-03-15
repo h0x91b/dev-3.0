@@ -437,6 +437,44 @@ describe("resolveProjectConfig with configPath override (worktree)", () => {
 		expect(resolved.defaultBaseBranch).toBe("main");
 	});
 
+	it("falls back to project.path config for fields missing in worktree config", async () => {
+		// Project path has portCount and setupScript in .dev3/config.json
+		const projConfigDir = join(TEST_DIR, ".dev3");
+		mkdirSync(projConfigDir, { recursive: true });
+		writeFileSync(join(projConfigDir, "config.json"), JSON.stringify({
+			setupScript: "project-setup",
+			portCount: 3,
+		}));
+
+		// Worktree has its own .dev3/config.json that overrides setupScript but NOT portCount
+		const wtConfigDir = join(WORKTREE_DIR, ".dev3");
+		mkdirSync(wtConfigDir, { recursive: true });
+		writeFileSync(join(wtConfigDir, "config.json"), JSON.stringify({
+			setupScript: "worktree-setup",
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
+		// Worktree override wins for setupScript
+		expect(resolved.setupScript).toBe("worktree-setup");
+		// portCount should fall back to project.path config, not be lost
+		expect(resolved.portCount).toBe(3);
+	});
+
+	it("falls back to project.path config when worktree has no .dev3/ at all", async () => {
+		// Project path has portCount in .dev3/config.json
+		const projConfigDir = join(TEST_DIR, ".dev3");
+		mkdirSync(projConfigDir, { recursive: true });
+		writeFileSync(join(projConfigDir, "config.json"), JSON.stringify({
+			portCount: 2,
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
+		// portCount should come from project.path config
+		expect(resolved.portCount).toBe(2);
+	});
+
 	it("preserves non-config project fields", async () => {
 		const wtConfigDir = join(WORKTREE_DIR, ".dev3");
 		mkdirSync(wtConfigDir, { recursive: true });
