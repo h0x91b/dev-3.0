@@ -1,6 +1,6 @@
 {
 	"name": "electrobun-react-tailwind-vite",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
 	"license": "Apache-2.0",
 	"author": "Arseny Pavlenko",
