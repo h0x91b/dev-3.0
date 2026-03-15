@@ -29,7 +29,8 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai,review-by-user");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).not.toContain("review-by-user");
 	});
 
 	it("PreToolUse hook moves to in-progress with --if-status-not guard", () => {
@@ -39,7 +40,8 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain(TASK_ID);
 		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai,review-by-user");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).not.toContain("review-by-user");
 	});
 
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
@@ -96,14 +98,26 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
 	});
 
+	it("working hooks allow transition from review-by-user (user feedback resumes agent)", () => {
+		const hooks = buildClaudeHooks(TASK_ID);
+		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
+
+		// review-by-user must NOT be excluded — when user leaves feedback
+		// and the agent resumes, the hook should move the task back to in-progress
+		expect(cmd).not.toContain("review-by-user");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+	});
+
 	it("working hooks use --if-status-not to skip during AI review", () => {
 		const hooks = buildClaudeHooks(TASK_ID, { stopTarget: "review-by-ai" });
 
 		const preCmd = hooks.PreToolUse[0].hooks[0].command;
 		const userCmd = hooks.UserPromptSubmit[0].hooks[0].command;
 
-		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-user");
-		expect(userCmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-user");
+		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai");
+		expect(userCmd).toContain("--status in-progress --if-status-not review-by-ai");
+		expect(preCmd).not.toContain("review-by-user");
+		expect(userCmd).not.toContain("review-by-user");
 	});
 
 	it("all hooks use command type", () => {
@@ -266,8 +280,10 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-user");
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-user");
+		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
 
 	it("overwrites corrupted JSON gracefully", () => {
