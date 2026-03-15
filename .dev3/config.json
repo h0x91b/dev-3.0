@@ -5,5 +5,14 @@
     "node_modules",
     "build",
     "dist"
-  ]
+  ],
+  "sparseCheckoutPaths": [],
+  "builtinColumnAgents": {
+    "review-by-ai": {
+      "agentId": "builtin-claude",
+      "configId": "claude-bypass-sonnet",
+      "prompt": ""
+    }
+  },
+  "portCount": 3
 }
