@@ -458,6 +458,24 @@ function ConfigForm({ config, onChange, inherited, saving, onSave, saveLabel, sa
 				</div>
 			</div>
 
+			{/* Port Allocation */}
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-1">
+					{t("projectSettings.portCount")}
+				</label>
+				<p className="text-fg-3 text-sm mb-2">
+					{t("projectSettings.portCountDesc")}
+				</p>
+				<input
+					type="number"
+					min={0}
+					max={20}
+					value={config.portCount ?? 0}
+					onChange={(e) => update("portCount", Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+					className="w-20 px-3 py-1.5 rounded-lg bg-base border border-edge text-fg text-sm focus:outline-none focus:border-accent"
+				/>
+			</div>
+
 			{/* Worktree File Filter (Sparse Checkout) */}
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
@@ -581,7 +599,7 @@ function ProjectSettings({
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
 		const keysToCheck: (keyof Dev3RepoConfig)[] = [
 			"setupScript", "devScript", "cleanupScript", "defaultBaseBranch",
-			"peerReviewEnabled", "sparseCheckoutEnabled",
+			"peerReviewEnabled", "sparseCheckoutEnabled", "portCount",
 		];
 		for (const k of keysToCheck) {
 			if ((a[k] ?? "") !== (b[k] ?? "")) return false;

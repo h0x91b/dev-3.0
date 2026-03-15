@@ -127,6 +127,8 @@ const settings = {
 		"Rama desde la cual se crean los worktrees",
 	"projectSettings.peerReview": "Columna de revisión de colegas",
 	"projectSettings.peerReviewDesc": "Mostrar la columna «Revisión PR». Desactívala en proyectos sin revisión de código entre pares.",
+	"projectSettings.portCount": "Asignación de puertos",
+	"projectSettings.portCountDesc": "Asignar puertos libres automáticamente por tarea. Se inyectan como $DEV3_PORT0, $DEV3_PORT1, etc.",
 	"projectSettings.sparseCheckout": "Filtro de archivos del worktree (monorepos grandes)",
 	"projectSettings.sparseCheckoutDesc": "Para monorepos grandes: limita qué directorios se descargan en los worktrees. Acelera la creación de worktrees y ahorra espacio en disco. Si tu repositorio es pequeño, deja \"Incluir todos los archivos\" activado.",
 	"projectSettings.sparseCheckoutAll": "Incluir todos los archivos",

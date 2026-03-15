@@ -835,6 +835,10 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: PortInfo[];
 			};
+			getPortAllocations: {
+				params: { taskId: string };
+				response: number[];
+			};
 			listTmuxSessions: {
 				params: void;
 				response: TmuxSessionInfo[];

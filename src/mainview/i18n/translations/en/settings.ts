@@ -126,6 +126,8 @@ const settings = {
 	"projectSettings.baseBranchDesc": "Branch to create worktrees from",
 	"projectSettings.peerReview": "Peer Review Column",
 	"projectSettings.peerReviewDesc": "Show the \"PR Review\" column. Disable for projects that don't use peer code review.",
+	"projectSettings.portCount": "Port Allocation",
+	"projectSettings.portCountDesc": "Auto-allocate free ports per task. Injected as $DEV3_PORT0, $DEV3_PORT1, etc.",
 	"projectSettings.sparseCheckout": "Worktree File Filter (Large Monorepos)",
 	"projectSettings.sparseCheckoutDesc": "For large monorepos: limit which directories are checked out into worktrees. This speeds up worktree creation and saves disk space. If your repository is small, leave \"Include All Files\" enabled.",
 	"projectSettings.sparseCheckoutAll": "Include All Files",

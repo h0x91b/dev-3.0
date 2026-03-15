@@ -2680,6 +2680,10 @@ export const handlers = {
 		return ports;
 	},
 
+	async getPortAllocations(params: { taskId: string }): Promise<number[]> {
+		return portPool.getPortAssignments(params.taskId);
+	},
+
 	async listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		log.info("→ listTmuxSessions");
 

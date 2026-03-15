@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			checkWorktreeExists: vi.fn(),
 			getResolvedProject: vi.fn().mockResolvedValue({}),
 			getBranchStatus: vi.fn().mockResolvedValue({}),
+			getPortAllocations: vi.fn().mockResolvedValue([]),
 		},
 	},
 }));

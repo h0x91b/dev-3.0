@@ -52,6 +52,7 @@ const terminal = {
 	"ports.copied": "Copied!",
 	"ports.count_one": "{count} port",
 	"ports.count_other": "{count} ports",
+	"ports.allocated": "Allocated ports",
 } as const;
 
 export default terminal;

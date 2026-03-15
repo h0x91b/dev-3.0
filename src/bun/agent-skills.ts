@@ -205,6 +205,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`clonePaths\` | Heavy directories that should be CoW-cloned into new worktrees instead of re-downloaded. Common: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Only include dirs that actually exist in the project. |
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
+   | \`portCount\` | Number of ports to auto-allocate per task/worktree. Set to 0 (default) to disable. Look at \`package.json\` scripts and \`docker-compose.yml\` to estimate how many concurrent ports the dev stack needs (e.g., frontend + backend + DB = 3). Allocated ports are injected as \`$DEV3_PORT0\`, \`$DEV3_PORT1\`, ..., \`$DEV3_PORTS\` (comma-separated), and \`$DEV3_PORT_COUNT\`. |
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
@@ -216,7 +217,8 @@ cat > .dev3/config.json << 'EOF'
   "devScript": "bun run dev",
   "cleanupScript": "rm -rf dist node_modules/.cache",
   "clonePaths": ["node_modules"],
-  "defaultBaseBranch": "main"
+  "defaultBaseBranch": "main",
+  "portCount": 2
 }
 EOF
 \`\`\`
@@ -241,6 +243,7 @@ EOF
 | \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
 | \`sparseCheckoutEnabled\` | boolean | Enable sparse checkout for worktrees (default: \`false\`) |
 | \`sparseCheckoutPaths\` | string[] | Paths to include in sparse checkout |
+| \`portCount\` | number | Ports to allocate per task (injected as \`DEV3_PORT0\`..N env vars). Default: \`0\` |
 
 **Only include these fields.** Unknown keys are silently ignored. Do NOT include project metadata (id, name, path).
 
