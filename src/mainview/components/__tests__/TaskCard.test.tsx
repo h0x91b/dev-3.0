@@ -1131,12 +1131,12 @@ describe("TaskCard", () => {
 	});
 
 	describe("PR badge", () => {
-		it("keeps the footer wrap-safe when a PR badge is shown", () => {
+		it("keeps the footer layout stable when a PR badge is shown", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
 			});
 
-			expect(screen.getByTestId("task-card-footer")).toHaveClass("flex-wrap");
+			expect(screen.getByTestId("task-card-footer")).toHaveClass("flex", "items-center");
 			expect(screen.getByRole("button", { name: "Agent is Working" })).toHaveClass("min-w-0");
 		});
 

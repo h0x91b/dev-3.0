@@ -550,8 +550,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				);
 			})()}
 
-			{/* Bottom row */}
-			<div data-testid="task-card-footer" className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+			{/* Bottom row — pipeline + badges */}
+			<div data-testid="task-card-footer" className="mt-2 flex min-w-0 items-center gap-1.5">
 				{/* Status dropdown trigger with mini-pipeline */}
 				{(() => {
 					const activeCol = task.customColumnId
@@ -561,7 +561,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<button
 							ref={triggerRef}
 							onClick={toggleMenu}
-							className="mr-auto flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-fg/5"
+							className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-fg/5"
 							disabled={isDisabled}
 						>
 							{activeCol ? (
@@ -579,80 +579,64 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					);
 				})()}
 
-				<div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
-					{/* PR badge */}
-					{prInfo && (
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								window.open(prInfo.url, "_blank");
-							}}
-							className="inline-flex max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold text-green-400 transition-colors hover:bg-green-500/20"
-							title={t("task.openPR", { number: String(prInfo.number) })}
-						>
-							<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-							#{prInfo.number}
-						</button>
-					)}
+				{/* PR badge */}
+				{prInfo && (
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							window.open(prInfo.url, "_blank");
+						}}
+						className="inline-flex max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold text-green-400 transition-colors hover:bg-green-500/20"
+						title={t("task.openPR", { number: String(prInfo.number) })}
+					>
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+						#{prInfo.number}
+					</button>
+				)}
 
-					{/* Sibling variant dots */}
-					{hasSiblings && (
-						<button
-							ref={siblingAnchorRef}
-							onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
-							className="flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5"
-							title={t.plural("task.siblingsCount", siblings.length)}
-						>
-							{groupMembers.map((s) => (
-								<span
-									key={s.id}
-									className={`h-2 w-2 flex-shrink-0 rounded-full ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
-									style={{ background: statusColors[s.status] }}
-								/>
-							))}
-						</button>
-					)}
+				{/* Sibling variant dots */}
+				{hasSiblings && (
+					<button
+						ref={siblingAnchorRef}
+						onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+						className="flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5"
+						title={t.plural("task.siblingsCount", siblings.length)}
+					>
+						{groupMembers.map((s) => (
+							<span
+								key={s.id}
+								className={`h-2 w-2 flex-shrink-0 rounded-full ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
+								style={{ background: statusColors[s.status] }}
+							/>
+						))}
+					</button>
+				)}
 
-					{/* Port indicator for active tasks — compact icon + count, popover on click */}
-					{isActive && ports && ports.length > 0 && (
-						<button
-							ref={portsAnchorRef}
-							onClick={(e) => {
-								e.stopPropagation();
-								if (!portsPopoverOpen && portsAnchorRef.current) {
-									const rect = portsAnchorRef.current.getBoundingClientRect();
-									setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
-									setPortsPopoverVisible(false);
-								}
-								setPortsPopoverOpen(!portsPopoverOpen);
-							}}
-							className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
-							title={t.plural("ports.count", ports.length)}
-						>
-							<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
-							{ports.length}
-						</button>
-					)}
+				{/* Port indicator for active tasks */}
+				{isActive && ports && ports.length > 0 && (
+					<button
+						ref={portsAnchorRef}
+						onClick={(e) => {
+							e.stopPropagation();
+							if (!portsPopoverOpen && portsAnchorRef.current) {
+								const rect = portsAnchorRef.current.getBoundingClientRect();
+								setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
+								setPortsPopoverVisible(false);
+							}
+							setPortsPopoverOpen(!portsPopoverOpen);
+						}}
+						className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
+						title={t.plural("ports.count", ports.length)}
+					>
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+						{ports.length}
+					</button>
+				)}
 
-					{/* "Open in..." button for active tasks */}
-					{isActive && task.worktreePath && (
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								const rect = (e.target as HTMLElement).getBoundingClientRect();
-								setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
-								setCtxMenuOpen(true);
-							}}
-							className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent opacity-0 transition-all hover:bg-accent/15 group-hover:opacity-100"
-							title={t("openIn.menuTitle")}
-						>
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-						</button>
-					)}
-
-					{/* Right side actions */}
-					{isTodo ? (
-						/* Run button for TODO cards */
+				{/* Run button for TODO cards — right-aligned */}
+				{isTodo && (
+					<>
+						<div className="flex-1" />
 						<button
 							onClick={(e) => {
 								e.stopPropagation();
@@ -667,24 +651,41 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							</svg>
 							{t("task.run")}
 						</button>
-					) : isActive ? (
-						/* + Variant button for active cards */
+					</>
+				)}
+			</div>
+
+			{/* Action row for active tasks — Open in... left, + Variant right */}
+			{isActive && (
+				<div className="mt-1 flex items-center justify-between">
+					{task.worktreePath ? (
 						<button
 							onClick={(e) => {
 								e.stopPropagation();
-								preview.close();
-								onAddAttempts(task);
+								const rect = (e.target as HTMLElement).getBoundingClientRect();
+								setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
+								setCtxMenuOpen(true);
 							}}
-							className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
-							title={t("task.addVariant")}
-							disabled={isDisabled}
+							className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-all hover:bg-accent/15"
+							title={t("openIn.menuTitle")}
 						>
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0453}"}</span>
-							{t("task.addVariant")}
+							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
 						</button>
-					) : null}
+					) : <div />}
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							preview.close();
+							onAddAttempts(task);
+						}}
+						className="flex flex-shrink-0 items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
+						title={t("task.addVariant")}
+						disabled={isDisabled}
+					>
+						{t("task.addVariant")}
+					</button>
 				</div>
-			</div>
+			)}
 
 			{/* Status dropdown menu — portal + smart viewport clamping */}
 			{menuOpen && createPortal(
