@@ -798,8 +798,23 @@ function ProjectSettings({
 		else await handleSaveLocal();
 	};
 
+	const dirty = isDirty();
+	const saving = savingRepo || savingLocal;
+
 	return (
 		<div className="h-full w-full flex flex-col">
+			{dirty && (
+				<div className="flex-shrink-0 px-7 py-2 bg-accent/10 border-b border-accent/20 flex items-center justify-between">
+					<span className="text-fg-2 text-sm">{t("unsavedChanges.banner")}</span>
+					<button
+						onClick={() => handleSaveRef.current()}
+						disabled={saving}
+						className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-all active:scale-95"
+					>
+						{saving ? t("projectSettings.saving") : t("unsavedChanges.save")}
+					</button>
+				</div>
+			)}
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 
