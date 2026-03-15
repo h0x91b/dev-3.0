@@ -1651,11 +1651,12 @@ export const handlers = {
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
 						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
-						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
-							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
-						await runCowClones(project, wt.worktreePath);
-						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
+						await runCowClones(resolved, wt.worktreePath);
+						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 						const updated = await data.updateTask(project, task.id, {
 							worktreePath: wt.worktreePath,
@@ -1747,11 +1748,12 @@ export const handlers = {
 					const variant = params.variants[i];
 					try {
 						const wt = await git.createWorktree(project, task);
-						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
-							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
-						await runCowClones(project, wt.worktreePath);
-						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
+						await runCowClones(resolved, wt.worktreePath);
+						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 						const updated = await data.updateTask(project, task.id, {
 							worktreePath: wt.worktreePath,
@@ -2449,12 +2451,13 @@ export const handlers = {
 
 			if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 				try {
+					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					log.info("Attempting to restore PTY session", {
 						taskId: params.taskId.slice(0, 8),
 						status: foundTask.status,
 						worktreePath: foundTask.worktreePath,
 					});
-					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
+					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
 						worktreePath: foundTask.worktreePath,

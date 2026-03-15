@@ -1943,6 +1943,25 @@ describe("handlers.getPtyUrl", () => {
 		expect(url).toContain("session=task-1");
 		expect(pty.createSession).toHaveBeenCalled();
 	});
+
+	it("resolves project config before restoring PTY session so portCount is available", async () => {
+		const repoConfig = await import("../repo-config");
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce({
+			...project,
+			portCount: 3,
+		});
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/wt");
+	});
 });
 
 // ================================================================
