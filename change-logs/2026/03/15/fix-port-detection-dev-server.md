@@ -1,0 +1,1 @@
+Fixed port detection not finding ports opened by dev server sessions. The port scanner only scanned the main task tmux session (`dev3-*`) but dev servers run in a separate session (`dev3-dev-*`). Now `collectTaskPids` also collects PIDs from the corresponding dev server session, so ports from `runDevServer` are properly detected and shown in the UI.

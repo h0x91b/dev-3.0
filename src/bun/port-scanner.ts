@@ -104,9 +104,20 @@ export function getLsofOutput(): string {
 
 /**
  * Build the full PID set (pane PIDs + all descendants) for a tmux session.
+ * Also includes PIDs from the corresponding dev server session (dev3-dev-*)
+ * if one exists, so that ports opened by `runDevServer` are detected.
  */
 export function collectTaskPids(socket: string, sessionName: string): Set<number> {
 	const panePids = getSessionPanePids(socket, sessionName);
+
+	// Dev server sessions (dev3-dev-XXXX) run in a separate tmux session
+	// that is not tracked as a PtySession. Include their PIDs too.
+	if (sessionName.startsWith("dev3-") && !sessionName.startsWith("dev3-dev-")) {
+		const devSessionName = `dev3-dev-${sessionName.slice("dev3-".length)}`;
+		const devPanePids = getSessionPanePids(socket, devSessionName);
+		panePids.push(...devPanePids);
+	}
+
 	const allPids = new Set<number>(panePids);
 	for (const pid of panePids) {
 		for (const descendant of getDescendantPids(pid)) {

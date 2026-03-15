@@ -229,8 +229,10 @@ describe("collectTaskPids", () => {
 
 	it("returns pane PIDs plus descendants", () => {
 		mockSpawnSync
-			// tmux list-panes
+			// tmux list-panes for main session
 			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux list-panes for dev server session (none)
+			.mockReturnValueOnce(makeResult("", 1))
 			// pgrep -P 100
 			.mockReturnValueOnce(makeResult("200\n"))
 			// pgrep -P 200
@@ -244,6 +246,63 @@ describe("collectTaskPids", () => {
 		mockSpawnSync.mockReturnValue(makeResult("", 1));
 		const pids = collectTaskPids("dev3", "dev3-abc12345");
 		expect(pids.size).toBe(0);
+	});
+
+	it("includes PIDs from dev server session (dev3-dev-*)", () => {
+		mockSpawnSync
+			// tmux list-panes for dev3-abc12345 (main session)
+			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux list-panes for dev3-dev-abc12345 (dev server session)
+			.mockReturnValueOnce(makeResult("500\n"))
+			// pgrep -P 100
+			.mockReturnValueOnce(makeResult("200\n"))
+			// pgrep -P 200
+			.mockReturnValueOnce(makeResult("", 1))
+			// pgrep -P 500
+			.mockReturnValueOnce(makeResult("600\n"))
+			// pgrep -P 600
+			.mockReturnValueOnce(makeResult("", 1));
+
+		const pids = collectTaskPids("dev3", "dev3-abc12345");
+		expect(pids).toEqual(new Set([100, 200, 500, 600]));
+
+		// Verify tmux was called for both sessions
+		expect(mockSpawnSync).toHaveBeenCalledWith(
+			expect.arrayContaining(["list-panes", "-t", "dev3-abc12345"]),
+		);
+		expect(mockSpawnSync).toHaveBeenCalledWith(
+			expect.arrayContaining(["list-panes", "-t", "dev3-dev-abc12345"]),
+		);
+	});
+
+	it("does not recurse for dev3-dev-* session names", () => {
+		mockSpawnSync
+			// tmux list-panes for dev3-dev-abc12345
+			.mockReturnValueOnce(makeResult("500\n"))
+			// pgrep -P 500
+			.mockReturnValueOnce(makeResult("", 1));
+
+		const pids = collectTaskPids("dev3", "dev3-dev-abc12345");
+		expect(pids).toEqual(new Set([500]));
+
+		// Should NOT have called list-panes for dev3-dev-dev-abc12345
+		const listPaneCalls = mockSpawnSync.mock.calls.filter(
+			(args: any) => args[0]?.includes?.("list-panes"),
+		);
+		expect(listPaneCalls).toHaveLength(1);
+	});
+
+	it("handles missing dev server session gracefully", () => {
+		mockSpawnSync
+			// tmux list-panes for dev3-abc12345 (main session)
+			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux list-panes for dev3-dev-abc12345 (no session → exit 1)
+			.mockReturnValueOnce(makeResult("", 1))
+			// pgrep -P 100
+			.mockReturnValueOnce(makeResult("", 1));
+
+		const pids = collectTaskPids("dev3", "dev3-abc12345");
+		expect(pids).toEqual(new Set([100]));
 	});
 });
 
@@ -260,14 +319,16 @@ describe("scanTaskPorts", () => {
 	});
 
 	it("orchestrates pane PIDs, descendants, and lsof parsing", () => {
-		// First call: tmux list-panes
 		mockSpawnSync
+			// tmux list-panes for main session
 			.mockReturnValueOnce(makeResult("100\n"))
-			// Second call: pgrep -P 100 (descendants)
-			.mockReturnValueOnce(makeResult("200\n"))
-			// Third call: pgrep -P 200 (no more descendants)
+			// tmux list-panes for dev server session (none)
 			.mockReturnValueOnce(makeResult("", 1))
-			// Fourth call: lsof
+			// pgrep -P 100 (descendants)
+			.mockReturnValueOnce(makeResult("200\n"))
+			// pgrep -P 200 (no more descendants)
+			.mockReturnValueOnce(makeResult("", 1))
+			// lsof
 			.mockReturnValueOnce(makeResult("p200\ncnode\nn*:3000\n"));
 
 		const result = scanTaskPorts("dev3", "dev3-abc12345");
@@ -278,8 +339,10 @@ describe("scanTaskPorts", () => {
 
 	it("uses pre-fetched lsof output when provided", () => {
 		mockSpawnSync
-			// tmux list-panes
+			// tmux list-panes for main session
 			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux list-panes for dev server session (none)
+			.mockReturnValueOnce(makeResult("", 1))
 			// pgrep -P 100
 			.mockReturnValueOnce(makeResult("", 1));
 
@@ -288,8 +351,8 @@ describe("scanTaskPorts", () => {
 		expect(result).toEqual([
 			{ port: 8080, pid: 100, processName: "bun" },
 		]);
-		// Should NOT have called lsof (only tmux + pgrep = 2 calls)
-		expect(mockSpawnSync).toHaveBeenCalledTimes(2);
+		// tmux list-panes (main) + tmux list-panes (dev) + pgrep = 3 calls
+		expect(mockSpawnSync).toHaveBeenCalledTimes(3);
 	});
 });
 
@@ -314,8 +377,10 @@ describe("poller", () => {
 		mockSpawnSync
 			// lsof (shared, called first)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\n"))
-			// tmux list-panes for task
+			// tmux list-panes for main session
 			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux list-panes for dev server session (none)
+			.mockReturnValueOnce(makeResult("", 1))
 			// pgrep -P 100
 			.mockReturnValueOnce(makeResult("", 1));
 
@@ -336,10 +401,11 @@ describe("poller", () => {
 			{ taskId: "task-unchanged-test", tmuxSocket: "dev3" },
 		]);
 
-		// First poll cycle (lsof first, then tmux + pgrep)
+		// First poll cycle (lsof first, then tmux list-panes main + dev + pgrep)
 		mockSpawnSync
 			.mockReturnValueOnce(makeResult("p500\ncnode\nn*:4000\n"))
 			.mockReturnValueOnce(makeResult("500\n"))
+			.mockReturnValueOnce(makeResult("", 1)) // dev server session (none)
 			.mockReturnValueOnce(makeResult("", 1));
 
 		startPortScanPoller(push, getActiveSessions);
@@ -350,6 +416,7 @@ describe("poller", () => {
 		mockSpawnSync
 			.mockReturnValueOnce(makeResult("p500\ncnode\nn*:4000\n"))
 			.mockReturnValueOnce(makeResult("500\n"))
+			.mockReturnValueOnce(makeResult("", 1)) // dev server session (none)
 			.mockReturnValueOnce(makeResult("", 1));
 
 		vi.advanceTimersByTime(10_000);
@@ -365,16 +432,20 @@ describe("poller", () => {
 		];
 		const getActiveSessions = vi.fn().mockImplementation(() => sessions);
 
-		// First poll: lsof (shared), then tmux+pgrep for each task
+		// First poll: lsof (shared), then for each task: tmux main + tmux dev + pgrep
 		mockSpawnSync
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\np200\ncbun\nn*:8080\n"))
-			// tmux pane for task-aaaa
+			// tmux pane for task-aaaa (main)
 			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux pane for task-aaaa (dev server — none)
+			.mockReturnValueOnce(makeResult("", 1))
 			// pgrep for 100
 			.mockReturnValueOnce(makeResult("", 1))
-			// tmux pane for task-bbbb
+			// tmux pane for task-bbbb (main)
 			.mockReturnValueOnce(makeResult("200\n"))
+			// tmux pane for task-bbbb (dev server — none)
+			.mockReturnValueOnce(makeResult("", 1))
 			// pgrep for 200
 			.mockReturnValueOnce(makeResult("", 1));
 
@@ -389,8 +460,10 @@ describe("poller", () => {
 		mockSpawnSync
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\n"))
-			// tmux pane for task-aaaa
+			// tmux pane for task-aaaa (main)
 			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux pane for task-aaaa (dev server — none)
+			.mockReturnValueOnce(makeResult("", 1))
 			// pgrep for 100
 			.mockReturnValueOnce(makeResult("", 1));
 
