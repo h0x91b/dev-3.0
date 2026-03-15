@@ -128,10 +128,10 @@ function LaunchVariantsModal({
 		setLaunching(false);
 	}
 
-	const isRetry = mode === "addAttempts";
-	const title = isRetry ? t("launch.retryTitle") : t("launch.title");
-	const launchLabel = isRetry
-		? (launching ? t("launch.launching") : t("launch.retry"))
+	const isAddVariant = mode === "addAttempts";
+	const title = isAddVariant ? t("launch.retryTitle") : t("launch.title");
+	const launchLabel = isAddVariant
+		? (launching ? t("launch.launching") : t("launch.launchVariant"))
 		: (launching ? t("launch.launching") : t("launch.launch"));
 
 	return (

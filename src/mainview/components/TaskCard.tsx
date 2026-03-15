@@ -668,18 +668,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							{t("task.run")}
 						</button>
 					) : isActive ? (
-						/* Retry button for active cards */
+						/* + Variant button for active cards */
 						<button
 							onClick={(e) => {
 								e.stopPropagation();
+								preview.close();
 								onAddAttempts(task);
 							}}
-							className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-accent opacity-0 transition-all hover:bg-accent/15 group-hover:opacity-100"
-							title={t("task.retry")}
+							className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
+							title={t("task.addVariant")}
 							disabled={isDisabled}
 						>
 							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0453}"}</span>
-							{t("task.retry")}
+							{t("task.addVariant")}
 						</button>
 					) : null}
 				</div>

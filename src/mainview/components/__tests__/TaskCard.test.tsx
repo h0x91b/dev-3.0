@@ -288,13 +288,13 @@ describe("TaskCard", () => {
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
-		it("Retry button triggers onAddAttempts for active tasks", async () => {
+		it("+ Variant button triggers onAddAttempts for active tasks", async () => {
 			const user = userEvent.setup();
 			const onAddAttempts = vi.fn();
 			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" });
 			renderCard(task, { onAddAttempts });
 
-			await user.click(screen.getByTitle("Retry"));
+			await user.click(screen.getByTitle("+ Variant"));
 
 			expect(onAddAttempts).toHaveBeenCalledWith(task);
 		});
