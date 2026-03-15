@@ -5,7 +5,10 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import TerminalView from "../TerminalView";
+import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
+import ExtraKeyBar from "./ExtraKeyBar";
+import { isElectrobun } from "../rpc";
 
 interface TaskTerminalProps {
 	projectId: string;
@@ -24,6 +27,7 @@ type ErrorKind = "worktree-gone" | "session-ended";
 function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, hideInfoPanel }: TaskTerminalProps) {
 	const t = useT();
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
+	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
 	const [restarting, setRestarting] = useState(false);
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,7 +182,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
 			<div className="flex-1 min-h-0 overflow-hidden">
 				{ptyUrl ? (
-					<TerminalView ptyUrl={ptyUrl} taskId={taskId} projectId={projectId} />
+					<TerminalView ptyUrl={ptyUrl} taskId={taskId} projectId={projectId} onReady={setTermHandle} />
 				) : (
 					<div className="flex items-center justify-center h-full">
 						<div className="flex items-center gap-3">
@@ -188,6 +192,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					</div>
 				)}
 			</div>
+			{!isElectrobun && termHandle && <ExtraKeyBar handle={termHandle} />}
 		</div>
 	);
 }

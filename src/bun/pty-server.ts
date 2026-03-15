@@ -100,7 +100,8 @@ interface PtySession {
 	tmuxCommand: string;
 	env: Record<string, string>;
 	proc: ReturnType<typeof Bun.spawn> | null;
-	ws: any;
+	/** All currently connected WebSocket clients. PTY output is broadcast to all. */
+	clients: Set<any>;
 	tmuxSocket: string;
 	lastOutputTime: number;
 	idleNotified: boolean;
@@ -142,7 +143,7 @@ export function createSession(
 		tmuxCommand,
 		env: extraEnv,
 		proc: null,
-		ws: null,
+		clients: new Set(),
 		tmuxSocket,
 		lastOutputTime: Date.now(),
 		idleNotified: false,
@@ -192,13 +193,14 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 			session.proc.terminal?.close();
 			session.proc.kill();
 		}
-		if (session.ws) {
+		for (const client of session.clients) {
 			try {
-				session.ws.close();
+				client.close();
 			} catch {
 				// already closed
 			}
 		}
+		session.clients.clear();
 		sessions.delete(taskId);
 	}
 }
@@ -355,8 +357,10 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 							session.idleNotified = false;
 							checkForBell(str, session.taskId);
 							const cleaned = handleOsc52(str);
-							if (cleaned && session.ws) {
-								session.ws.sendText(cleaned);
+							if (cleaned && session.clients.size > 0) {
+								for (const client of session.clients) {
+									try { client.sendText(cleaned); } catch { /* dead client */ }
+								}
 							}
 						} catch (err) {
 							log.error("PTY data callback error", {
@@ -505,8 +509,8 @@ const ptyServer = Bun.serve({
 					cwd: session.cwd,
 				});
 
-				// Update the ws reference for this session
-				session.ws = ws as any;
+				// Add this client to the session's broadcast set
+				session.clients.add(ws as any);
 				(ws as any).sessionId = sessionId;
 
 				const cols = 80;
@@ -574,9 +578,9 @@ const ptyServer = Bun.serve({
 				log.info("WS disconnected", { taskId: shortId(sessionId) });
 
 				const session = sessions.get(sessionId);
-				if (session && session.ws === (ws as any)) {
-					// Don't kill the PTY — just detach the WS
-					session.ws = null;
+				if (session) {
+					// Remove this client — don't kill the PTY
+					session.clients.delete(ws as any);
 				}
 			} catch (err) {
 				log.error("WS close handler error", {

@@ -15,6 +15,7 @@ vi.mock("../../rpc", () => ({
 			getBranchStatus: vi.fn().mockResolvedValue({}),
 		},
 	},
+	isElectrobun: false,
 }));
 
 vi.mock("../../analytics", () => ({
