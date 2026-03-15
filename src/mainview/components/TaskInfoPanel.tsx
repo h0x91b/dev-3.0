@@ -488,7 +488,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const pushThenCreatePRRef = useRef(false);
 	const mergeDialogShownRef = useRef(false);
-	const [compareRef, setCompareRef] = useState<string>(""); // "" = origin/<baseBranch> (default)
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const defaultCompareRef = project.defaultCompareRefMode === "local" ? baseBranch : "";
+	const [compareRef, setCompareRef] = useState<string>(defaultCompareRef);
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
 	const refTriggerRef = useRef<HTMLButtonElement>(null);
@@ -498,6 +500,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
 	const diffFilesTriggerRef = useRef<HTMLSpanElement>(null);
 	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		setCompareRef(defaultCompareRef);
+	}, [defaultCompareRef, task.id]);
 
 	useEffect(() => {
 		if (!isTaskActive || !task.worktreePath) return;
@@ -880,7 +886,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		</span>
 	) : null;
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const displayRef = compareRef || `origin/${baseBranch}`;
 
 	// Close ref menu on click outside

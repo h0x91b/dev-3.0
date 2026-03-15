@@ -204,6 +204,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`cleanupScript\` | Clean build artifacts and caches. E.g., \`rm -rf node_modules/.cache dist .next\`. Tailor to what the project actually generates. If unsure, leave empty. |
    | \`clonePaths\` | Heavy directories that should be CoW-cloned into new worktrees instead of re-downloaded. Common: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Only include dirs that actually exist in the project. |
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
+   | \`defaultCompareRefMode\` | Default diff comparison target. Use \`"remote"\` for \`origin/<baseBranch>\` (recommended default) or \`"local"\` for the local base branch. |
    | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
@@ -216,7 +217,8 @@ cat > .dev3/config.json << 'EOF'
   "devScript": "bun run dev",
   "cleanupScript": "rm -rf dist node_modules/.cache",
   "clonePaths": ["node_modules"],
-  "defaultBaseBranch": "main"
+  "defaultBaseBranch": "main",
+  "defaultCompareRefMode": "remote"
 }
 EOF
 \`\`\`
@@ -238,6 +240,7 @@ EOF
 | \`cleanupScript\` | string | Runs when a task is cancelled or archived |
 | \`clonePaths\` | string[] | Dirs to CoW-clone into worktrees (faster than re-downloading) |
 | \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
+| \`defaultCompareRefMode\` | \`"remote" \| "local"\` | Default diff comparison target (\`origin/<baseBranch>\` vs local base branch) |
 | \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
 | \`sparseCheckoutEnabled\` | boolean | Enable sparse checkout for worktrees (default: \`false\`) |
 | \`sparseCheckoutPaths\` | string[] | Paths to include in sparse checkout |

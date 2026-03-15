@@ -152,6 +152,8 @@ const tips = {
 	"tip.configHierarchy.body": "Los ajustes se resuelven en orden: worktree local > worktree repo > proyecto > defaults. Sobreescribe por tarea con el icono de engranaje.",
 	"tip.worktreeConfig.title": "Ajustes por tarea",
 	"tip.worktreeConfig.body": "Cada worktree puede tener su propio .dev3/config.json. Haz clic en el engranaje en el panel de tareas para editarlo.",
+	"tip.diffCompareDefault.title": "Elige la base del diff",
+	"tip.diffCompareDefault.body": "En Ajustes del proyecto puedes elegir si el estado de rama y Show Diff comparan contra origin/<base> o la rama base local.",
 };
 
 export default tips;

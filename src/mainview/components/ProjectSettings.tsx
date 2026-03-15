@@ -425,6 +425,24 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 				/>
 			</div>
 
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("projectSettings.compareRef")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("projectSettings.compareRefDesc")}
+				</p>
+				<select
+					value={config.defaultCompareRefMode ?? ""}
+					onChange={(e) => update("defaultCompareRefMode", e.target.value || undefined)}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+				>
+					<option value="">{t("projectSettings.compareRefInherit")}</option>
+					<option value="remote">{t("projectSettings.compareRefRemote")}</option>
+					<option value="local">{t("projectSettings.compareRefLocal")}</option>
+				</select>
+			</div>
+
 			{/* Peer Review Column */}
 			<div>
 				<div className="flex items-center justify-between">
@@ -640,7 +658,7 @@ function ProjectSettings({
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
 		const keysToCheck: (keyof Dev3RepoConfig)[] = [
 			"setupScript", "devScript", "cleanupScript", "defaultBaseBranch",
-			"peerReviewEnabled", "sparseCheckoutEnabled",
+			"defaultCompareRefMode", "peerReviewEnabled", "sparseCheckoutEnabled",
 		];
 		for (const k of keysToCheck) {
 			if ((a[k] ?? "") !== (b[k] ?? "")) return false;

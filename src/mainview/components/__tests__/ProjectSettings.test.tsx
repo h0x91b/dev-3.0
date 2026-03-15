@@ -125,6 +125,16 @@ describe("ProjectSettings", () => {
 			});
 		});
 
+		it("renders the configured default diff comparison mode", async () => {
+			await renderProjectSettings(mockProject, {
+				defaultCompareRefMode: "local",
+			});
+
+			await vi.waitFor(() => {
+				expect(screen.getByDisplayValue("Local base branch")).toBeInTheDocument();
+			});
+		});
+
 		it("setup script textarea has autocapitalize off", async () => {
 			await renderProjectSettings(mockProject, { setupScript: "bun install" });
 			await goToProjectTab();

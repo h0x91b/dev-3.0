@@ -1,0 +1,1 @@
+Projects can now store a default diff comparison target in `.dev3/config.json` or `.dev3/config.local.json`, so branch status, rebase, and Show Diff start from the preferred remote or local base branch automatically. The Task Info panel now respects that default, and Project Settings exposes it as a saved per-project option.

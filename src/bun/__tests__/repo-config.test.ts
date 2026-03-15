@@ -265,6 +265,9 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("");
 		expect(resolved.defaultBaseBranch).toBe("main");
+		expect(resolved.defaultCompareRefMode).toBe("remote");
+		expect(resolved.peerReviewEnabled).toBe(true);
+		expect(resolved.clonePaths).toEqual([]);
 	});
 
 	it("uses repo config values over project values", async () => {
@@ -279,6 +282,7 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("bun install");
 		expect(resolved.defaultBaseBranch).toBe("develop");
+		expect(resolved.defaultCompareRefMode).toBe("remote");
 		// Non-configured fields fall back to project values (level 4)
 		expect(resolved.cleanupScript).toBe("echo done");
 	});
@@ -302,6 +306,7 @@ describe("resolveProjectConfig", () => {
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
 			setupScript: "repo-script",
 			defaultBaseBranch: "develop",
+			defaultCompareRefMode: "local",
 		}));
 		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
 			setupScript: "local-script",
@@ -311,6 +316,7 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("local-script"); // local wins
 		expect(resolved.defaultBaseBranch).toBe("develop"); // repo
+		expect(resolved.defaultCompareRefMode).toBe("local"); // repo
 		expect(resolved.cleanupScript).toBe("echo done"); // from project (level 4)
 	});
 });

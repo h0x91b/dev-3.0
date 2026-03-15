@@ -152,6 +152,8 @@ const tips = {
 	"tip.configHierarchy.body": "Настройки применяются в порядке: worktree local > worktree repo > проект > дефолты. Переопределяйте через иконку шестерёнки.",
 	"tip.worktreeConfig.title": "Настройки задачи",
 	"tip.worktreeConfig.body": "У каждого worktree свой .dev3/config.json. Нажмите шестерёнку в панели задачи для редактирования.",
+	"tip.diffCompareDefault.title": "Выберите базу для diff",
+	"tip.diffCompareDefault.body": "В Project Settings можно выбрать, сравнивать ли статус ветки и Show Diff с origin/<base> или с локальной базовой веткой.",
 };
 
 export default tips;
