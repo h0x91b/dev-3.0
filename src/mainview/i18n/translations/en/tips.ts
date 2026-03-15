@@ -145,7 +145,7 @@ const tips = {
 	"tip.retryTaskAttempts.title": "Explore more solutions",
 	"tip.retryTaskAttempts.body": "Not happy with the current approach? Click + Variant to spin up parallel attempts and pick the best one.",
 	"tip.renameBuiltinColumns.title": "Rename columns",
-	"tip.renameBuiltinColumns.body": "Double-click any column header to rename it. Match your workflow terminology — changes are per-project.",
+	"tip.renameBuiltinColumns.body": "Click the pencil icon on any column header to rename it. Match your workflow terminology — changes are per-project.",
 } as const;
 
 export default tips;
