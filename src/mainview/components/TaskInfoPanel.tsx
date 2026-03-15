@@ -7,7 +7,8 @@ import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import InlineRename from "./InlineRename";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
+import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent } from "../analytics";
 import { getKeymapPreset, setKeymapPreset, KEYMAP_CHANGED_EVENT } from "../terminal-keymaps";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
@@ -839,7 +840,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				<MiniPipeline status={task.status} />
 			)}
 			<span className="text-[0.6875rem] font-medium text-fg-2">
-				{activeCustomColumn ? activeCustomColumn.name : t(statusKey(task.status))}
+				{activeCustomColumn ? activeCustomColumn.name : getStatusLabel(task.status, t, project)}
 			</span>
 			<svg className="w-3 h-3 text-fg-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -864,6 +865,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				onMoveToCustomColumn={handleMoveToCustomColumn}
 				customColumns={project.customColumns}
 				currentCustomColumnId={task.customColumnId}
+				project={project}
 			/>
 		</div>,
 		document.body,

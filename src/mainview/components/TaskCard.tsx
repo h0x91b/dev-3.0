@@ -4,7 +4,8 @@ import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../sha
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
+import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
@@ -573,7 +574,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								<MiniPipeline status={task.status} />
 							)}
 							<span className="min-w-0 truncate text-xs text-fg-2">
-								{activeCol ? activeCol.name : t(statusKey(task.status))}
+								{activeCol ? activeCol.name : getStatusLabel(task.status, t, project)}
 							</span>
 						</button>
 					);
@@ -706,6 +707,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						onDelete={isCancelled ? handleDelete : undefined}
 						customColumns={project.customColumns}
 						currentCustomColumnId={task.customColumnId}
+						project={project}
 					/>
 				</div>,
 				document.body

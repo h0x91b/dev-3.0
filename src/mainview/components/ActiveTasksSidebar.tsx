@@ -4,7 +4,8 @@ import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import type { AppAction, Route } from "../state";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
+import { getStatusLabel } from "../utils/statusLabel";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import LabelChip from "./LabelChip";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
@@ -161,7 +162,7 @@ function ActiveTasksSidebar({
 									style={{ background: statusColors[status] }}
 								/>
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
-									{t(statusKey(status))}
+									{getStatusLabel(status, t, project)}
 								</span>
 								<span className="text-[0.625rem] text-fg-muted">
 									{groupTasks.length}

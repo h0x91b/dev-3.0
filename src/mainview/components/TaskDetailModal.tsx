@@ -6,7 +6,8 @@ import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
+import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent } from "../analytics";
 
 interface TaskDetailModalProps {
@@ -278,7 +279,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 								style={{ background: color }}
 							/>
 							<span className="text-xs text-fg-2">
-								{t(statusKey(task.status))}
+								{getStatusLabel(task.status, t, project)}
 							</span>
 						</div>
 					</div>
@@ -491,7 +492,7 @@ function ArchivedView({
 									style={{ background: color }}
 								/>
 								<span className="text-xs text-fg-2">
-									{t(statusKey(task.status))}
+									{getStatusLabel(task.status, t, project)}
 								</span>
 								<svg className="w-3 h-3 text-fg-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -513,7 +514,7 @@ function ArchivedView({
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
 												style={{ background: statusColors[s] }}
 											/>
-											{t(statusKey(s))}
+											{getStatusLabel(s, t, project)}
 										</button>
 									))}
 									{project.customColumns && project.customColumns.length > 0 && (

@@ -432,6 +432,8 @@ export interface Project {
 	sparseCheckoutPaths?: string[];
 	// Column agent configs for built-in columns (keyed by TaskStatus)
 	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
+	// User-defined display names for built-in columns (keyed by TaskStatus)
+	customStatusLabels?: Record<string, string>;
 }
 
 export interface Task {
@@ -586,6 +588,10 @@ export type AppRPCSchema = {
 			updateCustomColumn: {
 				params: { projectId: string; columnId: string; name?: string; color?: string; llmInstruction?: string; agentConfig?: ColumnAgentConfig | null };
 				response: CustomColumn;
+			};
+			renameBuiltinColumn: {
+				params: { projectId: string; status: TaskStatus; name: string | null };
+				response: Project;
 			};
 			deleteCustomColumn: {
 				params: { projectId: string; columnId: string };

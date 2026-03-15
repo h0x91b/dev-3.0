@@ -318,6 +318,16 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 
 	const projectLabels = project.labels ?? [];
 	const customColumns: CustomColumn[] = project.customColumns ?? [];
+	const customStatusLabels = project.customStatusLabels ?? {};
+
+	async function handleRenameBuiltinColumn(status: TaskStatus, name: string | null) {
+		try {
+			const updated = await api.request.renameBuiltinColumn({ projectId: project.id, status, name });
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			console.error("Failed to rename column:", err);
+		}
+	}
 
 	// Apply label filters + search
 	let displayTasks = tasks;
@@ -538,7 +548,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 							<KanbanColumn
 								key={slot.status}
 								status={slot.status}
-								label={t(statusKey(slot.status))}
+								label={customStatusLabels[slot.status] || t(statusKey(slot.status))}
 								description={t(statusDescKey(slot.status))}
 								tasks={tasksByStatus.get(slot.status) || []}
 								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
@@ -548,6 +558,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 								collapsed={collapseState.isCollapsed(colId)}
 								onCollapseToggle={() => collapseState.toggle(colId)}
 								collapseDragHandlers={collapseState.dragExpandHandlers(colId)}
+								onRenameColumn={(name) => handleRenameBuiltinColumn(slot.status, name)}
 								{...commonProps}
 							/>
 						);

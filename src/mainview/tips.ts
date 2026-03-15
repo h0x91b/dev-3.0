@@ -448,6 +448,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.retryTaskAttempts.body",
 		icon: "\u{F0453}", // nf-md-cursor_move
 	},
+	// Batch 20: rename columns
+	{
+		id: "rename-builtin-columns",
+		titleKey: "tip.renameBuiltinColumns.title",
+		bodyKey: "tip.renameBuiltinColumns.body",
+		icon: "\u{F0B5B}", // nf-md-pencil
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

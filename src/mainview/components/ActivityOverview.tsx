@@ -3,7 +3,8 @@ import type { Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
+import { getStatusLabel } from "../utils/statusLabel";
 import { useStatusColors } from "../hooks/useStatusColors";
 
 interface ActivityOverviewProps {
@@ -163,7 +164,7 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 											<span
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
 												style={{ backgroundColor: statusColors[task.status] }}
-												title={t(statusKey(task.status))}
+												title={getStatusLabel(task.status, t, project)}
 											/>
 											<span className="text-fg-2 text-sm truncate flex-1">
 												{getTaskTitle(task)}
@@ -175,7 +176,7 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 												className="text-xs flex-shrink-0"
 												style={{ color: statusColors[task.status] }}
 											>
-												{t(statusKey(task.status))}
+												{getStatusLabel(task.status, t, project)}
 											</span>
 											{task.movedAt && (
 												<span className="text-fg-muted text-xs flex-shrink-0 w-16 text-right">
@@ -195,7 +196,7 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 															className="w-2 h-2 rounded-full"
 															style={{ backgroundColor: statusColors[status] }}
 														/>
-														{count} {t(statusKey(status)).toLowerCase()}
+														{count} {getStatusLabel(status, t, project).toLowerCase()}
 													</span>
 												))}
 											</div>

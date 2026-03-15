@@ -8,6 +8,7 @@ const kanban = {
 	"kanban.showMore": "Mostrar más ({count})",
 	"kanban.showLess": "Mostrar menos",
 	"kanban.collapseColumn": "Desanclar columna",
+	"kanban.renameColumn": "Renombrar columna",
 
 	// CreateTaskModal
 	"createTask.title": "Nueva tarea",

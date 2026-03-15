@@ -2931,6 +2931,23 @@ export const handlers = {
 		return updated;
 	},
 
+	async renameBuiltinColumn(params: { projectId: string; status: TaskStatus; name: string | null }): Promise<Project> {
+		log.info("→ renameBuiltinColumn", { projectId: params.projectId, status: params.status, name: params.name });
+		const project = await data.getProject(params.projectId);
+		const labels = { ...(project.customStatusLabels ?? {}) };
+		if (params.name === null || params.name.trim() === "") {
+			delete labels[params.status];
+		} else {
+			labels[params.status] = params.name.trim();
+		}
+		const customStatusLabels = Object.keys(labels).length > 0 ? labels : undefined;
+		await data.updateProject(params.projectId, { customStatusLabels });
+		const updated = await data.getProject(params.projectId);
+		pushMessage?.("projectUpdated", { project: updated });
+		log.info("← renameBuiltinColumn done", { status: params.status });
+		return updated;
+	},
+
 	async deleteCustomColumn(params: { projectId: string; columnId: string }): Promise<void> {
 		log.info("→ deleteCustomColumn", { projectId: params.projectId, columnId: params.columnId });
 		const project = await data.getProject(params.projectId);
