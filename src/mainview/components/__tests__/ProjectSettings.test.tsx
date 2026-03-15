@@ -150,8 +150,35 @@ describe("ProjectSettings", () => {
 		});
 	});
 
-	describe("save buttons", () => {
-		it("calls saveRepoConfig on repo tab save", async () => {
+	describe("unsaved changes banner", () => {
+		it("does not show banner when config is clean", async () => {
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+		});
+
+		it("shows banner when repo config is modified", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+
+			const setupInput = screen.getByDisplayValue("bun install");
+			await user.clear(setupInput);
+			await user.type(setupInput, "npm install");
+
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+		});
+
+		it("shows banner when local config is modified", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+
+			await user.click(screen.getByText("Local Overrides"));
+			const inputs = screen.getAllByRole("textbox");
+			await user.type(inputs[0], "local-setup");
+
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+		});
+
+		it("banner Save button calls saveRepoConfig on repo tab", async () => {
 			const { api } = await import("../../rpc");
 			const mockSave = api.request.saveRepoConfig as ReturnType<typeof vi.fn>;
 			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
@@ -159,7 +186,11 @@ describe("ProjectSettings", () => {
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, { setupScript: "bun install" });
 
-			await user.click(screen.getByText("Save to Repo"));
+			const setupInput = screen.getByDisplayValue("bun install");
+			await user.clear(setupInput);
+			await user.type(setupInput, "npm install");
+
+			await user.click(screen.getByText("Save"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
@@ -168,7 +199,7 @@ describe("ProjectSettings", () => {
 			});
 		});
 
-		it("calls saveLocalConfig on local tab save", async () => {
+		it("banner Save button calls saveLocalConfig on local tab", async () => {
 			const { api } = await import("../../rpc");
 			const mockSave = api.request.saveLocalConfig as ReturnType<typeof vi.fn>;
 			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
@@ -177,12 +208,34 @@ describe("ProjectSettings", () => {
 			await renderProjectSettings();
 
 			await user.click(screen.getByText("Local Overrides"));
-			await user.click(screen.getByText("Save Local"));
+			const inputs = screen.getAllByRole("textbox");
+			await user.type(inputs[0], "local-setup");
+
+			await user.click(screen.getByText("Save"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
 					expect.objectContaining({ projectId: "proj-1" }),
 				);
+			});
+		});
+
+		it("banner disappears after successful save", async () => {
+			const { api } = await import("../../rpc");
+			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+
+			const setupInput = screen.getByDisplayValue("bun install");
+			await user.clear(setupInput);
+			await user.type(setupInput, "npm install");
+
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
 			});
 		});
 	});

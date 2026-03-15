@@ -269,17 +269,13 @@ interface ConfigFormProps {
 	onChange: (config: Dev3RepoConfig) => void;
 	/** For each field, the inherited value from the lower-priority layer (shown as placeholder). */
 	inherited?: Dev3RepoConfig;
-	saving: boolean;
-	onSave: () => void;
-	saveLabel: string;
-	savingLabel: string;
 	/** Show auto-detect for clone paths */
 	projectId: string;
 	/** Project path for "Open in Finder" on sparse checkout */
 	projectPath?: string;
 }
 
-function ConfigForm({ config, onChange, inherited, saving, onSave, saveLabel, savingLabel, projectId, projectPath }: ConfigFormProps) {
+function ConfigForm({ config, onChange, inherited, projectId, projectPath }: ConfigFormProps) {
 	const t = useT();
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
@@ -531,16 +527,6 @@ function ConfigForm({ config, onChange, inherited, saving, onSave, saveLabel, sa
 				)}
 			</div>
 
-			{/* Save Button */}
-			<div>
-				<button
-					onClick={onSave}
-					disabled={saving}
-					className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
-				>
-					{saving ? savingLabel : saveLabel}
-				</button>
-			</div>
 		</div>
 	);
 }
@@ -856,10 +842,6 @@ function ProjectSettings({
 						<ConfigForm
 							config={repoConfig}
 							onChange={setRepoConfig}
-							saving={savingRepo}
-							onSave={handleSaveRepo}
-							saveLabel={t("projectSettings.saveRepo")}
-							savingLabel={t("projectSettings.saving")}
 							projectId={projectId}
 							projectPath={project.path}
 						/>
@@ -868,10 +850,6 @@ function ProjectSettings({
 							config={localConfig}
 							onChange={setLocalConfig}
 							inherited={repoConfig}
-							saving={savingLocal}
-							onSave={handleSaveLocal}
-							saveLabel={t("projectSettings.saveLocal")}
-							savingLabel={t("projectSettings.saving")}
 							projectId={projectId}
 							projectPath={project.path}
 						/>
