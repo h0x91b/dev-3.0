@@ -144,6 +144,8 @@ const tips = {
 	"tip.customColumnAgents.body": "Any custom column can auto-spawn an agent when a task enters it. Configure agent and prompt in Project Settings.",
 	"tip.retryTaskAttempts.title": "Explore more solutions",
 	"tip.retryTaskAttempts.body": "Not happy with the current approach? Click + Variant to spin up parallel attempts and pick the best one.",
+	"tip.portAllocation.title": "Auto port allocation",
+	"tip.portAllocation.body": "Set portCount in .dev3/config.json to auto-allocate free ports per task as $DEV3_PORT0, $DEV3_PORT1, etc.",
 } as const;
 
 export default tips;

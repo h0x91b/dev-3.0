@@ -388,6 +388,8 @@ export interface Dev3RepoConfig {
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
 	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
+	/** Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N). Default: 0. */
+	portCount?: number;
 }
 
 /** Keys of Dev3RepoConfig — used for merge logic. */
@@ -401,6 +403,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"sparseCheckoutEnabled",
 	"sparseCheckoutPaths",
 	"builtinColumnAgents",
+	"portCount",
 ];
 
 export type ConfigSource = "repo" | "local";
@@ -432,6 +435,8 @@ export interface Project {
 	sparseCheckoutPaths?: string[];
 	// Column agent configs for built-in columns (keyed by TaskStatus)
 	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
+	// Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N)
+	portCount?: number;
 }
 
 export interface Task {
@@ -829,6 +834,10 @@ export type AppRPCSchema = {
 			getTaskPorts: {
 				params: { taskId: string };
 				response: PortInfo[];
+			};
+			getPortAllocations: {
+				params: { taskId: string };
+				response: number[];
 			};
 			listTmuxSessions: {
 				params: void;

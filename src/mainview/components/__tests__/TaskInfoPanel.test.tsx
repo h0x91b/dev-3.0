@@ -26,6 +26,7 @@ vi.mock("../../rpc", () => ({
 			createPullRequest: vi.fn(),
 			openPullRequest: vi.fn(),
 			renameTask: vi.fn(),
+			getPortAllocations: vi.fn(),
 		},
 	},
 }));
@@ -136,6 +137,8 @@ describe("TaskInfoPanel", () => {
 		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
 		// Default: getResolvedProject returns the project as-is
 		mockedApi.request.getResolvedProject.mockResolvedValue(project);
+		// Default: no allocated ports
+		mockedApi.request.getPortAllocations.mockResolvedValue([]);
 	});
 
 	afterEach(() => {

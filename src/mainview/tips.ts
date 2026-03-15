@@ -448,6 +448,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.retryTaskAttempts.body",
 		icon: "\u{F0453}", // nf-md-cursor_move
 	},
+	// Batch 20: port allocation
+	{
+		id: "port-allocation",
+		titleKey: "tip.portAllocation.title",
+		bodyKey: "tip.portAllocation.body",
+		icon: "\u{F0317}", // nf-md-lan
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
