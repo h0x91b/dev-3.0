@@ -1324,8 +1324,8 @@ export const handlers = {
 		}
 		await repoConfig.saveRepoConfig(configPath, config);
 
-		// Auto-commit .dev3/config.json so worktrees created from the base branch
-		// always see the latest project settings.
+		// Auto-commit and push .dev3/config.json so worktrees created from the
+		// base branch always see the latest project settings.
 		try {
 			const addProc = spawn(["git", "add", ".dev3/config.json"], { cwd: configPath, stdout: "pipe", stderr: "pipe" });
 			await addProc.exited;
@@ -1336,10 +1336,19 @@ export const handlers = {
 			const commitExit = await commitProc.exited;
 			if (commitExit === 0) {
 				log.info("Auto-committed .dev3/config.json", { configPath });
+				// Push so origin/main is up to date for new worktree checkouts
+				const pushProc = spawn(["git", "push"], { cwd: configPath, stdout: "pipe", stderr: "pipe" });
+				const pushExit = await pushProc.exited;
+				if (pushExit === 0) {
+					log.info("Auto-pushed .dev3/config.json", { configPath });
+				} else {
+					const pushStderr = await new Response(pushProc.stderr).text();
+					log.warn("Auto-push failed (non-fatal)", { exitCode: pushExit, stderr: pushStderr.trim() });
+				}
 			}
 			// exit code 1 = nothing to commit (no changes) — that's fine
 		} catch (err) {
-			log.warn("Failed to auto-commit .dev3/config.json (non-fatal)", { error: String(err) });
+			log.warn("Failed to auto-commit/push .dev3/config.json (non-fatal)", { error: String(err) });
 		}
 
 		log.info("← saveRepoConfig done");
