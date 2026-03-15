@@ -1,0 +1,1 @@
+Fixed "Has Questions" (user-questions) status appearing at the bottom of the pipeline dropdown instead of its correct position after "Agent is Working". The status is now part of the main pipeline stages, matching the board column order.

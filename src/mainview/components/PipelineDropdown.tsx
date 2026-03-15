@@ -15,7 +15,7 @@ interface PipelineDropdownProps {
 }
 
 /** Side-branch statuses that aren't in PIPELINE_STAGES but still need to be selectable */
-const SIDE_STATUSES: TaskStatus[] = ["user-questions", "cancelled"];
+const SIDE_STATUSES: TaskStatus[] = ["cancelled"];
 
 export default function PipelineDropdown({
 	currentStatus,
