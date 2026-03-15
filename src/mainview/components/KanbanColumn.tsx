@@ -59,6 +59,8 @@ interface KanbanColumnProps {
 	collapsed?: boolean;
 	onCollapseToggle?: () => void;
 	collapseDragHandlers?: { onDragEnter: () => void; onDragLeave: () => void; onDragEnd: () => void };
+	// Rename support for built-in columns
+	onRenameColumn?: (newName: string | null) => void;
 }
 
 function KanbanColumn({
@@ -101,6 +103,7 @@ function KanbanColumn({
 	collapsed,
 	onCollapseToggle,
 	collapseDragHandlers,
+	onRenameColumn,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -111,6 +114,9 @@ function KanbanColumn({
 	const [showInfo, setShowInfo] = useState(false);
 	const [infoPos, setInfoPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 	const [expanded, setExpanded] = useState(false);
+	const [editing, setEditing] = useState(false);
+	const [editValue, setEditValue] = useState("");
+	const renameInputRef = useRef<HTMLInputElement>(null);
 	const infoBtnRef = useRef<HTMLButtonElement>(null);
 	const infoPopupRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
@@ -142,6 +148,25 @@ function KanbanColumn({
 			setInfoPos({ top: r.bottom + 6, left: r.left });
 		}
 		setShowInfo(true);
+	}
+
+	function startEditing() {
+		if (!onRenameColumn) return;
+		setEditValue(label);
+		setEditing(true);
+		// Focus input on next tick
+		setTimeout(() => renameInputRef.current?.select(), 0);
+	}
+
+	function commitRename() {
+		setEditing(false);
+		if (!onRenameColumn) return;
+		const trimmed = editValue.trim();
+		// If empty or unchanged from the current label, reset (pass null to clear custom name)
+		if (!trimmed || trimmed === label) {
+			return;
+		}
+		onRenameColumn(trimmed);
 	}
 
 	// Is this a same-column reorder drag?
@@ -413,9 +438,29 @@ function KanbanColumn({
 							className="w-3 h-3 rounded-full flex-shrink-0"
 							style={{ background: color }}
 						/>
-						<span className="text-fg text-sm font-semibold">
-							{label}
-						</span>
+						{editing ? (
+							<input
+								ref={renameInputRef}
+								type="text"
+								value={editValue}
+								onChange={(e) => setEditValue(e.target.value)}
+								onBlur={commitRename}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") e.currentTarget.blur();
+									if (e.key === "Escape") { setEditing(false); }
+								}}
+								className="text-fg text-sm font-semibold bg-transparent outline-none border-b border-accent w-full min-w-0"
+								autoFocus
+							/>
+						) : (
+							<span
+								className={`text-fg text-sm font-semibold ${onRenameColumn ? "cursor-text" : ""}`}
+								onDoubleClick={onRenameColumn ? startEditing : undefined}
+								title={onRenameColumn ? t("kanban.doubleClickRename") : undefined}
+							>
+								{label}
+							</span>
+						)}
 						{description && (
 							<button
 								ref={infoBtnRef}

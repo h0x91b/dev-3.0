@@ -3409,3 +3409,58 @@ describe("startPRDetectionPoller / stopPRDetectionPoller", () => {
 		clearIntervalSpy.mockRestore();
 	});
 });
+
+// ================================================================
+// renameBuiltinColumn
+// ================================================================
+
+describe("renameBuiltinColumn", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("sets a custom label for a built-in status", async () => {
+		const project = makeProject();
+		const updated = { ...project, customStatusLabels: { todo: "Backlog" } };
+		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
+		vi.mocked(data.updateProject).mockResolvedValue(updated);
+
+		const result = await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "Backlog" });
+
+		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { todo: "Backlog" } });
+		expect(result.customStatusLabels).toEqual({ todo: "Backlog" });
+	});
+
+	it("clears a custom label when name is null", async () => {
+		const project = makeProject({ customStatusLabels: { todo: "Backlog" } });
+		const updated = { ...project, customStatusLabels: undefined };
+		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
+		vi.mocked(data.updateProject).mockResolvedValue(updated);
+
+		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: null });
+
+		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: undefined });
+	});
+
+	it("clears a custom label when name is empty string", async () => {
+		const project = makeProject({ customStatusLabels: { todo: "Backlog", "in-progress": "Doing" } });
+		const updated = { ...project, customStatusLabels: { "in-progress": "Doing" } };
+		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
+		vi.mocked(data.updateProject).mockResolvedValue(updated);
+
+		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "" });
+
+		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { "in-progress": "Doing" } });
+	});
+
+	it("trims whitespace from the custom name", async () => {
+		const project = makeProject();
+		const updated = { ...project, customStatusLabels: { todo: "Backlog" } };
+		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
+		vi.mocked(data.updateProject).mockResolvedValue(updated);
+
+		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "  Backlog  " });
+
+		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { todo: "Backlog" } });
+	});
+});

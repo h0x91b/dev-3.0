@@ -8,6 +8,7 @@ const kanban = {
 	"kanban.showMore": "Показать ещё ({count})",
 	"kanban.showLess": "Свернуть",
 	"kanban.collapseColumn": "Открепить колонку",
+	"kanban.doubleClickRename": "Двойной клик для переименования",
 
 	// CreateTaskModal
 	"createTask.title": "Новая задача",

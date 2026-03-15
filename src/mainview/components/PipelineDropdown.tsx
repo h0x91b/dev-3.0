@@ -1,8 +1,9 @@
 import type { TaskStatus } from "../../shared/types";
-import type { CustomColumn } from "../../shared/types";
+import type { CustomColumn, Project } from "../../shared/types";
 import { getAllowedTransitions } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
-import { useT, statusKey } from "../i18n";
+import { useT } from "../i18n";
+import { getStatusLabel } from "../utils/statusLabel";
 import { PIPELINE_STAGES, getStageStates, isSideBranch, type StageState } from "./StatusPipeline";
 
 interface PipelineDropdownProps {
@@ -12,6 +13,7 @@ interface PipelineDropdownProps {
 	onDelete?: () => void;
 	customColumns?: CustomColumn[];
 	currentCustomColumnId?: string | null;
+	project?: Pick<Project, "customStatusLabels"> | null;
 }
 
 /** Side-branch statuses that aren't in PIPELINE_STAGES but still need to be selectable */
@@ -24,6 +26,7 @@ export default function PipelineDropdown({
 	onDelete,
 	customColumns,
 	currentCustomColumnId,
+	project,
 }: PipelineDropdownProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -85,7 +88,7 @@ export default function PipelineDropdown({
 											: "text-fg-muted/40 cursor-default"
 								}`}
 							>
-								{t(statusKey(stage))}
+								{getStatusLabel(stage, t, project)}
 								{isCurrentStage && (
 									<span className="ml-1.5 text-[0.625rem] text-fg-3 font-normal">
 										{"\u2190"} {t("pipeline.current")}
@@ -130,7 +133,7 @@ export default function PipelineDropdown({
 											boxShadow: isCurrentSide ? `0 0 6px ${color}60` : undefined,
 										}}
 									/>
-									{t(statusKey(stage))}
+									{getStatusLabel(stage, t, project)}
 									{isCurrentSide && (
 										<span className="ml-1 text-[0.625rem] text-fg-3 font-normal">
 											{"\u2190"} {t("pipeline.current")}

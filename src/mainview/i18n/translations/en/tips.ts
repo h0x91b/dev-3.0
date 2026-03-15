@@ -144,6 +144,8 @@ const tips = {
 	"tip.customColumnAgents.body": "Any custom column can auto-spawn an agent when a task enters it. Configure agent and prompt in Project Settings.",
 	"tip.retryTaskAttempts.title": "Explore more solutions",
 	"tip.retryTaskAttempts.body": "Not happy with the current approach? Click + Variant to spin up parallel attempts and pick the best one.",
+	"tip.renameBuiltinColumns.title": "Rename columns",
+	"tip.renameBuiltinColumns.body": "Double-click any column header to rename it. Match your workflow terminology — changes are per-project.",
 } as const;
 
 export default tips;

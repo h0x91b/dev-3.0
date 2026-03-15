@@ -8,6 +8,7 @@ const kanban = {
 	"kanban.showMore": "Show more ({count})",
 	"kanban.showLess": "Show less",
 	"kanban.collapseColumn": "Unpin column",
+	"kanban.doubleClickRename": "Double-click to rename",
 
 	// CreateTaskModal
 	"createTask.title": "New Task",
