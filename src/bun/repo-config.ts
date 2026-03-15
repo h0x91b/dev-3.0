@@ -126,31 +126,20 @@ export async function getConfigSources(
 }
 
 /**
- * Resolve project settings from .dev3/ config files.
- * Priority: configPath config > project.path config > defaults.
- *
- * When configPath is provided (e.g. a worktree), fields defined there win.
- * Fields NOT present in the configPath config fall back to project.path config,
- * then to built-in defaults. This ensures settings added via Project Settings UI
- * (saved to project.path) are inherited by worktrees even when the worktree's
- * .dev3/config.json doesn't contain them yet.
+ * Resolve project settings from .dev3/ config files only.
+ * Does NOT fall back to projects.json settings fields.
+ * Priority: .dev3/config.json < .dev3/config.local.json < defaults for missing.
  *
  * @param configPath Optional path override to read .dev3/ files from (e.g. worktree path).
  *                   Falls back to project.path when not provided.
  */
 export async function resolveProjectConfig(project: Project, configPath?: string): Promise<Project> {
 	const config = await loadRepoConfig(configPath ?? project.path);
-	// When reading from a worktree, also load the project-level config as fallback
-	const projectConfig = configPath && configPath !== project.path
-		? await loadRepoConfig(project.path)
-		: {};
 
 	const resolved = { ...project };
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
 		if (config[key] !== undefined) {
 			(resolved as any)[key] = config[key];
-		} else if (projectConfig[key] !== undefined) {
-			(resolved as any)[key] = projectConfig[key];
 		} else {
 			(resolved as any)[key] = DEFAULTS[key];
 		}

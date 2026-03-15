@@ -1323,6 +1323,25 @@ export const handlers = {
 			}
 		}
 		await repoConfig.saveRepoConfig(configPath, config);
+
+		// Auto-commit .dev3/config.json so worktrees created from the base branch
+		// always see the latest project settings.
+		try {
+			const addProc = spawn(["git", "add", ".dev3/config.json"], { cwd: configPath, stdout: "pipe", stderr: "pipe" });
+			await addProc.exited;
+			const commitProc = spawn(
+				["git", "commit", "-m", "chore: update .dev3/config.json", "--", ".dev3/config.json"],
+				{ cwd: configPath, stdout: "pipe", stderr: "pipe" },
+			);
+			const commitExit = await commitProc.exited;
+			if (commitExit === 0) {
+				log.info("Auto-committed .dev3/config.json", { configPath });
+			}
+			// exit code 1 = nothing to commit (no changes) — that's fine
+		} catch (err) {
+			log.warn("Failed to auto-commit .dev3/config.json (non-fatal)", { error: String(err) });
+		}
+
 		log.info("← saveRepoConfig done");
 	},
 
