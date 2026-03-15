@@ -144,6 +144,8 @@ const tips = {
 	"tip.customColumnAgents.body": "Cualquier columna personalizada puede lanzar un agente automáticamente cuando entra una tarea. Configúralo en Ajustes del proyecto.",
 	"tip.retryTaskAttempts.title": "Explora más soluciones",
 	"tip.retryTaskAttempts.body": "¿El enfoque actual no convence? Haz clic en + Variante para lanzar intentos en paralelo y elegir el mejor.",
+	"tip.portAllocation.title": "Puertos automáticos",
+	"tip.portAllocation.body": "Configura portCount en .dev3/config.json para asignar puertos libres como $DEV3_PORT0, $DEV3_PORT1, etc.",
 };
 
 export default tips;

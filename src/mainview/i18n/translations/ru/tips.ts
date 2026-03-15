@@ -144,6 +144,8 @@ const tips = {
 	"tip.customColumnAgents.body": "Любая пользовательская колонка может автоматически запускать агента при попадании задачи. Настройте в параметрах проекта.",
 	"tip.retryTaskAttempts.title": "Ищите лучшее решение",
 	"tip.retryTaskAttempts.body": "Текущий подход не устраивает? Нажмите «+ Вариант», чтобы запустить параллельные попытки и выбрать лучшую.",
+	"tip.portAllocation.title": "Авто-порты",
+	"tip.portAllocation.body": "Укажите portCount в .dev3/config.json — свободные порты будут выделены как $DEV3_PORT0, $DEV3_PORT1 и т.д.",
 };
 
 export default tips;

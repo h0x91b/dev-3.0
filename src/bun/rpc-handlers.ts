@@ -19,6 +19,7 @@ import { clonePaths } from "./cow-clone";
 import { setupAgentHooks } from "./agent-hooks";
 import { BUNDLED_CHANGELOG } from "./changelog-bundled";
 import * as repoConfig from "./repo-config";
+import * as portPool from "./port-pool";
 
 const log = createLogger("rpc");
 
@@ -796,6 +797,22 @@ export async function launchTaskPty(
 	// in their wrapper scripts (tmux server doesn't propagate client env).
 	const env = buildAgentEnv(extraEnv, task.id);
 
+	// Allocate ports from the pool if the project has portCount configured
+	const portCount = project.portCount ?? 0;
+	if (portCount > 0) {
+		try {
+			const ports = await portPool.allocatePorts(task.id, portCount);
+			Object.assign(env, portPool.buildPortEnv(ports));
+			log.info("Port env vars injected", { taskId: task.id.slice(0, 8), ports });
+		} catch (err) {
+			log.error("Port allocation failed (non-fatal)", {
+				taskId: task.id.slice(0, 8),
+				portCount,
+				error: String(err),
+			});
+		}
+	}
+
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
 		const prefix = `/tmp/dev3-${task.id}`;
@@ -1448,6 +1465,7 @@ export const handlers = {
 		// → completed/cancelled: destroy PTY, run cleanup if configured, then remove worktree
 		if (newStatus === "completed" || newStatus === "cancelled") {
 			cleanupTaskState(task.id);
+			portPool.releasePorts(task.id);
 			if (params.force) {
 				// Force mode: skip PTY destruction, cleanup script, and worktree removal.
 				// The environment is already broken — just update the status.
@@ -1778,8 +1796,15 @@ export const handlers = {
 				await killDevServerSession(task.id, socket);
 			}
 
+			// Inject port env vars into dev server script so $DEV3_PORT0 etc. are available
+			const devPorts = portPool.getPortAssignments(task.id);
+			const portExports = devPorts.length > 0
+				? buildEnvExports(portPool.buildPortEnv(devPorts)).map(line => line).join("\n") + "\n"
+				: "";
+
 			const wrappedScript = [
 				`#!/bin/bash`,
+				...(portExports ? [portExports] : []),
 				`set -x`,
 				resolved.devScript,
 				`EXIT_CODE=$?`,
@@ -3139,7 +3164,13 @@ export const handlers = {
 		const dev3Bin = `${DEV3_HOME}/bin`;
 		const currentPath = process.env.PATH || "";
 		const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
-		const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+		const env: Record<string, string> = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+
+		// Inject existing port allocations so spawned agents see DEV3_PORT vars
+		const existingPorts = portPool.getPortAssignments(task.id);
+		if (existingPorts.length > 0) {
+			Object.assign(env, portPool.buildPortEnv(existingPorts));
+		}
 
 		const scriptPath = `/tmp/dev3-${task.id}-spawn-${Date.now()}.sh`;
 		await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));
