@@ -142,8 +142,8 @@ const tips = {
 	"tip.aiReviewCustomize.body": "Cambia el prompt de revisión o desactiva AI Review en Ajustes del proyecto. Se configura por proyecto.",
 	"tip.customColumnAgents.title": "Agentes en columnas",
 	"tip.customColumnAgents.body": "Cualquier columna personalizada puede lanzar un agente automáticamente cuando entra una tarea. Configúralo en Ajustes del proyecto.",
-	"tip.retryTaskAttempts.title": "Agregar más variantes",
-	"tip.retryTaskAttempts.body": "Haz clic en + Variante en una tarjeta activa para lanzar un nuevo intento con un worktree limpio y la misma descripción.",
+	"tip.retryTaskAttempts.title": "Explora más soluciones",
+	"tip.retryTaskAttempts.body": "¿El enfoque actual no convence? Haz clic en + Variante para lanzar intentos en paralelo y elegir el mejor.",
 };
 
 export default tips;
