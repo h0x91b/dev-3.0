@@ -799,6 +799,9 @@ export async function launchTaskPty(
 		throw err;
 	}
 
+	// Build env early so both binary-check and setup paths can use it.
+	const env = buildAgentEnv(extraEnv, task.id);
+
 	// Pre-launch validation: check if the agent binary exists
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
 		const binaryName = resolvedBaseCmd.split("/").pop() ?? resolvedBaseCmd;
@@ -811,6 +814,12 @@ export async function launchTaskPty(
 
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
+			// Save the original agent command to a dedicated file so the retry
+			// script can exec it directly (not the run.sh which may contain the
+			// startup wrapper with setup scripts — that would re-run setup).
+			const originalCmdPath = `/tmp/dev3-${task.id}-original-cmd.sh`;
+			await Bun.write(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true }));
+
 			// Write a retry wrapper script that shows a friendly error
 			const retryScript = [
 				"#!/bin/bash",
@@ -818,7 +827,7 @@ export async function launchTaskPty(
 				"check_and_run() {",
 				`  if command -v ${shellQuote(binaryName)} &>/dev/null; then`,
 				`    printf '\\n\\033[1;32m✓ Found %s\\033[0m\\n\\n' ${shellQuote(binaryName)}`,
-				`    exec bash "/tmp/dev3-${task.id}-run.sh"`,
+				`    exec bash "${originalCmdPath}"`,
 				"  fi",
 				"}",
 				"",
@@ -878,10 +887,6 @@ export async function launchTaskPty(
 			error: String(err),
 		});
 	}
-
-	// Build env early so both setup and normal paths can embed exports
-	// in their wrapper scripts (tmux server doesn't propagate client env).
-	const env = buildAgentEnv(extraEnv, task.id);
 
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
