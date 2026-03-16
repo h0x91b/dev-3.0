@@ -455,6 +455,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.renameBuiltinColumns.body",
 		icon: "\u{F0B5B}", // nf-md-pencil
 	},
+	// Batch 21: agent binary detection
+	{
+		id: "agent-install-status",
+		titleKey: "tip.agentInstallStatus.title",
+		bodyKey: "tip.agentInstallStatus.body",
+		icon: "\u{F0219}", // nf-md-robot
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

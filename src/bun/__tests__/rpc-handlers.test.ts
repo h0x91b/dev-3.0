@@ -173,6 +173,7 @@ const {
 	stopMergeDetectionPoller,
 	startPRDetectionPoller,
 	stopPRDetectionPoller,
+	resolveBinaryPath,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -3462,5 +3463,180 @@ describe("renameBuiltinColumn", () => {
 		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "  Backlog  " });
 
 		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { todo: "Backlog" } });
+	});
+});
+
+// ---- resolveBinaryPath ----
+
+describe("resolveBinaryPath", () => {
+	beforeEach(() => {
+		mockSpawnSync.mockReset();
+		vi.mocked(existsSync).mockReset().mockReturnValue(false);
+	});
+
+	it("returns custom path when it exists", () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		const result = resolveBinaryPath("claude", "/custom/bin/claude");
+		expect(result.resolvedPath).toBe("/custom/bin/claude");
+		expect(result.customPathError).toBe(false);
+	});
+
+	it("returns customPathError when custom path does not exist", () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		const result = resolveBinaryPath("claude", "/bad/path/claude");
+		expect(result.customPathError).toBe(true);
+		expect(result.resolvedPath).toBeUndefined();
+	});
+
+	it("finds binary via which when no custom path", () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") });
+		const result = resolveBinaryPath("claude");
+		expect(result.resolvedPath).toBe("/usr/local/bin/claude");
+		expect(result.customPathError).toBe(false);
+	});
+
+	it("finds binary via fallback paths when which fails", () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		vi.mocked(existsSync).mockImplementation((path: any) => {
+			return path === "/opt/homebrew/bin/claude";
+		});
+		const result = resolveBinaryPath("claude");
+		expect(result.resolvedPath).toBe("/opt/homebrew/bin/claude");
+	});
+
+	it("returns undefined when binary not found anywhere", () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		vi.mocked(existsSync).mockReturnValue(false);
+		const result = resolveBinaryPath("nonexistent-binary");
+		expect(result.resolvedPath).toBeUndefined();
+		expect(result.customPathError).toBe(false);
+	});
+
+	it("prefers custom path over which", () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/claude") });
+		const result = resolveBinaryPath("claude", "/my/custom/claude");
+		expect(result.resolvedPath).toBe("/my/custom/claude");
+	});
+});
+
+// ---- checkAgentAvailability ----
+
+describe("checkAgentAvailability", () => {
+	beforeEach(() => {
+		mockSpawnSync.mockReset();
+		vi.mocked(existsSync).mockReset().mockReturnValue(false);
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [], installCommand: "brew install claude-code" },
+			{ id: "builtin-codex", name: "Codex", baseCommand: "codex", isDefault: true, configurations: [], installCommand: "npm install -g @openai/codex" },
+			{ id: "builtin-gemini", name: "Gemini", baseCommand: "gemini", isDefault: true, configurations: [], installCommand: "npm install -g @anthropic-ai/gemini-cli" },
+			{ id: "builtin-cursor", name: "Cursor Agent", baseCommand: "agent", isDefault: true, configurations: [], installCommand: "npm install -g @anthropic-ai/cursor-agent" },
+		]);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		});
+		vi.mocked(saveSettings).mockResolvedValue(undefined);
+	});
+
+	it("returns availability for all agents", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		const results = await handlers.checkAgentAvailability();
+		expect(results).toHaveLength(4);
+		expect(results[0].agentId).toBe("builtin-claude");
+		expect(results[0].installed).toBe(false);
+		expect(results[0].installCommand).toBe("brew install claude-code");
+	});
+
+	it("detects installed agent via which", async () => {
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+		const results = await handlers.checkAgentAvailability();
+		const claude = results.find((r) => r.agentId === "builtin-claude");
+		expect(claude?.installed).toBe(true);
+		expect(claude?.resolvedPath).toBe("/usr/local/bin/claude");
+	});
+
+	it("uses saved custom path for agent", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			agentBinaryPaths: { "builtin-codex": "/custom/codex" },
+		});
+		vi.mocked(existsSync).mockImplementation((path: any) => path === "/custom/codex");
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+
+		const results = await handlers.checkAgentAvailability();
+		const codex = results.find((r) => r.agentId === "builtin-codex");
+		expect(codex?.installed).toBe(true);
+		expect(codex?.resolvedPath).toBe("/custom/codex");
+	});
+
+	it("auto-saves resolved paths when found", async () => {
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		await handlers.checkAgentAvailability();
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentBinaryPaths: expect.objectContaining({ "builtin-claude": "/opt/homebrew/bin/claude" }),
+		}));
+	});
+
+	it("reports customPathError when saved path no longer exists", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			agentBinaryPaths: { "builtin-claude": "/deleted/path/claude" },
+		});
+		vi.mocked(existsSync).mockReturnValue(false);
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+
+		const results = await handlers.checkAgentAvailability();
+		const claude = results.find((r) => r.agentId === "builtin-claude");
+		expect(claude?.installed).toBe(false);
+		expect(claude?.customPathError).toBe(true);
+	});
+});
+
+// ---- setAgentBinaryPath ----
+
+describe("setAgentBinaryPath", () => {
+	beforeEach(() => {
+		vi.mocked(existsSync).mockReset().mockReturnValue(true);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		});
+		vi.mocked(saveSettings).mockResolvedValue(undefined);
+	});
+
+	it("saves the binary path for an agent", async () => {
+		await handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/usr/local/bin/claude" });
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		}));
+	});
+
+	it("throws when path does not exist", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		await expect(handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/bad/path" }))
+			.rejects.toThrow("File not found");
 	});
 });

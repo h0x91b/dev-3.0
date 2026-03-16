@@ -1,11 +1,11 @@
 import { useState, useEffect, type Dispatch } from "react";
-import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
-import Select from "./Select";
+import Select, { useAgentRenderOption } from "./Select";
 
 interface VariantRow {
 	agentId: string | null;
@@ -59,6 +59,13 @@ function LaunchVariantsModal({
 	const [variants, setVariants] = useState<VariantRow[]>(() => [makeDefaultVariant()]);
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
+
+	useEffect(() => {
+		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
+	}, []);
+
+	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 
 	// Escape → close; Enter → launch (when no text input is focused)
 	useEffect(() => {
@@ -175,6 +182,7 @@ function LaunchVariantsModal({
 										value={variant.agentId ?? ""}
 										options={agents.map((a) => ({ value: a.id, label: a.name }))}
 										onChange={(val) => handleAgentChange(index, val || null)}
+										renderOption={renderAgentOption}
 									/>
 								</div>
 

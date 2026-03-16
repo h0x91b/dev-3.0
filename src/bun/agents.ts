@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
@@ -337,6 +338,14 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
 	return {};
 }
 
+/** Apply saved binary path override if the cached file still exists on disk. */
+function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
+	const savedPath = savedPaths?.[agent.id];
+	return savedPath && existsSync(savedPath)
+		? { ...agent, baseCommand: savedPath }
+		: agent;
+}
+
 export async function resolveCommandForAgent(
 	agentId: string,
 	configId: string | null,
@@ -349,7 +358,11 @@ export async function resolveCommandForAgent(
 		throw new Error(`Agent not found: ${agentId}`);
 	}
 	const config = findConfig(agent, configId);
-	const command = resolveAgentCommand(agent, config, ctx, options);
+
+	const settings = await loadSettings();
+	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
+
+	const command = resolveAgentCommand(agentWithPath, config, ctx, options);
 	// Agent-type defaults first, then config envVars override
 	const extraEnv: Record<string, string> = { ...getDefaultEnvForAgent(agent, config) };
 	if (config?.envVars) {
@@ -375,13 +388,14 @@ export async function resolveCommandForProject(
 	};
 
 	const settings = await loadSettings();
-	const agents = await getAllAgents();
-	const agent = agents.find((a) => a.id === settings.defaultAgentId);
+	const allAgents = await getAllAgents();
+	const agent = allAgents.find((a) => a.id === settings.defaultAgentId);
 
 	if (agent) {
+		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
-		const command = resolveAgentCommand(agent, config, ctx, options);
+		const command = resolveAgentCommand(agentWithPath, config, ctx, options);
 		// Agent-type defaults first, then buildTaskEnv (which includes config envVars) overrides
 		const agentDefaults = getDefaultEnvForAgent(agent, config);
 		const extraEnv = { ...agentDefaults, ...buildTaskEnv(project, taskTitle, "", worktreePath, config) };

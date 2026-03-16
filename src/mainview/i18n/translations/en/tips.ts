@@ -146,6 +146,8 @@ const tips = {
 	"tip.retryTaskAttempts.body": "Not happy with the current approach? Click + Variant to spin up parallel attempts and pick the best one.",
 	"tip.renameBuiltinColumns.title": "Rename columns",
 	"tip.renameBuiltinColumns.body": "Click the pencil icon on any column header to rename it. Match your workflow terminology — changes are per-project.",
+	"tip.agentInstallStatus.title": "Agent install check",
+	"tip.agentInstallStatus.body": "Settings shows which agent CLIs are installed. Missing agents get clear install instructions and custom path support.",
 } as const;
 
 export default tips;

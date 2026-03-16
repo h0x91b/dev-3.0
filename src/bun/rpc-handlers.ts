@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, 
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -146,6 +146,51 @@ const FALLBACK_BIN_PATHS = [
 	// User-local dirs (pip, pipx, Claude CLI, etc.)
 	...(process.env.HOME ? [`${process.env.HOME}/.local/bin`, `${process.env.HOME}/bin`] : []),
 ];
+
+/**
+ * Resolve a binary path using 3-step strategy:
+ * 1. Custom path from settings (if provided)
+ * 2. `which` (uses current PATH)
+ * 3. Fallback: common Homebrew / user-local paths
+ */
+export function resolveBinaryPath(binaryName: string, customPath?: string): { resolvedPath?: string; customPathError: boolean } {
+	let resolvedPath: string | undefined;
+	let customPathError = false;
+
+	// 1. Check custom path
+	if (customPath) {
+		if (existsSync(customPath)) {
+			resolvedPath = customPath;
+		} else {
+			customPathError = true;
+		}
+	}
+
+	// 2. Try `which`
+	if (!resolvedPath) {
+		const proc = spawnSync(["which", binaryName]);
+		if (proc.exitCode === 0) {
+			const whichOutput = proc.stdout ? new TextDecoder().decode(proc.stdout).trim() : "";
+			resolvedPath = whichOutput || binaryName;
+		}
+	}
+
+	// 3. Fallback: check common paths
+	if (!resolvedPath) {
+		for (const dir of FALLBACK_BIN_PATHS) {
+			const candidate = `${dir}/${binaryName}`;
+			if (existsSync(candidate)) {
+				resolvedPath = candidate;
+				if (!process.env.PATH?.split(":").includes(dir)) {
+					process.env.PATH = `${dir}:${process.env.PATH}`;
+				}
+				break;
+			}
+		}
+	}
+
+	return { resolvedPath, customPathError };
+}
 
 // Will be set by index.ts after window creation
 let pushMessage: ((name: string, payload: any) => void) | null = null;
@@ -754,6 +799,59 @@ export async function launchTaskPty(
 		throw err;
 	}
 
+	// Build env early so both binary-check and setup paths can use it.
+	const env = buildAgentEnv(extraEnv, task.id);
+
+	// Pre-launch validation: check if the agent binary exists
+	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
+		const binaryName = resolvedBaseCmd.split("/").pop() ?? resolvedBaseCmd;
+		const settings = await loadSettings();
+		const customPath = settings.agentBinaryPaths?.[task.agentId ?? ""];
+		const { resolvedPath: binaryPath } = resolveBinaryPath(binaryName, customPath);
+		if (!binaryPath) {
+			// Find the agent to get install instructions
+			const allAgents = await agents.getAllAgents();
+			const matchedAgent = allAgents.find((a) => a.baseCommand === resolvedBaseCmd || a.baseCommand === binaryName);
+			const installCmd = matchedAgent?.installCommand ?? `Install "${binaryName}" and make sure it's on your PATH`;
+
+			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
+
+			// Save the original agent command to a dedicated file so the retry
+			// script can exec it directly (not the run.sh which may contain the
+			// startup wrapper with setup scripts — that would re-run setup).
+			const originalCmdPath = `/tmp/dev3-${task.id}-original-cmd.sh`;
+			await Bun.write(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true }));
+
+			// Write a retry wrapper script that shows a friendly error
+			const retryScript = [
+				"#!/bin/bash",
+				"",
+				"check_and_run() {",
+				`  if command -v ${shellQuote(binaryName)} &>/dev/null; then`,
+				`    printf '\\n\\033[1;32m✓ Found %s\\033[0m\\n\\n' ${shellQuote(binaryName)}`,
+				`    exec bash "${originalCmdPath}"`,
+				"  fi",
+				"}",
+				"",
+				"while true; do",
+				`  printf '\\033[1;31m✗ Agent not found: %s\\033[0m\\n\\n' ${shellQuote(binaryName)}`,
+				`  printf '\\033[1mInstall:\\033[0m %s\\n' ${shellQuote(installCmd)}`,
+				`  printf '\\033[2mAfter installing, run \"%s\" once in a terminal to log in.\\033[0m\\n' ${shellQuote(binaryName)}`,
+				`  printf '\\033[2mInstallation and setup are not managed by dev-3.0.\\033[0m\\n\\n'`,
+				"  printf 'Press \\033[1mEnter\\033[0m to retry...\\n'",
+				"  read -r",
+				"  check_and_run",
+				"done",
+				"",
+			].join("\n");
+
+			const retryScriptPath = `/tmp/dev3-${task.id}-agent-check.sh`;
+			await Bun.write(retryScriptPath, retryScript);
+			tmuxCmd = `bash "${retryScriptPath}"`;
+			log.info("Replaced tmuxCmd with agent-check retry wrapper");
+		}
+	}
+
 	// Pre-register worktree as trusted so claude skips the trust dialog
 	try {
 		await agents.ensureClaudeTrust(worktreePath);
@@ -791,10 +889,6 @@ export async function launchTaskPty(
 			error: String(err),
 		});
 	}
-
-	// Build env early so both setup and normal paths can embed exports
-	// in their wrapper scripts (tmux server doesn't propagate client env).
-	const env = buildAgentEnv(extraEnv, task.id);
 
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
@@ -2749,49 +2843,12 @@ export const handlers = {
 		log.info("-> checkSystemRequirements", { PATH: process.env.PATH });
 		const settings = await loadSettings();
 		const results: RequirementCheckResult[] = SYSTEM_REQUIREMENTS.map((req) => {
-			let resolvedPath: string | undefined;
-
-			// 1. Check custom path from settings
-			let customPathError = false;
 			const customPath = settings.customBinaryPaths?.[req.id];
-			if (customPath) {
-				if (existsSync(customPath)) {
-					resolvedPath = customPath;
-					log.info(`  ${req.id}: found via custom settings path`, { path: resolvedPath });
-				} else {
-					customPathError = true;
-					log.warn(`  ${req.id}: custom path from settings does not exist`, { path: customPath });
-				}
-			}
+			const { resolvedPath, customPathError } = resolveBinaryPath(req.checkCommand, customPath);
 
-			// 2. Try `which` (uses current PATH)
-			if (!resolvedPath) {
-				const proc = spawnSync(["which", req.checkCommand]);
-				if (proc.exitCode === 0) {
-					const whichOutput = proc.stdout ? new TextDecoder().decode(proc.stdout).trim() : "";
-					resolvedPath = whichOutput || req.checkCommand;
-					log.info(`  ${req.id}: found via which`, { path: resolvedPath });
-				}
-			}
-
-			// 3. Fallback: check common Homebrew paths
-			if (!resolvedPath) {
-				for (const dir of FALLBACK_BIN_PATHS) {
-					const candidate = `${dir}/${req.checkCommand}`;
-					if (existsSync(candidate)) {
-						resolvedPath = candidate;
-						// Patch PATH so all future spawns can find it
-						if (!process.env.PATH?.includes(dir)) {
-							process.env.PATH = `${dir}:${process.env.PATH}`;
-							log.info(`  Patched PATH with ${dir}`);
-						}
-						log.info(`  ${req.id}: found via fallback path`, { path: resolvedPath });
-						break;
-					}
-				}
-			}
-
-			if (!resolvedPath) {
+			if (resolvedPath) {
+				log.info(`  ${req.id}: found`, { path: resolvedPath });
+			} else {
 				log.warn(`  ${req.id}: NOT found anywhere`);
 			}
 
@@ -2839,6 +2896,57 @@ export const handlers = {
 		paths[params.requirementId] = params.path;
 		await saveSettings({ ...settings, customBinaryPaths: paths });
 		log.info("<- setCustomBinaryPath saved");
+	},
+
+	async checkAgentAvailability(): Promise<AgentCheckResult[]> {
+		log.info("-> checkAgentAvailability");
+		const settings = await loadSettings();
+		const allAgents = await agents.getAllAgents();
+		const results: AgentCheckResult[] = allAgents.map((agent) => {
+			const customPath = settings.agentBinaryPaths?.[agent.id];
+			const { resolvedPath, customPathError } = resolveBinaryPath(agent.baseCommand, customPath);
+			log.info(`  agent ${agent.id} (${agent.baseCommand}): ${resolvedPath ? "found" : "NOT found"}`, { path: resolvedPath ?? "none" });
+			return {
+				agentId: agent.id,
+				name: agent.name,
+				baseCommand: agent.baseCommand,
+				installed: !!resolvedPath,
+				resolvedPath,
+				installCommand: agent.installCommand,
+				installUrl: agent.installUrl,
+				customPathError,
+			};
+		});
+
+		// Auto-save resolved paths for agents that were found
+		const pathsToSave: Record<string, string> = { ...(settings.agentBinaryPaths ?? {}) };
+		let changed = false;
+		for (const r of results) {
+			if (r.resolvedPath && pathsToSave[r.agentId] !== r.resolvedPath) {
+				pathsToSave[r.agentId] = r.resolvedPath;
+				changed = true;
+			}
+		}
+		if (changed) {
+			saveSettings({ ...settings, agentBinaryPaths: pathsToSave }).catch((err) =>
+				log.warn("Failed to auto-save agent binary paths", { error: String(err) }),
+			);
+		}
+
+		log.info("<- checkAgentAvailability", { results: results.map((r) => `${r.agentId}:${r.installed}`) });
+		return results;
+	},
+
+	async setAgentBinaryPath(params: { agentId: string; path: string }): Promise<void> {
+		log.info("-> setAgentBinaryPath", params);
+		if (!existsSync(params.path)) {
+			throw new Error(`File not found: ${params.path}`);
+		}
+		const settings = await loadSettings();
+		const paths = settings.agentBinaryPaths ?? {};
+		paths[params.agentId] = params.path;
+		await saveSettings({ ...settings, agentBinaryPaths: paths });
+		log.info("<- setAgentBinaryPath saved");
 	},
 
 	async createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {

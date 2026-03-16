@@ -94,6 +94,7 @@ const kanban = {
 	"spawnAgent.spawn": "Lanzar",
 	"spawnAgent.spawning": "Lanzando...",
 	"spawnAgent.failed": "Error al lanzar: {error}",
+	"spawnAgent.notInstalled": "{name} no está instalado. Instálalo primero.",
 
 	// Pipeline
 	"pipeline.current": "actual",
