@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { AgentCheckResult } from "../../shared/types";
 
 export interface SelectOption {
 	value: string;
@@ -108,3 +109,21 @@ function Select({
 }
 
 export default Select;
+
+/** Shared renderOption callback that shows a red "Not Installed" badge for unavailable agents. */
+export function useAgentRenderOption(availability: AgentCheckResult[]): (opt: SelectOption) => ReactNode {
+	return useCallback((opt: SelectOption) => {
+		const avail = availability.find((a) => a.agentId === opt.value);
+		const notInstalled = avail && !avail.installed;
+		return (
+			<span className="flex items-center gap-2">
+				{opt.label}
+				{notInstalled && (
+					<span className="text-danger text-[0.65rem] font-medium opacity-80">
+						Not Installed
+					</span>
+				)}
+			</span>
+		);
+	}, [availability]);
+}

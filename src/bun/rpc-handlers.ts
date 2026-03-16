@@ -805,7 +805,9 @@ export async function launchTaskPty(
 	// Pre-launch validation: check if the agent binary exists
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
 		const binaryName = resolvedBaseCmd.split("/").pop() ?? resolvedBaseCmd;
-		const { resolvedPath: binaryPath } = resolveBinaryPath(binaryName);
+		const settings = await loadSettings();
+		const customPath = settings.agentBinaryPaths?.[task.agentId ?? ""];
+		const { resolvedPath: binaryPath } = resolveBinaryPath(binaryName, customPath);
 		if (!binaryPath) {
 			// Find the agent to get install instructions
 			const allAgents = await agents.getAllAgents();

@@ -3,7 +3,7 @@ import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } fro
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
-import Select from "./Select";
+import Select, { useAgentRenderOption } from "./Select";
 
 interface SpawnAgentModalProps {
 	task: Task;
@@ -90,6 +90,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		setSpawning(false);
 	}
 
+	const renderAgentOption = useAgentRenderOption(agentAvailability);
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	const configs = selectedAgent?.configurations ?? [];
 	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
@@ -121,20 +122,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 								value={agentId ?? ""}
 								options={agents.map((a) => ({ value: a.id, label: a.name }))}
 								onChange={(val) => handleAgentChange(val || null)}
-								renderOption={(opt) => {
-									const avail = agentAvailability.find((a) => a.agentId === opt.value);
-									const notInstalled = avail && !avail.installed;
-									return (
-										<span className="flex items-center gap-2">
-											{opt.label}
-											{notInstalled && (
-												<span className="text-danger text-[0.65rem] font-medium opacity-80">
-													Not Installed
-												</span>
-											)}
-										</span>
-									);
-								}}
+								renderOption={renderAgentOption}
 							/>
 						</div>
 						<div>

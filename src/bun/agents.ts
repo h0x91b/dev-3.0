@@ -9,11 +9,6 @@ import { loadSettings } from "./settings";
 
 const log = createLogger("agents");
 
-/** Quick sync check if a file exists (for cached binary paths). */
-function fileExists(path: string): boolean {
-	return existsSync(path);
-}
-
 const AGENTS_FILE = `${DEV3_HOME}/agents.json`;
 
 // ---- Storage ----
@@ -343,6 +338,14 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
 	return {};
 }
 
+/** Apply saved binary path override if the cached file still exists on disk. */
+function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
+	const savedPath = savedPaths?.[agent.id];
+	return savedPath && existsSync(savedPath)
+		? { ...agent, baseCommand: savedPath }
+		: agent;
+}
+
 export async function resolveCommandForAgent(
 	agentId: string,
 	configId: string | null,
@@ -356,12 +359,8 @@ export async function resolveCommandForAgent(
 	}
 	const config = findConfig(agent, configId);
 
-	// Use saved binary path if available and file still exists
 	const settings = await loadSettings();
-	const savedPath = settings.agentBinaryPaths?.[agentId];
-	const agentWithPath = savedPath && fileExists(savedPath)
-		? { ...agent, baseCommand: savedPath }
-		: agent;
+	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 
 	const command = resolveAgentCommand(agentWithPath, config, ctx, options);
 	// Agent-type defaults first, then config envVars override
@@ -393,12 +392,7 @@ export async function resolveCommandForProject(
 	const agent = allAgents.find((a) => a.id === settings.defaultAgentId);
 
 	if (agent) {
-		// Use saved binary path if available and file still exists
-		const savedPath = settings.agentBinaryPaths?.[agent.id];
-		const agentWithPath = savedPath && fileExists(savedPath)
-			? { ...agent, baseCommand: savedPath }
-			: agent;
-
+		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
 		const command = resolveAgentCommand(agentWithPath, config, ctx, options);
