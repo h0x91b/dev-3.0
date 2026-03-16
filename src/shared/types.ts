@@ -133,6 +133,8 @@ export interface CodingAgent {
 	isDefault?: boolean;
 	configurations: AgentConfiguration[];
 	defaultConfigId?: string;
+	installCommand?: string;
+	installUrl?: string;
 }
 
 export const DEFAULT_AGENTS: CodingAgent[] = [
@@ -141,6 +143,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Claude",
 		baseCommand: "claude",
 		isDefault: true,
+		installCommand: "brew install claude-code",
+		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
 			{ id: "claude-default", name: "Default", model: "sonnet" },
 			{ id: "claude-plan", name: "Plan (Opus)", model: "opus", permissionMode: "plan" },
@@ -158,6 +162,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Codex",
 		baseCommand: "codex",
 		isDefault: true,
+		installCommand: "npm install -g @openai/codex",
+		installUrl: "https://github.com/openai/codex",
 		configurations: [
 			// --- General ---
 			{
@@ -249,6 +255,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Gemini",
 		baseCommand: "gemini",
 		isDefault: true,
+		installCommand: "npm install -g @anthropic-ai/gemini-cli",
+		installUrl: "https://github.com/anthropics/gemini-cli",
 		configurations: [
 			// --- Gemini 3.1 Pro (heavy) ---
 			{ id: "gemini-default", name: "Default (3.1 Pro)", model: "gemini-3.1-pro-preview", version: 1 },
@@ -270,6 +278,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Cursor Agent",
 		baseCommand: "agent",
 		isDefault: true,
+		installCommand: "npm install -g @anthropic-ai/cursor-agent",
+		installUrl: "https://github.com/anthropics/cursor-agent",
 		configurations: [
 			{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
 			{ id: "cursor-plan", name: "Plan (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan" },
@@ -314,6 +324,7 @@ export interface GlobalSettings {
 	updateChannel: "stable" | "canary";
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
+	agentBinaryPaths?: Record<string, string>; // agentId → resolved binary path
 	terminalKeymap?: TerminalKeymapPreset;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
@@ -550,6 +561,19 @@ export interface RequirementCheckResult {
 	brewInstallable: boolean;
 	customPathError?: boolean; // true if custom path was set but file doesn't exist
 	optional?: boolean; // optional requirements don't block the app
+}
+
+// ---- Agent availability ----
+
+export interface AgentCheckResult {
+	agentId: string;
+	name: string;
+	baseCommand: string;
+	installed: boolean;
+	resolvedPath?: string;
+	installCommand?: string;
+	installUrl?: string;
+	customPathError?: boolean;
 }
 
 // ---- CLI socket protocol ----
@@ -818,6 +842,14 @@ export type AppRPCSchema = {
 			};
 			setCustomBinaryPath: {
 				params: { requirementId: string; path: string };
+				response: void;
+			};
+			checkAgentAvailability: {
+				params: void;
+				response: AgentCheckResult[];
+			};
+			setAgentBinaryPath: {
+				params: { agentId: string; path: string };
 				response: void;
 			};
 			getChangelogs: {

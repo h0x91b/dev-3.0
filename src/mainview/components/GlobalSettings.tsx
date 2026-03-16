@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
-import type { CodingAgent, AgentConfiguration, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, AgentConfiguration, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
@@ -35,6 +35,11 @@ function GlobalSettings() {
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
 	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
+	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
+	const [agentCheckLoading, setAgentCheckLoading] = useState(false);
+	const [agentCustomPaths, setAgentCustomPaths] = useState<Record<string, string>>({});
+	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
+	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
 
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
@@ -43,8 +48,17 @@ function GlobalSettings() {
 		updateChannel: "stable",
 	});
 
+	function loadAgentAvailability() {
+		setAgentCheckLoading(true);
+		api.request.checkAgentAvailability()
+			.then(setAgentAvailability)
+			.catch(() => {})
+			.finally(() => setAgentCheckLoading(false));
+	}
+
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
+		loadAgentAvailability();
 		api.request.getGlobalSettings().then((s) => {
 			setGlobalSettings(s);
 			if (s.terminalKeymap) {
@@ -668,6 +682,7 @@ function GlobalSettings() {
 						<div className="space-y-2 mb-3">
 							{agents.map((agent) => {
 								const isExpanded = expandedAgentId === agent.id;
+								const availability = agentAvailability.find((a) => a.agentId === agent.id);
 								return (
 									<div
 										key={agent.id}
@@ -690,6 +705,19 @@ function GlobalSettings() {
 											<span className="text-fg-3 text-xs font-mono">
 												{agent.baseCommand}
 											</span>
+											{availability && (
+												<span
+													className={`text-xs px-1.5 py-0.5 rounded ${
+														availability.installed
+															? "bg-green-400/15 text-green-400"
+															: "bg-danger/15 text-danger"
+													}`}
+												>
+													{availability.installed
+														? t("settings.agentInstalled")
+														: t("settings.agentNotInstalled")}
+												</span>
+											)}
 											<span className="text-fg-muted text-xs">
 												{agent.configurations.length} config{agent.configurations.length !== 1 ? "s" : ""}
 											</span>
@@ -703,6 +731,98 @@ function GlobalSettings() {
 										{/* Expanded agent editor */}
 										{isExpanded && (
 											<div className="border-t border-edge px-4 py-4 space-y-4">
+												{/* Agent availability status */}
+												{availability && (
+													<div className={`p-3 rounded-lg ${availability.installed ? "bg-green-400/5 border border-green-400/20" : "bg-danger/5 border border-danger/20"}`}>
+														{availability.installed ? (
+															<div className="flex items-center gap-2">
+																<span className="text-green-400 text-sm">&#10003;</span>
+																<span className="text-fg-2 text-xs">{t("settings.agentInstalled")}</span>
+																{availability.resolvedPath && (
+																	<span className="text-fg-muted text-xs font-mono truncate">{availability.resolvedPath}</span>
+																)}
+															</div>
+														) : (
+															<div className="space-y-2">
+																<div className="flex items-center gap-2">
+																	<span className="text-danger text-sm">&#10007;</span>
+																	<span className="text-fg-2 text-xs">{t("settings.agentNotInstalledHint")}</span>
+																</div>
+																{availability.installCommand && (
+																	<div>
+																		<p className="text-fg-3 text-xs mb-1">{t("settings.agentInstallHint")}</p>
+																		<div className="flex items-center gap-1.5">
+																			<code className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded text-xs font-mono">
+																				{availability.installCommand}
+																			</code>
+																			<button
+																				type="button"
+																				onClick={(e) => {
+																					e.stopPropagation();
+																					navigator.clipboard.writeText(availability.installCommand!);
+																					setAgentCopiedId(agent.id);
+																					setTimeout(() => setAgentCopiedId((prev) => (prev === agent.id ? null : prev)), 2000);
+																				}}
+																				className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+																				title="Copy"
+																			>
+																				{agentCopiedId === agent.id ? (
+																					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+																						<polyline points="20 6 9 17 4 12" />
+																					</svg>
+																				) : (
+																					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+																						<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+																						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+																					</svg>
+																				)}
+																			</button>
+																		</div>
+																	</div>
+																)}
+																<p className="text-fg-muted text-xs">{t("settings.agentLoginReminder")}</p>
+																{/* Custom path input */}
+																<div className="pt-2 border-t border-edge/50">
+																	<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
+																	{availability.customPathError && (
+																		<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
+																	)}
+																	<div className="flex items-center gap-1.5">
+																		<input
+																			type="text"
+																			value={agentCustomPaths[agent.id] ?? ""}
+																			onChange={(e) => setAgentCustomPaths((prev) => ({ ...prev, [agent.id]: e.target.value }))}
+																			onClick={(e) => e.stopPropagation()}
+																			placeholder={`/path/to/${agent.baseCommand}`}
+																			className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${availability.customPathError ? "border-danger" : "border-edge"}`}
+																		/>
+																		<button
+																			type="button"
+																			onClick={async (e) => {
+																				e.stopPropagation();
+																				const path = agentCustomPaths[agent.id]?.trim();
+																				if (!path) return;
+																				setAgentSavingId(agent.id);
+																				try {
+																					await api.request.setAgentBinaryPath({ agentId: agent.id, path });
+																					loadAgentAvailability();
+																				} catch (err) {
+																					console.error("Failed to save agent binary path:", err);
+																				}
+																				setAgentSavingId(null);
+																			}}
+																			disabled={!agentCustomPaths[agent.id]?.trim() || agentSavingId === agent.id}
+																			className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+																		>
+																			{t("requirements.setPath")}
+																		</button>
+																	</div>
+																</div>
+															</div>
+														)}
+													</div>
+												)}
+
 												{/* Agent name */}
 												<div>
 													<label className="block text-fg-2 text-xs mb-1">
@@ -799,12 +919,28 @@ function GlobalSettings() {
 							})}
 						</div>
 
-						<button
-							onClick={addAgent}
-							className="px-4 py-2 text-accent text-sm font-semibold hover:bg-accent/10 rounded-lg transition-colors"
-						>
-							+ {t("settings.addAgent")}
-						</button>
+						<div className="flex items-center gap-3">
+							<button
+								onClick={addAgent}
+								className="px-4 py-2 text-accent text-sm font-semibold hover:bg-accent/10 rounded-lg transition-colors"
+							>
+								+ {t("settings.addAgent")}
+							</button>
+							<button
+								onClick={loadAgentAvailability}
+								disabled={agentCheckLoading}
+								className="px-4 py-2 text-fg-3 text-sm hover:text-fg hover:bg-elevated rounded-lg transition-colors disabled:opacity-50"
+							>
+								{agentCheckLoading ? (
+									<span className="flex items-center gap-1.5">
+										<span className="w-2.5 h-2.5 rounded-full border-2 border-fg-muted/30 border-t-fg-muted animate-spin" />
+										{t("settings.recheckAgents")}
+									</span>
+								) : (
+									t("settings.recheckAgents")
+								)}
+							</button>
+						</div>
 					</div>
 
 					{/* Language */}

@@ -23,6 +23,7 @@ vi.mock("../../rpc", () => ({
 			saveAgents: vi.fn(),
 			getGlobalSettings: vi.fn(),
 			saveGlobalSettings: vi.fn(),
+			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 		},
 	},
 }));

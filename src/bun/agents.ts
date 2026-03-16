@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
@@ -7,6 +8,11 @@ import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 
 const log = createLogger("agents");
+
+/** Quick sync check if a file exists (for cached binary paths). */
+function fileExists(path: string): boolean {
+	return existsSync(path);
+}
 
 const AGENTS_FILE = `${DEV3_HOME}/agents.json`;
 
@@ -349,7 +355,15 @@ export async function resolveCommandForAgent(
 		throw new Error(`Agent not found: ${agentId}`);
 	}
 	const config = findConfig(agent, configId);
-	const command = resolveAgentCommand(agent, config, ctx, options);
+
+	// Use saved binary path if available and file still exists
+	const settings = await loadSettings();
+	const savedPath = settings.agentBinaryPaths?.[agentId];
+	const agentWithPath = savedPath && fileExists(savedPath)
+		? { ...agent, baseCommand: savedPath }
+		: agent;
+
+	const command = resolveAgentCommand(agentWithPath, config, ctx, options);
 	// Agent-type defaults first, then config envVars override
 	const extraEnv: Record<string, string> = { ...getDefaultEnvForAgent(agent, config) };
 	if (config?.envVars) {
@@ -375,13 +389,19 @@ export async function resolveCommandForProject(
 	};
 
 	const settings = await loadSettings();
-	const agents = await getAllAgents();
-	const agent = agents.find((a) => a.id === settings.defaultAgentId);
+	const allAgents = await getAllAgents();
+	const agent = allAgents.find((a) => a.id === settings.defaultAgentId);
 
 	if (agent) {
+		// Use saved binary path if available and file still exists
+		const savedPath = settings.agentBinaryPaths?.[agent.id];
+		const agentWithPath = savedPath && fileExists(savedPath)
+			? { ...agent, baseCommand: savedPath }
+			: agent;
+
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
-		const command = resolveAgentCommand(agent, config, ctx, options);
+		const command = resolveAgentCommand(agentWithPath, config, ctx, options);
 		// Agent-type defaults first, then buildTaskEnv (which includes config envVars) overrides
 		const agentDefaults = getDefaultEnvForAgent(agent, config);
 		const extraEnv = { ...agentDefaults, ...buildTaskEnv(project, taskTitle, "", worktreePath, config) };

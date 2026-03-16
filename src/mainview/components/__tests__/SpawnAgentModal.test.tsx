@@ -69,6 +69,10 @@ vi.mock("../../rpc", () => ({
 				updateChannel: "stable",
 			}),
 			spawnAgentInTask: vi.fn().mockResolvedValue(undefined),
+			checkAgentAvailability: vi.fn().mockResolvedValue([
+				{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: true, resolvedPath: "/usr/local/bin/claude" },
+				{ agentId: "builtin-codex", name: "Codex", baseCommand: "codex", installed: true, resolvedPath: "/usr/local/bin/codex" },
+			]),
 		},
 	},
 }));

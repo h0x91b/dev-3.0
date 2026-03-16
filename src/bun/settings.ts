@@ -14,6 +14,7 @@ export interface GlobalSettings {
 	updateChannel: "stable" | "canary";
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>;
+	agentBinaryPaths?: Record<string, string>;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[];
 	terminalKeymap?: "default" | "iterm2";
@@ -41,6 +42,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
+			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
@@ -71,6 +73,7 @@ export function loadSettingsSync(): GlobalSettings {
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
+			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,

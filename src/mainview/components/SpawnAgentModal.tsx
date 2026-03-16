@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
@@ -19,8 +19,10 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	const [configId, setConfigId] = useState<string | null>(null);
 	const [spawning, setSpawning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
 
 	useEffect(() => {
+		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
 		Promise.all([
 			api.request.getAgents(),
 			api.request.getGlobalSettings(),
@@ -90,6 +92,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	const configs = selectedAgent?.configurations ?? [];
+	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
+	const agentNotInstalled = selectedAvailability ? !selectedAvailability.installed : false;
 
 	return (
 		<div
@@ -130,6 +134,20 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 								onChange={(val) => setConfigId(val || null)}
 							/>
 						</div>
+
+						{/* Warning for uninstalled agents */}
+						{agentNotInstalled && selectedAgent && (
+							<div className="p-3 rounded-lg bg-yellow-400/10 border border-yellow-400/20">
+								<p className="text-yellow-400 text-xs font-medium mb-1">
+									{t("spawnAgent.notInstalled", { name: selectedAgent.name })}
+								</p>
+								{selectedAvailability?.installCommand && (
+									<code className="text-yellow-400/80 bg-yellow-400/5 px-2 py-0.5 rounded text-xs font-mono">
+										{selectedAvailability.installCommand}
+									</code>
+								)}
+							</div>
+						)}
 					</div>
 				) : (
 					<div className="px-6 py-8 flex items-center justify-center">
@@ -155,7 +173,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 					</button>
 					<button
 						onClick={handleSpawn}
-						disabled={spawning || !globalSettings}
+						disabled={spawning || !globalSettings || agentNotInstalled}
 						className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
 					>
 						{spawning ? t("spawnAgent.spawning") : t("spawnAgent.spawn")}
