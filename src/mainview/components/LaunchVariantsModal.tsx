@@ -65,7 +65,7 @@ function LaunchVariantsModal({
 		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
 	}, []);
 
-	const renderAgentOption = useAgentRenderOption(agentAvailability);
+	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 
 	// Escape → close; Enter → launch (when no text input is focused)
 	useEffect(() => {

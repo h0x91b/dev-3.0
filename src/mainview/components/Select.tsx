@@ -111,7 +111,7 @@ function Select({
 export default Select;
 
 /** Shared renderOption callback that shows a red "Not Installed" badge for unavailable agents. */
-export function useAgentRenderOption(availability: AgentCheckResult[]): (opt: SelectOption) => ReactNode {
+export function useAgentRenderOption(availability: AgentCheckResult[], notInstalledLabel: string): (opt: SelectOption) => ReactNode {
 	return useCallback((opt: SelectOption) => {
 		const avail = availability.find((a) => a.agentId === opt.value);
 		const notInstalled = avail && !avail.installed;
@@ -120,10 +120,10 @@ export function useAgentRenderOption(availability: AgentCheckResult[]): (opt: Se
 				{opt.label}
 				{notInstalled && (
 					<span className="text-danger text-[0.65rem] font-medium opacity-80">
-						Not Installed
+						{notInstalledLabel}
 					</span>
 				)}
 			</span>
 		);
-	}, [availability]);
+	}, [availability, notInstalledLabel]);
 }

@@ -181,7 +181,7 @@ export function resolveBinaryPath(binaryName: string, customPath?: string): { re
 			const candidate = `${dir}/${binaryName}`;
 			if (existsSync(candidate)) {
 				resolvedPath = candidate;
-				if (!process.env.PATH?.includes(dir)) {
+				if (!process.env.PATH?.split(":").includes(dir)) {
 					process.env.PATH = `${dir}:${process.env.PATH}`;
 				}
 				break;

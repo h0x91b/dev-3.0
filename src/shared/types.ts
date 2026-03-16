@@ -162,7 +162,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Codex",
 		baseCommand: "codex",
 		isDefault: true,
-		installCommand: "npm install -g @openai/codex",
+		installCommand: "brew install codex",
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
 			// --- General ---
@@ -255,8 +255,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Gemini",
 		baseCommand: "gemini",
 		isDefault: true,
-		installCommand: "npm install -g @anthropic-ai/gemini-cli",
-		installUrl: "https://github.com/anthropics/gemini-cli",
+		installCommand: "brew install gemini-cli",
+		installUrl: "https://github.com/google-gemini/gemini-cli",
 		configurations: [
 			// --- Gemini 3.1 Pro (heavy) ---
 			{ id: "gemini-default", name: "Default (3.1 Pro)", model: "gemini-3.1-pro-preview", version: 1 },
@@ -278,8 +278,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		name: "Cursor Agent",
 		baseCommand: "agent",
 		isDefault: true,
-		installCommand: "npm install -g @anthropic-ai/cursor-agent",
-		installUrl: "https://github.com/anthropics/cursor-agent",
+		installCommand: "npm install -g cursor-agent",
+		installUrl: "https://github.com/nicepkg/cursor-agent",
 		configurations: [
 			{ id: "cursor-default", name: "Default (Opus 4.6)", model: "opus-4.6-thinking" },
 			{ id: "cursor-plan", name: "Plan (Opus 4.6)", model: "opus-4.6-thinking", permissionMode: "plan" },

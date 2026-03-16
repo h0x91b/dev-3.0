@@ -90,7 +90,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		setSpawning(false);
 	}
 
-	const renderAgentOption = useAgentRenderOption(agentAvailability);
+	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	const configs = selectedAgent?.configurations ?? [];
 	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
