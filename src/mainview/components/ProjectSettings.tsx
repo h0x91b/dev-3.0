@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
-import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project } from "../../shared/types";
+import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project, Task } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -529,7 +530,8 @@ function ConfigForm({ config, onChange, inherited, saving, onSave, saveLabel, sa
 
 // ---- Main component ----
 
-type ConfigTab = "repo" | "local";
+type ConfigTab = "global" | "project" | "worktree";
+type WorktreeSubTab = "repo" | "local";
 
 interface NavigationGuard {
 	isDirty: () => boolean;
@@ -539,6 +541,7 @@ interface NavigationGuard {
 interface ProjectSettingsProps {
 	projectId: string;
 	projects: Project[];
+	tasks: Task[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
@@ -547,6 +550,7 @@ interface ProjectSettingsProps {
 function ProjectSettings({
 	projectId,
 	projects,
+	tasks,
 	dispatch,
 	navigate: _navigate,
 	navigationGuardRef,
@@ -554,29 +558,73 @@ function ProjectSettings({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 
-	const [activeTab, setActiveTab] = useState<ConfigTab>("repo");
-	const [repoConfig, setRepoConfig] = useState<Dev3RepoConfig>({});
-	const [localConfig, setLocalConfig] = useState<Dev3RepoConfig>({});
-	const [savingRepo, setSavingRepo] = useState(false);
-	const [savingLocal, setSavingLocal] = useState(false);
+	const [activeTab, setActiveTab] = useState<ConfigTab>("project");
+
+	// ---- Project tab state (app-level config) ----
+	const [appConfig, setAppConfig] = useState<Dev3RepoConfig>({});
+	const [savingApp, setSavingApp] = useState(false);
+	const appConfigLoaded = useRef(false);
+	const loadedAppConfig = useRef<Dev3RepoConfig>({});
+
+	// ---- Worktree tab state ----
+	const [worktreeSubTab, setWorktreeSubTab] = useState<WorktreeSubTab>("repo");
+	const [selectedWorktreeTaskId, setSelectedWorktreeTaskId] = useState<string | null>(null);
+	const [wtRepoConfig, setWtRepoConfig] = useState<Dev3RepoConfig>({});
+	const [wtLocalConfig, setWtLocalConfig] = useState<Dev3RepoConfig>({});
+	const [savingWtRepo, setSavingWtRepo] = useState(false);
+	const [savingWtLocal, setSavingWtLocal] = useState(false);
+	const loadedWtRepoConfig = useRef<Dev3RepoConfig>({});
+	const loadedWtLocalConfig = useRef<Dev3RepoConfig>({});
+
+	// ---- Global tab state ----
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
-	const configsLoaded = useRef(false);
-	const loadedRepoConfig = useRef<Dev3RepoConfig>({});
-	const loadedLocalConfig = useRef<Dev3RepoConfig>({});
 
-	// Load both config files on mount
+	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
+	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
+	const [aiReviewEnabled, setAiReviewEnabled] = useState(!!reviewConfig || !project?.builtinColumnAgents);
+	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
+	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
+	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
+	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
+
+	// Load available agents
 	useEffect(() => {
-		if (!configsLoaded.current && project) {
-			configsLoaded.current = true;
-			api.request.getProjectConfigs({ projectId }).then(({ repo, local }) => {
-				setRepoConfig(repo);
-				setLocalConfig(local);
-				loadedRepoConfig.current = repo;
-				loadedLocalConfig.current = local;
+		api.request.getAgents().then(setAvailableAgents).catch(() => {});
+	}, []);
+
+	// Load app-level config on mount
+	useEffect(() => {
+		if (!appConfigLoaded.current && project) {
+			appConfigLoaded.current = true;
+			api.request.getAppConfig({ projectId }).then((config) => {
+				setAppConfig(config);
+				loadedAppConfig.current = config;
 			}).catch(() => {});
 		}
 	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// Tasks with active worktrees
+	const worktreeTasks = tasks.filter((t) => t.worktreePath && ACTIVE_STATUSES.includes(t.status));
+
+	// Auto-select first worktree task
+	useEffect(() => {
+		if (!selectedWorktreeTaskId && worktreeTasks.length > 0) {
+			setSelectedWorktreeTaskId(worktreeTasks[0].id);
+		}
+	}, [worktreeTasks.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	// Load worktree configs when task selection changes
+	const selectedTask = tasks.find((t) => t.id === selectedWorktreeTaskId);
+	useEffect(() => {
+		if (!selectedTask?.worktreePath) return;
+		api.request.getProjectConfigs({ projectId, worktreePath: selectedTask.worktreePath }).then(({ repo, local }) => {
+			setWtRepoConfig(repo);
+			setWtLocalConfig(local);
+			loadedWtRepoConfig.current = repo;
+			loadedWtLocalConfig.current = local;
+		}).catch(() => {});
+	}, [selectedWorktreeTaskId, selectedTask?.worktreePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
 		const keysToCheck: (keyof Dev3RepoConfig)[] = [
@@ -592,13 +640,23 @@ function ProjectSettings({
 		const spA = (a.sparseCheckoutPaths ?? []).join("\0");
 		const spB = (b.sparseCheckoutPaths ?? []).join("\0");
 		if (spA !== spB) return false;
+		// Compare builtinColumnAgents
+		const bcaA = JSON.stringify(a.builtinColumnAgents ?? {});
+		const bcaB = JSON.stringify(b.builtinColumnAgents ?? {});
+		if (bcaA !== bcaB) return false;
 		return true;
 	}, []);
 
 	const isDirty = useCallback(() => {
-		return !configsEqual(repoConfig, loadedRepoConfig.current) ||
-			!configsEqual(localConfig, loadedLocalConfig.current);
-	}, [repoConfig, localConfig, configsEqual]);
+		if (activeTab === "project") {
+			return !configsEqual(appConfig, loadedAppConfig.current);
+		}
+		if (activeTab === "worktree") {
+			if (worktreeSubTab === "repo") return !configsEqual(wtRepoConfig, loadedWtRepoConfig.current);
+			return !configsEqual(wtLocalConfig, loadedWtLocalConfig.current);
+		}
+		return false; // Global tab uses immediate save
+	}, [activeTab, worktreeSubTab, appConfig, wtRepoConfig, wtLocalConfig, configsEqual]);
 
 	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
 
@@ -615,19 +673,6 @@ function ProjectSettings({
 		};
 	}, [isDirty]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
-	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
-	const [aiReviewEnabled, setAiReviewEnabled] = useState(!!reviewConfig || !project?.builtinColumnAgents);
-	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
-	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
-	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
-	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
-
-	// Load available agents for AI Review dropdowns
-	useEffect(() => {
-		api.request.getAgents().then(setAvailableAgents).catch(() => {});
-	}, []);
-
 	if (!project) {
 		return (
 			<div className="h-full w-full flex items-center justify-center">
@@ -636,6 +681,7 @@ function ProjectSettings({
 		);
 	}
 
+	// ---- Global tab handlers ----
 	async function handleAddLabel() {
 		if (!project) return;
 		setLabelSaving("new");
@@ -726,10 +772,11 @@ function ProjectSettings({
 		setColumnSaving(null);
 	}
 
-	async function handleSaveRepo() {
-		setSavingRepo(true);
+	// ---- Project tab save (app-level config) ----
+	async function handleSaveAppConfig() {
+		setSavingApp(true);
 		try {
-			const builtinColumnAgents: Record<string, ColumnAgentConfig> | undefined = aiReviewEnabled
+			const builtinColumnAgents: Record<string, ColumnAgentConfig> = aiReviewEnabled
 				? {
 					"review-by-ai": {
 						agentId: aiReviewAgentId,
@@ -737,259 +784,350 @@ function ProjectSettings({
 						prompt: aiReviewPrompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : aiReviewPrompt.trim(),
 					},
 				}
-				: undefined;
+				: {};
 			const toSave = {
-				...repoConfig,
-				clonePaths: (repoConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
-				sparseCheckoutPaths: (repoConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+				...appConfig,
+				clonePaths: (appConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
+				sparseCheckoutPaths: (appConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
 				builtinColumnAgents,
 			};
-			await api.request.saveRepoConfig({ projectId, ...toSave });
-			loadedRepoConfig.current = toSave;
+			await api.request.saveAppConfig({ projectId, ...toSave });
+			loadedAppConfig.current = toSave;
 			// Refresh projects to pick up new resolved settings
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
 		}
-		setSavingRepo(false);
+		setSavingApp(false);
 	}
 
-	async function handleSaveLocal() {
-		setSavingLocal(true);
+	// ---- Worktree tab saves ----
+	async function handleSaveWtRepo() {
+		if (!selectedTask?.worktreePath) return;
+		setSavingWtRepo(true);
 		try {
 			const toSave = {
-				...localConfig,
-				clonePaths: (localConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
-				sparseCheckoutPaths: (localConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+				...wtRepoConfig,
+				clonePaths: (wtRepoConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
+				sparseCheckoutPaths: (wtRepoConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
 			};
-			await api.request.saveLocalConfig({ projectId, ...toSave });
-			loadedLocalConfig.current = toSave;
-			// Refresh projects to pick up new resolved settings
+			await api.request.saveRepoConfig({ projectId, worktreePath: selectedTask.worktreePath, autoCommit: true, ...toSave });
+			loadedWtRepoConfig.current = toSave;
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
 		}
-		setSavingLocal(false);
+		setSavingWtRepo(false);
+	}
+
+	async function handleSaveWtLocal() {
+		if (!selectedTask?.worktreePath) return;
+		setSavingWtLocal(true);
+		try {
+			const toSave = {
+				...wtLocalConfig,
+				clonePaths: (wtLocalConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
+				sparseCheckoutPaths: (wtLocalConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+			};
+			await api.request.saveLocalConfig({ projectId, worktreePath: selectedTask.worktreePath, ...toSave });
+			loadedWtLocalConfig.current = toSave;
+			const updatedProjects = await api.request.getProjects();
+			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
+		} catch (err) {
+			alert(t("projectSettings.failedSave", { error: String(err) }));
+		}
+		setSavingWtLocal(false);
 	}
 
 	// Keep the ref in sync for the navigation guard
 	handleSaveRef.current = async () => {
-		if (activeTab === "repo") await handleSaveRepo();
-		else await handleSaveLocal();
+		if (activeTab === "project") await handleSaveAppConfig();
+		else if (activeTab === "worktree") {
+			if (worktreeSubTab === "repo") await handleSaveWtRepo();
+			else await handleSaveWtLocal();
+		}
 	};
+
+	const tabButtonClass = (tab: ConfigTab) => `flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+		activeTab === tab
+			? "bg-accent text-white shadow-sm"
+			: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+	}`;
 
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 
-					{/* Config tabs */}
+					{/* 3-tab selector */}
 					<div>
 						<div className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
-							<button
-								type="button"
-								onClick={() => setActiveTab("repo")}
-								className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-									activeTab === "repo"
-										? "bg-accent text-white shadow-sm"
-										: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-								}`}
-							>
-								{t("projectSettings.tabRepo")}
+							<button type="button" onClick={() => setActiveTab("global")} className={tabButtonClass("global")}>
+								{t("projectSettings.tabGlobal")}
 							</button>
-							<button
-								type="button"
-								onClick={() => setActiveTab("local")}
-								className={`flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-									activeTab === "local"
-										? "bg-accent text-white shadow-sm"
-										: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-								}`}
-							>
-								{t("projectSettings.tabLocal")}
+							<button type="button" onClick={() => setActiveTab("project")} className={tabButtonClass("project")}>
+								{t("projectSettings.tabProject")}
+							</button>
+							<button type="button" onClick={() => setActiveTab("worktree")} className={tabButtonClass("worktree")}>
+								{t("projectSettings.tabWorktree")}
 							</button>
 						</div>
 						<p className="text-fg-muted text-xs px-1">
-							{activeTab === "repo"
-								? t("projectSettings.tabRepoDesc")
-								: t("projectSettings.tabLocalDesc")}
+							{activeTab === "global" && t("projectSettings.tabGlobalDesc")}
+							{activeTab === "project" && t("projectSettings.tabProjectDesc")}
+							{activeTab === "worktree" && t("projectSettings.tabWorktreeDesc")}
 						</p>
 					</div>
 
-					{/* Config form for active tab */}
-					{activeTab === "repo" ? (
-						<ConfigForm
-							config={repoConfig}
-							onChange={setRepoConfig}
-							saving={savingRepo}
-							onSave={handleSaveRepo}
-							saveLabel={t("projectSettings.saveRepo")}
-							savingLabel={t("projectSettings.saving")}
-							projectId={projectId}
-							projectPath={project.path}
-						/>
-					) : (
-						<ConfigForm
-							config={localConfig}
-							onChange={setLocalConfig}
-							inherited={repoConfig}
-							saving={savingLocal}
-							onSave={handleSaveLocal}
-							saveLabel={t("projectSettings.saveLocal")}
-							savingLabel={t("projectSettings.saving")}
-							projectId={projectId}
-							projectPath={project.path}
-						/>
+					{/* ======== Global tab ======== */}
+					{activeTab === "global" && (
+						<>
+							{/* Custom Columns */}
+							<div>
+								<label className="block text-fg text-sm font-semibold mb-2">
+									{t("customColumns.settingsTitle")}
+								</label>
+								<p className="text-fg-3 text-sm mb-3">
+									{t("customColumns.settingsDesc")}
+								</p>
+								<div className="space-y-2">
+									{(project.customColumns ?? []).map((col: CustomColumn) => (
+										<CustomColumnRow
+											key={col.id}
+											column={col}
+											saving={columnSaving === col.id}
+											onUpdate={(name, color, llmInstruction, agentConfig) => handleUpdateColumn(col.id, name, color, llmInstruction, agentConfig)}
+											onDelete={() => handleDeleteColumn(col.id)}
+											availableAgents={availableAgents}
+										/>
+									))}
+									{(project.customColumns ?? []).length === 0 && (
+										<p className="text-fg-muted text-sm italic">{t("customColumns.noColumns")}</p>
+									)}
+								</div>
+								<button
+									type="button"
+									onClick={handleAddColumn}
+									disabled={columnSaving !== null}
+									className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
+								>
+									{t("customColumns.addColumn")}
+								</button>
+							</div>
+
+							{/* Labels */}
+							<div>
+								<label className="block text-fg text-sm font-semibold mb-2">
+									{t("labels.settingsTitle")}
+								</label>
+								<p className="text-fg-3 text-sm mb-3">
+									{t("labels.settingsDesc")}
+								</p>
+								<div className="space-y-2">
+									{(project.labels ?? []).map((label: Label) => (
+										<LabelRow
+											key={label.id}
+											label={label}
+											saving={labelSaving === label.id}
+											onUpdate={(name, color) => handleUpdateLabel(label.id, name, color)}
+											onDelete={() => handleDeleteLabel(label.id)}
+											nameLabel={t("labels.labelName")}
+											deleteLabel={t("labels.deleteLabel")}
+										/>
+									))}
+									{(project.labels ?? []).length === 0 && (
+										<p className="text-fg-muted text-sm italic">{t("labels.noLabels")}</p>
+									)}
+								</div>
+								<button
+									type="button"
+									onClick={handleAddLabel}
+									disabled={labelSaving !== null}
+									className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
+								>
+									{t("labels.addLabel")}
+								</button>
+							</div>
+						</>
 					)}
 
-					{/* AI Review */}
-					<div className="space-y-4">
-						<div className="flex items-center justify-between">
-							<div>
-								<label className="block text-fg text-sm font-semibold mb-1">
-									{t("projectSettings.aiReview")}
-								</label>
-								<p className="text-fg-3 text-sm">
-									{t("projectSettings.aiReviewDesc")}
-								</p>
+					{/* ======== Project tab ======== */}
+					{activeTab === "project" && (
+						<>
+							{/* Warning: local only */}
+							<div className="flex items-center gap-2 px-3 py-2 bg-elevated/60 border border-edge/40 rounded-lg">
+								<span className="text-fg-muted text-xs">{t("projectSettings.appConfigWarning")}</span>
 							</div>
-							<button
-								type="button"
-								role="switch"
-								aria-checked={aiReviewEnabled}
-								aria-label={t("projectSettings.aiReviewEnabled")}
-								onClick={() => setAiReviewEnabled((v) => !v)}
-								className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
-									aiReviewEnabled ? "bg-accent" : "bg-edge-active"
-								}`}
-							>
-								<span
-									className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-										aiReviewEnabled ? "translate-x-4" : "translate-x-0"
-									}`}
-								/>
-							</button>
-						</div>
-						{aiReviewEnabled && (
-							<div className="space-y-3 pl-1">
-								{/* Agent selector */}
-								<div className="flex items-center gap-3">
-									<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewAgent")}</label>
-									<select
-										value={aiReviewAgentId}
-										onChange={(e) => {
-											setAiReviewAgentId(e.target.value);
-											const agent = availableAgents.find((a) => a.id === e.target.value);
-											if (agent?.configurations?.length) {
-												setAiReviewConfigId(agent.configurations[0].id);
-											}
-										}}
-										className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+
+							<ConfigForm
+								config={appConfig}
+								onChange={setAppConfig}
+								saving={savingApp}
+								onSave={handleSaveAppConfig}
+								saveLabel={t("projectSettings.saveProject")}
+								savingLabel={t("projectSettings.saving")}
+								projectId={projectId}
+								projectPath={project.path}
+							/>
+
+							{/* AI Review */}
+							<div className="space-y-4">
+								<div className="flex items-center justify-between">
+									<div>
+										<label className="block text-fg text-sm font-semibold mb-1">
+											{t("projectSettings.aiReview")}
+										</label>
+										<p className="text-fg-3 text-sm">
+											{t("projectSettings.aiReviewDesc")}
+										</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={aiReviewEnabled}
+										aria-label={t("projectSettings.aiReviewEnabled")}
+										onClick={() => setAiReviewEnabled((v) => !v)}
+										className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+											aiReviewEnabled ? "bg-accent" : "bg-edge-active"
+										}`}
 									>
-										{availableAgents.map((a) => (
-											<option key={a.id} value={a.id}>{a.name}</option>
-										))}
-									</select>
+										<span
+											className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+												aiReviewEnabled ? "translate-x-4" : "translate-x-0"
+											}`}
+										/>
+									</button>
 								</div>
-								{/* Config selector */}
-								<div className="flex items-center gap-3">
-									<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewConfig")}</label>
-									<select
-										value={aiReviewConfigId}
-										onChange={(e) => setAiReviewConfigId(e.target.value)}
-										className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-									>
-										{(availableAgents.find((a) => a.id === aiReviewAgentId)?.configurations ?? []).map((c) => (
-											<option key={c.id} value={c.id}>{c.name || c.id}</option>
-										))}
-									</select>
-								</div>
-								{/* Review prompt */}
-								<div>
-									<label className="block text-fg-2 text-sm mb-2">{t("projectSettings.aiReviewPrompt")}</label>
-									<textarea
-										value={aiReviewPrompt}
-										onChange={(e) => setAiReviewPrompt(e.target.value)}
-										rows={5}
-										placeholder={t("projectSettings.aiReviewPromptPlaceholder")}
-										autoCapitalize="off"
-										autoCorrect="off"
-										spellCheck={false}
-										className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-									/>
-								</div>
+								{aiReviewEnabled && (
+									<div className="space-y-3 pl-1">
+										<div className="flex items-center gap-3">
+											<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewAgent")}</label>
+											<select
+												value={aiReviewAgentId}
+												onChange={(e) => {
+													setAiReviewAgentId(e.target.value);
+													const agent = availableAgents.find((a) => a.id === e.target.value);
+													if (agent?.configurations?.length) {
+														setAiReviewConfigId(agent.configurations[0].id);
+													}
+												}}
+												className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+											>
+												{availableAgents.map((a) => (
+													<option key={a.id} value={a.id}>{a.name}</option>
+												))}
+											</select>
+										</div>
+										<div className="flex items-center gap-3">
+											<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewConfig")}</label>
+											<select
+												value={aiReviewConfigId}
+												onChange={(e) => setAiReviewConfigId(e.target.value)}
+												className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+											>
+												{(availableAgents.find((a) => a.id === aiReviewAgentId)?.configurations ?? []).map((c) => (
+													<option key={c.id} value={c.id}>{c.name || c.id}</option>
+												))}
+											</select>
+										</div>
+										<div>
+											<label className="block text-fg-2 text-sm mb-2">{t("projectSettings.aiReviewPrompt")}</label>
+											<textarea
+												value={aiReviewPrompt}
+												onChange={(e) => setAiReviewPrompt(e.target.value)}
+												rows={5}
+												placeholder={t("projectSettings.aiReviewPromptPlaceholder")}
+												autoCapitalize="off"
+												autoCorrect="off"
+												spellCheck={false}
+												className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+											/>
+										</div>
+									</div>
+								)}
 							</div>
-						)}
-					</div>
+						</>
+					)}
 
-					{/* Custom Columns */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("customColumns.settingsTitle")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("customColumns.settingsDesc")}
-						</p>
-						<div className="space-y-2">
-							{(project.customColumns ?? []).map((col: CustomColumn) => (
-								<CustomColumnRow
-									key={col.id}
-									column={col}
-									saving={columnSaving === col.id}
-									onUpdate={(name, color, llmInstruction, agentConfig) => handleUpdateColumn(col.id, name, color, llmInstruction, agentConfig)}
-									onDelete={() => handleDeleteColumn(col.id)}
-									availableAgents={availableAgents}
-								/>
-							))}
-							{(project.customColumns ?? []).length === 0 && (
-								<p className="text-fg-muted text-sm italic">{t("customColumns.noColumns")}</p>
-							)}
-						</div>
-						<button
-							type="button"
-							onClick={handleAddColumn}
-							disabled={columnSaving !== null}
-							className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
-						>
-							{t("customColumns.addColumn")}
-						</button>
-					</div>
+					{/* ======== Worktree tab ======== */}
+					{activeTab === "worktree" && (
+						<>
+							{worktreeTasks.length === 0 ? (
+								<p className="text-fg-muted text-sm italic">{t("projectSettings.noActiveWorktrees")}</p>
+							) : (
+								<>
+									{/* Task selector */}
+									<div>
+										<label className="block text-fg-3 text-xs mb-1">{t("projectSettings.worktreeSelector")}</label>
+										<select
+											value={selectedWorktreeTaskId ?? ""}
+											onChange={(e) => setSelectedWorktreeTaskId(e.target.value)}
+											className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+										>
+											{worktreeTasks.map((task) => (
+												<option key={task.id} value={task.id}>
+													{getTaskTitle(task)}
+												</option>
+											))}
+										</select>
+									</div>
 
-					{/* Labels */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("labels.settingsTitle")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("labels.settingsDesc")}
-						</p>
-						<div className="space-y-2">
-							{(project.labels ?? []).map((label: Label) => (
-								<LabelRow
-									key={label.id}
-									label={label}
-									saving={labelSaving === label.id}
-									onUpdate={(name, color) => handleUpdateLabel(label.id, name, color)}
-									onDelete={() => handleDeleteLabel(label.id)}
-									nameLabel={t("labels.labelName")}
-									deleteLabel={t("labels.deleteLabel")}
-								/>
-							))}
-							{(project.labels ?? []).length === 0 && (
-								<p className="text-fg-muted text-sm italic">{t("labels.noLabels")}</p>
+									{/* Repo / Local sub-tabs */}
+									<div className="flex gap-1 bg-elevated/50 rounded-xl p-1">
+										<button
+											type="button"
+											onClick={() => setWorktreeSubTab("repo")}
+											className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+												worktreeSubTab === "repo"
+													? "bg-accent text-white shadow-sm"
+													: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+											}`}
+										>
+											{t("projectSettings.worktreeRepoTab")}
+										</button>
+										<button
+											type="button"
+											onClick={() => setWorktreeSubTab("local")}
+											className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+												worktreeSubTab === "local"
+													? "bg-accent text-white shadow-sm"
+													: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+											}`}
+										>
+											{t("projectSettings.worktreeLocalTab")}
+										</button>
+									</div>
+
+									{worktreeSubTab === "repo" ? (
+										<ConfigForm
+											config={wtRepoConfig}
+											onChange={setWtRepoConfig}
+											saving={savingWtRepo}
+											onSave={handleSaveWtRepo}
+											saveLabel={t("projectSettings.saveWorktreeRepo")}
+											savingLabel={t("projectSettings.saving")}
+											projectId={projectId}
+											projectPath={selectedTask?.worktreePath ?? project.path}
+										/>
+									) : (
+										<ConfigForm
+											config={wtLocalConfig}
+											onChange={setWtLocalConfig}
+											inherited={wtRepoConfig}
+											saving={savingWtLocal}
+											onSave={handleSaveWtLocal}
+											saveLabel={t("projectSettings.saveWorktreeLocal")}
+											savingLabel={t("projectSettings.saving")}
+											projectId={projectId}
+											projectPath={selectedTask?.worktreePath ?? project.path}
+										/>
+									)}
+								</>
 							)}
-						</div>
-						<button
-							type="button"
-							onClick={handleAddLabel}
-							disabled={labelSaving !== null}
-							className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
-						>
-							{t("labels.addLabel")}
-						</button>
-					</div>
+						</>
+					)}
 
 				</div>
 			</div>

@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+// Mock DEV3_HOME and projectSlug for app-level config tests
+const MOCK_DEV3_HOME = join(tmpdir(), `dev3-home-test-${process.pid}`);
+vi.mock("../paths", () => ({ DEV3_HOME: join(tmpdir(), `dev3-home-test-${process.pid}`) }));
+vi.mock("../git", () => ({ projectSlug: (p: string) => p.replace(/^\//, "").replaceAll("/", "-") }));
 
 import {
 	loadRepoConfig,
@@ -15,6 +20,9 @@ import {
 	migrateProjectConfig,
 	hasRepoConfig,
 	hasLocalConfig,
+	loadAppConfig,
+	saveAppConfig,
+	hasAppConfig,
 } from "../repo-config";
 import type { Project, Dev3RepoConfig } from "../../shared/types";
 
@@ -38,10 +46,12 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 
 beforeEach(() => {
 	mkdirSync(TEST_DIR, { recursive: true });
+	mkdirSync(MOCK_DEV3_HOME, { recursive: true });
 });
 
 afterEach(() => {
 	rmSync(TEST_DIR, { recursive: true, force: true });
+	rmSync(MOCK_DEV3_HOME, { recursive: true, force: true });
 });
 
 describe("loadRepoConfig", () => {
@@ -234,16 +244,30 @@ describe("getConfigSources", () => {
 });
 
 describe("resolveProjectConfig", () => {
-	it("returns defaults when no config files exist", async () => {
+	it("falls back to project values then defaults when no config files exist", async () => {
 		const project = makeProject();
+		const resolved = await resolveProjectConfig(project);
+		// Falls back to project.setupScript ("npm install"), not default ("")
+		expect(resolved.setupScript).toBe("npm install");
+		expect(resolved.defaultBaseBranch).toBe("main");
+		expect(resolved.peerReviewEnabled).toBe(true);
+		expect(resolved.clonePaths).toEqual(["node_modules"]);
+	});
+
+	it("returns defaults for a project with default-like values", async () => {
+		const project = makeProject({
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+			clonePaths: [],
+			defaultBaseBranch: "main",
+		});
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("");
 		expect(resolved.defaultBaseBranch).toBe("main");
-		expect(resolved.peerReviewEnabled).toBe(true);
-		expect(resolved.clonePaths).toEqual([]);
 	});
 
-	it("uses repo config values", async () => {
+	it("uses repo config values over project values", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
@@ -255,8 +279,8 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("bun install");
 		expect(resolved.defaultBaseBranch).toBe("develop");
-		// Non-configured fields get defaults, NOT projects.json values
-		expect(resolved.cleanupScript).toBe("");
+		// Non-configured fields fall back to project values (level 4)
+		expect(resolved.cleanupScript).toBe("echo done");
 	});
 
 	it("does not mutate the original project", async () => {
@@ -272,7 +296,7 @@ describe("resolveProjectConfig", () => {
 		expect(project.setupScript).toBe("npm install"); // original unchanged
 	});
 
-	it("applies priority: repo < local", async () => {
+	it("applies priority: local > repo > project", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
@@ -287,7 +311,7 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("local-script"); // local wins
 		expect(resolved.defaultBaseBranch).toBe("develop"); // repo
-		expect(resolved.cleanupScript).toBe(""); // default (not from projects.json)
+		expect(resolved.cleanupScript).toBe("echo done"); // from project (level 4)
 	});
 });
 
@@ -430,10 +454,11 @@ describe("resolveProjectConfig with configPath override (worktree)", () => {
 		expect(resolved.setupScript).toBe("local-worktree-script");
 	});
 
-	it("returns defaults when worktree has no .dev3/ directory", async () => {
+	it("falls back to project values when worktree has no .dev3/ directory", async () => {
 		const project = makeProject();
 		const resolved = await resolveProjectConfig(project, WORKTREE_DIR);
-		expect(resolved.setupScript).toBe("");
+		// Falls back to project values (level 4) since worktree has no config
+		expect(resolved.setupScript).toBe("npm install");
 		expect(resolved.defaultBaseBranch).toBe("main");
 	});
 
@@ -490,5 +515,129 @@ describe("migrateProjectConfig with configPath override", () => {
 
 		const written = JSON.parse(readFileSync(join(wtConfigDir, "config.json"), "utf-8"));
 		expect(written.setupScript).toBe("existing");
+	});
+});
+
+describe("app-level config (loadAppConfig / saveAppConfig / hasAppConfig)", () => {
+	it("returns empty object when no app config exists", () => {
+		const config = loadAppConfig(TEST_DIR);
+		expect(config).toEqual({});
+	});
+
+	it("saves and loads app config", async () => {
+		await saveAppConfig(TEST_DIR, { setupScript: "app-setup", devScript: "app-dev" });
+		const config = loadAppConfig(TEST_DIR);
+		expect(config.setupScript).toBe("app-setup");
+		expect(config.devScript).toBe("app-dev");
+	});
+
+	it("hasAppConfig returns false when no config exists", () => {
+		expect(hasAppConfig(TEST_DIR)).toBe(false);
+	});
+
+	it("hasAppConfig returns true after saving", async () => {
+		await saveAppConfig(TEST_DIR, { setupScript: "test" });
+		expect(hasAppConfig(TEST_DIR)).toBe(true);
+	});
+});
+
+describe("4-level resolution (local > repo > app > project > defaults)", () => {
+	it("app config overrides project values", async () => {
+		await saveAppConfig(TEST_DIR, { setupScript: "app-script" });
+
+		const project = makeProject({ setupScript: "project-script" });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.setupScript).toBe("app-script");
+	});
+
+	it("repo config overrides app config", async () => {
+		await saveAppConfig(TEST_DIR, { setupScript: "app-script", devScript: "app-dev" });
+
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "repo-script",
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.setupScript).toBe("repo-script"); // repo wins over app
+		expect(resolved.devScript).toBe("app-dev"); // app wins for fields not in repo
+	});
+
+	it("local config overrides everything", async () => {
+		await saveAppConfig(TEST_DIR, { setupScript: "app-script" });
+
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "repo-script",
+		}));
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
+			setupScript: "local-script",
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.setupScript).toBe("local-script"); // local wins
+	});
+
+	it("full fallback chain: local > repo > app > project > default", async () => {
+		await saveAppConfig(TEST_DIR, { devScript: "app-dev", cleanupScript: "app-cleanup" });
+
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "repo-setup",
+		}));
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
+			defaultBaseBranch: "local-branch",
+		}));
+
+		const project = makeProject({ peerReviewEnabled: false });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.defaultBaseBranch).toBe("local-branch"); // level 1: local
+		expect(resolved.setupScript).toBe("repo-setup");          // level 2: repo
+		expect(resolved.devScript).toBe("app-dev");                // level 3: app
+		expect(resolved.peerReviewEnabled).toBe(false);            // level 4: project
+		expect(resolved.sparseCheckoutEnabled).toBe(false);        // level 5: default
+	});
+
+	it("app config is read from project.path, not worktree path", async () => {
+		// Set app config keyed by project.path
+		await saveAppConfig(TEST_DIR, { setupScript: "app-from-project-path" });
+
+		const WORKTREE = join(tmpdir(), `dev3-wt-app-test-${process.pid}`);
+		mkdirSync(WORKTREE, { recursive: true });
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project, WORKTREE);
+		expect(resolved.setupScript).toBe("app-from-project-path");
+
+		rmSync(WORKTREE, { recursive: true, force: true });
+	});
+});
+
+describe("getConfigSources with app-level", () => {
+	it("reports app source for fields only in app config", async () => {
+		await saveAppConfig(TEST_DIR, { devScript: "app-dev" });
+
+		const sources = await getConfigSources(TEST_DIR, TEST_DIR);
+		const devSource = sources.find((s) => s.field === "devScript");
+		expect(devSource?.source).toBe("app");
+	});
+
+	it("repo overrides app in source report", async () => {
+		await saveAppConfig(TEST_DIR, { setupScript: "app-setup" });
+
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "repo-setup",
+		}));
+
+		const sources = await getConfigSources(TEST_DIR, TEST_DIR);
+		const setupSource = sources.find((s) => s.field === "setupScript");
+		expect(setupSource?.source).toBe("repo");
 	});
 });

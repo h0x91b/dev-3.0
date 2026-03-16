@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS } from "../shared/types";
 import { createLogger } from "./logger";
+import { DEV3_HOME } from "./paths";
+import { projectSlug } from "./git";
 
 const log = createLogger("repo-config");
 
@@ -84,6 +86,30 @@ export async function saveRepoLocalConfig(projectPath: string, config: Dev3RepoC
 	await ensureGitignore(projectPath);
 }
 
+/** Path to app-level config for a project: ~/.dev3.0/data/<slug>/config.json */
+function appConfigPath(projectPath: string): string {
+	return `${DEV3_HOME}/data/${projectSlug(projectPath)}/config.json`;
+}
+
+/** Load app-level config (~/.dev3.0/data/<slug>/config.json). Returns {} if missing. */
+export function loadAppConfig(projectPath: string): Dev3RepoConfig {
+	return readJsonFile<Dev3RepoConfig>(appConfigPath(projectPath)) ?? {};
+}
+
+/** Save app-level config to ~/.dev3.0/data/<slug>/config.json. */
+export async function saveAppConfig(projectPath: string, config: Dev3RepoConfig): Promise<void> {
+	const filePath = appConfigPath(projectPath);
+	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n");
+	log.info("Saved app config", { path: filePath });
+}
+
+/** Check if app-level config exists for this project. */
+export function hasAppConfig(projectPath: string): boolean {
+	return existsSync(appConfigPath(projectPath));
+}
+
 /** Ensure .dev3/config.local.json is in the repo's .gitignore. */
 export async function ensureGitignore(projectPath: string): Promise<void> {
 	const gitignorePath = `${projectPath}/.gitignore`;
@@ -106,13 +132,16 @@ export async function ensureGitignore(projectPath: string): Promise<void> {
 
 /**
  * Return per-field source provenance for UI display.
- * Only "repo" and "local" — fields not set in either file have no entry.
+ * Sources: "local" (.dev3/config.local.json), "repo" (.dev3/config.json), "app" (app-level).
+ * Fields not set in any config file have no entry.
  */
 export async function getConfigSources(
 	projectPath: string,
+	originalProjectPath?: string,
 ): Promise<ConfigSourceEntry[]> {
 	const repoConfig = readJsonFile<Dev3RepoConfig>(`${projectPath}/${CONFIG_FILE}`);
 	const localConfig = readJsonFile<Dev3RepoConfig>(`${projectPath}/${LOCAL_CONFIG_FILE}`);
+	const appConfig = loadAppConfig(originalProjectPath ?? projectPath);
 
 	const entries: ConfigSourceEntry[] = [];
 	for (const field of DEV3_REPO_CONFIG_KEYS) {
@@ -120,29 +149,35 @@ export async function getConfigSources(
 			entries.push({ field, source: "local" });
 		} else if (repoConfig && repoConfig[field] !== undefined) {
 			entries.push({ field, source: "repo" });
+		} else if (appConfig[field] !== undefined) {
+			entries.push({ field, source: "app" });
 		}
 	}
 	return entries;
 }
 
 /**
- * Resolve project settings from .dev3/ config files only.
- * Does NOT fall back to projects.json settings fields.
- * Priority: .dev3/config.json < .dev3/config.local.json < defaults for missing.
+ * Resolve project settings using 4-level hierarchy (highest → lowest priority):
+ * 1. .dev3/config.local.json in configPath — personal overrides, gitignored
+ * 2. .dev3/config.json in configPath — branch config, committed to git
+ * 3. ~/.dev3.0/data/<slug>/config.json — app-level project config (NOT in git)
+ * 4. projects.json field values (on the Project object) → then DEFAULTS
+ *
+ * Per-field, first-defined wins. No deep merge.
  *
  * @param configPath Optional path override to read .dev3/ files from (e.g. worktree path).
  *                   Falls back to project.path when not provided.
  */
 export async function resolveProjectConfig(project: Project, configPath?: string): Promise<Project> {
-	const config = await loadRepoConfig(configPath ?? project.path);
+	const basePath = configPath ?? project.path;
+	const localConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`);
+	const repoConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`);
+	const appConfig = loadAppConfig(project.path); // always from project.path, not worktree
 
 	const resolved = { ...project };
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
-		if (config[key] !== undefined) {
-			(resolved as any)[key] = config[key];
-		} else {
-			(resolved as any)[key] = DEFAULTS[key];
-		}
+		const val = localConfig?.[key] ?? repoConfig?.[key] ?? appConfig?.[key] ?? (project as any)[key] ?? DEFAULTS[key];
+		if (val !== undefined) (resolved as any)[key] = val;
 	}
 	return resolved;
 }

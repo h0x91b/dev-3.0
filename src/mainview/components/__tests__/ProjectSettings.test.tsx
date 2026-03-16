@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectSettings from "../ProjectSettings";
 import { I18nProvider } from "../../i18n";
-import type { Project } from "../../../shared/types";
+import type { Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -12,7 +12,9 @@ vi.mock("../../rpc", () => ({
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
-			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {} }),
+			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {}, app: {} }),
+			getAppConfig: vi.fn().mockResolvedValue({}),
+			saveAppConfig: vi.fn().mockResolvedValue(undefined),
 			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
 			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
 			getProjects: vi.fn().mockResolvedValue([]),
@@ -33,11 +35,33 @@ const mockProject: Project = {
 	createdAt: new Date().toISOString(),
 };
 
-async function renderProjectSettings(project: Project = mockProject, repoConfig = {}) {
+const mockTasks: Task[] = [];
+
+const mockTaskWithWorktree: Task = {
+	id: "task-1",
+	seq: 1,
+	projectId: "proj-1",
+	title: "Test task",
+	description: "Test description",
+	status: "in-progress",
+	baseBranch: "main",
+	worktreePath: "/tmp/worktree-1",
+	branchName: "feat/test",
+	groupId: null,
+	variantIndex: null,
+	agentId: null,
+	configId: null,
+	createdAt: new Date().toISOString(),
+	updatedAt: new Date().toISOString(),
+};
+
+async function renderProjectSettings(project: Project = mockProject, appConfig = {}, tasks: Task[] = mockTasks) {
 	const { api } = await import("../../rpc");
+	(api.request.getAppConfig as ReturnType<typeof vi.fn>).mockResolvedValue(appConfig);
 	(api.request.getProjectConfigs as ReturnType<typeof vi.fn>).mockResolvedValue({
-		repo: repoConfig,
+		repo: {},
 		local: {},
+		app: appConfig,
 	});
 
 	const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
@@ -49,6 +73,7 @@ async function renderProjectSettings(project: Project = mockProject, repoConfig 
 				<ProjectSettings
 					projectId={project.id}
 					projects={[project]}
+					tasks={tasks}
 					dispatch={dispatch}
 					navigate={navigate}
 				/>
@@ -60,27 +85,35 @@ async function renderProjectSettings(project: Project = mockProject, repoConfig 
 
 describe("ProjectSettings", () => {
 	describe("tab navigation", () => {
-		it("renders repo and local tabs", async () => {
+		it("renders all three tabs", async () => {
 			await renderProjectSettings();
-			expect(screen.getByText("Repo Config")).toBeInTheDocument();
-			expect(screen.getByText("Local Overrides")).toBeInTheDocument();
+			expect(screen.getByText("Board")).toBeInTheDocument();
+			expect(screen.getByText("Project Config")).toBeInTheDocument();
+			expect(screen.getByText("Worktree Config")).toBeInTheDocument();
 		});
 
-		it("shows repo tab by default", async () => {
+		it("shows project tab by default", async () => {
 			await renderProjectSettings();
-			expect(screen.getByText(/Shared team settings/)).toBeInTheDocument();
+			expect(screen.getByText(/Project-level settings/i)).toBeInTheDocument();
 		});
 
-		it("switches to local tab on click", async () => {
+		it("switches to global tab on click", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();
-			await user.click(screen.getByText("Local Overrides"));
-			expect(screen.getByText(/Machine-specific overrides/)).toBeInTheDocument();
+			await user.click(screen.getByText("Board"));
+			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
+		});
+
+		it("switches to worktree tab on click", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await user.click(screen.getByText("Worktree Config"));
+			expect(screen.getByText(/no active worktrees/i)).toBeInTheDocument();
 		});
 	});
 
-	describe("repo config form", () => {
-		it("populates form from getProjectConfigs", async () => {
+	describe("project config form (app-level)", () => {
+		it("populates form from getAppConfig", async () => {
 			await renderProjectSettings(mockProject, {
 				setupScript: "bun install",
 				defaultBaseBranch: "develop",
@@ -151,15 +184,15 @@ describe("ProjectSettings", () => {
 	});
 
 	describe("save buttons", () => {
-		it("calls saveRepoConfig on repo tab save", async () => {
+		it("calls saveAppConfig on project tab save", async () => {
 			const { api } = await import("../../rpc");
-			const mockSave = api.request.saveRepoConfig as ReturnType<typeof vi.fn>;
+			const mockSave = api.request.saveAppConfig as ReturnType<typeof vi.fn>;
 			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
 
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, { setupScript: "bun install" });
 
-			await user.click(screen.getByText("Save to Repo"));
+			await user.click(screen.getByText("Save Project Config"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
@@ -167,21 +200,46 @@ describe("ProjectSettings", () => {
 				);
 			});
 		});
+	});
 
-		it("calls saveLocalConfig on local tab save", async () => {
+	describe("worktree tab", () => {
+		it("shows no active worktrees message when no tasks have worktrees", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await user.click(screen.getByText("Worktree Config"));
+			expect(screen.getByText(/no active worktrees/i)).toBeInTheDocument();
+		});
+
+		it("shows worktree selector when tasks have worktrees", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, {}, [mockTaskWithWorktree]);
+			await user.click(screen.getByText("Worktree Config"));
+			expect(screen.getByText("Test task")).toBeInTheDocument();
+		});
+	});
+
+	describe("AI Review persistence (fix #336)", () => {
+		it("saves empty builtinColumnAgents when AI Review is disabled", async () => {
 			const { api } = await import("../../rpc");
-			const mockSave = api.request.saveLocalConfig as ReturnType<typeof vi.fn>;
+			const mockSave = api.request.saveAppConfig as ReturnType<typeof vi.fn>;
 			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
 
 			const user = userEvent.setup();
-			await renderProjectSettings();
+			await renderProjectSettings(mockProject, {});
 
-			await user.click(screen.getByText("Local Overrides"));
-			await user.click(screen.getByText("Save Local"));
+			// Disable AI Review
+			const toggle = screen.getByRole("switch", { name: /enable ai review/i });
+			await user.click(toggle);
+
+			// Save
+			await user.click(screen.getByText("Save Project Config"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
-					expect.objectContaining({ projectId: "proj-1" }),
+					expect.objectContaining({
+						projectId: "proj-1",
+						builtinColumnAgents: {},
+					}),
 				);
 			});
 		});

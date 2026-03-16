@@ -559,6 +559,7 @@ function App() {
 					<ProjectSettings
 						projectId={route.projectId}
 						projects={state.projects}
+						tasks={state.currentProjectTasks}
 						dispatch={dispatch}
 						navigate={navigate}
 						navigationGuardRef={navigationGuardRef}

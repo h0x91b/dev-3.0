@@ -1,0 +1,3 @@
+Refactored project configuration into a clean 4-level hierarchy: worktree local (.dev3/config.local.json) > worktree repo (.dev3/config.json) > app-level (~/.dev3.0/data/<slug>/config.json) > projects.json > defaults. Project Settings now has three tabs: Board (labels/columns), Project Config (app-level), and Worktree Config (per-task overrides with auto-commit). Fixed #336 where disabling AI Review didn't persist across app restarts. Fixed #341 where dev server ignored worktree-local config overrides. Added a gear icon button in the task panel for quick access to worktree settings.
+
+Suggested by @roiros (h0x91b/dev-3.0#336)

@@ -1293,6 +1293,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		</>
 	);
 
+	// ---- Worktree settings button ----
+	const worktreeSettingsButton = task.worktreePath ? (
+		<button
+			onClick={() => navigate({ screen: "project-settings", projectId: project.id })}
+			className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+			title={t("projectSettings.tabWorktree")}
+		>
+			{/* Nerd Font: gear (U+F013) */}
+			<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF013"}</span>
+		</button>
+	) : null;
+
 	// ---- "Open in..." button ----
 	const [openInMenuOpen, setOpenInMenuOpen] = useState(false);
 	const [openInMenuPos, setOpenInMenuPos] = useState({ top: 0, left: 0 });
@@ -1556,6 +1568,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 						{tmuxHintsInline}
 						{tmuxHintsPopover}
 						{devServerButton}
+						{worktreeSettingsButton}
 						<button
 							onClick={() => isFullPage
 								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
