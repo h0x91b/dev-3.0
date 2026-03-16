@@ -13,8 +13,7 @@ vi.mock("../../rpc", () => ({
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
 			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {}, app: {} }),
-			getAppConfig: vi.fn().mockResolvedValue({}),
-			saveAppConfig: vi.fn().mockResolvedValue(undefined),
+			updateProjectSettings: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", path: "/tmp/test", defaultBaseBranch: "main", setupScript: "", devScript: "", cleanupScript: "", createdAt: "" }),
 			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
 			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
 			getProjects: vi.fn().mockResolvedValue([]),
@@ -55,15 +54,8 @@ const mockTaskWithWorktree: Task = {
 	updatedAt: new Date().toISOString(),
 };
 
-async function renderProjectSettings(project: Project = mockProject, appConfig = {}, tasks: Task[] = mockTasks) {
-	const { api } = await import("../../rpc");
-	(api.request.getAppConfig as ReturnType<typeof vi.fn>).mockResolvedValue(appConfig);
-	(api.request.getProjectConfigs as ReturnType<typeof vi.fn>).mockResolvedValue({
-		repo: {},
-		local: {},
-		app: appConfig,
-	});
-
+async function renderProjectSettings(project: Project = mockProject, configOverrides: Partial<Project> = {}, tasks: Task[] = mockTasks) {
+	const mergedProject = { ...project, ...configOverrides };
 	const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
 	const navigate = vi.fn() as (route: Route) => void;
 	let result: ReturnType<typeof render>;
@@ -71,8 +63,8 @@ async function renderProjectSettings(project: Project = mockProject, appConfig =
 		result = render(
 			<I18nProvider>
 				<ProjectSettings
-					projectId={project.id}
-					projects={[project]}
+					projectId={mergedProject.id}
+					projects={[mergedProject]}
 					tasks={tasks}
 					dispatch={dispatch}
 					navigate={navigate}
@@ -212,10 +204,10 @@ describe("ProjectSettings", () => {
 			expect(screen.getByText("Save")).toBeInTheDocument();
 		});
 
-		it("calls saveAppConfig when Save is clicked in banner", async () => {
+		it("calls updateProjectSettings when Save is clicked in banner", async () => {
 			const { api } = await import("../../rpc");
-			const mockSave = api.request.saveAppConfig as ReturnType<typeof vi.fn>;
-			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+
 
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, { setupScript: "original" });
@@ -254,8 +246,8 @@ describe("ProjectSettings", () => {
 	describe("AI Review persistence (fix #336)", () => {
 		it("saves empty builtinColumnAgents when AI Review is disabled", async () => {
 			const { api } = await import("../../rpc");
-			const mockSave = api.request.saveAppConfig as ReturnType<typeof vi.fn>;
-			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+
 
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, {});

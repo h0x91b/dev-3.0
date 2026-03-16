@@ -546,11 +546,20 @@ function ProjectSettings({
 
 	const [activeTab, setActiveTab] = useState<ConfigTab>("global");
 
-	// ---- Project tab state (app-level config) ----
-	const [appConfig, setAppConfig] = useState<Dev3RepoConfig>({});
-	const [savingApp, setSavingApp] = useState(false);
-	const appConfigLoaded = useRef(false);
-	const loadedAppConfig = useRef<Dev3RepoConfig>({});
+	// ---- Project tab state (reads/writes projects.json) ----
+	const projectConfigFromProject = useCallback((p: Project): Dev3RepoConfig => ({
+		setupScript: p.setupScript,
+		devScript: p.devScript,
+		cleanupScript: p.cleanupScript,
+		clonePaths: p.clonePaths,
+		defaultBaseBranch: p.defaultBaseBranch,
+		peerReviewEnabled: p.peerReviewEnabled,
+		sparseCheckoutEnabled: p.sparseCheckoutEnabled,
+		sparseCheckoutPaths: p.sparseCheckoutPaths,
+	}), []);
+	const [projectConfig, setProjectConfig] = useState<Dev3RepoConfig>(() => project ? projectConfigFromProject(project) : {});
+	const [savingProject, setSavingProject] = useState(false);
+	const loadedProjectConfig = useRef<Dev3RepoConfig>(project ? projectConfigFromProject(project) : {});
 
 	// ---- Worktree tab state ----
 	const [worktreeSubTab, setWorktreeSubTab] = useState<WorktreeSubTab>("repo");
@@ -580,17 +589,6 @@ function ProjectSettings({
 	useEffect(() => {
 		api.request.getAgents().then(setAvailableAgents).catch(() => {});
 	}, []);
-
-	// Load app-level config on mount
-	useEffect(() => {
-		if (!appConfigLoaded.current && project) {
-			appConfigLoaded.current = true;
-			api.request.getAppConfig({ projectId }).then((config) => {
-				setAppConfig(config);
-				loadedAppConfig.current = config;
-			}).catch(() => {});
-		}
-	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// Tasks with active worktrees
 	const worktreeTasks = tasks.filter((t) => t.worktreePath && ACTIVE_STATUSES.includes(t.status));
@@ -642,14 +640,14 @@ function ProjectSettings({
 
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {
-			return !configsEqual(appConfig, loadedAppConfig.current) || isAiReviewDirty();
+			return !configsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty();
 		}
 		if (activeTab === "worktree") {
 			if (worktreeSubTab === "repo") return !configsEqual(wtRepoConfig, loadedWtRepoConfig.current);
 			return !configsEqual(wtLocalConfig, loadedWtLocalConfig.current);
 		}
 		return false; // Global tab uses immediate save
-	}, [activeTab, worktreeSubTab, appConfig, wtRepoConfig, wtLocalConfig, configsEqual, isAiReviewDirty]);
+	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, configsEqual, isAiReviewDirty]);
 
 	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
 
@@ -766,8 +764,8 @@ function ProjectSettings({
 	}
 
 	// ---- Project tab save (app-level config) ----
-	async function handleSaveAppConfig() {
-		setSavingApp(true);
+	async function handleSaveProjectConfig() {
+		setSavingProject(true);
 		try {
 			const builtinColumnAgents: Record<string, ColumnAgentConfig> = aiReviewEnabled
 				? {
@@ -779,21 +777,19 @@ function ProjectSettings({
 				}
 				: {};
 			const toSave = {
-				...appConfig,
-				clonePaths: (appConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
-				sparseCheckoutPaths: (appConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+				...projectConfig,
+				clonePaths: (projectConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
+				sparseCheckoutPaths: (projectConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
 				builtinColumnAgents,
 			};
-			await api.request.saveAppConfig({ projectId, ...toSave });
-			loadedAppConfig.current = toSave;
+			const updated = await api.request.updateProjectSettings({ projectId, ...toSave });
+			dispatch({ type: "updateProject", project: updated });
+			loadedProjectConfig.current = toSave;
 			initialAiReviewRef.current = { enabled: aiReviewEnabled, agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
-			// Refresh projects to pick up new resolved settings
-			const updatedProjects = await api.request.getProjects();
-			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
 		}
-		setSavingApp(false);
+		setSavingProject(false);
 	}
 
 	// ---- Worktree tab saves ----
@@ -837,7 +833,7 @@ function ProjectSettings({
 
 	// Keep the ref in sync for the navigation guard
 	handleSaveRef.current = async () => {
-		if (activeTab === "project") await handleSaveAppConfig();
+		if (activeTab === "project") await handleSaveProjectConfig();
 		else if (activeTab === "worktree") {
 			if (worktreeSubTab === "repo") await handleSaveWtRepo();
 			else await handleSaveWtLocal();
@@ -851,7 +847,7 @@ function ProjectSettings({
 	}`;
 
 	const dirty = isDirty();
-	const saving = savingApp || savingWtRepo || savingWtLocal;
+	const saving = savingProject || savingWtRepo || savingWtLocal;
 
 	return (
 		<div className="h-full w-full flex flex-col">
@@ -966,8 +962,8 @@ function ProjectSettings({
 					{activeTab === "project" && (
 						<>
 							<ConfigForm
-								config={appConfig}
-								onChange={setAppConfig}
+								config={projectConfig}
+								onChange={setProjectConfig}
 								projectId={projectId}
 								projectPath={project.path}
 							/>

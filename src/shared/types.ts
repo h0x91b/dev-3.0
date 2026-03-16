@@ -665,6 +665,11 @@ export type AppRPCSchema = {
 				params: { projectId: string } & Dev3RepoConfig;
 				response: void;
 			};
+			/** Update project settings in projects.json (scripts, clone paths, AI Review, etc.). */
+			updateProjectSettings: {
+				params: { projectId: string } & Dev3RepoConfig;
+				response: Project;
+			};
 			/** Save to .dev3/config.json. When autoCommit is true, commits the change in the worktree. */
 			saveRepoConfig: {
 				params: { projectId: string; worktreePath?: string; autoCommit?: boolean } & Dev3RepoConfig;

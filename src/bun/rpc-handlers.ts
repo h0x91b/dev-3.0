@@ -1390,6 +1390,21 @@ export const handlers = {
 		log.info("← saveAppConfig done");
 	},
 
+	async updateProjectSettings(params: { projectId: string } & Dev3RepoConfig): Promise<Project> {
+		log.info("→ updateProjectSettings", { projectId: params.projectId });
+		const updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents">> = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(updates as any)[key] = val;
+			}
+		}
+		const updated = await data.updateProject(params.projectId, updates);
+		pushMessage?.("projectUpdated", { project: updated });
+		log.info("← updateProjectSettings done");
+		return updated;
+	},
+
 	async saveRepoConfig(params: { projectId: string; worktreePath?: string; autoCommit?: boolean } & Dev3RepoConfig): Promise<void> {
 		log.info("→ saveRepoConfig", { projectId: params.projectId, worktreePath: params.worktreePath, autoCommit: params.autoCommit });
 		const project = await data.getProject(params.projectId);
