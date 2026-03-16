@@ -784,7 +784,7 @@ export async function launchTaskPty(
 	// Primary agent always stops at review-by-user; AI review is triggered manually.
 	const stopTarget: TaskStatus = "review-by-user";
 	try {
-		setupAgentHooks(worktreePath, task.id, resolvedBaseCmd, { stopTarget });
+		setupAgentHooks(worktreePath, resolvedBaseCmd, { stopTarget });
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,

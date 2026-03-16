@@ -11,7 +11,8 @@
       "Bash(fc-query *)",
       "Bash(pip3 install *)",
       "Bash(gh *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(dev3:*)"
     ]
   },
   "hooks": {

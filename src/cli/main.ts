@@ -71,7 +71,7 @@ async function main(): Promise<void> {
 		return await handleCurrent(socketPath);
 	}
 	if (command === "install-hooks") {
-		return await handleInstallHooks(context);
+		return await handleInstallHooks();
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();
