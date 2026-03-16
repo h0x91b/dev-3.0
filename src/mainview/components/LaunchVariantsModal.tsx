@@ -1,5 +1,5 @@
 import { useState, useEffect, type Dispatch } from "react";
-import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -59,6 +59,11 @@ function LaunchVariantsModal({
 	const [variants, setVariants] = useState<VariantRow[]>(() => [makeDefaultVariant()]);
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
+
+	useEffect(() => {
+		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
+	}, []);
 
 	// Escape → close; Enter → launch (when no text input is focused)
 	useEffect(() => {
@@ -175,6 +180,20 @@ function LaunchVariantsModal({
 										value={variant.agentId ?? ""}
 										options={agents.map((a) => ({ value: a.id, label: a.name }))}
 										onChange={(val) => handleAgentChange(index, val || null)}
+										renderOption={(opt) => {
+											const avail = agentAvailability.find((a) => a.agentId === opt.value);
+											const notInstalled = avail && !avail.installed;
+											return (
+												<span className="flex items-center gap-2">
+													{opt.label}
+													{notInstalled && (
+														<span className="text-danger text-[0.65rem] font-medium opacity-80">
+															Not Installed
+														</span>
+													)}
+												</span>
+											);
+										}}
 									/>
 								</div>
 

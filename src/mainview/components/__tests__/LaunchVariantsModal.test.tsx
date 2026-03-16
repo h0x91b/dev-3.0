@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			spawnVariants: vi.fn(),
+			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
@@ -192,8 +193,9 @@ function getSelectedText(button: HTMLButtonElement): string {
 /** Click a custom Select trigger to open it, then click the option with the given label */
 async function selectOption(user: ReturnType<typeof userEvent.setup>, button: HTMLButtonElement, optionLabel: string) {
 	await user.click(button);
-	// The dropdown is rendered via portal — find the option button by text
-	const option = screen.getByText(optionLabel, { selector: "button" });
+	// The dropdown is rendered via portal — find the option by text (may be wrapped in spans via renderOption)
+	const el = screen.getByText(optionLabel);
+	const option = el.closest("button") ?? el;
 	await user.click(option);
 }
 

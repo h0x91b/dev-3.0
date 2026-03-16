@@ -121,6 +121,20 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 								value={agentId ?? ""}
 								options={agents.map((a) => ({ value: a.id, label: a.name }))}
 								onChange={(val) => handleAgentChange(val || null)}
+								renderOption={(opt) => {
+									const avail = agentAvailability.find((a) => a.agentId === opt.value);
+									const notInstalled = avail && !avail.installed;
+									return (
+										<span className="flex items-center gap-2">
+											{opt.label}
+											{notInstalled && (
+												<span className="text-danger text-[0.65rem] font-medium opacity-80">
+													Not Installed
+												</span>
+											)}
+										</span>
+									);
+								}}
 							/>
 						</div>
 						<div>

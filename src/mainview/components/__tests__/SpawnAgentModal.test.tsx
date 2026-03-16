@@ -235,7 +235,8 @@ describe("SpawnAgentModal", () => {
 
 		const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
 		await user.click(agentBtn);
-		const codexOption = screen.getByText("Codex", { selector: "button" });
+		const codexEl = screen.getByText("Codex");
+		const codexOption = codexEl.closest("button") ?? codexEl;
 		await user.click(codexOption);
 
 		const configBtn = document.getElementById("spawn-config") as HTMLButtonElement;

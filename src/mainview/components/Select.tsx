@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export interface SelectOption {
@@ -11,11 +11,13 @@ function Select({
 	value,
 	options,
 	onChange,
+	renderOption,
 }: {
 	id?: string;
 	value: string;
 	options: SelectOption[];
 	onChange: (value: string) => void;
+	renderOption?: (option: SelectOption) => ReactNode;
 }) {
 	const [open, setOpen] = useState(false);
 	const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
@@ -60,7 +62,7 @@ function Select({
 					open ? "border-accent" : "border-edge hover:border-edge-active"
 				}`}
 			>
-				<span className="truncate">{selected?.label ?? ""}</span>
+				<span className="truncate">{selected ? (renderOption ? renderOption(selected) : selected.label) : ""}</span>
 				<svg
 					className={`w-3.5 h-3.5 text-fg-3 flex-shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
 					viewBox="0 0 12 12"
@@ -95,7 +97,7 @@ function Select({
 									: "text-fg-2 hover:bg-raised-hover hover:text-fg"
 							}`}
 						>
-							{opt.label}
+							{renderOption ? renderOption(opt) : opt.label}
 						</button>
 					))}
 				</div>,
