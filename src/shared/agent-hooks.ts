@@ -89,6 +89,8 @@ function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
 	return false;
 }
 
+export const DEV3_BASH_PERMISSION = "Bash(dev3:*)";
+
 export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
 	taskId: string,
@@ -105,7 +107,14 @@ export function mergeClaudeHooks(
 		merged[event] = [...filtered, ...groups];
 	}
 
-	return { ...existing, hooks: merged };
+	// Ensure Bash(dev3:*) is in permissions.allow
+	const permissions = (existing.permissions ?? {}) as Record<string, unknown>;
+	const allow = Array.isArray(permissions.allow) ? [...permissions.allow as string[]] : [];
+	if (!allow.includes(DEV3_BASH_PERMISSION)) {
+		allow.push(DEV3_BASH_PERMISSION);
+	}
+
+	return { ...existing, permissions: { ...permissions, allow }, hooks: merged };
 }
 
 /**

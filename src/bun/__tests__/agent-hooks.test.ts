@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildClaudeHooks, mergeClaudeHooks, writeClaudeHooks } from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
+import { DEV3_BASH_PERMISSION } from "../../shared/agent-hooks";
 
 const TASK_ID = "aaaaaaaa-1111-2222-3333-444444444444";
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
@@ -148,8 +149,10 @@ describe("mergeClaudeHooks", () => {
 	it("preserves existing non-hook settings", () => {
 		const existing = { permissions: { allow: ["Bash(*)"] }, someKey: 42 };
 		const result = mergeClaudeHooks(existing, TASK_ID);
+		const permissions = result.permissions as { allow: string[] };
 
-		expect(result.permissions).toEqual({ allow: ["Bash(*)"] });
+		expect(permissions.allow).toContain("Bash(*)");
+		expect(permissions.allow).toContain(DEV3_BASH_PERMISSION);
 		expect(result.someKey).toBe(42);
 		expect(result.hooks).toBeDefined();
 	});
@@ -212,6 +215,32 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
 	});
 
+	it("adds Bash(dev3:*) permission to empty settings", () => {
+		const result = mergeClaudeHooks({}, TASK_ID);
+		const permissions = result.permissions as { allow: string[] };
+
+		expect(permissions.allow).toContain(DEV3_BASH_PERMISSION);
+	});
+
+	it("adds Bash(dev3:*) permission preserving existing permissions", () => {
+		const existing = { permissions: { allow: ["Bash(*)"], deny: ["Write(*)"] } };
+		const result = mergeClaudeHooks(existing, TASK_ID);
+		const permissions = result.permissions as { allow: string[]; deny: string[] };
+
+		expect(permissions.allow).toContain("Bash(*)");
+		expect(permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(permissions.deny).toEqual(["Write(*)"]);
+	});
+
+	it("does not duplicate Bash(dev3:*) permission on repeated merge", () => {
+		const first = mergeClaudeHooks({}, TASK_ID);
+		const second = mergeClaudeHooks(first as Record<string, unknown>, TASK_ID);
+		const permissions = second.permissions as { allow: string[] };
+
+		const count = permissions.allow.filter((p: string) => p === DEV3_BASH_PERMISSION).length;
+		expect(count).toBe(1);
+	});
+
 	it("replaces dev3 hooks from a different task ID", () => {
 		const first = mergeClaudeHooks({}, "old-task-id");
 		const second = mergeClaudeHooks(first as Record<string, unknown>, "new-task-id");
@@ -244,6 +273,7 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 		expect(hooks.Stop[0].hooks[0].command).toContain(TASK_ID);
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 	});
 
 	it("preserves existing settings when merging", () => {
@@ -257,7 +287,8 @@ describe("writeClaudeHooks", () => {
 		writeClaudeHooks(tmp, TASK_ID);
 
 		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		expect(content.permissions).toEqual({ allow: ["Bash(*)"] });
+		expect(content.permissions.allow).toContain("Bash(*)");
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 		expect(content.hooks).toBeDefined();
 	});
 

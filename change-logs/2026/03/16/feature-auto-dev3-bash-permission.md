@@ -1,0 +1,1 @@
+When Claude Code hooks are installed in a worktree, the `Bash(dev3:*)` permission is now automatically added to `.claude/settings.local.json`. This allows the dev3 skill's Bash commands to run without manual approval.
