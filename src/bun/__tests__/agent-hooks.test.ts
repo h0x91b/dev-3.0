@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildClaudeHooks, mergeClaudeHooks, writeClaudeHooks } from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
+import { DEV3_BASH_PERMISSION } from "../../shared/agent-hooks";
 
 const TASK_ID = "aaaaaaaa-1111-2222-3333-444444444444";
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
@@ -244,6 +245,7 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 		expect(hooks.Stop[0].hooks[0].command).toContain(TASK_ID);
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 	});
 
 	it("preserves existing settings when merging", () => {
@@ -257,7 +259,8 @@ describe("writeClaudeHooks", () => {
 		writeClaudeHooks(tmp, TASK_ID);
 
 		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
-		expect(content.permissions).toEqual({ allow: ["Bash(*)"] });
+		expect(content.permissions.allow).toContain("Bash(*)");
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 		expect(content.hooks).toBeDefined();
 	});
 
@@ -284,6 +287,66 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
+	});
+
+	it("adds permission to settings.json when settings.local.json does not exist", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "settings.json"),
+			JSON.stringify({ permissions: { allow: ["Read(*)"] } }),
+		);
+
+		writeClaudeHooks(tmp, TASK_ID);
+
+		// Permission goes to settings.json (existing file)
+		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+		expect(shared.permissions.allow).toContain("Read(*)");
+		expect(shared.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+
+		// Hooks go to settings.local.json (always)
+		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(local.hooks).toBeDefined();
+		// settings.local.json should NOT have the permission (it went to settings.json)
+		expect(local.permissions).toBeUndefined();
+	});
+
+	it("adds permission to settings.local.json when both files exist", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ permissions: { allow: ["Read(*)"] } }));
+		writeFileSync(join(claudeDir, "settings.local.json"), JSON.stringify({ someKey: true }));
+
+		writeClaudeHooks(tmp, TASK_ID);
+
+		// Permission goes to settings.local.json (takes priority)
+		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(local.someKey).toBe(true);
+		expect(local.hooks).toBeDefined();
+
+		// settings.json stays untouched
+		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+		expect(shared.permissions.allow).toEqual(["Read(*)"]);
+	});
+
+	it("creates settings.local.json with permission when no settings files exist", () => {
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(content.hooks).toBeDefined();
+	});
+
+	it("does not duplicate permission on repeated writes", () => {
+		writeClaudeHooks(tmp, TASK_ID);
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const count = content.permissions.allow.filter((p: string) => p === DEV3_BASH_PERMISSION).length;
+		expect(count).toBe(1);
 	});
 
 	it("overwrites corrupted JSON gracefully", () => {
