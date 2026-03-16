@@ -28,12 +28,11 @@ export interface MatcherGroup {
 }
 
 export function buildClaudeHooks(
-	taskId: string,
 	options?: { stopTarget?: TaskStatus },
 ): Record<string, MatcherGroup[]> {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const move = (status: string, extra?: string) =>
-		`${DEV3_CLI} task move ${taskId} --status ${status}${extra ? ` ${extra}` : ""}`;
+		`${DEV3_CLI} task move --status ${status}${extra ? ` ${extra}` : ""}`;
 
 	// Working hook: move to in-progress, but NOT when in review-by-ai
 	// (the review agent shares the same hooks file and must not flip status).
@@ -93,10 +92,9 @@ export const DEV3_BASH_PERMISSION = "Bash(dev3:*)";
 
 export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
-	taskId: string,
 	options?: { stopTarget?: TaskStatus },
 ): Record<string, unknown> {
-	const newHooks = buildClaudeHooks(taskId, options);
+	const newHooks = buildClaudeHooks(options);
 	const existingHooks = (existing.hooks ?? {}) as Record<string, MatcherGroup[]>;
 	const merged: Record<string, MatcherGroup[]> = { ...existingHooks };
 
@@ -142,7 +140,7 @@ function resolvePermissionSettingsPath(claudeDir: string): string {
  * Also ensures Bash(dev3:*) permission in the appropriate settings file.
  * Creates the .claude/ directory if it doesn't exist.
  */
-export function writeClaudeHooks(worktreePath: string, taskId: string, options?: { stopTarget?: TaskStatus }): void {
+export function writeClaudeHooks(worktreePath: string, options?: { stopTarget?: TaskStatus }): void {
 	const claudeDir = join(worktreePath, ".claude");
 	mkdirSync(claudeDir, { recursive: true });
 
@@ -160,7 +158,7 @@ export function writeClaudeHooks(worktreePath: string, taskId: string, options?:
 		// Corrupted file — overwrite
 	}
 
-	let updatedHooks = mergeClaudeHooks(hooksSettings, taskId, options);
+	let updatedHooks = mergeClaudeHooks(hooksSettings, options);
 
 	if (sameFile) {
 		// Permission goes into the same file — apply on top of merged hooks

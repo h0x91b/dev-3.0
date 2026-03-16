@@ -1,5 +1,4 @@
 import { dirname, join } from "node:path";
-import type { CliContext } from "../context";
 import { exitError } from "../output";
 import { writeClaudeHooks } from "../../shared/agent-hooks";
 
@@ -26,19 +25,15 @@ function detectWorktreePath(cwd: string): string | null {
 	return null;
 }
 
-export async function handleInstallHooks(context: CliContext | null): Promise<void> {
+export async function handleInstallHooks(): Promise<void> {
 	const worktreePath = detectWorktreePath(process.cwd());
 	if (!worktreePath) {
 		exitError("Cannot detect worktree path", "Run this command from inside a dev-3.0 worktree.");
 	}
-	if (!context?.taskId) {
-		exitError("Cannot detect task ID", "Run this command from inside a dev-3.0 worktree.");
-	}
 
-	const taskId = context.taskId;
 	const settingsPath = join(worktreePath, ".claude", "settings.local.json");
 
-	writeClaudeHooks(worktreePath, taskId);
+	writeClaudeHooks(worktreePath);
 
 	process.stdout.write(`Installed Claude Code hooks → ${settingsPath}\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);

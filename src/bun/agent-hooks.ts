@@ -23,15 +23,13 @@ const log = createLogger("agent-hooks");
  */
 export function setupAgentHooks(
 	worktreePath: string,
-	taskId: string,
 	baseCommand: string,
 	options?: { stopTarget?: TaskStatus },
 ): void {
 	if (isClaudeCommand(baseCommand)) {
-		writeClaudeHooks(worktreePath, taskId, options);
+		writeClaudeHooks(worktreePath, options);
 		log.info("Claude hooks installed", {
 			worktreePath,
-			taskId: taskId.slice(0, 8),
 		});
 		return;
 	}
