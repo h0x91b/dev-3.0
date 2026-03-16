@@ -107,35 +107,80 @@ export function mergeClaudeHooks(
 		merged[event] = [...filtered, ...groups];
 	}
 
-	// Ensure Bash(dev3:*) is in permissions.allow
-	const permissions = (existing.permissions ?? {}) as Record<string, unknown>;
+	return { ...existing, hooks: merged };
+}
+
+/**
+ * Add Bash(dev3:*) to permissions.allow in a settings object. Idempotent.
+ */
+export function ensureDevPermission(settings: Record<string, unknown>): Record<string, unknown> {
+	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
 	const allow = Array.isArray(permissions.allow) ? [...permissions.allow as string[]] : [];
 	if (!allow.includes(DEV3_BASH_PERMISSION)) {
 		allow.push(DEV3_BASH_PERMISSION);
 	}
+	return { ...settings, permissions: { ...permissions, allow } };
+}
 
-	return { ...existing, permissions: { ...permissions, allow }, hooks: merged };
+/**
+ * Resolve which .claude/settings file to write the dev3 permission to:
+ * 1. settings.local.json exists → use it
+ * 2. settings.json exists → use it
+ * 3. neither → create settings.local.json
+ */
+function resolvePermissionSettingsPath(claudeDir: string): string {
+	const localPath = join(claudeDir, "settings.local.json");
+	const sharedPath = join(claudeDir, "settings.json");
+
+	if (existsSync(localPath)) return localPath;
+	if (existsSync(sharedPath)) return sharedPath;
+	return localPath;
 }
 
 /**
  * Read .claude/settings.local.json, merge dev3 hooks, write back.
+ * Also ensures Bash(dev3:*) permission in the appropriate settings file.
  * Creates the .claude/ directory if it doesn't exist.
  */
 export function writeClaudeHooks(worktreePath: string, taskId: string, options?: { stopTarget?: TaskStatus }): void {
 	const claudeDir = join(worktreePath, ".claude");
-	const settingsPath = join(claudeDir, "settings.local.json");
+	mkdirSync(claudeDir, { recursive: true });
 
-	let existing: Record<string, unknown> = {};
+	const hooksPath = join(claudeDir, "settings.local.json");
+	const permPath = resolvePermissionSettingsPath(claudeDir);
+	const sameFile = permPath === hooksPath;
+
+	// Read the hooks target (always settings.local.json)
+	let hooksSettings: Record<string, unknown> = {};
 	try {
-		if (existsSync(settingsPath)) {
-			existing = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		if (existsSync(hooksPath)) {
+			hooksSettings = JSON.parse(readFileSync(hooksPath, "utf-8"));
 		}
 	} catch {
 		// Corrupted file — overwrite
 	}
 
-	const updated = mergeClaudeHooks(existing, taskId, options);
+	let updatedHooks = mergeClaudeHooks(hooksSettings, taskId, options);
 
-	mkdirSync(claudeDir, { recursive: true });
-	writeFileSync(settingsPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
+	if (sameFile) {
+		// Permission goes into the same file — apply on top of merged hooks
+		updatedHooks = ensureDevPermission(updatedHooks);
+		writeFileSync(hooksPath, JSON.stringify(updatedHooks, null, 2) + "\n", "utf-8");
+	} else {
+		// Hooks and permission go to different files
+		writeFileSync(hooksPath, JSON.stringify(updatedHooks, null, 2) + "\n", "utf-8");
+
+		let permSettings: Record<string, unknown> = {};
+		try {
+			if (existsSync(permPath)) {
+				permSettings = JSON.parse(readFileSync(permPath, "utf-8"));
+			}
+		} catch {
+			// Corrupted — overwrite
+		}
+		const updatedPerm = ensureDevPermission(permSettings);
+		if (JSON.stringify(updatedPerm) !== JSON.stringify(permSettings)) {
+			writeFileSync(permPath, JSON.stringify(updatedPerm, null, 2) + "\n", "utf-8");
+		}
+	}
 }

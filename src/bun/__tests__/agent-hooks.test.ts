@@ -149,10 +149,8 @@ describe("mergeClaudeHooks", () => {
 	it("preserves existing non-hook settings", () => {
 		const existing = { permissions: { allow: ["Bash(*)"] }, someKey: 42 };
 		const result = mergeClaudeHooks(existing, TASK_ID);
-		const permissions = result.permissions as { allow: string[] };
 
-		expect(permissions.allow).toContain("Bash(*)");
-		expect(permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(result.permissions).toEqual({ allow: ["Bash(*)"] });
 		expect(result.someKey).toBe(42);
 		expect(result.hooks).toBeDefined();
 	});
@@ -213,32 +211,6 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.Stop).toHaveLength(2);
 		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai");
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
-	});
-
-	it("adds Bash(dev3:*) permission to empty settings", () => {
-		const result = mergeClaudeHooks({}, TASK_ID);
-		const permissions = result.permissions as { allow: string[] };
-
-		expect(permissions.allow).toContain(DEV3_BASH_PERMISSION);
-	});
-
-	it("adds Bash(dev3:*) permission preserving existing permissions", () => {
-		const existing = { permissions: { allow: ["Bash(*)"], deny: ["Write(*)"] } };
-		const result = mergeClaudeHooks(existing, TASK_ID);
-		const permissions = result.permissions as { allow: string[]; deny: string[] };
-
-		expect(permissions.allow).toContain("Bash(*)");
-		expect(permissions.allow).toContain(DEV3_BASH_PERMISSION);
-		expect(permissions.deny).toEqual(["Write(*)"]);
-	});
-
-	it("does not duplicate Bash(dev3:*) permission on repeated merge", () => {
-		const first = mergeClaudeHooks({}, TASK_ID);
-		const second = mergeClaudeHooks(first as Record<string, unknown>, TASK_ID);
-		const permissions = second.permissions as { allow: string[] };
-
-		const count = permissions.allow.filter((p: string) => p === DEV3_BASH_PERMISSION).length;
-		expect(count).toBe(1);
 	});
 
 	it("replaces dev3 hooks from a different task ID", () => {
@@ -315,6 +287,66 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
+	});
+
+	it("adds permission to settings.json when settings.local.json does not exist", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "settings.json"),
+			JSON.stringify({ permissions: { allow: ["Read(*)"] } }),
+		);
+
+		writeClaudeHooks(tmp, TASK_ID);
+
+		// Permission goes to settings.json (existing file)
+		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+		expect(shared.permissions.allow).toContain("Read(*)");
+		expect(shared.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+
+		// Hooks go to settings.local.json (always)
+		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(local.hooks).toBeDefined();
+		// settings.local.json should NOT have the permission (it went to settings.json)
+		expect(local.permissions).toBeUndefined();
+	});
+
+	it("adds permission to settings.local.json when both files exist", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ permissions: { allow: ["Read(*)"] } }));
+		writeFileSync(join(claudeDir, "settings.local.json"), JSON.stringify({ someKey: true }));
+
+		writeClaudeHooks(tmp, TASK_ID);
+
+		// Permission goes to settings.local.json (takes priority)
+		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(local.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(local.someKey).toBe(true);
+		expect(local.hooks).toBeDefined();
+
+		// settings.json stays untouched
+		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+		expect(shared.permissions.allow).toEqual(["Read(*)"]);
+	});
+
+	it("creates settings.local.json with permission when no settings files exist", () => {
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(content.hooks).toBeDefined();
+	});
+
+	it("does not duplicate permission on repeated writes", () => {
+		writeClaudeHooks(tmp, TASK_ID);
+		writeClaudeHooks(tmp, TASK_ID);
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const count = content.permissions.allow.filter((p: string) => p === DEV3_BASH_PERMISSION).length;
+		expect(count).toBe(1);
 	});
 
 	it("overwrites corrupted JSON gracefully", () => {
