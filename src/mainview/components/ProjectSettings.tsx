@@ -270,17 +270,13 @@ interface ConfigFormProps {
 	onChange: (config: Dev3RepoConfig) => void;
 	/** For each field, the inherited value from the lower-priority layer (shown as placeholder). */
 	inherited?: Dev3RepoConfig;
-	saving: boolean;
-	onSave: () => void;
-	saveLabel: string;
-	savingLabel: string;
 	/** Show auto-detect for clone paths */
 	projectId: string;
 	/** Project path for "Open in Finder" on sparse checkout */
 	projectPath?: string;
 }
 
-function ConfigForm({ config, onChange, inherited, saving, onSave, saveLabel, savingLabel, projectId, projectPath }: ConfigFormProps) {
+function ConfigForm({ config, onChange, inherited, projectId, projectPath }: ConfigFormProps) {
 	const t = useT();
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
@@ -514,16 +510,6 @@ function ConfigForm({ config, onChange, inherited, saving, onSave, saveLabel, sa
 				)}
 			</div>
 
-			{/* Save Button */}
-			<div>
-				<button
-					onClick={onSave}
-					disabled={saving}
-					className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
-				>
-					{saving ? savingLabel : saveLabel}
-				</button>
-			</div>
 		</div>
 	);
 }
@@ -558,7 +544,7 @@ function ProjectSettings({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 
-	const [activeTab, setActiveTab] = useState<ConfigTab>("project");
+	const [activeTab, setActiveTab] = useState<ConfigTab>("global");
 
 	// ---- Project tab state (app-level config) ----
 	const [appConfig, setAppConfig] = useState<Dev3RepoConfig>({});
@@ -582,10 +568,12 @@ function ProjectSettings({
 
 	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
 	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
-	const [aiReviewEnabled, setAiReviewEnabled] = useState(!!reviewConfig || !project?.builtinColumnAgents);
+	const initialAiReviewEnabled = !!reviewConfig || !project?.builtinColumnAgents;
+	const [aiReviewEnabled, setAiReviewEnabled] = useState(initialAiReviewEnabled);
 	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
 	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
 	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
+	const initialAiReviewRef = useRef({ enabled: initialAiReviewEnabled, agentId: reviewConfig?.agentId ?? "builtin-claude", configId: reviewConfig?.configId ?? "claude-bypass-sonnet", prompt: reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT });
 	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
 
 	// Load available agents
@@ -647,16 +635,21 @@ function ProjectSettings({
 		return true;
 	}, []);
 
+	const isAiReviewDirty = useCallback(() => {
+		const init = initialAiReviewRef.current;
+		return aiReviewEnabled !== init.enabled || aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
+	}, [aiReviewEnabled, aiReviewAgentId, aiReviewConfigId, aiReviewPrompt]);
+
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {
-			return !configsEqual(appConfig, loadedAppConfig.current);
+			return !configsEqual(appConfig, loadedAppConfig.current) || isAiReviewDirty();
 		}
 		if (activeTab === "worktree") {
 			if (worktreeSubTab === "repo") return !configsEqual(wtRepoConfig, loadedWtRepoConfig.current);
 			return !configsEqual(wtLocalConfig, loadedWtLocalConfig.current);
 		}
 		return false; // Global tab uses immediate save
-	}, [activeTab, worktreeSubTab, appConfig, wtRepoConfig, wtLocalConfig, configsEqual]);
+	}, [activeTab, worktreeSubTab, appConfig, wtRepoConfig, wtLocalConfig, configsEqual, isAiReviewDirty]);
 
 	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
 
@@ -793,6 +786,7 @@ function ProjectSettings({
 			};
 			await api.request.saveAppConfig({ projectId, ...toSave });
 			loadedAppConfig.current = toSave;
+			initialAiReviewRef.current = { enabled: aiReviewEnabled, agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
 			// Refresh projects to pick up new resolved settings
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
@@ -856,8 +850,23 @@ function ProjectSettings({
 			: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
 	}`;
 
+	const dirty = isDirty();
+	const saving = savingApp || savingWtRepo || savingWtLocal;
+
 	return (
 		<div className="h-full w-full flex flex-col">
+			{dirty && (
+				<div className="flex-shrink-0 px-7 py-2 bg-accent/10 border-b border-accent/20 flex items-center justify-between">
+					<span className="text-fg-2 text-sm">{t("unsavedChanges.banner")}</span>
+					<button
+						onClick={() => handleSaveRef.current()}
+						disabled={saving}
+						className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-all active:scale-95"
+					>
+						{saving ? t("projectSettings.saving") : t("unsavedChanges.save")}
+					</button>
+				</div>
+			)}
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 
@@ -956,18 +965,9 @@ function ProjectSettings({
 					{/* ======== Project tab ======== */}
 					{activeTab === "project" && (
 						<>
-							{/* Warning: local only */}
-							<div className="flex items-center gap-2 px-3 py-2 bg-elevated/60 border border-edge/40 rounded-lg">
-								<span className="text-fg-muted text-xs">{t("projectSettings.appConfigWarning")}</span>
-							</div>
-
 							<ConfigForm
 								config={appConfig}
 								onChange={setAppConfig}
-								saving={savingApp}
-								onSave={handleSaveAppConfig}
-								saveLabel={t("projectSettings.saveProject")}
-								savingLabel={t("projectSettings.saving")}
 								projectId={projectId}
 								projectPath={project.path}
 							/>
@@ -1104,10 +1104,6 @@ function ProjectSettings({
 										<ConfigForm
 											config={wtRepoConfig}
 											onChange={setWtRepoConfig}
-											saving={savingWtRepo}
-											onSave={handleSaveWtRepo}
-											saveLabel={t("projectSettings.saveWorktreeRepo")}
-											savingLabel={t("projectSettings.saving")}
 											projectId={projectId}
 											projectPath={selectedTask?.worktreePath ?? project.path}
 										/>
@@ -1116,10 +1112,6 @@ function ProjectSettings({
 											config={wtLocalConfig}
 											onChange={setWtLocalConfig}
 											inherited={wtRepoConfig}
-											saving={savingWtLocal}
-											onSave={handleSaveWtLocal}
-											saveLabel={t("projectSettings.saveWorktreeLocal")}
-											savingLabel={t("projectSettings.saving")}
 											projectId={projectId}
 											projectPath={selectedTask?.worktreePath ?? project.path}
 										/>

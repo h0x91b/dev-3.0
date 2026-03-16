@@ -83,6 +83,12 @@ async function renderProjectSettings(project: Project = mockProject, appConfig =
 	return result!;
 }
 
+/** Navigate to the Project Config tab (not the default). */
+async function goToProjectTab() {
+	const user = userEvent.setup();
+	await user.click(screen.getByText("Project Config"));
+}
+
 describe("ProjectSettings", () => {
 	describe("tab navigation", () => {
 		it("renders all three tabs", async () => {
@@ -92,16 +98,16 @@ describe("ProjectSettings", () => {
 			expect(screen.getByText("Worktree Config")).toBeInTheDocument();
 		});
 
-		it("shows project tab by default", async () => {
+		it("shows Board tab by default", async () => {
 			await renderProjectSettings();
-			expect(screen.getByText(/Project-level settings/i)).toBeInTheDocument();
+			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
 		});
 
-		it("switches to global tab on click", async () => {
+		it("switches to project tab on click", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();
-			await user.click(screen.getByText("Board"));
-			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
+			await user.click(screen.getByText("Project Config"));
+			expect(screen.getByText(/Project-level settings/i)).toBeInTheDocument();
 		});
 
 		it("switches to worktree tab on click", async () => {
@@ -118,6 +124,7 @@ describe("ProjectSettings", () => {
 				setupScript: "bun install",
 				defaultBaseBranch: "develop",
 			});
+			await goToProjectTab();
 
 			await vi.waitFor(() => {
 				expect(screen.getByDisplayValue("bun install")).toBeInTheDocument();
@@ -127,6 +134,7 @@ describe("ProjectSettings", () => {
 
 		it("setup script textarea has autocapitalize off", async () => {
 			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			await goToProjectTab();
 			await vi.waitFor(() => {
 				const textarea = screen.getByDisplayValue("bun install");
 				expect(textarea).toHaveAttribute("autocapitalize", "off");
@@ -139,6 +147,7 @@ describe("ProjectSettings", () => {
 	describe("clone paths section", () => {
 		it("renders the clone paths section", async () => {
 			await renderProjectSettings();
+			await goToProjectTab();
 			expect(screen.getByText("Clone Paths (Copy-on-Write)")).toBeInTheDocument();
 		});
 
@@ -146,6 +155,7 @@ describe("ProjectSettings", () => {
 			await renderProjectSettings(mockProject, {
 				clonePaths: ["node_modules", ".venv"],
 			});
+			await goToProjectTab();
 			await vi.waitFor(() => {
 				expect(screen.getByDisplayValue("node_modules")).toBeInTheDocument();
 				expect(screen.getByDisplayValue(".venv")).toBeInTheDocument();
@@ -154,6 +164,7 @@ describe("ProjectSettings", () => {
 
 		it("renders auto-detect button", async () => {
 			await renderProjectSettings(mockProject, { clonePaths: ["node_modules"] });
+			await goToProjectTab();
 			expect(screen.getByText("Auto-detect")).toBeInTheDocument();
 		});
 	});
@@ -161,12 +172,14 @@ describe("ProjectSettings", () => {
 	describe("peer review toggle", () => {
 		it("toggle is on by default (peerReviewEnabled undefined)", async () => {
 			await renderProjectSettings();
+			await goToProjectTab();
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });
 			expect(toggle).toHaveAttribute("aria-checked", "true");
 		});
 
 		it("toggle reflects peerReviewEnabled: false from config", async () => {
 			await renderProjectSettings(mockProject, { peerReviewEnabled: false });
+			await goToProjectTab();
 			await vi.waitFor(() => {
 				const toggle = screen.getByRole("switch", { name: /peer review column/i });
 				expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -176,6 +189,7 @@ describe("ProjectSettings", () => {
 		it("clicking toggle flips state", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();
+			await goToProjectTab();
 			const toggle = screen.getByRole("switch", { name: /peer review column/i });
 			expect(toggle).toHaveAttribute("aria-checked", "true");
 			await user.click(toggle);
@@ -183,16 +197,35 @@ describe("ProjectSettings", () => {
 		});
 	});
 
-	describe("save buttons", () => {
-		it("calls saveAppConfig on project tab save", async () => {
+	describe("floating save banner", () => {
+		it("shows unsaved changes banner when config is modified", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { setupScript: "original" });
+			await goToProjectTab();
+
+			// Modify the setup script
+			const textarea = screen.getByDisplayValue("original");
+			await user.clear(textarea);
+			await user.type(textarea, "changed");
+
+			expect(screen.getByText(/unsaved changes/i)).toBeInTheDocument();
+			expect(screen.getByText("Save")).toBeInTheDocument();
+		});
+
+		it("calls saveAppConfig when Save is clicked in banner", async () => {
 			const { api } = await import("../../rpc");
 			const mockSave = api.request.saveAppConfig as ReturnType<typeof vi.fn>;
 			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
 
 			const user = userEvent.setup();
-			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			await renderProjectSettings(mockProject, { setupScript: "original" });
+			await goToProjectTab();
 
-			await user.click(screen.getByText("Save Project Config"));
+			const textarea = screen.getByDisplayValue("original");
+			await user.clear(textarea);
+			await user.type(textarea, "changed");
+
+			await user.click(screen.getByText("Save"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
@@ -226,13 +259,14 @@ describe("ProjectSettings", () => {
 
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, {});
+			await goToProjectTab();
 
 			// Disable AI Review
 			const toggle = screen.getByRole("switch", { name: /enable ai review/i });
 			await user.click(toggle);
 
-			// Save
-			await user.click(screen.getByText("Save Project Config"));
+			// Save via floating banner
+			await user.click(screen.getByText("Save"));
 
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
