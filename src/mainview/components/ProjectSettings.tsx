@@ -1083,7 +1083,6 @@ function ProjectSettings({
 			else await handleSaveWtLocal();
 		}
 	};
-
 	const tabButtonClass = (tab: ConfigTab) => `flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
 		activeTab === tab
 			? "bg-accent text-white shadow-sm"
