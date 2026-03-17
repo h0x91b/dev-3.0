@@ -339,13 +339,16 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 						</div>
 					) : (
 						<div className="group/title flex items-start gap-2 mb-4">
-							<div className="text-fg text-base font-semibold leading-relaxed flex-1">
+							<div
+								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
+								onClick={!isEditing ? handleStartRename : undefined}
+							>
 								{isEditing ? (generatedTitle || getTaskTitle(task)) : getTaskTitle(task)}
 							</div>
 							{!isEditing && (
 								<button
 									onClick={handleStartRename}
-									className="flex-shrink-0 mt-0.5 opacity-0 group-hover/title:opacity-100 p-1 rounded-md text-fg-3 hover:text-fg hover:bg-fg/8 transition-all"
+									className="flex-shrink-0 mt-0.5 text-fg-muted hover:text-fg p-1 rounded-md hover:bg-fg/8 transition-all"
 									title={t("task.renameTitle")}
 								>
 									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
