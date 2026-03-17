@@ -112,7 +112,7 @@ describe("ProjectSettings", () => {
 	});
 
 	describe("project config form (app-level)", () => {
-		it("populates form from getAppConfig", async () => {
+		it("populates form from project settings", async () => {
 			await renderProjectSettings(mockProject, {
 				setupScript: "bun install",
 				defaultBaseBranch: "develop",

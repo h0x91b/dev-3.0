@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS } from "../shared/types";
 import { createLogger } from "./logger";
@@ -99,7 +100,7 @@ export function loadAppConfig(projectPath: string): Dev3RepoConfig {
 /** Save app-level config to ~/.dev3.0/data/<slug>/config.json. */
 export async function saveAppConfig(projectPath: string, config: Dev3RepoConfig): Promise<void> {
 	const filePath = appConfigPath(projectPath);
-	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
+	const dir = dirname(filePath);
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n");
 	log.info("Saved app config", { path: filePath });

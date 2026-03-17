@@ -660,11 +660,6 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: { hasRepoConfig: boolean; hasLocalConfig: boolean };
 			};
-			/** Load app-level config (~/.dev3.0/data/<slug>/config.json). */
-			getAppConfig: {
-				params: { projectId: string };
-				response: Dev3RepoConfig;
-			};
 			/** Save app-level config (~/.dev3.0/data/<slug>/config.json). */
 			saveAppConfig: {
 				params: { projectId: string } & Dev3RepoConfig;
