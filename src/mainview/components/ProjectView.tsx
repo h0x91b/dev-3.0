@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback, type Dispatch } from "react";
 import type { PortInfo, Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
-import { api } from "../rpc";
+import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
 import KanbanBoard from "./KanbanBoard";
 import TaskTerminal from "./TaskTerminal";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
+import ActiveTasksStrip from "./ActiveTasksStrip";
 
 type SidebarMode = "sidebar" | "board";
 const LS_SIDEBAR_MODE = "dev3-split-sidebar-mode";
@@ -73,6 +74,34 @@ function ProjectView({
 
 	if (activeTaskId) {
 		const activeTask = tasks.find((t) => t.id === activeTaskId);
+		const isBrowserMode = !isElectrobun;
+
+		// Browser mode: stack sidebar on top for full-width terminal
+		if (isBrowserMode) {
+			return (
+				<div className="flex-1 min-h-0 flex flex-col">
+					{activeTask && <TaskInfoPanel task={activeTask} project={project} dispatch={dispatch} navigate={navigate} taskPorts={taskPorts} />}
+					<ActiveTasksStrip
+						project={project}
+						tasks={tasks}
+						activeTaskId={activeTaskId}
+						navigate={navigate}
+						bellCounts={bellCounts}
+					/>
+					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+						<TaskTerminal
+							projectId={projectId}
+							taskId={activeTaskId}
+							tasks={tasks}
+							projects={projects}
+							navigate={navigate}
+							dispatch={dispatch}
+							hideInfoPanel
+						/>
+					</div>
+				</div>
+			);
+		}
 
 		const leftContent = sidebarMode === "sidebar" ? (
 			<ActiveTasksSidebar

@@ -1241,7 +1241,7 @@ describe("TaskInfoPanel", () => {
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
-				prUrl: "https://github.com/org/repo/pull/42",
+				prUrl: "https://github.com/test/repo/pull/42",
 			});
 
 			await act(async () => {
@@ -1259,7 +1259,7 @@ describe("TaskInfoPanel", () => {
 				ahead: 0,
 				unpushed: 0,
 				prNumber: 99,
-				prUrl: "https://github.com/org/repo/pull/99",
+				prUrl: "https://github.com/test/repo/pull/99",
 			});
 
 			await act(async () => {
@@ -1270,16 +1270,15 @@ describe("TaskInfoPanel", () => {
 			expect(badges.length).toBeGreaterThanOrEqual(1);
 		});
 
-		it("opens PR URL in new tab when PR badge is clicked", async () => {
+		it("opens PR URL in new tab when Open PR is clicked", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const openSpy = vi.fn();
-			window.open = openSpy;
+			const openSpy = vi.fn(); window.open = openSpy;
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
-				prUrl: "https://github.com/org/repo/pull/42",
+				prUrl: "https://github.com/test/repo/pull/42",
 			});
 
 			await act(async () => {
@@ -1290,7 +1289,7 @@ describe("TaskInfoPanel", () => {
 			const btn = badges[0].closest("button")!;
 			await user.click(btn);
 
-			expect(openSpy).toHaveBeenCalledWith("https://github.com/org/repo/pull/42", "_blank");
+			expect(openSpy).toHaveBeenCalledWith("https://github.com/test/repo/pull/42", "_blank");
 		});
 
 		it("calls createPullRequest when Create PR is clicked (no existing PR)", async () => {
@@ -1324,7 +1323,7 @@ describe("TaskInfoPanel", () => {
 				ahead: 3,
 				unpushed: 0,
 				prNumber: 42,
-				prUrl: "https://github.com/org/repo/pull/42",
+				prUrl: "https://github.com/test/repo/pull/42",
 			});
 
 			await act(async () => {
@@ -1336,10 +1335,7 @@ describe("TaskInfoPanel", () => {
 			expect(btn.title).toContain("42");
 		});
 
-		it("does not open window when prUrl is null", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const openSpy = vi.fn();
-			window.open = openSpy;
+		it("Open PR button is disabled when prUrl is null", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
@@ -1352,11 +1348,9 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			const badges = screen.getAllByText(/PR #42/);
-			const btn = badges[0].closest("button")!;
-			await user.click(btn);
-
-			expect(openSpy).not.toHaveBeenCalled();
+			const openPRButtons = screen.getAllByText("Open PR");
+			const allDisabled = openPRButtons.every(b => b.closest("button")!.disabled);
+			expect(allDisabled).toBe(true);
 		});
 	});
 
