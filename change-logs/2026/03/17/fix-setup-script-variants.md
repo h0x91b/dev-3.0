@@ -1,0 +1,1 @@
+Fixed setup script not running when tasks are launched via spawnVariants or addAttempts. These code paths passed the raw project object (with empty setupScript) to launchTaskPty instead of resolving the .dev3/config.json first. Now both paths call resolveProjectConfig from the worktree, matching the behavior of activateTask.
