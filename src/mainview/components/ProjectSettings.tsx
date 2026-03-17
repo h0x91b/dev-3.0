@@ -882,6 +882,21 @@ function ProjectSettings({
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 
+					{/* Back button when navigated from a task */}
+					{initialWorktreeTaskId && (() => {
+						const backTask = tasks.find((t) => t.id === initialWorktreeTaskId);
+						return backTask ? (
+							<button
+								type="button"
+								onClick={() => _navigate({ screen: "project", projectId, activeTaskId: initialWorktreeTaskId })}
+								className="flex items-center gap-1.5 text-fg-3 hover:text-fg-2 text-sm transition-colors -mt-1 -mb-3"
+							>
+								<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0141}"}</span>
+								<span className="truncate max-w-xs">{getTaskTitle(backTask)}</span>
+							</button>
+						) : null;
+					})()}
+
 					{/* 3-tab selector */}
 					<div>
 						<div className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">

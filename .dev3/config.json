@@ -1,12 +1,11 @@
 {
-  "setupScript": "echo setup123444\nbun install",
-  "devScript": "bun install\nbun run dev",
+  "setupScript": "echo setup\nbun install",
+  "devScript": "bun run dev",
   "clonePaths": [
     "node_modules",
     "build",
     "dist"
   ],
-  "sparseCheckoutPaths": [],
   "builtinColumnAgents": {
     "review-by-ai": {
       "agentId": "builtin-claude",
