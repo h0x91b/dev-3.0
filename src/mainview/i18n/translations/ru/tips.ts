@@ -155,7 +155,9 @@ const tips = {
 	"tip.diffCompareDefault.title": "Выберите базу для diff",
 	"tip.diffCompareDefault.body": "В Project Settings можно выбрать, сравнивать ли статус ветки и Show Diff с origin/<base> или с локальной базовой веткой.",
 	"tip.projectTerminal.title": "Терминал проекта",
-	"tip.projectTerminal.body": "Нажмите иконку терминала на Kanban-доске, чтобы открыть shell в корне проекта.",
+	"tip.projectTerminal.body": "Нужен быстрый shell в корне репо? Нажми иконку терминала в панели навигации, прямо рядом с именем проекта.",
+	"tip.projectTerminalDashboard.title": "Терминал с дашборда",
+	"tip.projectTerminalDashboard.body": "Терминал проекта можно открыть прямо с Dashboard — нажми иконку терминала на карточке проекта.",
 };
 
 export default tips;
