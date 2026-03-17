@@ -122,7 +122,7 @@ export interface AgentConfiguration {
 	envVars?: Record<string, string>;
 	baseCommandOverride?: string;
 	/** Preset version. When the default version is bumped, stored additionalArgs
-	 *  are reset to the new defaults. User-editable fields are preserved. */
+	 *  and model are reset to the new defaults. */
 	version?: number;
 }
 
@@ -147,12 +147,12 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
 			{ id: "claude-default", name: "Default", model: "sonnet" },
-			{ id: "claude-plan", name: "Plan (Opus)", model: "opus[1m]", permissionMode: "plan" },
-			{ id: "claude-plan-then-bypass-opus", name: "Plan then Bypass (Opus)", model: "opus[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"] },
+			{ id: "claude-plan", name: "Plan (Opus)", model: "opus[1m]", permissionMode: "plan", version: 1 },
+			{ id: "claude-plan-then-bypass-opus", name: "Plan then Bypass (Opus)", model: "opus[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-plan-then-bypass-sonnet", name: "Plan then Bypass (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"] },
-			{ id: "claude-approvals-opus", name: "Approvals (Opus)", model: "opus[1m]", permissionMode: "acceptEdits" },
+			{ id: "claude-approvals-opus", name: "Approvals (Opus)", model: "opus[1m]", permissionMode: "acceptEdits", version: 1 },
 			{ id: "claude-approvals-sonnet", name: "Approvals (Sonnet)", model: "sonnet", permissionMode: "acceptEdits" },
-			{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus[1m]", permissionMode: "bypassPermissions" },
+			{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus[1m]", permissionMode: "bypassPermissions", version: 1 },
 			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
 		],
 		defaultConfigId: "claude-default",

@@ -1,1 +1,1 @@
-Updated Claude Opus model name in presets from "opus" to "opus[1m]" to match the new model identifier.
+Updated Claude Opus model name in presets from "opus" to "opus[1m]" to match the new model identifier. Existing users will also receive the update via the version bump mechanism — model is now reset alongside additionalArgs when preset version increases.
