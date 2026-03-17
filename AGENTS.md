@@ -44,21 +44,6 @@ The user may communicate with agents in Russian, but everything written into the
 
 Agents in this project typically run inside a **git worktree**, not the main working tree. Find the main project path with `git worktree list` (the first entry is the main working tree). When you need to reference the original project (e.g., to read a secret, copy a config, or inspect the main branch state), use that path. Never write to the main working tree from a worktree — only read.
 
-### Branch naming
-
-Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`. Once you understand what the task is about, **rename the branch automatically** to something descriptive using `git branch -m <old> <type>/<slug>`. Do not ask for permission — just do it on session start.
-
-> **User preferences override these defaults.** If the user's CLAUDE.md, AGENTS.md, or auto-memory specifies a different branch naming convention (e.g., JIRA ticket prefix, custom format), follow the user's convention instead of the defaults below.
-
-**Default rules** (apply only when the user has no custom branch naming preference):
-- Use a conventional type prefix: `feat/`, `fix/`, `chore/`, `refactor/`, `docs/`.
-- Use lowercase kebab-case: `fix/auth-race-condition`, `feat/drag-reorder`, `refactor/rpc-handlers`.
-- Derive the slug from the task description/title — 3-5 words max.
-
-**Always applies:**
-- If the branch already has a meaningful name (doesn't match `dev3/task-*`), skip renaming.
-- If the branch was already pushed to the remote, also update the remote: `git push origin :<old-branch> && git push -u origin <new-branch>`.
-
 ### Committing
 
 - **Commit immediately after making changes — in English only.** Do not wait for the user to ask — commit as soon as a logical unit of work is done. Do NOT `git push` automatically — let the user decide when to push.
