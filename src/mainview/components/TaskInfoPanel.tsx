@@ -1296,7 +1296,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	// ---- Worktree settings button ----
 	const worktreeSettingsButton = task.worktreePath ? (
 		<button
-			onClick={() => navigate({ screen: "project-settings", projectId: project.id })}
+			onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
 			className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 			title={t("projectSettings.tabWorktree")}
 		>

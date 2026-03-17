@@ -106,7 +106,7 @@ describe("ProjectSettings", () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();
 			await user.click(screen.getByText("Worktree Config"));
-			expect(screen.getByText(/no active worktrees/i)).toBeInTheDocument();
+			expect(screen.getByText(/gear icon/i)).toBeInTheDocument();
 		});
 	});
 
@@ -228,11 +228,11 @@ describe("ProjectSettings", () => {
 	});
 
 	describe("worktree tab", () => {
-		it("shows no active worktrees message when no tasks have worktrees", async () => {
+		it("shows instruction when no active worktrees exist", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();
 			await user.click(screen.getByText("Worktree Config"));
-			expect(screen.getByText(/no active worktrees/i)).toBeInTheDocument();
+			expect(screen.getByText(/gear icon/i)).toBeInTheDocument();
 		});
 
 		it("shows worktree selector when tasks have worktrees", async () => {

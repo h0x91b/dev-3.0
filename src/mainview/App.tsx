@@ -563,6 +563,8 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						navigationGuardRef={navigationGuardRef}
+						initialTab={route.tab}
+						initialWorktreeTaskId={route.worktreeTaskId}
 					/>
 				);
 			case "settings":

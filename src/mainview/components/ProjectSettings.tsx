@@ -531,6 +531,8 @@ interface ProjectSettingsProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
+	initialTab?: ConfigTab;
+	initialWorktreeTaskId?: string;
 }
 
 function ProjectSettings({
@@ -540,11 +542,13 @@ function ProjectSettings({
 	dispatch,
 	navigate: _navigate,
 	navigationGuardRef,
+	initialTab,
+	initialWorktreeTaskId,
 }: ProjectSettingsProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 
-	const [activeTab, setActiveTab] = useState<ConfigTab>("global");
+	const [activeTab, setActiveTab] = useState<ConfigTab>(initialTab ?? "global");
 
 	// ---- Project tab state (reads/writes projects.json) ----
 	const projectConfigFromProject = useCallback((p: Project): Dev3RepoConfig => ({
@@ -563,7 +567,7 @@ function ProjectSettings({
 
 	// ---- Worktree tab state ----
 	const [worktreeSubTab, setWorktreeSubTab] = useState<WorktreeSubTab>("repo");
-	const [selectedWorktreeTaskId, setSelectedWorktreeTaskId] = useState<string | null>(null);
+	const [selectedWorktreeTaskId, setSelectedWorktreeTaskId] = useState<string | null>(initialWorktreeTaskId ?? null);
 	const [wtRepoConfig, setWtRepoConfig] = useState<Dev3RepoConfig>({});
 	const [wtLocalConfig, setWtLocalConfig] = useState<Dev3RepoConfig>({});
 	const [savingWtRepo, setSavingWtRepo] = useState(false);
@@ -1051,9 +1055,17 @@ function ProjectSettings({
 					{activeTab === "worktree" && (
 						<>
 							{worktreeTasks.length === 0 ? (
-								<p className="text-fg-muted text-sm italic">{t("projectSettings.noActiveWorktrees")}</p>
+								<div className="flex flex-col items-center gap-3 py-8 text-center">
+									<span className="text-2xl leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF013"}</span>
+									<p className="text-fg-muted text-sm max-w-sm">{t("projectSettings.noActiveWorktrees")}</p>
+								</div>
 							) : (
 								<>
+									{/* Priority hint */}
+									<div className="px-3 py-2.5 bg-elevated/60 border border-edge/40 rounded-lg">
+										<p className="text-fg-3 text-xs leading-relaxed">{t("projectSettings.worktreePriorityHint")}</p>
+									</div>
+
 									{/* Task selector */}
 									<div>
 										<label className="block text-fg-3 text-xs mb-1">{t("projectSettings.worktreeSelector")}</label>
@@ -1071,29 +1083,36 @@ function ProjectSettings({
 									</div>
 
 									{/* Repo / Local sub-tabs */}
-									<div className="flex gap-1 bg-elevated/50 rounded-xl p-1">
-										<button
-											type="button"
-											onClick={() => setWorktreeSubTab("repo")}
-											className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-												worktreeSubTab === "repo"
-													? "bg-accent text-white shadow-sm"
-													: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-											}`}
-										>
-											{t("projectSettings.worktreeRepoTab")}
-										</button>
-										<button
-											type="button"
-											onClick={() => setWorktreeSubTab("local")}
-											className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-												worktreeSubTab === "local"
-													? "bg-accent text-white shadow-sm"
-													: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-											}`}
-										>
-											{t("projectSettings.worktreeLocalTab")}
-										</button>
+									<div>
+										<div className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
+											<button
+												type="button"
+												onClick={() => setWorktreeSubTab("repo")}
+												className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+													worktreeSubTab === "repo"
+														? "bg-accent text-white shadow-sm"
+														: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+												}`}
+											>
+												{t("projectSettings.worktreeRepoTab")}
+											</button>
+											<button
+												type="button"
+												onClick={() => setWorktreeSubTab("local")}
+												className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+													worktreeSubTab === "local"
+														? "bg-accent text-white shadow-sm"
+														: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+												}`}
+											>
+												{t("projectSettings.worktreeLocalTab")}
+											</button>
+										</div>
+										<p className="text-fg-muted text-xs px-1">
+											{worktreeSubTab === "repo"
+												? t("projectSettings.worktreeRepoDesc")
+												: t("projectSettings.worktreeLocalDesc")}
+										</p>
 									</div>
 
 									{worktreeSubTab === "repo" ? (

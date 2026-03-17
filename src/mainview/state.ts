@@ -7,7 +7,7 @@ export type Route =
 	| { screen: "dashboard" }
 	| { screen: "project"; projectId: string; activeTaskId?: string }
 	| { screen: "task"; projectId: string; taskId: string }
-	| { screen: "project-settings"; projectId: string }
+	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree"; worktreeTaskId?: string }
 	| { screen: "settings" }
 	| { screen: "changelog" }
 	| { screen: "gauge-demo" }
