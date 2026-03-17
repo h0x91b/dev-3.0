@@ -473,6 +473,22 @@ describe("ProjectSettings", () => {
 				);
 			});
 		});
+
+		it("clears the dirty state when automatic review returns to its default off state", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+
+			const toggle = screen.getByRole("switch", { name: /automatic ai review/i });
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+
+			await user.click(toggle);
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+
+			await user.click(toggle);
+
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+			expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+		});
 	});
 
 	describe("worktree tab", () => {

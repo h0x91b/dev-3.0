@@ -871,9 +871,7 @@ function ProjectSettings({
 		for (const key of stringKeys) {
 			if ((a[key] ?? "") !== (b[key] ?? "")) return false;
 		}
-		for (const [key, defaultValue] of Object.entries(CONFIG_BOOLEAN_DEFAULTS) as Array<
-			[keyof typeof CONFIG_BOOLEAN_DEFAULTS, boolean]
-		>) {
+		for (const [key, defaultValue] of Object.entries(CONFIG_BOOLEAN_DEFAULTS) as Array<[keyof typeof CONFIG_BOOLEAN_DEFAULTS, boolean]>) {
 			if ((a[key] ?? defaultValue) !== (b[key] ?? defaultValue)) return false;
 		}
 		const arrA = (a.clonePaths ?? []).join("\0");
