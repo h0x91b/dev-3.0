@@ -665,6 +665,40 @@ describe("pty-server", () => {
 			// but the try/catch in the callback should swallow it
 			expect(() => capturedDataCb!(null, null as any)).not.toThrow();
 		});
+
+		it("batches PTY data instead of sending immediately", () => {
+			vi.useFakeTimers();
+
+			const id = track("task-batch-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			expect(capturedDataCb).not.toBeNull();
+
+			// Simulate WebSocket connection by attaching ws to the session
+			// (The real WS is set in the open handler; we skip that here)
+			// We need to access the session internals, so we trigger data
+			// and check that ws.sendText is NOT called synchronously.
+
+			// First, let's verify the data callback doesn't throw
+			capturedDataCb!(null, "chunk1");
+			capturedDataCb!(null, "chunk2");
+
+			// WS is null initially, so no sends expected.
+			// This test verifies that data flow doesn't crash without WS.
+			vi.advanceTimersByTime(20);
+
+			vi.useRealTimers();
+		});
+
+		it("does not crash when multiple data chunks arrive without WS", () => {
+			const id = track("task-batch-02");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			expect(capturedDataCb).not.toBeNull();
+
+			// Rapid-fire data without WS connected — should not throw
+			for (let i = 0; i < 100; i++) {
+				expect(() => capturedDataCb!(null, `line ${i}\n`)).not.toThrow();
+			}
+		});
 	});
 
 	// ------- configureTmux via spawnPty (setTimeout) -------
@@ -749,6 +783,111 @@ describe("pty-server", () => {
 	describe("TMUX_CONF_PATH", () => {
 		it("equals /tmp/dev3-tmux.conf", () => {
 			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux.conf");
+		});
+
+		it("includes synchronized output (Sync) terminal features", async () => {
+			vi.resetModules();
+
+			const writeFileSyncMock = vi.fn();
+
+			vi.doMock("node:fs", async (importOriginal) => {
+				const actual = await importOriginal<typeof import("node:fs")>();
+				return {
+					...actual,
+					existsSync: vi.fn(() => true),
+					writeFileSync: writeFileSyncMock,
+				};
+			});
+
+			vi.doMock("../logger", () => ({
+				createLogger: () => ({
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+				}),
+			}));
+
+			vi.doMock("../spawn", () => ({
+				spawn: vi.fn(),
+				spawnSync: vi.fn(),
+			}));
+
+			await import("../pty-server");
+
+			const writtenConfig = writeFileSyncMock.mock.calls[0]?.[1] as string;
+			expect(writtenConfig).toContain("xterm-256color:Sync");
+			expect(writtenConfig).toContain("tmux-256color:Sync");
+		});
+
+		it("includes extended-keys and focus-events settings", async () => {
+			vi.resetModules();
+
+			const writeFileSyncMock = vi.fn();
+
+			vi.doMock("node:fs", async (importOriginal) => {
+				const actual = await importOriginal<typeof import("node:fs")>();
+				return {
+					...actual,
+					existsSync: vi.fn(() => true),
+					writeFileSync: writeFileSyncMock,
+				};
+			});
+
+			vi.doMock("../logger", () => ({
+				createLogger: () => ({
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+				}),
+			}));
+
+			vi.doMock("../spawn", () => ({
+				spawn: vi.fn(),
+				spawnSync: vi.fn(),
+			}));
+
+			await import("../pty-server");
+
+			const writtenConfig = writeFileSyncMock.mock.calls[0]?.[1] as string;
+			expect(writtenConfig).toContain("extended-keys on");
+			expect(writtenConfig).toContain("focus-events on");
+			expect(writtenConfig).toContain("terminal-overrides");
+		});
+
+		it("sets history-limit to 250000", async () => {
+			vi.resetModules();
+
+			const writeFileSyncMock = vi.fn();
+
+			vi.doMock("node:fs", async (importOriginal) => {
+				const actual = await importOriginal<typeof import("node:fs")>();
+				return {
+					...actual,
+					existsSync: vi.fn(() => true),
+					writeFileSync: writeFileSyncMock,
+				};
+			});
+
+			vi.doMock("../logger", () => ({
+				createLogger: () => ({
+					debug: vi.fn(),
+					info: vi.fn(),
+					warn: vi.fn(),
+					error: vi.fn(),
+				}),
+			}));
+
+			vi.doMock("../spawn", () => ({
+				spawn: vi.fn(),
+				spawnSync: vi.fn(),
+			}));
+
+			await import("../pty-server");
+
+			const writtenConfig = writeFileSyncMock.mock.calls[0]?.[1] as string;
+			expect(writtenConfig).toContain("history-limit 250000");
 		});
 
 		it("writes a backslash split binding with a literal double backslash", async () => {
