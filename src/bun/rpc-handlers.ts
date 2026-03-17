@@ -1088,6 +1088,10 @@ export async function triggerColumnAgentIfNeeded(
 
 	if (newStatus === "review-by-ai") {
 		// Built-in review-by-ai column
+		// When builtinColumnAgents exists but has no "review-by-ai" key → explicitly disabled
+		if (project.builtinColumnAgents && !project.builtinColumnAgents["review-by-ai"]) {
+			return;
+		}
 		const config = project.builtinColumnAgents?.["review-by-ai"];
 		agentConfig = config ?? {
 			agentId: "builtin-claude",
@@ -1353,18 +1357,64 @@ export const handlers = {
 		return resolved;
 	},
 
-	async getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
+	async getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig; app: Dev3RepoConfig }> {
 		log.info("→ getProjectConfigs", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
 		const configPath = params.worktreePath || project.path;
 		const repo = repoConfig.loadRepoConfigRaw(configPath);
 		const local = repoConfig.loadLocalConfigRaw(configPath);
+		const app = repoConfig.loadAppConfig(project.path);
 		log.info("← getProjectConfigs");
-		return { repo, local };
+		return { repo, local, app };
 	},
 
-	async saveRepoConfig(params: { projectId: string; worktreePath?: string } & Dev3RepoConfig): Promise<void> {
-		log.info("→ saveRepoConfig", { projectId: params.projectId, worktreePath: params.worktreePath });
+	async getProjectConfigFiles(params: { projectId: string }): Promise<{ hasRepoConfig: boolean; hasLocalConfig: boolean }> {
+		const project = await data.getProject(params.projectId);
+		return {
+			hasRepoConfig: repoConfig.hasRepoConfig(project.path),
+			hasLocalConfig: repoConfig.hasLocalConfig(project.path),
+		};
+	},
+
+	async getAppConfig(params: { projectId: string }): Promise<Dev3RepoConfig> {
+		log.info("→ getAppConfig", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const config = repoConfig.loadAppConfig(project.path);
+		log.info("← getAppConfig");
+		return config;
+	},
+
+	async saveAppConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveAppConfig", { projectId: params.projectId });
+		const project = await data.getProject(params.projectId);
+		const config: Dev3RepoConfig = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(config as any)[key] = val;
+			}
+		}
+		await repoConfig.saveAppConfig(project.path, config);
+		log.info("← saveAppConfig done");
+	},
+
+	async updateProjectSettings(params: { projectId: string } & Dev3RepoConfig): Promise<Project> {
+		log.info("→ updateProjectSettings", { projectId: params.projectId });
+		const updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents">> = {};
+		for (const key of DEV3_REPO_CONFIG_KEYS) {
+			const val = (params as any)[key];
+			if (val !== undefined) {
+				(updates as any)[key] = val;
+			}
+		}
+		const updated = await data.updateProject(params.projectId, updates);
+		pushMessage?.("projectUpdated", { project: updated });
+		log.info("← updateProjectSettings done");
+		return updated;
+	},
+
+	async saveRepoConfig(params: { projectId: string; worktreePath?: string; autoCommit?: boolean } & Dev3RepoConfig): Promise<void> {
+		log.info("→ saveRepoConfig", { projectId: params.projectId, worktreePath: params.worktreePath, autoCommit: params.autoCommit });
 		const project = await data.getProject(params.projectId);
 		const configPath = params.worktreePath || project.path;
 		const config: Dev3RepoConfig = {};
@@ -1375,6 +1425,20 @@ export const handlers = {
 			}
 		}
 		await repoConfig.saveRepoConfig(configPath, config);
+		// Auto-commit .dev3/config.json in the worktree if requested
+		if (params.autoCommit && params.worktreePath) {
+			try {
+				const proc = spawn(["git", "-C", params.worktreePath, "add", ".dev3/config.json"]);
+				const addCode = await proc.exited;
+				if (addCode !== 0) throw new Error(`git add exited with code ${addCode}`);
+				const commitProc = spawn(["git", "-C", params.worktreePath, "commit", "-m", "chore: update dev3 config"]);
+				const commitCode = await commitProc.exited;
+				if (commitCode !== 0) throw new Error(`git commit exited with code ${commitCode}`);
+				log.info("Auto-committed .dev3/config.json", { worktreePath: params.worktreePath });
+			} catch (err) {
+				log.warn("Auto-commit failed (non-fatal)", { error: String(err) });
+			}
+		}
 		log.info("← saveRepoConfig done");
 	},
 
@@ -1397,7 +1461,7 @@ export const handlers = {
 		log.info("→ getRepoConfigSources", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
 		const configPath = params.worktreePath || project.path;
-		const sources = await repoConfig.getConfigSources(configPath);
+		const sources = await repoConfig.getConfigSources(configPath, project.path);
 		log.info("← getRepoConfigSources", { count: sources.length });
 		return sources;
 	},
@@ -1608,8 +1672,9 @@ export const handlers = {
 		}, dropOpts);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 
-		// Trigger column agent if entering review-by-ai
-		await triggerColumnAgentIfNeeded(newStatus, project, updated);
+		// Trigger column agent if entering review-by-ai — resolve config from worktree
+		const resolvedForAgent = await repoConfig.resolveProjectConfig(project, updated.worktreePath ?? undefined);
+		await triggerColumnAgentIfNeeded(newStatus, resolvedForAgent, updated);
 
 		log.info("← moveTask done (status only)", { taskId: task.id });
 		return updated;

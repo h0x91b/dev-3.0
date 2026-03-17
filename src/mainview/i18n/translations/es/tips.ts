@@ -148,6 +148,10 @@ const tips = {
 	"tip.renameBuiltinColumns.body": "Haz clic en el icono de lápiz en el encabezado de una columna para renombrarla. Los cambios se guardan por proyecto.",
 	"tip.agentInstallStatus.title": "Verificación de instalación",
 	"tip.agentInstallStatus.body": "La configuración muestra qué CLIs de agentes están instalados. Los faltantes tienen instrucciones claras y soporte de ruta personalizada.",
+	"tip.configHierarchy.title": "Jerarquía de config",
+	"tip.configHierarchy.body": "Los ajustes se resuelven en orden: worktree local > worktree repo > proyecto > defaults. Sobreescribe por tarea con el icono de engranaje.",
+	"tip.worktreeConfig.title": "Ajustes por tarea",
+	"tip.worktreeConfig.body": "Cada worktree puede tener su propio .dev3/config.json. Haz clic en el engranaje en el panel de tareas para editarlo.",
 };
 
 export default tips;

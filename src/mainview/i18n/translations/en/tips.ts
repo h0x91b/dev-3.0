@@ -148,6 +148,10 @@ const tips = {
 	"tip.renameBuiltinColumns.body": "Click the pencil icon on any column header to rename it. Match your workflow terminology — changes are per-project.",
 	"tip.agentInstallStatus.title": "Agent install check",
 	"tip.agentInstallStatus.body": "Settings shows which agent CLIs are installed. Missing agents get clear install instructions and custom path support.",
+	"tip.configHierarchy.title": "Config hierarchy",
+	"tip.configHierarchy.body": "Settings resolve in order: worktree local > worktree repo > project > defaults. Override per-task via the gear icon.",
+	"tip.worktreeConfig.title": "Per-task settings",
+	"tip.worktreeConfig.body": "Each worktree can have its own .dev3/config.json. Click the gear icon in the task panel to edit it.",
 } as const;
 
 export default tips;

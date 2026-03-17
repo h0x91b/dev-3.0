@@ -462,6 +462,19 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.agentInstallStatus.body",
 		icon: "\u{F0219}", // nf-md-robot
 	},
+	// Batch 22: project config hierarchy
+	{
+		id: "config-hierarchy",
+		titleKey: "tip.configHierarchy.title",
+		bodyKey: "tip.configHierarchy.body",
+		icon: "\u{F0493}", // nf-md-tune
+	},
+	{
+		id: "worktree-config",
+		titleKey: "tip.worktreeConfig.title",
+		bodyKey: "tip.worktreeConfig.body",
+		icon: "\u{F0645}", // nf-md-file_tree
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

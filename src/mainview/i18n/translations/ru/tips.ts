@@ -148,6 +148,10 @@ const tips = {
 	"tip.renameBuiltinColumns.body": "Нажмите иконку карандаша в заголовке колонки, чтобы переименовать её. Настройки сохраняются для каждого проекта.",
 	"tip.agentInstallStatus.title": "Проверка установки агентов",
 	"tip.agentInstallStatus.body": "В настройках видно, какие CLI-агенты установлены. Для отсутствующих — инструкция и поле для кастомного пути.",
+	"tip.configHierarchy.title": "Иерархия конфигов",
+	"tip.configHierarchy.body": "Настройки применяются в порядке: worktree local > worktree repo > проект > дефолты. Переопределяйте через иконку шестерёнки.",
+	"tip.worktreeConfig.title": "Настройки задачи",
+	"tip.worktreeConfig.body": "У каждого worktree свой .dev3/config.json. Нажмите шестерёнку в панели задачи для редактирования.",
 };
 
 export default tips;

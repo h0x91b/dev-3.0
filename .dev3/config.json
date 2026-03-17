@@ -1,18 +1,16 @@
 {
   "setupScript": "echo setup\nbun install",
-  "devScript": "bun install\nbun run dev",
+  "devScript": "bun run dev",
   "clonePaths": [
     "node_modules",
     "build",
     "dist"
   ],
-  "sparseCheckoutPaths": [],
   "builtinColumnAgents": {
     "review-by-ai": {
       "agentId": "builtin-claude",
       "configId": "claude-bypass-sonnet",
       "prompt": ""
     }
-  },
-  "portCount": 2
+  }
 }
