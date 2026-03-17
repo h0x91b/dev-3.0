@@ -105,6 +105,10 @@ Focus on: bugs, logic errors, runtime failures, duplicated code, security issues
 For medium/high severity: fix directly and commit.
 For minor/cosmetic: leave alone. Do NOT break existing functionality.`;
 
+export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
+	return autoReviewEnabled ? "review-by-ai" : "review-by-user";
+}
+
 // ---- Coding Agents ----
 
 export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan";
@@ -399,6 +403,7 @@ export interface Dev3RepoConfig {
 	defaultBaseBranch?: string;
 	defaultCompareRef?: string;
 	defaultCompareRefMode?: CompareRefMode;
+	autoReviewEnabled?: boolean;
 	peerReviewEnabled?: boolean;
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
@@ -414,6 +419,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"defaultBaseBranch",
 	"defaultCompareRef",
 	"defaultCompareRefMode",
+	"autoReviewEnabled",
 	"peerReviewEnabled",
 	"sparseCheckoutEnabled",
 	"sparseCheckoutPaths",
@@ -444,6 +450,8 @@ export interface Project {
 	customColumns?: CustomColumn[];
 	// Ordered list of TaskStatus strings and custom column IDs; absent = default order
 	columnOrder?: string[];
+	// When true, completed work first moves through "AI Review" before "Your Review"
+	autoReviewEnabled?: boolean;
 	// When false, the "PR Review" column is hidden (default: true)
 	peerReviewEnabled?: boolean;
 	// Sparse checkout: when enabled, only specified directories are checked out in worktrees

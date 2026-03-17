@@ -106,6 +106,10 @@ vi.mock("../repo-config", () => ({
 	hasLocalConfig: vi.fn(() => false),
 }));
 
+vi.mock("../agent-hooks", () => ({
+	setupAgentHooks: vi.fn(),
+}));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -152,6 +156,7 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as updater from "../updater";
+import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, saveSettings } from "../settings";
 import { Utils } from "electrobun/bun";
 import { existsSync } from "node:fs";
@@ -1071,6 +1076,36 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("in-progress");
 		expect(git.createWorktree).toHaveBeenCalled();
 		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("todo → in-progress defaults agent stop target to review-by-user when automatic review is off", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const task = makeTask({ status: "todo", worktreePath: null });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+
+		expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/wt", expect.any(String), { stopTarget: "review-by-user" });
+	});
+
+	it("todo → in-progress uses review-by-ai stop target when automatic review is on", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "todo", worktreePath: null });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+
+		expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/wt", expect.any(String), { stopTarget: "review-by-ai" });
 	});
 
 	it("todo → in-progress with existingBranch: passes it to createWorktree", async () => {

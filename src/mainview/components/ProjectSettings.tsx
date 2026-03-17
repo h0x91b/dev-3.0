@@ -8,6 +8,26 @@ import { useT } from "../i18n";
 import { ListEditor } from "./ListEditor";
 import { matchesBranchQuery } from "./BranchSelector";
 
+const DEFAULT_REVIEW_AGENT_ID = "builtin-claude";
+const DEFAULT_REVIEW_CONFIG_ID = "claude-bypass-sonnet";
+const CONFIG_BOOLEAN_DEFAULTS = {
+	autoReviewEnabled: false,
+	peerReviewEnabled: true,
+	sparseCheckoutEnabled: false,
+} as const;
+
+function normalizeReviewPrompt(prompt: string): string {
+	return prompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : prompt.trim();
+}
+
+function sanitizeConfig(config: Dev3RepoConfig): Dev3RepoConfig {
+	return {
+		...config,
+		clonePaths: (config.clonePaths ?? []).filter((path) => path.trim() !== ""),
+		sparseCheckoutPaths: (config.sparseCheckoutPaths ?? []).filter((path) => path.trim() !== ""),
+	};
+}
+
 interface LabelRowProps {
 	label: Label;
 	saving: boolean;
@@ -757,6 +777,7 @@ function ProjectSettings({
 			p.defaultBaseBranch,
 			p.defaultCompareRef ?? `origin/${p.defaultBaseBranch}`,
 		),
+		autoReviewEnabled: p.autoReviewEnabled,
 		peerReviewEnabled: p.peerReviewEnabled,
 		sparseCheckoutEnabled: p.sparseCheckoutEnabled,
 		sparseCheckoutPaths: p.sparseCheckoutPaths,
@@ -793,12 +814,14 @@ function ProjectSettings({
 
 	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
 	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
-	const initialAiReviewEnabled = !!reviewConfig || !project?.builtinColumnAgents;
-	const [aiReviewEnabled, setAiReviewEnabled] = useState(initialAiReviewEnabled);
-	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? "builtin-claude");
-	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? "claude-bypass-sonnet");
+	const [aiReviewAgentId, setAiReviewAgentId] = useState(reviewConfig?.agentId ?? DEFAULT_REVIEW_AGENT_ID);
+	const [aiReviewConfigId, setAiReviewConfigId] = useState(reviewConfig?.configId ?? DEFAULT_REVIEW_CONFIG_ID);
 	const [aiReviewPrompt, setAiReviewPrompt] = useState(reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT);
-	const initialAiReviewRef = useRef({ enabled: initialAiReviewEnabled, agentId: reviewConfig?.agentId ?? "builtin-claude", configId: reviewConfig?.configId ?? "claude-bypass-sonnet", prompt: reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT });
+	const initialAiReviewRef = useRef({
+		agentId: reviewConfig?.agentId ?? DEFAULT_REVIEW_AGENT_ID,
+		configId: reviewConfig?.configId ?? DEFAULT_REVIEW_CONFIG_ID,
+		prompt: reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT,
+	});
 	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
 
 	// Load available agents
@@ -838,12 +861,20 @@ function ProjectSettings({
 	}, [selectedWorktreeTaskId, selectedTask?.worktreePath, project?.defaultBaseBranch]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
-		const keysToCheck: (keyof Dev3RepoConfig)[] = [
-			"setupScript", "devScript", "cleanupScript", "defaultBaseBranch",
-			"defaultCompareRef", "peerReviewEnabled", "sparseCheckoutEnabled",
+		const stringKeys: (keyof Dev3RepoConfig)[] = [
+			"setupScript",
+			"devScript",
+			"cleanupScript",
+			"defaultBaseBranch",
+			"defaultCompareRef",
 		];
-		for (const k of keysToCheck) {
-			if ((a[k] ?? "") !== (b[k] ?? "")) return false;
+		for (const key of stringKeys) {
+			if ((a[key] ?? "") !== (b[key] ?? "")) return false;
+		}
+		for (const [key, defaultValue] of Object.entries(CONFIG_BOOLEAN_DEFAULTS) as Array<
+			[keyof typeof CONFIG_BOOLEAN_DEFAULTS, boolean]
+		>) {
+			if ((a[key] ?? defaultValue) !== (b[key] ?? defaultValue)) return false;
 		}
 		const arrA = (a.clonePaths ?? []).join("\0");
 		const arrB = (b.clonePaths ?? []).join("\0");
@@ -860,8 +891,8 @@ function ProjectSettings({
 
 	const isAiReviewDirty = useCallback(() => {
 		const init = initialAiReviewRef.current;
-		return aiReviewEnabled !== init.enabled || aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
-	}, [aiReviewEnabled, aiReviewAgentId, aiReviewConfigId, aiReviewPrompt]);
+		return aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
+	}, [aiReviewAgentId, aiReviewConfigId, aiReviewPrompt]);
 
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {
@@ -992,20 +1023,21 @@ function ProjectSettings({
 	async function handleSaveProjectConfig() {
 		setSavingProject(true);
 		try {
-			const builtinColumnAgents: Record<string, ColumnAgentConfig> = aiReviewEnabled
-				? {
-					"review-by-ai": {
-						agentId: aiReviewAgentId,
-						configId: aiReviewConfigId,
-						prompt: aiReviewPrompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : aiReviewPrompt.trim(),
-					},
-				}
-				: {};
-			const toSave = { ...sanitizeConfigPaths(projectConfig), builtinColumnAgents };
+			const builtinColumnAgents: Record<string, ColumnAgentConfig> = {
+				"review-by-ai": {
+					agentId: aiReviewAgentId,
+					configId: aiReviewConfigId,
+					prompt: normalizeReviewPrompt(aiReviewPrompt),
+				},
+			};
+			const toSave = {
+				...sanitizeConfigPaths(projectConfig),
+				builtinColumnAgents,
+			};
 			const updated = await api.request.updateProjectSettings({ projectId, ...toSave });
 			dispatch({ type: "updateProject", project: updated });
 			loadedProjectConfig.current = toSave;
-			initialAiReviewRef.current = { enabled: aiReviewEnabled, agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
+			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
 		}
@@ -1061,20 +1093,26 @@ function ProjectSettings({
 	const dirty = isDirty();
 	const saving = savingProject || savingWtRepo || savingWtLocal;
 
+	function handleDiscardCurrentTab() {
+		if (activeTab === "project") {
+			setProjectConfig(loadedProjectConfig.current);
+			const initial = initialAiReviewRef.current;
+			setAiReviewAgentId(initial.agentId);
+			setAiReviewConfigId(initial.configId);
+			setAiReviewPrompt(initial.prompt);
+			return;
+		}
+		if (activeTab === "worktree") {
+			if (worktreeSubTab === "repo") {
+				setWtRepoConfig(loadedWtRepoConfig.current);
+				return;
+			}
+			setWtLocalConfig(loadedWtLocalConfig.current);
+		}
+	}
+
 	return (
 		<div className="h-full w-full flex flex-col">
-			{dirty && (
-				<div className="flex-shrink-0 px-7 py-2 bg-accent/10 border-b border-accent/20 flex items-center justify-between">
-					<span className="text-fg-2 text-sm">{t("unsavedChanges.banner")}</span>
-					<button
-						onClick={() => handleSaveRef.current()}
-						disabled={saving}
-						className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-all active:scale-95"
-					>
-						{saving ? t("projectSettings.saving") : t("unsavedChanges.save")}
-					</button>
-				</div>
-			)}
 			<div className="flex-1 overflow-y-auto p-7">
 				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 
@@ -1205,81 +1243,95 @@ function ProjectSettings({
 								projectPath={project.path}
 							/>
 
-							{/* AI Review */}
+							{/* Automatic AI Review */}
 							<div className="space-y-4">
 								<div className="flex items-center justify-between">
 									<div>
 										<label className="block text-fg text-sm font-semibold mb-1">
-											{t("projectSettings.aiReview")}
+											{t("projectSettings.autoReview")}
 										</label>
 										<p className="text-fg-3 text-sm">
-											{t("projectSettings.aiReviewDesc")}
+											{t("projectSettings.autoReviewDesc")}
 										</p>
 									</div>
 									<button
 										type="button"
 										role="switch"
-										aria-checked={aiReviewEnabled}
-										aria-label={t("projectSettings.aiReviewEnabled")}
-										onClick={() => setAiReviewEnabled((v) => !v)}
+										aria-checked={projectConfig.autoReviewEnabled ?? false}
+										aria-label={t("projectSettings.autoReviewEnabled")}
+										onClick={() =>
+											setProjectConfig((prev) => ({
+												...prev,
+												autoReviewEnabled: !(prev.autoReviewEnabled ?? false),
+											}))
+										}
 										className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
-											aiReviewEnabled ? "bg-accent" : "bg-edge-active"
+											(projectConfig.autoReviewEnabled ?? false) ? "bg-accent" : "bg-edge-active"
 										}`}
 									>
 										<span
 											className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-												aiReviewEnabled ? "translate-x-4" : "translate-x-0"
+												(projectConfig.autoReviewEnabled ?? false) ? "translate-x-4" : "translate-x-0"
 											}`}
 										/>
 									</button>
 								</div>
-								{aiReviewEnabled && (
-									<div className="space-y-3 pl-1">
-										<div className="flex items-center gap-3">
-											<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewAgent")}</label>
-											<select
-												value={aiReviewAgentId}
-												onChange={(e) => {
-													setAiReviewAgentId(e.target.value);
-													const agent = availableAgents.find((a) => a.id === e.target.value);
-													if (agent?.configurations?.length) {
-														setAiReviewConfigId(agent.configurations[0].id);
-													}
-												}}
-												className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-											>
-												{availableAgents.map((a) => (
-													<option key={a.id} value={a.id}>{a.name}</option>
-												))}
-											</select>
-										</div>
-										<div className="flex items-center gap-3">
-											<label className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewConfig")}</label>
-											<select
-												value={aiReviewConfigId}
-												onChange={(e) => setAiReviewConfigId(e.target.value)}
-												className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-											>
-												{(availableAgents.find((a) => a.id === aiReviewAgentId)?.configurations ?? []).map((c) => (
-													<option key={c.id} value={c.id}>{c.name || c.id}</option>
-												))}
-											</select>
-										</div>
-										<div>
-											<label className="block text-fg-2 text-sm mb-2">{t("projectSettings.aiReviewPrompt")}</label>
-											<textarea
-												value={aiReviewPrompt}
-												onChange={(e) => setAiReviewPrompt(e.target.value)}
-												rows={5}
-												placeholder={t("projectSettings.aiReviewPromptPlaceholder")}
-												autoCapitalize="off"
-												autoCorrect="off"
-												spellCheck={false}
-												className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-											/>
-										</div>
+								<div>
+									<label className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.aiReview")}
+									</label>
+									<p className="text-fg-3 text-sm">
+										{t("projectSettings.aiReviewDesc")}
+									</p>
+								</div>
+								<div className="space-y-3 pl-1">
+									<div className="flex items-center gap-3">
+										<label htmlFor="ai-review-agent" className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewAgent")}</label>
+										<select
+											id="ai-review-agent"
+											value={aiReviewAgentId}
+											onChange={(e) => {
+												setAiReviewAgentId(e.target.value);
+												const agent = availableAgents.find((a) => a.id === e.target.value);
+												if (agent?.configurations?.length) {
+													setAiReviewConfigId(agent.configurations[0].id);
+												}
+											}}
+											className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+										>
+											{availableAgents.map((a) => (
+												<option key={a.id} value={a.id}>{a.name}</option>
+											))}
+										</select>
 									</div>
-								)}
+									<div className="flex items-center gap-3">
+										<label htmlFor="ai-review-config" className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.aiReviewConfig")}</label>
+										<select
+											id="ai-review-config"
+											value={aiReviewConfigId}
+											onChange={(e) => setAiReviewConfigId(e.target.value)}
+											className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+										>
+											{(availableAgents.find((a) => a.id === aiReviewAgentId)?.configurations ?? []).map((c) => (
+												<option key={c.id} value={c.id}>{c.name || c.id}</option>
+											))}
+										</select>
+									</div>
+									<div>
+										<label htmlFor="ai-review-prompt" className="block text-fg-2 text-sm mb-2">{t("projectSettings.aiReviewPrompt")}</label>
+										<textarea
+											id="ai-review-prompt"
+											value={aiReviewPrompt}
+											onChange={(e) => setAiReviewPrompt(e.target.value)}
+											rows={5}
+											placeholder={t("projectSettings.aiReviewPromptPlaceholder")}
+											autoCapitalize="off"
+											autoCorrect="off"
+											spellCheck={false}
+											className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+										/>
+									</div>
+								</div>
 							</div>
 						</>
 					)}
@@ -1371,6 +1423,30 @@ function ProjectSettings({
 
 				</div>
 			</div>
+			{dirty && (
+				<div className="border-t border-edge/60 bg-overlay/95 backdrop-blur px-7 py-4">
+					<div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
+						<p className="text-sm text-fg-2">{t("unsavedChanges.banner")}</p>
+						<div className="flex items-center gap-3">
+							<button
+								type="button"
+								onClick={handleDiscardCurrentTab}
+								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							>
+								{t("unsavedChanges.discard")}
+							</button>
+							<button
+								type="button"
+								onClick={() => handleSaveRef.current()}
+								disabled={saving}
+								className="px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
+							>
+								{saving ? t("projectSettings.saving") : t("unsavedChanges.save")}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

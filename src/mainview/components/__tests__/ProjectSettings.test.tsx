@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectSettings from "../ProjectSettings";
 import { I18nProvider } from "../../i18n";
@@ -305,6 +305,129 @@ describe("ProjectSettings", () => {
 				);
 			});
 		});
+
+		it("keeps manual AI Review available when automatic review is off", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, {
+				autoReviewEnabled: false,
+			});
+			await goToProjectTab();
+
+			expect(screen.getByRole("switch", { name: /automatic ai review/i })).toHaveAttribute("aria-checked", "false");
+			expect(screen.getByLabelText("Review Agent")).toBeInTheDocument();
+			expect(screen.getByLabelText("Configuration")).toBeInTheDocument();
+			expect(screen.getByLabelText("Review Prompt")).toBeInTheDocument();
+
+			await user.type(screen.getByLabelText("Review Prompt"), " Extra guidance");
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({
+						projectId: "proj-1",
+						autoReviewEnabled: false,
+						builtinColumnAgents: expect.objectContaining({
+							"review-by-ai": expect.any(Object),
+						}),
+					}),
+				);
+			});
+		});
+
+		it("shows a sticky dirty-state action bar and discards current tab changes", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			const toggle = screen.getByRole("switch", { name: /peer review column/i });
+			expect(toggle).toHaveAttribute("aria-checked", "true");
+
+			await user.click(toggle);
+
+			const dirtyBar = screen.getByText("You have unsaved changes").closest("div");
+			expect(dirtyBar).not.toBeNull();
+			expect(within(dirtyBar as HTMLElement).getByText("Save")).toBeInTheDocument();
+
+			await user.click(within(dirtyBar as HTMLElement).getByText("Discard"));
+
+			expect(toggle).toHaveAttribute("aria-checked", "true");
+			expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+		});
+
+		it("uses the active tab save action in the sticky dirty-state bar", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.saveLocalConfig as ReturnType<typeof vi.fn>;
+			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, {}, [mockTaskWithWorktree]);
+
+			await user.click(screen.getByText("Worktree Config"));
+			await user.click(screen.getByText("Local Overrides"));
+			const textarea = screen.getByPlaceholderText("bun install");
+			await user.clear(textarea);
+			await user.type(textarea, "pnpm install");
+
+			const dirtyBar = screen.getByText("You have unsaved changes").closest("div");
+			expect(dirtyBar).not.toBeNull();
+
+			await user.click(within(dirtyBar as HTMLElement).getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({
+						projectId: "proj-1",
+						worktreePath: "/tmp/worktree-1",
+						setupScript: "pnpm install",
+					}),
+				);
+			});
+		});
+
+		it("clears the dirty state when automatic review returns to its default off state", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			const toggle = screen.getByRole("switch", { name: /automatic ai review/i });
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+
+			await user.click(toggle);
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+
+			await user.click(toggle);
+
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+			expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+		});
+
+		it("saves automatic review off without removing manual AI Review config", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { autoReviewEnabled: true });
+			await goToProjectTab();
+
+			const toggle = screen.getByRole("switch", { name: /automatic ai review/i });
+			await user.click(toggle);
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({
+						projectId: "proj-1",
+						autoReviewEnabled: false,
+						builtinColumnAgents: expect.objectContaining({
+							"review-by-ai": expect.any(Object),
+						}),
+					}),
+				);
+			});
+		});
 	});
 
 	describe("worktree tab", () => {
@@ -320,34 +443,6 @@ describe("ProjectSettings", () => {
 			await renderProjectSettings(mockProject, {}, [mockTaskWithWorktree]);
 			await user.click(screen.getByText("Worktree Config"));
 			expect(screen.getByText("Test task")).toBeInTheDocument();
-		});
-	});
-
-	describe("AI Review persistence (fix #336)", () => {
-		it("saves empty builtinColumnAgents when AI Review is disabled", async () => {
-			const { api } = await import("../../rpc");
-			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
-
-
-			const user = userEvent.setup();
-			await renderProjectSettings(mockProject, {});
-			await goToProjectTab();
-
-			// Disable AI Review
-			const toggle = screen.getByRole("switch", { name: /enable ai review/i });
-			await user.click(toggle);
-
-			// Save via floating banner
-			await user.click(screen.getByText("Save"));
-
-			await vi.waitFor(() => {
-				expect(mockSave).toHaveBeenCalledWith(
-					expect.objectContaining({
-						projectId: "proj-1",
-						builtinColumnAgents: {},
-					}),
-				);
-			});
 		});
 	});
 });

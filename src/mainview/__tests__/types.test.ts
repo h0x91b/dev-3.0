@@ -8,6 +8,7 @@ import {
 	STATUS_COLORS,
 	STATUS_COLORS_LIGHT,
 	DEFAULT_AGENTS,
+	getPrimaryStopTarget,
 	LABEL_COLORS,
 } from "../../shared/types";
 import type { TaskStatus } from "../../shared/types";
@@ -195,6 +196,17 @@ describe("ACTIVE_STATUSES", () => {
 		expect(ACTIVE_STATUSES).toContain("user-questions");
 		expect(ACTIVE_STATUSES).toContain("review-by-user");
 		expect(ACTIVE_STATUSES).toContain("review-by-ai");
+	});
+});
+
+describe("getPrimaryStopTarget", () => {
+	it("defaults to review-by-user when automatic review is disabled", () => {
+		expect(getPrimaryStopTarget(false)).toBe("review-by-user");
+		expect(getPrimaryStopTarget(undefined)).toBe("review-by-user");
+	});
+
+	it("returns review-by-ai when automatic review is enabled", () => {
+		expect(getPrimaryStopTarget(true)).toBe("review-by-ai");
 	});
 });
 

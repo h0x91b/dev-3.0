@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -736,6 +736,15 @@ export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
 	}
 }
 
+function buildTaskDescriptionForLaunch(taskDescription: string, autoReviewEnabled?: boolean): string {
+	if (!autoReviewEnabled) return taskDescription;
+	const autoReviewInstruction =
+		"Automatic AI Review is enabled for this project. When your work is complete, leave the task in `review-by-ai` so the review agent can run before human review.";
+	return taskDescription
+		? `${taskDescription}\n\n${autoReviewInstruction}`
+		: autoReviewInstruction;
+}
+
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -757,7 +766,7 @@ export async function launchTaskPty(
 
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
-		taskDescription: task.description,
+		taskDescription: buildTaskDescriptionForLaunch(task.description, project.autoReviewEnabled),
 		projectName: project.name,
 		projectPath: project.path,
 		worktreePath,
@@ -780,7 +789,7 @@ export async function launchTaskPty(
 			const resolved = await agents.resolveCommandForProject(
 				project,
 				task.title,
-				task.description,
+				ctx.taskDescription,
 				worktreePath,
 				undefined,
 				cmdOptions,
@@ -878,9 +887,9 @@ export async function launchTaskPty(
 		}
 	}
 
-	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop)
-	// Primary agent always stops at review-by-user; AI review is triggered manually.
-	const stopTarget: TaskStatus = "review-by-user";
+	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop).
+	// Projects can opt into automatic AI Review before human review.
+	const stopTarget = getPrimaryStopTarget(project.autoReviewEnabled);
 	try {
 		setupAgentHooks(worktreePath, resolvedBaseCmd, { stopTarget });
 	} catch (err) {

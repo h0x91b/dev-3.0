@@ -275,6 +275,7 @@ describe("resolveProjectConfig", () => {
 		expect(resolved.setupScript).toBe("");
 		expect(resolved.defaultBaseBranch).toBe("main");
 		expect(resolved.defaultCompareRef).toBe("origin/main");
+		expect(resolved.autoReviewEnabled).toBe(false);
 		expect(resolved.peerReviewEnabled).toBe(true);
 		expect(resolved.clonePaths).toEqual([]);
 		expect(detectDefaultCompareRef).toHaveBeenCalledWith(TEST_DIR, "main");
