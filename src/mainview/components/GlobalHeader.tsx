@@ -169,12 +169,17 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	if ("projectId" in route) {
 		const project = projects.find((p) => p.id === route.projectId);
 		if (project) {
-			const canNavigateToProject =
-				route.screen !== "project" || (route.screen === "project" && route.activeTaskId);
+			// In terminal view: clicking project name closes the terminal (returns to kanban)
+			// Otherwise: navigate to project board only when coming from a sub-screen
+			const projectNameonClick = showProjectTerminal && onToggleProjectTerminal
+				? onToggleProjectTerminal
+				: (route.screen !== "project" || (route.screen === "project" && route.activeTaskId))
+					? handleProjectNameClick
+					: undefined;
 			segments.push({
 				label: project.name,
 				isProjectDropdown: true,
-				onClick: canNavigateToProject ? handleProjectNameClick : undefined,
+				onClick: projectNameonClick,
 			});
 		}
 	}
@@ -260,7 +265,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
 								)}
-								{onToggleProjectTerminal && (
+								{onToggleProjectTerminal && !showProjectTerminal && (
 									<button
 										onClick={(e) => { e.stopPropagation(); onToggleProjectTerminal(); }}
 										title={showProjectTerminal ? t("projectTerminal.close") : t("projectTerminal.tooltip")}
