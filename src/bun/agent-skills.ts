@@ -27,7 +27,7 @@ git branch -m dev3/task-XXXXXXXX <type>/<slug>
 > follow the user's convention instead of the defaults below.
 
 **Default rules** (apply only when the user has no custom branch naming preference):
-- Use a project-prefixed type: \`feat/dev3-\`, \`fix/dev3-\`, \`chore/dev-3\`, \`refactor/dev3-\`, \`docs/dev3-\`.
+- Type prefixes: \`feat/dev3-\`, \`fix/dev3-\`, \`chore/dev-3\`, \`refactor/dev3-\`, \`docs/dev3-\`.
 - Use lowercase kebab-case for the slug (3-5 words): \`fix/dev3-auth-race-condition\`, \`feat/dev3-drag-reorder\`, \`refactor/dev3-rpc-handlers\`.
 - Derive the slug from the task description/title — be concise but descriptive.
 
