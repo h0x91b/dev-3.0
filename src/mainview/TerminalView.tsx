@@ -366,7 +366,35 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		const OSC52_RE =
 			/\x1b\]52;[^;]*;[A-Za-z0-9+/=]*(?:\x07|\x1b\\)/g;
 
+		// ── Terminal write batching ─────────────────────────────────────
+		// AI agents produce thousands of WS messages per second. Writing
+		// each one to ghostty-web individually forces per-write layout and
+		// render passes. Instead, we accumulate incoming data and flush in
+		// a single term.write() call per animation frame (~60fps).
+		let pendingWrite = "";
+		let writeRafId: number | null = null;
+		// Reference to the terminal for batched writes (set by connectPty)
+		let batchTerm: Terminal | null = null;
+
+		function enqueueTermWrite(data: string) {
+			pendingWrite += data;
+			if (writeRafId === null) {
+				writeRafId = requestAnimationFrame(() => {
+					writeRafId = null;
+					if (disposed || !pendingWrite || !batchTerm) return;
+					const batch = pendingWrite;
+					pendingWrite = "";
+					try {
+						batchTerm.write(batch);
+					} catch {
+						// Swallow ghostty-web rendering errors
+					}
+				});
+			}
+		}
+
 		function connectPty(term: Terminal, fit: FitAddon) {
+			batchTerm = term;
 			console.log("[TerminalView] Creating WebSocket connection to", ptyUrl);
 			try {
 				ws = new WebSocket(ptyUrl);
@@ -407,9 +435,11 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 				try {
 					if (typeof event.data === "string") {
 						const cleaned = event.data.replace(OSC52_RE, "");
-						if (cleaned) term.write(cleaned);
+						if (cleaned) enqueueTermWrite(cleaned);
 					} else {
-						term.write(new Uint8Array(event.data));
+						// Binary data — decode and batch with text data
+						const str = new TextDecoder().decode(new Uint8Array(event.data));
+						if (str) enqueueTermWrite(str);
 					}
 				} catch {
 					// Swallow ghostty-web rendering errors to avoid flooding
@@ -454,6 +484,12 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		return () => {
 			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
 			disposed = true;
+			// Cancel pending write batch to prevent writing to disposed terminal
+			if (writeRafId !== null) {
+				cancelAnimationFrame(writeRafId);
+				writeRafId = null;
+			}
+			pendingWrite = "";
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
 			// Dispose terminal event subscriptions (onData, onResize) before
