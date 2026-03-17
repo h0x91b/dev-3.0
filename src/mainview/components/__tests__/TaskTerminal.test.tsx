@@ -16,6 +16,7 @@ vi.mock("../../rpc", () => ({
 			getPortAllocations: vi.fn().mockResolvedValue([]),
 		},
 	},
+	isElectrobun: false,
 }));
 
 vi.mock("../../analytics", () => ({

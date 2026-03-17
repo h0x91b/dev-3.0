@@ -190,7 +190,8 @@ interface PtySession {
 	tmuxCommand: string;
 	env: Record<string, string>;
 	proc: ReturnType<typeof Bun.spawn> | null;
-	ws: any;
+	/** All currently connected WebSocket clients. PTY output is broadcast to all. */
+	clients: Set<any>;
 	tmuxSocket: string;
 	tmuxSessionName: string;
 	sessionType: PtySessionType;
@@ -249,7 +250,7 @@ export function createSession(
 		tmuxCommand,
 		env: extraEnv,
 		proc: null,
-		ws: null,
+		clients: new Set(),
 		tmuxSocket,
 		tmuxSessionName,
 		sessionType,
@@ -309,13 +310,14 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 			session.proc.terminal?.close();
 			session.proc.kill();
 		}
-		if (session.ws) {
+		for (const client of session.clients) {
 			try {
-				session.ws.close();
+				client.close();
 			} catch {
 				// already closed
 			}
 		}
+		session.clients.clear();
 		sessions.delete(taskId);
 	}
 }
@@ -414,13 +416,15 @@ function checkForBell(data: string, taskId: string): void {
 	}
 }
 
-/** Flush accumulated PTY data to the WebSocket in one batch. */
+/** Flush accumulated PTY data to all connected WebSocket clients in one batch. */
 function flushPendingData(session: PtySession): void {
 	session.batchTimer = null;
-	if (!session.pendingData || !session.ws) return;
+	if (!session.pendingData || session.clients.size === 0) return;
 	const data = session.pendingData;
 	session.pendingData = "";
-	session.ws.sendText(data);
+	for (const client of session.clients) {
+		try { client.sendText(data); } catch { /* dead client */ }
+	}
 }
 
 /**
@@ -543,7 +547,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 							session.idleNotified = false;
 							checkForBell(str, session.taskId);
 							const cleaned = handleOsc52(str);
-							if (cleaned && session.ws) {
+							if (cleaned && session.clients.size > 0) {
 								enqueuePtyData(session, cleaned);
 							}
 						} catch (err) {
@@ -698,8 +702,8 @@ const ptyServer = Bun.serve({
 					cwd: session.cwd,
 				});
 
-				// Update the ws reference for this session
-				session.ws = ws as any;
+				// Add this client to the session's broadcast set
+				session.clients.add(ws as any);
 				(ws as any).sessionId = sessionId;
 
 				const cols = 80;
@@ -773,9 +777,9 @@ const ptyServer = Bun.serve({
 				log.info("WS disconnected", { taskId: shortId(sessionId) });
 
 				const session = sessions.get(sessionId);
-				if (session && session.ws === (ws as any)) {
-					// Don't kill the PTY — just detach the WS
-					session.ws = null;
+				if (session) {
+					// Remove this client — don't kill the PTY
+					session.clients.delete(ws as any);
 				}
 			} catch (err) {
 				log.error("WS close handler error", {

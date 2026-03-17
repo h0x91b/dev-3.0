@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
-import { api } from "./rpc";
+import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
@@ -53,13 +53,19 @@ const LIGHT_TERMINAL_THEME = {
 
 const TERMINAL_BASE_FONT_SIZE = 14;
 
+export interface TerminalHandle {
+	sendInput: (data: string) => void;
+	focus: () => void;
+}
+
 interface TerminalViewProps {
 	ptyUrl: string;
 	taskId: string;
 	projectId: string;
+	onReady?: (handle: TerminalHandle) => void;
 }
 
-function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -192,6 +198,135 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 
+			// Stretch ghostty-web's hidden textarea over the canvas.
+			// Without this it's 1x1px in the corner, causing scroll jumps on focus.
+			const hiddenTextarea = containerRef.current.querySelector("textarea");
+			if (hiddenTextarea) {
+				hiddenTextarea.style.fontSize = "16px";
+				hiddenTextarea.style.width = "100%";
+				hiddenTextarea.style.height = "100%";
+				hiddenTextarea.style.clipPath = "none";
+				hiddenTextarea.style.opacity = "0";
+				hiddenTextarea.style.pointerEvents = "none";
+				hiddenTextarea.style.caretColor = "transparent";
+				hiddenTextarea.style.zIndex = "-1";
+
+				// In browser mode, keep the textarea focused to prevent
+				// the mobile keyboard from dismissing. Re-focus on blur
+				// unless another input element actually needs focus.
+				if (!isElectrobun) {
+					hiddenTextarea.addEventListener("blur", () => {
+						if (disposed) return;
+						const active = document.activeElement;
+						if (!active || active === document.body) {
+							setTimeout(() => {
+								if (!disposed) hiddenTextarea.focus();
+							}, 50);
+						}
+					});
+
+					// Mobile keyboards use IME composition for letters, but
+					// space/digits/punctuation are direct insertText events.
+					// We handle both paths explicitly via beforeinput + input.
+					let lastSentLen = 0;
+
+					// beforeinput: catch direct (non-composition) keystrokes
+					// AND backspace on empty textarea. Called BEFORE the browser
+					// modifies the textarea, so we can preventDefault cleanly.
+					hiddenTextarea.addEventListener("beforeinput", (e) => {
+						if (disposed) return;
+						const ie = e as InputEvent;
+						if (ie.inputType === "insertText" && ie.data) {
+							// Direct input: space, digits, punctuation.
+							// Send immediately and prevent insertion into textarea
+							// so it doesn't desync with composition tracking.
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send(ie.data);
+							}
+							e.preventDefault();
+							return;
+						}
+						if (ie.inputType === "deleteContentBackward" && hiddenTextarea.value === "") {
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send("\x7f");
+							}
+							e.preventDefault();
+						}
+					});
+
+					// input: handle composition text incrementally (letters).
+					// Each composition update changes textarea value — diff to
+					// find new chars and send them one by one.
+					hiddenTextarea.addEventListener("input", () => {
+						if (disposed) return;
+						const val = hiddenTextarea.value;
+						if (val.length > lastSentLen) {
+							const newChars = val.slice(lastSentLen);
+							if (wsRef.current?.readyState === WebSocket.OPEN) {
+								wsRef.current.send(newChars);
+							}
+						} else if (val.length < lastSentLen) {
+							const deleted = lastSentLen - val.length;
+							for (let i = 0; i < deleted; i++) {
+								if (wsRef.current?.readyState === WebSocket.OPEN) {
+									wsRef.current.send("\x7f");
+								}
+							}
+						}
+						lastSentLen = val.length;
+					});
+
+					// compositionend: ghostty-web would send event.data again
+					// (double-sending). Neutralize the data so ghostty-web
+					// skips it, but let the event propagate so it resets isComposing.
+					hiddenTextarea.addEventListener("compositionend", (e) => {
+						Object.defineProperty(e, "data", { value: "", writable: false });
+						hiddenTextarea.value = "";
+						lastSentLen = 0;
+					}, { capture: true });
+				}
+			}
+
+			// Translate touch events to mouse events for mobile terminal interaction.
+			// ghostty-web only listens for mousedown/mousemove/mouseup on the canvas,
+			// so touch events (taps) don't trigger mouse reporting to tmux/vim/etc.
+			const canvas = containerRef.current.querySelector("canvas");
+			if (canvas) {
+				function touchToMouse(type: string, touch: Touch) {
+					const mouseEvent = new MouseEvent(type, {
+						clientX: touch.clientX,
+						clientY: touch.clientY,
+						button: 0,
+						buttons: 1,
+						bubbles: true,
+						cancelable: true,
+					});
+					canvas!.dispatchEvent(mouseEvent);
+				}
+
+				canvas.addEventListener("touchstart", (e) => {
+					if (e.touches.length === 1) {
+						touchToMouse("mousedown", e.touches[0]);
+						// Focus textarea on tap — user gesture opens mobile keyboard
+						if (!isElectrobun && hiddenTextarea) {
+							hiddenTextarea.focus();
+						}
+					}
+				}, { passive: true });
+
+				canvas.addEventListener("touchend", (e) => {
+					if (e.changedTouches.length === 1) {
+						touchToMouse("mouseup", e.changedTouches[0]);
+					}
+				}, { passive: true });
+
+				canvas.addEventListener("touchmove", (e) => {
+					if (e.touches.length === 1) {
+						touchToMouse("mousemove", e.touches[0]);
+					}
+				}, { passive: true });
+			}
+
 			// Use ResizeObserver to detect when the container gets its final
 			// flex-computed dimensions. Unlike requestAnimationFrame heuristics,
 			// this fires exactly when layout is done — no timing guesses.
@@ -228,6 +363,16 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 									return true;
 								}
 								return false;
+							});
+
+							// Expose terminal handle for external input (e.g. ExtraKeyBar)
+							onReady?.({
+								sendInput: (data: string) => {
+									if (wsRef.current?.readyState === WebSocket.OPEN) {
+										wsRef.current.send(data);
+									}
+								},
+								focus: () => { try { term.focus(); } catch { /* disposed */ } },
 							});
 
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");
