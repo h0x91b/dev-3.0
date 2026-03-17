@@ -736,15 +736,6 @@ export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
 	}
 }
 
-function buildTaskDescriptionForLaunch(taskDescription: string, autoReviewEnabled?: boolean): string {
-	if (!autoReviewEnabled) return taskDescription;
-	const autoReviewInstruction =
-		"Automatic AI Review is enabled for this project. When your work is complete, leave the task in `review-by-ai` so the review agent can run before human review.";
-	return taskDescription
-		? `${taskDescription}\n\n${autoReviewInstruction}`
-		: autoReviewInstruction;
-}
-
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -766,7 +757,7 @@ export async function launchTaskPty(
 
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
-		taskDescription: buildTaskDescriptionForLaunch(task.description, project.autoReviewEnabled),
+		taskDescription: task.description,
 		projectName: project.name,
 		projectPath: project.path,
 		worktreePath,

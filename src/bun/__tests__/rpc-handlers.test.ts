@@ -180,6 +180,7 @@ const {
 	startPRDetectionPoller,
 	stopPRDetectionPoller,
 	resolveBinaryPath,
+	launchTaskPty,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -3148,6 +3149,26 @@ describe("handlers.spawnAgentInTask", () => {
 		await expect(
 			handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null }),
 		).rejects.toThrow("Failed to spawn agent");
+	});
+});
+
+describe("launchTaskPty", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ description: "Touch a text file and say hello world" });
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			"claude-default",
+			expect.objectContaining({
+				taskDescription: "Touch a text file and say hello world",
+			}),
+			undefined,
+		);
 	});
 });
 
