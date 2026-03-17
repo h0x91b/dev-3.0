@@ -254,6 +254,24 @@ describe("ProjectSettings", () => {
 			});
 		});
 
+		it("clears the dirty banner after saving project settings", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { setupScript: "original" });
+			await goToProjectTab();
+
+			const textarea = screen.getByDisplayValue("original");
+			await user.clear(textarea);
+			await user.type(textarea, "changed");
+
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+			});
+		});
+
 		it("saves a selected base branch from the filtered branch picker", async () => {
 			const { api } = await import("../../rpc");
 			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;

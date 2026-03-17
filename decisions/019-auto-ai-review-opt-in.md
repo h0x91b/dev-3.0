@@ -6,11 +6,11 @@ Issue #336 first exposed a bug in the existing "AI Review" project setting: turn
 
 ## Investigation
 
-The persistence bug came from the settings flow not storing an explicit automatic-review value that matched the user's intent, so reopening Project Settings reconstructed AI Review as enabled. The backend already defaulted primary task completion to `review-by-user` in [rpc-handlers.ts](/Users/tome/projects/dev-3.0/src/bun/rpc-handlers.ts), but the settings UI still treated AI Review as an enable/disable switch for the manual column agent. Separately, the generated dev3 skill text in [agent-skills.ts](/Users/tome/projects/dev-3.0/src/bun/agent-skills.ts) still instructed non-hook agents to finish in `review-by-ai`, which kept automatic review alive for some agent flows.
+The persistence bug came from the settings flow not storing an explicit automatic-review value that matched the user's intent, so reopening Project Settings reconstructed AI Review as enabled. The backend already defaulted primary task completion to `review-by-user` in [rpc-handlers.ts](src/bun/rpc-handlers.ts), but the settings UI still treated AI Review as an enable/disable switch for the manual column agent. Separately, the generated dev3 skill text in [agent-skills.ts](src/bun/agent-skills.ts) still instructed non-hook agents to finish in `review-by-ai`, which kept automatic review alive for some agent flows.
 
 ## Decision
 
-Added a dedicated `autoReviewEnabled` project config field in [types.ts](/Users/tome/projects/dev-3.0/src/shared/types.ts) and [repo-config.ts](/Users/tome/projects/dev-3.0/src/bun/repo-config.ts), defaulting to `false`, so the saved repo/local settings now faithfully preserve "automatic AI review off". In [ProjectSettings.tsx](/Users/tome/projects/dev-3.0/src/mainview/components/ProjectSettings.tsx), the toggle now controls only automatic review, the AI Review column agent settings remain always configurable for manual drag-to-review, and the UI warns that the automatic path can be slow and costly.
+Added a dedicated `autoReviewEnabled` project config field in [types.ts](src/shared/types.ts) and [repo-config.ts](src/bun/repo-config.ts), defaulting to `false`, so the saved repo/local settings now faithfully preserve "automatic AI review off". In [ProjectSettings.tsx](src/mainview/components/ProjectSettings.tsx), the toggle now controls only automatic review, the AI Review column agent settings remain always configurable for manual drag-to-review, and the UI warns that the automatic path can be slow and costly.
 
 ## Risks
 

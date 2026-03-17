@@ -1027,6 +1027,7 @@ function ProjectSettings({
 			const updated = await api.request.updateProjectSettings({ projectId, ...toSave });
 			dispatch({ type: "updateProject", project: updated });
 			loadedProjectConfig.current = toSave;
+			setProjectConfig(toSave);
 			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
 		} catch (err) {
 			alert(t("projectSettings.failedSave", { error: String(err) }));
