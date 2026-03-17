@@ -92,4 +92,30 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 
 const electroview = new Electroview({ rpc });
 
-export const api = electroview.rpc!;
+const rawApi = electroview.rpc!;
+
+const RPC_TIMEOUT_MS = 120_000;
+
+// Wrap api.request to enrich timeout errors with the method name.
+// Electrobun rejects with a generic "RPC request timed out." — no indication
+// of which method failed.  This proxy catches that and re-throws with context
+// so the unhandled-rejection tracker (analytics.ts) and console show something
+// actionable like: 'RPC "getBranchStatus" timed out (120 000 ms)'.
+const enrichedRequest = new Proxy(rawApi.request, {
+	get(target: typeof rawApi.request, prop: string | symbol, receiver: unknown) {
+		const value = Reflect.get(target, prop, receiver);
+		if (typeof value !== "function") return value;
+		return (...args: unknown[]) => {
+			const promise = (value as (...a: unknown[]) => Promise<unknown>).apply(target, args);
+			return promise.catch((err: unknown) => {
+				const msg = err instanceof Error ? err.message : String(err);
+				if (/timed?\s*out/i.test(msg)) {
+					throw new Error(`RPC "${String(prop)}" timed out (${RPC_TIMEOUT_MS} ms)`);
+				}
+				throw err;
+			});
+		};
+	},
+});
+
+export const api = { ...rawApi, request: enrichedRequest } as typeof rawApi;

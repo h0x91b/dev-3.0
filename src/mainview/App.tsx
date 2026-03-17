@@ -245,10 +245,15 @@ function App() {
 				taskTitle: string;
 				branchName: string;
 			};
-			const shouldComplete = await api.request.showConfirm({
-				title: t("app.branchMergedTitle"),
-				message: t("app.branchMergedMessage", { taskTitle, branchName }),
-			});
+			let shouldComplete = false;
+			try {
+				shouldComplete = await api.request.showConfirm({
+					title: t("app.branchMergedTitle"),
+					message: t("app.branchMergedMessage", { taskTitle, branchName }),
+				});
+			} catch (err) {
+				console.error("[App] showConfirm (branch-merged) failed:", err);
+			}
 			if (shouldComplete) {
 				dispatch({
 					type: "updateTask",

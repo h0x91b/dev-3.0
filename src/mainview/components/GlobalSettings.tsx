@@ -553,7 +553,13 @@ function GlobalSettings() {
 							</div>
 							<button
 								onClick={async () => {
-									const folder = await api.request.pickFolder();
+									let folder: string | null;
+									try {
+										folder = await api.request.pickFolder();
+									} catch (err) {
+										console.error("[GlobalSettings] pickFolder failed:", err);
+										return;
+									}
 									if (!folder) return;
 									const updated = { ...globalSettings, cloneBaseDirectory: folder };
 									setGlobalSettings(updated);

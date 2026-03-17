@@ -698,13 +698,18 @@ function TerminalView({ ptyUrl, taskId, projectId }: TerminalViewProps) {
 		// WKWebView doesn't expose native file paths — resolve via Spotlight in main process.
 		const paths = await Promise.all(
 			files.map(async (f) => {
-				const resolved = await api.request.resolveFilename({
-					filename: f.name,
-					size: f.size,
-					lastModified: f.lastModified,
-				});
-				const p = resolved ?? f.name;
-				return p.replace(/ /g, "\\ ");
+				try {
+					const resolved = await api.request.resolveFilename({
+						filename: f.name,
+						size: f.size,
+						lastModified: f.lastModified,
+					});
+					const p = resolved ?? f.name;
+					return p.replace(/ /g, "\\ ");
+				} catch (err) {
+					console.error(`[TerminalView] resolveFilename failed for "${f.name}":`, err);
+					return f.name.replace(/ /g, "\\ ");
+				}
 			}),
 		);
 		const text = paths.join(" ");
