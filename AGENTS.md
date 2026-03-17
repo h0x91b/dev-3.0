@@ -69,10 +69,10 @@ Worktree branches are auto-generated with opaque names like `dev3/task-8711d3e1`
 The repo is owned by the **`h0x91b`** personal account. The developer machine has two `gh` accounts configured (`h0x91b` and `h0x91b-wix`). Before running any `gh` commands that access this repo, **switch to the correct account** if it is configured:
 
 ```bash
-unset GH_TOKEN && gh auth switch --user h0x91b 2>/dev/null || true
+gh auth switch --user h0x91b 2>/dev/null || true
 ```
 
-This is a no-op for collaborators who don't have the `h0x91b` account — `gh` will fall back to whatever account they have configured. Always prefix `gh` calls with `unset GH_TOKEN &&` to avoid token conflicts (see global CLAUDE.md).
+This is a no-op for collaborators who don't have the `h0x91b` account — `gh` will fall back to whatever account they have configured.
 
 ## Changelog policy
 
