@@ -524,6 +524,15 @@ interface NavigationGuard {
 	onSave: () => Promise<void>;
 }
 
+/** Strip empty strings from clonePaths and sparseCheckoutPaths before saving. */
+function sanitizeConfigPaths(config: Dev3RepoConfig): Dev3RepoConfig {
+	return {
+		...config,
+		clonePaths: (config.clonePaths ?? []).filter((p) => p.trim() !== ""),
+		sparseCheckoutPaths: (config.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+	};
+}
+
 interface ProjectSettingsProps {
 	projectId: string;
 	projects: Project[];
@@ -792,12 +801,7 @@ function ProjectSettings({
 					},
 				}
 				: {};
-			const toSave = {
-				...projectConfig,
-				clonePaths: (projectConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
-				sparseCheckoutPaths: (projectConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
-				builtinColumnAgents,
-			};
+			const toSave = { ...sanitizeConfigPaths(projectConfig), builtinColumnAgents };
 			const updated = await api.request.updateProjectSettings({ projectId, ...toSave });
 			dispatch({ type: "updateProject", project: updated });
 			loadedProjectConfig.current = toSave;
@@ -813,11 +817,7 @@ function ProjectSettings({
 		if (!selectedTask?.worktreePath) return;
 		setSavingWtRepo(true);
 		try {
-			const toSave = {
-				...wtRepoConfig,
-				clonePaths: (wtRepoConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
-				sparseCheckoutPaths: (wtRepoConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
-			};
+			const toSave = sanitizeConfigPaths(wtRepoConfig);
 			await api.request.saveRepoConfig({ projectId, worktreePath: selectedTask.worktreePath, autoCommit: true, ...toSave });
 			loadedWtRepoConfig.current = toSave;
 			const updatedProjects = await api.request.getProjects();
@@ -832,11 +832,7 @@ function ProjectSettings({
 		if (!selectedTask?.worktreePath) return;
 		setSavingWtLocal(true);
 		try {
-			const toSave = {
-				...wtLocalConfig,
-				clonePaths: (wtLocalConfig.clonePaths ?? []).filter((p) => p.trim() !== ""),
-				sparseCheckoutPaths: (wtLocalConfig.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
-			};
+			const toSave = sanitizeConfigPaths(wtLocalConfig);
 			await api.request.saveLocalConfig({ projectId, worktreePath: selectedTask.worktreePath, ...toSave });
 			loadedWtLocalConfig.current = toSave;
 			const updatedProjects = await api.request.getProjects();

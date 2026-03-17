@@ -1087,12 +1087,13 @@ export async function triggerColumnAgentIfNeeded(
 	let onExitCommand: string | undefined;
 
 	if (newStatus === "review-by-ai") {
-		// Built-in review-by-ai column
+		// Resolve config from worktree to pick up local overrides (#341)
+		const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
 		// When builtinColumnAgents exists but has no "review-by-ai" key → explicitly disabled
-		if (project.builtinColumnAgents && !project.builtinColumnAgents["review-by-ai"]) {
+		if (resolved.builtinColumnAgents && !resolved.builtinColumnAgents["review-by-ai"]) {
 			return;
 		}
-		const config = project.builtinColumnAgents?.["review-by-ai"];
+		const config = resolved.builtinColumnAgents?.["review-by-ai"];
 		agentConfig = config ?? {
 			agentId: "builtin-claude",
 			configId: "claude-bypass-sonnet",
@@ -1202,6 +1203,18 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 }
 
 const rendererLog = createLogger("renderer");
+
+/** Extract Dev3RepoConfig fields from a flat params object. */
+function extractConfigFromParams(params: Record<string, any>): Dev3RepoConfig {
+	const config: Dev3RepoConfig = {};
+	for (const key of DEV3_REPO_CONFIG_KEYS) {
+		const val = (params as any)[key];
+		if (val !== undefined) {
+			(config as any)[key] = val;
+		}
+	}
+	return config;
+}
 
 export const handlers = {
 	async logRendererError(params: { description: string; source: "error" | "unhandledrejection" }): Promise<void> {
@@ -1376,37 +1389,17 @@ export const handlers = {
 		};
 	},
 
-	async getAppConfig(params: { projectId: string }): Promise<Dev3RepoConfig> {
-		log.info("→ getAppConfig", { projectId: params.projectId });
-		const project = await data.getProject(params.projectId);
-		const config = repoConfig.loadAppConfig(project.path);
-		log.info("← getAppConfig");
-		return config;
-	},
-
 	async saveAppConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
 		log.info("→ saveAppConfig", { projectId: params.projectId });
 		const project = await data.getProject(params.projectId);
-		const config: Dev3RepoConfig = {};
-		for (const key of DEV3_REPO_CONFIG_KEYS) {
-			const val = (params as any)[key];
-			if (val !== undefined) {
-				(config as any)[key] = val;
-			}
-		}
+		const config = extractConfigFromParams(params);
 		await repoConfig.saveAppConfig(project.path, config);
 		log.info("← saveAppConfig done");
 	},
 
 	async updateProjectSettings(params: { projectId: string } & Dev3RepoConfig): Promise<Project> {
 		log.info("→ updateProjectSettings", { projectId: params.projectId });
-		const updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents">> = {};
-		for (const key of DEV3_REPO_CONFIG_KEYS) {
-			const val = (params as any)[key];
-			if (val !== undefined) {
-				(updates as any)[key] = val;
-			}
-		}
+		const updates = extractConfigFromParams(params);
 		const updated = await data.updateProject(params.projectId, updates);
 		pushMessage?.("projectUpdated", { project: updated });
 		log.info("← updateProjectSettings done");
@@ -1417,13 +1410,7 @@ export const handlers = {
 		log.info("→ saveRepoConfig", { projectId: params.projectId, worktreePath: params.worktreePath, autoCommit: params.autoCommit });
 		const project = await data.getProject(params.projectId);
 		const configPath = params.worktreePath || project.path;
-		const config: Dev3RepoConfig = {};
-		for (const key of DEV3_REPO_CONFIG_KEYS) {
-			const val = (params as any)[key];
-			if (val !== undefined) {
-				(config as any)[key] = val;
-			}
-		}
+		const config = extractConfigFromParams(params);
 		await repoConfig.saveRepoConfig(configPath, config);
 		// Auto-commit .dev3/config.json in the worktree if requested
 		if (params.autoCommit && params.worktreePath) {
@@ -1446,13 +1433,7 @@ export const handlers = {
 		log.info("→ saveLocalConfig", { projectId: params.projectId, worktreePath: params.worktreePath });
 		const project = await data.getProject(params.projectId);
 		const configPath = params.worktreePath || project.path;
-		const config: Dev3RepoConfig = {};
-		for (const key of DEV3_REPO_CONFIG_KEYS) {
-			const val = (params as any)[key];
-			if (val !== undefined) {
-				(config as any)[key] = val;
-			}
-		}
+		const config = extractConfigFromParams(params);
 		await repoConfig.saveRepoLocalConfig(configPath, config);
 		log.info("← saveLocalConfig done");
 	},
@@ -1672,9 +1653,8 @@ export const handlers = {
 		}, dropOpts);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
 
-		// Trigger column agent if entering review-by-ai — resolve config from worktree
-		const resolvedForAgent = await repoConfig.resolveProjectConfig(project, updated.worktreePath ?? undefined);
-		await triggerColumnAgentIfNeeded(newStatus, resolvedForAgent, updated);
+		// Trigger column agent if entering review-by-ai or custom column
+		await triggerColumnAgentIfNeeded(newStatus, project, updated);
 
 		log.info("← moveTask done (status only)", { taskId: task.id });
 		return updated;

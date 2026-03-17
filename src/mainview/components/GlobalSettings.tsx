@@ -709,7 +709,7 @@ function GlobalSettings() {
 												<span
 													className={`text-xs px-1.5 py-0.5 rounded ${
 														availability.installed
-															? "bg-green-400/15 text-green-400"
+															? "bg-success/15 text-success"
 															: "bg-danger/15 text-danger"
 													}`}
 												>
@@ -733,10 +733,10 @@ function GlobalSettings() {
 											<div className="border-t border-edge px-4 py-4 space-y-4">
 												{/* Agent availability status */}
 												{availability && (
-													<div className={`p-3 rounded-lg ${availability.installed ? "bg-green-400/5 border border-green-400/20" : "bg-danger/5 border border-danger/20"}`}>
+													<div className={`p-3 rounded-lg ${availability.installed ? "bg-success/5 border border-success/20" : "bg-danger/5 border border-danger/20"}`}>
 														{availability.installed ? (
 															<div className="flex items-center gap-2">
-																<span className="text-green-400 text-sm">&#10003;</span>
+																<span className="text-success text-sm">&#10003;</span>
 																<span className="text-fg-2 text-xs">{t("settings.agentInstalled")}</span>
 																{availability.resolvedPath && (
 																	<span className="text-fg-muted text-xs font-mono truncate">{availability.resolvedPath}</span>
@@ -752,7 +752,7 @@ function GlobalSettings() {
 																	<div>
 																		<p className="text-fg-3 text-xs mb-1">{t("settings.agentInstallHint")}</p>
 																		<div className="flex items-center gap-1.5">
-																			<code className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded text-xs font-mono">
+																			<code className="text-warning bg-warning/10 px-2 py-1 rounded text-xs font-mono">
 																				{availability.installCommand}
 																			</code>
 																			<button
