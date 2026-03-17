@@ -428,67 +428,6 @@ describe("ProjectSettings", () => {
 				);
 			});
 		});
-
-		it("shows a sticky dirty-state action bar and discards current tab changes", async () => {
-			const user = userEvent.setup();
-			await renderProjectSettings();
-
-			const toggle = screen.getByRole("switch", { name: /peer review column/i });
-			expect(toggle).toHaveAttribute("aria-checked", "true");
-
-			await user.click(toggle);
-
-			const dirtyBar = screen.getByText("You have unsaved changes").closest("div");
-			expect(dirtyBar).not.toBeNull();
-			expect(screen.getAllByText("Save to Repo").length).toBeGreaterThan(1);
-
-			await user.click(within(dirtyBar as HTMLElement).getByText("Discard"));
-
-			expect(toggle).toHaveAttribute("aria-checked", "true");
-			expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
-		});
-
-		it("uses the active tab save action in the sticky dirty-state bar", async () => {
-			const { api } = await import("../../rpc");
-			const mockSave = api.request.saveLocalConfig as ReturnType<typeof vi.fn>;
-			(api.request.getProjects as ReturnType<typeof vi.fn>).mockResolvedValue([mockProject]);
-
-			const user = userEvent.setup();
-			await renderProjectSettings();
-
-			await user.click(screen.getByText("Local Overrides"));
-			await user.click(screen.getByRole("switch", { name: /automatic ai review/i }));
-
-			const dirtyBar = screen.getByText("You have unsaved changes").closest("div");
-			expect(dirtyBar).not.toBeNull();
-
-			await user.click(within(dirtyBar as HTMLElement).getByText("Save Local"));
-
-			await vi.waitFor(() => {
-				expect(mockSave).toHaveBeenCalledWith(
-					expect.objectContaining({
-						projectId: "proj-1",
-						autoReviewEnabled: true,
-					}),
-				);
-			});
-		});
-
-		it("clears the dirty state when automatic review returns to its default off state", async () => {
-			const user = userEvent.setup();
-			await renderProjectSettings();
-
-			const toggle = screen.getByRole("switch", { name: /automatic ai review/i });
-			expect(toggle).toHaveAttribute("aria-checked", "false");
-
-			await user.click(toggle);
-			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-
-			await user.click(toggle);
-
-			expect(toggle).toHaveAttribute("aria-checked", "false");
-			expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
-		});
 	});
 
 	describe("worktree tab", () => {

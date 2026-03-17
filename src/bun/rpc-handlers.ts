@@ -1749,7 +1749,7 @@ export const handlers = {
 							: undefined;
 						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
-						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						const resolved = await repoConfig.resolveProjectConfig(resolvedProject, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
@@ -1848,7 +1848,7 @@ export const handlers = {
 					try {
 						const wt = await git.createWorktree(resolvedProject, task);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
-						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						const resolved = await repoConfig.resolveProjectConfig(resolvedProject, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}

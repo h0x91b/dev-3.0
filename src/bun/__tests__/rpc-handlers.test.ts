@@ -1602,9 +1602,15 @@ describe("handlers.spawnVariants", () => {
 			expect(git.createWorktree).toHaveBeenCalledOnce();
 		});
 
-		// Must resolve config from worktree path (not just project.path)
+		// Must resolve config from the worktree path using the resolved project config
 		await vi.waitFor(() => {
-			expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/vwt");
+			expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: "proj-1",
+					setupScript: "./scripts/dev3-setup.sh",
+				}),
+				"/tmp/vwt",
+			);
 		});
 	});
 });
