@@ -12,7 +12,8 @@
       "Bash(pip3 install *)",
       "Bash(gh *)",
       "WebSearch",
-      "Bash(dev3:*)"
+      "Bash(dev3:*)",
+      "Bash(sed *)"
     ]
   },
   "hooks": {
