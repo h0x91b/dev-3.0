@@ -116,51 +116,40 @@ describe("unhandledrejection handler", () => {
 		destroyAnalytics();
 	});
 
-	it("calls preventDefault for RPC timeout rejections", () => {
-		const event = new PromiseRejectionEvent("unhandledrejection", {
-			reason: new Error("RPC request timed out."),
-			promise: Promise.resolve(),
-		});
-		const preventSpy = vi.spyOn(event, "preventDefault");
-
-		window.dispatchEvent(event);
-
-		expect(preventSpy).toHaveBeenCalled();
-	});
-
-	it("logs RPC timeout to backend but does not send GA exception event", () => {
-		const event = new PromiseRejectionEvent("unhandledrejection", {
-			reason: new Error("RPC request timed out."),
-			promise: Promise.resolve(),
-		});
-		// Clear fetch calls from initAnalytics
+	it("tracks RPC timeout as app_exception in GA", () => {
 		(fetch as unknown as ReturnType<typeof vi.fn>).mockClear();
 
+		const event = new PromiseRejectionEvent("unhandledrejection", {
+			reason: new Error('RPC "getBranchStatus" timed out (120 000 ms)'),
+			promise: Promise.resolve(),
+		});
+
 		window.dispatchEvent(event);
 
-		// Should log to backend
+		expect(fetch).toHaveBeenCalledTimes(1);
+		const body = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+		expect(body.events[0].name).toBe("app_exception");
+		expect(body.events[0].params.error_message).toContain("getBranchStatus");
+		expect(body.events[0].params.error_message).toContain("timed out");
+	});
+
+	it("logs RPC timeout to backend", () => {
+		const event = new PromiseRejectionEvent("unhandledrejection", {
+			reason: new Error('RPC "showConfirm" timed out (120 000 ms)'),
+			promise: Promise.resolve(),
+		});
+
+		window.dispatchEvent(event);
+
 		expect(logRendererError).toHaveBeenCalledWith(
 			expect.objectContaining({
-				description: expect.stringContaining("RPC timeout (handled)"),
+				description: expect.stringContaining("showConfirm"),
+				source: "unhandledrejection",
 			}),
 		);
-		// Should NOT send GA exception event (no fetch call for app_exception)
-		expect(fetch).not.toHaveBeenCalled();
 	});
 
-	it("does NOT call preventDefault for non-timeout rejections", () => {
-		const event = new PromiseRejectionEvent("unhandledrejection", {
-			reason: new Error("Something else broke"),
-			promise: Promise.resolve(),
-		});
-		const preventSpy = vi.spyOn(event, "preventDefault");
-
-		window.dispatchEvent(event);
-
-		expect(preventSpy).not.toHaveBeenCalled();
-	});
-
-	it("sends GA exception event for non-timeout rejections", () => {
+	it("tracks non-timeout rejections as app_exception", () => {
 		(fetch as unknown as ReturnType<typeof vi.fn>).mockClear();
 
 		const event = new PromiseRejectionEvent("unhandledrejection", {
@@ -170,22 +159,25 @@ describe("unhandledrejection handler", () => {
 
 		window.dispatchEvent(event);
 
-		// Should send GA event
 		expect(fetch).toHaveBeenCalledTimes(1);
 		const body = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
 		expect(body.events[0].name).toBe("app_exception");
 		expect(body.events[0].params.error_message).toContain("Something else broke");
 	});
 
-	it("handles string reason for RPC timeout (non-Error)", () => {
+	it("handles non-Error reason (string)", () => {
+		(fetch as unknown as ReturnType<typeof vi.fn>).mockClear();
+
 		const event = new PromiseRejectionEvent("unhandledrejection", {
-			reason: "RPC request timed out.",
+			reason: "some string error",
 			promise: Promise.resolve(),
 		});
-		const preventSpy = vi.spyOn(event, "preventDefault");
 
 		window.dispatchEvent(event);
 
-		expect(preventSpy).toHaveBeenCalled();
+		expect(fetch).toHaveBeenCalledTimes(1);
+		const body = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+		expect(body.events[0].params.error_message).toContain("some string error");
+		expect(body.events[0].params.stack_line).toContain("no stack");
 	});
 });

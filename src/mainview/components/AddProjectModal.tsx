@@ -72,7 +72,13 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	}
 
 	async function handlePickBaseDir() {
-		const folder = await api.request.pickFolder();
+		let folder: string | null;
+		try {
+			folder = await api.request.pickFolder();
+		} catch (err) {
+			console.error("[AddProjectModal] pickFolder failed:", err);
+			return;
+		}
 		if (!folder) return;
 		setCloneBaseDir(folder);
 		try {

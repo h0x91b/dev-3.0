@@ -94,34 +94,28 @@ const electroview = new Electroview({ rpc });
 
 const rawApi = electroview.rpc!;
 
-// Wrap api.request so that every RPC call has a safety-net .catch().
-// Electrobun rejects with "RPC request timed out." when a request exceeds
-// maxRequestTime.  If the calling code has no .catch() / try-catch the
-// rejection becomes an unhandled promise rejection (visible in analytics
-// as "UNHANDLED REJECTION: RPC REQUEST TIMED OUT. | NO STACK").
-//
-// The trick: attaching .catch() synchronously to the original promise marks
-// it as "handled" for the engine — so unhandledrejection never fires — but
-// callers who DO await the promise still get the rejection re-thrown.
-const safeRequest = new Proxy(rawApi.request, {
+const RPC_TIMEOUT_MS = 120_000;
+
+// Wrap api.request to enrich timeout errors with the method name.
+// Electrobun rejects with a generic "RPC request timed out." — no indication
+// of which method failed.  This proxy catches that and re-throws with context
+// so the unhandled-rejection tracker (analytics.ts) and console show something
+// actionable like: 'RPC "getBranchStatus" timed out (120 000 ms)'.
+const enrichedRequest = new Proxy(rawApi.request, {
 	get(target: typeof rawApi.request, prop: string | symbol, receiver: unknown) {
 		const value = Reflect.get(target, prop, receiver);
 		if (typeof value !== "function") return value;
 		return (...args: unknown[]) => {
 			const promise = (value as (...a: unknown[]) => Promise<unknown>).apply(target, args);
-			// Safety net — silently absorb the rejection on this fork.
-			// The original promise stays rejected so callers with try/catch still see it.
-			promise.catch((err: unknown) => {
+			return promise.catch((err: unknown) => {
 				const msg = err instanceof Error ? err.message : String(err);
 				if (/timed?\s*out/i.test(msg)) {
-					console.warn(`[RPC] "${String(prop)}" timed out (${(rawApi as any).maxRequestTime ?? 120_000}ms)`);
+					throw new Error(`RPC "${String(prop)}" timed out (${RPC_TIMEOUT_MS} ms)`);
 				}
-				// Non-timeout errors are also absorbed here to prevent unhandled rejection,
-				// but callers with try/catch still receive the error normally.
+				throw err;
 			});
-			return promise;
 		};
 	},
 });
 
-export const api = { ...rawApi, request: safeRequest } as typeof rawApi;
+export const api = { ...rawApi, request: enrichedRequest } as typeof rawApi;
