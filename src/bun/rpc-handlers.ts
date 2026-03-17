@@ -2603,7 +2603,8 @@ export const handlers = {
 			if (!existsSync(project.path)) {
 				throw new Error(`Project path does not exist: ${project.path}`);
 			}
-			pty.createSession(sessionKey, params.projectId, project.path, "bash", {}, pty.DEFAULT_TMUX_SOCKET, "project");
+			const userShell = process.env.SHELL || "/bin/zsh";
+		pty.createSession(sessionKey, params.projectId, project.path, userShell, {}, pty.DEFAULT_TMUX_SOCKET, "project");
 		}
 
 		const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;

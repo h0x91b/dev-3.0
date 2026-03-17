@@ -3048,7 +3048,7 @@ describe("handlers.getProjectPtyUrl", () => {
 			`project-${project.id}`,
 			project.id,
 			"/tmp/test-project",
-			"bash",
+			process.env.SHELL || "/bin/zsh",
 			{},
 			"dev3",
 			"project",

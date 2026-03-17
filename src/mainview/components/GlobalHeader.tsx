@@ -14,6 +14,8 @@ interface GlobalHeaderProps {
 	navigate: (route: Route) => void;
 	updateVersion?: string | null;
 	updateDownloadStatus?: string | null;
+	showProjectTerminal?: boolean;
+	onToggleProjectTerminal?: () => void;
 }
 
 interface BreadcrumbSegment {
@@ -27,7 +29,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus, showProjectTerminal, onToggleProjectTerminal }: GlobalHeaderProps) {
 	const t = useT();
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
@@ -252,6 +254,24 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 									</button>
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
+								)}
+								{onToggleProjectTerminal && (
+									<button
+										onClick={(e) => { e.stopPropagation(); onToggleProjectTerminal(); }}
+										title={showProjectTerminal ? t("projectTerminal.close") : t("projectTerminal.tooltip")}
+										className={`flex-shrink-0 p-0.5 rounded transition-colors ${
+											showProjectTerminal
+												? "text-accent hover:text-accent-hover"
+												: "text-fg-muted hover:text-fg hover:bg-elevated"
+										}`}
+									>
+										<span
+											className="text-[0.9rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\uF489"}
+										</span>
+									</button>
 								)}
 								<button
 									onClick={() => setShowProjectDropdown((v) => !v)}

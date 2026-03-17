@@ -384,6 +384,35 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
 }
 
+/**
+ * Create a 2×2 pane grid for project terminals.
+ * Only runs if the session currently has exactly one pane (i.e. freshly created).
+ */
+function setupProjectLayout(session: PtySession): void {
+	const s = session.tmuxSessionName;
+	const sock = session.tmuxSocket;
+	try {
+		const listResult = spawnSync(tmuxArgs(sock, "list-panes", "-t", s));
+		const paneCount = new TextDecoder().decode(listResult.stdout).trim().split("\n").filter(Boolean).length;
+		if (paneCount !== 1) {
+			log.info("Project layout: session already has multiple panes, skipping", { tmuxSession: s, paneCount });
+			return;
+		}
+		// Split into 4 panes: left|right, each split top/bottom
+		spawnSync(tmuxArgs(sock, "split-window", "-h", "-t", s));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", `${s}:0.0`));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", `${s}:0.2`));
+		// Return focus to top-left pane
+		spawnSync(tmuxArgs(sock, "select-pane", "-t", `${s}:0.0`));
+		log.info("Project terminal 2×2 layout created", { tmuxSession: s });
+	} catch (err) {
+		log.error("Failed to create project terminal layout", {
+			tmuxSession: s,
+			error: String(err),
+		});
+	}
+}
+
 function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = session.tmuxSessionName;
 	const tmuxCmd = session.tmuxCommand || "bash";
@@ -511,6 +540,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			}
 			if (envKeys.length > 0) {
 				log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
+			}
+			if (session.sessionType === "project") {
+				setupProjectLayout(session);
 			}
 		} catch (err) {
 			log.error("configureTmux failed", {
