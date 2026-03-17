@@ -1095,6 +1095,28 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("uses the project's default comparison ref when configured", async () => {
+			const localCompareProject = {
+				...project,
+				defaultBaseBranch: "master",
+				defaultCompareRef: "master",
+			} as Project & { defaultCompareRef: "master" };
+
+			await act(async () => {
+				renderPanel(makeTask({ baseBranch: "master" }), {
+					project: localCompareProject as Project,
+				});
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					compareRef: "master",
+				});
+			});
+		});
+
 		it("calls showUncommittedDiff on Uncommitted click", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({

@@ -1,0 +1,3 @@
+Projects can now store a default diff comparison target in `.dev3/config.json` or `.dev3/config.local.json`, so branch status, rebase, and Show Diff start from the preferred remote or local base branch automatically. Project Settings now uses filterable branch pickers for the base branch and compare ref, and new repos auto-pick `main`/`master` vs `origin/main`/`origin/master` from recent git activity before saving that exact ref. Fixed a bug where a `defaultCompareRef` saved via Project Settings was silently overwritten by auto-detection on every config load.
+
+Suggested by @bar-volovski (h0x91b/dev-3.0#224)

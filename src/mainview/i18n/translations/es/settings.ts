@@ -133,6 +133,11 @@ const settings = {
 	"projectSettings.baseBranch": "Rama base",
 	"projectSettings.baseBranchDesc":
 		"Rama desde la cual se crean los worktrees",
+	"projectSettings.compareRef": "Comparación diff por defecto",
+	"projectSettings.compareRefDesc": "Elige si el estado de rama, rebase y Show Diff comparan por defecto contra la rama remota de seguimiento o la rama base local.",
+	"projectSettings.compareRefInherit": "Usar valor por defecto (rama remota de seguimiento)",
+	"projectSettings.compareRefRemote": "Rama remota de seguimiento",
+	"projectSettings.compareRefLocal": "Rama base local",
 	"projectSettings.peerReview": "Columna de revisión de colegas",
 	"projectSettings.peerReviewDesc": "Mostrar la columna «Revisión PR». Desactívala en proyectos sin revisión de código entre pares.",
 	"projectSettings.sparseCheckout": "Filtro de archivos del worktree (monorepos grandes)",

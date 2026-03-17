@@ -388,6 +388,8 @@ export const LABEL_COLORS = [
 
 // ---- Repo-local config (.dev3/config.json) ----
 
+export type CompareRefMode = "remote" | "local";
+
 /** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
 export interface Dev3RepoConfig {
 	setupScript?: string;
@@ -395,6 +397,8 @@ export interface Dev3RepoConfig {
 	cleanupScript?: string;
 	clonePaths?: string[];
 	defaultBaseBranch?: string;
+	defaultCompareRef?: string;
+	defaultCompareRefMode?: CompareRefMode;
 	peerReviewEnabled?: boolean;
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
@@ -408,6 +412,8 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"cleanupScript",
 	"clonePaths",
 	"defaultBaseBranch",
+	"defaultCompareRef",
+	"defaultCompareRefMode",
 	"peerReviewEnabled",
 	"sparseCheckoutEnabled",
 	"sparseCheckoutPaths",
@@ -429,6 +435,8 @@ export interface Project {
 	devScript: string;
 	cleanupScript: string;
 	defaultBaseBranch: string;
+	defaultCompareRef?: string;
+	defaultCompareRefMode?: CompareRefMode;
 	clonePaths?: string[];
 	createdAt: string;
 	deleted?: boolean;

@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
+			listBranches: vi.fn().mockResolvedValue([]),
 			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {}, app: {} }),
 			getProjectConfigFiles: vi.fn().mockResolvedValue({ hasRepoConfig: false, hasLocalConfig: false }),
 			updateProjectSettings: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", path: "/tmp/test", defaultBaseBranch: "main", setupScript: "", devScript: "", cleanupScript: "", createdAt: "" }),
@@ -28,6 +29,7 @@ const mockProject: Project = {
 	name: "Test Project",
 	path: "/tmp/test",
 	defaultBaseBranch: "main",
+	defaultCompareRef: "main",
 	setupScript: "bun install",
 	devScript: "bun dev",
 	cleanupScript: "rm -rf dist",
@@ -122,6 +124,31 @@ describe("ProjectSettings", () => {
 			await vi.waitFor(() => {
 				expect(screen.getByDisplayValue("bun install")).toBeInTheDocument();
 				expect(screen.getByDisplayValue("develop")).toBeInTheDocument();
+			});
+		});
+
+		it("renders the configured default diff comparison mode", async () => {
+			await renderProjectSettings(mockProject, {
+				defaultCompareRef: "origin/main",
+			});
+			await goToProjectTab();
+
+			await vi.waitFor(() => {
+				expect(screen.getByDisplayValue("origin/main")).toBeInTheDocument();
+			});
+		});
+
+		it("uses project defaults for compare ref when config is empty", async () => {
+			const projectWithDefaults = {
+				...mockProject,
+				defaultCompareRef: "origin/master",
+			} as Project & { defaultCompareRef: string };
+
+			await renderProjectSettings(projectWithDefaults as Project, {});
+			await goToProjectTab();
+
+			await vi.waitFor(() => {
+				expect(screen.getByDisplayValue("origin/master")).toBeInTheDocument();
 			});
 		});
 
@@ -223,6 +250,58 @@ describe("ProjectSettings", () => {
 			await vi.waitFor(() => {
 				expect(mockSave).toHaveBeenCalledWith(
 					expect.objectContaining({ projectId: "proj-1" }),
+				);
+			});
+		});
+
+		it("saves a selected base branch from the filtered branch picker", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			(api.request.listBranches as ReturnType<typeof vi.fn>).mockResolvedValue([
+				{ name: "main", isRemote: false },
+				{ name: "master", isRemote: false },
+				{ name: "origin/main", isRemote: true },
+			]);
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, {});
+			await goToProjectTab();
+
+			const baseBranchInput = screen.getByRole("textbox", { name: "Base Branch" });
+			await user.click(baseBranchInput);
+			await user.type(baseBranchInput, "mast");
+			await user.click(screen.getByText("master"));
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({ projectId: "proj-1", defaultBaseBranch: "master" }),
+				);
+			});
+		});
+
+		it("saves the selected exact compare ref from the filtered branch picker", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			(api.request.listBranches as ReturnType<typeof vi.fn>).mockResolvedValue([
+				{ name: "main", isRemote: false },
+				{ name: "origin/main", isRemote: true },
+				{ name: "origin/master", isRemote: true },
+			]);
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, { defaultCompareRef: "main" });
+			await goToProjectTab();
+
+			const compareRefInput = screen.getByRole("textbox", { name: "Diff Comparison Default" });
+			await user.click(compareRefInput);
+			await user.type(compareRefInput, "origin/mast");
+			await user.click(screen.getByText("origin/master"));
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({ projectId: "proj-1", defaultCompareRef: "origin/master" }),
 				);
 			});
 		});

@@ -152,6 +152,8 @@ const tips = {
 	"tip.configHierarchy.body": "Settings resolve in order: worktree local > worktree repo > project > defaults. Override per-task via the gear icon.",
 	"tip.worktreeConfig.title": "Per-task settings",
 	"tip.worktreeConfig.body": "Each worktree can have its own .dev3/config.json. Click the gear icon in the task panel to edit it.",
+	"tip.diffCompareDefault.title": "Pick your diff baseline",
+	"tip.diffCompareDefault.body": "In Project Settings, choose whether branch status and Show Diff compare against origin/<base> or your local base branch.",
 } as const;
 
 export default tips;

@@ -6,6 +6,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { ListEditor } from "./ListEditor";
+import { matchesBranchQuery } from "./BranchSelector";
 
 interface LabelRowProps {
 	label: Label;
@@ -276,6 +277,175 @@ interface ConfigFormProps {
 	projectPath?: string;
 }
 
+interface BranchInfo {
+	name: string;
+	isRemote: boolean;
+}
+
+interface BranchPickerProps {
+	projectId: string;
+	value: string;
+	onChange: (value: string) => void;
+	placeholder: string;
+	label: string;
+	includeRemote: boolean;
+}
+
+function BranchPicker({
+	projectId,
+	value,
+	onChange,
+	placeholder,
+	label,
+	includeRemote,
+}: BranchPickerProps) {
+	const t = useT();
+	const [branches, setBranches] = useState<BranchInfo[]>([]);
+	const [branchesLoaded, setBranchesLoaded] = useState(false);
+	const [dropdownOpen, setDropdownOpen] = useState(false);
+	const [editing, setEditing] = useState(false);
+	const [query, setQuery] = useState("");
+	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	const loadBranches = useCallback(async () => {
+		if (branchesLoaded) return;
+		try {
+			const result = await api.request.listBranches({ projectId });
+			setBranches(result);
+			setBranchesLoaded(true);
+		} catch {
+			setBranchesLoaded(true);
+		}
+	}, [branchesLoaded, projectId]);
+
+	useEffect(() => {
+		function handleClickOutside(event: MouseEvent) {
+			if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+				setDropdownOpen(false);
+				setEditing(false);
+				setQuery("");
+			}
+		}
+
+		if (dropdownOpen) {
+			document.addEventListener("mousedown", handleClickOutside);
+			return () => document.removeEventListener("mousedown", handleClickOutside);
+		}
+	}, [dropdownOpen]);
+
+	const filteredBranches = branches.filter((branch) =>
+		(includeRemote || !branch.isRemote) && matchesBranchQuery(branch.name, query),
+	);
+	const localBranches = filteredBranches.filter((branch) => !branch.isRemote);
+	const remoteBranches = filteredBranches.filter((branch) => branch.isRemote);
+	const inputValue = editing ? query : value;
+
+	return (
+		<div className="relative" ref={dropdownRef}>
+			<input
+				type="text"
+				value={inputValue}
+				onFocus={() => {
+					loadBranches();
+					setEditing(true);
+					setQuery("");
+					setDropdownOpen(true);
+				}}
+				onChange={(event) => {
+					setEditing(true);
+					setQuery(event.target.value);
+					setDropdownOpen(true);
+				}}
+				onKeyDown={(event) => {
+					if (event.key === "Escape") {
+						setDropdownOpen(false);
+						setEditing(false);
+						setQuery("");
+					}
+				}}
+				aria-label={label}
+				placeholder={placeholder}
+				autoCapitalize="off"
+				autoCorrect="off"
+				spellCheck={false}
+				className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+			/>
+			{dropdownOpen && (
+				<div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-overlay border border-edge rounded-xl shadow-lg">
+					{localBranches.length > 0 && (
+						<>
+							<div className="px-3 py-1 text-[0.625rem] font-semibold text-fg-muted uppercase tracking-wider">
+								{t("createTask.branchLocal")}
+							</div>
+							{localBranches.map((branch) => (
+								<button
+									key={branch.name}
+									type="button"
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => {
+										onChange(branch.name);
+										setDropdownOpen(false);
+										setEditing(false);
+										setQuery("");
+									}}
+									className="w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-raised-hover transition-colors truncate"
+								>
+									{branch.name}
+								</button>
+							))}
+						</>
+					)}
+
+					{includeRemote && remoteBranches.length > 0 && (
+						<>
+							<div className="px-3 py-1 text-[0.625rem] font-semibold text-fg-muted uppercase tracking-wider">
+								{t("createTask.branchRemote")}
+							</div>
+							{remoteBranches.map((branch) => (
+								<button
+									key={branch.name}
+									type="button"
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => {
+										onChange(branch.name);
+										setDropdownOpen(false);
+										setEditing(false);
+										setQuery("");
+									}}
+									className="w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-raised-hover transition-colors truncate"
+								>
+									{branch.name}
+								</button>
+							))}
+						</>
+					)}
+
+					{filteredBranches.length === 0 && (
+						<div className="px-3 py-2 text-sm text-fg-muted">
+							{t("createTask.branchNoneFound")}
+						</div>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function getEffectiveCompareRef(config: Dev3RepoConfig, fallbackBaseBranch: string, fallbackCompareRef?: string): string | undefined {
+	if (config.defaultCompareRef !== undefined) return config.defaultCompareRef;
+	if (config.defaultCompareRefMode === "local") return config.defaultBaseBranch ?? fallbackBaseBranch;
+	if (config.defaultCompareRefMode === "remote") return `origin/${config.defaultBaseBranch ?? fallbackBaseBranch}`;
+	return fallbackCompareRef;
+}
+
+function normalizeLocalConfig(config: Dev3RepoConfig, inherited: Dev3RepoConfig): Dev3RepoConfig {
+	const fallbackBaseBranch = inherited.defaultBaseBranch ?? "main";
+	const defaultCompareRef = getEffectiveCompareRef(config, fallbackBaseBranch);
+	return defaultCompareRef === undefined
+		? config
+		: { ...config, defaultCompareRef };
+}
+
 function ConfigForm({ config, onChange, inherited, projectId, projectPath }: ConfigFormProps) {
 	const t = useT();
 	const [detecting, setDetecting] = useState(false);
@@ -413,15 +583,30 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 				<p className="text-fg-3 text-sm mb-3">
 					{t("projectSettings.baseBranchDesc")}
 				</p>
-				<input
-					type="text"
+				<BranchPicker
+					projectId={projectId}
 					value={config.defaultBaseBranch ?? ""}
-					onChange={(e) => update("defaultBaseBranch", e.target.value)}
+					onChange={(value) => update("defaultBaseBranch", value)}
 					placeholder={inheritedHint("defaultBaseBranch") || "main"}
-					autoCapitalize="off"
-					autoCorrect="off"
-					spellCheck={false}
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+					label={t("projectSettings.baseBranch")}
+					includeRemote={false}
+				/>
+			</div>
+
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("projectSettings.compareRef")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("projectSettings.compareRefDesc")}
+				</p>
+				<BranchPicker
+					projectId={projectId}
+					value={config.defaultCompareRef ?? ""}
+					onChange={(value) => update("defaultCompareRef", value)}
+					placeholder={inheritedHint("defaultCompareRef") || `origin/${config.defaultBaseBranch ?? inherited?.defaultBaseBranch ?? "main"}`}
+					label={t("projectSettings.compareRef")}
+					includeRemote={true}
 				/>
 			</div>
 
@@ -526,10 +711,11 @@ interface NavigationGuard {
 
 /** Strip empty strings from clonePaths and sparseCheckoutPaths before saving. */
 function sanitizeConfigPaths(config: Dev3RepoConfig): Dev3RepoConfig {
+	const { defaultCompareRefMode: _legacyCompareRefMode, ...rest } = config;
 	return {
-		...config,
-		clonePaths: (config.clonePaths ?? []).filter((p) => p.trim() !== ""),
-		sparseCheckoutPaths: (config.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
+		...rest,
+		clonePaths: (rest.clonePaths ?? []).filter((p) => p.trim() !== ""),
+		sparseCheckoutPaths: (rest.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
 	};
 }
 
@@ -566,6 +752,11 @@ function ProjectSettings({
 		cleanupScript: p.cleanupScript,
 		clonePaths: p.clonePaths,
 		defaultBaseBranch: p.defaultBaseBranch,
+		defaultCompareRef: getEffectiveCompareRef(
+			p,
+			p.defaultBaseBranch,
+			p.defaultCompareRef ?? `origin/${p.defaultBaseBranch}`,
+		),
 		peerReviewEnabled: p.peerReviewEnabled,
 		sparseCheckoutEnabled: p.sparseCheckoutEnabled,
 		sparseCheckoutPaths: p.sparseCheckoutPaths,
@@ -630,17 +821,26 @@ function ProjectSettings({
 	useEffect(() => {
 		if (!selectedTask?.worktreePath) return;
 		api.request.getProjectConfigs({ projectId, worktreePath: selectedTask.worktreePath }).then(({ repo, local }) => {
-			setWtRepoConfig(repo);
-			setWtLocalConfig(local);
-			loadedWtRepoConfig.current = repo;
-			loadedWtLocalConfig.current = local;
+			const normalizedRepo = normalizeLocalConfig(repo, {
+				defaultBaseBranch: project?.defaultBaseBranch ?? "main",
+			});
+			const normalizedLocal = normalizeLocalConfig(
+				local,
+				normalizedRepo.defaultBaseBranch ? normalizedRepo : {
+					defaultBaseBranch: project?.defaultBaseBranch ?? "main",
+				},
+			);
+			setWtRepoConfig(normalizedRepo);
+			setWtLocalConfig(normalizedLocal);
+			loadedWtRepoConfig.current = normalizedRepo;
+			loadedWtLocalConfig.current = normalizedLocal;
 		}).catch(() => {});
-	}, [selectedWorktreeTaskId, selectedTask?.worktreePath]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [selectedWorktreeTaskId, selectedTask?.worktreePath, project?.defaultBaseBranch]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
 		const keysToCheck: (keyof Dev3RepoConfig)[] = [
 			"setupScript", "devScript", "cleanupScript", "defaultBaseBranch",
-			"peerReviewEnabled", "sparseCheckoutEnabled",
+			"defaultCompareRef", "peerReviewEnabled", "sparseCheckoutEnabled",
 		];
 		for (const k of keysToCheck) {
 			if ((a[k] ?? "") !== (b[k] ?? "")) return false;

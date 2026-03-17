@@ -975,7 +975,7 @@ export async function launchColumnAgent(
 	}
 
 	const { agentId, configId, prompt: rawPrompt } = agentConfig;
-	const baseBranch = task.baseBranch || "main";
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const prompt = rawPrompt.replace(/\{baseBranch\}/g, `origin/${baseBranch}`);
 
 	log.info("launchColumnAgent START", {

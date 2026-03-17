@@ -60,6 +60,7 @@ import {
 	canRebaseCleanly,
 	getUncommittedChanges,
 	listBranches,
+	detectDefaultCompareRef,
 	getOriginUrl,
 	deriveForkUrl,
 	fetchFork,
@@ -284,6 +285,46 @@ describe("listBranches", () => {
 		queueResponse(0, "");
 		const branches = await listBranches("/repo");
 		expect(branches).toEqual([]);
+	});
+});
+
+// ─── detectDefaultCompareRef ────────────────────────────────────────────────
+
+describe("detectDefaultCompareRef", () => {
+	it("prefers local main when the last two weeks have one committer", async () => {
+		queueResponse(0, "origin\n"); // remotes
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
+		queueResponse(0, "abc123\n"); // rev-parse --verify main
+		queueResponse(0, ""); // branch --set-upstream-to origin/main main
+		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n    2 h0x91B <H0X91B@gmail.com>\n"); // shortlog
+
+		const ref = await detectDefaultCompareRef("/repo", "main");
+
+		expect(ref).toBe("main");
+	});
+
+	it("prefers origin/main when there are multiple recent committers and a remote main exists", async () => {
+		queueResponse(0, "origin\n"); // remotes
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
+		queueResponse(0, "def456\n"); // rev-parse --verify main
+		queueResponse(0, ""); // branch --set-upstream-to origin/main main
+		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n    3 roi <roir@wix.com>\n"); // shortlog
+
+		const ref = await detectDefaultCompareRef("/repo", "main");
+
+		expect(ref).toBe("origin/main");
+	});
+
+	it("uses origin/master when master is the collaborative base branch", async () => {
+		queueResponse(0, "origin\n"); // remotes
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/master
+		queueResponse(128, "", "fatal: ambiguous argument 'master'"); // rev-parse --verify master
+		queueResponse(0, ""); // branch --track master origin/master
+		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n    3 roi <roir@wix.com>\n"); // shortlog
+
+		const ref = await detectDefaultCompareRef("/repo", "master");
+
+		expect(ref).toBe("origin/master");
 	});
 });
 
