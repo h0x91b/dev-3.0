@@ -1509,6 +1509,41 @@ describe("handlers.spawnVariants", () => {
 		expect(createWtCalls[1][2]).toBe("feature/login");
 		expect(createWtCalls[1][3]).toBe("feature/login-v2");
 	});
+
+	it("resolves project config from worktree path for setup script", async () => {
+		const project = makeProject({ setupScript: "" });
+		const sourceTask = makeTask({ status: "todo", seq: 5 });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		const repoConfig = await import("../repo-config");
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce({
+			...project,
+			setupScript: "./scripts/dev3-setup.sh",
+		});
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledOnce();
+		});
+
+		// Must resolve config from worktree path (not just project.path)
+		await vi.waitFor(() => {
+			expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/vwt");
+		});
+	});
 });
 
 // ================================================================

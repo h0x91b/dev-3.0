@@ -1702,11 +1702,13 @@ export const handlers = {
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
 						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
-						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
-							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
+						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
-						await runCowClones(project, wt.worktreePath);
-						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
+						await runCowClones(resolved, wt.worktreePath);
+						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 						const updated = await data.updateTask(project, task.id, {
 							worktreePath: wt.worktreePath,
@@ -1798,11 +1800,13 @@ export const handlers = {
 					const variant = params.variants[i];
 					try {
 						const wt = await git.createWorktree(project, task);
-						if (project.sparseCheckoutEnabled && project.sparseCheckoutPaths?.length) {
-							await git.applySparseCheckout(wt.worktreePath, project.sparseCheckoutPaths);
+						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
+						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
-						await runCowClones(project, wt.worktreePath);
-						await launchTaskPty(project, task, wt.worktreePath, variant.agentId, variant.configId, true);
+						await runCowClones(resolved, wt.worktreePath);
+						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
 
 						const updated = await data.updateTask(project, task.id, {
 							worktreePath: wt.worktreePath,
