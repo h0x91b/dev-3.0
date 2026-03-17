@@ -2549,7 +2549,8 @@ export const handlers = {
 						status: foundTask.status,
 						worktreePath: foundTask.worktreePath,
 					});
-					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
+					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
 						worktreePath: foundTask.worktreePath,

@@ -38,7 +38,7 @@ beforeEach(() => {
 	};
 });
 
-import { addProject, loadProjects } from "../data";
+import { addProject, loadProjects, updateProject } from "../data";
 
 const PROJECTS_FILE = "/tmp/dev3-test/projects.json";
 
@@ -99,5 +99,18 @@ describe("addProject — duplicate prevention", () => {
 
 		const all = await loadProjects();
 		expect(all).toHaveLength(2);
+	});
+});
+
+describe("updateProject", () => {
+	it("persists autoReviewEnabled updates", async () => {
+		const project = await addProject("/tmp/review-repo", "Review Repo");
+
+		const updated = await updateProject(project.id, { autoReviewEnabled: true });
+
+		expect(updated.autoReviewEnabled).toBe(true);
+
+		const all = await loadProjects();
+		expect(all[0].autoReviewEnabled).toBe(true);
 	});
 });

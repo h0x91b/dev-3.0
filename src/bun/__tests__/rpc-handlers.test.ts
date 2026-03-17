@@ -1829,6 +1829,30 @@ describe("handlers.getPtyUrl", () => {
 		expect(url).toContain("session=task-1");
 	});
 
+	it("resolves project config before restoring a PTY session", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const resolvedProject = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce(resolvedProject);
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/wt");
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			resolvedProject,
+			task.title,
+			task.description,
+			"/tmp/wt",
+			undefined,
+			undefined,
+		);
+	});
+
 	it("does not crash when worktree is missing during restore", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/deleted" });
