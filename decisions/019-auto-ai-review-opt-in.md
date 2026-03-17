@@ -14,7 +14,7 @@ Added a dedicated `autoReviewEnabled` project config field in [types.ts](/Users/
 
 ## Risks
 
-This partially reopens the "optional auto-review" path that decision 017 rejected, so there are again two completion paths to maintain. The opt-in path is intentionally narrow: Claude uses hook stop targets, while non-hook agents rely on launch-time prompt guidance, so behavior still depends on agents respecting that instruction.
+This partially reopens the "optional auto-review" path that decision 017 rejected, so there are again two completion paths to maintain. The deterministic automatic path is intentionally narrow: Claude uses hook stop targets, while non-hook agents still end in `review-by-user`, so "automatic AI review" currently only guarantees hook-capable agents.
 
 ## Alternatives considered
 
