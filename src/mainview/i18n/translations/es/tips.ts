@@ -158,6 +158,8 @@ const tips = {
 	"tip.projectTerminal.body": "¿Necesitas un shell rápido en la raíz del repo? Haz clic en el icono de terminal en la barra de navegación, justo al lado del nombre del proyecto.",
 	"tip.projectTerminalDashboard.title": "Terminal desde el Dashboard",
 	"tip.projectTerminalDashboard.body": "También puedes abrir el terminal del proyecto directamente desde el Dashboard — haz clic en el icono de terminal de cualquier tarjeta de proyecto.",
+	"tip.portAllocation.title": "Asignar puertos automáticamente",
+	"tip.portAllocation.body": "Configura portCount en ajustes del proyecto para asignar puertos libres por tarea. Usa $DEV3_PORT0, $DEV3_PORT1 en scripts.",
 };
 
 export default tips;

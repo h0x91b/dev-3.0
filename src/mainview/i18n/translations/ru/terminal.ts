@@ -62,6 +62,7 @@ const terminal = {
 	"ports.count_few": "{count} порта",
 	"ports.count_many": "{count} портов",
 	"ports.count_other": "{count} портов",
+	"ports.allocated": "Выделенные порты",
 
 	// Project Terminal
 	"projectTerminal.open": "Терминал проекта",

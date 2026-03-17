@@ -58,6 +58,7 @@ const terminal = {
 	"ports.copied": "Copied!",
 	"ports.count_one": "{count} port",
 	"ports.count_other": "{count} ports",
+	"ports.allocated": "Allocated Ports",
 
 	// Project Terminal
 	"projectTerminal.open": "Project Terminal",
