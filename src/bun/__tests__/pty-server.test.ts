@@ -38,6 +38,8 @@ import {
 	capturePane,
 	getSessionProjectId,
 	getSessionSocket,
+	getSessionTmuxName,
+	getSessionType,
 	getPtyPort,
 	setOnPtyDied,
 	setOnBell,
@@ -775,6 +777,89 @@ describe("pty-server", () => {
 			expect(() => vi.advanceTimersByTime(200)).not.toThrow();
 
 			vi.useRealTimers();
+		});
+	});
+
+	// ------- Project terminal sessions -------
+
+	describe("project terminal sessions", () => {
+		it("creates a project session with sessionType 'project'", () => {
+			const key = track("project-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+			createSession(key, "a1b2c3d4", "/tmp/project-root", "bash", {}, "dev3", "project");
+			expect(hasSession(key)).toBe(true);
+		});
+
+		it("uses dev3-pt- prefix for project tmux session name", () => {
+			const key = track("project-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+			createSession(key, "a1b2c3d4", "/tmp/project-root", "bash", {}, "dev3", "project");
+
+			const tmuxCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
+			);
+			expect(tmuxCall).toBeDefined();
+			expect(tmuxCall![0]).toContain("dev3-pt-a1b2c3d4");
+		});
+
+		it("getSessionTmuxName returns dev3-pt- prefix for project sessions", () => {
+			const key = track("project-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+			createSession(key, "a1b2c3d4", "/tmp/project-root", "bash", {}, "dev3", "project");
+			expect(getSessionTmuxName(key)).toBe("dev3-pt-a1b2c3d4");
+		});
+
+		it("getSessionTmuxName returns dev3- prefix for task sessions", () => {
+			const id = track("task-tmux-name-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			expect(getSessionTmuxName(id)).toBe("dev3-task-tmu");
+		});
+
+		it("getSessionType returns 'project' for project sessions", () => {
+			const key = track("project-bbbbbbbb-1111-2222-3333-444444444444");
+			createSession(key, "bbbbbbbb", "/tmp/root", "bash", {}, "dev3", "project");
+			expect(getSessionType(key)).toBe("project");
+		});
+
+		it("getSessionType returns 'task' for task sessions", () => {
+			const id = track("task-type-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			expect(getSessionType(id)).toBe("task");
+		});
+
+		it("getSessionType returns null for unknown sessions", () => {
+			expect(getSessionType("nonexistent")).toBeNull();
+		});
+
+		it("destroySession works for project sessions", () => {
+			const key = track("project-cccccccc-1111-2222-3333-444444444444");
+			createSession(key, "cccccccc", "/tmp/root", "bash", {}, "dev3", "project");
+			expect(hasSession(key)).toBe(true);
+			destroySession(key);
+			expect(hasSession(key)).toBe(false);
+
+			// Verify tmux kill-session used the correct session name
+			const killCall = mockSpawnSync.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
+			);
+			expect(killCall).toBeDefined();
+			expect(killCall![0]).toContain("dev3-pt-cccccccc");
+		});
+
+		it("capturePane works for project sessions", () => {
+			const key = track("project-dddddddd-1111-2222-3333-444444444444");
+			createSession(key, "dddddddd", "/tmp/root", "bash", {}, "dev3", "project");
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode("project terminal content"),
+			} as any);
+
+			const result = capturePane(key);
+			expect(result).toBe("project terminal content");
+
+			// Verify capture used the correct tmux session name
+			const captureCall = mockSpawnSync.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("capture-pane"),
+			);
+			expect(captureCall).toBeDefined();
+			expect(captureCall![0]).toContain("dev3-pt-dddddddd");
 		});
 	});
 

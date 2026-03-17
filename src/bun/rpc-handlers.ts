@@ -1344,6 +1344,11 @@ export const handlers = {
 
 	async removeProject(params: { projectId: string }): Promise<void> {
 		log.info("→ removeProject", params);
+		// Destroy project terminal session if one exists
+		const projectSessionKey = `project-${params.projectId}`;
+		if (pty.hasSession(projectSessionKey)) {
+			pty.destroySession(projectSessionKey);
+		}
 		// Clean up fetch cache before removing the project
 		try {
 			const project = await data.getProject(params.projectId);
@@ -2578,6 +2583,42 @@ export const handlers = {
 		return url;
 	},
 
+	async getProjectPtyUrl(params: { projectId: string }): Promise<string> {
+		const sessionKey = `project-${params.projectId}`;
+		log.info("→ getProjectPtyUrl", {
+			projectId: params.projectId.slice(0, 8),
+			hasExistingSession: pty.hasSession(sessionKey),
+		});
+
+		// If session is dead, destroy and recreate
+		if (pty.hasDeadSession(sessionKey)) {
+			log.info("Dead project terminal session — destroying to recreate", {
+				projectId: params.projectId.slice(0, 8),
+			});
+			pty.destroySession(sessionKey);
+		}
+
+		if (!pty.hasSession(sessionKey)) {
+			const project = await data.getProject(params.projectId);
+			if (!existsSync(project.path)) {
+				throw new Error(`Project path does not exist: ${project.path}`);
+			}
+			const userShell = process.env.SHELL || "/bin/zsh";
+		pty.createSession(sessionKey, params.projectId, project.path, userShell, {}, pty.DEFAULT_TMUX_SOCKET, "project");
+		}
+
+		const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
+		log.info("← getProjectPtyUrl", { url });
+		return url;
+	},
+
+	async destroyProjectTerminal(params: { projectId: string }): Promise<void> {
+		const sessionKey = `project-${params.projectId}`;
+		log.info("→ destroyProjectTerminal", { projectId: params.projectId.slice(0, 8) });
+		pty.destroySession(sessionKey);
+		log.info("← destroyProjectTerminal done");
+	},
+
 	async resolveFilename(params: { filename: string; size: number; lastModified: number }): Promise<string | null> {
 		// WKWebView doesn't expose native file paths via drag-and-drop.
 		// Use Spotlight (mdfind) to find the full path by filename.
@@ -2802,10 +2843,13 @@ export const handlers = {
 		log.info("→ listTmuxSessions");
 
 		// Build shortId → { taskTitle, taskId, projectId } map from all projects/tasks
+		// Also build projectShortId → { projectName, projectId } for project terminals
 		const taskMap = new Map<string, { title: string; taskId: string; projectId: string }>();
+		const projectMap = new Map<string, { name: string; projectId: string }>();
 		try {
 			const projects = await data.loadProjects();
 			for (const project of projects) {
+				projectMap.set(project.id.slice(0, 8), { name: project.name, projectId: project.id });
 				const tasks = await data.loadTasks(project);
 				for (const task of tasks) {
 					taskMap.set(task.id.slice(0, 8), {
@@ -2839,6 +2883,24 @@ export const handlers = {
 		if (name.startsWith("dev3-dev-")) continue; // dev server sessions are internal, not user-visible
 
 			const isCleanup = name.startsWith("dev3-cl-");
+			const isProjectTerminal = name.startsWith("dev3-pt-");
+
+			if (isProjectTerminal) {
+				const shortProjectId = name.slice(8);
+				const projectInfo = projectMap.get(shortProjectId);
+				sessions.push({
+					name,
+					cwd: cwd || "",
+					createdAt: parseInt(createdStr, 10) || 0,
+					windowCount: parseInt(windowsStr, 10) || 1,
+					isCleanup: false,
+					isProjectTerminal: true,
+					projectName: projectInfo?.name,
+					projectId: projectInfo?.projectId,
+				});
+				continue;
+			}
+
 			const shortId = isCleanup ? name.slice(8) : name.slice(5);
 			const taskInfo = taskMap.get(shortId);
 
@@ -3235,7 +3297,7 @@ export const handlers = {
 	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
 		const socket = pty.getSessionSocket(params.taskId);
-		const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
+		const tmuxSession = pty.getSessionTmuxName(params.taskId);
 
 		let args: string[];
 		switch (params.action) {

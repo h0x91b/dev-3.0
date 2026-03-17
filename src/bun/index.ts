@@ -330,13 +330,19 @@ startPortScanPoller(
 );
 
 // Wire PTY death notifications
-setOnPtyDied((taskId) => {
+setOnPtyDied((sessionKey) => {
 	try {
-		log.info("PTY died, notifying renderer", { taskId: taskId.slice(0, 8) });
-		(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId });
+		if (sessionKey.startsWith("project-")) {
+			const projectId = sessionKey.slice(8);
+			log.info("Project terminal died, notifying renderer", { projectId: projectId.slice(0, 8) });
+			(mainWindow.webview.rpc as any).send.projectPtyDied?.({ projectId });
+		} else {
+			log.info("PTY died, notifying renderer", { taskId: sessionKey.slice(0, 8) });
+			(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId: sessionKey });
+		}
 	} catch (err) {
 		log.error("Failed to notify renderer about PTY death", {
-			taskId: taskId.slice(0, 8),
+			sessionKey: sessionKey.slice(0, 8),
 			error: String(err),
 			stack: (err as Error)?.stack ?? "no stack",
 		});
@@ -344,17 +350,20 @@ setOnPtyDied((taskId) => {
 });
 
 // Wire terminal bell notifications
-setOnBell((taskId) => {
+setOnBell((sessionKey) => {
 	try {
-		log.debug("Terminal bell, notifying renderer", { taskId: taskId.slice(0, 8) });
-		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
+		// Project terminals are plain shells — skip bell/auto-status logic
+		if (sessionKey.startsWith("project-")) return;
+
+		log.debug("Terminal bell, notifying renderer", { taskId: sessionKey.slice(0, 8) });
+		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId: sessionKey });
 		// Auto-move task from "in-progress" to "user-questions" on bell
-		handleBellAutoStatus(taskId).catch((err) => {
+		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus unhandled error", { error: String(err) });
 		});
 	} catch (err) {
 		log.error("Failed to handle terminal bell", {
-			taskId: taskId.slice(0, 8),
+			taskId: sessionKey.slice(0, 8),
 			error: String(err),
 			stack: (err as Error)?.stack ?? "no stack",
 		});
@@ -364,15 +373,18 @@ setOnBell((taskId) => {
 // Wire terminal idle notifications (red badge only, no status transition)
 // Only fires for tasks that are currently "in-progress" — idle terminals
 // in other statuses (review, todo, etc.) are expected and not noteworthy.
-setOnIdle((taskId) => {
-	isTaskInProgress(taskId).then((inProgress) => {
+setOnIdle((sessionKey) => {
+	// Project terminals have no task status — skip idle notifications
+	if (sessionKey.startsWith("project-")) return;
+
+	isTaskInProgress(sessionKey).then((inProgress) => {
 		if (!inProgress) return;
 		try {
-			log.debug("Terminal idle, notifying renderer", { taskId: taskId.slice(0, 8) });
-			(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId });
+			log.debug("Terminal idle, notifying renderer", { taskId: sessionKey.slice(0, 8) });
+			(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId: sessionKey });
 		} catch (err) {
 			log.error("Failed to handle terminal idle", {
-				taskId: taskId.slice(0, 8),
+				taskId: sessionKey.slice(0, 8),
 				error: String(err),
 			});
 		}

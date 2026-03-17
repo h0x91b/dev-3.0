@@ -481,6 +481,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffCompareDefault.body",
 		icon: "\u{F04CB}", // nf-md-source_compare
 	},
+	// Batch 23: project terminal
+	{
+		id: "project-terminal",
+		titleKey: "tip.projectTerminal.title",
+		bodyKey: "tip.projectTerminal.body",
+		icon: "\u{F0489}", // nf-md-console
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

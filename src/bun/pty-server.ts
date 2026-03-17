@@ -117,6 +117,8 @@ let ptyWsPort = 0;
 // by 10-100x while maintaining perceptual smoothness.
 const PTY_BATCH_INTERVAL_MS = 16;
 
+export type PtySessionType = "task" | "project";
+
 interface PtySession {
 	taskId: string;
 	projectId: string;
@@ -126,6 +128,8 @@ interface PtySession {
 	proc: ReturnType<typeof Bun.spawn> | null;
 	ws: any;
 	tmuxSocket: string;
+	tmuxSessionName: string;
+	sessionType: PtySessionType;
 	lastOutputTime: number;
 	idleNotified: boolean;
 	/** Streaming decoder that buffers incomplete multi-byte UTF-8 sequences
@@ -154,6 +158,15 @@ export function setOnIdle(fn: (taskId: string) => void): void {
 	onIdleCallback = fn;
 }
 
+/** Compute the tmux session name for a given session key and type. */
+function computeTmuxSessionName(key: string, type: PtySessionType): string {
+	if (type === "project") {
+		const projectId = key.startsWith("project-") ? key.slice(8) : key;
+		return `dev3-pt-${projectId.slice(0, 8)}`;
+	}
+	return `dev3-${shortId(key)}`;
+}
+
 export function createSession(
 	taskId: string,
 	projectId: string,
@@ -161,8 +174,10 @@ export function createSession(
 	tmuxCommand: string,
 	extraEnv: Record<string, string> = {},
 	tmuxSocket: string = DEFAULT_TMUX_SOCKET,
+	sessionType: PtySessionType = "task",
 ): void {
-	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand, tmuxSocket });
+	log.info("Creating PTY session", { taskId: taskId.slice(0, 8), cwd, tmuxCommand, tmuxSocket, sessionType });
+	const tmuxSessionName = computeTmuxSessionName(taskId, sessionType);
 	const session: PtySession = {
 		taskId,
 		projectId,
@@ -172,6 +187,8 @@ export function createSession(
 		proc: null,
 		ws: null,
 		tmuxSocket,
+		tmuxSessionName,
+		sessionType,
 		lastOutputTime: Date.now(),
 		idleNotified: false,
 		decoder: new TextDecoder("utf-8", { fatal: false }),
@@ -197,7 +214,7 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 	// Kill the tmux session explicitly — proc.kill() only disconnects the
 	// attached client, the session itself keeps running on the tmux server.
 	// Use spawnSync to ensure the kill completes before we proceed.
-	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	const tmuxSessionName = session?.tmuxSessionName ?? computeTmuxSessionName(taskId, "task");
 	try {
 		const result = spawnSync(tmuxArgs(socket, "kill-session", "-t", tmuxSessionName));
 		if (result.exitCode !== 0) {
@@ -252,7 +269,7 @@ export function hasDeadSession(taskId: string): boolean {
 export function capturePane(taskId: string): string | null {
 	const session = sessions.get(taskId);
 	const socket = session?.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	const tmuxSessionName = session?.tmuxSessionName ?? computeTmuxSessionName(taskId, "task");
 	try {
 		const result = spawnSync(
 			tmuxArgs(socket, "capture-pane", "-p", "-e", "-t", tmuxSessionName),
@@ -287,6 +304,14 @@ export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: strin
 		}
 	}
 	return result;
+}
+
+export function getSessionTmuxName(key: string): string {
+	return sessions.get(key)?.tmuxSessionName ?? computeTmuxSessionName(key, "task");
+}
+
+export function getSessionType(key: string): PtySessionType | null {
+	return sessions.get(key)?.sessionType ?? null;
 }
 
 function shortId(taskId: string): string {
@@ -359,8 +384,42 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
 }
 
+/**
+ * Create a 2×2 pane grid for project terminals.
+ * Only runs if the session currently has exactly one pane (i.e. freshly created).
+ * Uses `select-layout tiled` to avoid pane-index arithmetic.
+ */
+function setupProjectLayout(session: PtySession): void {
+	const s = session.tmuxSessionName;
+	const sock = session.tmuxSocket;
+	try {
+		const listResult = spawnSync(tmuxArgs(sock, "list-panes", "-t", s));
+		const paneCount = new TextDecoder().decode(listResult.stdout).trim().split("\n").filter(Boolean).length;
+		if (paneCount !== 1) {
+			log.info("Project layout: session already has multiple panes, skipping", { tmuxSession: s, paneCount });
+			return;
+		}
+		// Create 3 more panes (4 total), then apply tiled layout for 2×2 grid.
+		// We always split the active pane — no pane-index arithmetic needed,
+		// so pane-base-index setting doesn't matter.
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		// tiled layout arranges 4 panes as a 2×2 grid automatically
+		spawnSync(tmuxArgs(sock, "select-layout", "-t", s, "tiled"));
+		// Return focus to pane 1 (base-index 1 in tmux config)
+		spawnSync(tmuxArgs(sock, "select-pane", "-t", `${s}:1.1`));
+		log.info("Project terminal 2×2 layout created", { tmuxSession: s });
+	} catch (err) {
+		log.error("Failed to create project terminal layout", {
+			tmuxSession: s,
+			error: String(err),
+		});
+	}
+}
+
 function spawnPty(session: PtySession, cols: number, rows: number): void {
-	const tmuxSessionName = `dev3-${shortId(session.taskId)}`;
+	const tmuxSessionName = session.tmuxSessionName;
 	const tmuxCmd = session.tmuxCommand || "bash";
 
 	if (!existsSync(session.cwd)) {
@@ -486,6 +545,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			}
 			if (envKeys.length > 0) {
 				log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
+			}
+			if (session.sessionType === "project") {
+				setupProjectLayout(session);
 			}
 		} catch (err) {
 			log.error("configureTmux failed", {

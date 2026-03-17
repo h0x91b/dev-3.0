@@ -163,7 +163,13 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	}
 
 	function handleSessionClick(session: TmuxSessionInfo) {
-		if (session.taskId && session.projectId) {
+		if (session.isProjectTerminal && session.projectId) {
+			try {
+				localStorage.setItem(`dev3-project-terminal-${session.projectId}`, "true");
+			} catch { /* ignore */ }
+			navigate({ screen: "project", projectId: session.projectId });
+			setPopoverOpen(false);
+		} else if (session.taskId && session.projectId) {
 			navigate({ screen: "project", projectId: session.projectId, activeTaskId: session.taskId });
 			setPopoverOpen(false);
 		}
@@ -179,32 +185,12 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 				className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
 				title={t("tmuxSessions.title")}
 			>
-				<svg
-					className="w-[1.125rem] h-[1.125rem]"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
+				<span
+					className="text-[1.125rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
-					<rect
-						x="2"
-						y="4"
-						width="20"
-						height="16"
-						rx="2"
-						strokeWidth={1.5}
-					/>
-					<path
-						d="M6 9l4 3-4 3"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-						strokeWidth={1.5}
-					/>
-					<path
-						d="M12 15h6"
-						strokeLinecap="round"
-						strokeWidth={1.5}
-					/>
-				</svg>
+					{"\u{EBC8}"}
+				</span>
 				{count > 0 && (
 					<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-[0.625rem] font-bold bg-accent/20 text-accent rounded-full px-1">
 						{count}
@@ -274,7 +260,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 								</div>
 							) : (
 								sessions.map((session) => {
-									const canNavigate = !!(session.taskId && session.projectId);
+									const canNavigate = !!(session.isProjectTerminal ? session.projectId : (session.taskId && session.projectId));
 									return (
 										<div
 											key={session.name}
@@ -285,8 +271,15 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 											<div className="flex items-center justify-between gap-2">
 												<div className="flex items-center gap-2 min-w-0">
 													<span className={`text-sm font-semibold truncate${canNavigate ? " text-accent" : " text-fg"}`} title={session.name}>
-														{session.taskTitle || session.name}
+														{session.isProjectTerminal
+															? (session.projectName || session.name)
+															: (session.taskTitle || session.name)}
 													</span>
+													{session.isProjectTerminal && (
+														<span className="text-[0.5625rem] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+															{t("projectTerminal.label")}
+														</span>
+													)}
 													{session.isCleanup && (
 														<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 															{t("tmuxSessions.cleanup")}
