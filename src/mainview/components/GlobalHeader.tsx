@@ -179,6 +179,11 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 		}
 	}
 
+	// Project terminal breadcrumb segment
+	if (route.screen === "project" && !route.activeTaskId && showProjectTerminal) {
+		segments.push({ label: t("projectTerminal.label") });
+	}
+
 	// Task segment for split view
 	if (route.screen === "project" && route.activeTaskId) {
 		const task = tasks.find((t) => t.id === route.activeTaskId);

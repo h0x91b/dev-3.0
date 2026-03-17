@@ -127,22 +127,7 @@ function ProjectView({
 	if (showProjectTerminal) {
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
-				<SplitLayout
-					kanbanContent={
-						<KanbanBoard
-							project={project}
-							tasks={tasks}
-							dispatch={dispatch}
-							navigate={navigate}
-							bellCounts={bellCounts}
-							taskPorts={taskPorts}
-						/>
-					}
-					terminalContent={
-						<ProjectTerminal projectId={projectId} projectPath={project.path} />
-					}
-					mode="board"
-				/>
+				<ProjectTerminal projectId={projectId} projectPath={project.path} />
 			</div>
 		);
 	}
