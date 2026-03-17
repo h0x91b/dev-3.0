@@ -159,6 +159,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		return () => { cancelled = true; clearInterval(timer); };
 	}, [project.id, task.worktreePath, project]);
 
+	// Fetch allocated port assignments for the task
+	const [allocatedPorts, setAllocatedPorts] = useState<number[]>([]);
+	useEffect(() => {
+		if (!task.worktreePath) {
+			setAllocatedPorts([]);
+			return;
+		}
+		api.request.getPortAllocations({ taskId: task.id })
+			.then(setAllocatedPorts)
+			.catch(() => setAllocatedPorts([]));
+	}, [task.id, task.worktreePath]);
+
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
 
@@ -1851,6 +1863,30 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 							<span className="text-fg-3">{t("infoPanel.updated")}</span>
 							<span className="text-fg-3">{formatDate(task.updatedAt)}</span>
 						</div>
+
+						{/* Allocated ports (from portCount config) */}
+						{allocatedPorts.length > 0 && (
+							<div className="mt-3 border-t border-edge pt-3">
+								<div className="flex items-center gap-2 mb-2">
+									<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0317}"}</span>
+									<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
+										{t("ports.allocated")}
+									</span>
+								</div>
+								<div className="flex flex-wrap gap-1.5">
+									{allocatedPorts.map((port, i) => (
+										<span
+											key={port}
+											className="inline-flex items-center gap-1 text-xs font-mono text-fg-2 bg-raised px-2 py-1 rounded-md"
+											title={`$DEV3_PORT${i}`}
+										>
+											<span className="text-fg-muted text-[0.625rem]">DEV3_PORT{i}=</span>
+											<span className="font-bold">{port}</span>
+										</span>
+									))}
+								</div>
+							</div>
+						)}
 
 						{/* Ports section */}
 						{(() => {

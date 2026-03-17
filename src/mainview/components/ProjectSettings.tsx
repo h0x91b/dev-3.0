@@ -690,6 +690,24 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 				)}
 			</div>
 
+			{/* Port Allocation */}
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-1">
+					{t("projectSettings.portCount")}
+				</label>
+				<p className="text-fg-3 text-sm mb-2">
+					{t("projectSettings.portCountDesc")}
+				</p>
+				<input
+					type="number"
+					min={0}
+					max={20}
+					value={config.portCount ?? 0}
+					onChange={(e) => update("portCount", Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+					className="w-20 px-3 py-1.5 rounded-lg bg-base border border-edge text-fg text-sm focus:outline-none focus:border-accent"
+				/>
+			</div>
+
 			{/* Worktree File Filter (Sparse Checkout) */}
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
@@ -914,6 +932,7 @@ function ProjectSettings({
 		const bcaA = JSON.stringify(a.builtinColumnAgents ?? {});
 		const bcaB = JSON.stringify(b.builtinColumnAgents ?? {});
 		if (bcaA !== bcaB) return false;
+		if ((a.portCount ?? 0) !== (b.portCount ?? 0)) return false;
 		return true;
 	}, []);
 

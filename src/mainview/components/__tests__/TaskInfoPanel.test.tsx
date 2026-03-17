@@ -26,6 +26,7 @@ vi.mock("../../rpc", () => ({
 			createPullRequest: vi.fn(),
 			openPullRequest: vi.fn(),
 			renameTask: vi.fn(),
+			getPortAllocations: vi.fn(),
 		},
 	},
 }));
