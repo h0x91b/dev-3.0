@@ -228,6 +228,18 @@ function setupErrorTracking(): void {
 		const reason = event.reason;
 		const isError = reason instanceof Error;
 		const message = isError ? reason.message : String(reason);
+
+		// RPC timeouts are expected (native dialogs, slow git ops, user idle).
+		// Mark them as handled so they don't pollute the console / analytics
+		// with scary "UNHANDLED REJECTION" entries.
+		const isRpcTimeout = /rpc.*timed?\s*out/i.test(message);
+		if (isRpcTimeout) {
+			event.preventDefault();
+			console.warn(`[RPC] Timed out: ${message}`);
+			logToBackend(`RPC timeout (handled): ${message}`, "unhandledrejection");
+			return;
+		}
+
 		const stackLine = isError ? extractStackLine(reason.stack) : "no stack";
 		const description = `Unhandled rejection: ${message} | ${stackLine}`;
 		trackEvent("app_exception", {
