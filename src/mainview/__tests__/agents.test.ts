@@ -281,11 +281,11 @@ describe("mergeWithDefaults", () => {
 		const codex = result.find((a) => a.id === "builtin-codex")!;
 		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
 
-		// additionalArgs reset to default because stored version is older
+		// additionalArgs and model reset to default because stored version is older
 		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
-		// User-editable fields still preserved
+		expect(cfg.model).toBe(defCfg.model);
+		// User-editable fields (non-model) still preserved
 		expect(cfg.name).toBe("My Codex");
-		expect(cfg.model).toBe("o3");
 		// version bumped to default
 		expect(cfg.version).toBe(defCfg.version);
 	});
@@ -361,7 +361,7 @@ describe("mergeWithDefaults", () => {
 		expect(customCfg.additionalArgs).toEqual(["--my-flag"]);
 	});
 
-	it("does not reset user-editable fields even when version is outdated", () => {
+	it("resets additionalArgs and model but preserves other user-editable fields when version is outdated", () => {
 		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
 		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
 
@@ -391,11 +391,11 @@ describe("mergeWithDefaults", () => {
 		const codex = result.find((a) => a.id === "builtin-codex")!;
 		const cfg = codex.configurations.find((c) => c.id === "codex-default")!;
 
-		// additionalArgs reset
+		// additionalArgs and model reset to defaults
 		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
-		// All user-editable fields preserved
+		expect(cfg.model).toBe(defCfg.model);
+		// Other user-editable fields preserved
 		expect(cfg.name).toBe("My Custom Name");
-		expect(cfg.model).toBe("o3-mini");
 		expect(cfg.permissionMode).toBe("plan");
 		expect(cfg.effort).toBe("low");
 		expect(cfg.maxBudgetUsd).toBe(42);
