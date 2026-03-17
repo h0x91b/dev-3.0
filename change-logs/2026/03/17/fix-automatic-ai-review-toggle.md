@@ -1,3 +1,3 @@
-Split AI Review into two behaviors: the project setting now controls automatic review after task completion, while the AI Review column remains available for manual drag-to-review in all cases. Repo and local config can now persist the automatic-review flag without disabling the manual review agent configuration, and Project Settings now shows a sticky Save/Discard bar for unsaved changes while keeping the leave-page confirmation dialog as a fallback.
+Fixed the broken AI Review project setting so turning it off is now saved correctly in repo config and local overrides instead of silently reopening as enabled and continuing to auto-review tasks. Added a separate automatic-review opt-in so manual drag-to-review in the AI Review column still works independently, and Project Settings now shows a sticky Save/Discard bar while keeping the leave-page confirmation dialog as a fallback.
 
 Suggested by @genrym (h0x91b/dev-3.0#336)
