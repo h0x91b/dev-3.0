@@ -355,9 +355,14 @@ describe("ProjectSettings", () => {
 			});
 		});
 
-		it("shows a warning that automatic AI review is slow and costly", async () => {
+		it("shows a warning only when automatic AI review is enabled", async () => {
+			const user = userEvent.setup();
 			await renderProjectSettings();
 			await goToProjectTab();
+
+			expect(screen.queryByText("Automatic AI review can be slow and costly.")).not.toBeInTheDocument();
+
+			await user.click(screen.getByRole("switch", { name: /automatic ai review/i }));
 
 			expect(screen.getByText("Automatic AI review can be slow and costly.")).toBeInTheDocument();
 		});

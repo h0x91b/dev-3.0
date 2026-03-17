@@ -652,6 +652,44 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 				</div>
 			</div>
 
+			{/* Automatic AI Review */}
+			<div className="space-y-3">
+				<div className="flex items-center justify-between">
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-1">
+							{t("projectSettings.autoReview")}
+						</label>
+						<p className="text-fg-3 text-sm">
+							{t("projectSettings.autoReviewDesc")}
+						</p>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={config.autoReviewEnabled ?? false}
+						aria-label={t("projectSettings.autoReviewEnabled")}
+						onClick={() => update("autoReviewEnabled", !(config.autoReviewEnabled ?? false))}
+						className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
+							(config.autoReviewEnabled ?? false) ? "bg-accent" : "bg-edge-active"
+						}`}
+					>
+						<span
+							className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+								(config.autoReviewEnabled ?? false) ? "translate-x-4" : "translate-x-0"
+							}`}
+						/>
+					</button>
+				</div>
+				{(config.autoReviewEnabled ?? false) && (
+					<div className="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5">
+						<span className="mt-0.5 flex-shrink-0 text-yellow-400 text-base">&#9888;</span>
+						<p className="text-fg-2 text-xs leading-relaxed">
+							{t("projectSettings.autoReviewWarning")}
+						</p>
+					</div>
+				)}
+			</div>
+
 			{/* Worktree File Filter (Sparse Checkout) */}
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
@@ -1233,45 +1271,8 @@ function ProjectSettings({
 								projectPath={project.path}
 							/>
 
-							{/* Automatic AI Review */}
+							{/* AI Review Column */}
 							<div className="space-y-4">
-								<div className="flex items-center justify-between">
-									<div>
-										<label className="block text-fg text-sm font-semibold mb-1">
-											{t("projectSettings.autoReview")}
-										</label>
-										<p className="text-fg-3 text-sm">
-											{t("projectSettings.autoReviewDesc")}
-										</p>
-									</div>
-									<button
-										type="button"
-										role="switch"
-										aria-checked={projectConfig.autoReviewEnabled ?? false}
-										aria-label={t("projectSettings.autoReviewEnabled")}
-										onClick={() =>
-											setProjectConfig((prev) => ({
-												...prev,
-												autoReviewEnabled: !(prev.autoReviewEnabled ?? false),
-											}))
-										}
-										className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
-											(projectConfig.autoReviewEnabled ?? false) ? "bg-accent" : "bg-edge-active"
-										}`}
-									>
-										<span
-											className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-												(projectConfig.autoReviewEnabled ?? false) ? "translate-x-4" : "translate-x-0"
-											}`}
-										/>
-									</button>
-								</div>
-								<div className="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5">
-									<span className="mt-0.5 flex-shrink-0 text-yellow-400 text-base">&#9888;</span>
-									<p className="text-fg-2 text-xs leading-relaxed">
-										{t("projectSettings.autoReviewWarning")}
-									</p>
-								</div>
 								<div>
 									<label className="block text-fg text-sm font-semibold mb-1">
 										{t("projectSettings.aiReview")}
