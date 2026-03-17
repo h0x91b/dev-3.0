@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
 			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {}, app: {} }),
+			getProjectConfigFiles: vi.fn().mockResolvedValue({ hasRepoConfig: false, hasLocalConfig: false }),
 			updateProjectSettings: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", path: "/tmp/test", defaultBaseBranch: "main", setupScript: "", devScript: "", cleanupScript: "", createdAt: "" }),
 			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
 			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
@@ -99,7 +100,7 @@ describe("ProjectSettings", () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();
 			await user.click(screen.getByText("Project Config"));
-			expect(screen.getByText(/Project-level settings/i)).toBeInTheDocument();
+			expect(screen.getByText(/Default settings for all tasks/i)).toBeInTheDocument();
 		});
 
 		it("switches to worktree tab on click", async () => {

@@ -1368,6 +1368,14 @@ export const handlers = {
 		return { repo, local, app };
 	},
 
+	async getProjectConfigFiles(params: { projectId: string }): Promise<{ hasRepoConfig: boolean; hasLocalConfig: boolean }> {
+		const project = await data.getProject(params.projectId);
+		return {
+			hasRepoConfig: repoConfig.hasRepoConfig(project.path),
+			hasLocalConfig: repoConfig.hasLocalConfig(project.path),
+		};
+	},
+
 	async getAppConfig(params: { projectId: string }): Promise<Dev3RepoConfig> {
 		log.info("→ getAppConfig", { projectId: params.projectId });
 		const project = await data.getProject(params.projectId);

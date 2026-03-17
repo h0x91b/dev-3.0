@@ -579,6 +579,18 @@ function ProjectSettings({
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
 
+	// ---- Config file presence (for override warning on Project Config tab) ----
+	const [configFileOverride, setConfigFileOverride] = useState<string | null>(null);
+	useEffect(() => {
+		if (project) {
+			api.request.getProjectConfigFiles({ projectId }).then(({ hasRepoConfig: hasRepo, hasLocalConfig: hasLocal }) => {
+				if (hasLocal) setConfigFileOverride(".dev3/config.local.json");
+				else if (hasRepo) setConfigFileOverride(".dev3/config.json");
+				else setConfigFileOverride(null);
+			}).catch(() => {});
+		}
+	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
 	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
 	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
 	const initialAiReviewEnabled = !!reviewConfig || !project?.builtinColumnAgents;
@@ -965,6 +977,16 @@ function ProjectSettings({
 					{/* ======== Project tab ======== */}
 					{activeTab === "project" && (
 						<>
+							{configFileOverride && (
+								<div className="flex items-start gap-2.5 px-3 py-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+									<span className="text-yellow-400 text-base flex-shrink-0 mt-0.5">&#9888;</span>
+									<p className="text-fg-2 text-xs leading-relaxed">
+										{configFileOverride.includes("local")
+											? t("projectSettings.projectOverriddenByLocal", { file: configFileOverride })
+											: t("projectSettings.projectOverriddenByRepo", { file: configFileOverride })}
+									</p>
+								</div>
+							)}
 							<ConfigForm
 								config={projectConfig}
 								onChange={setProjectConfig}
@@ -1061,9 +1083,9 @@ function ProjectSettings({
 								</div>
 							) : (
 								<>
-									{/* Priority hint */}
+									{/* How it works */}
 									<div className="px-3 py-2.5 bg-elevated/60 border border-edge/40 rounded-lg">
-										<p className="text-fg-3 text-xs leading-relaxed">{t("projectSettings.worktreePriorityHint")}</p>
+										<p className="text-fg-3 text-xs leading-relaxed">{t("projectSettings.worktreeHowItWorks")}</p>
 									</div>
 
 									{/* Task selector */}
