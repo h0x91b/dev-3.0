@@ -1,0 +1,1 @@
+Fixed tmux session list showing stale task titles after rename. The list now uses `getTaskTitle()` (which respects `customTitle`) instead of the auto-generated `title`. Also added `rpc:taskUpdated` event listener so titles refresh immediately when a task is renamed, without waiting for the 30-second poll.

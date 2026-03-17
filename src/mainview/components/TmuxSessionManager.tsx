@@ -52,6 +52,15 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 		if (popoverOpen) fetchSessions();
 	}, [popoverOpen, fetchSessions]);
 
+	// Refresh when any task is updated (e.g. title renamed)
+	useEffect(() => {
+		function onTaskUpdated() {
+			fetchSessions();
+		}
+		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
+		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+	}, [fetchSessions]);
+
 	async function handleRefresh() {
 		setRefreshing(true);
 		await fetchSessions();
