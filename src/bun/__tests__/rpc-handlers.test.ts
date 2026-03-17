@@ -63,6 +63,8 @@ vi.mock("../pty-server", () => ({
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
 	getSessionSocket: vi.fn(() => "dev3"),
+	getSessionTmuxName: vi.fn((key: string) => `dev3-${key.slice(0, 8)}`),
+	getSessionType: vi.fn(() => null),
 	capturePane: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
 	setTmuxBinary: vi.fn(),
@@ -3023,6 +3025,80 @@ describe("handlers.tmuxAction", () => {
 		await expect(
 			handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" }),
 		).rejects.toThrow("tmux zoom failed");
+	});
+});
+
+// ================================================================
+// handlers.getProjectPtyUrl / destroyProjectTerminal
+// ================================================================
+
+describe("handlers.getProjectPtyUrl", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("creates a project PTY session and returns ws URL", async () => {
+		const project = makeProject({ path: "/tmp/test-project" });
+		(data.getProject as any).mockResolvedValue(project);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		const url = await handlers.getProjectPtyUrl({ projectId: project.id });
+
+		expect(pty.createSession).toHaveBeenCalledWith(
+			`project-${project.id}`,
+			project.id,
+			"/tmp/test-project",
+			"bash",
+			{},
+			"dev3",
+			"project",
+		);
+		expect(url).toBe(`ws://localhost:9999?session=project-${project.id}`);
+	});
+
+	it("reuses existing session without creating a new one", async () => {
+		const project = makeProject();
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+
+		await handlers.getProjectPtyUrl({ projectId: project.id });
+
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("destroys dead session before creating a new one", async () => {
+		const project = makeProject({ path: "/tmp/proj" });
+		(data.getProject as any).mockResolvedValue(project);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
+		// hasSession is called twice: once in the log, once for the guard
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		await handlers.getProjectPtyUrl({ projectId: project.id });
+
+		expect(pty.destroySession).toHaveBeenCalledWith(`project-${project.id}`);
+		expect(pty.createSession).toHaveBeenCalled();
+	});
+});
+
+describe("handlers.destroyProjectTerminal", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("destroys the project terminal session", async () => {
+		await handlers.destroyProjectTerminal({ projectId: "proj-123" });
+		expect(pty.destroySession).toHaveBeenCalledWith("project-proj-123");
+	});
+});
+
+describe("handlers.removeProject with project terminal", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("destroys project terminal when removing a project", async () => {
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(data.removeProject).mockResolvedValue(undefined);
+		await handlers.removeProject({ projectId: "proj-1" });
+		expect(pty.destroySession).toHaveBeenCalledWith("project-proj-1");
+		expect(data.removeProject).toHaveBeenCalledWith("proj-1");
 	});
 });
 

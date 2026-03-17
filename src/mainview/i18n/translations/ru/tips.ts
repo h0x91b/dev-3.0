@@ -154,6 +154,8 @@ const tips = {
 	"tip.worktreeConfig.body": "У каждого worktree свой .dev3/config.json. Нажмите шестерёнку в панели задачи для редактирования.",
 	"tip.diffCompareDefault.title": "Выберите базу для diff",
 	"tip.diffCompareDefault.body": "В Project Settings можно выбрать, сравнивать ли статус ветки и Show Diff с origin/<base> или с локальной базовой веткой.",
+	"tip.projectTerminal.title": "Терминал проекта",
+	"tip.projectTerminal.body": "Нажмите иконку терминала на Kanban-доске, чтобы открыть shell в корне проекта.",
 };
 
 export default tips;

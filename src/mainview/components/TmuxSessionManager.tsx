@@ -163,7 +163,13 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	}
 
 	function handleSessionClick(session: TmuxSessionInfo) {
-		if (session.taskId && session.projectId) {
+		if (session.isProjectTerminal && session.projectId) {
+			try {
+				localStorage.setItem(`dev3-project-terminal-${session.projectId}`, "true");
+			} catch { /* ignore */ }
+			navigate({ screen: "project", projectId: session.projectId });
+			setPopoverOpen(false);
+		} else if (session.taskId && session.projectId) {
 			navigate({ screen: "project", projectId: session.projectId, activeTaskId: session.taskId });
 			setPopoverOpen(false);
 		}
@@ -274,7 +280,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 								</div>
 							) : (
 								sessions.map((session) => {
-									const canNavigate = !!(session.taskId && session.projectId);
+									const canNavigate = !!(session.isProjectTerminal ? session.projectId : (session.taskId && session.projectId));
 									return (
 										<div
 											key={session.name}
@@ -285,8 +291,15 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 											<div className="flex items-center justify-between gap-2">
 												<div className="flex items-center gap-2 min-w-0">
 													<span className={`text-sm font-semibold truncate${canNavigate ? " text-accent" : " text-fg"}`} title={session.name}>
-														{session.taskTitle || session.name}
+														{session.isProjectTerminal
+															? (session.projectName || session.name)
+															: (session.taskTitle || session.name)}
 													</span>
+													{session.isProjectTerminal && (
+														<span className="text-[0.5625rem] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+															{t("projectTerminal.label")}
+														</span>
+													)}
 													{session.isCleanup && (
 														<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 															{t("tmuxSessions.cleanup")}

@@ -52,6 +52,15 @@ const terminal = {
 	"ports.copied": "Copied!",
 	"ports.count_one": "{count} port",
 	"ports.count_other": "{count} ports",
+
+	// Project Terminal
+	"projectTerminal.open": "Project Terminal",
+	"projectTerminal.close": "Close Terminal",
+	"projectTerminal.tooltip": "Open a terminal in the project root",
+	"projectTerminal.sessionEnded": "Terminal session ended",
+	"projectTerminal.sessionEndedDesc": "The terminal process has exited. Click restart to open a new session.",
+	"projectTerminal.restart": "Restart",
+	"projectTerminal.label": "Project Terminal",
 } as const;
 
 export default terminal;

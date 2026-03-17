@@ -551,6 +551,8 @@ export interface TmuxSessionInfo {
 	createdAt: number;
 	windowCount: number;
 	isCleanup: boolean;
+	isProjectTerminal?: boolean;
+	projectName?: string;
 	taskTitle?: string;
 	taskId?: string;
 	projectId?: string;
@@ -770,6 +772,14 @@ export type AppRPCSchema = {
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
 				response: string;
+			};
+			getProjectPtyUrl: {
+				params: { projectId: string };
+				response: string;
+			};
+			destroyProjectTerminal: {
+				params: { projectId: string };
+				response: void;
 			};
 			resolveFilename: {
 				params: { filename: string; size: number; lastModified: number };
@@ -996,6 +1006,7 @@ export type AppRPCSchema = {
 			taskUpdated: { projectId: string; task: Task };
 			projectUpdated: { project: Project };
 			ptyDied: { taskId: string };
+			projectPtyDied: { projectId: string };
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
