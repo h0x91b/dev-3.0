@@ -387,6 +387,7 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 /**
  * Create a 2×2 pane grid for project terminals.
  * Only runs if the session currently has exactly one pane (i.e. freshly created).
+ * Uses `select-layout tiled` to avoid pane-index arithmetic.
  */
 function setupProjectLayout(session: PtySession): void {
 	const s = session.tmuxSessionName;
@@ -398,12 +399,16 @@ function setupProjectLayout(session: PtySession): void {
 			log.info("Project layout: session already has multiple panes, skipping", { tmuxSession: s, paneCount });
 			return;
 		}
-		// Split into 4 panes: left|right, each split top/bottom
-		spawnSync(tmuxArgs(sock, "split-window", "-h", "-t", s));
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", `${s}:0.0`));
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", `${s}:0.2`));
-		// Return focus to top-left pane
-		spawnSync(tmuxArgs(sock, "select-pane", "-t", `${s}:0.0`));
+		// Create 3 more panes (4 total), then apply tiled layout for 2×2 grid.
+		// We always split the active pane — no pane-index arithmetic needed,
+		// so pane-base-index setting doesn't matter.
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		// tiled layout arranges 4 panes as a 2×2 grid automatically
+		spawnSync(tmuxArgs(sock, "select-layout", "-t", s, "tiled"));
+		// Return focus to pane 1 (base-index 1 in tmux config)
+		spawnSync(tmuxArgs(sock, "select-pane", "-t", `${s}:1.1`));
 		log.info("Project terminal 2×2 layout created", { tmuxSession: s });
 	} catch (err) {
 		log.error("Failed to create project terminal layout", {

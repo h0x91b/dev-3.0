@@ -259,14 +259,14 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 									<button
 										onClick={(e) => { e.stopPropagation(); onToggleProjectTerminal(); }}
 										title={showProjectTerminal ? t("projectTerminal.close") : t("projectTerminal.tooltip")}
-										className={`flex-shrink-0 p-0.5 rounded transition-colors ${
+										className={`flex-shrink-0 ml-1.5 mr-0.5 px-1 py-0.5 rounded transition-colors ${
 											showProjectTerminal
 												? "text-accent hover:text-accent-hover"
 												: "text-fg-muted hover:text-fg hover:bg-elevated"
 										}`}
 									>
 										<span
-											className="text-[0.9rem] leading-none"
+											className="text-[0.95rem] leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\uF489"}
