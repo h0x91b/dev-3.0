@@ -164,7 +164,7 @@ describe("Dashboard", () => {
 			renderDashboard([mockProject], dispatch);
 			await user.click(screen.getByText("Projects"));
 
-			const removeBtn = screen.getByText("Remove");
+			const removeBtn = screen.getByTitle("Remove");
 			await user.click(removeBtn);
 
 			expect(mockedApi.request.showConfirm).toHaveBeenCalled();
@@ -185,7 +185,7 @@ describe("Dashboard", () => {
 
 			renderDashboard([mockProject], dispatch);
 			await user.click(screen.getByText("Projects"));
-			await user.click(screen.getByText("Remove"));
+			await user.click(screen.getByTitle("Remove"));
 
 			expect(mockedApi.request.removeProject).not.toHaveBeenCalled();
 			expect(dispatch).not.toHaveBeenCalled();

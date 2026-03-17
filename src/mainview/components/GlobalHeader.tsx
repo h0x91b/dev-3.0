@@ -14,6 +14,8 @@ interface GlobalHeaderProps {
 	navigate: (route: Route) => void;
 	updateVersion?: string | null;
 	updateDownloadStatus?: string | null;
+	showProjectTerminal?: boolean;
+	onToggleProjectTerminal?: () => void;
 }
 
 interface BreadcrumbSegment {
@@ -27,7 +29,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus, showProjectTerminal, onToggleProjectTerminal }: GlobalHeaderProps) {
 	const t = useT();
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
@@ -167,14 +169,24 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	if ("projectId" in route) {
 		const project = projects.find((p) => p.id === route.projectId);
 		if (project) {
-			const canNavigateToProject =
-				route.screen !== "project" || (route.screen === "project" && route.activeTaskId);
+			// In terminal view: clicking project name closes the terminal (returns to kanban)
+			// Otherwise: navigate to project board only when coming from a sub-screen
+			const projectNameonClick = showProjectTerminal && onToggleProjectTerminal
+				? onToggleProjectTerminal
+				: (route.screen !== "project" || (route.screen === "project" && route.activeTaskId))
+					? handleProjectNameClick
+					: undefined;
 			segments.push({
 				label: project.name,
 				isProjectDropdown: true,
-				onClick: canNavigateToProject ? handleProjectNameClick : undefined,
+				onClick: projectNameonClick,
 			});
 		}
+	}
+
+	// Project terminal breadcrumb segment
+	if (route.screen === "project" && !route.activeTaskId && showProjectTerminal) {
+		segments.push({ label: t("projectTerminal.label") });
 	}
 
 	// Task segment for split view
@@ -252,6 +264,24 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 									</button>
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
+								)}
+								{onToggleProjectTerminal && !showProjectTerminal && (
+									<button
+										onClick={(e) => { e.stopPropagation(); onToggleProjectTerminal(); }}
+										title={showProjectTerminal ? t("projectTerminal.close") : t("projectTerminal.tooltip")}
+										className={`flex-shrink-0 ml-1.5 mr-0.5 px-1 py-0.5 rounded transition-colors ${
+											showProjectTerminal
+												? "text-accent hover:text-accent-hover"
+												: "text-fg-muted hover:text-fg hover:bg-elevated"
+										}`}
+									>
+										<span
+											className="text-[0.95rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\uF489"}
+										</span>
+									</button>
 								)}
 								<button
 									onClick={() => setShowProjectDropdown((v) => !v)}

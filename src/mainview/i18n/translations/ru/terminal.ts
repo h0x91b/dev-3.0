@@ -56,6 +56,15 @@ const terminal = {
 	"ports.count_few": "{count} порта",
 	"ports.count_many": "{count} портов",
 	"ports.count_other": "{count} портов",
+
+	// Project Terminal
+	"projectTerminal.open": "Терминал проекта",
+	"projectTerminal.close": "Закрыть терминал",
+	"projectTerminal.tooltip": "Открыть терминал в корне проекта",
+	"projectTerminal.sessionEnded": "Сессия терминала завершена",
+	"projectTerminal.sessionEndedDesc": "Процесс терминала завершился. Нажмите «Перезапустить» для новой сессии.",
+	"projectTerminal.restart": "Перезапустить",
+	"projectTerminal.label": "Терминал проекта",
 };
 
 export default terminal;

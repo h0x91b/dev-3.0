@@ -111,7 +111,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 								</button>
 							</div>
 						) : (
-							<div className="max-w-3xl mx-auto">
+							<div className="max-w-5xl mx-auto">
 								<div className="flex items-center justify-between mb-5">
 									<span className="text-fg-2 text-sm font-medium">
 										{t.plural("dashboard.projectCount", projects.length)}
@@ -123,11 +123,11 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 										{t("dashboard.addProject")}
 									</button>
 								</div>
-								<div className="space-y-3">
+								<div className="space-y-2">
 									{projects.map((project) => (
 										<div
 											key={project.id}
-											className="group flex items-center gap-5 p-5 bg-raised rounded-2xl hover:bg-raised-hover border border-edge hover:border-edge-active transition-all cursor-pointer"
+											className="group flex items-center gap-4 px-5 py-4 bg-raised rounded-2xl hover:bg-raised-hover border border-edge hover:border-edge-active transition-all cursor-pointer"
 											onClick={() =>
 												navigate({
 													screen: "project",
@@ -135,73 +135,94 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 												})
 											}
 										>
-											<div className="w-12 h-12 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0">
-												<svg
-													className="w-6 h-6 text-accent"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
+											<div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center flex-shrink-0">
+												<span
+													className="text-[1.1rem] leading-none text-accent"
+													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 												>
-													<path
-														strokeLinecap="round"
-														strokeLinejoin="round"
-														strokeWidth={1.5}
-														d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-													/>
-												</svg>
+													{"\u{F126F}"}
+												</span>
 											</div>
 											<div className="min-w-0 flex-1">
 												<div className="text-fg font-semibold text-base truncate">
 													{project.name}
 												</div>
-												<div className="text-fg-3 text-sm mt-1 truncate font-mono">
+												<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">
 													{project.path}
 												</div>
 											</div>
-											<button
-												onClick={(e) => {
-													e.stopPropagation();
-													navigate({ screen: "project-settings", projectId: project.id });
-												}}
-												className="opacity-0 group-hover:opacity-100 text-fg-3 hover:text-fg transition-all p-1.5 rounded-lg hover:bg-elevated"
-												title={t("header.projectSettings")}
+											{/* Action buttons — visible on hover, grouped together */}
+											<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+												<button
+													onClick={(e) => {
+														e.stopPropagation();
+														navigate({ screen: "project-settings", projectId: project.id });
+													}}
+													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
+													title={t("header.projectSettings")}
+												>
+													<span
+														className="text-[1rem] leading-none"
+														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+													>
+														{"\u{F0493}"}
+													</span>
+												</button>
+												<button
+													onClick={(e) => {
+														e.stopPropagation();
+														api.request.openFolder({ path: project.path }).catch(() => {});
+													}}
+													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
+													title={t("dashboard.openInFinder")}
+												>
+													<span
+														className="text-[1rem] leading-none"
+														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+													>
+														{"\u{F115}"}
+													</span>
+												</button>
+												<button
+													onClick={(e) => {
+														e.stopPropagation();
+														try {
+															localStorage.setItem(`dev3-project-terminal-${project.id}`, "true");
+														} catch { /* ignore */ }
+														navigate({ screen: "project", projectId: project.id });
+													}}
+													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
+													title={t("projectTerminal.tooltip")}
+												>
+													<span
+														className="text-[1rem] leading-none"
+														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+													>
+														{"\uF489"}
+													</span>
+												</button>
+												<button
+													onClick={(e) => {
+														e.stopPropagation();
+														handleRemoveProject(project.id);
+													}}
+													className="text-fg-3 hover:text-danger transition-colors p-1.5 rounded-lg hover:bg-danger/10"
+													title={t("dashboard.remove")}
+												>
+													<span
+														className="text-[1rem] leading-none"
+														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+													>
+														{"\u{F0A79}"}
+													</span>
+												</button>
+											</div>
+											<span
+												className="text-[0.875rem] leading-none text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0"
+												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 											>
-												<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-												</svg>
-											</button>
-											<button
-												onClick={(e) => {
-													e.stopPropagation();
-													api.request.openFolder({ path: project.path }).catch(() => {});
-												}}
-												className="opacity-0 group-hover:opacity-100 text-fg-3 hover:text-fg text-sm font-medium transition-all px-3 py-1.5 rounded-lg hover:bg-elevated"
-											>
-												{t("dashboard.openInFinder")}
-											</button>
-											<button
-												onClick={(e) => {
-													e.stopPropagation();
-													handleRemoveProject(project.id);
-												}}
-												className="opacity-0 group-hover:opacity-100 text-fg-3 hover:text-danger text-sm font-medium transition-all px-3 py-1.5 rounded-lg hover:bg-danger/10"
-											>
-												{t("dashboard.remove")}
-											</button>
-											<svg
-												className="w-5 h-5 text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													strokeWidth={2}
-													d="M9 5l7 7-7 7"
-												/>
-											</svg>
+												{"\u{F0142}"}
+											</span>
 										</div>
 									))}
 								</div>
