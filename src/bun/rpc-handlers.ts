@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -780,7 +780,7 @@ export async function launchTaskPty(
 			const resolved = await agents.resolveCommandForProject(
 				project,
 				task.title,
-				task.description,
+				ctx.taskDescription,
 				worktreePath,
 				undefined,
 				cmdOptions,
@@ -878,9 +878,9 @@ export async function launchTaskPty(
 		}
 	}
 
-	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop)
-	// Primary agent always stops at review-by-user; AI review is triggered manually.
-	const stopTarget: TaskStatus = "review-by-user";
+	// Install agent-native hooks (e.g., Claude Code PermissionRequest/Stop).
+	// Projects can opt into automatic AI Review before human review.
+	const stopTarget = getPrimaryStopTarget(project.autoReviewEnabled);
 	try {
 		setupAgentHooks(worktreePath, resolvedBaseCmd, { stopTarget });
 	} catch (err) {
@@ -1744,6 +1744,7 @@ export const handlers = {
 		// Phase 2: Heavy I/O (worktree + CoW + PTY) runs in the background
 		if (needsWorktree) {
 			(async () => {
+				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
@@ -1751,9 +1752,9 @@ export const handlers = {
 						const variantBranchName = (isMultiVariant && srcBranch)
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
-						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
+						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
-						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						const resolved = await repoConfig.resolveProjectConfig(resolvedProject, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
@@ -1845,13 +1846,14 @@ export const handlers = {
 		// Phase 2: Heavy I/O in background
 		if (needsWorktree) {
 			(async () => {
+				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
 					try {
-						const wt = await git.createWorktree(project, task);
+						const wt = await git.createWorktree(resolvedProject, task);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
-						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+						const resolved = await repoConfig.resolveProjectConfig(resolvedProject, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
@@ -2552,7 +2554,8 @@ export const handlers = {
 						status: foundTask.status,
 						worktreePath: foundTask.worktreePath,
 					});
-					await launchTaskPty(foundProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
+					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
 						worktreePath: foundTask.worktreePath,

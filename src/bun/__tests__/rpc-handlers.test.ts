@@ -108,6 +108,10 @@ vi.mock("../repo-config", () => ({
 	hasLocalConfig: vi.fn(() => false),
 }));
 
+vi.mock("../agent-hooks", () => ({
+	setupAgentHooks: vi.fn(),
+}));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -154,7 +158,9 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as updater from "../updater";
+import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, saveSettings } from "../settings";
+import * as repoConfig from "../repo-config";
 import { Utils } from "electrobun/bun";
 import { existsSync } from "node:fs";
 
@@ -176,6 +182,7 @@ const {
 	startPRDetectionPoller,
 	stopPRDetectionPoller,
 	resolveBinaryPath,
+	launchTaskPty,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -1075,6 +1082,36 @@ describe("handlers.moveTask", () => {
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
+	it("todo → in-progress defaults agent stop target to review-by-user when automatic review is off", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const task = makeTask({ status: "todo", worktreePath: null });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+
+		expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/wt", expect.any(String), { stopTarget: "review-by-user" });
+	});
+
+	it("todo → in-progress uses review-by-ai stop target when automatic review is on", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "todo", worktreePath: null });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+
+		expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/wt", expect.any(String), { stopTarget: "review-by-ai" });
+	});
+
 	it("todo → in-progress with existingBranch: passes it to createWorktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo", worktreePath: null, existingBranch: "feature/login" });
@@ -1440,6 +1477,32 @@ describe("handlers.spawnVariants", () => {
 		});
 	});
 
+	it("uses resolved project config for automatic AI review when launching active variants", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const resolvedProject = makeProject({ autoReviewEnabled: true });
+		const sourceTask = makeTask({ status: "todo", seq: 5 });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce(resolvedProject);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/vwt", expect.any(String), { stopTarget: "review-by-ai" });
+		});
+	});
+
 	it("inherits existingBranch from source task into single variant", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, existingBranch: "feature/login" });
@@ -1541,9 +1604,15 @@ describe("handlers.spawnVariants", () => {
 			expect(git.createWorktree).toHaveBeenCalledOnce();
 		});
 
-		// Must resolve config from worktree path (not just project.path)
+		// Must resolve config from the worktree path using the resolved project config
 		await vi.waitFor(() => {
-			expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/vwt");
+			expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: "proj-1",
+					setupScript: "./scripts/dev3-setup.sh",
+				}),
+				"/tmp/vwt",
+			);
 		});
 	});
 });
@@ -1760,6 +1829,30 @@ describe("handlers.getPtyUrl", () => {
 		const url = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(url).toContain("ws://localhost:9999");
 		expect(url).toContain("session=task-1");
+	});
+
+	it("resolves project config before restoring a PTY session", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const resolvedProject = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce(resolvedProject);
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/wt");
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			resolvedProject,
+			task.title,
+			task.description,
+			"/tmp/wt",
+			undefined,
+			undefined,
+		);
 	});
 
 	it("does not crash when worktree is missing during restore", async () => {
@@ -3162,6 +3255,26 @@ describe("handlers.spawnAgentInTask", () => {
 		await expect(
 			handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null }),
 		).rejects.toThrow("Failed to spawn agent");
+	});
+});
+
+describe("launchTaskPty", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ description: "Touch a text file and say hello world" });
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			"claude-default",
+			expect.objectContaining({
+				taskDescription: "Touch a text file and say hello world",
+			}),
+			undefined,
+		);
 	});
 });
 

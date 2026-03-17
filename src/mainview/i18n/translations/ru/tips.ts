@@ -139,7 +139,7 @@ const tips = {
 	"tip.aiReviewDrag.title": "Ручной AI Review",
 	"tip.aiReviewDrag.body": "Перетащите задачу в колонку AI Review, чтобы запустить автоматическую проверку кода. Агент проверит ветку и исправит средние/серьёзные проблемы.",
 	"tip.aiReviewCustomize.title": "Настройка AI Review",
-	"tip.aiReviewCustomize.body": "Измените промпт ревью или отключите AI Review полностью в настройках проекта. Настраивается для каждого проекта.",
+	"tip.aiReviewCustomize.body": "Измените промпт ревью или переключите автоматическое AI Review в настройках проекта. Настраивается для каждого проекта.",
 	"tip.customColumnAgents.title": "Агенты в колонках",
 	"tip.customColumnAgents.body": "Любая пользовательская колонка может автоматически запускать агента при попадании задачи. Настройте в параметрах проекта.",
 	"tip.retryTaskAttempts.title": "Ищите лучшее решение",
