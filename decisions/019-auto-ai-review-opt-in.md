@@ -10,7 +10,7 @@ The persistence bug came from the settings flow not storing an explicit automati
 
 ## Decision
 
-Added a dedicated `autoReviewEnabled` project config field in [types.ts](/Users/tome/projects/dev-3.0/src/shared/types.ts) and [repo-config.ts](/Users/tome/projects/dev-3.0/src/bun/repo-config.ts), defaulting to `false`, so the saved repo/local settings now faithfully preserve "automatic AI review off". In [ProjectSettings.tsx](/Users/tome/projects/dev-3.0/src/mainview/components/ProjectSettings.tsx), the toggle now controls only automatic review, while the AI Review column agent settings remain always configurable for manual drag-to-review.
+Added a dedicated `autoReviewEnabled` project config field in [types.ts](/Users/tome/projects/dev-3.0/src/shared/types.ts) and [repo-config.ts](/Users/tome/projects/dev-3.0/src/bun/repo-config.ts), defaulting to `false`, so the saved repo/local settings now faithfully preserve "automatic AI review off". In [ProjectSettings.tsx](/Users/tome/projects/dev-3.0/src/mainview/components/ProjectSettings.tsx), the toggle now controls only automatic review, the AI Review column agent settings remain always configurable for manual drag-to-review, and the UI warns that the automatic path can be slow and costly.
 
 ## Risks
 

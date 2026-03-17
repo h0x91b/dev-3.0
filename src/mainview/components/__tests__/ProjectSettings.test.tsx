@@ -337,6 +337,13 @@ describe("ProjectSettings", () => {
 			});
 		});
 
+		it("shows a warning that automatic AI review is slow and costly", async () => {
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			expect(screen.getByText("Automatic AI review can be slow and costly.")).toBeInTheDocument();
+		});
+
 		it("shows a sticky dirty-state action bar and discards current tab changes", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings();

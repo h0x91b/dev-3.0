@@ -20,14 +20,6 @@ function normalizeReviewPrompt(prompt: string): string {
 	return prompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : prompt.trim();
 }
 
-function sanitizeConfig(config: Dev3RepoConfig): Dev3RepoConfig {
-	return {
-		...config,
-		clonePaths: (config.clonePaths ?? []).filter((path) => path.trim() !== ""),
-		sparseCheckoutPaths: (config.sparseCheckoutPaths ?? []).filter((path) => path.trim() !== ""),
-	};
-}
-
 interface LabelRowProps {
 	label: Label;
 	saving: boolean;
@@ -1272,6 +1264,12 @@ function ProjectSettings({
 											}`}
 										/>
 									</button>
+								</div>
+								<div className="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5">
+									<span className="mt-0.5 flex-shrink-0 text-yellow-400 text-base">&#9888;</span>
+									<p className="text-fg-2 text-xs leading-relaxed">
+										{t("projectSettings.autoReviewWarning")}
+									</p>
 								</div>
 								<div>
 									<label className="block text-fg text-sm font-semibold mb-1">

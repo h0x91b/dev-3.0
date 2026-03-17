@@ -154,6 +154,7 @@ const settings = {
 	"projectSettings.autoReview": "Automatic AI Review",
 	"projectSettings.autoReviewDesc": "When enabled, completed tasks go through AI Review before Your Review. Manual drag-to-review still works either way.",
 	"projectSettings.autoReviewEnabled": "Automatic AI Review",
+	"projectSettings.autoReviewWarning": "Automatic AI review can be slow and costly.",
 	"projectSettings.aiReview": "AI Review Column",
 	"projectSettings.aiReviewDesc": "Dragging a task to the AI Review column always starts the review agent configured below.",
 	"projectSettings.aiReviewAgent": "Review Agent",

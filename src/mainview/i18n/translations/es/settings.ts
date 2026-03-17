@@ -155,6 +155,7 @@ const settings = {
 	"projectSettings.autoReview": "Revisión IA automática",
 	"projectSettings.autoReviewDesc": "Cuando está activada, las tareas completadas pasan por AI Review antes de Your Review. El arrastre manual para revisar sigue funcionando siempre.",
 	"projectSettings.autoReviewEnabled": "Revisión IA automática",
+	"projectSettings.autoReviewWarning": "La revisión IA automática puede ser lenta y costosa.",
 	"projectSettings.aiReview": "Columna AI Review",
 	"projectSettings.aiReviewDesc": "Arrastrar una tarea a la columna AI Review siempre inicia el agente de revisión configurado abajo.",
 	"projectSettings.aiReviewAgent": "Agente de revisión",

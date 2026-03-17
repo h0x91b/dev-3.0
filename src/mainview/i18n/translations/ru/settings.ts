@@ -156,6 +156,7 @@ const settings = {
 	"projectSettings.autoReview": "Автоматическое AI-ревью",
 	"projectSettings.autoReviewDesc": "Когда включено, завершённые задачи сначала проходят через AI Review, а потом попадают в Your Review. Ручной запуск через колонку работает всегда.",
 	"projectSettings.autoReviewEnabled": "Автоматическое AI-ревью",
+	"projectSettings.autoReviewWarning": "Автоматическое AI-ревью может быть медленным и дорогим.",
 	"projectSettings.aiReview": "Колонка AI Review",
 	"projectSettings.aiReviewDesc": "Перетаскивание задачи в колонку AI Review всегда запускает настроенного ниже ревью-агента.",
 	"projectSettings.aiReviewAgent": "Агент для ревью",
