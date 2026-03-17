@@ -488,6 +488,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.projectTerminal.body",
 		icon: "\u{F0489}", // nf-md-console
 	},
+	{
+		id: "project-terminal-dashboard",
+		titleKey: "tip.projectTerminalDashboard.title",
+		bodyKey: "tip.projectTerminalDashboard.body",
+		icon: "\u{F0489}", // nf-md-console
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
