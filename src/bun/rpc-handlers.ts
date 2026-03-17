@@ -1429,9 +1429,11 @@ export const handlers = {
 		if (params.autoCommit && params.worktreePath) {
 			try {
 				const proc = spawn(["git", "-C", params.worktreePath, "add", ".dev3/config.json"]);
-				await proc.exited;
+				const addCode = await proc.exited;
+				if (addCode !== 0) throw new Error(`git add exited with code ${addCode}`);
 				const commitProc = spawn(["git", "-C", params.worktreePath, "commit", "-m", "chore: update dev3 config"]);
-				await commitProc.exited;
+				const commitCode = await commitProc.exited;
+				if (commitCode !== 0) throw new Error(`git commit exited with code ${commitCode}`);
 				log.info("Auto-committed .dev3/config.json", { worktreePath: params.worktreePath });
 			} catch (err) {
 				log.warn("Auto-commit failed (non-fatal)", { error: String(err) });
