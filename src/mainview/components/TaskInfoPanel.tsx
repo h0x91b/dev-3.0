@@ -489,7 +489,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const pushThenCreatePRRef = useRef(false);
 	const mergeDialogShownRef = useRef(false);
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	const defaultCompareRef = project.defaultCompareRefMode === "local" ? baseBranch : "";
+	const defaultCompareRef = project.defaultCompareRef
+		?? (project.defaultCompareRefMode === "local" ? baseBranch : "");
 	const [compareRef, setCompareRef] = useState<string>(defaultCompareRef);
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });

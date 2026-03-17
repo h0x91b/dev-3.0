@@ -6,7 +6,14 @@ import { tmpdir } from "node:os";
 // Mock DEV3_HOME and projectSlug for app-level config tests
 const MOCK_DEV3_HOME = join(tmpdir(), `dev3-home-test-${process.pid}`);
 vi.mock("../paths", () => ({ DEV3_HOME: join(tmpdir(), `dev3-home-test-${process.pid}`) }));
-vi.mock("../git", () => ({ projectSlug: (p: string) => p.replace(/^\//, "").replaceAll("/", "-") }));
+const { detectDefaultCompareRef } = vi.hoisted(() => ({
+	detectDefaultCompareRef: vi.fn().mockResolvedValue("origin/main"),
+}));
+
+vi.mock("../git", () => ({
+	detectDefaultCompareRef,
+	projectSlug: (p: string) => p.replace(/^\//, "").replaceAll("/", "-"),
+}));
 
 import {
 	loadRepoConfig,
@@ -47,6 +54,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
 beforeEach(() => {
 	mkdirSync(TEST_DIR, { recursive: true });
 	mkdirSync(MOCK_DEV3_HOME, { recursive: true });
+	detectDefaultCompareRef.mockResolvedValue("origin/main");
+	detectDefaultCompareRef.mockClear();
 });
 
 afterEach(() => {
@@ -265,9 +274,10 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("");
 		expect(resolved.defaultBaseBranch).toBe("main");
-		expect(resolved.defaultCompareRefMode).toBe("remote");
+		expect(resolved.defaultCompareRef).toBe("origin/main");
 		expect(resolved.peerReviewEnabled).toBe(true);
 		expect(resolved.clonePaths).toEqual([]);
+		expect(detectDefaultCompareRef).toHaveBeenCalledWith(TEST_DIR, "main");
 	});
 
 	it("uses repo config values over project values", async () => {
@@ -282,7 +292,8 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("bun install");
 		expect(resolved.defaultBaseBranch).toBe("develop");
-		expect(resolved.defaultCompareRefMode).toBe("remote");
+		expect(resolved.defaultCompareRef).toBe("origin/main");
+		expect(detectDefaultCompareRef).toHaveBeenCalledWith(TEST_DIR, "develop");
 		// Non-configured fields fall back to project values (level 4)
 		expect(resolved.cleanupScript).toBe("echo done");
 	});
@@ -306,7 +317,7 @@ describe("resolveProjectConfig", () => {
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
 			setupScript: "repo-script",
 			defaultBaseBranch: "develop",
-			defaultCompareRefMode: "local",
+			defaultCompareRef: "develop",
 		}));
 		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
 			setupScript: "local-script",
@@ -316,7 +327,7 @@ describe("resolveProjectConfig", () => {
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("local-script"); // local wins
 		expect(resolved.defaultBaseBranch).toBe("develop"); // repo
-		expect(resolved.defaultCompareRefMode).toBe("local"); // repo
+		expect(resolved.defaultCompareRef).toBe("develop"); // repo
 		expect(resolved.cleanupScript).toBe("echo done"); // from project (level 4)
 	});
 });

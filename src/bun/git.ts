@@ -341,6 +341,76 @@ export async function listBranches(projectPath: string): Promise<BranchInfo[]> {
 	return branches;
 }
 
+async function refExists(projectPath: string, ref: string): Promise<boolean> {
+	const result = await run(["git", "rev-parse", "--verify", ref], projectPath);
+	return result.ok;
+}
+
+function parseRecentCommitters(shortlogOutput: string): Set<string> {
+	const emails = new Set<string>();
+
+	for (const line of shortlogOutput.split("\n")) {
+		const match = line.match(/<([^>]+)>/);
+		if (!match) continue;
+		emails.add(match[1].trim().toLowerCase());
+	}
+
+	return emails;
+}
+
+export async function detectDefaultCompareRef(
+	projectPath: string,
+	baseBranch: string,
+): Promise<string> {
+	const remoteResult = await run(["git", "remote"], projectPath);
+	const hasOriginRemote = remoteResult.ok && remoteResult.stdout
+		.split("\n")
+		.map((remote) => remote.trim())
+		.includes("origin");
+	const remoteBaseRef = `origin/${baseBranch}`;
+	const remoteBaseExists = hasOriginRemote && await refExists(projectPath, remoteBaseRef);
+	let localBaseExists = await refExists(projectPath, baseBranch);
+	if (baseBranch === "main" || baseBranch === "master") {
+		if (remoteBaseExists) {
+			if (localBaseExists) {
+				await run(["git", "branch", "--set-upstream-to", remoteBaseRef, baseBranch], projectPath);
+			} else {
+				await run(["git", "branch", "--track", baseBranch, remoteBaseRef], projectPath);
+				localBaseExists = true;
+			}
+		}
+	}
+	const historyRef = remoteBaseExists ? remoteBaseRef : baseBranch;
+
+	const shortlogResult = await run(
+		["git", "shortlog", "-sne", "--since=2 weeks ago", historyRef],
+		projectPath,
+	);
+	const recentCommitters = shortlogResult.ok
+		? parseRecentCommitters(shortlogResult.stdout)
+		: new Set<string>();
+
+	if (recentCommitters.size <= 1) {
+		if (localBaseExists) return baseBranch;
+		if (remoteBaseExists) return remoteBaseRef;
+		return baseBranch;
+	}
+
+	if (remoteBaseExists) {
+		return remoteBaseRef;
+	}
+
+	if (hasOriginRemote) {
+		for (const branchName of ["main", "master"]) {
+			const remoteRef = `origin/${branchName}`;
+			if (await refExists(projectPath, remoteRef)) return remoteRef;
+		}
+	}
+
+	if (localBaseExists) return baseBranch;
+	return baseBranch;
+}
+
 export async function getCurrentBranch(worktreePath: string): Promise<string | null> {
 	const result = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath);
 	if (!result.ok || result.stdout === "HEAD") return null; // detached HEAD

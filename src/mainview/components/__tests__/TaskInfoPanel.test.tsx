@@ -1095,12 +1095,12 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("uses the project's default local comparison ref when configured", async () => {
+		it("uses the project's default comparison ref when configured", async () => {
 			const localCompareProject = {
 				...project,
 				defaultBaseBranch: "master",
-				defaultCompareRefMode: "local",
-			} as Project & { defaultCompareRefMode: "local" };
+				defaultCompareRef: "master",
+			} as Project & { defaultCompareRef: "master" };
 
 			await act(async () => {
 				renderPanel(makeTask({ baseBranch: "master" }), {

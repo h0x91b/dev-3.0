@@ -397,6 +397,7 @@ export interface Dev3RepoConfig {
 	cleanupScript?: string;
 	clonePaths?: string[];
 	defaultBaseBranch?: string;
+	defaultCompareRef?: string;
 	defaultCompareRefMode?: CompareRefMode;
 	peerReviewEnabled?: boolean;
 	sparseCheckoutEnabled?: boolean;
@@ -411,6 +412,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"cleanupScript",
 	"clonePaths",
 	"defaultBaseBranch",
+	"defaultCompareRef",
 	"defaultCompareRefMode",
 	"peerReviewEnabled",
 	"sparseCheckoutEnabled",
@@ -433,6 +435,7 @@ export interface Project {
 	devScript: string;
 	cleanupScript: string;
 	defaultBaseBranch: string;
+	defaultCompareRef?: string;
 	defaultCompareRefMode?: CompareRefMode;
 	clonePaths?: string[];
 	createdAt: string;

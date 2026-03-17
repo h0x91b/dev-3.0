@@ -4,7 +4,7 @@ import type { Project, Dev3RepoConfig, ConfigSourceEntry } from "../shared/types
 import { DEV3_REPO_CONFIG_KEYS } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { projectSlug } from "./git";
+import * as git from "./git";
 
 const log = createLogger("repo-config");
 
@@ -19,7 +19,6 @@ const DEFAULTS: Dev3RepoConfig = {
 	cleanupScript: "",
 	clonePaths: [],
 	defaultBaseBranch: "main",
-	defaultCompareRefMode: "remote",
 	peerReviewEnabled: true,
 	sparseCheckoutEnabled: false,
 	sparseCheckoutPaths: [],
@@ -90,7 +89,7 @@ export async function saveRepoLocalConfig(projectPath: string, config: Dev3RepoC
 
 /** Path to app-level config for a project: ~/.dev3.0/data/<slug>/config.json */
 function appConfigPath(projectPath: string): string {
-	return `${DEV3_HOME}/data/${projectSlug(projectPath)}/config.json`;
+	return `${DEV3_HOME}/data/${git.projectSlug(projectPath)}/config.json`;
 }
 
 /** Load app-level config (~/.dev3.0/data/<slug>/config.json). Returns {} if missing. */
@@ -181,6 +180,22 @@ export async function resolveProjectConfig(project: Project, configPath?: string
 		const val = localConfig?.[key] ?? repoConfig?.[key] ?? appConfig?.[key] ?? (project as any)[key] ?? DEFAULTS[key];
 		if (val !== undefined) (resolved as any)[key] = val;
 	}
+
+	const config = {
+		...appConfig,
+		...repoConfig,
+		...localConfig,
+	};
+	if (config.defaultCompareRef !== undefined) {
+		resolved.defaultCompareRef = config.defaultCompareRef;
+	} else if (config.defaultCompareRefMode !== undefined) {
+		resolved.defaultCompareRef = config.defaultCompareRefMode === "local"
+			? resolved.defaultBaseBranch
+			: `origin/${resolved.defaultBaseBranch}`;
+	} else {
+		resolved.defaultCompareRef = await git.detectDefaultCompareRef(basePath, resolved.defaultBaseBranch);
+	}
+
 	return resolved;
 }
 
