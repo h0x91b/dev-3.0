@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, titleFromDescription, extractRepoName, getTaskTitle } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -2809,7 +2809,7 @@ export const handlers = {
 				const tasks = await data.loadTasks(project);
 				for (const task of tasks) {
 					taskMap.set(task.id.slice(0, 8), {
-						title: task.title,
+						title: getTaskTitle(task),
 						taskId: task.id,
 						projectId: project.id,
 					});

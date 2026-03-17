@@ -2922,6 +2922,46 @@ describe("handlers.listTmuxSessions", () => {
 		expect(names).toContain("dev3-xyz99999");
 		expect(names).not.toContain("dev3-dev-abc12345");
 	});
+
+	it("uses customTitle over auto-generated title when present", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "abc12345-full-uuid-here",
+			title: "Auto-generated title from description",
+			customTitle: "Short custom title",
+		});
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		mockSpawn.mockReturnValue({
+			stdout: "dev3-abc12345|/tmp/wt|1|1700000001",
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		const result = await handlers.listTmuxSessions();
+		expect(result).toHaveLength(1);
+		expect(result[0].taskTitle).toBe("Short custom title");
+	});
+
+	it("falls back to auto-generated title when customTitle is not set", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "abc12345-full-uuid-here",
+			title: "Auto-generated title",
+			customTitle: null,
+		});
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		mockSpawn.mockReturnValue({
+			stdout: "dev3-abc12345|/tmp/wt|1|1700000001",
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		const result = await handlers.listTmuxSessions();
+		expect(result).toHaveLength(1);
+		expect(result[0].taskTitle).toBe("Auto-generated title");
+	});
 });
 
 // ================================================================
