@@ -158,6 +158,7 @@ import * as agents from "../agents";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, saveSettings } from "../settings";
+import * as repoConfig from "../repo-config";
 import { Utils } from "electrobun/bun";
 import { existsSync } from "node:fs";
 
@@ -1470,6 +1471,32 @@ describe("handlers.spawnVariants", () => {
 		// Phase 2: background worktree creation runs asynchronously
 		await vi.waitFor(() => {
 			expect(git.createWorktree).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	it("uses resolved project config for automatic AI review when launching active variants", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const resolvedProject = makeProject({ autoReviewEnabled: true });
+		const sourceTask = makeTask({ status: "todo", seq: 5 });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValueOnce(resolvedProject);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(setupAgentHooks).toHaveBeenCalledWith("/tmp/vwt", expect.any(String), { stopTarget: "review-by-ai" });
 		});
 	});
 

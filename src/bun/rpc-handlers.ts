@@ -1748,6 +1748,7 @@ export const handlers = {
 		// Phase 2: Heavy I/O (worktree + CoW + PTY) runs in the background
 		if (needsWorktree) {
 			(async () => {
+				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
@@ -1755,7 +1756,7 @@ export const handlers = {
 						const variantBranchName = (isMultiVariant && srcBranch)
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
-						const wt = await git.createWorktree(project, task, task.existingBranch ?? undefined, variantBranchName);
+						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
 						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
@@ -1849,11 +1850,12 @@ export const handlers = {
 		// Phase 2: Heavy I/O in background
 		if (needsWorktree) {
 			(async () => {
+				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
 					try {
-						const wt = await git.createWorktree(project, task);
+						const wt = await git.createWorktree(resolvedProject, task);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
 						const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
