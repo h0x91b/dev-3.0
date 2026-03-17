@@ -280,6 +280,13 @@ describe("resolveProjectConfig", () => {
 		expect(detectDefaultCompareRef).toHaveBeenCalledWith(TEST_DIR, "main");
 	});
 
+	it("respects project-level defaultCompareRef when no file configs set it", async () => {
+		const project = makeProject({ defaultCompareRef: "origin/develop" });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.defaultCompareRef).toBe("origin/develop");
+		expect(detectDefaultCompareRef).not.toHaveBeenCalled();
+	});
+
 	it("uses repo config values over project values", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });

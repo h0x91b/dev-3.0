@@ -192,7 +192,8 @@ export async function resolveProjectConfig(project: Project, configPath?: string
 		resolved.defaultCompareRef = config.defaultCompareRefMode === "local"
 			? resolved.defaultBaseBranch
 			: `origin/${resolved.defaultBaseBranch}`;
-	} else {
+	} else if (resolved.defaultCompareRef === undefined) {
+		// Only auto-detect if no explicit value was set at any level (including project)
 		resolved.defaultCompareRef = await git.detectDefaultCompareRef(basePath, resolved.defaultBaseBranch);
 	}
 
