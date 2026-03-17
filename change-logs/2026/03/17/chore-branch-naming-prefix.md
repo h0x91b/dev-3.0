@@ -1,0 +1,1 @@
+Updated default branch naming convention to use project-prefixed types (e.g. `feat/dev3-`, `fix/dev3-`, `chore/dev-3`). Removed branch naming rules from AGENTS.md — they now live exclusively in the injected agent skill.
