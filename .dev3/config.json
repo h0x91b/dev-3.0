@@ -1,5 +1,5 @@
 {
-  "setupScript": "echo setup\nbun install",
+  "setupScript": "echo setup123\nbun install",
   "devScript": "bun install\nbun run dev",
   "clonePaths": [
     "node_modules",
@@ -13,6 +13,5 @@
       "configId": "claude-bypass-sonnet",
       "prompt": ""
     }
-  },
-  "portCount": 2
+  }
 }
