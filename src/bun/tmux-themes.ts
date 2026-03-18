@@ -151,15 +151,15 @@ set -ogqF @catppuccin_window_current_left_separator "#{@catppuccin_window_left_s
 set -ogqF @catppuccin_window_current_middle_separator "#{@catppuccin_window_middle_separator}"
 set -ogqF @catppuccin_window_current_right_separator "#{@catppuccin_window_right_separator}"
 
-# Window status — use -gF with direct @thm_* refs to avoid nested expansion issues
+# Window status — use -g (NOT -gF!) so #I and #T stay as render-time tokens
 set -gF window-status-activity-style "bg=#{@thm_lavender},fg=#{@thm_crust}"
 set -gF window-status-bell-style "bg=#{@thm_yellow},fg=#{@thm_crust}"
 
 # Inactive window: number on overlay_2, text on surface_0
-set -gF window-status-format "#[fg=#{@thm_crust},bg=#{@thm_overlay_2}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_0}] #T "
+set -g window-status-format "#[fg=#{@thm_crust},bg=#{@thm_overlay_2}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_0}] #T "
 
 # Active window: number on mauve, text on surface_1
-set -gF window-status-current-format "#[fg=#{@thm_crust},bg=#{@thm_mauve}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_1}] #T "
+set -g window-status-current-format "#[fg=#{@thm_crust},bg=#{@thm_mauve}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_1}] #T "
 
 # Mode style (copy mode highlighting)
 set -gF mode-style "bg=#{@thm_surface_0},bold"
