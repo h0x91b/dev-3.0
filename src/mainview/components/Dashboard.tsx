@@ -186,10 +186,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 												<button
 													onClick={(e) => {
 														e.stopPropagation();
-														try {
-															localStorage.setItem(`dev3-project-terminal-${project.id}`, "true");
-														} catch { /* ignore */ }
-														navigate({ screen: "project", projectId: project.id });
+														navigate({ screen: "project-terminal", projectId: project.id });
 													}}
 													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
 													title={t("projectTerminal.tooltip")}

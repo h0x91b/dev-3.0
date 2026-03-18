@@ -4,7 +4,6 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
 import TaskTerminal from "./TaskTerminal";
-import ProjectTerminal from "./ProjectTerminal";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
@@ -31,7 +30,6 @@ interface ProjectViewProps {
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
 	activeTaskId?: string;
-	showProjectTerminal: boolean;
 }
 
 function ProjectView({
@@ -43,7 +41,6 @@ function ProjectView({
 	bellCounts,
 	taskPorts,
 	activeTaskId,
-	showProjectTerminal,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -120,14 +117,6 @@ function ProjectView({
 					}
 					mode={sidebarMode}
 				/>
-			</div>
-		);
-	}
-
-	if (showProjectTerminal) {
-		return (
-			<div className="flex-1 min-h-0 flex flex-col">
-				<ProjectTerminal projectId={projectId} projectPath={project.path} />
 			</div>
 		);
 	}

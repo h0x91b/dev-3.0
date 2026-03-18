@@ -164,10 +164,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	function handleSessionClick(session: TmuxSessionInfo) {
 		if (session.isProjectTerminal && session.projectId) {
-			try {
-				localStorage.setItem(`dev3-project-terminal-${session.projectId}`, "true");
-			} catch { /* ignore */ }
-			navigate({ screen: "project", projectId: session.projectId });
+			navigate({ screen: "project-terminal", projectId: session.projectId });
 			setPopoverOpen(false);
 		} else if (session.taskId && session.projectId) {
 			navigate({ screen: "project", projectId: session.projectId, activeTaskId: session.taskId });
