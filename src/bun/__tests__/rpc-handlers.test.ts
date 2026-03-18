@@ -183,6 +183,7 @@ const {
 	stopPRDetectionPoller,
 	resolveBinaryPath,
 	launchTaskPty,
+	triggerColumnAgentIfNeeded,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -3902,5 +3903,125 @@ describe("setAgentBinaryPath", () => {
 		vi.mocked(existsSync).mockReturnValue(false);
 		await expect(handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/bad/path" }))
 			.rejects.toThrow("File not found");
+	});
+});
+
+// ---- triggerColumnAgentIfNeeded ----
+
+describe("triggerColumnAgentIfNeeded", () => {
+	function makeProcMock() {
+		return {
+			stdout: new Response("%1").body,
+			stderr: new Response("").body,
+			exited: Promise.resolve(0),
+		};
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockSpawn.mockReturnValue(makeProcMock());
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("") });
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValue({
+			command: "claude 'review prompt'",
+			agent: { id: "builtin-claude", name: "Claude", baseCommand: "claude", configurations: [], defaultConfigId: "" } as any,
+			config: undefined,
+			extraEnv: {},
+		});
+	});
+
+	it("uses DEFAULT_REVIEW_PROMPT when builtinColumnAgents has empty prompt", async () => {
+		const project = makeProject({
+			builtinColumnAgents: {
+				"review-by-ai": { agentId: "builtin-claude", configId: "claude-bypass-sonnet", prompt: "" },
+			},
+		});
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			"claude-bypass-sonnet",
+			expect.objectContaining({
+				taskDescription: expect.stringContaining("Review all changes on this branch"),
+			}),
+			expect.anything(),
+		);
+	});
+
+	it("uses DEFAULT_REVIEW_PROMPT when builtinColumnAgents is absent", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			"claude-bypass-sonnet",
+			expect.objectContaining({
+				taskDescription: expect.stringContaining("Review all changes on this branch"),
+			}),
+			expect.anything(),
+		);
+	});
+
+	it("uses custom prompt when provided", async () => {
+		const customPrompt = "Custom review: check for security issues only";
+		const project = makeProject({
+			builtinColumnAgents: {
+				"review-by-ai": { agentId: "builtin-claude", configId: "claude-bypass-sonnet", prompt: customPrompt },
+			},
+		});
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			"claude-bypass-sonnet",
+			expect.objectContaining({
+				taskDescription: customPrompt,
+			}),
+			expect.anything(),
+		);
+	});
+
+	it("defaults agentId and configId when config has empty values", async () => {
+		const project = makeProject({
+			builtinColumnAgents: {
+				"review-by-ai": { agentId: "", configId: "", prompt: "" },
+			},
+		});
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			"claude-bypass-sonnet",
+			expect.anything(),
+			expect.anything(),
+		);
+	});
+
+	it("skips when builtinColumnAgents exists but review-by-ai key is absent", async () => {
+		const project = makeProject({
+			builtinColumnAgents: {},
+		});
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
 	});
 });
