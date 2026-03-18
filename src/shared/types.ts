@@ -1009,6 +1009,10 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: PRInfo[];
 			};
+			setTmuxTheme: {
+				params: { theme: "dark" | "light" };
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

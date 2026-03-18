@@ -231,7 +231,7 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("does not call tmux set-environment when env is empty", async () => {
+		it("does not call tmux set-environment for user env when env is empty", async () => {
 			vi.useFakeTimers();
 			const id = track("task-env-empty");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
@@ -239,10 +239,28 @@ describe("pty-server", () => {
 
 			vi.advanceTimersByTime(300);
 
+			// DEV3_WORKTREE_ROOT is always set, but no user env vars should be set
 			const setEnvCalls = mockSpawn.mock.calls.filter(
-				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && !c[0].includes("DEV3_WORKTREE_ROOT"),
 			);
 			expect(setEnvCalls).toHaveLength(0);
+
+			vi.useRealTimers();
+		});
+
+		it("always sets DEV3_WORKTREE_ROOT in tmux session env", () => {
+			vi.useFakeTimers();
+			const id = track("task-env-root");
+			createSession(id, "proj-1", "/tmp/my-worktree", "bash", {}, "root-sock");
+			mockSpawn.mockClear();
+
+			vi.advanceTimersByTime(300);
+
+			const rootCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("DEV3_WORKTREE_ROOT"),
+			);
+			expect(rootCall).toBeDefined();
+			expect(rootCall![0]).toContain("/tmp/my-worktree");
 
 			vi.useRealTimers();
 		});
@@ -737,7 +755,7 @@ describe("pty-server", () => {
 			vi.advanceTimersByTime(200);
 
 			const envCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
 			);
 			expect(envCall).toBeDefined();
 			expect(envCall![0]).toContain("PATH");
@@ -866,149 +884,51 @@ describe("pty-server", () => {
 	// ------- TMUX_CONF_PATH -------
 
 	describe("TMUX_CONF_PATH", () => {
-		it("equals /tmp/dev3-tmux.conf", () => {
-			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux.conf");
+		it("defaults to /tmp/dev3-tmux-dark.conf", () => {
+			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux-dark.conf");
 		});
 
-		it("includes synchronized output (Sync) terminal features", async () => {
+		/** Helper: reimport pty-server with mocked fs and find the dark config content. */
+		async function reimportAndGetDarkConfig(): Promise<string> {
 			vi.resetModules();
-
 			const writeFileSyncMock = vi.fn();
-
 			vi.doMock("node:fs", async (importOriginal) => {
 				const actual = await importOriginal<typeof import("node:fs")>();
-				return {
-					...actual,
-					existsSync: vi.fn(() => true),
-					writeFileSync: writeFileSyncMock,
-				};
+				return { ...actual, mkdirSync: vi.fn(), existsSync: vi.fn(() => true), writeFileSync: writeFileSyncMock };
 			});
-
 			vi.doMock("../logger", () => ({
-				createLogger: () => ({
-					debug: vi.fn(),
-					info: vi.fn(),
-					warn: vi.fn(),
-					error: vi.fn(),
-				}),
+				createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 			}));
+			vi.doMock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
+			const mod = await import("../pty-server");
+			// Find the call that writes the dark config (TMUX_CONF_DARK_PATH)
+			const call = writeFileSyncMock.mock.calls.find(
+				(c: unknown[]) => typeof c[0] === "string" && c[0] === mod.TMUX_CONF_DARK_PATH,
+			);
+			return call?.[1] as string ?? "";
+		}
 
-			vi.doMock("../spawn", () => ({
-				spawn: vi.fn(),
-				spawnSync: vi.fn(),
-			}));
-
-			await import("../pty-server");
-
-			const writtenConfig = writeFileSyncMock.mock.calls[0]?.[1] as string;
-			expect(writtenConfig).toContain("xterm-256color:Sync");
-			expect(writtenConfig).toContain("tmux-256color:Sync");
+		it("includes synchronized output (Sync) terminal features", async () => {
+			const config = await reimportAndGetDarkConfig();
+			expect(config).toContain("xterm-256color:Sync");
+			expect(config).toContain("tmux-256color:Sync");
 		});
 
 		it("includes extended-keys and focus-events settings", async () => {
-			vi.resetModules();
-
-			const writeFileSyncMock = vi.fn();
-
-			vi.doMock("node:fs", async (importOriginal) => {
-				const actual = await importOriginal<typeof import("node:fs")>();
-				return {
-					...actual,
-					existsSync: vi.fn(() => true),
-					writeFileSync: writeFileSyncMock,
-				};
-			});
-
-			vi.doMock("../logger", () => ({
-				createLogger: () => ({
-					debug: vi.fn(),
-					info: vi.fn(),
-					warn: vi.fn(),
-					error: vi.fn(),
-				}),
-			}));
-
-			vi.doMock("../spawn", () => ({
-				spawn: vi.fn(),
-				spawnSync: vi.fn(),
-			}));
-
-			await import("../pty-server");
-
-			const writtenConfig = writeFileSyncMock.mock.calls[0]?.[1] as string;
-			expect(writtenConfig).toContain("extended-keys on");
-			expect(writtenConfig).toContain("focus-events on");
-			expect(writtenConfig).toContain("terminal-overrides");
+			const config = await reimportAndGetDarkConfig();
+			expect(config).toContain("extended-keys on");
+			expect(config).toContain("focus-events on");
+			expect(config).toContain("terminal-overrides");
 		});
 
 		it("sets history-limit to 250000", async () => {
-			vi.resetModules();
-
-			const writeFileSyncMock = vi.fn();
-
-			vi.doMock("node:fs", async (importOriginal) => {
-				const actual = await importOriginal<typeof import("node:fs")>();
-				return {
-					...actual,
-					existsSync: vi.fn(() => true),
-					writeFileSync: writeFileSyncMock,
-				};
-			});
-
-			vi.doMock("../logger", () => ({
-				createLogger: () => ({
-					debug: vi.fn(),
-					info: vi.fn(),
-					warn: vi.fn(),
-					error: vi.fn(),
-				}),
-			}));
-
-			vi.doMock("../spawn", () => ({
-				spawn: vi.fn(),
-				spawnSync: vi.fn(),
-			}));
-
-			await import("../pty-server");
-
-			const writtenConfig = writeFileSyncMock.mock.calls[0]?.[1] as string;
-			expect(writtenConfig).toContain("history-limit 250000");
+			const config = await reimportAndGetDarkConfig();
+			expect(config).toContain("history-limit 250000");
 		});
 
 		it("writes a backslash split binding with a literal double backslash", async () => {
-			vi.resetModules();
-
-			const writeFileSyncMock = vi.fn();
-
-			vi.doMock("node:fs", async (importOriginal) => {
-				const actual = await importOriginal<typeof import("node:fs")>();
-				return {
-					...actual,
-					existsSync: vi.fn(() => true),
-					writeFileSync: writeFileSyncMock,
-				};
-			});
-
-			vi.doMock("../logger", () => ({
-				createLogger: () => ({
-					debug: vi.fn(),
-					info: vi.fn(),
-					warn: vi.fn(),
-					error: vi.fn(),
-				}),
-			}));
-
-			vi.doMock("../spawn", () => ({
-				spawn: vi.fn(),
-				spawnSync: vi.fn(),
-			}));
-
-			const { TMUX_CONF_PATH: configPath } = await import("../pty-server");
-
-			expect(writeFileSyncMock).toHaveBeenCalledWith(
-				configPath,
-				expect.stringContaining(String.raw`bind \\ split-window -h -c "#{pane_current_path}"`),
-			);
+			const config = await reimportAndGetDarkConfig();
+			expect(config).toContain(String.raw`bind \\ split-window -h -c "#{pane_current_path}"`);
 		});
 	});
 });

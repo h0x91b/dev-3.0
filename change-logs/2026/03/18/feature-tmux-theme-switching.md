@@ -1,0 +1,3 @@
+Add tmux theme switching with Catppuccin palettes. Dark theme uses Catppuccin Mocha, light theme uses Catppuccin Latte. Switching the app theme now also updates all tmux sessions via source-file. The tmux config also sources system and user tmux.conf files on startup to preserve personal keybindings. Added double pane border lines styled with the theme's surface_2 color.
+
+Custom shell prompt for dev3 terminals: shows short worktree-relative paths (./src/bun instead of the full absolute path) and git branch in the prompt. Works with both zsh and bash via a ZDOTDIR wrapper that sources the user's own shell config first.

@@ -3578,4 +3578,9 @@ export const handlers = {
 		return empty;
 	},
 
+	async setTmuxTheme(params: { theme: "dark" | "light" }) {
+		log.info("→ setTmuxTheme", params);
+		pty.applyTmuxTheme(params.theme);
+	},
+
 };
