@@ -2,6 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
+import { writeShellInit } from "./shell-init";
 
 // --- Bundled tmux configuration -------------------------------------------
 // Two theme-specific configs are written at startup: dark and light.
@@ -87,6 +88,9 @@ setw -g monitor-bell on
 set -g allow-passthrough on
 set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
+
+# Shell prompt — redirect zsh to dev3 ZDOTDIR for short worktree paths
+set-environment -g ZDOTDIR /tmp/dev3-shell
 `;
 
 // Status bar setup — references Catppuccin status modules built by the plugin
@@ -111,8 +115,9 @@ function buildThemeConfig(flavor: "mocha" | "latte"): string {
 	].join("\n");
 }
 
-// Write Catppuccin plugin files + both themed configs at startup
+// Write Catppuccin plugin files + both themed configs + shell init at startup
 writeCatppuccinPlugin();
+writeShellInit();
 writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha"));
 writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte"));
 
@@ -598,6 +603,8 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	setTimeout(() => {
 		try {
 			configureTmux(tmuxSessionName, session.tmuxSocket);
+			// Set DEV3_WORKTREE_ROOT so the shell prompt shows short paths
+			spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd));
 			const envKeys = Object.keys(session.env);
 			for (const [key, value] of Object.entries(session.env)) {
 				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));

@@ -231,7 +231,7 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("does not call tmux set-environment when env is empty", async () => {
+		it("does not call tmux set-environment for user env when env is empty", async () => {
 			vi.useFakeTimers();
 			const id = track("task-env-empty");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
@@ -239,10 +239,28 @@ describe("pty-server", () => {
 
 			vi.advanceTimersByTime(300);
 
+			// DEV3_WORKTREE_ROOT is always set, but no user env vars should be set
 			const setEnvCalls = mockSpawn.mock.calls.filter(
-				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && !c[0].includes("DEV3_WORKTREE_ROOT"),
 			);
 			expect(setEnvCalls).toHaveLength(0);
+
+			vi.useRealTimers();
+		});
+
+		it("always sets DEV3_WORKTREE_ROOT in tmux session env", () => {
+			vi.useFakeTimers();
+			const id = track("task-env-root");
+			createSession(id, "proj-1", "/tmp/my-worktree", "bash", {}, "root-sock");
+			mockSpawn.mockClear();
+
+			vi.advanceTimersByTime(300);
+
+			const rootCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("DEV3_WORKTREE_ROOT"),
+			);
+			expect(rootCall).toBeDefined();
+			expect(rootCall![0]).toContain("/tmp/my-worktree");
 
 			vi.useRealTimers();
 		});
@@ -737,7 +755,7 @@ describe("pty-server", () => {
 			vi.advanceTimersByTime(200);
 
 			const envCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
 			);
 			expect(envCall).toBeDefined();
 			expect(envCall![0]).toContain("PATH");
