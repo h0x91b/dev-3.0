@@ -1094,10 +1094,10 @@ export async function triggerColumnAgentIfNeeded(
 			return;
 		}
 		const config = resolved.builtinColumnAgents?.["review-by-ai"];
-		agentConfig = config ?? {
-			agentId: "builtin-claude",
-			configId: "claude-bypass-sonnet",
-			prompt: DEFAULT_REVIEW_PROMPT,
+		agentConfig = {
+			agentId: config?.agentId || "builtin-claude",
+			configId: config?.configId || "claude-bypass-sonnet",
+			prompt: config?.prompt || DEFAULT_REVIEW_PROMPT,
 		};
 		paneTitle = "AI Review";
 		// After successful exit, move task to review-by-user (only if still in review-by-ai)
