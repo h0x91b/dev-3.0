@@ -72,7 +72,7 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
     elif [[ "$PWD" == "$DEV3_WORKTREE_ROOT/"* ]]; then
       echo -n "./\${PWD#$DEV3_WORKTREE_ROOT/}"
     else
-      echo -n "\\w"
+      echo -n "\${PWD/#$HOME/~}"
     fi
   }
 
