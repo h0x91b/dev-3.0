@@ -1,18 +1,21 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
-import { CATPPUCCIN_MOCHA, CATPPUCCIN_LATTE } from "./tmux-themes";
+import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
 
 // --- Bundled tmux configuration -------------------------------------------
 // Two theme-specific configs are written at startup: dark and light.
-// The active one is source-filed into tmux when the theme changes.
+// Each sets @catppuccin_flavor, sources the Catppuccin plugin for styling,
+// then applies our functional settings (keybindings, scrollback, etc.).
 
 export const TMUX_CONF_DARK_PATH = "/tmp/dev3-tmux-dark.conf";
 export const TMUX_CONF_LIGHT_PATH = "/tmp/dev3-tmux-light.conf";
 /** Path currently loaded — kept for configureTmux() re-source. */
 export let TMUX_CONF_PATH = TMUX_CONF_DARK_PATH;
 
-const TMUX_CONFIG_BASE = String.raw`# Source system and user tmux configs first, so personal keybindings
+// Shared functional settings (not theme-related)
+const TMUX_CONFIG_FUNCTIONAL = String.raw`
+# Source system and user tmux configs first, so personal keybindings
 # and preferences are preserved. Our settings below override as needed.
 if-shell "test -f /etc/tmux.conf" "source-file /etc/tmux.conf"
 if-shell "test -f ~/.tmux.conf" "source-file ~/.tmux.conf"
@@ -66,25 +69,8 @@ bind -n M-Right select-pane -R
 bind -n M-Up select-pane -U
 bind -n M-Down select-pane -D
 
-# Pane borders
+# Pane border style
 set -g pane-border-lines double
-set -gF pane-border-style 'fg=#{@thm_surface_1}'
-set -gF pane-active-border-style 'fg=#{@thm_lavender}'
-
-# Status bar — themed with Catppuccin colors
-set -gF status-style 'bg=#{@thm_mantle},fg=#{@thm_fg}'
-set -gF status-left-style 'bg=#{@thm_blue},fg=#{@thm_crust},bold'
-set -gF message-style 'bg=#{@thm_surface_0},fg=#{@thm_fg}'
-set -gF message-command-style 'bg=#{@thm_surface_0},fg=#{@thm_fg}'
-set -gF mode-style 'bg=#{@thm_surface_0},fg=#{@thm_fg}'
-
-# Window status
-set -gF window-status-style 'bg=#{@thm_mantle},fg=#{@thm_subtext_1}'
-set -gF window-status-current-style 'bg=#{@thm_surface_0},fg=#{@thm_lavender},bold'
-set -gF window-status-activity-style 'bg=#{@thm_mantle},fg=#{@thm_peach}'
-
-set -g status-right "#(ps -t #{pane_tty} -o pid=,comm= --sort=-start_time | head -1) | #(cd #{pane_current_path}; git branch --show-current 2>/dev/null || echo '-') | ^b+| split ^b+- hsplit ^b+z zoom"
-set -g status-right-length 150
 
 # Clipboard support
 set -s set-clipboard on
@@ -103,9 +89,30 @@ set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
 `;
 
-// Write both themed configs at startup
-writeFileSync(TMUX_CONF_DARK_PATH, CATPPUCCIN_MOCHA + "\n" + TMUX_CONFIG_BASE);
-writeFileSync(TMUX_CONF_LIGHT_PATH, CATPPUCCIN_LATTE + "\n" + TMUX_CONFIG_BASE);
+// Status bar config — uses Catppuccin status modules
+const TMUX_STATUS_BAR = `
+# Status bar — Catppuccin modules
+set -g status-right-length 100
+set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"
+set -g status-left ""
+`;
+
+function buildThemeConfig(flavor: "mocha" | "latte"): string {
+	const pluginDir = CATPPUCCIN_PLUGIN_DIR;
+	return [
+		`# dev3 tmux config — Catppuccin ${flavor}`,
+		`set -g @catppuccin_flavor "${flavor}"`,
+		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
+		`source "${pluginDir}/catppuccin_tmux.conf"`,
+		TMUX_CONFIG_FUNCTIONAL,
+		TMUX_STATUS_BAR,
+	].join("\n");
+}
+
+// Write Catppuccin plugin files + both themed configs at startup
+writeCatppuccinPlugin();
+writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha"));
+writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte"));
 
 /**
  * Apply a tmux theme (dark/light) to all active dev3 tmux sessions.
