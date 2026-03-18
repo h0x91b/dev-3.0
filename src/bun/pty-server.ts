@@ -466,9 +466,11 @@ function setupProjectLayout(session: PtySession): void {
 		// Create 3 more panes (4 total), then apply tiled layout for 2×2 grid.
 		// We always split the active pane — no pane-index arithmetic needed,
 		// so pane-base-index setting doesn't matter.
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s));
+		// -c sets the working directory — without it, new panes inherit the
+		// tmux server's start dir (e.g. /Applications/dev-3.0.app/Contents/MacOS/).
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd));
+		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd));
 		// tiled layout arranges 4 panes as a 2×2 grid automatically
 		spawnSync(tmuxArgs(sock, "select-layout", "-t", s, "tiled"));
 		// Return focus to pane 1 (base-index 1 in tmux config)

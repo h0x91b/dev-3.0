@@ -861,6 +861,47 @@ describe("pty-server", () => {
 			expect(killCall![0]).toContain("dev3-pt-cccccccc");
 		});
 
+		it("creates split panes with correct cwd (-c flag)", () => {
+			vi.useFakeTimers();
+			const key = track("project-eeeeeeee-1111-2222-3333-444444444444");
+			// Simulate single-pane session (freshly created)
+			mockSpawnSync.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("list-panes")) {
+					return {
+						exitCode: 0,
+						stdout: new TextEncoder().encode("0: [200x50]\n"),
+					} as any;
+				}
+				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
+			});
+
+			createSession(key, "eeeeeeee", "/tmp/my-project-root", "bash", {}, "dev3", "project");
+			mockSpawnSync.mockClear();
+			mockSpawnSync.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("list-panes")) {
+					return {
+						exitCode: 0,
+						stdout: new TextEncoder().encode("0: [200x50]\n"),
+					} as any;
+				}
+				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
+			});
+
+			vi.advanceTimersByTime(300);
+
+			// All three split-window calls must include -c with the project root
+			const splitCalls = mockSpawnSync.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("split-window"),
+			);
+			expect(splitCalls).toHaveLength(3);
+			for (const call of splitCalls) {
+				expect(call[0]).toContain("-c");
+				expect(call[0]).toContain("/tmp/my-project-root");
+			}
+
+			vi.useRealTimers();
+		});
+
 		it("capturePane works for project sessions", () => {
 			const key = track("project-dddddddd-1111-2222-3333-444444444444");
 			createSession(key, "dddddddd", "/tmp/root", "bash", {}, "dev3", "project");
