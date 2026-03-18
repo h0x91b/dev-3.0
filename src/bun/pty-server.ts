@@ -68,9 +68,21 @@ bind -n M-Down select-pane -D
 
 # Pane borders
 set -g pane-border-lines double
-set -gF pane-border-style 'fg=#{@thm_surface_2}'
+set -gF pane-border-style 'fg=#{@thm_surface_1}'
+set -gF pane-active-border-style 'fg=#{@thm_lavender}'
 
-# Status bar
+# Status bar — themed with Catppuccin colors
+set -gF status-style 'bg=#{@thm_mantle},fg=#{@thm_fg}'
+set -gF status-left-style 'bg=#{@thm_blue},fg=#{@thm_crust},bold'
+set -gF message-style 'bg=#{@thm_surface_0},fg=#{@thm_fg}'
+set -gF message-command-style 'bg=#{@thm_surface_0},fg=#{@thm_fg}'
+set -gF mode-style 'bg=#{@thm_surface_0},fg=#{@thm_fg}'
+
+# Window status
+set -gF window-status-style 'bg=#{@thm_mantle},fg=#{@thm_subtext_1}'
+set -gF window-status-current-style 'bg=#{@thm_surface_0},fg=#{@thm_lavender},bold'
+set -gF window-status-activity-style 'bg=#{@thm_mantle},fg=#{@thm_peach}'
+
 set -g status-right "#(ps -t #{pane_tty} -o pid=,comm= --sort=-start_time | head -1) | #(cd #{pane_current_path}; git branch --show-current 2>/dev/null || echo '-') | ^b+| split ^b+- hsplit ^b+z zoom"
 set -g status-right-length 150
 
