@@ -102,6 +102,8 @@ function buildThemeConfig(flavor: "mocha" | "latte"): string {
 	return [
 		`# dev3 tmux config — Catppuccin ${flavor}`,
 		`set -g @catppuccin_flavor "${flavor}"`,
+		// Source palette DIRECTLY (source -F with #{d:current_file} is unreliable)
+		`source "${pluginDir}/themes/catppuccin_${flavor}_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
 		TMUX_CONFIG_FUNCTIONAL,
