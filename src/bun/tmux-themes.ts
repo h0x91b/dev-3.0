@@ -117,123 +117,60 @@ set -ogq @catppuccin_status_connect_separator "yes"
 set -ogq @catppuccin_status_module_text_bg "#{?@catppuccin_status_module_bg_color,#{E:@catppuccin_status_module_bg_color},#{@thm_surface_0}}"
 `;
 
-const CATPPUCCIN_MAIN = `# Catppuccin tmux main config
+const CATPPUCCIN_MAIN = `# Catppuccin tmux main config — %if blocks removed for reliability
 source -F "#{d:current_file}/themes/catppuccin_#{@catppuccin_flavor}_tmux.conf"
 
-%if "#{==:#{@catppuccin_status_background},default}"
-  set -gF @_ctp_status_bg "#{@thm_mantle}"
-  set -gF status-style "bg=#{@_ctp_status_bg},fg=#{@thm_fg}"
-  %hidden CTP_MESSAGE_BACKGROUND="#{@thm_overlay_0}"
-%elif "#{==:#{@catppuccin_status_background},none}"
-  set -g status-style "default"
-  set -g @_ctp_status_bg "none"
-  %hidden CTP_MESSAGE_BACKGROUND="default"
-%else
-  set -gF status-style "bg=#{E:@catppuccin_status_background},fg=#{@thm_fg}"
-  set -gF @_ctp_status_bg "#{E:@catppuccin_status_background}"
-  %hidden CTP_MESSAGE_BACKGROUND="#{E:@catppuccin_status_background}"
-%endif
+# Status bar background
+set -gF @_ctp_status_bg "#{@thm_mantle}"
+set -gF status-style "bg=#{@thm_mantle},fg=#{@thm_fg}"
 
+# Status modules
 source -F "#{d:current_file}/status/application.conf"
-source -F "#{d:current_file}/status/battery.conf"
-source -F "#{d:current_file}/status/clima.conf"
-source -F "#{d:current_file}/status/cpu.conf"
-source -F "#{d:current_file}/status/date_time.conf"
-source -F "#{d:current_file}/status/directory.conf"
-source -F "#{d:current_file}/status/gitmux.conf"
-source -F "#{d:current_file}/status/host.conf"
-source -F "#{d:current_file}/status/kube.conf"
-source -F "#{d:current_file}/status/load.conf"
-source -F "#{d:current_file}/status/pomodoro_plus.conf"
 source -F "#{d:current_file}/status/session.conf"
-source -F "#{d:current_file}/status/uptime.conf"
-source -F "#{d:current_file}/status/user.conf"
-source -F "#{d:current_file}/status/weather.conf"
 
 # Messages
-set -gF message-style "fg=#{@thm_teal},bg=$CTP_MESSAGE_BACKGROUND,align=centre"
-set -gF message-command-style "fg=#{@thm_teal},bg=$CTP_MESSAGE_BACKGROUND,align=centre"
+set -gF message-style "fg=#{@thm_teal},bg=#{@thm_overlay_0},align=centre"
+set -gF message-command-style "fg=#{@thm_teal},bg=#{@thm_overlay_0},align=centre"
 
-# Menu (tmux 3.4+)
-%if "#{>=:#{version},3.4}"
-  set -gF menu-selected-style "#{E:@catppuccin_menu_selected_style}"
-%endif
+# Menu
+set -gF menu-selected-style "#{E:@catppuccin_menu_selected_style}"
 
 # Panes
 set -wgF pane-active-border-style "#{E:@catppuccin_pane_active_border_style}"
 set -wgF pane-border-style "#{E:@catppuccin_pane_border_style}"
 
-# Popups (tmux 3.4+)
-%if "#{>=:#{version},3.4}"
-  set -gF popup-style "bg=#{@thm_bg},fg=#{@thm_fg}"
-  set -gF popup-border-style "fg=#{@thm_surface_1}"
-%endif
+# Popups
+set -gF popup-style "bg=#{@thm_bg},fg=#{@thm_fg}"
+set -gF popup-border-style "fg=#{@thm_surface_1}"
 
-%if "#{==:#{@catppuccin_window_status_style},basic}"
-  set -gq @catppuccin_window_left_separator " "
-  set -gq @catppuccin_window_middle_separator " "
-  set -gq @catppuccin_window_right_separator " "
-%elif "#{==:#{@catppuccin_window_status_style},rounded}"
-  set -gq @catppuccin_window_left_separator "#[fg=#{@_ctp_status_bg},reverse]#[none]"
-  set -gq @catppuccin_window_middle_separator " "
-  set -gq @catppuccin_window_right_separator "#[fg=#{@_ctp_status_bg},reverse]#[none]"
-%elif "#{==:#{@catppuccin_window_status_style},slanted}"
-  set -gq @catppuccin_window_left_separator "#[fg=#{@_ctp_status_bg},reverse]#[none]"
-  %if "#{==:#{@catppuccin_window_number_position},left}"
-    set -gq @catppuccin_window_middle_separator "#[fg=#{@catppuccin_window_number_color},bg=#{@catppuccin_window_text_color}]"
-    set -gq @catppuccin_window_current_middle_separator "#[fg=#{@catppuccin_window_current_number_color},bg=#{@catppuccin_window_current_text_color}]"
-  %else
-    set -gq @catppuccin_window_middle_separator " #[fg=#{@catppuccin_window_number_color},bg=#{@catppuccin_window_text_color}]"
-    set -gq @catppuccin_window_current_middle_separator " #[fg=#{@catppuccin_window_current_number_color},bg=#{@catppuccin_window_current_text_color}]"
-  %endif
-  set -gq @catppuccin_window_right_separator "#[fg=#{@_ctp_status_bg},reverse]█#[none]"
-%endif
-
+# Window separators (basic style — just spaces)
+set -gq @catppuccin_window_left_separator " "
+set -gq @catppuccin_window_middle_separator " "
+set -gq @catppuccin_window_right_separator " "
 set -ogqF @catppuccin_window_current_left_separator "#{@catppuccin_window_left_separator}"
 set -ogqF @catppuccin_window_current_middle_separator "#{@catppuccin_window_middle_separator}"
 set -ogqF @catppuccin_window_current_right_separator "#{@catppuccin_window_right_separator}"
 
-# Window status
-%if "#{!=:#{@catppuccin_window_status_style},none}"
-  set -gF window-status-activity-style "bg=#{@thm_lavender},fg=#{@thm_crust}"
-  set -gF window-status-bell-style "bg=#{@thm_yellow},fg=#{@thm_crust}"
+# Window status (flags=none, number_position=left)
+set -gF window-status-activity-style "bg=#{@thm_lavender},fg=#{@thm_crust}"
+set -gF window-status-bell-style "bg=#{@thm_yellow},fg=#{@thm_crust}"
+set -gq @_ctp_w_flags ""
 
-  %if "#{==:#{@catppuccin_window_flags},icon}"
-    set -gqF @_ctp_w_flags "#{E:@catppuccin_window_flags_icon_format}"
-  %elif "#{==:#{@catppuccin_window_flags},text}"
-    set -gq @_ctp_w_flags "#F"
-  %else
-    set -gq @_ctp_w_flags ""
-  %endif
+set -g @_ctp_w_number_style "#[fg=#{@thm_crust},bg=#{@catppuccin_window_number_color}]"
+set -g @_ctp_w_text_style "#[fg=#{@thm_fg},bg=#{@catppuccin_window_text_color}]"
+set -gF window-status-format "#{E:@_ctp_w_number_style}#{E:@catppuccin_window_left_separator}#{@catppuccin_window_number}"
+set -agF window-status-format "#{E:@catppuccin_window_middle_separator}"
+set -agF window-status-format "#{E:@_ctp_w_text_style}#{@catppuccin_window_text}#{@_ctp_w_flags}#{E:@catppuccin_window_right_separator}"
 
-  set -g @_ctp_w_number_style "#[fg=#{@thm_crust},bg=#{@catppuccin_window_number_color}]"
-  set -g @_ctp_w_text_style "#[fg=#{@thm_fg},bg=#{@catppuccin_window_text_color}]"
-  %if "#{==:#{@catppuccin_window_number_position},left}"
-    set -gF window-status-format "#{E:@_ctp_w_number_style}#{E:@catppuccin_window_left_separator}#{@catppuccin_window_number}"
-    set -agF window-status-format "#{E:@catppuccin_window_middle_separator}"
-    set -agF window-status-format "#{E:@_ctp_w_text_style}#{@catppuccin_window_text}#{@_ctp_w_flags}#{E:@catppuccin_window_right_separator}"
-  %else
-    set -gF window-status-format "#{E:@_ctp_w_text_style}#{E:@catppuccin_window_left_separator}#{E:@_ctp_w_text_style}#{@catppuccin_window_text}#{@_ctp_w_flags}"
-    set -agF window-status-format "#{E:@catppuccin_window_middle_separator}"
-    set -agF window-status-format "#{E:@_ctp_w_number_style} #{@catppuccin_window_number}#{E:@catppuccin_window_right_separator}"
-  %endif
+set -g @_ctp_w_number_style "#[fg=#{@thm_crust},bg=#{@catppuccin_window_current_number_color}]"
+set -g @_ctp_w_text_style "#[fg=#{@thm_fg},bg=#{@catppuccin_window_current_text_color}]"
+set -gF window-status-current-format "#{E:@_ctp_w_number_style}#{E:@catppuccin_window_current_left_separator}#{@catppuccin_window_current_number}"
+set -agF window-status-current-format "#{E:@catppuccin_window_current_middle_separator}"
+set -agF window-status-current-format "#{E:@_ctp_w_text_style}#{@catppuccin_window_current_text}#{@_ctp_w_flags}#{E:@catppuccin_window_current_right_separator}"
 
-  set -g @_ctp_w_number_style "#[fg=#{@thm_crust},bg=#{@catppuccin_window_current_number_color}]"
-  set -g @_ctp_w_text_style "#[fg=#{@thm_fg},bg=#{@catppuccin_window_current_text_color}]"
-  %if "#{==:#{@catppuccin_window_number_position},left}"
-    set -gF window-status-current-format "#{E:@_ctp_w_number_style}#{E:@catppuccin_window_current_left_separator}#{@catppuccin_window_current_number}"
-    set -agF window-status-current-format "#{E:@catppuccin_window_current_middle_separator}"
-    set -agF window-status-current-format "#{E:@_ctp_w_text_style}#{@catppuccin_window_current_text}#{@_ctp_w_flags}#{E:@catppuccin_window_current_right_separator}"
-  %else
-    set -gF window-status-current-format "#{E:@_ctp_w_text_style}#{E:@catppuccin_window_current_left_separator}#{E:@_ctp_w_text_style}#{@catppuccin_window_current_text}#{@_ctp_w_flags}"
-    set -agF window-status-current-format "#{E:@catppuccin_window_current_middle_separator}"
-    set -agF window-status-current-format "#{E:@_ctp_w_number_style} #{@catppuccin_window_current_number}#{E:@catppuccin_window_current_right_separator}"
-  %endif
-
-  set -ug @_ctp_w_number_style
-  set -ug @_ctp_w_text_style
-  set -ug @_ctp_w_flags
-%endif
+set -ug @_ctp_w_number_style
+set -ug @_ctp_w_text_style
+set -ug @_ctp_w_flags
 
 # Mode style (copy mode highlighting)
 set -gF mode-style "bg=#{@thm_surface_0},bold"
@@ -241,20 +178,15 @@ set -gF clock-mode-colour "#{@thm_blue}"
 `;
 
 const STATUS_MODULE_UTIL = `# vim:set ft=tmux:
-set -gqF @_ctp_connect_style "#{?#{==:#{@catppuccin_status_connect_separator},yes},,#[bg=default]}"
+# connect_separator=yes → no bg=default gap between modules
+set -gqF @_ctp_connect_style ""
 
 set -ogqF "@catppuccin_status_\${MODULE_NAME}_icon_fg" "#{E:@thm_crust}"
 set -ogqF "@catppuccin_status_\${MODULE_NAME}_text_fg" "#{E:@thm_fg}"
 
-%if "#{==:#{@catppuccin_status_\${MODULE_NAME}_icon_bg},}"
-  set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_bg" "#{@catppuccin_\${MODULE_NAME}_color}"
-%endif
-
-%if "#{==:#{@catppuccin_status_\${MODULE_NAME}_text_bg},}"
-  set -gqF @_ctp_module_text_bg "#{E:@catppuccin_status_module_text_bg}"
-%else
-  set -gqF @_ctp_module_text_bg "#{@catppuccin_status_\${MODULE_NAME}_text_bg}"
-%endif
+# icon_bg defaults to module color, text_bg defaults to surface_0
+set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_bg" "#{@catppuccin_\${MODULE_NAME}_color}"
+set -gqF @_ctp_module_text_bg "#{E:@catppuccin_status_module_text_bg}"
 
 set -gF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@_ctp_connect_style}#{@catppuccin_status_left_separator}"
 set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_fg},bg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@catppuccin_\${MODULE_NAME}_icon}"
@@ -283,9 +215,6 @@ set -ogq "@catppuccin_\${MODULE_NAME}_text" " #S"
 source -F "#{d:current_file}/../utils/status_module.conf"
 `;
 
-// Empty stubs for unused modules — must exist because catppuccin_tmux.conf sources them all.
-const EMPTY_STUB = "# stub\n";
-
 // ── Write plugin to /tmp ────────────────────────────────────────────
 
 export const CATPPUCCIN_PLUGIN_DIR = "/tmp/dev3-catppuccin";
@@ -304,17 +233,8 @@ export function writeCatppuccinPlugin(): void {
 	writeFileSync(`${dir}/themes/catppuccin_mocha_tmux.conf`, CATPPUCCIN_MOCHA);
 	writeFileSync(`${dir}/themes/catppuccin_latte_tmux.conf`, CATPPUCCIN_LATTE);
 
-	// Status modules
+	// Status modules (only application + session are used)
 	writeFileSync(`${dir}/status/application.conf`, STATUS_APPLICATION);
 	writeFileSync(`${dir}/status/session.conf`, STATUS_SESSION);
 	writeFileSync(`${dir}/utils/status_module.conf`, STATUS_MODULE_UTIL);
-
-	// Empty stubs for all other modules referenced by catppuccin_tmux.conf
-	for (const name of [
-		"battery", "clima", "cpu", "date_time", "directory",
-		"gitmux", "host", "kube", "load", "pomodoro_plus",
-		"uptime", "user", "weather",
-	]) {
-		writeFileSync(`${dir}/status/${name}.conf`, EMPTY_STUB);
-	}
 }

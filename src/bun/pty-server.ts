@@ -89,19 +89,8 @@ set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
 `;
 
-// Explicit theme styles — applied AFTER the plugin to guarantee correct
-// colors even if the plugin's %if conditionals don't execute properly.
-const TMUX_THEME_OVERRIDES = `
-# Ensure themed status bar background (plugin %if may not match)
-set -gF status-style "bg=#{@thm_mantle},fg=#{@thm_fg}"
-set -gF message-style "fg=#{@thm_teal},bg=#{@thm_overlay_0},align=centre"
-set -gF message-command-style "fg=#{@thm_teal},bg=#{@thm_overlay_0},align=centre"
-set -gF mode-style "bg=#{@thm_surface_0},bold"
-
-# Pane borders
-set -wgF pane-border-style "fg=#{@thm_overlay_0}"
-set -wgF pane-active-border-style "fg=#{@thm_lavender}"
-
+// Status bar setup — references Catppuccin status modules built by the plugin
+const TMUX_STATUS_BAR = `
 # Status bar — Catppuccin modules
 set -g status-right-length 100
 set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_session}"
@@ -116,7 +105,7 @@ function buildThemeConfig(flavor: "mocha" | "latte"): string {
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
 		TMUX_CONFIG_FUNCTIONAL,
-		TMUX_THEME_OVERRIDES,
+		TMUX_STATUS_BAR,
 	].join("\n");
 }
 
