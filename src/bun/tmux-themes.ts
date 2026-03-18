@@ -75,7 +75,7 @@ set -ogq @catppuccin_menu_selected_style "fg=#{@thm_fg},bold,bg=#{@thm_overlay_0
 # Pane styling
 set -ogq @catppuccin_pane_status_enabled "no"
 set -ogq @catppuccin_pane_border_status "off"
-set -ogq @catppuccin_pane_border_style "fg=#{@thm_overlay_0}"
+set -ogqF @catppuccin_pane_border_style "fg=#{@thm_overlay_0}"
 set -ogq @catppuccin_pane_active_border_style "##{?pane_in_mode,fg=#{@thm_lavender},##{?pane_synchronized,fg=#{@thm_mauve},fg=#{@thm_lavender}}}"
 set -ogq @catppuccin_pane_left_separator "█"
 set -ogq @catppuccin_pane_middle_separator "█"
@@ -114,7 +114,7 @@ set -ogq @catppuccin_status_left_separator ""
 set -ogq @catppuccin_status_middle_separator ""
 set -ogq @catppuccin_status_right_separator " "
 set -ogq @catppuccin_status_connect_separator "yes"
-set -ogq @catppuccin_status_module_text_bg "#{?@catppuccin_status_module_bg_color,#{E:@catppuccin_status_module_bg_color},#{@thm_surface_0}}"
+set -ogqF @catppuccin_status_module_text_bg "#{@thm_surface_0}"
 `;
 
 const CATPPUCCIN_MAIN = `# Catppuccin tmux main config — %if blocks removed for reliability
@@ -151,26 +151,15 @@ set -ogqF @catppuccin_window_current_left_separator "#{@catppuccin_window_left_s
 set -ogqF @catppuccin_window_current_middle_separator "#{@catppuccin_window_middle_separator}"
 set -ogqF @catppuccin_window_current_right_separator "#{@catppuccin_window_right_separator}"
 
-# Window status (flags=none, number_position=left)
+# Window status — use -gF with direct @thm_* refs to avoid nested expansion issues
 set -gF window-status-activity-style "bg=#{@thm_lavender},fg=#{@thm_crust}"
 set -gF window-status-bell-style "bg=#{@thm_yellow},fg=#{@thm_crust}"
-set -gq @_ctp_w_flags ""
 
-set -g @_ctp_w_number_style "#[fg=#{@thm_crust},bg=#{@catppuccin_window_number_color}]"
-set -g @_ctp_w_text_style "#[fg=#{@thm_fg},bg=#{@catppuccin_window_text_color}]"
-set -gF window-status-format "#{E:@_ctp_w_number_style}#{E:@catppuccin_window_left_separator}#{@catppuccin_window_number}"
-set -agF window-status-format "#{E:@catppuccin_window_middle_separator}"
-set -agF window-status-format "#{E:@_ctp_w_text_style}#{@catppuccin_window_text}#{@_ctp_w_flags}#{E:@catppuccin_window_right_separator}"
+# Inactive window: number on overlay_2, text on surface_0
+set -gF window-status-format "#[fg=#{@thm_crust},bg=#{@thm_overlay_2}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_0}] #T "
 
-set -g @_ctp_w_number_style "#[fg=#{@thm_crust},bg=#{@catppuccin_window_current_number_color}]"
-set -g @_ctp_w_text_style "#[fg=#{@thm_fg},bg=#{@catppuccin_window_current_text_color}]"
-set -gF window-status-current-format "#{E:@_ctp_w_number_style}#{E:@catppuccin_window_current_left_separator}#{@catppuccin_window_current_number}"
-set -agF window-status-current-format "#{E:@catppuccin_window_current_middle_separator}"
-set -agF window-status-current-format "#{E:@_ctp_w_text_style}#{@catppuccin_window_current_text}#{@_ctp_w_flags}#{E:@catppuccin_window_current_right_separator}"
-
-set -ug @_ctp_w_number_style
-set -ug @_ctp_w_text_style
-set -ug @_ctp_w_flags
+# Active window: number on mauve, text on surface_1
+set -gF window-status-current-format "#[fg=#{@thm_crust},bg=#{@thm_mauve}] #I #[fg=#{@thm_fg},bg=#{@thm_surface_1}] #T "
 
 # Mode style (copy mode highlighting)
 set -gF mode-style "bg=#{@thm_surface_0},bold"
@@ -178,24 +167,19 @@ set -gF clock-mode-colour "#{@thm_blue}"
 `;
 
 const STATUS_MODULE_UTIL = `# vim:set ft=tmux:
-# connect_separator=yes → no bg=default gap between modules
-set -gqF @_ctp_connect_style ""
+# Pre-resolve icon_bg from module color (uses #{E:} to expand the format ref)
+set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_fg" "#{E:@thm_crust}"
+set -gqF "@catppuccin_status_\${MODULE_NAME}_text_fg" "#{E:@thm_fg}"
+set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_bg" "#{E:@catppuccin_\${MODULE_NAME}_color}"
+set -gqF @_ctp_module_text_bg "#{E:@thm_surface_0}"
 
-set -ogqF "@catppuccin_status_\${MODULE_NAME}_icon_fg" "#{E:@thm_crust}"
-set -ogqF "@catppuccin_status_\${MODULE_NAME}_text_fg" "#{E:@thm_fg}"
-
-# icon_bg defaults to module color, text_bg defaults to surface_0
-set -gqF "@catppuccin_status_\${MODULE_NAME}_icon_bg" "#{@catppuccin_\${MODULE_NAME}_color}"
-set -gqF @_ctp_module_text_bg "#{E:@catppuccin_status_module_text_bg}"
-
-set -gF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@_ctp_connect_style}#{@catppuccin_status_left_separator}"
+set -gF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@catppuccin_status_left_separator}"
 set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_icon_fg},bg=#{@catppuccin_status_\${MODULE_NAME}_icon_bg}]#{@catppuccin_\${MODULE_NAME}_icon}"
 set -agF "@catppuccin_status_\${MODULE_NAME}" "#{@catppuccin_status_middle_separator}"
 set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@catppuccin_status_\${MODULE_NAME}_text_fg},bg=#{@_ctp_module_text_bg}]"
 set -ag "@catppuccin_status_\${MODULE_NAME}" "#{E:@catppuccin_\${MODULE_NAME}_text}"
-set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@_ctp_module_text_bg}]#{@_ctp_connect_style}#{@catppuccin_status_right_separator}"
+set -agF "@catppuccin_status_\${MODULE_NAME}" "#[fg=#{@_ctp_module_text_bg}]#{@catppuccin_status_right_separator}"
 
-set -ug @_ctp_connect_style
 set -ug @_ctp_module_text_bg
 `;
 
