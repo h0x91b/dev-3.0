@@ -118,24 +118,32 @@ export async function downloadUpdateForChannel(
 
 			// Step 3: verify the update is actually ready after download.
 			// Electrobun may not mark updateReady synchronously after downloadUpdate resolves.
-			const postDownload = Updater.updateInfo?.();
-			if (postDownload?.updateReady) {
+			// Use exponential backoff: 500ms, 1s, 2s, 4s, 8s, 16s, 30s (~61.5s total).
+			const backoffDelays = [500, 1000, 2000, 4000, 8000, 16000, 30000];
+			for (let i = 0; i < backoffDelays.length; i++) {
+				const info = i === 0 ? Updater.updateInfo?.() : await Updater.checkForUpdate();
+				if (info?.updateReady) {
+					log.info("Update ready", { attempt: i + 1 });
+					onProgress?.("complete", 100);
+					return { ok: true };
+				}
+				log.warn("updateReady is false, retrying...", {
+					attempt: i + 1,
+					delayMs: backoffDelays[i],
+				});
+				await new Promise((r) => setTimeout(r, backoffDelays[i]));
+			}
+
+			// Final check after last delay
+			const final = await Updater.checkForUpdate();
+			if (final?.updateReady) {
+				log.info("Update ready after final re-check");
 				onProgress?.("complete", 100);
 				return { ok: true };
 			}
 
-			// Give Electrobun a moment to finalize, then re-check
-			log.warn("downloadUpdate resolved but updateReady is false, retrying check...");
-			await new Promise((r) => setTimeout(r, 1000));
-			const refreshed = await Updater.checkForUpdate();
-			if (refreshed?.updateReady) {
-				log.info("Update ready after re-check");
-				onProgress?.("complete", 100);
-				return { ok: true };
-			}
-
-			const msg = "Download completed but update not marked as ready";
-			log.error(msg, { updateReady: refreshed?.updateReady });
+			const msg = "Download completed but update not marked as ready after retries";
+			log.error(msg, { updateReady: final?.updateReady, totalRetries: backoffDelays.length });
 			onProgress?.("error");
 			return { ok: false, error: msg };
 		} catch (err) {

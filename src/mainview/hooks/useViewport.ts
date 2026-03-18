@@ -7,7 +7,7 @@ const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cov
 
 /** Screens that require desktop-width viewport even on mobile (terminal). */
 function needsDesktopViewport(route: Route): boolean {
-	return route.screen === "task" || (route.screen === "project" && !!route.activeTaskId);
+	return route.screen === "task" || route.screen === "project-terminal" || (route.screen === "project" && !!route.activeTaskId);
 }
 
 /**

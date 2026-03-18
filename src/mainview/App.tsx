@@ -12,6 +12,7 @@ import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
+import ProjectTerminal from "./components/ProjectTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
@@ -20,23 +21,6 @@ import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
-const LS_PROJECT_TERMINAL_PREFIX = "dev3-project-terminal-";
-
-function readProjectTerminalState(projectId: string): boolean {
-	try {
-		return localStorage.getItem(LS_PROJECT_TERMINAL_PREFIX + projectId) === "true";
-	} catch { return false; }
-}
-
-function writeProjectTerminalState(projectId: string, open: boolean): void {
-	try {
-		if (open) {
-			localStorage.setItem(LS_PROJECT_TERMINAL_PREFIX + projectId, "true");
-		} else {
-			localStorage.removeItem(LS_PROJECT_TERMINAL_PREFIX + projectId);
-		}
-	} catch { /* ignore */ }
-}
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -58,29 +42,6 @@ function App() {
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
 	const [reqResults, setReqResults] = useState<RequirementCheckResult[]>([]);
 	const [reqChecking, setReqChecking] = useState(false);
-
-	// Project terminal toggle state (lifted here so GlobalHeader can control it)
-	const currentProjectId = "projectId" in state.route ? state.route.projectId : null;
-	const hasActiveTask = state.route.screen === "project" && !!(state.route as { activeTaskId?: string }).activeTaskId;
-	const [showProjectTerminal, setShowProjectTerminal] = useState(false);
-
-	// Sync with localStorage when switching projects
-	useEffect(() => {
-		if (currentProjectId && !hasActiveTask) {
-			setShowProjectTerminal(readProjectTerminalState(currentProjectId));
-		} else {
-			setShowProjectTerminal(false);
-		}
-	}, [currentProjectId, hasActiveTask]);
-
-	const toggleProjectTerminal = useCallback(() => {
-		if (!currentProjectId) return;
-		setShowProjectTerminal((prev) => {
-			const next = !prev;
-			writeProjectTerminalState(currentProjectId, next);
-			return next;
-		});
-	}, [currentProjectId]);
 
 	// GitHub CLI availability warning
 	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
@@ -418,6 +379,8 @@ function App() {
 				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project-settings") {
 				navigate({ screen: "project", projectId: route.projectId });
+			} else if (route.screen === "project-terminal") {
+				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project" && route.activeTaskId) {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project") {
@@ -471,8 +434,6 @@ function App() {
 				navigate={navigate}
 				updateVersion={updateVersion}
 				updateDownloadStatus={updateDownloadStatus}
-				showProjectTerminal={!hasActiveTask ? showProjectTerminal : undefined}
-				onToggleProjectTerminal={!hasActiveTask ? toggleProjectTerminal : undefined}
 			/>
 			{ghWarning && (
 				<GhWarningBanner
@@ -588,9 +549,16 @@ function App() {
 						bellCounts={state.bellCounts}
 						taskPorts={state.taskPorts}
 						activeTaskId={route.activeTaskId}
-						showProjectTerminal={showProjectTerminal}
 					/>
 				);
+			case "project-terminal": {
+				const proj = state.projects.find((p) => p.id === route.projectId);
+				return proj ? (
+					<div className="flex-1 min-h-0 flex flex-col">
+						<ProjectTerminal projectId={route.projectId} projectPath={proj.path} />
+					</div>
+				) : null;
+			}
 			case "task":
 				return (
 					<TaskTerminal

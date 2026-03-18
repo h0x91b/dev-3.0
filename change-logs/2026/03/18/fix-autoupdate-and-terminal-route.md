@@ -1,0 +1,1 @@
+Auto-update download retry now uses exponential backoff (500ms to 30s) instead of a single 1-second retry, giving Electrobun more time to finalize the update state. Project terminal is now a proper route (`project-terminal`) instead of a localStorage toggle, fixing incorrect page restore after update-restart and enabling proper back/forward navigation.

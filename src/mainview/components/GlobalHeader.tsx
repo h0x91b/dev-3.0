@@ -14,8 +14,6 @@ interface GlobalHeaderProps {
 	navigate: (route: Route) => void;
 	updateVersion?: string | null;
 	updateDownloadStatus?: string | null;
-	showProjectTerminal?: boolean;
-	onToggleProjectTerminal?: () => void;
 }
 
 interface BreadcrumbSegment {
@@ -29,7 +27,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus, showProjectTerminal, onToggleProjectTerminal }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateDownloadStatus }: GlobalHeaderProps) {
 	const t = useT();
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
@@ -169,23 +167,19 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	if ("projectId" in route) {
 		const project = projects.find((p) => p.id === route.projectId);
 		if (project) {
-			// In terminal view: clicking project name closes the terminal (returns to kanban)
-			// Otherwise: navigate to project board only when coming from a sub-screen
-			const projectNameonClick = showProjectTerminal && onToggleProjectTerminal
-				? onToggleProjectTerminal
-				: (route.screen !== "project" || (route.screen === "project" && route.activeTaskId))
-					? handleProjectNameClick
-					: undefined;
+			// Clickable when not already on the kanban board (no activeTaskId, not on terminal)
+			const isOnKanban = route.screen === "project" && !route.activeTaskId;
+			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
 			segments.push({
 				label: project.name,
 				isProjectDropdown: true,
-				onClick: projectNameonClick,
+				onClick: projectNameOnClick,
 			});
 		}
 	}
 
 	// Project terminal breadcrumb segment
-	if (route.screen === "project" && !route.activeTaskId && showProjectTerminal) {
+	if (route.screen === "project-terminal") {
 		segments.push({ label: t("projectTerminal.label") });
 	}
 
@@ -265,15 +259,11 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
 								)}
-								{onToggleProjectTerminal && !showProjectTerminal && (
+								{"projectId" in route && route.screen === "project" && !route.activeTaskId && (
 									<button
-										onClick={(e) => { e.stopPropagation(); onToggleProjectTerminal(); }}
-										title={showProjectTerminal ? t("projectTerminal.close") : t("projectTerminal.tooltip")}
-										className={`flex-shrink-0 ml-1.5 mr-0.5 px-1 py-0.5 rounded transition-colors ${
-											showProjectTerminal
-												? "text-accent hover:text-accent-hover"
-												: "text-fg-muted hover:text-fg hover:bg-elevated"
-										}`}
+										onClick={(e) => { e.stopPropagation(); navigate({ screen: "project-terminal", projectId: route.projectId }); }}
+										title={t("projectTerminal.tooltip")}
+										className="flex-shrink-0 ml-1.5 mr-0.5 px-1 py-0.5 rounded transition-colors text-fg-muted hover:text-fg hover:bg-elevated"
 									>
 										<span
 											className="text-[0.95rem] leading-none"
