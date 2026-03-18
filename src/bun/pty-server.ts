@@ -1,15 +1,24 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
+import { CATPPUCCIN_MOCHA, CATPPUCCIN_LATTE } from "./tmux-themes";
 
 // --- Bundled tmux configuration -------------------------------------------
-// Based on the developer's personal tmux.conf, stripped of locale-specific
-// comments and extended with clipboard / bell pass-through settings that
-// were previously applied programmatically in configureTmux().
+// Two theme-specific configs are written at startup: dark and light.
+// The active one is source-filed into tmux when the theme changes.
 
-export const TMUX_CONF_PATH = "/tmp/dev3-tmux.conf";
+export const TMUX_CONF_DARK_PATH = "/tmp/dev3-tmux-dark.conf";
+export const TMUX_CONF_LIGHT_PATH = "/tmp/dev3-tmux-light.conf";
+/** Path currently loaded — kept for configureTmux() re-source. */
+export let TMUX_CONF_PATH = TMUX_CONF_DARK_PATH;
 
-const TMUX_CONFIG = String.raw`# Mouse support
+const TMUX_CONFIG_BASE = String.raw`# Source system and user tmux configs first, so personal keybindings
+# and preferences are preserved. Our settings below override as needed.
+if-shell "test -f /etc/tmux.conf" "source-file /etc/tmux.conf"
+if-shell "test -f ~/.tmux.conf" "source-file ~/.tmux.conf"
+if-shell "test -f ~/.config/tmux/tmux.conf" "source-file ~/.config/tmux/tmux.conf"
+
+# Mouse support
 setw -g mouse on
 
 # Window/pane numbering starts at 1
@@ -57,6 +66,10 @@ bind -n M-Right select-pane -R
 bind -n M-Up select-pane -U
 bind -n M-Down select-pane -D
 
+# Pane borders
+set -g pane-border-lines double
+set -gF pane-border-style 'fg=#{@thm_surface_2}'
+
 # Status bar
 set -g status-right "#(ps -t #{pane_tty} -o pid=,comm= --sort=-start_time | head -1) | #(cd #{pane_current_path}; git branch --show-current 2>/dev/null || echo '-') | ^b+| split ^b+- hsplit ^b+z zoom"
 set -g status-right-length 150
@@ -76,10 +89,35 @@ setw -g monitor-bell on
 set -g allow-passthrough on
 set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
-
 `;
 
-writeFileSync(TMUX_CONF_PATH, TMUX_CONFIG);
+// Write both themed configs at startup
+writeFileSync(TMUX_CONF_DARK_PATH, CATPPUCCIN_MOCHA + "\n" + TMUX_CONFIG_BASE);
+writeFileSync(TMUX_CONF_LIGHT_PATH, CATPPUCCIN_LATTE + "\n" + TMUX_CONFIG_BASE);
+
+/**
+ * Apply a tmux theme (dark/light) to all active dev3 tmux sessions.
+ * Sources the corresponding config file, which re-sets all theme variables
+ * and re-applies every setting that depends on them.
+ */
+export function applyTmuxTheme(theme: "dark" | "light"): void {
+	TMUX_CONF_PATH = theme === "light" ? TMUX_CONF_LIGHT_PATH : TMUX_CONF_DARK_PATH;
+	// Source the themed config on every known socket (typically just "dev3")
+	const sockets = new Set<string>();
+	for (const session of sessions.values()) {
+		sockets.add(session.tmuxSocket);
+	}
+	// Always include the default socket even if no sessions exist yet
+	sockets.add(DEFAULT_TMUX_SOCKET);
+	for (const socket of sockets) {
+		try {
+			spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
+			log.info("tmux theme applied", { theme, socket, configPath: TMUX_CONF_PATH });
+		} catch (err) {
+			log.warn("Failed to apply tmux theme", { theme, socket, error: String(err) });
+		}
+	}
+}
 
 // Default tmux socket name — all dev3 sessions live here.
 export const DEFAULT_TMUX_SOCKET = "dev3";

@@ -866,8 +866,8 @@ describe("pty-server", () => {
 	// ------- TMUX_CONF_PATH -------
 
 	describe("TMUX_CONF_PATH", () => {
-		it("equals /tmp/dev3-tmux.conf", () => {
-			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux.conf");
+		it("defaults to /tmp/dev3-tmux-dark.conf", () => {
+			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux-dark.conf");
 		});
 
 		it("includes synchronized output (Sync) terminal features", async () => {

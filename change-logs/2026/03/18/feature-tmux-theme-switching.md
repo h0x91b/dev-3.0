@@ -1,0 +1,1 @@
+Add tmux theme switching with Catppuccin palettes. Dark theme uses Catppuccin Mocha, light theme uses Catppuccin Latte. Switching the app theme now also updates all tmux sessions via source-file. The tmux config also sources system and user tmux.conf files on startup to preserve personal keybindings. Added double pane border lines styled with the theme's surface_2 color.

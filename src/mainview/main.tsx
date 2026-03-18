@@ -35,8 +35,10 @@ const systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
 
 function applySavedTheme() {
 	const saved = localStorage.getItem("dev3-theme") || "dark";
-	document.documentElement.dataset.theme =
-		saved === "system" ? (systemThemeMq.matches ? "dark" : "light") : saved;
+	const resolved: "dark" | "light" =
+		saved === "system" ? (systemThemeMq.matches ? "dark" : "light") : (saved as "dark" | "light");
+	document.documentElement.dataset.theme = resolved;
+	api.request.setTmuxTheme({ theme: resolved }).catch(() => {});
 }
 
 applySavedTheme();

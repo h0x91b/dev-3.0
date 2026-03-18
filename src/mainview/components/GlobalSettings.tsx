@@ -88,8 +88,10 @@ function GlobalSettings() {
 
 	function applyTheme(th: Theme) {
 		setTheme(th);
-		document.documentElement.dataset.theme = resolveTheme(th);
+		const resolved = resolveTheme(th);
+		document.documentElement.dataset.theme = resolved;
 		localStorage.setItem("dev3-theme", th);
+		api.request.setTmuxTheme({ theme: resolved }).catch(() => {});
 		trackEvent("theme_changed", { theme: th });
 	}
 
