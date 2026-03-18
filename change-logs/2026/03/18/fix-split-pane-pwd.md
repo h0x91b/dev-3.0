@@ -1,0 +1,1 @@
+Fixed project terminal split panes opening in the wrong directory. New panes were inheriting the tmux server's start directory (e.g. the app bundle path) instead of the project root. Added `-c` flag to all `split-window` calls in `setupProjectLayout` so every pane starts in the correct project directory.
