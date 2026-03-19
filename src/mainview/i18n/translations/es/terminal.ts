@@ -68,6 +68,9 @@ const terminal = {
 	"projectTerminal.sessionEndedDesc": "El proceso del terminal ha terminado. Haz clic en reiniciar para abrir una nueva sesión.",
 	"projectTerminal.restart": "Reiniciar",
 	"projectTerminal.label": "Terminal del proyecto",
+	"projectTerminal.backToBoard": "Volver al tablero",
+	"projectTerminal.shortcutHint": "\u2318`",
+	"projectTerminal.tooltipWithShortcut": "Terminal del proyecto (\u2318`)",
 };
 
 export default terminal;

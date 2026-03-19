@@ -1,0 +1,1 @@
+Improved project terminal UX: added Cmd+` keyboard shortcut to toggle the terminal from any project screen, a visible "Terminal" button in the header actions area (with active state highlight), and a "Back to Board" toolbar at the top of the terminal screen. Removed the tiny breadcrumb icon that was previously the only entry point.

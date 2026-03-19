@@ -6,9 +6,10 @@ import TerminalView from "../TerminalView";
 interface ProjectTerminalProps {
 	projectId: string;
 	projectPath: string;
+	onBack: () => void;
 }
 
-function ProjectTerminal({ projectId }: ProjectTerminalProps) {
+function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProps) {
 	const t = useT();
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [error, setError] = useState(false);
@@ -84,6 +85,24 @@ function ProjectTerminal({ projectId }: ProjectTerminalProps) {
 
 	return (
 		<div className="h-full w-full flex flex-col overflow-hidden">
+			{/* Back to board toolbar */}
+			<div className="flex items-center justify-between px-4 py-1.5 border-b border-edge flex-shrink-0 bg-raised">
+				<button
+					onClick={onBack}
+					className="flex items-center gap-1.5 text-fg-3 hover:text-fg transition-colors text-sm"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+					</svg>
+					<span>{t("projectTerminal.backToBoard")}</span>
+				</button>
+				<div className="flex items-center gap-3">
+					<span className="text-fg-muted text-xs truncate max-w-[20rem]">{projectPath}</span>
+					<kbd className="text-[0.625rem] text-fg-muted/60 font-mono px-1.5 py-0.5 rounded bg-elevated border border-edge">
+						{t("projectTerminal.shortcutHint")}
+					</kbd>
+				</div>
+			</div>
 			<div className="flex-1 min-h-0 overflow-hidden">
 				{ptyUrl ? (
 					<TerminalView ptyUrl={ptyUrl} taskId={sessionKey} projectId={projectId} />
