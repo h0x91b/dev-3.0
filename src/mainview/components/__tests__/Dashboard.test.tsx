@@ -60,7 +60,7 @@ const mockProject: Project = {
 describe("Dashboard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		localStorage.removeItem("dev3-dashboard-tab");
+		sessionStorage.removeItem("dev3-dashboard-tab");
 	});
 
 	describe("empty state", () => {
@@ -200,23 +200,31 @@ describe("Dashboard", () => {
 			expect(activityBtn.className).toContain("bg-elevated");
 		});
 
-		it("restores saved tab from localStorage", () => {
-			localStorage.setItem("dev3-dashboard-tab", "projects");
+		it("restores saved tab from sessionStorage", () => {
+			sessionStorage.setItem("dev3-dashboard-tab", "projects");
 			renderDashboard([mockProject]);
 			const projectsBtn = screen.getByText("Projects");
 			expect(projectsBtn.className).toContain("bg-elevated");
 		});
 
-		it("saves tab to localStorage when switched", async () => {
+		it("saves tab to sessionStorage when switched", async () => {
 			const user = userEvent.setup();
 			renderDashboard([mockProject]);
 			await user.click(screen.getByText("Projects"));
-			expect(localStorage.getItem("dev3-dashboard-tab")).toBe("projects");
+			expect(sessionStorage.getItem("dev3-dashboard-tab")).toBe("projects");
 		});
 
 		it("ignores invalid saved tab values", () => {
-			localStorage.setItem("dev3-dashboard-tab", "bogus");
+			sessionStorage.setItem("dev3-dashboard-tab", "bogus");
 			renderDashboard([mockProject]);
+			const activityBtn = screen.getByText("Activity");
+			expect(activityBtn.className).toContain("bg-elevated");
+		});
+
+		it("does not persist tab across app restarts (localStorage)", () => {
+			localStorage.setItem("dev3-dashboard-tab", "projects");
+			renderDashboard([mockProject]);
+			// Should ignore localStorage and default to activity
 			const activityBtn = screen.getByText("Activity");
 			expect(activityBtn.className).toContain("bg-elevated");
 		});

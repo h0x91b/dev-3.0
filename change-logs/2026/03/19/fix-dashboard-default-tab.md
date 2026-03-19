@@ -1,0 +1,1 @@
+Dashboard tab preference now uses sessionStorage instead of localStorage, so the Activity tab is always shown by default when the app starts. Within a session, the selected tab is still remembered when navigating away and back.

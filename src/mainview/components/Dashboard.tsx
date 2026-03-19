@@ -21,11 +21,11 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 	const [showAddModal, setShowAddModal] = useState(false);
 	const [tab, setTabRaw] = useState<DashboardTab>(() => {
 		if (projects.length === 0) return "projects";
-		const saved = localStorage.getItem("dev3-dashboard-tab");
+		const saved = sessionStorage.getItem("dev3-dashboard-tab");
 		return saved === "activity" || saved === "projects" ? saved : "activity";
 	});
 	const setTab = (t: DashboardTab) => {
-		localStorage.setItem("dev3-dashboard-tab", t);
+		sessionStorage.setItem("dev3-dashboard-tab", t);
 		setTabRaw(t);
 	};
 
