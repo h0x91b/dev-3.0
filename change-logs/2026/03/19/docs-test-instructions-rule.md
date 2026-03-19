@@ -1,0 +1,1 @@
+Added mandatory "Test instructions" rule to AGENTS.md. Every task must now end with a TL;DR section listing step-by-step verification instructions covering the entire task scope, not just the latest change.
