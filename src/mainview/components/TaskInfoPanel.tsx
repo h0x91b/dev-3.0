@@ -327,7 +327,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 	const [hintsOpen, setHintsOpen] = useState(false);
 	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
 	const [hintsVisible, setHintsVisible] = useState(false);
-	const hintsTriggerRef = useRef<HTMLDivElement>(null);
+	const hintsTriggerRef = useRef<HTMLButtonElement>(null);
 	const hintsPopoverRef = useRef<HTMLDivElement>(null);
 	const hintsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1441,24 +1441,21 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		</div>
 	);
 
-	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
+	const tmuxBtnClass = "px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 
 	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom" | "nextLayout" | "killPane" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV") => (e: React.MouseEvent) => {
 		e.stopPropagation();
 		api.request.tmuxAction({ taskId: task.id, action }).catch(() => {});
 	};
 
-	const tmuxSvgClass = "w-3.5 h-3.5";
+	const tmuxSvgClass = "w-4 h-4";
 	const svgProps = { className: tmuxSvgClass, viewBox: "0 0 24 24", fill: "none", strokeWidth: 1.5, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
 	const tmuxHintsInline = (
 		<div
-			ref={hintsTriggerRef}
 			className="flex items-center gap-1 flex-shrink-0"
-			onMouseEnter={showHints}
-			onMouseLeave={hideHints}
 		>
-			{/* Row 1: split-h, split-v, tiled, even-rows */}
+			{/* Splits */}
 			<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} title={t("tmux.splitHDesc")}>
 				<svg {...svgProps}>
 					<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
@@ -1473,6 +1470,18 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					<path d="M16 12 L20 12 M18 10 L18 14" className="text-green-500" stroke="currentColor" />
 				</svg>
 			</button>
+			{/* Cycle layouts (swap icon) — right after splits */}
+			<button className={tmuxBtnClass} onClick={handleTmuxAction("nextLayout")} title={t("tmux.nextLayoutDesc")}>
+				<svg {...svgProps}>
+					<rect x="2" y="10" width="8" height="6" rx="1" stroke="currentColor" />
+					<rect x="14" y="10" width="8" height="6" rx="1" stroke="currentColor" />
+					<path d="M 6 8 C 8 3, 16 3, 18 8" className="text-green-500" stroke="currentColor" />
+					<path d="M 15 6 L 18 8 L 21 6" className="text-green-500" stroke="currentColor" />
+					<path d="M 18 18 C 16 23, 8 23, 6 18" className="text-green-500" stroke="currentColor" />
+					<path d="M 9 20 L 6 18 L 3 20" className="text-green-500" stroke="currentColor" />
+				</svg>
+			</button>
+			{/* Layout presets */}
 			<button className={tmuxBtnClass} onClick={handleTmuxAction("layoutTiled")} title={t("tmux.layoutTiledDesc")}>
 				<svg {...svgProps}>
 					<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
@@ -1487,7 +1496,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					<line x1="2" y1="14.66" x2="22" y2="14.66" stroke="currentColor" />
 				</svg>
 			</button>
-			{/* Row 2: even-cols, main-h, main-v, close-pane */}
 			<button className={tmuxBtnClass} onClick={handleTmuxAction("layoutEvenV")} title={t("tmux.layoutEvenVDesc")}>
 				<svg {...svgProps}>
 					<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
@@ -1509,13 +1517,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					<line x1="13" y1="12" x2="22" y2="12" stroke="currentColor" />
 				</svg>
 			</button>
-			<button className={tmuxBtnClass + " text-danger hover:bg-danger/20 bg-danger/10 border-danger/25"} onClick={handleTmuxAction("killPane")} title={t("tmux.closePaneDesc")}>
-				<svg {...svgProps}>
-					<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-					<path d="M9 9 L15 15 M15 9 L9 15" stroke="currentColor" />
-				</svg>
-			</button>
-			{/* Row 3 picks: zoom (fullscreen), nextLayout (swap) */}
+			{/* Zoom (fullscreen) */}
 			<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} title={t("tmux.zoomDesc")}>
 				<svg {...svgProps}>
 					<rect x="4" y="6" width="16" height="12" rx="1" stroke="currentColor" />
@@ -1523,23 +1525,24 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					<path d="M2 2 L6 6 M22 2 L18 6 M22 22 L18 18 M2 22 L6 18" stroke="currentColor" />
 				</svg>
 			</button>
-			<button className={tmuxBtnClass} onClick={handleTmuxAction("nextLayout")} title={t("tmux.nextLayoutDesc")}>
-				<svg {...svgProps}>
-					<rect x="2" y="10" width="8" height="6" rx="1" stroke="currentColor" />
-					<rect x="14" y="10" width="8" height="6" rx="1" stroke="currentColor" />
-					<path d="M 6 8 C 8 3, 16 3, 18 8" className="text-green-500" stroke="currentColor" />
-					<path d="M 15 6 L 18 8 L 21 6" className="text-green-500" stroke="currentColor" />
-					<path d="M 18 18 C 16 23, 8 23, 6 18" className="text-green-500" stroke="currentColor" />
-					<path d="M 9 20 L 6 18 L 3 20" className="text-green-500" stroke="currentColor" />
-				</svg>
-			</button>
+			{/* Info button */}
 			<button
+				ref={hintsTriggerRef}
 				className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
 				onClick={(e) => { e.stopPropagation(); setHintsOpen((o) => !o); }}
+				onMouseEnter={showHints}
+				onMouseLeave={hideHints}
 				title={t("tmux.title")}
 			>
 				<svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
 					<path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5a5.5 5.5 0 110-11 5.5 5.5 0 010 11zM7.25 5a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM7.25 7.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z" />
+				</svg>
+			</button>
+			{/* Close pane — separated, dangerous action */}
+			<button className={tmuxBtnClass + " text-danger hover:bg-danger/20 bg-danger/10 border-danger/25 ml-2"} onClick={handleTmuxAction("killPane")} title={t("tmux.closePaneDesc")}>
+				<svg {...svgProps}>
+					<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
+					<path d="M9 9 L15 15 M15 9 L9 15" stroke="currentColor" />
 				</svg>
 			</button>
 		</div>
