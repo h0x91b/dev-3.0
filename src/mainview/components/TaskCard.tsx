@@ -510,7 +510,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				}
 
 				return (
-					<div className="flex items-center flex-wrap gap-1 mt-2 min-h-[1.125rem]">
+					<div className="flex items-start mt-2 min-h-[1.125rem] gap-2">
+					<div className="flex items-center flex-wrap gap-1 min-w-0 flex-1">
 						{assignedLabels.map((label) => (
 							<LabelChip
 								key={label.id}
@@ -550,6 +551,36 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							/>
 						)}
 					</div>
+					{!isActive && (
+						<button
+							onClick={async (e) => {
+								e.stopPropagation();
+								try {
+									const updated = await api.request.toggleTaskWatch({
+										taskId: task.id,
+										projectId: project.id,
+										watched: !task.watched,
+									});
+									dispatch({ type: "updateTask", task: updated });
+								} catch {
+									// Toggle failed silently — secondary action
+								}
+							}}
+							className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-all hover:bg-fg/5 ${
+								task.watched
+									? "text-accent"
+									: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
+							}`}
+							title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+							disabled={isDisabled}
+						>
+							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+							</span>
+							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
+						</button>
+					)}
+				</div>
 				);
 			})()}
 
@@ -744,38 +775,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				</div>
 			)}
 
-			{/* Watch toggle for non-active cards (todo, completed, cancelled) */}
-			{!isActive && (
-				<div className="mt-1">
-					<button
-						onClick={async (e) => {
-							e.stopPropagation();
-							try {
-								const updated = await api.request.toggleTaskWatch({
-									taskId: task.id,
-									projectId: project.id,
-									watched: !task.watched,
-								});
-								dispatch({ type: "updateTask", task: updated });
-							} catch {
-								// Toggle failed silently — secondary action
-							}
-						}}
-						className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-fg/5 ${
-							task.watched
-								? "text-accent font-medium"
-								: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
-						}`}
-						title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
-						disabled={isDisabled}
-					>
-						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-							{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
-						</span>
-						<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
-					</button>
-				</div>
-			)}
 
 			{/* Status dropdown menu — portal + smart viewport clamping */}
 			{menuOpen && createPortal(
