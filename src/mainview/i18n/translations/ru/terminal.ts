@@ -43,6 +43,7 @@ const terminal = {
 	"tmuxSessions.killConfirmMessage": "Убить сессию «{name}»? Все процессы в ней будут завершены.",
 	"tmuxSessions.killFailed": "Не удалось убить сессию: {error}",
 	"tmuxSessions.cleanup": "очистка",
+	"tmuxSessions.orphaned": "осиротевшая",
 	"tmuxSessions.killAll": "Убить все",
 	"tmuxSessions.killAllConfirmTitle": "Убить все сессии tmux",
 	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",

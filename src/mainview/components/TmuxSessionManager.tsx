@@ -258,6 +258,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 								</div>
 							) : (
 								sessions.map((session) => {
+									const isOrphaned = !session.isProjectTerminal && !session.isCleanup && !session.taskId;
 									const canNavigate = !!(session.isProjectTerminal ? session.projectId : (session.taskId && session.projectId));
 									return (
 										<div
@@ -279,7 +280,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 													<span className={`text-sm font-semibold truncate${canNavigate ? " text-accent" : " text-fg"}`} title={session.name}>
 														{session.isProjectTerminal
 															? (session.projectName || session.name)
-															: (session.taskTitle || session.name)}
+															: (session.taskTitle || session.name.replace(/^dev3-/, ""))}
 													</span>
 													{session.isProjectTerminal && (
 														<span className="text-[0.5625rem] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium flex-shrink-0">
@@ -289,6 +290,11 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 													{session.isCleanup && (
 														<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 															{t("tmuxSessions.cleanup")}
+														</span>
+													)}
+													{isOrphaned && (
+														<span className="text-[0.5625rem] bg-fg-muted/15 text-fg-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+															{t("tmuxSessions.orphaned")}
 														</span>
 													)}
 												</div>
