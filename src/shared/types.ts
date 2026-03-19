@@ -946,7 +946,7 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			tmuxAction: {
-				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" };
+				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV" };
 				response: void;
 			};
 			spawnAgentInTask: {
