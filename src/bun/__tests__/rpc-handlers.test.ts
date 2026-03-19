@@ -1340,15 +1340,28 @@ describe("handlers.moveTask", () => {
 describe("handlers.deleteTask", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("deletes a todo task without cleanup", async () => {
+	it("deletes a todo task: always calls destroySession (best-effort), skips removeWorktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo", worktreePath: null });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
 
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
-		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("deleteTask: tolerates destroySession failure for non-active task", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => { throw new Error("session not found"); });
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
 		expect(git.removeWorktree).not.toHaveBeenCalled();
 	});
 

@@ -1739,10 +1739,17 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 		cleanupTaskState(task.id);
 
-		// Cleanup if active
-		if (isActive(task.status)) {
-			log.info("Task is active, cleaning up PTY + worktree");
+		// Always try to kill the tmux session — even for completed/cancelled tasks that
+		// may have a zombie session left over from a failed destroySession call earlier.
+		// Best-effort: do not let session cleanup failure abort the task deletion.
+		try {
 			pty.destroySession(task.id, task.tmuxSocket ?? undefined);
+		} catch (err) {
+			log.warn("destroySession failed in deleteTask (best-effort)", { taskId: task.id.slice(0, 8), error: String(err) });
+		}
+
+		if (isActive(task.status) || task.worktreePath) {
+			log.info("Task has worktree, cleaning up", { status: task.status, worktreePath: task.worktreePath });
 			await git.removeWorktree(project, task);
 		}
 

@@ -41,6 +41,7 @@ const terminal = {
 	"tmuxSessions.killConfirmMessage": "¿Terminar sesión \"{name}\"? Esto cerrará todos los procesos.",
 	"tmuxSessions.killFailed": "Error al terminar sesión: {error}",
 	"tmuxSessions.cleanup": "limpieza",
+	"tmuxSessions.orphaned": "huérfana",
 	"tmuxSessions.killAll": "Terminar todas",
 	"tmuxSessions.killAllConfirmTitle": "Terminar todas las sesiones tmux",
 	"tmuxSessions.killAllConfirmMessage": "¿Terminar las {count} sesiones dev3? Esto cerrará todos los procesos.",
