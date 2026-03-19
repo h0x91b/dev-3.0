@@ -155,7 +155,7 @@ const tips = {
 	"tip.diffCompareDefault.title": "Pick your diff baseline",
 	"tip.diffCompareDefault.body": "In Project Settings, choose whether branch status and Show Diff compare against origin/<base> or your local base branch.",
 	"tip.projectTerminal.title": "Project Terminal",
-	"tip.projectTerminal.body": "Need a quick shell at the repo root? Click the terminal icon in the breadcrumbs bar, right next to the project name.",
+	"tip.projectTerminal.body": "Need a quick shell at the repo root? Click the Terminal button in the header or press \u2318` to toggle it from any project screen.",
 	"tip.projectTerminalDashboard.title": "Terminal from Dashboard",
 	"tip.projectTerminalDashboard.body": "You can also open a project terminal straight from the Dashboard — click the terminal icon on any project card.",
 	"tip.portAllocation.title": "Auto-allocate ports",

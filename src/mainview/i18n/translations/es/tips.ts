@@ -155,7 +155,7 @@ const tips = {
 	"tip.diffCompareDefault.title": "Elige la base del diff",
 	"tip.diffCompareDefault.body": "En Ajustes del proyecto puedes elegir si el estado de rama y Show Diff comparan contra origin/<base> o la rama base local.",
 	"tip.projectTerminal.title": "Terminal del proyecto",
-	"tip.projectTerminal.body": "¿Necesitas un shell rápido en la raíz del repo? Haz clic en el icono de terminal en la barra de navegación, justo al lado del nombre del proyecto.",
+	"tip.projectTerminal.body": "¿Necesitas un shell rápido en la raíz del repo? Haz clic en el botón Terminal en el encabezado o presiona \u2318` para alternarlo desde cualquier pantalla del proyecto.",
 	"tip.projectTerminalDashboard.title": "Terminal desde el Dashboard",
 	"tip.projectTerminalDashboard.body": "También puedes abrir el terminal del proyecto directamente desde el Dashboard — haz clic en el icono de terminal de cualquier tarjeta de proyecto.",
 	"tip.portAllocation.title": "Asignar puertos automáticamente",

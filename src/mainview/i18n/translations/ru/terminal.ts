@@ -72,6 +72,9 @@ const terminal = {
 	"projectTerminal.sessionEndedDesc": "Процесс терминала завершился. Нажмите «Перезапустить» для новой сессии.",
 	"projectTerminal.restart": "Перезапустить",
 	"projectTerminal.label": "Терминал проекта",
+	"projectTerminal.backToBoard": "Назад к доске",
+	"projectTerminal.shortcutHint": "\u2318`",
+	"projectTerminal.tooltipWithShortcut": "Терминал проекта (\u2318`)",
 };
 
 export default terminal;

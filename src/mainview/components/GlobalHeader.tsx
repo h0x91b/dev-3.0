@@ -259,20 +259,6 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
 								)}
-								{"projectId" in route && route.screen === "project" && !route.activeTaskId && (
-									<button
-										onClick={(e) => { e.stopPropagation(); navigate({ screen: "project-terminal", projectId: route.projectId }); }}
-										title={t("projectTerminal.tooltip")}
-										className="flex-shrink-0 ml-1.5 mr-0.5 px-1 py-0.5 rounded transition-colors text-fg-muted hover:text-fg hover:bg-elevated"
-									>
-										<span
-											className="text-[0.95rem] leading-none"
-											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-										>
-											{"\uF489"}
-										</span>
-									</button>
-								)}
 								<button
 									onClick={() => setShowProjectDropdown((v) => !v)}
 									className="text-fg-muted hover:text-fg transition-colors flex-shrink-0 p-0.5 rounded hover:bg-elevated"
@@ -410,6 +396,33 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 							</div>
 						)}
 					</div>
+				)}
+
+				{/* Project Terminal — visible when inside a project */}
+				{"projectId" in route && (
+					<button
+						onClick={() => {
+							if (route.screen === "project-terminal") {
+								navigate({ screen: "project", projectId: route.projectId });
+							} else {
+								navigate({ screen: "project-terminal", projectId: route.projectId });
+							}
+						}}
+						className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
+							route.screen === "project-terminal"
+								? "text-accent bg-accent/15 hover:bg-accent/25"
+								: "text-fg-3 hover:text-fg hover:bg-elevated"
+						}`}
+						title={t("projectTerminal.tooltipWithShortcut")}
+					>
+						<span
+							className="text-[1.125rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\uF489"}
+						</span>
+						<span className="text-[0.6875rem] font-medium">{t("projectTerminal.open")}</span>
+					</button>
 				)}
 
 				{/* Tmux Session Manager */}

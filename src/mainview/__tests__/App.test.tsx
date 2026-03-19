@@ -58,6 +58,9 @@ vi.mock("../components/RequirementsCheck", () => ({
 vi.mock("../components/gauges/GaugeDemo", () => ({
 	default: () => <div data-testid="gauge-demo-screen" />,
 }));
+vi.mock("../components/ProjectTerminal", () => ({
+	default: () => <div data-testid="project-terminal-screen" />,
+}));
 
 import { api } from "../rpc";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
@@ -203,6 +206,40 @@ describe("App keyboard shortcuts", () => {
 			// Cmd+1 should navigate to Active (the only non-deleted project)
 			await userEvent.keyboard("{Meta>}1{/Meta}");
 			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+	});
+
+	describe("project terminal toggle (Cmd+`)", () => {
+		it("Cmd+` from project screen opens project terminal", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			// Navigate to project first
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			// Toggle terminal
+			await userEvent.keyboard("{Meta>}`{/Meta}");
+			expect(screen.getByTestId("project-terminal-screen")).toBeInTheDocument();
+		});
+
+		it("Cmd+` from project terminal goes back to project", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			await userEvent.keyboard("{Meta>}`{/Meta}");
+			expect(screen.getByTestId("project-terminal-screen")).toBeInTheDocument();
+			// Toggle back
+			await userEvent.keyboard("{Meta>}`{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+
+		it("Cmd+` on dashboard does nothing", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Meta>}`{/Meta}");
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
 		});
 	});
 

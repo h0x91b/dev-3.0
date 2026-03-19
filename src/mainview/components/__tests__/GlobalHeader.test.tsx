@@ -507,3 +507,48 @@ describe("GlobalHeader — update countdown", () => {
 		});
 	});
 });
+
+describe("GlobalHeader — project terminal button", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("shows terminal button when inside a project", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
+	});
+
+	it("does not show terminal button on dashboard", () => {
+		renderHeader({ screen: "dashboard" });
+		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();
+	});
+
+	it("terminal button has active style on project-terminal screen", () => {
+		renderHeader({ screen: "project-terminal", projectId: "p1" });
+		const btn = screen.getByTitle("Project Terminal (\u2318`)");
+		expect(btn.className).toContain("text-accent");
+	});
+
+	it("clicking terminal button navigates to project-terminal", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
+		await user.click(screen.getByTitle("Project Terminal (\u2318`)"));
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project-terminal",
+			projectId: "p1",
+		});
+	});
+
+	it("clicking terminal button when already on terminal navigates back to project", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project-terminal", projectId: "p1" }, [project1, project2], navigate);
+		await user.click(screen.getByTitle("Project Terminal (\u2318`)"));
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project",
+			projectId: "p1",
+		});
+	});
+});

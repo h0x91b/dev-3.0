@@ -124,6 +124,18 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
+			} else if ((e.metaKey || e.ctrlKey) && e.key === "`") {
+				// Cmd+` — toggle project terminal
+				const { route } = state;
+				if (route.screen === "project-terminal") {
+					e.preventDefault();
+					e.stopPropagation();
+					navigate({ screen: "project", projectId: route.projectId });
+				} else if ("projectId" in route) {
+					e.preventDefault();
+					e.stopPropagation();
+					navigate({ screen: "project-terminal", projectId: route.projectId });
+				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
 				// Cmd+1..9 — switch to project by index (like Slack workspaces)
 				const idx = parseInt(e.key, 10) - 1;
@@ -135,7 +147,7 @@ function App() {
 				}
 			}
 		},
-		[navigate, state.projects],
+		[navigate, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -555,7 +567,11 @@ function App() {
 				const proj = state.projects.find((p) => p.id === route.projectId);
 				return proj ? (
 					<div className="flex-1 min-h-0 flex flex-col">
-						<ProjectTerminal projectId={route.projectId} projectPath={proj.path} />
+						<ProjectTerminal
+							projectId={route.projectId}
+							projectPath={proj.path}
+							onBack={() => navigate({ screen: "project", projectId: route.projectId })}
+						/>
 					</div>
 				) : null;
 			}
