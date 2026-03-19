@@ -152,8 +152,39 @@ function LaunchVariantsModal({
 			>
 				{/* Header */}
 				<div className="px-6 py-4 border-b border-edge">
-					<h2 className="text-fg text-lg font-semibold">{title}</h2>
-					<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
+					<div className="flex items-center justify-between gap-3">
+						<div className="min-w-0">
+							<h2 className="text-fg text-lg font-semibold">{title}</h2>
+							<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
+						</div>
+						<button
+							onClick={async () => {
+								try {
+									const updated = await api.request.toggleTaskWatch({
+										taskId: task.id,
+										projectId: project.id,
+										watched: !task.watched,
+									});
+									dispatch({ type: "updateTask", task: updated });
+								} catch {
+									// Toggle failed silently — secondary action
+								}
+							}}
+							className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
+								task.watched
+									? "text-accent bg-accent/10 border border-accent/25"
+									: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
+							}`}
+							title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+						>
+							<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+							</span>
+							<span className="text-xs font-medium">
+								{task.watched ? t("task.watching") : t("task.watch")}
+							</span>
+						</button>
+					</div>
 				</div>
 
 				{/* Variant rows */}
