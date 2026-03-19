@@ -162,6 +162,8 @@ const tips = {
 	"tip.portAllocation.body": "Set portCount in Project Settings to auto-assign free ports per task. Use $DEV3_PORT0, $DEV3_PORT1 in scripts.",
 	"tip.taskWatch.title": "Watch tasks",
 	"tip.taskWatch.body": "Click the bell on a task card to get notified when its status changes.",
+	"tip.resourceUsageBadge.title": "Resource usage per task",
+	"tip.resourceUsageBadge.body": "Each active task shows CPU and memory — hover the badge on the card for details.",
 } as const;
 
 export default tips;

@@ -500,6 +500,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.portAllocation.body",
 		icon: "\u{F0317}", // nf-md-ethernet
 	},
+	// Batch 24: resource usage
+	{
+		id: "resource-usage-badge",
+		titleKey: "tip.resourceUsageBadge.title",
+		bodyKey: "tip.resourceUsageBadge.body",
+		icon: "\u{F035B}",
+	},
 	// Batch 25: task watch notifications
 	{
 		id: "task-watch-notifications",

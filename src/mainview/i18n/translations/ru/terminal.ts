@@ -64,6 +64,12 @@ const terminal = {
 	"ports.count_other": "{count} портов",
 	"ports.allocated": "Выделенные порты",
 
+	// Resources
+	"resources.title": "Ресурсы",
+	"resources.memory": "Память",
+	"resources.cpu": "CPU",
+	"resources.details": "{memory} · {cpu}% CPU",
+
 	// Project Terminal
 	"projectTerminal.open": "Терминал проекта",
 	"projectTerminal.close": "Закрыть терминал",

@@ -249,6 +249,16 @@ function App() {
 		return () => window.removeEventListener("rpc:portsUpdated", onPortsUpdated);
 	}, [dispatch]);
 
+	// Listen for resource usage updates
+	useEffect(() => {
+		function onResourceUsageUpdated(e: Event) {
+			const { taskId, usage } = (e as CustomEvent).detail;
+			dispatch({ type: "setResourceUsage", taskId, usage });
+		}
+		window.addEventListener("rpc:resourceUsageUpdated", onResourceUsageUpdated);
+		return () => window.removeEventListener("rpc:resourceUsageUpdated", onResourceUsageUpdated);
+	}, [dispatch]);
+
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
@@ -560,6 +570,7 @@ function App() {
 						navigate={navigate}
 						bellCounts={state.bellCounts}
 						taskPorts={state.taskPorts}
+						taskResourceUsage={state.taskResourceUsage}
 						activeTaskId={route.activeTaskId}
 					/>
 				);

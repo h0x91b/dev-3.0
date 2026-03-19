@@ -29,6 +29,10 @@ import {
 	scanTaskPorts,
 	getLsofOutput,
 	collectTaskPids,
+	buildProcessTree,
+	collectDescendants,
+	collectProcessInfo,
+	clearProcessInfoCache,
 	startPortScanPoller,
 	stopPortScanPoller,
 	getPortsForTask,
@@ -222,6 +226,102 @@ describe("getLsofOutput", () => {
 	});
 });
 
+describe("collectProcessInfo", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		clearProcessInfoCache();
+	});
+
+	it("parses ps output into tree and resources", () => {
+		mockSpawnSync.mockReturnValueOnce(
+			makeResult("  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n"),
+		);
+
+		const { tree, resources } = collectProcessInfo();
+
+		expect(tree.get(1)).toEqual([100]);
+		expect(tree.get(100)).toEqual([200]);
+		expect(tree.get(200)).toEqual([300]);
+
+		expect(resources.get(100)).toEqual({ rss: 204800 * 1024, cpu: 5.2 });
+		expect(resources.get(200)).toEqual({ rss: 102400 * 1024, cpu: 2.1 });
+		expect(resources.get(300)).toEqual({ rss: 51200 * 1024, cpu: 0.5 });
+	});
+
+	it("returns empty maps on ps failure", () => {
+		mockSpawnSync.mockReturnValueOnce(makeResult("", 1));
+		const { tree, resources } = collectProcessInfo();
+		expect(tree.size).toBe(0);
+		expect(resources.size).toBe(0);
+	});
+
+	it("serves cached result on second call within TTL", () => {
+		mockSpawnSync.mockReturnValueOnce(
+			makeResult("  100     1   50000   1.0\n"),
+		);
+
+		const first = collectProcessInfo();
+		const second = collectProcessInfo();
+
+		expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+		expect(second).toBe(first); // same reference
+	});
+});
+
+describe("buildProcessTree", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("builds parent→children map from ps output", () => {
+		mockSpawnSync.mockReturnValueOnce(
+			makeResult("  100     1\n  200   100\n  300   100\n  400   200\n"),
+		);
+
+		const tree = buildProcessTree();
+		expect(tree.get(1)).toEqual([100]);
+		expect(tree.get(100)).toEqual([200, 300]);
+		expect(tree.get(200)).toEqual([400]);
+	});
+
+	it("returns empty map on ps failure", () => {
+		mockSpawnSync.mockReturnValueOnce(makeResult("", 1));
+		const tree = buildProcessTree();
+		expect(tree.size).toBe(0);
+	});
+
+	it("returns empty map on exception", () => {
+		mockSpawnSync.mockImplementation(() => { throw new Error("boom"); });
+		const tree = buildProcessTree();
+		expect(tree.size).toBe(0);
+	});
+});
+
+describe("collectDescendants", () => {
+	it("returns all descendants via in-memory BFS", () => {
+		const tree = new Map<number, number[]>([
+			[1, [100]],
+			[100, [200, 300]],
+			[200, [400]],
+		]);
+
+		const result = collectDescendants(100, tree);
+		expect(result).toEqual([200, 300, 400]);
+	});
+
+	it("returns empty for leaf PID", () => {
+		const tree = new Map<number, number[]>([[1, [100]]]);
+		const result = collectDescendants(100, tree);
+		expect(result).toEqual([]);
+	});
+
+	it("returns empty for unknown PID", () => {
+		const tree = new Map<number, number[]>();
+		const result = collectDescendants(999, tree);
+		expect(result).toEqual([]);
+	});
+});
+
 describe("collectTaskPids", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -304,6 +404,25 @@ describe("collectTaskPids", () => {
 		const pids = collectTaskPids("dev3", "dev3-abc12345");
 		expect(pids).toEqual(new Set([100]));
 	});
+
+	it("uses processTree when provided (no pgrep spawns)", () => {
+		const tree = new Map<number, number[]>([
+			[1, [100]],
+			[100, [200, 300]],
+		]);
+
+		mockSpawnSync
+			// tmux list-panes for main session
+			.mockReturnValueOnce(makeResult("100\n"))
+			// tmux list-panes for dev server session (none)
+			.mockReturnValueOnce(makeResult("", 1));
+
+		const pids = collectTaskPids("dev3", "dev3-abc12345", tree);
+		expect(pids).toEqual(new Set([100, 200, 300]));
+
+		// Only tmux calls, no pgrep
+		expect(mockSpawnSync).toHaveBeenCalledTimes(2);
+	});
 });
 
 describe("scanTaskPorts", () => {
@@ -360,6 +479,7 @@ describe("poller", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
+		clearProcessInfoCache();
 		stopPortScanPoller();
 	});
 
@@ -375,13 +495,13 @@ describe("poller", () => {
 		]);
 
 		mockSpawnSync
-			// lsof (shared, called first)
+			// collectProcessInfo (ps -eo pid=,ppid=,rss=,%cpu=)
+			.mockReturnValueOnce(makeResult("  100     1   50000   0.0\n"))
+			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\n"))
 			// tmux list-panes for main session
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux list-panes for dev server session (none)
-			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep -P 100
 			.mockReturnValueOnce(makeResult("", 1));
 
 		startPortScanPoller(push, getActiveSessions);
@@ -401,12 +521,12 @@ describe("poller", () => {
 			{ taskId: "task-unchanged-test", tmuxSocket: "dev3" },
 		]);
 
-		// First poll cycle (lsof first, then tmux list-panes main + dev + pgrep)
+		// First poll cycle: ps (tree) + lsof + tmux (main + dev)
 		mockSpawnSync
+			.mockReturnValueOnce(makeResult("  500     1   60000   0.0\n")) // collectProcessInfo
 			.mockReturnValueOnce(makeResult("p500\ncnode\nn*:4000\n"))
 			.mockReturnValueOnce(makeResult("500\n"))
-			.mockReturnValueOnce(makeResult("", 1)) // dev server session (none)
-			.mockReturnValueOnce(makeResult("", 1));
+			.mockReturnValueOnce(makeResult("", 1)); // dev server session (none)
 
 		startPortScanPoller(push, getActiveSessions);
 		vi.advanceTimersByTime(10_000);
@@ -414,10 +534,10 @@ describe("poller", () => {
 
 		// Second poll cycle — same ports
 		mockSpawnSync
+			.mockReturnValueOnce(makeResult("  500     1   60000   0.0\n")) // collectProcessInfo
 			.mockReturnValueOnce(makeResult("p500\ncnode\nn*:4000\n"))
 			.mockReturnValueOnce(makeResult("500\n"))
-			.mockReturnValueOnce(makeResult("", 1)) // dev server session (none)
-			.mockReturnValueOnce(makeResult("", 1));
+			.mockReturnValueOnce(makeResult("", 1)); // dev server session (none)
 
 		vi.advanceTimersByTime(10_000);
 		// Should still be 1 (no second push)
@@ -432,21 +552,19 @@ describe("poller", () => {
 		];
 		const getActiveSessions = vi.fn().mockImplementation(() => sessions);
 
-		// First poll: lsof (shared), then for each task: tmux main + tmux dev + pgrep
+		// First poll: ps (tree) + lsof + tmux for each task
 		mockSpawnSync
+			// collectProcessInfo (ps -eo pid=,ppid=,rss=,%cpu=)
+			.mockReturnValueOnce(makeResult("  100     1   50000   0.0\n  200     1   60000   0.0\n"))
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\np200\ncbun\nn*:8080\n"))
 			// tmux pane for task-aaaa (main)
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux pane for task-aaaa (dev server — none)
 			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep for 100
-			.mockReturnValueOnce(makeResult("", 1))
 			// tmux pane for task-bbbb (main)
 			.mockReturnValueOnce(makeResult("200\n"))
 			// tmux pane for task-bbbb (dev server — none)
-			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep for 200
 			.mockReturnValueOnce(makeResult("", 1));
 
 		startPortScanPoller(push, getActiveSessions);
@@ -458,13 +576,13 @@ describe("poller", () => {
 		// Second poll: task-bbbb is gone
 		sessions = [{ taskId: "task-aaaa", tmuxSocket: "dev3" }];
 		mockSpawnSync
+			// collectProcessInfo
+			.mockReturnValueOnce(makeResult("  100     1   50000   0.0\n"))
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\n"))
 			// tmux pane for task-aaaa (main)
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux pane for task-aaaa (dev server — none)
-			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep for 100
 			.mockReturnValueOnce(makeResult("", 1));
 
 		vi.advanceTimersByTime(10_000);

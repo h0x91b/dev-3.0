@@ -165,6 +165,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
+const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -329,6 +330,15 @@ startPortScanPoller(
 	getActiveSessionIds,
 );
 
+// Start background resource usage monitor (discovers tmux sessions directly, not via pty-server)
+startResourceMonitor((name, payload) => {
+	try {
+		(mainWindow.webview.rpc as any).send[name]?.(payload);
+	} catch (err) {
+		log.error("Failed to push resource usage update", { error: String(err) });
+	}
+});
+
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
 	try {
@@ -396,6 +406,7 @@ setOnIdle((sessionKey) => {
 mainWindow.on("close", () => {
 	log.info("Main window closing, cleaning up");
 	stopPortScanPoller();
+	stopResourceMonitor();
 	stopSocketServer();
 	Utils.quit();
 });

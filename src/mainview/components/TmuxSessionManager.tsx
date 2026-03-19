@@ -4,6 +4,7 @@ import type { TmuxSessionInfo } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { formatBytes } from "../utils/formatBytes";
 
 interface TmuxSessionManagerProps {
 	navigate: (route: Route) => void;
@@ -329,6 +330,16 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 															:{p.port}
 														</button>
 													))}
+												</div>
+											)}
+
+											{/* Resource usage */}
+											{session.resourceUsage && (
+												<div className="flex items-center gap-1.5 mt-1.5 text-[0.625rem] font-mono text-fg-3">
+													<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
+													<span>{formatBytes(session.resourceUsage.rss)}</span>
+													<span className="text-fg-muted">·</span>
+													<span>{session.resourceUsage.cpu.toFixed(1)}% CPU</span>
 												</div>
 											)}
 

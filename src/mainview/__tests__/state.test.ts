@@ -42,6 +42,7 @@ describe("initialState", () => {
 			loading: true,
 			bellCounts: new Map(),
 			taskPorts: new Map(),
+			taskResourceUsage: new Map(),
 		});
 	});
 });
@@ -701,6 +702,40 @@ describe("reducer", () => {
 
 	it("clearPorts: no-op when task has no ports", () => {
 		const next = reducer(initialState, { type: "clearPorts", taskId: "t1" });
+		expect(next).toBe(initialState);
+	});
+
+	// ---- setResourceUsage ----
+
+	it("setResourceUsage: adds usage for a task", () => {
+		const usage = { cpu: 42.5, rss: 1024 * 1024 * 512 };
+		const next = reducer(initialState, { type: "setResourceUsage", taskId: "t1", usage });
+		expect(next.taskResourceUsage.get("t1")).toEqual(usage);
+	});
+
+	it("setResourceUsage: updates existing usage", () => {
+		const state: AppState = {
+			...initialState,
+			taskResourceUsage: new Map([["t1", { cpu: 10, rss: 1024 }]]),
+		};
+		const usage = { cpu: 50, rss: 2048 };
+		const next = reducer(state, { type: "setResourceUsage", taskId: "t1", usage });
+		expect(next.taskResourceUsage.get("t1")).toEqual(usage);
+	});
+
+	// ---- clearResourceUsage ----
+
+	it("clearResourceUsage: removes usage for a task", () => {
+		const state: AppState = {
+			...initialState,
+			taskResourceUsage: new Map([["t1", { cpu: 10, rss: 1024 }]]),
+		};
+		const next = reducer(state, { type: "clearResourceUsage", taskId: "t1" });
+		expect(next.taskResourceUsage.has("t1")).toBe(false);
+	});
+
+	it("clearResourceUsage: no-op when task has no usage", () => {
+		const next = reducer(initialState, { type: "clearResourceUsage", taskId: "t1" });
 		expect(next).toBe(initialState);
 	});
 

@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -29,6 +30,7 @@ interface TaskCardProps {
 	onAddAttempts: (task: Task) => void;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
+	resourceUsage?: ResourceUsage;
 	bellCount?: number;
 	ports?: PortInfo[];
 	isActiveInSplit?: boolean;
@@ -38,7 +40,7 @@ interface TaskCardProps {
 	prInfo?: { number: number; url: string };
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -632,6 +634,31 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
 						{ports.length}
 					</button>
+				)}
+
+				{/* Resource usage badge */}
+				{isActive && resourceUsage && (
+					<span
+						className={`inline-flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] ${
+							resourceUsage.rss > 4 * 1024 * 1024 * 1024
+								? "text-red-400 bg-red-500/10"
+								: resourceUsage.rss > 2 * 1024 * 1024 * 1024
+									? "text-yellow-400 bg-yellow-500/10"
+									: "text-fg-3 bg-fg/5"
+						}`}
+						title={t("resources.details", { cpu: resourceUsage.cpu.toFixed(1), memory: formatBytes(resourceUsage.rss) })}
+					>
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\u{F035B}"}
+						</span>
+						{formatBytes(resourceUsage.rss)}
+						{resourceUsage.cpu >= 1 && (
+							<>
+								<span className="text-fg-muted">·</span>
+								{resourceUsage.cpu.toFixed(0)}%
+							</>
+						)}
+					</span>
 				)}
 
 				{/* Run button for TODO cards — right-aligned */}

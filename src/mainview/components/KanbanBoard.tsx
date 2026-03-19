@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
-import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, Task, TaskStatus, TipState } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskStatus, TipState } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
@@ -31,11 +31,12 @@ interface KanbanBoardProps {
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
+	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
 	onSwitchToSidebar?: () => void;
 }
 
-function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts, activeTaskId, onSwitchToSidebar }: KanbanBoardProps) {
+function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts, taskResourceUsage, activeTaskId, onSwitchToSidebar }: KanbanBoardProps) {
 	const t = useT();
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -535,6 +536,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 						onTaskMoved: recordMove,
 						bellCounts,
 						taskPorts,
+						taskResourceUsage,
 						activeTaskId,
 						draggedTaskId,
 						movingTaskIds,

@@ -162,6 +162,8 @@ const tips = {
 	"tip.portAllocation.body": "Configura portCount en ajustes del proyecto para asignar puertos libres por tarea. Usa $DEV3_PORT0, $DEV3_PORT1 en scripts.",
 	"tip.taskWatch.title": "Vigila tus tareas",
 	"tip.taskWatch.body": "Haz clic en la campana de una tarjeta para recibir notificaciones cuando cambie su estado.",
+	"tip.resourceUsageBadge.title": "Recursos por tarea",
+	"tip.resourceUsageBadge.body": "Cada tarea activa muestra uso de CPU y memoria — pasa el ratón sobre la insignia para detalles.",
 };
 
 export default tips;

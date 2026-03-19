@@ -1,5 +1,5 @@
 import { useReducer } from "react";
-import type { PortInfo, Project, Task } from "../shared/types";
+import type { PortInfo, Project, Task, ResourceUsage } from "../shared/types";
 
 // ---- Routes ----
 
@@ -28,6 +28,7 @@ export interface AppState {
 	loading: boolean;
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
+	taskResourceUsage: Map<string, ResourceUsage>;
 }
 
 export const initialState: AppState = {
@@ -39,6 +40,7 @@ export const initialState: AppState = {
 	loading: true,
 	bellCounts: new Map(),
 	taskPorts: new Map(),
+	taskResourceUsage: new Map(),
 };
 
 // ---- Actions ----
@@ -61,7 +63,9 @@ export type AppAction =
 	| { type: "addBell"; taskId: string }
 	| { type: "clearBell"; taskId: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
-	| { type: "clearPorts"; taskId: string };
+	| { type: "clearPorts"; taskId: string }
+	| { type: "setResourceUsage"; taskId: string; usage: ResourceUsage }
+	| { type: "clearResourceUsage"; taskId: string };
 
 function clearBellForRoute(bellCounts: Map<string, number>, route: Route): Map<string, number> {
 	if (route.screen === "task" && bellCounts.has(route.taskId)) {
@@ -225,6 +229,17 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			const taskPorts = new Map(state.taskPorts);
 			taskPorts.delete(action.taskId);
 			return { ...state, taskPorts };
+		}
+		case "setResourceUsage": {
+			const taskResourceUsage = new Map(state.taskResourceUsage);
+			taskResourceUsage.set(action.taskId, action.usage);
+			return { ...state, taskResourceUsage };
+		}
+		case "clearResourceUsage": {
+			if (!state.taskResourceUsage.has(action.taskId)) return state;
+			const taskResourceUsage = new Map(state.taskResourceUsage);
+			taskResourceUsage.delete(action.taskId);
+			return { ...state, taskResourceUsage };
 		}
 		default:
 			return state;

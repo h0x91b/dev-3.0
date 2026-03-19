@@ -566,6 +566,13 @@ export interface PortInfo {
 	processName: string; // "node", "bun", "python3"
 }
 
+// ---- Resource usage ----
+
+export interface ResourceUsage {
+	cpu: number;
+	rss: number;
+}
+
 // ---- Tmux sessions ----
 
 export interface TmuxSessionInfo {
@@ -580,6 +587,7 @@ export interface TmuxSessionInfo {
 	taskId?: string;
 	projectId?: string;
 	ports?: PortInfo[];
+	resourceUsage?: ResourceUsage;
 }
 
 // ---- System requirements ----
@@ -1047,6 +1055,7 @@ export type AppRPCSchema = {
 			updateAvailable: { version: string };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
+			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			updateDownloadProgress: { status: string; progress?: number };
 		};
 	}>;
