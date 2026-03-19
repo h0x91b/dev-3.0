@@ -566,7 +566,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									// Toggle failed silently — secondary action
 								}
 							}}
-							className={`flex-shrink-0 flex items-center rounded-lg p-1 transition-all hover:bg-fg/5 ${
+							className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-all hover:bg-fg/5 ${
 								task.watched
 									? "text-accent"
 									: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
@@ -577,6 +577,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
 							</span>
+							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
 						</button>
 					)}
 				</div>
