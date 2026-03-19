@@ -1,0 +1,1 @@
+Kanban column header icons (rename, info, count, collapse) are now always visible instead of only appearing on hover. Header layout restructured into a single flex row with reduced padding and smaller icon sizes, preventing long column names like "Agent is Working" from wrapping to a second line.

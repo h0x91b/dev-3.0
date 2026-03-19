@@ -401,89 +401,86 @@ function KanbanColumn({
 		>
 			{/* Column header */}
 			<div
-				className="px-4 py-3.5 flex-shrink-0"
+				className="px-3 py-2.5 flex-shrink-0"
 				style={{ borderBottom: `2px solid ${color}30` }}
 			>
-				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-2.5">
-						{isCustomColumn && (
-							<div
-								className="cursor-grab active:cursor-grabbing text-fg-muted hover:text-fg-3 flex-shrink-0 select-none"
-								draggable
-								onDragStart={(e) => {
-									e.stopPropagation();
-									_activeDragColumnId = customColumnId ?? null;
-									e.dataTransfer.setData("text/plain", `col:${customColumnId ?? ""}`);
-									e.dataTransfer.effectAllowed = "move";
-									onColumnDragStart?.();
-								}}
-								onDragEnd={(e) => {
-									e.stopPropagation();
-									_activeDragColumnId = null;
-									onColumnDragEnd?.();
-								}}
-								title="Drag to reorder"
-							>
-								<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-									<circle cx="4" cy="3" r="1.2" />
-									<circle cx="8" cy="3" r="1.2" />
-									<circle cx="4" cy="6" r="1.2" />
-									<circle cx="8" cy="6" r="1.2" />
-									<circle cx="4" cy="9" r="1.2" />
-									<circle cx="8" cy="9" r="1.2" />
-								</svg>
-							</div>
-						)}
+				<div className="flex items-center gap-1.5">
+					{isCustomColumn && (
 						<div
-							className="w-3 h-3 rounded-full flex-shrink-0"
-							style={{ background: color }}
+							className="cursor-grab active:cursor-grabbing text-fg-muted hover:text-fg-3 flex-shrink-0 select-none"
+							draggable
+							onDragStart={(e) => {
+								e.stopPropagation();
+								_activeDragColumnId = customColumnId ?? null;
+								e.dataTransfer.setData("text/plain", `col:${customColumnId ?? ""}`);
+								e.dataTransfer.effectAllowed = "move";
+								onColumnDragStart?.();
+							}}
+							onDragEnd={(e) => {
+								e.stopPropagation();
+								_activeDragColumnId = null;
+								onColumnDragEnd?.();
+							}}
+							title="Drag to reorder"
+						>
+							<svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
+								<circle cx="4" cy="3" r="1.2" />
+								<circle cx="8" cy="3" r="1.2" />
+								<circle cx="4" cy="6" r="1.2" />
+								<circle cx="8" cy="6" r="1.2" />
+								<circle cx="4" cy="9" r="1.2" />
+								<circle cx="8" cy="9" r="1.2" />
+							</svg>
+						</div>
+					)}
+					<div
+						className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+					{editing ? (
+						<input
+							ref={renameInputRef}
+							type="text"
+							value={editValue}
+							onChange={(e) => setEditValue(e.target.value)}
+							onBlur={commitRename}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") e.currentTarget.blur();
+								if (e.key === "Escape") { setEditing(false); }
+							}}
+							className="text-fg text-sm font-semibold bg-transparent outline-none border-b border-accent flex-1 min-w-0"
+							autoFocus
 						/>
-						{editing ? (
-							<input
-								ref={renameInputRef}
-								type="text"
-								value={editValue}
-								onChange={(e) => setEditValue(e.target.value)}
-								onBlur={commitRename}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") e.currentTarget.blur();
-									if (e.key === "Escape") { setEditing(false); }
-								}}
-								className="text-fg text-sm font-semibold bg-transparent outline-none border-b border-accent w-full min-w-0"
-								autoFocus
-							/>
-						) : (
-							<span className="text-fg text-sm font-semibold">
-								{label}
-							</span>
-						)}
-						{!editing && onRenameColumn && (
-							<button
-								onClick={startEditing}
-								className="text-fg-muted hover:text-fg-3 transition-colors w-5 h-5 flex items-center justify-center rounded-full text-base leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-								aria-label={t("kanban.renameColumn")}
-								title={t("kanban.renameColumn")}
-							>
-								{"\u{F11E7}"}
-							</button>
-						)}
-						{description && (
-							<button
-								ref={infoBtnRef}
-								onClick={toggleInfo}
-								className="text-fg-muted hover:text-fg-3 transition-colors w-5 h-5 flex items-center justify-center rounded-full text-base leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-								aria-label="Column info"
-							>
-								{"\uF449"}
-							</button>
-						)}
-					</div>
-					<div className="flex items-center gap-1.5">
+					) : (
+						<span className="text-fg text-sm font-semibold truncate flex-1 min-w-0">
+							{label}
+						</span>
+					)}
+					{!editing && onRenameColumn && (
+						<button
+							onClick={startEditing}
+							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label={t("kanban.renameColumn")}
+							title={t("kanban.renameColumn")}
+						>
+							{"\u{F11E7}"}
+						</button>
+					)}
+					{description && (
+						<button
+							ref={infoBtnRef}
+							onClick={toggleInfo}
+							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label="Column info"
+						>
+							{"\uF449"}
+						</button>
+					)}
 					{tasks.length > 0 && (
 						<span
-							className="text-xs font-bold px-2 py-0.5 rounded-full"
+							className="text-[0.625rem] font-bold px-1.5 py-px rounded-full flex-shrink-0"
 							style={{
 								color,
 								background: `${color}18`,
@@ -495,7 +492,7 @@ function KanbanColumn({
 					{onCollapseToggle && (
 						<button
 							onClick={(e) => { e.stopPropagation(); onCollapseToggle(); }}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-6 h-6 flex items-center justify-center rounded-full text-lg leading-none opacity-0 group-hover/col:opacity-100 focus:opacity-100 flex-shrink-0"
+							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-label={t("kanban.collapseColumn")}
 							title={t("kanban.collapseColumn")}
@@ -503,7 +500,6 @@ function KanbanColumn({
 							{"\u{F0403}"}
 						</button>
 					)}
-				</div>
 				</div>
 			</div>
 
