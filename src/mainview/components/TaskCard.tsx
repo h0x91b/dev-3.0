@@ -634,6 +634,35 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</button>
 				)}
 
+				{/* Watch toggle — bell icon */}
+				<button
+					onClick={async (e) => {
+						e.stopPropagation();
+						try {
+							const updated = await api.request.toggleTaskWatch({
+								taskId: task.id,
+								projectId: project.id,
+								watched: !task.watched,
+							});
+							dispatch({ type: "updateTask", task: updated });
+						} catch {}
+					}}
+					className={`flex-shrink-0 rounded-md px-1 py-0.5 transition-all ${
+						task.watched
+							? "text-accent"
+							: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
+					}`}
+					title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+					disabled={isDisabled}
+				>
+					<span
+						className="text-[0.8125rem] leading-none"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+					</span>
+				</button>
+
 				{/* Run button for TODO cards — right-aligned */}
 				{isTodo && (
 					<>

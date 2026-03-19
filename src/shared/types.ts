@@ -494,11 +494,21 @@ export interface Task {
 	customColumnId?: string | null;
 	/** True while the worktree is being created (heavy I/O in progress). */
 	preparing?: boolean;
+	/** When true, native macOS notifications fire on status changes. */
+	watched?: boolean;
 }
 
 /** Returns the display title: custom override if set, otherwise auto-generated. */
 export function getTaskTitle(task: Task): string {
 	return task.customTitle || task.title;
+}
+
+/** Humanize a status slug for display in notifications (e.g. "in-progress" → "In Progress"). */
+export function formatStatus(status: string): string {
+	return status
+		.split("-")
+		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+		.join(" ");
 }
 
 export type NoteSource = "user" | "ai";
@@ -940,6 +950,10 @@ export type AppRPCSchema = {
 			};
 			setTaskLabels: {
 				params: { taskId: string; projectId: string; labelIds: string[] };
+				response: Task;
+			};
+			toggleTaskWatch: {
+				params: { taskId: string; projectId: string; watched: boolean };
 				response: Task;
 			};
 			addTaskNote: {

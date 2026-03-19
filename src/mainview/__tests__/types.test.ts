@@ -2,6 +2,7 @@ import {
 	hexToRgb,
 	titleFromDescription,
 	extractRepoName,
+	formatStatus,
 	ALL_STATUSES,
 	ACTIVE_STATUSES,
 	STATUS_LABELS,
@@ -330,5 +331,21 @@ describe("LABEL_COLORS", () => {
 
 	it("all colors are unique", () => {
 		expect(new Set(LABEL_COLORS).size).toBe(LABEL_COLORS.length);
+	});
+});
+
+// ---- formatStatus ----
+
+describe("formatStatus", () => {
+	it("humanizes hyphenated status slugs", () => {
+		expect(formatStatus("in-progress")).toBe("In Progress");
+		expect(formatStatus("review-by-user")).toBe("Review By User");
+		expect(formatStatus("review-by-ai")).toBe("Review By Ai");
+	});
+
+	it("capitalizes single-word statuses", () => {
+		expect(formatStatus("todo")).toBe("Todo");
+		expect(formatStatus("completed")).toBe("Completed");
+		expect(formatStatus("cancelled")).toBe("Cancelled");
 	});
 });

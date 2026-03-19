@@ -96,6 +96,10 @@ const kanban = {
 	"spawnAgent.failed": "Failed to spawn: {error}",
 	"spawnAgent.notInstalled": "{name} is not installed. Install it first.",
 
+	// Watch
+	"task.watchTooltip": "Watch — notify on status changes",
+	"task.unwatchTooltip": "Unwatch — stop notifications",
+
 	// Pipeline
 	"pipeline.current": "current",
 } as const;

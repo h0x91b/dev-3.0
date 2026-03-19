@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle, formatStatus } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
@@ -1258,6 +1258,17 @@ function extractConfigFromParams(params: Record<string, any>): Dev3RepoConfig {
 	return config;
 }
 
+/** Send a native macOS notification when a watched task changes status. */
+export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
+	if (!task.watched || oldStatus === newStatus) return;
+	Utils.showNotification({
+		title: `#${task.seq} ${getTaskTitle(task)}`,
+		body: `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`,
+		subtitle: projectName,
+		silent: true,
+	});
+}
+
 export const handlers = {
 	async logRendererError(params: { description: string; source: "error" | "unhandledrejection" }): Promise<void> {
 		rendererLog.warn(`[${params.source}] ${params.description}`);
@@ -1627,6 +1638,7 @@ export const handlers = {
 				customColumnId: null,
 			}, dropOpts);
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
 			log.info("← moveTask done (worktree created)", { taskId: task.id });
 			return updated;
 		}
@@ -1690,6 +1702,7 @@ export const handlers = {
 				customColumnId: null,
 			}, dropOpts);
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
 			log.info("← moveTask done (worktree destroyed)", { taskId: task.id });
 			return updated;
 		}
@@ -1700,6 +1713,7 @@ export const handlers = {
 			customColumnId: null,
 		}, dropOpts);
 		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
 
 		// Trigger column agent if entering review-by-ai or custom column
 		await triggerColumnAgentIfNeeded(newStatus, project, updated);
@@ -1949,6 +1963,15 @@ export const handlers = {
 		const updated = await data.updateTask(project, task.id, { customTitle: trimmed });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		log.info("← renameTask done", { taskId: task.id });
+		return updated;
+	},
+
+	async toggleTaskWatch(params: { taskId: string; projectId: string; watched: boolean }): Promise<Task> {
+		log.info("→ toggleTaskWatch", { taskId: params.taskId, watched: params.watched });
+		const project = await data.getProject(params.projectId);
+		const updated = await data.updateTask(project, params.taskId, { watched: params.watched });
+		pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		log.info("← toggleTaskWatch done", { taskId: params.taskId });
 		return updated;
 	},
 

@@ -500,6 +500,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.portAllocation.body",
 		icon: "\u{F0317}", // nf-md-ethernet
 	},
+	// Batch 25: task watch notifications
+	{
+		id: "task-watch-notifications",
+		titleKey: "tip.taskWatch.title",
+		bodyKey: "tip.taskWatch.body",
+		icon: "\u{F009A}", // nf-md-bell
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

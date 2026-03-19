@@ -160,6 +160,8 @@ const tips = {
 	"tip.projectTerminalDashboard.body": "Терминал проекта можно открыть прямо с Dashboard — нажми иконку терминала на карточке проекта.",
 	"tip.portAllocation.title": "Авто-выделение портов",
 	"tip.portAllocation.body": "Задайте portCount в настройках проекта — каждой задаче выделяются свободные порты. Используйте $DEV3_PORT0, $DEV3_PORT1 в скриптах.",
+	"tip.taskWatch.title": "Следите за задачами",
+	"tip.taskWatch.body": "Нажмите колокольчик на карточке задачи, чтобы получать уведомления при смене статуса.",
 };
 
 export default tips;

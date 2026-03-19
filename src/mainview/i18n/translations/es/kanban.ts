@@ -96,6 +96,10 @@ const kanban = {
 	"spawnAgent.failed": "Error al lanzar: {error}",
 	"spawnAgent.notInstalled": "{name} no está instalado. Instálalo primero.",
 
+	// Watch
+	"task.watchTooltip": "Vigilar — notificar al cambiar estado",
+	"task.unwatchTooltip": "Dejar de vigilar — detener notificaciones",
+
 	// Pipeline
 	"pipeline.current": "actual",
 };
