@@ -3110,6 +3110,34 @@ describe("handlers.tmuxAction", () => {
 		);
 	});
 
+	it("sends even-vertical layout for layoutEvenH action", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			stdout: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "layoutEvenH" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "select-layout", "-t", "dev3-abcd1234", "even-vertical"],
+			expect.any(Object),
+		);
+	});
+
+	it("sends even-horizontal layout for layoutEvenV action", async () => {
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			stdout: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "layoutEvenV" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "select-layout", "-t", "dev3-abcd1234", "even-horizontal"],
+			expect.any(Object),
+		);
+	});
+
 	it("sends resize-pane -Z for zoom action", async () => {
 		mockSpawn.mockReturnValue({
 			stderr: new Response(""),

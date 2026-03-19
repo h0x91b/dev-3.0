@@ -3425,10 +3425,10 @@ export const handlers = {
 				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "tiled");
 				break;
 			case "layoutEvenH":
-				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-horizontal");
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-vertical");
 				break;
 			case "layoutEvenV":
-				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-vertical");
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-horizontal");
 				break;
 			case "layoutMainH":
 				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "main-horizontal");
