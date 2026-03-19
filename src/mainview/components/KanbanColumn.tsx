@@ -120,6 +120,7 @@ function KanbanColumn({
 	const infoBtnRef = useRef<HTMLButtonElement>(null);
 	const infoPopupRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
+	const infoHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// Auto-collapse when column identity changes (e.g. project switch)
 	const columnKey = `${status}:${customColumnId ?? ""}`;
@@ -127,27 +128,26 @@ function KanbanColumn({
 		setExpanded(false);
 	}, [columnKey]);
 
-	// Close info popup on outside click
+	// Cleanup info hover timer
 	useEffect(() => {
-		if (!showInfo) return;
-		function handleClick(e: MouseEvent) {
-			if (
-				infoBtnRef.current?.contains(e.target as Node) ||
-				infoPopupRef.current?.contains(e.target as Node)
-			) return;
-			setShowInfo(false);
-		}
-		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
-	}, [showInfo]);
+		return () => { if (infoHideTimer.current) clearTimeout(infoHideTimer.current); };
+	}, []);
 
-	function toggleInfo() {
-		if (showInfo) { setShowInfo(false); return; }
+	function showInfoHover() {
+		if (infoHideTimer.current) { clearTimeout(infoHideTimer.current); infoHideTimer.current = null; }
 		if (infoBtnRef.current) {
 			const r = infoBtnRef.current.getBoundingClientRect();
 			setInfoPos({ top: r.bottom + 6, left: r.left });
 		}
 		setShowInfo(true);
+	}
+
+	function scheduleHideInfo() {
+		infoHideTimer.current = setTimeout(() => setShowInfo(false), 150);
+	}
+
+	function cancelHideInfo() {
+		if (infoHideTimer.current) { clearTimeout(infoHideTimer.current); infoHideTimer.current = null; }
 	}
 
 	function startEditing() {
@@ -459,7 +459,7 @@ function KanbanColumn({
 					{!editing && onRenameColumn && (
 						<button
 							onClick={startEditing}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0"
+							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-label={t("kanban.renameColumn")}
 							title={t("kanban.renameColumn")}
@@ -470,8 +470,9 @@ function KanbanColumn({
 					{description && (
 						<button
 							ref={infoBtnRef}
-							onClick={toggleInfo}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0"
+							onMouseEnter={showInfoHover}
+							onMouseLeave={scheduleHideInfo}
+							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-label="Column info"
 						>
@@ -492,7 +493,7 @@ function KanbanColumn({
 					{onCollapseToggle && (
 						<button
 							onClick={(e) => { e.stopPropagation(); onCollapseToggle(); }}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0"
+							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-label={t("kanban.collapseColumn")}
 							title={t("kanban.collapseColumn")}
@@ -595,6 +596,8 @@ function KanbanColumn({
 				ref={infoPopupRef}
 				className="fixed z-[9999] w-56 px-3.5 py-2.5 rounded-xl border border-edge shadow-xl text-xs text-fg leading-relaxed"
 				style={{ top: infoPos.top, left: infoPos.left, background: "rgb(var(--surface-overlay))" }}
+				onMouseEnter={cancelHideInfo}
+				onMouseLeave={scheduleHideInfo}
 			>
 				{description}
 			</div>
