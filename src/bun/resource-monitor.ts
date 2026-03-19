@@ -1,22 +1,21 @@
 import type { ResourceUsage } from "../shared/types";
 import { collectTaskPids } from "./port-scanner";
+import { tmuxArgs } from "./pty-server";
 import { spawnSync } from "./spawn";
 import { createLogger } from "./logger";
 
 const log = createLogger("resource-monitor");
 const POLL_INTERVAL_MS = 10_000;
+const TMUX_SOCKET = "dev3";
 
 type PushMessageFn = (name: string, payload: unknown) => void;
-type ActiveSessionsFn = () => Array<{ taskId: string; tmuxSocket: string }>;
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let pushMessageFn: PushMessageFn | null = null;
-let getActiveSessionsFn: ActiveSessionsFn | null = null;
 
-const usageCache = new Map<string, string>();
 const usageData = new Map<string, ResourceUsage>();
 
-function parsePsOutput(output: string): { rss: number; cpu: number } {
+export function parsePsOutput(output: string): { rss: number; cpu: number } {
 	let totalRss = 0;
 	let totalCpu = 0;
 	for (const line of output.split("\n")) {
@@ -32,23 +31,47 @@ function parsePsOutput(output: string): { rss: number; cpu: number } {
 	return { rss: totalRss * 1024, cpu: totalCpu };
 }
 
+/**
+ * Discover active task tmux sessions directly from tmux.
+ * Returns session names like "dev3-abc12345" (excluding cleanup, dev-server, project-terminal).
+ */
+function discoverTmuxSessions(): string[] {
+	try {
+		const result = spawnSync(tmuxArgs(TMUX_SOCKET, "list-sessions", "-F", "#{session_name}"));
+		if (result.exitCode !== 0) return [];
+		const output = new TextDecoder().decode(result.stdout).trim();
+		if (!output) return [];
+		return output.split("\n")
+			.map((s) => s.trim())
+			.filter((name) =>
+				name.startsWith("dev3-") &&
+				!name.startsWith("dev3-cl-") &&
+				!name.startsWith("dev3-dev-") &&
+				!name.startsWith("dev3-pt-"),
+			);
+	} catch {
+		return [];
+	}
+}
+
 function poll() {
 	try {
-		if (!getActiveSessionsFn || !pushMessageFn) return;
-		const sessions = getActiveSessionsFn();
-		const activeTaskIds = new Set(sessions.map((s) => s.taskId));
+		if (!pushMessageFn) return;
 
-		for (const taskId of usageCache.keys()) {
-			if (!activeTaskIds.has(taskId)) {
-				usageCache.delete(taskId);
-				usageData.delete(taskId);
+		const sessionNames = discoverTmuxSessions();
+		const activeShortIds = new Set(sessionNames.map((n) => n.slice(5))); // "dev3-XXXXXXXX" → "XXXXXXXX"
+
+		// Clean up stale cache
+		for (const shortId of usageData.keys()) {
+			if (!activeShortIds.has(shortId)) {
+				usageData.delete(shortId);
 			}
 		}
 
-		for (const { taskId, tmuxSocket } of sessions) {
-			const sessionName = `dev3-${taskId.slice(0, 8)}`;
+		for (const sessionName of sessionNames) {
+			const shortId = sessionName.slice(5);
 			try {
-				const pids = collectTaskPids(tmuxSocket, sessionName);
+				const pids = collectTaskPids(TMUX_SOCKET, sessionName);
 				if (pids.size === 0) continue;
 
 				const pidList = Array.from(pids).join(",");
@@ -57,17 +80,16 @@ function poll() {
 				const output = new TextDecoder().decode(result.stdout).trim();
 				const usage = parsePsOutput(output);
 
-				const prev = usageData.get(taskId);
+				const prev = usageData.get(shortId);
 				const cpuChanged = !prev || Math.abs(usage.cpu - prev.cpu) > 1;
 				const rssChanged = !prev || Math.abs(usage.rss - prev.rss) > 1024 * 1024;
 
 				if (cpuChanged || rssChanged) {
-					usageCache.set(taskId, JSON.stringify(usage));
-					usageData.set(taskId, usage);
-					pushMessageFn!("resourceUsageUpdated", { taskId, usage });
+					usageData.set(shortId, usage);
+					pushMessageFn!("resourceUsageUpdated", { taskId: shortId, usage });
 				}
 			} catch (err) {
-				log.warn("Resource usage scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
+				log.warn("Resource usage scan failed", { session: sessionName, error: String(err) });
 			}
 		}
 	} catch (err) {
@@ -77,9 +99,8 @@ function poll() {
 	}
 }
 
-export function startResourceMonitor(push: PushMessageFn, getActiveSessions: ActiveSessionsFn): void {
+export function startResourceMonitor(push: PushMessageFn): void {
 	pushMessageFn = push;
-	getActiveSessionsFn = getActiveSessions;
 	log.info("Resource monitor started", { intervalMs: POLL_INTERVAL_MS });
 	pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
 }
@@ -91,6 +112,9 @@ export function stopResourceMonitor(): void {
 	}
 }
 
+/**
+ * Get cached resource usage for a task (by short ID — first 8 chars of taskId).
+ */
 export function getResourceUsage(taskId: string): ResourceUsage | undefined {
-	return usageData.get(taskId);
+	return usageData.get(taskId.slice(0, 8));
 }

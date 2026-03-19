@@ -532,7 +532,7 @@ function KanbanColumn({
 							onDragStart={onDragStart}
 							onTaskMoved={onTaskMoved}
 							bellCount={bellCounts.get(task.id) ?? 0}
-							resourceUsage={taskResourceUsage?.get(task.id)}
+							resourceUsage={taskResourceUsage?.get(task.id.slice(0, 8))}
 							ports={taskPorts.get(task.id)}
 							isActiveInSplit={task.id === activeTaskId}
 							isMoving={movingTaskIds.has(task.id)}

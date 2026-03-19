@@ -1959,7 +1959,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 
 						{/* Resources section */}
 						{(() => {
-							const usage = taskResourceUsage?.get(task.id);
+							const usage = taskResourceUsage?.get(task.id.slice(0, 8));
 							if (!usage) return null;
 							return (
 								<div className="mt-3 border-t border-edge pt-3">

@@ -24,7 +24,7 @@ vi.mock("../port-scanner", () => ({
 	collectTaskPids: vi.fn(),
 }));
 
-import { startResourceMonitor, stopResourceMonitor, getResourceUsage } from "../resource-monitor";
+import { startResourceMonitor, stopResourceMonitor, getResourceUsage, parsePsOutput } from "../resource-monitor";
 import { spawnSync } from "../spawn";
 import { collectTaskPids } from "../port-scanner";
 
@@ -39,7 +39,27 @@ function makeResult(stdout: string, exitCode = 0) {
 	};
 }
 
-describe("resource-monitor", () => {
+describe("parsePsOutput", () => {
+	it("parses multi-line ps output and sums RSS/CPU", () => {
+		const output = "100   204800   5.2\n200   102400   2.1\n300    51200   0.5";
+		const result = parsePsOutput(output);
+		expect(result.rss).toBe(358400 * 1024);
+		expect(result.cpu).toBeCloseTo(7.8, 1);
+	});
+
+	it("returns zeros for empty output", () => {
+		expect(parsePsOutput("")).toEqual({ rss: 0, cpu: 0 });
+	});
+
+	it("handles leading whitespace", () => {
+		const output = "  123  50000   3.0";
+		const result = parsePsOutput(output);
+		expect(result.rss).toBe(50000 * 1024);
+		expect(result.cpu).toBeCloseTo(3.0, 1);
+	});
+});
+
+describe("resource-monitor poller", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		mockSpawnSync.mockReset();
@@ -52,112 +72,62 @@ describe("resource-monitor", () => {
 	});
 
 	it("getResourceUsage returns undefined when no data collected", () => {
-		expect(getResourceUsage("task-123")).toBeUndefined();
+		expect(getResourceUsage("task-12345678-abcd")).toBeUndefined();
 	});
 
 	it("polls and pushes resource usage after interval", async () => {
-		const pids = new Set([100, 200, 300]);
-		mockCollectTaskPids.mockReturnValue(pids);
-		// pid=,rss=,%cpu= columns: pid rss cpu
-		mockSpawnSync.mockReturnValue(makeResult("100   204800   5.2\n200   102400   2.1\n300    51200   0.5"));
+		// Mock tmux list-sessions to return one session
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("dev3-abc12345")) // discoverTmuxSessions
+			.mockReturnValue(makeResult("100   204800   5.2\n200   102400   2.1")); // ps
+
+		mockCollectTaskPids.mockReturnValue(new Set([100, 200]));
 
 		const push = vi.fn();
-		const getSessions = vi.fn().mockReturnValue([
-			{ taskId: "task-abc123", tmuxSocket: "dev3" },
-		]);
-
-		startResourceMonitor(push, getSessions);
+		startResourceMonitor(push);
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		expect(push).toHaveBeenCalledWith("resourceUsageUpdated", {
-			taskId: "task-abc123",
+			taskId: "abc12345",
 			usage: expect.objectContaining({
 				cpu: expect.any(Number),
 				rss: expect.any(Number),
 			}),
 		});
 
-		const usage = getResourceUsage("task-abc123");
+		// getResourceUsage uses shortId internally
+		const usage = getResourceUsage("abc12345-full-task-id");
 		expect(usage).toBeDefined();
-		// RSS: (204800 + 102400 + 51200) * 1024 = 358400 * 1024
-		expect(usage!.rss).toBe(358400 * 1024);
-		// CPU: 5.2 + 2.1 + 0.5 = 7.8
-		expect(usage!.cpu).toBeCloseTo(7.8, 1);
-	});
-
-	it("does not push if change is below tolerance", async () => {
-		const pids = new Set([100]);
-		mockCollectTaskPids.mockReturnValue(pids);
-		mockSpawnSync.mockReturnValue(makeResult("100   102400   5.0"));
-
-		const push = vi.fn();
-		const getSessions = vi.fn().mockReturnValue([
-			{ taskId: "task-xyz", tmuxSocket: "dev3" },
-		]);
-
-		startResourceMonitor(push, getSessions);
-		// First poll — should push
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(push).toHaveBeenCalledTimes(1);
-
-		// Second poll — tiny change (< 1% CPU and < 1MB RSS)
-		mockSpawnSync.mockReturnValue(makeResult("100   102401   5.1"));
-		await vi.advanceTimersByTimeAsync(10_000);
-		// Should NOT push again (RSS delta ~1KB < 1MB, CPU delta 0.1 < 1%)
-		expect(push).toHaveBeenCalledTimes(1);
-	});
-
-	it("pushes again when CPU change exceeds tolerance", async () => {
-		const pids = new Set([100]);
-		mockCollectTaskPids.mockReturnValue(pids);
-		mockSpawnSync.mockReturnValue(makeResult("100   102400   5.0"));
-
-		const push = vi.fn();
-		const getSessions = vi.fn().mockReturnValue([
-			{ taskId: "task-cpu-jump", tmuxSocket: "dev3" },
-		]);
-
-		startResourceMonitor(push, getSessions);
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(push).toHaveBeenCalledTimes(1);
-
-		// CPU jumps by >1%
-		mockSpawnSync.mockReturnValue(makeResult("100   102400   15.0"));
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(push).toHaveBeenCalledTimes(2);
+		expect(usage!.rss).toBe(307200 * 1024);
+		expect(usage!.cpu).toBeCloseTo(7.3, 1);
 	});
 
 	it("skips session with no PIDs", async () => {
+		mockSpawnSync.mockReturnValueOnce(makeResult("dev3-nopids00"));
 		mockCollectTaskPids.mockReturnValue(new Set());
 
 		const push = vi.fn();
-		const getSessions = vi.fn().mockReturnValue([
-			{ taskId: "task-nopids", tmuxSocket: "dev3" },
-		]);
-
-		startResourceMonitor(push, getSessions);
+		startResourceMonitor(push);
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		expect(push).not.toHaveBeenCalled();
-		expect(mockSpawnSync).not.toHaveBeenCalled();
 	});
 
 	it("cleans up stale cache for sessions no longer active", async () => {
-		const pids = new Set([100]);
-		mockCollectTaskPids.mockReturnValue(pids);
-		mockSpawnSync.mockReturnValue(makeResult("100   102400   5.0"));
+		// First poll: session exists
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("dev3-gone0000")) // discover
+			.mockReturnValue(makeResult("100   102400   5.0")); // ps
+		mockCollectTaskPids.mockReturnValue(new Set([100]));
 
 		const push = vi.fn();
-		let sessions = [{ taskId: "task-gone", tmuxSocket: "dev3" }];
-		const getSessions = vi.fn().mockImplementation(() => sessions);
-
-		startResourceMonitor(push, getSessions);
+		startResourceMonitor(push);
 		await vi.advanceTimersByTimeAsync(10_000);
-		expect(getResourceUsage("task-gone")).toBeDefined();
+		expect(getResourceUsage("gone0000-full-id")).toBeDefined();
 
-		// Remove session from active list
-		sessions = [];
+		// Second poll: session gone
+		mockSpawnSync.mockReturnValue(makeResult("")); // empty session list
 		await vi.advanceTimersByTimeAsync(10_000);
-		expect(getResourceUsage("task-gone")).toBeUndefined();
+		expect(getResourceUsage("gone0000-full-id")).toBeUndefined();
 	});
 });

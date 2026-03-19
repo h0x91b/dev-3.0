@@ -330,17 +330,14 @@ startPortScanPoller(
 	getActiveSessionIds,
 );
 
-// Start background resource usage monitor
-startResourceMonitor(
-	(name, payload) => {
-		try {
-			(mainWindow.webview.rpc as any).send[name]?.(payload);
-		} catch (err) {
-			log.error("Failed to push resource usage update", { error: String(err) });
-		}
-	},
-	getActiveSessionIds,
-);
+// Start background resource usage monitor (discovers tmux sessions directly, not via pty-server)
+startResourceMonitor((name, payload) => {
+	try {
+		(mainWindow.webview.rpc as any).send[name]?.(payload);
+	} catch (err) {
+		log.error("Failed to push resource usage update", { error: String(err) });
+	}
+});
 
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
