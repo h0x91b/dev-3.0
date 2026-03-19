@@ -645,9 +645,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								watched: !task.watched,
 							});
 							dispatch({ type: "updateTask", task: updated });
-						} catch {}
+						} catch {
+							// Toggle failed silently — no user-facing error needed for a secondary action
+						}
 					}}
-					className={`flex-shrink-0 rounded-md px-1 py-0.5 transition-all ${
+					className={`flex-shrink-0 rounded-lg px-1.5 py-1 transition-all hover:bg-fg/5 ${
 						task.watched
 							? "text-accent"
 							: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
