@@ -264,8 +264,13 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 											role={canNavigate ? "button" : undefined}
 											tabIndex={canNavigate ? 0 : undefined}
 											className={`px-4 py-2.5 hover:bg-elevated-hover transition-colors border-b border-edge/50 last:border-0${canNavigate ? " cursor-pointer" : ""}`}
-											onClick={() => handleSessionClick(session)}
-											onKeyDown={canNavigate ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSessionClick(session); } } : undefined}
+											onClick={canNavigate ? () => handleSessionClick(session) : undefined}
+											onKeyDown={canNavigate ? (e: React.KeyboardEvent) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													handleSessionClick(session);
+												}
+											} : undefined}
 										>
 											{/* Session name + badges + kill */}
 											<div className="flex items-center justify-between gap-2">

@@ -122,6 +122,50 @@ describe("TmuxSessionManager", () => {
 		});
 	});
 
+	it("navigates on Enter key for navigable session", async () => {
+		mockedApi.request.listTmuxSessions.mockResolvedValue([projectTerminalSession]);
+		const navigate = vi.fn();
+		const user = userEvent.setup();
+		renderManager(navigate);
+
+		await waitFor(() => {
+			expect(screen.getByText("1")).toBeInTheDocument();
+		});
+
+		await user.click(screen.getByTitle("tmux Sessions"));
+
+		const row = screen.getByRole("button", { name: /dev-3\.0/i });
+		row.focus();
+		await user.keyboard("{Enter}");
+
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project-terminal",
+			projectId: "a1c9fe4e-full-uuid",
+		});
+	});
+
+	it("navigates on Space key for navigable session", async () => {
+		mockedApi.request.listTmuxSessions.mockResolvedValue([projectTerminalSession]);
+		const navigate = vi.fn();
+		const user = userEvent.setup();
+		renderManager(navigate);
+
+		await waitFor(() => {
+			expect(screen.getByText("1")).toBeInTheDocument();
+		});
+
+		await user.click(screen.getByTitle("tmux Sessions"));
+
+		const row = screen.getByRole("button", { name: /dev-3\.0/i });
+		row.focus();
+		await user.keyboard(" ");
+
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project-terminal",
+			projectId: "a1c9fe4e-full-uuid",
+		});
+	});
+
 	it("does not navigate when clicking the kill button", async () => {
 		mockedApi.request.listTmuxSessions.mockResolvedValue([projectTerminalSession]);
 		const navigate = vi.fn();
