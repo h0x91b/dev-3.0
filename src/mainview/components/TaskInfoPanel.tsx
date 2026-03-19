@@ -843,6 +843,39 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 		? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
 		: null;
 
+	async function handleToggleWatch(e: React.MouseEvent) {
+		e.stopPropagation();
+		try {
+			const updated = await api.request.toggleTaskWatch({
+				taskId: task.id,
+				projectId: project.id,
+				watched: !task.watched,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch {
+			// Toggle failed silently — secondary action
+		}
+	}
+
+	const watchToggleButton = (
+		<button
+			onClick={handleToggleWatch}
+			className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+				task.watched
+					? "text-accent bg-accent/10 border border-accent/25"
+					: "text-fg-3 hover:text-fg hover:bg-elevated"
+			}`}
+			title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+		>
+			<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+				{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+			</span>
+			<span className="text-[0.6875rem] font-medium">
+				{task.watched ? t("task.watching") : t("task.watch")}
+			</span>
+		</button>
+	);
+
 	const statusDropdownButton = (
 		<button
 			ref={statusTriggerRef}
@@ -1634,8 +1667,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 			{collapsed ? (
 				/* ---- Collapsed: two rows ---- */
 				<div className="flex flex-col h-full px-4">
-					{/* Top row: status + labels + info hints */}
+					{/* Top row: watch + status + labels + info hints */}
 					<div className="flex items-center gap-1.5 min-w-0 pt-1">
+						{watchToggleButton}
 						{statusDropdownButton}
 						{statusDropdownPortal}
 						{refDropdownPortal}
@@ -1713,8 +1747,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				<div className="flex flex-col h-full">
 					{/* Header rows with controls */}
 					<div className="flex flex-col px-4">
-						{/* Top row: status + labels + info hints */}
+						{/* Top row: watch + status + labels + info hints */}
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
+							{watchToggleButton}
 							{statusDropdownButton}
 							{statusDropdownPortal}
 						{refDropdownPortal}

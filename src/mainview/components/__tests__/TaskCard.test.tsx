@@ -1174,18 +1174,18 @@ describe("TaskCard", () => {
 	});
 
 	describe("watch toggle", () => {
-		it("renders bell outline icon for unwatched task", () => {
+		it("renders bell outline icon with Watch text for unwatched task", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }));
 			const btn = screen.getByTitle("Watch — notify on status changes");
 			expect(btn).toBeInTheDocument();
-			expect(btn.textContent).toBe("\u{F0F1C}");
+			expect(btn.textContent).toContain("Watch");
 		});
 
-		it("renders filled bell icon for watched task", () => {
+		it("renders filled bell icon with Watching text for watched task", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test", watched: true }));
 			const btn = screen.getByTitle("Unwatch — stop notifications");
 			expect(btn).toBeInTheDocument();
-			expect(btn.textContent).toBe("\u{F009A}");
+			expect(btn.textContent).toContain("Watching");
 		});
 
 		it("calls toggleTaskWatch API on click", async () => {

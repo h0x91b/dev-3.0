@@ -97,6 +97,8 @@ const kanban = {
 	"spawnAgent.notInstalled": "{name} is not installed. Install it first.",
 
 	// Watch
+	"task.watch": "Watch",
+	"task.watching": "Watching",
 	"task.watchTooltip": "Watch — notify on status changes",
 	"task.unwatchTooltip": "Unwatch — stop notifications",
 
