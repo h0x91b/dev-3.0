@@ -1,0 +1,1 @@
+Add IntelliJ IDEA Ultimate to the "Open in..." menu. The existing entries only covered "IntelliJ IDEA" (generic) and "IntelliJ IDEA CE" (Community Edition), but JetBrains Toolbox installs the app as "IntelliJ IDEA Ultimate" which was not detected.
