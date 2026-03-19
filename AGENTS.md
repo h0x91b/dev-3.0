@@ -110,6 +110,28 @@ Non-obvious architectural decisions, hacks, and workarounds are documented in `d
 - **Keep it short.** Each section should be 2-4 sentences max. This is a quick reference, not a blog post. A good decision record fits on one screen.
 - Link to relevant code paths (file + function names) so readers can find the implementation.
 
+## Test instructions (mandatory for every task)
+
+**Every task must end with a "Test instructions" section in the final message to the user.** This is a TL;DR at the bottom — the user should be able to test everything without reading the full conversation above.
+
+**Format:**
+
+```
+## Test instructions
+
+1. Go to [place in the app]
+2. Click [element] / Do [action]
+3. Expected: [what should happen]
+...
+```
+
+**Rules:**
+- **Cover the entire task, not just the latest change.** If the task involved adding button A, then button B, then button C across multiple messages — the test instructions must verify all three. Mark the most recently added item with `(new)` so the user can spot what changed in the last iteration.
+- **Be specific.** "Open settings" is not enough — say "Open Settings → General tab → look for the 'Auto-save' toggle". Include exact labels, tab names, menu paths.
+- **Keep it short.** One numbered step per thing to verify. No explanations of *why* — just *what to do* and *what to expect*.
+- **Include negative cases if relevant.** E.g., "Try clicking X when Y is empty — should show an error toast, not crash."
+- **Update, don't duplicate.** If you already posted test instructions earlier in the conversation, the new version replaces the old one entirely. Always provide the full set.
+
 ## Commands
 
 ```bash
