@@ -261,8 +261,16 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 									return (
 										<div
 											key={session.name}
+											role={canNavigate ? "button" : undefined}
+											tabIndex={canNavigate ? 0 : undefined}
 											className={`px-4 py-2.5 hover:bg-elevated-hover transition-colors border-b border-edge/50 last:border-0${canNavigate ? " cursor-pointer" : ""}`}
-											onClick={() => handleSessionClick(session)}
+											onClick={canNavigate ? () => handleSessionClick(session) : undefined}
+											onKeyDown={canNavigate ? (e: React.KeyboardEvent) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													handleSessionClick(session);
+												}
+											} : undefined}
 										>
 											{/* Session name + badges + kill */}
 											<div className="flex items-center justify-between gap-2">
@@ -330,7 +338,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 													e.stopPropagation();
 													handleCopy(session.name);
 												}}
-												className="mt-1.5 flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-hover transition-colors"
+												className="mt-1.5 inline-flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-hover transition-colors"
 											>
 												<svg
 													className="w-3 h-3 flex-shrink-0"

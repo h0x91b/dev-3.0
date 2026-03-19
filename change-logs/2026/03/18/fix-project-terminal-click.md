@@ -1,0 +1,1 @@
+Fix project terminal sessions in the tmux session popover not responding to clicks. Added role="button" and tabIndex for WKWebView accessibility, changed copy-attach button from full-width flex to inline-flex so it no longer captures clicks intended for the session row. Added comprehensive component tests for TmuxSessionManager.
