@@ -86,7 +86,6 @@ function ProjectView({
 				navigate={navigate}
 				bellCounts={bellCounts}
 				taskPorts={taskPorts}
-				taskResourceUsage={taskResourceUsage}
 				onSwitchToBoard={() => toggleSidebarMode("board")}
 			/>
 		) : (

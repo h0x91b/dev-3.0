@@ -4,6 +4,7 @@ import { tmuxArgs } from "./pty-server";
 import { createLogger } from "./logger";
 
 const log = createLogger("port-scanner");
+const decoder = new TextDecoder();
 
 /**
  * Get pane PIDs for a tmux session.
@@ -12,7 +13,7 @@ export function getSessionPanePids(socket: string, sessionName: string): number[
 	try {
 		const result = spawnSync(tmuxArgs(socket, "list-panes", "-t", sessionName, "-F", "#{pane_pid}"));
 		if (result.exitCode !== 0) return [];
-		const output = new TextDecoder().decode(result.stdout).trim();
+		const output = decoder.decode(result.stdout).trim();
 		if (!output) return [];
 		return output.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
 	} catch {
@@ -31,7 +32,7 @@ export function getDescendantPids(pid: number): number[] {
 		try {
 			const result = spawnSync(["pgrep", "-P", String(current)]);
 			if (result.exitCode !== 0) continue;
-			const output = new TextDecoder().decode(result.stdout).trim();
+			const output = decoder.decode(result.stdout).trim();
 			if (!output) continue;
 			for (const line of output.split("\n")) {
 				const childPid = parseInt(line.trim(), 10);
@@ -96,18 +97,72 @@ export function getLsofOutput(): string {
 	try {
 		const result = spawnSync(["lsof", "-i", "-P", "-n", "-sTCP:LISTEN", "-F", "pcn"]);
 		if (result.exitCode !== 0) return "";
-		return new TextDecoder().decode(result.stdout);
+		return decoder.decode(result.stdout);
 	} catch {
 		return "";
 	}
 }
 
 /**
+ * Build a complete process tree from a single `ps` call.
+ * Returns a Map of parent PID → child PIDs.
+ * Replaces per-PID `pgrep -P` calls with one O(1) spawn.
+ */
+export function buildProcessTree(): Map<number, number[]> {
+	const tree = new Map<number, number[]>();
+	try {
+		const result = spawnSync(["ps", "-eo", "pid=,ppid="]);
+		if (result.exitCode !== 0) return tree;
+		const output = decoder.decode(result.stdout);
+		for (const line of output.split("\n")) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+			const parts = trimmed.split(/\s+/);
+			if (parts.length < 2) continue;
+			const pid = parseInt(parts[0], 10);
+			const ppid = parseInt(parts[1], 10);
+			if (isNaN(pid) || isNaN(ppid)) continue;
+			let children = tree.get(ppid);
+			if (!children) {
+				children = [];
+				tree.set(ppid, children);
+			}
+			children.push(pid);
+		}
+	} catch {
+		// ignore
+	}
+	return tree;
+}
+
+/**
+ * Get all descendants of a PID from a pre-built process tree (in-memory BFS).
+ */
+export function collectDescendants(pid: number, tree: Map<number, number[]>): number[] {
+	const descendants: number[] = [];
+	const queue = [pid];
+	while (queue.length > 0) {
+		const current = queue.shift()!;
+		const children = tree.get(current);
+		if (children) {
+			for (const child of children) {
+				descendants.push(child);
+				queue.push(child);
+			}
+		}
+	}
+	return descendants;
+}
+
+/**
  * Build the full PID set (pane PIDs + all descendants) for a tmux session.
  * Also includes PIDs from the corresponding dev server session (dev3-dev-*)
  * if one exists, so that ports opened by `runDevServer` are detected.
+ *
+ * When `processTree` is provided, uses in-memory BFS (no extra spawns).
+ * Otherwise falls back to per-PID `pgrep -P` calls.
  */
-export function collectTaskPids(socket: string, sessionName: string): Set<number> {
+export function collectTaskPids(socket: string, sessionName: string, processTree?: Map<number, number[]>): Set<number> {
 	const panePids = getSessionPanePids(socket, sessionName);
 
 	// Dev server sessions (dev3-dev-XXXX) run in a separate tmux session
@@ -120,8 +175,11 @@ export function collectTaskPids(socket: string, sessionName: string): Set<number
 
 	const allPids = new Set<number>(panePids);
 	for (const pid of panePids) {
-		for (const descendant of getDescendantPids(pid)) {
-			allPids.add(descendant);
+		const descendants = processTree
+			? collectDescendants(pid, processTree)
+			: getDescendantPids(pid);
+		for (const d of descendants) {
+			allPids.add(d);
 		}
 	}
 	return allPids;
@@ -131,8 +189,8 @@ export function collectTaskPids(socket: string, sessionName: string): Set<number
  * Scan listening TCP ports for a tmux session.
  * Optionally accepts pre-fetched lsof output to avoid redundant calls.
  */
-export function scanTaskPorts(socket: string, sessionName: string, lsofOutput?: string): PortInfo[] {
-	const allPids = collectTaskPids(socket, sessionName);
+export function scanTaskPorts(socket: string, sessionName: string, lsofOutput?: string, processTree?: Map<number, number[]>): PortInfo[] {
+	const allPids = collectTaskPids(socket, sessionName, processTree);
 	if (allPids.size === 0) return [];
 
 	const output = lsofOutput ?? getLsofOutput();
@@ -171,13 +229,14 @@ function poll() {
 			}
 		}
 
-		// Run lsof once for all tasks (instead of per-task)
+		// Build process tree and run lsof once for all tasks
+		const processTree = sessions.length > 0 ? buildProcessTree() : new Map<number, number[]>();
 		const lsofOutput = sessions.length > 0 ? getLsofOutput() : "";
 
 		for (const { taskId, tmuxSocket } of sessions) {
 			const sessionName = `dev3-${taskId.slice(0, 8)}`;
 			try {
-				const ports = scanTaskPorts(tmuxSocket, sessionName, lsofOutput);
+				const ports = scanTaskPorts(tmuxSocket, sessionName, lsofOutput, processTree);
 				const serialized = JSON.stringify(ports);
 				if (portCache.get(taskId) !== serialized) {
 					portCache.set(taskId, serialized);

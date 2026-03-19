@@ -13,8 +13,7 @@
       "Bash(gh *)",
       "WebSearch",
       "Bash(dev3:*)",
-      "Bash(sed *)",
-      "Bash(grep:*)"
+      "Bash(sed *)"
     ]
   },
   "hooks": {

@@ -21,15 +21,15 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../port-scanner", () => ({
-	collectTaskPids: vi.fn(),
+	getSessionPanePids: vi.fn(),
 }));
 
-import { startResourceMonitor, stopResourceMonitor, getResourceUsage, parsePsOutput } from "../resource-monitor";
+import { startResourceMonitor, stopResourceMonitor, getResourceUsage, collectProcessInfo, aggregateResources } from "../resource-monitor";
 import { spawnSync } from "../spawn";
-import { collectTaskPids } from "../port-scanner";
+import { getSessionPanePids } from "../port-scanner";
 
 const mockSpawnSync = spawnSync as unknown as ReturnType<typeof vi.fn>;
-const mockCollectTaskPids = collectTaskPids as unknown as ReturnType<typeof vi.fn>;
+const mockGetSessionPanePids = getSessionPanePids as unknown as ReturnType<typeof vi.fn>;
 
 function makeResult(stdout: string, exitCode = 0) {
 	return {
@@ -39,23 +39,66 @@ function makeResult(stdout: string, exitCode = 0) {
 	};
 }
 
-describe("parsePsOutput", () => {
-	it("parses multi-line ps output and sums RSS/CPU", () => {
-		const output = "100   204800   5.2\n200   102400   2.1\n300    51200   0.5";
-		const result = parsePsOutput(output);
+describe("collectProcessInfo", () => {
+	beforeEach(() => {
+		mockSpawnSync.mockReset();
+	});
+
+	it("parses ps output into tree and resources", () => {
+		mockSpawnSync.mockReturnValueOnce(
+			makeResult("  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n"),
+		);
+
+		const { tree, resources } = collectProcessInfo();
+
+		expect(tree.get(1)).toEqual([100]);
+		expect(tree.get(100)).toEqual([200]);
+		expect(tree.get(200)).toEqual([300]);
+
+		expect(resources.get(100)).toEqual({ rss: 204800 * 1024, cpu: 5.2 });
+		expect(resources.get(200)).toEqual({ rss: 102400 * 1024, cpu: 2.1 });
+		expect(resources.get(300)).toEqual({ rss: 51200 * 1024, cpu: 0.5 });
+	});
+
+	it("returns empty maps on ps failure", () => {
+		mockSpawnSync.mockReturnValueOnce(makeResult("", 1));
+		const { tree, resources } = collectProcessInfo();
+		expect(tree.size).toBe(0);
+		expect(resources.size).toBe(0);
+	});
+
+	it("handles leading whitespace in ps output", () => {
+		mockSpawnSync.mockReturnValueOnce(makeResult("    123      1    50000   3.0\n"));
+
+		const { resources } = collectProcessInfo();
+		expect(resources.get(123)).toEqual({ rss: 50000 * 1024, cpu: 3.0 });
+	});
+});
+
+describe("aggregateResources", () => {
+	it("sums RSS and CPU for given PIDs", () => {
+		const resources = new Map([
+			[100, { rss: 204800 * 1024, cpu: 5.2 }],
+			[200, { rss: 102400 * 1024, cpu: 2.1 }],
+			[300, { rss: 51200 * 1024, cpu: 0.5 }],
+		]);
+
+		const result = aggregateResources(new Set([100, 200, 300]), resources);
 		expect(result.rss).toBe(358400 * 1024);
 		expect(result.cpu).toBeCloseTo(7.8, 1);
 	});
 
-	it("returns zeros for empty output", () => {
-		expect(parsePsOutput("")).toEqual({ rss: 0, cpu: 0 });
+	it("returns zeros for empty PID set", () => {
+		const resources = new Map([[100, { rss: 1024, cpu: 5.0 }]]);
+		const result = aggregateResources(new Set(), resources);
+		expect(result).toEqual({ rss: 0, cpu: 0 });
 	});
 
-	it("handles leading whitespace", () => {
-		const output = "  123  50000   3.0";
-		const result = parsePsOutput(output);
-		expect(result.rss).toBe(50000 * 1024);
-		expect(result.cpu).toBeCloseTo(3.0, 1);
+	it("ignores PIDs not in resources map", () => {
+		const resources = new Map([[100, { rss: 1024, cpu: 5.0 }]]);
+		const result = aggregateResources(new Set([100, 999]), resources);
+		expect(result.rss).toBe(1024);
+		expect(result.cpu).toBe(5.0);
 	});
 });
 
@@ -63,7 +106,7 @@ describe("resource-monitor poller", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		mockSpawnSync.mockReset();
-		mockCollectTaskPids.mockReset();
+		mockGetSessionPanePids.mockReset();
 	});
 
 	afterEach(() => {
@@ -76,12 +119,17 @@ describe("resource-monitor poller", () => {
 	});
 
 	it("polls and pushes resource usage after interval", async () => {
-		// Mock tmux list-sessions to return one session
+		// Mock tmux list-sessions → one session
 		mockSpawnSync
 			.mockReturnValueOnce(makeResult("dev3-abc12345")) // discoverTmuxSessions
-			.mockReturnValue(makeResult("100   204800   5.2\n200   102400   2.1")); // ps
+			.mockReturnValueOnce(makeResult(
+				"  100     1   204800   5.2\n  200   100   102400   2.1\n",
+			)); // collectProcessInfo (single ps call)
 
-		mockCollectTaskPids.mockReturnValue(new Set([100, 200]));
+		// Mock tmux list-panes
+		mockGetSessionPanePids
+			.mockReturnValueOnce([100]) // main session
+			.mockReturnValueOnce([]); // dev session
 
 		const push = vi.fn();
 		startResourceMonitor(push);
@@ -95,7 +143,7 @@ describe("resource-monitor poller", () => {
 			}),
 		});
 
-		// getResourceUsage uses shortId internally
+		// PID 100 (rss: 204800KB) + PID 200 (rss: 102400KB) = 307200KB
 		const usage = getResourceUsage("abc12345-full-task-id");
 		expect(usage).toBeDefined();
 		expect(usage!.rss).toBe(307200 * 1024);
@@ -103,8 +151,13 @@ describe("resource-monitor poller", () => {
 	});
 
 	it("skips session with no PIDs", async () => {
-		mockSpawnSync.mockReturnValueOnce(makeResult("dev3-nopids00"));
-		mockCollectTaskPids.mockReturnValue(new Set());
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("dev3-nopids00")) // discoverTmuxSessions
+			.mockReturnValueOnce(makeResult("  1     0   1000   0.1\n")); // collectProcessInfo
+
+		mockGetSessionPanePids
+			.mockReturnValueOnce([]) // main session — no panes
+			.mockReturnValueOnce([]); // dev session
 
 		const push = vi.fn();
 		startResourceMonitor(push);
@@ -113,21 +166,84 @@ describe("resource-monitor poller", () => {
 		expect(push).not.toHaveBeenCalled();
 	});
 
-	it("cleans up stale cache for sessions no longer active", async () => {
+	it("cleans up stale cache and pushes zero usage", async () => {
 		// First poll: session exists
 		mockSpawnSync
 			.mockReturnValueOnce(makeResult("dev3-gone0000")) // discover
-			.mockReturnValue(makeResult("100   102400   5.0")); // ps
-		mockCollectTaskPids.mockReturnValue(new Set([100]));
+			.mockReturnValueOnce(makeResult("  100     1   102400   5.0\n")); // ps
+
+		mockGetSessionPanePids
+			.mockReturnValueOnce([100]) // main
+			.mockReturnValueOnce([]); // dev
 
 		const push = vi.fn();
 		startResourceMonitor(push);
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(getResourceUsage("gone0000-full-id")).toBeDefined();
 
-		// Second poll: session gone
-		mockSpawnSync.mockReturnValue(makeResult("")); // empty session list
+		// Second poll: session gone — push zero usage
+		mockSpawnSync.mockReturnValueOnce(makeResult("")); // empty session list
 		await vi.advanceTimersByTimeAsync(10_000);
+
 		expect(getResourceUsage("gone0000-full-id")).toBeUndefined();
+
+		// Verify zero-usage push was sent
+		const lastCall = push.mock.calls[push.mock.calls.length - 1];
+		expect(lastCall[0]).toBe("resourceUsageUpdated");
+		expect(lastCall[1]).toEqual({
+			taskId: "gone0000",
+			usage: { cpu: 0, rss: 0 },
+		});
+	});
+
+	it("pushes again when CPU change exceeds tolerance", async () => {
+		// First poll
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("dev3-cpujump0")) // discover
+			.mockReturnValueOnce(makeResult("  100     1   102400   5.0\n")); // ps
+
+		mockGetSessionPanePids
+			.mockReturnValueOnce([100])
+			.mockReturnValueOnce([]);
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(push).toHaveBeenCalledTimes(1);
+
+		// Second poll: CPU jumps by >1%
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("dev3-cpujump0"))
+			.mockReturnValueOnce(makeResult("  100     1   102400   50.0\n"));
+
+		mockGetSessionPanePids
+			.mockReturnValueOnce([100])
+			.mockReturnValueOnce([]);
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(push).toHaveBeenCalledTimes(2);
+	});
+
+	it("only uses 2 spawnSync calls per poll cycle (tmux + ps)", async () => {
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("dev3-aaa00000\ndev3-bbb00000")) // discover (1 call)
+			.mockReturnValueOnce(makeResult( // collectProcessInfo (1 call)
+				"  100     1   50000   1.0\n  200     1   60000   2.0\n",
+			));
+
+		mockGetSessionPanePids
+			.mockReturnValueOnce([100]) // aaa main
+			.mockReturnValueOnce([]) // aaa dev
+			.mockReturnValueOnce([200]) // bbb main
+			.mockReturnValueOnce([]); // bbb dev
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		// Only 2 spawnSync calls: tmux list-sessions + ps -eo
+		// (getSessionPanePids is mocked separately from port-scanner)
+		expect(mockSpawnSync).toHaveBeenCalledTimes(2);
+		expect(push).toHaveBeenCalledTimes(2);
 	});
 });

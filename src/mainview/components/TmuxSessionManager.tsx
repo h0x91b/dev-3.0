@@ -334,16 +334,16 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 											)}
 
 											{/* Resource usage */}
-										{session.resourceUsage && (
-											<div className="flex items-center gap-1.5 mt-1.5 text-[0.625rem] font-mono text-fg-3">
-												<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
-												<span>{formatBytes(session.resourceUsage.rss)}</span>
-												<span className="text-fg-muted">·</span>
-												<span>{session.resourceUsage.cpu.toFixed(1)}% CPU</span>
-											</div>
-										)}
+											{session.resourceUsage && (
+												<div className="flex items-center gap-1.5 mt-1.5 text-[0.625rem] font-mono text-fg-3">
+													<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
+													<span>{formatBytes(session.resourceUsage.rss)}</span>
+													<span className="text-fg-muted">·</span>
+													<span>{session.resourceUsage.cpu.toFixed(1)}% CPU</span>
+												</div>
+											)}
 
-										{/* Copy attach command */}
+											{/* Copy attach command */}
 											<button
 												onClick={(e) => {
 													e.stopPropagation();
