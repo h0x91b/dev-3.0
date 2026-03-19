@@ -1,0 +1,1 @@
+Expanded `.claude/settings.json` allow list from ~12 to ~80 standard safe CLI commands, covering file utilities, search tools, text processing, JS/Node tooling, networking, system info, process inspection, compression, hashing, file operations, and macOS utilities.
