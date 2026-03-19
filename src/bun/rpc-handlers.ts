@@ -14,6 +14,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn, spawnSync } from "./spawn";
 import { getPortsForTask } from "./port-scanner";
+import { getResourceUsage } from "./resource-monitor";
 import { dlopen, FFIType } from "bun:ffi";
 import { clonePaths } from "./cow-clone";
 import { setupAgentHooks } from "./agent-hooks";
@@ -3001,6 +3002,7 @@ export const handlers = {
 				taskId: taskInfo?.taskId,
 				projectId: taskInfo?.projectId,
 				ports: taskInfo?.taskId ? getPortsForTask(taskInfo.taskId) : undefined,
+				resourceUsage: taskInfo?.taskId ? getResourceUsage(taskInfo.taskId) : undefined,
 			});
 		}
 

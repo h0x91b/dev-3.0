@@ -162,6 +162,8 @@ const tips = {
 	"tip.portAllocation.body": "Задайте portCount в настройках проекта — каждой задаче выделяются свободные порты. Используйте $DEV3_PORT0, $DEV3_PORT1 в скриптах.",
 	"tip.taskWatch.title": "Следите за задачами",
 	"tip.taskWatch.body": "Нажмите колокольчик на карточке задачи, чтобы получать уведомления при смене статуса.",
+	"tip.resourceUsageBadge.title": "Ресурсы по задачам",
+	"tip.resourceUsageBadge.body": "Каждая активная задача показывает CPU и память — наведите на бейдж для деталей.",
 };
 
 export default tips;

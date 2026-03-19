@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, BranchStatus, PortInfo } from "../../shared/types";
+import type { Task, Project, TaskStatus, BranchStatus, PortInfo, ResourceUsage } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
@@ -8,6 +8,7 @@ import InlineRename from "./InlineRename";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent } from "../analytics";
 import { getKeymapPreset, setKeymapPreset, KEYMAP_CHANGED_EVENT } from "../terminal-keymaps";
@@ -24,6 +25,7 @@ interface TaskInfoPanelProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	taskPorts?: Map<string, PortInfo[]>;
+	taskResourceUsage?: Map<string, ResourceUsage>;
 	isFullPage?: boolean;
 }
 
@@ -135,7 +137,7 @@ function DevServerMenu({ position, onRestart, onStop, onClose, t }: DevServerMen
 	);
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPage }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage }: TaskInfoPanelProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -1950,6 +1952,30 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 												<span className="text-fg-muted text-[0.625rem]">{p.processName}</span>
 											</button>
 										))}
+									</div>
+								</div>
+							);
+						})()}
+
+						{/* Resources section */}
+						{(() => {
+							const usage = taskResourceUsage?.get(task.id);
+							if (!usage) return null;
+							return (
+								<div className="mt-3 border-t border-edge pt-3">
+									<div className="flex items-center gap-2 mb-2">
+										<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
+										<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">{t("resources.title")}</span>
+									</div>
+									<div className="flex items-center gap-4 text-xs font-mono">
+										<div>
+											<span className="text-fg-muted">{t("resources.memory")}</span>
+											<span className="ml-1.5 text-fg-2">{formatBytes(usage.rss)}</span>
+										</div>
+										<div>
+											<span className="text-fg-muted">{t("resources.cpu")}</span>
+											<span className="ml-1.5 text-fg-2">{usage.cpu.toFixed(1)}%</span>
+										</div>
 									</div>
 								</div>
 							);

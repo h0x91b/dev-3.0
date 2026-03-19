@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
@@ -18,6 +18,7 @@ interface ActiveTasksSidebarProps {
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
+	taskResourceUsage?: Map<string, ResourceUsage>;
 	onSwitchToBoard: () => void;
 }
 
