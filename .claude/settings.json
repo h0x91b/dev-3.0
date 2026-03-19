@@ -107,7 +107,28 @@
       "Bash(touch *)",
       "Bash(mkdir *)",
       "Bash(cp *)",
-      "Bash(mv *)"
+      "Bash(mv *)",
+
+      "Bash(for *)",
+      "Bash(while *)",
+      "Bash(if *)",
+      "Bash(case *)",
+      "Bash([ *)",
+      "Bash([[ *)",
+      "Bash(set *)",
+      "Bash(export *)",
+      "Bash(source *)",
+      "Bash(. *)",
+      "Bash(eval *)",
+      "Bash(exec *)",
+      "Bash(read *)",
+      "Bash(declare *)",
+      "Bash(local *)",
+      "Bash(unset *)",
+      "Bash(shift *)",
+      "Bash(return *)",
+      "Bash(exit *)",
+      "Bash(trap *)"
     ]
   },
   "hooks": {
