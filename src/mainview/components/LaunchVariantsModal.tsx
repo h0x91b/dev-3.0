@@ -60,6 +60,7 @@ function LaunchVariantsModal({
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
+	const [watched, setWatched] = useState(!!task.watched);
 
 	useEffect(() => {
 		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
@@ -159,29 +160,31 @@ function LaunchVariantsModal({
 						</div>
 						<button
 							onClick={async () => {
+								const newVal = !watched;
+								setWatched(newVal);
 								try {
 									const updated = await api.request.toggleTaskWatch({
 										taskId: task.id,
 										projectId: project.id,
-										watched: !task.watched,
+										watched: newVal,
 									});
 									dispatch({ type: "updateTask", task: updated });
 								} catch {
-									// Toggle failed silently — secondary action
+									setWatched(!newVal); // revert on failure
 								}
 							}}
 							className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
-								task.watched
+								watched
 									? "text-accent bg-accent/10 border border-accent/25"
 									: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 							}`}
-							title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+							title={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 						>
 							<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+								{watched ? "\u{F009A}" : "\u{F0F1C}"}
 							</span>
 							<span className="text-xs font-medium">
-								{task.watched ? t("task.watching") : t("task.watch")}
+								{watched ? t("task.watching") : t("task.watch")}
 							</span>
 						</button>
 					</div>

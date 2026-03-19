@@ -1787,6 +1787,7 @@ export const handlers = {
 					seq: sharedSeq,
 					existingBranch: srcBranch,
 					preparing: needsWorktree,
+					watched: sourceTask.watched,
 				},
 			);
 
@@ -1795,6 +1796,11 @@ export const handlers = {
 
 		// Delete the original TODO task
 		await data.deleteTask(project, params.taskId);
+
+		// Notify watched tasks about the status change (todo → targetStatus)
+		for (const task of resultTasks) {
+			notifyWatchedTaskStatusChange(task, "todo", params.targetStatus, project.name);
+		}
 
 		log.info("← spawnVariants returning immediately", { count: resultTasks.length, groupId, needsWorktree });
 
@@ -1889,6 +1895,7 @@ export const handlers = {
 					configId: variant.configId,
 					seq: sharedSeq,
 					preparing: needsWorktree,
+					watched: sourceTask.watched,
 				},
 			);
 

@@ -280,7 +280,7 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
-	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; existingBranch?: string; preparing?: boolean },
+	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; existingBranch?: string; preparing?: boolean; watched?: boolean },
 ): Promise<Task> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
@@ -308,6 +308,7 @@ export async function addTask(
 			labelIds: [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
 			...(extras?.preparing ? { preparing: true } : {}),
+			...(extras?.watched ? { watched: true } : {}),
 		};
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);
