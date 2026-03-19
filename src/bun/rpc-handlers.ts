@@ -3297,7 +3297,7 @@ export const handlers = {
 		return updated;
 	},
 
-	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" }): Promise<void> {
+	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
 		const socket = pty.getSessionSocket(params.taskId);
 		const tmuxSession = pty.getSessionTmuxName(params.taskId);
@@ -3324,6 +3324,9 @@ export const handlers = {
 				break;
 			case "newWindow":
 				args = pty.tmuxArgs(socket, "new-window", "-c", "#{pane_current_path}", "-t", tmuxSession);
+				break;
+			case "nextLayout":
+				args = pty.tmuxArgs(socket, "next-layout", "-t", tmuxSession);
 				break;
 		}
 

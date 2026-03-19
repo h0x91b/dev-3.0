@@ -1443,7 +1443,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 
 	const tmuxBtnClass = "px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 
-	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom") => (e: React.MouseEvent) => {
+	const handleTmuxAction = (action: "splitH" | "splitV" | "zoom" | "nextLayout") => (e: React.MouseEvent) => {
 		e.stopPropagation();
 		api.request.tmuxAction({ taskId: task.id, action }).catch(() => {});
 	};
@@ -1473,6 +1473,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 					<polyline points="6,2.5 2.5,2.5 2.5,6" />
 					<polyline points="10,13.5 13.5,13.5 13.5,10" />
 				</svg>
+			</button>
+			<button className={tmuxBtnClass} onClick={handleTmuxAction("nextLayout")} title={t("tmux.nextLayoutDesc")}>
+				<span
+					className="text-[0.75rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{"\u{EBEB}"}
+				</span>
 			</button>
 			<button
 				className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
@@ -1510,6 +1518,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, isFullPag
 				<kbd className={popoverKbd}>⌃B -</kbd><span className={popoverDesc}>{t("tmux.splitHDesc")}</span>
 				<kbd className={popoverKbd}>⌃B |</kbd><span className={popoverDesc}>{t("tmux.splitVDesc")}</span>
 				<kbd className={popoverKbd}>⌃B z</kbd><span className={popoverDesc}>{t("tmux.zoomDesc")}</span>
+				<kbd className={popoverKbd}>⌃B ␣</kbd><span className={popoverDesc}>{t("tmux.nextLayoutDesc")}</span>
 				<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
 				<span className={popoverDesc + " col-span-2 mt-1.5 text-fg-muted"}>{t("tmux.selectPaneDesc")}</span>
 				<span className={popoverDesc + " col-span-2 text-fg-muted"}>{t("tmux.resizePaneDesc")}</span>

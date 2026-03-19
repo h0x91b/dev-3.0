@@ -19,6 +19,7 @@ const terminal = {
 	"tmux.splitHDesc": "Dividir horizontalmente",
 	"tmux.splitVDesc": "Dividir verticalmente",
 	"tmux.zoomDesc": "Zoom del panel (alternar)",
+	"tmux.nextLayoutDesc": "Siguiente diseño",
 	"tmux.closePaneDesc": "Cerrar panel",
 	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
 	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",

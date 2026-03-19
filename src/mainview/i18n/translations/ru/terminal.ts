@@ -19,6 +19,7 @@ const terminal = {
 	"tmux.splitHDesc": "Разделить горизонтально",
 	"tmux.splitVDesc": "Разделить вертикально",
 	"tmux.zoomDesc": "Увеличить панель (переключение)",
+	"tmux.nextLayoutDesc": "Следующий layout",
 	"tmux.closePaneDesc": "Закрыть панель",
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",

@@ -1,0 +1,1 @@
+Added a "Next Layout" button to the tmux pane control bar. Sends `next-layout` to tmux, cycling through built-in layouts (even-horizontal, even-vertical, main-horizontal, main-vertical, tiled). Also added a corresponding hint in the tmux shortcuts popover.
