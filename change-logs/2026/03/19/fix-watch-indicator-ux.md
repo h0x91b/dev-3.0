@@ -1,0 +1,1 @@
+Moved the watch toggle for non-active task cards (todo, completed, cancelled) into the labels row instead of a separate row. This eliminates the empty line that appeared on cards when the watch button was hidden (opacity-0) but still occupied vertical space.
