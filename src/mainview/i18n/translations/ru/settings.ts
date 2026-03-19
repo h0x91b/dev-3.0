@@ -141,6 +141,8 @@ const settings = {
 	"projectSettings.compareRefLocal": "Локальная базовая ветка",
 	"projectSettings.peerReview": "Колонка ревью коллег",
 	"projectSettings.peerReviewDesc": "Показывать колонку «Ревью PR». Отключите для проектов без peer review.",
+	"projectSettings.portCount": "Выделение портов",
+	"projectSettings.portCountDesc": "Количество портов для авто-выделения на задачу. Доступны как $DEV3_PORT0, $DEV3_PORT1 и т.д. 0 — отключено.",
 	"projectSettings.sparseCheckout": "Фильтр файлов worktree (большие монорепо)",
 	"projectSettings.sparseCheckoutDesc": "Для больших монорепо: ограничьте, какие директории выгружаются в worktree. Ускоряет создание worktree и экономит место на диске. Если репозиторий небольшой, оставьте «Все файлы» включённым.",
 	"projectSettings.sparseCheckoutAll": "Все файлы",

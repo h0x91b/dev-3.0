@@ -19,6 +19,7 @@ import { clonePaths } from "./cow-clone";
 import { setupAgentHooks } from "./agent-hooks";
 import { BUNDLED_CHANGELOG } from "./changelog-bundled";
 import * as repoConfig from "./repo-config";
+import * as portPool from "./port-pool";
 
 const log = createLogger("rpc");
 
@@ -73,6 +74,27 @@ export function escapeForDoubleQuotes(s: string): string {
 /** Single-quote a value for safe use in shell `export` statements. */
 export function shellQuote(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Set DEV3_PORT* environment variables on a tmux session so that ALL new
+ * panes/windows in the session inherit them automatically (not just the
+ * initial process that was started with the env).
+ */
+async function setTmuxSessionPortEnv(taskId: string, socket: string): Promise<void> {
+	const ports = portPool.getPortAssignments(taskId);
+	if (ports.length === 0) return;
+
+	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
+	const envVars = portPool.buildPortEnv(ports);
+
+	for (const [key, value] of Object.entries(envVars)) {
+		const args = pty.tmuxArgs(socket, "set-environment", "-t", tmuxSession, key, value);
+		const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
+		await proc.exited;
+	}
+
+	log.info("Port env vars set on tmux session", { taskId: taskId.slice(0, 8), vars: Object.keys(envVars) });
 }
 
 /**
@@ -802,6 +824,22 @@ export async function launchTaskPty(
 	// Build env early so both binary-check and setup paths can use it.
 	const env = buildAgentEnv(extraEnv, task.id);
 
+	// Allocate ports from the pool if the project has portCount configured
+	const portCount = project.portCount ?? 0;
+	if (portCount > 0) {
+		try {
+			const ports = await portPool.allocatePorts(task.id, portCount);
+			Object.assign(env, portPool.buildPortEnv(ports));
+			log.info("Port env vars injected", { taskId: task.id.slice(0, 8), ports });
+		} catch (err) {
+			log.error("Port allocation failed (non-fatal)", {
+				taskId: task.id.slice(0, 8),
+				portCount,
+				error: String(err),
+			});
+		}
+	}
+
 	// Pre-launch validation: check if the agent binary exists
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
 		const binaryName = resolvedBaseCmd.split("/").pop() ?? resolvedBaseCmd;
@@ -946,8 +984,12 @@ export async function launchTaskPty(
 		envKeys: Object.keys(env),
 	});
 	try {
-		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET);
+		const sessionSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
+
+		// Propagate port env vars to the tmux session so all new panes inherit them
+		await setTmuxSessionPortEnv(task.id, sessionSocket);
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
 			taskId: task.id.slice(0, 8),
@@ -1592,6 +1634,7 @@ export const handlers = {
 		// → completed/cancelled: destroy PTY, run cleanup if configured, then remove worktree
 		if (newStatus === "completed" || newStatus === "cancelled") {
 			cleanupTaskState(task.id);
+			portPool.releasePorts(task.id);
 			if (params.force) {
 				// Force mode: skip PTY destruction, cleanup script, and worktree removal.
 				// The environment is already broken — just update the status.
@@ -1928,8 +1971,15 @@ export const handlers = {
 				await killDevServerSession(task.id, socket);
 			}
 
+			// Inject port env vars into dev server script so $DEV3_PORT0 etc. are available
+			const devPorts = portPool.getPortAssignments(task.id);
+			const portExports = devPorts.length > 0
+				? buildEnvExports(portPool.buildPortEnv(devPorts)).join("\n") + "\n"
+				: "";
+
 			const wrappedScript = [
 				`#!/bin/bash`,
+				...(portExports ? [portExports] : []),
 				`set -x`,
 				resolved.devScript,
 				`EXIT_CODE=$?`,
@@ -2549,12 +2599,12 @@ export const handlers = {
 
 			if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 				try {
+					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					log.info("Attempting to restore PTY session", {
 						taskId: params.taskId.slice(0, 8),
 						status: foundTask.status,
 						worktreePath: foundTask.worktreePath,
 					});
-					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
@@ -2840,6 +2890,10 @@ export const handlers = {
 		const ports = getPortsForTask(params.taskId);
 		log.info("← getTaskPorts", { taskId: params.taskId.slice(0, 8), count: ports.length });
 		return ports;
+	},
+
+	async getPortAllocations(params: { taskId: string }): Promise<number[]> {
+		return portPool.getPortAssignments(params.taskId);
 	},
 
 	async listTmuxSessions(): Promise<TmuxSessionInfo[]> {
@@ -3396,7 +3450,13 @@ export const handlers = {
 		const dev3Bin = `${DEV3_HOME}/bin`;
 		const currentPath = process.env.PATH || "";
 		const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
-		const env = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+		const env: Record<string, string> = { ...extraEnv, DEV3_TASK_ID: task.id, PATH: pathWithDev3 };
+
+		// Inject existing port allocations so spawned agents see DEV3_PORT vars
+		const existingPorts = portPool.getPortAssignments(task.id);
+		if (existingPorts.length > 0) {
+			Object.assign(env, portPool.buildPortEnv(existingPorts));
+		}
 
 		const scriptPath = `/tmp/dev3-${task.id}-spawn-${Date.now()}.sh`;
 		await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));

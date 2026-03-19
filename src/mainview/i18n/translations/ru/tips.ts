@@ -158,6 +158,8 @@ const tips = {
 	"tip.projectTerminal.body": "Нужен быстрый shell в корне репо? Нажми иконку терминала в панели навигации, прямо рядом с именем проекта.",
 	"tip.projectTerminalDashboard.title": "Терминал с дашборда",
 	"tip.projectTerminalDashboard.body": "Терминал проекта можно открыть прямо с Dashboard — нажми иконку терминала на карточке проекта.",
+	"tip.portAllocation.title": "Авто-выделение портов",
+	"tip.portAllocation.body": "Задайте portCount в настройках проекта — каждой задаче выделяются свободные порты. Используйте $DEV3_PORT0, $DEV3_PORT1 в скриптах.",
 };
 
 export default tips;

@@ -164,6 +164,18 @@ describe("ProjectSettings", () => {
 		});
 	});
 
+	describe("port count field", () => {
+		it("renders port count input with default value 0", async () => {
+			await renderProjectSettings();
+			await goToProjectTab();
+			await vi.waitFor(() => {
+				const input = screen.getByRole("spinbutton") as HTMLInputElement;
+				expect(input).toBeInTheDocument();
+				expect(input.value).toBe("0");
+			});
+		});
+	});
+
 	describe("clone paths section", () => {
 		it("renders the clone paths section", async () => {
 			await renderProjectSettings();
