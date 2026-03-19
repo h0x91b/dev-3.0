@@ -9,6 +9,7 @@ vi.mock("electrobun/bun", () => ({
 	},
 	Utils: {
 		showMessageBox: vi.fn(),
+		showNotification: vi.fn(),
 		openFileDialog: vi.fn(),
 		quit: vi.fn(),
 	},
@@ -184,6 +185,7 @@ const {
 	resolveBinaryPath,
 	launchTaskPty,
 	triggerColumnAgentIfNeeded,
+	notifyWatchedTaskStatusChange,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -4023,5 +4025,93 @@ describe("triggerColumnAgentIfNeeded", () => {
 		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
 
 		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// notifyWatchedTaskStatusChange
+// ================================================================
+
+describe("notifyWatchedTaskStatusChange", () => {
+	beforeEach(() => {
+		vi.mocked(Utils.showNotification).mockClear();
+	});
+
+	it("calls Utils.showNotification when task is watched and status changed", () => {
+		const task = makeTask({ watched: true, seq: 42, customTitle: "Fix bug" });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+
+		expect(Utils.showNotification).toHaveBeenCalledWith({
+			title: "#42 Fix bug",
+			body: "In Progress → Review By User",
+			subtitle: "MyProject",
+			silent: true,
+		});
+	});
+
+	it("skips notification when task is not watched", () => {
+		const task = makeTask({ watched: false });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+		expect(Utils.showNotification).not.toHaveBeenCalled();
+	});
+
+	it("skips notification when watched is undefined", () => {
+		const task = makeTask();
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+		expect(Utils.showNotification).not.toHaveBeenCalled();
+	});
+
+	it("skips notification when old and new status are the same", () => {
+		const task = makeTask({ watched: true });
+		notifyWatchedTaskStatusChange(task, "in-progress", "in-progress", "MyProject");
+		expect(Utils.showNotification).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// toggleTaskWatch handler
+// ================================================================
+
+describe("toggleTaskWatch", () => {
+	const push = vi.fn();
+
+	beforeEach(() => {
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		push.mockClear();
+		setPushMessage(push);
+	});
+
+	it("sets watched to true", async () => {
+		const project = makeProject();
+		const task = makeTask({ watched: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		const result = await handlers.toggleTaskWatch({
+			taskId: "task-1",
+			projectId: project.id,
+			watched: true,
+		});
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { watched: true });
+		expect(result.watched).toBe(true);
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task });
+	});
+
+	it("sets watched to false", async () => {
+		const project = makeProject();
+		const task = makeTask({ watched: false });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		const result = await handlers.toggleTaskWatch({
+			taskId: "task-1",
+			projectId: project.id,
+			watched: false,
+		});
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { watched: false });
+		expect(result.watched).toBe(false);
 	});
 });

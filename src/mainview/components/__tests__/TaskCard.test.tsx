@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			deleteTask: vi.fn(),
 			showConfirm: vi.fn(),
 			setTaskLabels: vi.fn(),
+			toggleTaskWatch: vi.fn(),
 			getTerminalPreview: vi.fn(),
 			getAvailableApps: vi.fn().mockResolvedValue([
 				{ id: "finder", name: "Finder", macAppName: "Finder" },
@@ -1169,6 +1170,48 @@ describe("TaskCard", () => {
 			});
 			const badge = screen.getByText("#123").closest("button");
 			expect(badge).toHaveAttribute("title", "Open PR #123");
+		});
+	});
+
+	describe("watch toggle", () => {
+		it("renders bell outline icon with Watch text for unwatched task", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }));
+			const btn = screen.getByTitle("Watch — notify on status changes");
+			expect(btn).toBeInTheDocument();
+			expect(btn.textContent).toContain("Watch");
+		});
+
+		it("renders filled bell icon with Watching text for watched task", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test", watched: true }));
+			const btn = screen.getByTitle("Unwatch — stop notifications");
+			expect(btn).toBeInTheDocument();
+			expect(btn.textContent).toContain("Watching");
+		});
+
+		it("calls toggleTaskWatch API on click", async () => {
+			const dispatch = vi.fn();
+			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" });
+			const updatedTask = { ...task, watched: true };
+			mockedApi.request.toggleTaskWatch.mockResolvedValue(updatedTask);
+			renderCard(task, { dispatch });
+
+			const user = userEvent.setup();
+			await user.click(screen.getByTitle("Watch — notify on status changes"));
+
+			expect(mockedApi.request.toggleTaskWatch).toHaveBeenCalledWith({
+				taskId: task.id,
+				projectId: project.id,
+				watched: true,
+			});
+			await waitFor(() => {
+				expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
+			});
+		});
+
+		it("watched bell icon has text-accent class", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test", watched: true }));
+			const btn = screen.getByTitle("Unwatch — stop notifications");
+			expect(btn.className).toContain("text-accent");
 		});
 	});
 });

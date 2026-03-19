@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			spawnVariants: vi.fn(),
+			toggleTaskWatch: vi.fn(),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",

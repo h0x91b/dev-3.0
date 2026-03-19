@@ -656,23 +656,52 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 			</div>
 
-			{/* Action row for active tasks — Open in... left, + Variant right */}
+			{/* Action row for active tasks — Open in... | Watch | + Variant */}
 			{isActive && (
 				<div className="mt-1 flex items-center justify-between">
-					{task.worktreePath ? (
+					<div className="flex items-center gap-1">
+						{task.worktreePath && (
+							<button
+								onClick={(e) => {
+									e.stopPropagation();
+									const rect = (e.target as HTMLElement).getBoundingClientRect();
+									setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
+									setCtxMenuOpen(true);
+								}}
+								className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-all hover:bg-accent/15"
+								title={t("openIn.menuTitle")}
+							>
+								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+							</button>
+						)}
 						<button
-							onClick={(e) => {
+							onClick={async (e) => {
 								e.stopPropagation();
-								const rect = (e.target as HTMLElement).getBoundingClientRect();
-								setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
-								setCtxMenuOpen(true);
+								try {
+									const updated = await api.request.toggleTaskWatch({
+										taskId: task.id,
+										projectId: project.id,
+										watched: !task.watched,
+									});
+									dispatch({ type: "updateTask", task: updated });
+								} catch {
+									// Toggle failed silently — secondary action
+								}
 							}}
-							className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-all hover:bg-accent/15"
-							title={t("openIn.menuTitle")}
+							className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-fg/5 ${
+								task.watched
+									? "text-accent font-medium"
+									: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
+							}`}
+							title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+							disabled={isDisabled}
 						>
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+							</span>
+							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
 						</button>
-					) : <div />}
+					</div>
 					<button
 						onClick={(e) => {
 							e.stopPropagation();
@@ -684,6 +713,39 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						disabled={isDisabled}
 					>
 						{t("task.addVariant")}
+					</button>
+				</div>
+			)}
+
+			{/* Watch toggle for non-active cards (todo, completed, cancelled) */}
+			{!isActive && (
+				<div className="mt-1">
+					<button
+						onClick={async (e) => {
+							e.stopPropagation();
+							try {
+								const updated = await api.request.toggleTaskWatch({
+									taskId: task.id,
+									projectId: project.id,
+									watched: !task.watched,
+								});
+								dispatch({ type: "updateTask", task: updated });
+							} catch {
+								// Toggle failed silently — secondary action
+							}
+						}}
+						className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-fg/5 ${
+							task.watched
+								? "text-accent font-medium"
+								: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
+						}`}
+						title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+						disabled={isDisabled}
+					>
+						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+						</span>
+						<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
 					</button>
 				</div>
 			)}

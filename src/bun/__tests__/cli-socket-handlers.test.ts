@@ -31,6 +31,7 @@ vi.mock("../rpc-handlers", () => {
 		playTaskCompleteSound: vi.fn(),
 		getPushMessage: vi.fn(() => null),
 		triggerColumnAgentIfNeeded: vi.fn(),
+		notifyWatchedTaskStatusChange: vi.fn(),
 	};
 });
 

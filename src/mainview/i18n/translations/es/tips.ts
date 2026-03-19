@@ -160,6 +160,8 @@ const tips = {
 	"tip.projectTerminalDashboard.body": "También puedes abrir el terminal del proyecto directamente desde el Dashboard — haz clic en el icono de terminal de cualquier tarjeta de proyecto.",
 	"tip.portAllocation.title": "Asignar puertos automáticamente",
 	"tip.portAllocation.body": "Configura portCount en ajustes del proyecto para asignar puertos libres por tarea. Usa $DEV3_PORT0, $DEV3_PORT1 en scripts.",
+	"tip.taskWatch.title": "Vigila tus tareas",
+	"tip.taskWatch.body": "Haz clic en la campana de una tarjeta para recibir notificaciones cuando cambie su estado.",
 };
 
 export default tips;
