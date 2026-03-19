@@ -31,6 +31,8 @@ import {
 	collectTaskPids,
 	buildProcessTree,
 	collectDescendants,
+	collectProcessInfo,
+	clearProcessInfoCache,
 	startPortScanPoller,
 	stopPortScanPoller,
 	getPortsForTask,
@@ -221,6 +223,48 @@ describe("getLsofOutput", () => {
 		mockSpawnSync.mockImplementation(() => { throw new Error("boom"); });
 		const result = getLsofOutput();
 		expect(result).toBe("");
+	});
+});
+
+describe("collectProcessInfo", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		clearProcessInfoCache();
+	});
+
+	it("parses ps output into tree and resources", () => {
+		mockSpawnSync.mockReturnValueOnce(
+			makeResult("  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n"),
+		);
+
+		const { tree, resources } = collectProcessInfo();
+
+		expect(tree.get(1)).toEqual([100]);
+		expect(tree.get(100)).toEqual([200]);
+		expect(tree.get(200)).toEqual([300]);
+
+		expect(resources.get(100)).toEqual({ rss: 204800 * 1024, cpu: 5.2 });
+		expect(resources.get(200)).toEqual({ rss: 102400 * 1024, cpu: 2.1 });
+		expect(resources.get(300)).toEqual({ rss: 51200 * 1024, cpu: 0.5 });
+	});
+
+	it("returns empty maps on ps failure", () => {
+		mockSpawnSync.mockReturnValueOnce(makeResult("", 1));
+		const { tree, resources } = collectProcessInfo();
+		expect(tree.size).toBe(0);
+		expect(resources.size).toBe(0);
+	});
+
+	it("serves cached result on second call within TTL", () => {
+		mockSpawnSync.mockReturnValueOnce(
+			makeResult("  100     1   50000   1.0\n"),
+		);
+
+		const first = collectProcessInfo();
+		const second = collectProcessInfo();
+
+		expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+		expect(second).toBe(first); // same reference
 	});
 });
 
@@ -435,6 +479,7 @@ describe("poller", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
+		clearProcessInfoCache();
 		stopPortScanPoller();
 	});
 
@@ -450,8 +495,8 @@ describe("poller", () => {
 		]);
 
 		mockSpawnSync
-			// buildProcessTree (ps -eo pid=,ppid=)
-			.mockReturnValueOnce(makeResult("  100     1\n"))
+			// collectProcessInfo (ps -eo pid=,ppid=,rss=,%cpu=)
+			.mockReturnValueOnce(makeResult("  100     1   50000   0.0\n"))
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\n"))
 			// tmux list-panes for main session
@@ -478,7 +523,7 @@ describe("poller", () => {
 
 		// First poll cycle: ps (tree) + lsof + tmux (main + dev)
 		mockSpawnSync
-			.mockReturnValueOnce(makeResult("  500     1\n")) // buildProcessTree
+			.mockReturnValueOnce(makeResult("  500     1   60000   0.0\n")) // collectProcessInfo
 			.mockReturnValueOnce(makeResult("p500\ncnode\nn*:4000\n"))
 			.mockReturnValueOnce(makeResult("500\n"))
 			.mockReturnValueOnce(makeResult("", 1)); // dev server session (none)
@@ -489,7 +534,7 @@ describe("poller", () => {
 
 		// Second poll cycle — same ports
 		mockSpawnSync
-			.mockReturnValueOnce(makeResult("  500     1\n")) // buildProcessTree
+			.mockReturnValueOnce(makeResult("  500     1   60000   0.0\n")) // collectProcessInfo
 			.mockReturnValueOnce(makeResult("p500\ncnode\nn*:4000\n"))
 			.mockReturnValueOnce(makeResult("500\n"))
 			.mockReturnValueOnce(makeResult("", 1)); // dev server session (none)
@@ -509,8 +554,8 @@ describe("poller", () => {
 
 		// First poll: ps (tree) + lsof + tmux for each task
 		mockSpawnSync
-			// buildProcessTree
-			.mockReturnValueOnce(makeResult("  100     1\n  200     1\n"))
+			// collectProcessInfo (ps -eo pid=,ppid=,rss=,%cpu=)
+			.mockReturnValueOnce(makeResult("  100     1   50000   0.0\n  200     1   60000   0.0\n"))
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\np200\ncbun\nn*:8080\n"))
 			// tmux pane for task-aaaa (main)
@@ -531,8 +576,8 @@ describe("poller", () => {
 		// Second poll: task-bbbb is gone
 		sessions = [{ taskId: "task-aaaa", tmuxSocket: "dev3" }];
 		mockSpawnSync
-			// buildProcessTree
-			.mockReturnValueOnce(makeResult("  100     1\n"))
+			// collectProcessInfo
+			.mockReturnValueOnce(makeResult("  100     1   50000   0.0\n"))
 			// lsof (shared)
 			.mockReturnValueOnce(makeResult("p100\ncnode\nn*:3000\n"))
 			// tmux pane for task-aaaa (main)

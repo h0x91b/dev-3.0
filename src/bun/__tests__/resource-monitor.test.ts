@@ -20,13 +20,20 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
-vi.mock("../port-scanner", () => ({
-	getSessionPanePids: vi.fn(),
-}));
+// Partial mock: stub only getSessionPanePids; let collectProcessInfo and
+// collectDescendants run through their real implementations (which go through
+// the already-mocked spawnSync above).
+vi.mock("../port-scanner", async (importActual) => {
+	const actual = await importActual<typeof import("../port-scanner")>();
+	return {
+		...actual,
+		getSessionPanePids: vi.fn(),
+	};
+});
 
-import { startResourceMonitor, stopResourceMonitor, getResourceUsage, collectProcessInfo, aggregateResources } from "../resource-monitor";
+import { startResourceMonitor, stopResourceMonitor, getResourceUsage, aggregateResources } from "../resource-monitor";
 import { spawnSync } from "../spawn";
-import { getSessionPanePids } from "../port-scanner";
+import { getSessionPanePids, clearProcessInfoCache } from "../port-scanner";
 
 const mockSpawnSync = spawnSync as unknown as ReturnType<typeof vi.fn>;
 const mockGetSessionPanePids = getSessionPanePids as unknown as ReturnType<typeof vi.fn>;
@@ -38,42 +45,6 @@ function makeResult(stdout: string, exitCode = 0) {
 		exitCode,
 	};
 }
-
-describe("collectProcessInfo", () => {
-	beforeEach(() => {
-		mockSpawnSync.mockReset();
-	});
-
-	it("parses ps output into tree and resources", () => {
-		mockSpawnSync.mockReturnValueOnce(
-			makeResult("  100     1   204800   5.2\n  200   100   102400   2.1\n  300   200    51200   0.5\n"),
-		);
-
-		const { tree, resources } = collectProcessInfo();
-
-		expect(tree.get(1)).toEqual([100]);
-		expect(tree.get(100)).toEqual([200]);
-		expect(tree.get(200)).toEqual([300]);
-
-		expect(resources.get(100)).toEqual({ rss: 204800 * 1024, cpu: 5.2 });
-		expect(resources.get(200)).toEqual({ rss: 102400 * 1024, cpu: 2.1 });
-		expect(resources.get(300)).toEqual({ rss: 51200 * 1024, cpu: 0.5 });
-	});
-
-	it("returns empty maps on ps failure", () => {
-		mockSpawnSync.mockReturnValueOnce(makeResult("", 1));
-		const { tree, resources } = collectProcessInfo();
-		expect(tree.size).toBe(0);
-		expect(resources.size).toBe(0);
-	});
-
-	it("handles leading whitespace in ps output", () => {
-		mockSpawnSync.mockReturnValueOnce(makeResult("    123      1    50000   3.0\n"));
-
-		const { resources } = collectProcessInfo();
-		expect(resources.get(123)).toEqual({ rss: 50000 * 1024, cpu: 3.0 });
-	});
-});
 
 describe("aggregateResources", () => {
 	it("sums RSS and CPU for given PIDs", () => {
@@ -107,6 +78,7 @@ describe("resource-monitor poller", () => {
 		vi.useFakeTimers();
 		mockSpawnSync.mockReset();
 		mockGetSessionPanePids.mockReset();
+		clearProcessInfoCache();
 	});
 
 	afterEach(() => {

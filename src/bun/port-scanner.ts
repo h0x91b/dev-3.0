@@ -6,6 +6,70 @@ import { createLogger } from "./logger";
 const log = createLogger("port-scanner");
 const decoder = new TextDecoder();
 
+// ── Shared process info cache ─────────────────────────────────────
+
+const PROCESS_INFO_CACHE_MS = 5_000;
+
+type ProcessInfoResult = {
+	tree: Map<number, number[]>;
+	resources: Map<number, { rss: number; cpu: number }>;
+};
+
+let _processInfoCache: { result: ProcessInfoResult; expiry: number } | null = null;
+
+/** Reset the process info cache. Exposed for test isolation. */
+export function clearProcessInfoCache(): void {
+	_processInfoCache = null;
+}
+
+/**
+ * Collect ALL process info in a single `ps` call.
+ * Returns a process tree (parent → children) and per-PID resource data (rss, cpu).
+ *
+ * Results are cached for PROCESS_INFO_CACHE_MS so that both pollers
+ * (port-scanner and resource-monitor) share a single spawn per cycle.
+ */
+export function collectProcessInfo(): ProcessInfoResult {
+	const now = Date.now();
+	if (_processInfoCache && now < _processInfoCache.expiry) return _processInfoCache.result;
+
+	const tree = new Map<number, number[]>();
+	const resources = new Map<number, { rss: number; cpu: number }>();
+	try {
+		const result = spawnSync(["ps", "-eo", "pid=,ppid=,rss=,%cpu="]);
+		if (result.exitCode !== 0) {
+			_processInfoCache = { result: { tree, resources }, expiry: now + PROCESS_INFO_CACHE_MS };
+			return { tree, resources };
+		}
+		const output = decoder.decode(result.stdout);
+		for (const line of output.split("\n")) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+			const parts = trimmed.split(/\s+/);
+			if (parts.length < 4) continue;
+			const pid = parseInt(parts[0], 10);
+			const ppid = parseInt(parts[1], 10);
+			const rss = parseInt(parts[2], 10);
+			const cpu = parseFloat(parts[3]);
+			if (isNaN(pid) || isNaN(ppid)) continue;
+			let children = tree.get(ppid);
+			if (!children) {
+				children = [];
+				tree.set(ppid, children);
+			}
+			children.push(pid);
+			if (!isNaN(rss) && !isNaN(cpu)) {
+				resources.set(pid, { rss: rss * 1024, cpu });
+			}
+		}
+	} catch {
+		// ignore
+	}
+	const finalResult = { tree, resources };
+	_processInfoCache = { result: finalResult, expiry: now + PROCESS_INFO_CACHE_MS };
+	return finalResult;
+}
+
 /**
  * Get pane PIDs for a tmux session.
  */
@@ -230,7 +294,8 @@ function poll() {
 		}
 
 		// Build process tree and run lsof once for all tasks
-		const processTree = sessions.length > 0 ? buildProcessTree() : new Map<number, number[]>();
+		// collectProcessInfo is TTL-cached — shared with resource-monitor poller to avoid duplicate ps spawns
+		const processTree = sessions.length > 0 ? collectProcessInfo().tree : new Map<number, number[]>();
 		const lsofOutput = sessions.length > 0 ? getLsofOutput() : "";
 
 		for (const { taskId, tmuxSocket } of sessions) {

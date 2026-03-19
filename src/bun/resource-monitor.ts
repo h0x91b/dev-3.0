@@ -1,5 +1,5 @@
 import type { ResourceUsage } from "../shared/types";
-import { getSessionPanePids } from "./port-scanner";
+import { collectProcessInfo, collectDescendants, getSessionPanePids } from "./port-scanner";
 import { tmuxArgs } from "./pty-server";
 import { spawnSync } from "./spawn";
 import { createLogger } from "./logger";
@@ -15,49 +15,6 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let pushMessageFn: PushMessageFn | null = null;
 
 const usageData = new Map<string, ResourceUsage>();
-
-/**
- * Collect ALL process info in a single `ps` call.
- * Returns a process tree (parent → children) and per-PID resource data.
- * This replaces N×M `pgrep` + N `ps` calls with a single spawn.
- */
-export function collectProcessInfo(): {
-	tree: Map<number, number[]>;
-	resources: Map<number, { rss: number; cpu: number }>;
-} {
-	const tree = new Map<number, number[]>();
-	const resources = new Map<number, { rss: number; cpu: number }>();
-	try {
-		const result = spawnSync(["ps", "-eo", "pid=,ppid=,rss=,%cpu="]);
-		if (result.exitCode !== 0) return { tree, resources };
-		const output = decoder.decode(result.stdout);
-		for (const line of output.split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			const parts = trimmed.split(/\s+/);
-			if (parts.length < 4) continue;
-			const pid = parseInt(parts[0], 10);
-			const ppid = parseInt(parts[1], 10);
-			const rss = parseInt(parts[2], 10);
-			const cpu = parseFloat(parts[3]);
-			if (isNaN(pid) || isNaN(ppid)) continue;
-
-			let children = tree.get(ppid);
-			if (!children) {
-				children = [];
-				tree.set(ppid, children);
-			}
-			children.push(pid);
-
-			if (!isNaN(rss) && !isNaN(cpu)) {
-				resources.set(pid, { rss: rss * 1024, cpu });
-			}
-		}
-	} catch {
-		// ignore
-	}
-	return { tree, resources };
-}
 
 /**
  * Aggregate resource usage for a set of PIDs from pre-collected data.
@@ -121,33 +78,25 @@ function poll() {
 
 		if (sessionNames.length === 0) return;
 
-		// Single ps call for ALL process info (tree + resources)
+		// Shared process info — TTL-cached in port-scanner, so port-scanner poller
+		// firing in the same cycle reuses this result without a second ps spawn.
 		const { tree, resources } = collectProcessInfo();
 
 		for (const sessionName of sessionNames) {
 			const shortId = sessionName.slice(5);
 			try {
-				// Get pane PIDs from tmux
+				// Get pane PIDs from tmux (main session + dev server session)
 				const panePids = getSessionPanePids(TMUX_SOCKET, sessionName);
-
-				// Also check dev server session
-				const devSessionName = `dev3-dev-${shortId}`;
-				const devPanePids = getSessionPanePids(TMUX_SOCKET, devSessionName);
+				const devPanePids = getSessionPanePids(TMUX_SOCKET, `dev3-dev-${shortId}`);
 				panePids.push(...devPanePids);
 
 				if (panePids.length === 0) continue;
 
-				// Build full PID set using in-memory tree walk (no extra spawns)
+				// Build full PID set using collectDescendants (in-memory BFS, no extra spawns)
 				const allPids = new Set<number>(panePids);
-				const queue = [...panePids];
-				while (queue.length > 0) {
-					const current = queue.shift()!;
-					const children = tree.get(current);
-					if (children) {
-						for (const child of children) {
-							allPids.add(child);
-							queue.push(child);
-						}
+				for (const pid of panePids) {
+					for (const d of collectDescendants(pid, tree)) {
+						allPids.add(d);
 					}
 				}
 
