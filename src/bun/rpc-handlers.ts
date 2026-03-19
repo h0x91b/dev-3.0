@@ -3297,7 +3297,7 @@ export const handlers = {
 		return updated;
 	},
 
-	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" }): Promise<void> {
+	async tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV" }): Promise<void> {
 		log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
 		const socket = pty.getSessionSocket(params.taskId);
 		const tmuxSession = pty.getSessionTmuxName(params.taskId);
@@ -3324,6 +3324,24 @@ export const handlers = {
 				break;
 			case "newWindow":
 				args = pty.tmuxArgs(socket, "new-window", "-c", "#{pane_current_path}", "-t", tmuxSession);
+				break;
+			case "nextLayout":
+				args = pty.tmuxArgs(socket, "next-layout", "-t", tmuxSession);
+				break;
+			case "layoutTiled":
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "tiled");
+				break;
+			case "layoutEvenH":
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-horizontal");
+				break;
+			case "layoutEvenV":
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-vertical");
+				break;
+			case "layoutMainH":
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "main-horizontal");
+				break;
+			case "layoutMainV":
+				args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "main-vertical");
 				break;
 		}
 
