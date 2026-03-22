@@ -118,9 +118,9 @@ describe("mergeWithDefaults", () => {
 		);
 		expect(claude.configurations.length).toBe(1 + expectedNewConfigs.length);
 
-		// Original config is first
+		// Original config is first (name reset by version bump)
 		expect(claude.configurations[0].id).toBe("claude-default");
-		expect(claude.configurations[0].name).toBe("Default");
+		expect(claude.configurations[0].name).toBe("Default (Opus)");
 
 		// All new defaults appended
 		for (const expected of expectedNewConfigs) {
@@ -154,7 +154,7 @@ describe("mergeWithDefaults", () => {
 				name: "Claude",
 				baseCommand: "claude",
 				configurations: [
-					{ id: "claude-default", name: "My Custom Name", model: "haiku" },
+					{ id: "claude-default", name: "My Custom Name", model: "haiku", version: 2 },
 					{ id: "user-custom-cfg", name: "My Extra Config" },
 				],
 				defaultConfigId: "claude-default",
@@ -203,8 +203,8 @@ describe("mergeWithDefaults", () => {
 		expect(cfg.model).toBe(defCfg.model);
 		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
 
-		// User's explicit name should still win
-		expect(cfg.name).toBe("Default");
+		// Name reset to default because stored has no version (legacy data)
+		expect(cfg.name).toBe(defCfg.name);
 	});
 
 	it("user overrides still win over defaults when versions match", () => {
@@ -284,8 +284,8 @@ describe("mergeWithDefaults", () => {
 		// additionalArgs and model reset to default because stored version is older
 		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
 		expect(cfg.model).toBe(defCfg.model);
-		// User-editable fields (non-model) still preserved
-		expect(cfg.name).toBe("My Codex");
+		// name also reset during version bump
+		expect(cfg.name).toBe(defCfg.name);
 		// version bumped to default
 		expect(cfg.version).toBe(defCfg.version);
 	});
@@ -394,8 +394,8 @@ describe("mergeWithDefaults", () => {
 		// additionalArgs and model reset to defaults
 		expect(cfg.additionalArgs).toEqual(defCfg.additionalArgs);
 		expect(cfg.model).toBe(defCfg.model);
-		// Other user-editable fields preserved
-		expect(cfg.name).toBe("My Custom Name");
+		// name reset during version bump, other user-editable fields preserved
+		expect(cfg.name).toBe(defCfg.name);
 		expect(cfg.permissionMode).toBe("plan");
 		expect(cfg.effort).toBe("low");
 		expect(cfg.maxBudgetUsd).toBe(42);
