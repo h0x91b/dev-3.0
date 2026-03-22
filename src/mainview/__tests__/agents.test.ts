@@ -154,7 +154,7 @@ describe("mergeWithDefaults", () => {
 				name: "Claude",
 				baseCommand: "claude",
 				configurations: [
-					{ id: "claude-default", name: "My Custom Name", model: "haiku" },
+					{ id: "claude-default", name: "My Custom Name", model: "haiku", version: 2 },
 					{ id: "user-custom-cfg", name: "My Extra Config" },
 				],
 				defaultConfigId: "claude-default",

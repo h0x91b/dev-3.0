@@ -1,0 +1,1 @@
+Replaced all default Claude agent presets with a clean set covering every permission mode (default, plan, bypass, auto, acceptEdits, dontAsk), each paired with `--dangerously-skip-permissions`. Default model changed from Sonnet to Opus 1M; all Sonnet variants upgraded to 1M context. Removed redundant "Plan then Bypass" presets. Added "auto" to PermissionMode type.
