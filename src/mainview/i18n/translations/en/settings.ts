@@ -33,6 +33,7 @@ const settings = {
 	"settings.configPermissionMode": "Permission Mode",
 	"settings.permDefault": "Default",
 	"settings.permPlan": "Plan Mode",
+	"settings.permAuto": "Auto",
 	"settings.permAcceptEdits": "Accept Edits",
 	"settings.permDontAsk": "Don't Ask",
 	"settings.permBypass": "Bypass Permissions",

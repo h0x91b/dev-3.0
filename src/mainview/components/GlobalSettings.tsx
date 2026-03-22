@@ -1029,6 +1029,7 @@ function ConfigPreviewCard({
 	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
 		const modeLabels: Record<string, string> = {
 			plan: t("settings.permPlan"),
+			auto: t("settings.permAuto"),
 			acceptEdits: t("settings.permAcceptEdits"),
 			dontAsk: t("settings.permDontAsk"),
 			bypassPermissions: t("settings.permBypass"),
@@ -1282,6 +1283,7 @@ function ConfigEditor({
 						>
 							<option value="default">{t("settings.permDefault")}</option>
 							<option value="plan">{t("settings.permPlan")}</option>
+							<option value="auto">{t("settings.permAuto")}</option>
 							<option value="acceptEdits">{t("settings.permAcceptEdits")}</option>
 							<option value="dontAsk">{t("settings.permDontAsk")}</option>
 							<option value="bypassPermissions">{t("settings.permBypass")}</option>

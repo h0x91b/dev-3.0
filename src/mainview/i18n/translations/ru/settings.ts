@@ -33,6 +33,7 @@ const settings = {
 	"settings.configPermissionMode": "Режим разрешений",
 	"settings.permDefault": "По умолчанию",
 	"settings.permPlan": "Plan Mode",
+	"settings.permAuto": "Auto",
 	"settings.permAcceptEdits": "Accept Edits",
 	"settings.permDontAsk": "Не спрашивать",
 	"settings.permBypass": "Без ограничений",
