@@ -111,7 +111,7 @@ export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
 
 // ---- Coding Agents ----
 
-export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan";
+export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan" | "auto";
 export type EffortLevel = "low" | "medium" | "high";
 
 export interface AgentConfiguration {
@@ -150,14 +150,18 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			{ id: "claude-default", name: "Default", model: "sonnet" },
-			{ id: "claude-plan", name: "Plan (Opus)", model: "opus[1m]", permissionMode: "plan", version: 1 },
-			{ id: "claude-plan-then-bypass-opus", name: "Plan then Bypass (Opus)", model: "opus[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-plan-then-bypass-sonnet", name: "Plan then Bypass (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"] },
-			{ id: "claude-approvals-opus", name: "Approvals (Opus)", model: "opus[1m]", permissionMode: "acceptEdits", version: 1 },
-			{ id: "claude-approvals-sonnet", name: "Approvals (Sonnet)", model: "sonnet", permissionMode: "acceptEdits" },
-			{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus[1m]", permissionMode: "bypassPermissions", version: 1 },
-			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
+			{ id: "claude-default", name: "Default (Opus)", model: "opus[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
+			{ id: "claude-default-sonnet", name: "Default (Sonnet)", model: "sonnet[1m]", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-plan", name: "Plan (Opus)", model: "opus[1m]", permissionMode: "plan", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
+			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet[1m]", permissionMode: "plan", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-bypass", name: "Bypass (Opus)", model: "opus[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
+			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-auto", name: "Auto (Opus)", model: "opus[1m]", permissionMode: "auto", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet[1m]", permissionMode: "auto", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-approvals", name: "Accept Edits (Opus)", model: "opus[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
+			{ id: "claude-approvals-sonnet", name: "Accept Edits (Sonnet)", model: "sonnet[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-dontask", name: "Don't Ask (Opus)", model: "opus[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"] },
+			{ id: "claude-dontask-sonnet", name: "Don't Ask (Sonnet)", model: "sonnet[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"] },
 		],
 		defaultConfigId: "claude-default",
 	},
