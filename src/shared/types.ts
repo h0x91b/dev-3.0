@@ -156,6 +156,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet[1m]", permissionMode: "plan", additionalArgs: ["--dangerously-skip-permissions"] },
 			{ id: "claude-bypass", name: "Bypass (Opus)", model: "opus[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
 			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			{ id: "claude-auto", name: "Auto (Opus)", model: "opus[1m]", permissionMode: "auto" },
+			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet[1m]", permissionMode: "auto" },
 			{ id: "claude-approvals", name: "Accept Edits (Opus)", model: "opus[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
 			{ id: "claude-approvals-sonnet", name: "Accept Edits (Sonnet)", model: "sonnet[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-dontask", name: "Don't Ask (Opus)", model: "opus[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"] },

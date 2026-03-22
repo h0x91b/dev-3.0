@@ -20,8 +20,6 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"claude-plan-then-bypass-sonnet",
 	"claude-approvals-opus",
 	"claude-bypass-opus",
-	"claude-auto",
-	"claude-auto-sonnet",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
