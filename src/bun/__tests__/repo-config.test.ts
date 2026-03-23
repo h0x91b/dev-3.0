@@ -643,6 +643,86 @@ describe("4-level resolution (local > repo > app > project > defaults)", () => {
 	});
 });
 
+describe("resolveProjectConfig — empty array fallthrough (#378)", () => {
+	it("empty clonePaths in repo config falls through to project values", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		// Phantom clonePaths: [] in .dev3/config.json (created by sanitizeConfigPaths bug)
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "bun install",
+			clonePaths: [],
+		}));
+
+		const project = makeProject({ clonePaths: ["node_modules", "dist"] });
+		const resolved = await resolveProjectConfig(project);
+		// Empty array in repo config should NOT shadow project-level clonePaths
+		expect(resolved.clonePaths).toEqual(["node_modules", "dist"]);
+	});
+
+	it("empty clonePaths in local config falls through to project values", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
+			clonePaths: [],
+		}));
+
+		const project = makeProject({ clonePaths: ["node_modules"] });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.clonePaths).toEqual(["node_modules"]);
+	});
+
+	it("empty clonePaths in app config falls through to project values", async () => {
+		await saveAppConfig(TEST_DIR, { clonePaths: [] });
+
+		const project = makeProject({ clonePaths: [".venv"] });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.clonePaths).toEqual([".venv"]);
+	});
+
+	it("non-empty clonePaths in repo config still overrides project values", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			clonePaths: ["vendor"],
+		}));
+
+		const project = makeProject({ clonePaths: ["node_modules"] });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.clonePaths).toEqual(["vendor"]);
+	});
+
+	it("empty sparseCheckoutPaths in repo config falls through to project values", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			sparseCheckoutPaths: [],
+		}));
+
+		const project = makeProject({ sparseCheckoutPaths: ["src/", "tests/"] });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolved.sparseCheckoutPaths).toEqual(["src/", "tests/"]);
+	});
+
+	it("worktree with phantom empty clonePaths falls through to project values", async () => {
+		const WORKTREE = join(tmpdir(), `dev3-cow-wt-test-${process.pid}`);
+		mkdirSync(WORKTREE, { recursive: true });
+
+		// Worktree has .dev3/config.json with phantom clonePaths: []
+		const wtConfigDir = join(WORKTREE, ".dev3");
+		mkdirSync(wtConfigDir, { recursive: true });
+		writeFileSync(join(wtConfigDir, "config.json"), JSON.stringify({
+			setupScript: "bun install",
+			clonePaths: [],
+		}));
+
+		const project = makeProject({ clonePaths: ["node_modules", ".env"] });
+		const resolved = await resolveProjectConfig(project, WORKTREE);
+		expect(resolved.clonePaths).toEqual(["node_modules", ".env"]);
+
+		rmSync(WORKTREE, { recursive: true, force: true });
+	});
+});
+
 describe("getConfigSources with app-level", () => {
 	it("reports app source for fields only in app config", async () => {
 		await saveAppConfig(TEST_DIR, { devScript: "app-dev" });

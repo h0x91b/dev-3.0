@@ -777,14 +777,21 @@ interface NavigationGuard {
 	onSave: () => Promise<void>;
 }
 
-/** Strip empty strings from clonePaths and sparseCheckoutPaths before saving. */
+/**
+ * Strip empty strings from clonePaths and sparseCheckoutPaths before saving.
+ * Only includes these fields if they were actually present in the input config —
+ * avoids creating phantom `clonePaths: []` entries that shadow project-level values. See #378.
+ */
 function sanitizeConfigPaths(config: Dev3RepoConfig): Dev3RepoConfig {
 	const { defaultCompareRefMode: _legacyCompareRefMode, ...rest } = config;
-	return {
-		...rest,
-		clonePaths: (rest.clonePaths ?? []).filter((p) => p.trim() !== ""),
-		sparseCheckoutPaths: (rest.sparseCheckoutPaths ?? []).filter((p) => p.trim() !== ""),
-	};
+	const result: Dev3RepoConfig = { ...rest };
+	if (rest.clonePaths !== undefined) {
+		result.clonePaths = rest.clonePaths.filter((p) => p.trim() !== "");
+	}
+	if (rest.sparseCheckoutPaths !== undefined) {
+		result.sparseCheckoutPaths = rest.sparseCheckoutPaths.filter((p) => p.trim() !== "");
+	}
+	return result;
 }
 
 interface ProjectSettingsProps {
