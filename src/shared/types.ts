@@ -319,8 +319,9 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
 	{ id: "ghostty", name: "Ghostty", macAppName: "Ghostty" },
 	{ id: "iterm", name: "iTerm", macAppName: "iTerm" },
 	{ id: "terminal", name: "Terminal", macAppName: "Terminal" },
-	{ id: "intellij", name: "IntelliJ IDEA", macAppName: "IntelliJ IDEA" },
-	{ id: "intellij-ce", name: "IntelliJ IDEA CE", macAppName: "IntelliJ IDEA CE" },
+	{ id: "intellij", name: "IntelliJ", macAppName: "IntelliJ IDEA" },
+	{ id: "intellij-ultimate", name: "IntelliJ", macAppName: "IntelliJ IDEA Ultimate" },
+	{ id: "intellij-ce", name: "IntelliJ", macAppName: "IntelliJ IDEA CE" },
 	{ id: "zed", name: "Zed", macAppName: "Zed" },
 	{ id: "sublime", name: "Sublime Text", macAppName: "Sublime Text" },
 ];
