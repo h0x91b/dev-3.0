@@ -14,6 +14,18 @@ export function isCloudflaredAvailable(): boolean {
 	return result.exitCode === 0;
 }
 
+/**
+ * Parse a Cloudflare Tunnel URL from a line of cloudflared stderr output.
+ * cloudflared prints lines like:
+ *   INF |  https://something-random.trycloudflare.com
+ *   or: ... https://something.trycloudflare.com ...
+ * Returns the full URL or null.
+ */
+export function parseTunnelUrl(line: string): string | null {
+	const match = line.match(/https:\/\/[a-zA-Z0-9_-]+\.trycloudflare\.com/);
+	return match ? match[0] : null;
+}
+
 export async function startTunnel(localPort: number): Promise<string | null> {
 	if (tunnelState === "starting" || tunnelState === "connected") {
 		log.warn("Tunnel already active", { state: tunnelState });
@@ -25,15 +37,8 @@ export async function startTunnel(localPort: number): Promise<string | null> {
 
 	try {
 		tunnelProcess = spawn(
-			[
-				"cloudflared",
-				"tunnel",
-				"--url",
-				`http://localhost:${localPort}`,
-				"--metrics",
-				"localhost:20241",
-			],
-			{ stdout: "ignore", stderr: "ignore" },
+			["cloudflared", "tunnel", "--url", `http://localhost:${localPort}`],
+			{ stdout: "ignore", stderr: "pipe" },
 		);
 
 		tunnelProcess.exited.then(() => {
@@ -43,7 +48,7 @@ export async function startTunnel(localPort: number): Promise<string | null> {
 			tunnelState = "idle";
 		});
 
-		const url = await pollForUrl(30_000, 500);
+		const url = await waitForUrl(tunnelProcess.stderr!, 30_000);
 		if (url) {
 			tunnelUrl = url;
 			tunnelState = "connected";
@@ -51,7 +56,7 @@ export async function startTunnel(localPort: number): Promise<string | null> {
 			return url;
 		}
 
-		log.warn("Tunnel URL poll timed out");
+		log.warn("Tunnel URL not found in stderr within timeout");
 		tunnelState = "failed";
 		stopTunnel();
 		return null;
@@ -63,22 +68,48 @@ export async function startTunnel(localPort: number): Promise<string | null> {
 	}
 }
 
-async function pollForUrl(timeoutMs: number, intervalMs: number): Promise<string | null> {
+async function waitForUrl(stderr: ReadableStream, timeoutMs: number): Promise<string | null> {
+	const reader = stderr.getReader();
+	const decoder = new TextDecoder();
 	const deadline = Date.now() + timeoutMs;
+	let buffer = "";
 
-	while (Date.now() < deadline) {
-		try {
-			const res = await fetch("http://127.0.0.1:20241/quicktunnel");
-			if (res.ok) {
-				const data = (await res.json()) as { hostname?: string };
-				if (data.hostname) {
-					return `https://${data.hostname}`;
+	try {
+		while (Date.now() < deadline) {
+			const remaining = deadline - Date.now();
+			if (remaining <= 0) break;
+
+			const result = await Promise.race([
+				reader.read(),
+				new Promise<{ done: true; value: undefined }>((resolve) =>
+					setTimeout(() => resolve({ done: true, value: undefined }), remaining),
+				),
+			]);
+
+			if (result.done) break;
+
+			buffer += decoder.decode(result.value, { stream: true });
+
+			// Process complete lines
+			const lines = buffer.split("\n");
+			buffer = lines.pop() ?? "";
+
+			for (const line of lines) {
+				const url = parseTunnelUrl(line);
+				if (url) {
+					reader.releaseLock();
+					return url;
 				}
 			}
-		} catch {
-			// cloudflared not ready yet
 		}
-		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+
+		// Check remaining buffer
+		if (buffer) {
+			const url = parseTunnelUrl(buffer);
+			if (url) return url;
+		}
+	} finally {
+		try { reader.releaseLock(); } catch { /* already released */ }
 	}
 
 	return null;

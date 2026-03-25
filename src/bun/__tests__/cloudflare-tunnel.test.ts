@@ -21,195 +21,250 @@ import {
 	stopTunnel,
 	getTunnelUrl,
 	getTunnelState,
+	parseTunnelUrl,
 	_resetState,
 } from "../cloudflare-tunnel";
 
-const originalFetch = globalThis.fetch;
+// ================================================================
+// parseTunnelUrl — unit tests for stderr parser
+// ================================================================
 
-describe("cloudflare-tunnel", () => {
+describe("parseTunnelUrl", () => {
+	it("extracts URL from typical cloudflared output line", () => {
+		expect(parseTunnelUrl("INF |  https://abc-random-123.trycloudflare.com")).toBe(
+			"https://abc-random-123.trycloudflare.com",
+		);
+	});
+
+	it("extracts URL from log line with timestamp", () => {
+		expect(
+			parseTunnelUrl("2026-03-25T12:00:00Z INF +--- https://my-tunnel.trycloudflare.com ---+"),
+		).toBe("https://my-tunnel.trycloudflare.com");
+	});
+
+	it("extracts URL with underscores in hostname", () => {
+		expect(parseTunnelUrl("https://under_score_test.trycloudflare.com")).toBe(
+			"https://under_score_test.trycloudflare.com",
+		);
+	});
+
+	it("extracts URL embedded in the middle of a line", () => {
+		expect(
+			parseTunnelUrl("Your tunnel URL is https://test-xyz.trycloudflare.com and it works"),
+		).toBe("https://test-xyz.trycloudflare.com");
+	});
+
+	it("returns null for lines without tunnel URL", () => {
+		expect(parseTunnelUrl("INF Starting tunnel")).toBeNull();
+		expect(parseTunnelUrl("")).toBeNull();
+		expect(parseTunnelUrl("https://example.com")).toBeNull();
+		expect(parseTunnelUrl("trycloudflare.com")).toBeNull();
+	});
+
+	it("returns null for http (non-https) trycloudflare URLs", () => {
+		expect(parseTunnelUrl("http://test.trycloudflare.com")).toBeNull();
+	});
+
+	it("handles line with multiple URLs — returns the first", () => {
+		const line = "https://first.trycloudflare.com and https://second.trycloudflare.com";
+		expect(parseTunnelUrl(line)).toBe("https://first.trycloudflare.com");
+	});
+
+	it("handles dashes in hostname", () => {
+		expect(parseTunnelUrl("https://a-b-c-d-e-f.trycloudflare.com")).toBe(
+			"https://a-b-c-d-e-f.trycloudflare.com",
+		);
+	});
+});
+
+// ================================================================
+// isCloudflaredAvailable
+// ================================================================
+
+describe("isCloudflaredAvailable", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("returns true when which cloudflared exits 0", () => {
+		(mockSpawnSync as Mock).mockReturnValue({ exitCode: 0 });
+		expect(isCloudflaredAvailable()).toBe(true);
+		expect(mockSpawnSync).toHaveBeenCalledWith(["which", "cloudflared"]);
+	});
+
+	it("returns false when exit code is non-zero", () => {
+		(mockSpawnSync as Mock).mockReturnValue({ exitCode: 1 });
+		expect(isCloudflaredAvailable()).toBe(false);
+	});
+});
+
+// ================================================================
+// startTunnel / stopTunnel / getTunnelUrl / getTunnelState
+// ================================================================
+
+describe("startTunnel", () => {
 	beforeEach(() => {
 		_resetState();
 		vi.clearAllMocks();
-		globalThis.fetch = originalFetch;
 	});
 
-	describe("isCloudflaredAvailable", () => {
-		it("returns true when which cloudflared exits 0", () => {
-			(mockSpawnSync as Mock).mockReturnValue({ exitCode: 0 });
-			expect(isCloudflaredAvailable()).toBe(true);
-			expect(mockSpawnSync).toHaveBeenCalledWith(["which", "cloudflared"]);
-		});
-
-		it("returns false when exit code is non-zero", () => {
-			(mockSpawnSync as Mock).mockReturnValue({ exitCode: 1 });
-			expect(isCloudflaredAvailable()).toBe(false);
-		});
-	});
-
-	describe("startTunnel", () => {
-		function setupSpawnMock() {
-			const killFn = vi.fn();
-			let exitResolve: () => void;
-			const exitedPromise = new Promise<void>((r) => {
-				exitResolve = r;
-			});
-
-			(mockSpawn as Mock).mockReturnValue({
-				kill: killFn,
-				exited: exitedPromise,
-			});
-
-			return { killFn, triggerExit: () => exitResolve() };
-		}
-
-		it("returns public URL on successful poll", async () => {
-			setupSpawnMock();
-
-			let callCount = 0;
-			(globalThis as any).fetch = vi.fn(async () => {
-				callCount++;
-				if (callCount < 3) {
-					throw new Error("not ready");
+	function makeStderrStream(lines: string[], delayMs = 0): ReadableStream<Uint8Array> {
+		const encoder = new TextEncoder();
+		return new ReadableStream({
+			async start(controller) {
+				for (const line of lines) {
+					if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+					controller.enqueue(encoder.encode(line + "\n"));
 				}
-				return {
-					ok: true,
-					json: async () => ({ hostname: "test-abc.trycloudflare.com" }),
-				} as Response;
-			});
+				controller.close();
+			},
+		});
+	}
 
-			const url = await startTunnel(8080);
-			expect(url).toBe("https://test-abc.trycloudflare.com");
-			expect(getTunnelUrl()).toBe("https://test-abc.trycloudflare.com");
-			expect(getTunnelState()).toBe("connected");
-
-			expect(mockSpawn).toHaveBeenCalledWith(
-				[
-					"cloudflared",
-					"tunnel",
-					"--url",
-					"http://localhost:8080",
-					"--metrics",
-					"localhost:20241",
-				],
-				{ stdout: "ignore", stderr: "ignore" },
-			);
+	function setupSpawnMock(stderrLines: string[], delayMs = 0) {
+		const killFn = vi.fn();
+		let exitResolve: () => void;
+		const exitedPromise = new Promise<void>((r) => {
+			exitResolve = r;
 		});
 
-		it("returns null on timeout", async () => {
-			setupSpawnMock();
-
-			(globalThis as any).fetch = vi.fn(async () => {
-				throw new Error("connection refused");
-			});
-
-			// Patch the module's internal timeout by calling with a fast timeout
-			// We can't control the internal timeout, so we test with the real 30s
-			// Instead, let's make the test fast by mocking setTimeout
-			vi.useFakeTimers();
-
-			const promise = startTunnel(8080);
-
-			// Advance time past the 30s timeout
-			// The poll loop uses await + setTimeout, so we need to flush
-			for (let i = 0; i < 70; i++) {
-				await vi.advanceTimersByTimeAsync(500);
-			}
-
-			const url = await promise;
-			expect(url).toBeNull();
-			expect(getTunnelState()).toBe("idle"); // stopTunnel resets to idle
-
-			vi.useRealTimers();
+		(mockSpawn as Mock).mockReturnValue({
+			kill: killFn,
+			exited: exitedPromise,
+			stderr: makeStderrStream(stderrLines, delayMs),
 		});
 
-		it("returns existing URL if already connected", async () => {
-			setupSpawnMock();
+		return { killFn, triggerExit: () => exitResolve!() };
+	}
 
-			globalThis.fetch = vi.fn(async () => ({
-				ok: true,
-				json: async () => ({ hostname: "existing.trycloudflare.com" }),
-			})) as any;
+	it("returns public URL when found in stderr", async () => {
+		setupSpawnMock([
+			"INF Starting tunnel",
+			"INF Registered connection",
+			"INF |  https://test-abc.trycloudflare.com",
+			"INF Connection established",
+		]);
 
-			await startTunnel(8080);
-			expect(getTunnelState()).toBe("connected");
+		const url = await startTunnel(8080);
+		expect(url).toBe("https://test-abc.trycloudflare.com");
+		expect(getTunnelUrl()).toBe("https://test-abc.trycloudflare.com");
+		expect(getTunnelState()).toBe("connected");
 
-			// Second call should return existing URL without spawning again
-			const url = await startTunnel(8080);
-			expect(url).toBe("https://existing.trycloudflare.com");
-			expect(mockSpawn).toHaveBeenCalledTimes(1);
-		});
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["cloudflared", "tunnel", "--url", "http://localhost:8080"],
+			{ stdout: "ignore", stderr: "pipe" },
+		);
 	});
 
-	describe("stopTunnel", () => {
-		it("kills process and resets state", async () => {
-			const killFn = vi.fn();
-			(mockSpawn as Mock).mockReturnValue({
-				kill: killFn,
-				exited: new Promise<void>(() => {}),
-			});
+	it("returns null when stderr closes without URL", async () => {
+		setupSpawnMock([
+			"INF Starting tunnel",
+			"ERR Something went wrong",
+		]);
 
-			globalThis.fetch = vi.fn(async () => ({
-				ok: true,
-				json: async () => ({ hostname: "stop-test.trycloudflare.com" }),
-			})) as any;
-
-			await startTunnel(8080);
-			expect(getTunnelState()).toBe("connected");
-			expect(getTunnelUrl()).not.toBeNull();
-
-			stopTunnel();
-
-			expect(killFn).toHaveBeenCalled();
-			expect(getTunnelUrl()).toBeNull();
-			expect(getTunnelState()).toBe("idle");
-		});
-
-		it("is safe to call when no tunnel is running", () => {
-			expect(getTunnelState()).toBe("idle");
-			stopTunnel(); // should not throw
-			expect(getTunnelState()).toBe("idle");
-		});
+		const url = await startTunnel(8080);
+		expect(url).toBeNull();
+		expect(getTunnelState()).toBe("idle"); // stopTunnel resets
 	});
 
-	describe("getTunnelUrl", () => {
-		it("returns null when idle", () => {
-			expect(getTunnelUrl()).toBeNull();
-		});
+	it("returns existing URL if already connected", async () => {
+		setupSpawnMock([
+			"INF |  https://existing.trycloudflare.com",
+		]);
+
+		await startTunnel(8080);
+		expect(getTunnelState()).toBe("connected");
+
+		const url = await startTunnel(8080);
+		expect(url).toBe("https://existing.trycloudflare.com");
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("stopTunnel", () => {
+	beforeEach(() => {
+		_resetState();
+		vi.clearAllMocks();
 	});
 
-	describe("getTunnelState", () => {
-		it("returns idle initially", () => {
-			expect(getTunnelState()).toBe("idle");
+	it("kills process and resets state", async () => {
+		const killFn = vi.fn();
+		const encoder = new TextEncoder();
+		(mockSpawn as Mock).mockReturnValue({
+			kill: killFn,
+			exited: new Promise<void>(() => {}),
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode("https://stop-test.trycloudflare.com\n"));
+					controller.close();
+				},
+			}),
 		});
+
+		await startTunnel(8080);
+		expect(getTunnelState()).toBe("connected");
+
+		stopTunnel();
+
+		expect(killFn).toHaveBeenCalled();
+		expect(getTunnelUrl()).toBeNull();
+		expect(getTunnelState()).toBe("idle");
 	});
 
-	describe("process exit", () => {
-		it("resets state to idle when process exits", async () => {
-			let exitResolve!: () => void;
-			const exitedPromise = new Promise<void>((r) => {
-				exitResolve = r;
-			});
+	it("is safe to call when no tunnel is running", () => {
+		expect(getTunnelState()).toBe("idle");
+		stopTunnel();
+		expect(getTunnelState()).toBe("idle");
+	});
+});
 
-			(mockSpawn as Mock).mockReturnValue({
-				kill: vi.fn(),
-				exited: exitedPromise,
-			});
+describe("getTunnelUrl", () => {
+	beforeEach(() => _resetState());
 
-			globalThis.fetch = vi.fn(async () => ({
-				ok: true,
-				json: async () => ({ hostname: "exit-test.trycloudflare.com" }),
-			})) as any;
+	it("returns null when idle", () => {
+		expect(getTunnelUrl()).toBeNull();
+	});
+});
 
-			await startTunnel(8080);
-			expect(getTunnelState()).toBe("connected");
+describe("getTunnelState", () => {
+	beforeEach(() => _resetState());
 
-			// Simulate process exit
-			exitResolve();
-			// Let the .then() callback run
-			await new Promise((r) => setTimeout(r, 10));
+	it("returns idle initially", () => {
+		expect(getTunnelState()).toBe("idle");
+	});
+});
 
-			expect(getTunnelState()).toBe("idle");
-			expect(getTunnelUrl()).toBeNull();
+describe("process exit", () => {
+	beforeEach(() => {
+		_resetState();
+		vi.clearAllMocks();
+	});
+
+	it("resets state to idle when process exits", async () => {
+		let exitResolve!: () => void;
+		const exitedPromise = new Promise<void>((r) => {
+			exitResolve = r;
 		});
+
+		const encoder = new TextEncoder();
+		(mockSpawn as Mock).mockReturnValue({
+			kill: vi.fn(),
+			exited: exitedPromise,
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode("https://exit-test.trycloudflare.com\n"));
+					controller.close();
+				},
+			}),
+		});
+
+		await startTunnel(8080);
+		expect(getTunnelState()).toBe("connected");
+
+		exitResolve();
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(getTunnelState()).toBe("idle");
+		expect(getTunnelUrl()).toBeNull();
 	});
 });

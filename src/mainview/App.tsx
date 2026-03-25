@@ -400,21 +400,22 @@ function App() {
 	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
 	const qrModalOpen = remoteQR !== null;
 	const [qrCountdown, setQrCountdown] = useState(25);
+	const tunnelWantedRef = useRef(tunnelWanted);
+	tunnelWantedRef.current = tunnelWanted;
 	useEffect(() => {
 		if (!qrModalOpen) return;
 		setQrCountdown(25);
+		let counter = 25;
 		const tick = setInterval(() => {
-			setQrCountdown(prev => {
-				if (prev <= 1) {
-					// Refresh QR
-					api.request.getRemoteAccessQR({ tunnel: tunnelWanted }).then(setRemoteQR).catch(() => {});
-					return 25;
-				}
-				return prev - 1;
-			});
+			counter -= 1;
+			if (counter <= 0) {
+				counter = 25;
+				api.request.getRemoteAccessQR({ tunnel: tunnelWantedRef.current }).then(setRemoteQR).catch(() => {});
+			}
+			setQrCountdown(counter);
 		}, 1000);
 		return () => clearInterval(tick);
-	}, [qrModalOpen, tunnelWanted]);
+	}, [qrModalOpen]);
 
 	// Track page views on route changes
 	useEffect(() => {

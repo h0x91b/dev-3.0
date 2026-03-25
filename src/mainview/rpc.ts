@@ -32,6 +32,12 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
  */
 export const isElectrobun = typeof (window as any).__electrobunWebviewId !== "undefined";
 
+// Add .browser-mode class to <html> when running outside Electrobun.
+// Scopes mobile-friendly CSS rules (e.g. font-size: 16px on inputs) to browser only.
+if (!isElectrobun) {
+	document.documentElement.classList.add("browser-mode");
+}
+
 // --- RPC API type (matches what components expect) ---
 type BunRequests = AppRPCSchema["bun"]["requests"];
 type RequestProxy = {
@@ -288,6 +294,7 @@ function initBrowserApi(): ApiShape {
 		},
 
 		async getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
+			// Call the server to ensure PTY session is initialized (result unused — we build our own WS URL)
 			await rpcRequest("getPtyUrl", params);
 			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
 			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
