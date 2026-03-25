@@ -1729,7 +1729,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{task.worktreePath && (
 							<>
 								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-								<span className="text-fg-muted text-[0.625rem] flex-shrink-0 uppercase tracking-wider">pwd</span>
 								<button
 									onClick={() => {
 										navigator.clipboard.writeText(task.worktreePath!);
