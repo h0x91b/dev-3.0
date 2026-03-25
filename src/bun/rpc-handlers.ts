@@ -3720,10 +3720,15 @@ export const handlers = {
 		return { available };
 	},
 
-	async getRemoteAccessQR(): Promise<{ qrDataUrl: string; accessUrl: string }> {
+	async getRemoteAccessQR(): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState?: string }> {
 		const qrDataUrl = await generateQrDataUrl();
-		const accessUrl = getAccessUrl();
-		return { qrDataUrl, accessUrl };
+		const accessUrl = await getAccessUrl();
+		let tunnelState: string | undefined;
+		try {
+			const { getTunnelState } = await import("./cloudflare-tunnel");
+			tunnelState = getTunnelState();
+		} catch { /* not loaded */ }
+		return { qrDataUrl, accessUrl, tunnelState };
 	},
 
 };

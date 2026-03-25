@@ -18,16 +18,22 @@ import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import { PATHS } from "electrobun/bun";
 import { createLogger } from "./logger";
+import { initSecret, createQrToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
+import { getTunnelUrl } from "./cloudflare-tunnel";
 
 const log = createLogger("remote-access");
 
 // ── Auth ────────────────────────────────────────────────────────────
 
-const PASSKEY = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-
-function isAuthenticated(req: Request): boolean {
+function extractToken(req: Request): string | null {
 	const url = new URL(req.url);
-	return url.searchParams.get("key") === PASSKEY;
+	return url.searchParams.get("token") ?? null;
+}
+
+async function isSessionAuthenticated(req: Request): Promise<boolean> {
+	const token = extractToken(req);
+	if (!token) return false;
+	return verifySessionToken(token);
 }
 
 // ── Static file serving ─────────────────────────────────────────────
@@ -185,43 +191,67 @@ interface StartOptions {
 	getPtyPort: () => number;
 }
 
-export function startRemoteAccessServer(options: StartOptions): void {
+export async function startRemoteAccessServer(options: StartOptions): Promise<void> {
+	await initSecret();
 	requestHandler = options.rpcHandler;
 	ptyPortGetter = options.getPtyPort;
 
 	const server = Bun.serve<WsData>({
 		hostname: "0.0.0.0",
 		port: 0, // random
-		fetch(req, server) {
+		async fetch(req, server) {
 			const url = new URL(req.url);
 
-			// ── WebSocket upgrades (auth required) ──
+			// ── Auth endpoints (no session required) ──
+			if (url.pathname === "/auth/exchange" && req.method === "POST") {
+				try {
+					const body = await req.json() as { token?: string };
+					if (!body.token) return new Response("Missing token", { status: 400 });
+					const sessionToken = await exchangeQrForSession(body.token);
+					if (!sessionToken) return new Response("Invalid or expired token", { status: 401 });
+					return Response.json({ token: sessionToken });
+				} catch {
+					return new Response("Bad request", { status: 400 });
+				}
+			}
+
+			if (url.pathname === "/auth/refresh" && req.method === "POST") {
+				try {
+					const body = await req.json() as { token?: string };
+					if (!body.token) return new Response("Missing token", { status: 400 });
+					const newToken = await refreshSession(body.token);
+					if (!newToken) return new Response("Invalid or expired token", { status: 401 });
+					return Response.json({ token: newToken });
+				} catch {
+					return new Response("Bad request", { status: 400 });
+				}
+			}
+
+			// ── WebSocket upgrades (session token required) ──
 			if (url.pathname === "/rpc") {
-				if (!isAuthenticated(req)) return new Response("Unauthorized", { status: 401 });
+				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
 				if (server.upgrade(req, { data: { type: "rpc" } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
 			if (url.pathname === "/pty") {
-				if (!isAuthenticated(req)) return new Response("Unauthorized", { status: 401 });
+				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
 				const sessionId = url.searchParams.get("session");
 				if (!sessionId) return new Response("Missing session param", { status: 400 });
 				if (server.upgrade(req, { data: { type: "pty", sessionId } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
-			// ── API endpoints (auth required) ──
+			// ── API endpoints (session token required) ──
 			if (url.pathname === "/health") {
-				if (!isAuthenticated(req)) return new Response("Unauthorized", { status: 401 });
+				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
 				return Response.json({ ok: true, ptyPort: ptyPortGetter?.() ?? 0 });
 			}
 
 			// ── Static files (no auth — UI code is not sensitive) ──
-			// The passkey protects WebSocket/API access, not static assets.
-			return serveStatic(url.pathname).then(resp => {
-				if (resp) return resp;
-				return serveStatic("/").then(r => r || new Response("Not Found", { status: 404 }));
-			});
+			const resp = await serveStatic(url.pathname);
+			if (resp) return resp;
+			return (await serveStatic("/")) || new Response("Not Found", { status: 404 });
 		},
 		websocket: {
 			open(ws) {
@@ -297,9 +327,17 @@ function getLocalIp(): string {
 	return "localhost";
 }
 
-export function getAccessUrl(): string {
+export async function getAccessUrl(): Promise<string> {
+	const token = await createQrToken();
+	const tunnel = getTunnelUrl();
+	if (tunnel) return `${tunnel}/?token=${token}`;
 	const ip = getLocalIp();
-	return `http://${ip}:${serverPort}/?key=${PASSKEY}`;
+	return `http://${ip}:${serverPort}/?token=${token}`;
+}
+
+export function getBaseUrl(): string {
+	const ip = getLocalIp();
+	return `http://${ip}:${serverPort}/`;
 }
 
 export function getServerPort(): number {
@@ -307,7 +345,7 @@ export function getServerPort(): number {
 }
 
 function printAccessInfo(): void {
-	const url = getAccessUrl();
+	const url = getBaseUrl();
 	const sep = "═".repeat(60);
 	console.log("");
 	console.log(`╔${sep}╗`);
@@ -315,22 +353,16 @@ function printAccessInfo(): void {
 	console.log(`╠${sep}╣`);
 	console.log(`║                                                            ║`);
 	console.log(`║  ${url.padEnd(58)}║`);
+	console.log(`║  Use the QR code feature for authenticated access.${" ".repeat(7)}║`);
 	console.log(`║                                                            ║`);
 	console.log(`╚${sep}╝`);
 	console.log("");
-
-	// Generate QR code in terminal
-	QRCode.toString(url, { type: "terminal", small: true }, (err: Error | null | undefined, qr: string) => {
-		if (!err && qr) {
-			console.log(qr);
-		}
-	});
 }
 
 /**
  * Generate a QR code as a data URL (PNG) for display in the GUI.
  */
 export async function generateQrDataUrl(): Promise<string> {
-	const url = getAccessUrl();
+	const url = await getAccessUrl();
 	return QRCode.toDataURL(url, { width: 256, margin: 2 });
 }

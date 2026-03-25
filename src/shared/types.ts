@@ -340,6 +340,7 @@ export interface GlobalSettings {
 	tipsDisabled?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
+	tunnelEnabled?: boolean; // enable Cloudflare Tunnel for public remote access
 }
 
 export interface TipState {

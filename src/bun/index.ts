@@ -15,7 +15,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
+import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl, getServerPort } from "./remote-access-server";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
@@ -317,7 +317,7 @@ setPushMessage((name, payload) => {
 });
 
 // Start remote access server (serves UI + RPC + PTY proxy on LAN)
-startRemoteAccessServer({
+await startRemoteAccessServer({
 	rpcHandler: async (method: string, params: any) => {
 		const handler = (handlers as any)[method];
 		if (!handler) throw new Error(`Unknown RPC method: ${method}`);
@@ -325,6 +325,22 @@ startRemoteAccessServer({
 	},
 	getPtyPort,
 });
+
+// Start Cloudflare tunnel if enabled in settings
+loadSettings().then(async (settings) => {
+	if (!settings.tunnelEnabled) return;
+	try {
+		const { isCloudflaredAvailable, startTunnel } = await import("./cloudflare-tunnel");
+		if (!isCloudflaredAvailable()) {
+			log.info("Cloudflare tunnel enabled but cloudflared not installed");
+			return;
+		}
+		const url = await startTunnel(getServerPort());
+		if (url) log.info("Cloudflare tunnel active", { url });
+	} catch (err) {
+		log.warn("Failed to start Cloudflare tunnel", { error: String(err) });
+	}
+}).catch(() => {});
 
 // Start background merge detection poller
 startMergeDetectionPoller();
@@ -422,6 +438,11 @@ mainWindow.on("close", () => {
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopSocketServer();
+	try {
+		// Dynamic import — module may not be loaded if tunnel was never started
+		const { stopTunnel } = require("./cloudflare-tunnel") as typeof import("./cloudflare-tunnel");
+		stopTunnel();
+	} catch { /* module not loaded */ }
 	Utils.quit();
 });
 
@@ -558,7 +579,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 	} else if (e.data.action === "show-remote-qr") {
 		try {
 			const qrDataUrl = await generateQrDataUrl();
-			const accessUrl = getAccessUrl();
+			const accessUrl = await getAccessUrl();
 			(mainWindow.webview.rpc as any).send.showRemoteAccessQR?.({ qrDataUrl, accessUrl });
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });

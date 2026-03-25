@@ -392,6 +392,25 @@ function App() {
 		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
 	}, []);
 
+	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
+	const qrModalOpen = remoteQR !== null;
+	const [qrCountdown, setQrCountdown] = useState(25);
+	useEffect(() => {
+		if (!qrModalOpen) return;
+		setQrCountdown(25);
+		const tick = setInterval(() => {
+			setQrCountdown(prev => {
+				if (prev <= 1) {
+					// Refresh QR
+					api.request.getRemoteAccessQR().then(setRemoteQR).catch(() => {});
+					return 25;
+				}
+				return prev - 1;
+			});
+		}, 1000);
+		return () => clearInterval(tick);
+	}, [qrModalOpen]);
+
 	// Track page views on route changes
 	useEffect(() => {
 		const { screen } = state.route;
@@ -569,8 +588,21 @@ function App() {
 					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[28rem] p-6 space-y-4 text-center">
 						<h2 className="text-fg text-lg font-semibold">Remote Access</h2>
 						<p className="text-fg-2 text-sm">Scan this QR code to open the UI on your phone or another device</p>
-						<div className="flex justify-center">
+						<div className="flex justify-center relative">
 							<img src={remoteQR.qrDataUrl} alt="QR Code" className="w-56 h-56 rounded-lg" />
+						</div>
+						<div className="flex items-center justify-center gap-2 text-fg-muted text-xs">
+							<div className="w-4 h-4 relative">
+								<svg className="w-4 h-4 -rotate-90" viewBox="0 0 20 20">
+									<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+									<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2"
+										strokeDasharray={`${(qrCountdown / 25) * 50.3} 50.3`}
+										strokeLinecap="round"
+										className="transition-all duration-1000 ease-linear"
+									/>
+								</svg>
+							</div>
+							<span>Refreshes in {qrCountdown}s</span>
 						</div>
 						<div className="bg-base rounded-lg p-3">
 							<code className="text-fg text-xs break-all select-all">{remoteQR.accessUrl}</code>

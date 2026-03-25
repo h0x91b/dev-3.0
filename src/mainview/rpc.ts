@@ -91,25 +91,84 @@ function initElectrobunApi(): ApiShape {
 // ── Browser WebSocket transport ─────────────────────────────────────
 // Used when running in Chrome/Safari (remote access server or Vite dev).
 function initBrowserApi(): ApiShape {
-	// Extract passkey from URL for authenticated WebSocket connections
-	const urlParams = new URLSearchParams(window.location.search);
-	const passkey = urlParams.get("key") || "";
-
-	// If served by the remote access server, use the same host.
-	// If served by Vite dev server (localhost:5173), fall back to the known port.
 	const FALLBACK_RPC_PORT = (globalThis as any).__DEV3_BROWSER_RPC_PORT || 19191;
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+	const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const isViteDevServer = window.location.port === "5173";
-	const keyParam = passkey ? `?key=${passkey}` : "";
-	const wsUrl = isViteDevServer
-		? `ws://localhost:${FALLBACK_RPC_PORT}/rpc`
-		: `${protocol}//${window.location.host}/rpc${keyParam}`;
+
+	// ── JWT session token (in-memory only) ──
+	let sessionToken: string | null = null;
+	let authReady: Promise<void>;
+
+	// Extract QR token from URL and clean it from the address bar
+	const urlParams = new URLSearchParams(window.location.search);
+	const qrToken = urlParams.get("token") || "";
+	if (qrToken) {
+		window.history.replaceState({}, "", window.location.pathname);
+	}
+
+	// Exchange QR token for session token
+	async function authenticate(): Promise<void> {
+		if (isViteDevServer || !qrToken) return;
+		try {
+			const resp = await fetch("/auth/exchange", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ token: qrToken }),
+			});
+			if (resp.ok) {
+				const data = await resp.json();
+				sessionToken = data.token;
+				console.log("[browser-rpc] Authenticated via QR token");
+			} else {
+				console.error("[browser-rpc] Token exchange failed:", resp.status);
+			}
+		} catch (err) {
+			console.error("[browser-rpc] Token exchange error:", err);
+		}
+	}
+
+	// Refresh session token periodically (every 15 minutes)
+	function startRefreshTimer(): void {
+		setInterval(async () => {
+			if (!sessionToken) return;
+			try {
+				const resp = await fetch("/auth/refresh", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ token: sessionToken }),
+				});
+				if (resp.ok) {
+					const data = await resp.json();
+					sessionToken = data.token;
+					console.log("[browser-rpc] Session token refreshed");
+				}
+			} catch {
+				// Will retry on next interval
+			}
+		}, 15 * 60 * 1000);
+	}
+
+	// Build authenticated WebSocket URL
+	function buildWsUrl(path: string, extraParams?: string): string {
+		if (isViteDevServer) {
+			return `ws://localhost:${FALLBACK_RPC_PORT}${path}`;
+		}
+		const tokenParam = sessionToken ? `token=${sessionToken}` : "";
+		const params = [tokenParam, extraParams].filter(Boolean).join("&");
+		return `${wsProtocol}//${window.location.host}${path}${params ? `?${params}` : ""}`;
+	}
+
+	// Start auth, then connect
+	authReady = authenticate().then(() => {
+		if (!isViteDevServer) startRefreshTimer();
+	});
 
 	let ws: WebSocket | null = null;
 	let requestId = 0;
 	const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
 
 	function connect() {
+		const wsUrl = buildWsUrl("/rpc");
 		ws = new WebSocket(wsUrl);
 
 		ws.addEventListener("open", () => {
@@ -149,7 +208,8 @@ function initBrowserApi(): ApiShape {
 		});
 	}
 
-	connect();
+	// Gate WS connection behind auth
+	authReady.then(connect);
 
 	function rpcRequest(method: string, params: any): Promise<any> {
 		return new Promise((resolve, reject) => {
@@ -166,19 +226,14 @@ function initBrowserApi(): ApiShape {
 
 			const packet = JSON.stringify({ type: "request", id, method, params });
 
-			if (ws?.readyState === WebSocket.OPEN) {
-				ws.send(packet);
-			} else {
-				// Wait for connection, then send
-				const waitForOpen = () => {
-					if (ws?.readyState === WebSocket.OPEN) {
-						ws.send(packet);
-					} else {
-						setTimeout(waitForOpen, 100);
-					}
-				};
-				waitForOpen();
-			}
+			const trySend = () => {
+				if (ws?.readyState === WebSocket.OPEN) {
+					ws.send(packet);
+				} else {
+					setTimeout(trySend, 100);
+				}
+			};
+			trySend();
 		});
 	}
 
@@ -204,7 +259,6 @@ function initBrowserApi(): ApiShape {
 						const base64 = btoa(
 							new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ""),
 						);
-						// Send to backend to save the file
 						return rpcRequest("uploadImageBase64", {
 							projectId: params.projectId,
 							base64,
@@ -219,13 +273,9 @@ function initBrowserApi(): ApiShape {
 		},
 
 		async getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
-			// Trigger the real handler (restores session etc.), but rewrite the URL
-			// to go through our access server's PTY proxy instead of direct localhost.
 			await rpcRequest("getPtyUrl", params);
-			const host = window.location.host;
-			const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-			const authParam = passkey ? `&key=${passkey}` : "";
-			return `${wsProtocol}//${host}/pty?session=${params.taskId}${authParam}`;
+			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
+			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
 		},
 
 		async hideApp(): Promise<void> {
