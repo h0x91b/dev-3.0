@@ -1726,6 +1726,24 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								{task.branchName}
 							</span>
 						)}
+						{task.worktreePath && (
+							<button
+								onClick={() => {
+									navigator.clipboard.writeText(task.worktreePath!);
+									setCopiedPath(true);
+									setTimeout(() => setCopiedPath(false), 1500);
+								}}
+								className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
+								title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
+							>
+								<span
+									className="text-[0.6875rem] leading-none"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{copiedPath ? "\u{F012C}" : "\uF0C5"}
+								</span>
+							</button>
+						)}
 						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
 							<>
 								{task.branchName && <span className="text-fg-muted text-xs flex-shrink-0">|</span>}
