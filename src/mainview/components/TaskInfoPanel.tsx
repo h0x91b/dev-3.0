@@ -1908,7 +1908,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 												className="text-[0.75rem] leading-none"
 												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 											>
-												{copiedPath ? "\u{F012C}" : "\u{F0198}"}
+												{copiedPath ? "\u{F012C}" : "\uF0C5"}
 											</span>
 										</button>
 										{copiedPath && (
