@@ -27,6 +27,8 @@ vi.mock("../../rpc", () => ({
 			openPullRequest: vi.fn(),
 			renameTask: vi.fn(),
 			getPortAllocations: vi.fn().mockResolvedValue([]),
+			getGlobalSettings: vi.fn().mockResolvedValue({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskDropPosition: "top", updateChannel: "stable" }),
+			openFileDiff: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));

@@ -892,6 +892,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
+			openFileDiff: {
+				params: { taskId: string; projectId: string; relativePath: string; ref?: string };
+				response: void;
+			};
 			getTerminalPreview: {
 				params: { taskId: string };
 				response: string | null;

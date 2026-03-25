@@ -2734,15 +2734,7 @@ describe("handlers.pushTask", () => {
 // ================================================================
 
 describe("handlers.showDiff", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		vi.mocked(loadSettings).mockResolvedValue({
-			defaultAgentId: "builtin-claude",
-			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
-			updateChannel: "stable",
-		});
-	});
+	beforeEach(() => vi.clearAllMocks());
 
 	it("throws when task has no worktree", async () => {
 		const project = makeProject();
@@ -2755,48 +2747,10 @@ describe("handlers.showDiff", () => {
 		).rejects.toThrow("Task has no worktree");
 	});
 
-	it("uses external diff tool when configured", async () => {
-		vi.mocked(loadSettings).mockResolvedValue({
-			defaultAgentId: "builtin-claude",
-			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
-			updateChannel: "stable",
-			diffTool: "vscode",
-		});
-		const project = makeProject();
-		const task = makeTask({ worktreePath: "/tmp/wt" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
-
-		// mockSpawn returns a process-like object
-		const mockExited = Promise.resolve(0);
-		mockSpawn.mockReturnValue({
-			stdout: null,
-			stderr: new ReadableStream(),
-			exited: mockExited,
-		});
-
-		await handlers.showDiff({ taskId: "task-1", projectId: "proj-1" });
-
-		// Should have called spawn with git difftool, not tmux
-		expect(mockSpawn).toHaveBeenCalledWith(
-			expect.arrayContaining(["git", "difftool", "--no-prompt"]),
-			expect.objectContaining({ cwd: "/tmp/wt" }),
-		);
-	});
 });
 
 describe("handlers.showUncommittedDiff", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		vi.mocked(loadSettings).mockResolvedValue({
-			defaultAgentId: "builtin-claude",
-			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
-			updateChannel: "stable",
-		});
-	});
+	beforeEach(() => vi.clearAllMocks());
 
 	it("throws when task has no worktree", async () => {
 		const project = makeProject();
@@ -2807,35 +2761,6 @@ describe("handlers.showUncommittedDiff", () => {
 		await expect(
 			handlers.showUncommittedDiff({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Task has no worktree");
-	});
-
-	it("uses external diff tool when configured", async () => {
-		vi.mocked(loadSettings).mockResolvedValue({
-			defaultAgentId: "builtin-claude",
-			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
-			updateChannel: "stable",
-			diffTool: "meld",
-		});
-		const project = makeProject();
-		const task = makeTask({ worktreePath: "/tmp/wt" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-
-		const mockExited = Promise.resolve(0);
-		mockSpawn.mockReturnValue({
-			stdout: null,
-			stderr: new ReadableStream(),
-			exited: mockExited,
-		});
-
-		await handlers.showUncommittedDiff({ taskId: "task-1", projectId: "proj-1" });
-
-		// Should call spawn twice: once for unstaged, once for staged
-		const diffToolCalls = mockSpawn.mock.calls.filter(
-			(call: any[]) => Array.isArray(call[0]) && call[0].includes("difftool"),
-		);
-		expect(diffToolCalls).toHaveLength(2);
 	});
 });
 

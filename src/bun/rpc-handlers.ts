@@ -409,51 +409,19 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 }
 
 /**
- * Resolve the extcmd string for git difftool.
- * For built-in tools: returns the predefined extcmd.
- * For custom: generates a wrapper script that maps $1/$2 to $LOCAL/$REMOTE.
+ * Build the shell command for a single-file diff invocation.
+ * For built-in tools: uses predefined command + localPath + remotePath.
+ * For custom: substitutes $LOCAL / $REMOTE placeholders.
  */
-function resolveExtcmd(toolId: DiffToolId, customCommand: string | undefined, taskId: string): string {
+function buildDiffCommand(toolId: DiffToolId, customCommand: string | undefined, localPath: string, remotePath: string): string {
 	if (toolId === "custom" && customCommand) {
-		const wrapperPath = `/tmp/dev3-${taskId}-custom-difftool.sh`;
-		const wrapperScript = [
-			"#!/bin/bash",
-			'LOCAL="$1"',
-			'REMOTE="$2"',
-			customCommand.replace(/\$LOCAL/g, '"$LOCAL"').replace(/\$REMOTE/g, '"$REMOTE"'),
-		].join("\n") + "\n";
-		Bun.write(wrapperPath, wrapperScript);
-		chmodSync(wrapperPath, 0o755);
-		return `bash "${wrapperPath}"`;
+		return customCommand
+			.replace(/\$LOCAL/g, `"${localPath}"`)
+			.replace(/\$REMOTE/g, `"${remotePath}"`);
 	}
 	const tool = BUILT_IN_DIFF_TOOLS.find((t) => t.id === toolId);
 	if (!tool) throw new Error(`Unknown diff tool: ${toolId}`);
-	return tool.extcmd;
-}
-
-/**
- * Run external diff tool via `git difftool --no-prompt --extcmd`.
- * Fire-and-forget: spawns the process and returns immediately.
- */
-function runExternalDiffTool(
-	worktreePath: string,
-	taskId: string,
-	diffToolId: DiffToolId,
-	customCommand: string | undefined,
-	diffArgs: string[],
-): void {
-	const extcmd = resolveExtcmd(diffToolId, customCommand, taskId);
-	const args = ["git", "difftool", "--no-prompt", `--extcmd=${extcmd}`, ...diffArgs];
-	log.info("Running external diff tool", { args, cwd: worktreePath });
-	const proc = spawn(args, { cwd: worktreePath, stdout: "ignore", stderr: "pipe" });
-	proc.exited.then(async (code) => {
-		if (code !== 0) {
-			const stderr = await new Response(proc.stderr).text();
-			log.warn("External diff tool exited with error", { code, stderr: stderr.trim(), tool: diffToolId });
-		}
-	}).catch((err) => {
-		log.warn("External diff tool spawn error", { error: String(err), tool: diffToolId });
-	});
+	return `${tool.extcmd} "${localPath}" "${remotePath}"`;
 }
 
 export function setPushMessage(fn: (name: string, payload: any) => void): void {
@@ -2562,15 +2530,6 @@ export const handlers = {
 		// Fetch fresh refs before showing diff (deduped, won't re-fetch within cooldown)
 		await git.fetchOrigin(project.path);
 
-		const settings = await loadSettings();
-		const diffToolId = settings.diffTool ?? "git-terminal";
-
-		if (diffToolId !== "git-terminal") {
-			runExternalDiffTool(task.worktreePath, task.id, diffToolId, settings.customDiffCommand, [`${ref}...HEAD`]);
-			log.info("← showDiff (external tool launched)", { tool: diffToolId });
-			return;
-		}
-
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
 
@@ -2618,18 +2577,6 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 
 		if (!task.worktreePath) throw new Error("Task has no worktree");
-
-		const settings = await loadSettings();
-		const diffToolId = settings.diffTool ?? "git-terminal";
-
-		if (diffToolId !== "git-terminal") {
-			// Unstaged changes
-			runExternalDiffTool(task.worktreePath, task.id, diffToolId, settings.customDiffCommand, []);
-			// Staged changes
-			runExternalDiffTool(task.worktreePath, task.id, diffToolId, settings.customDiffCommand, ["--cached"]);
-			log.info("← showUncommittedDiff (external tool launched)", { tool: diffToolId });
-			return;
-		}
 
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-uncommitted-diff.sh`;
@@ -3258,6 +3205,69 @@ export const handlers = {
 		results.push({ id: "custom", name: "Custom Command", available: true });
 		log.info("<- detectDiffTools", { results: results.map((r) => `${r.id}:${r.available}`) });
 		return results;
+	},
+
+	async openFileDiff(params: { taskId: string; projectId: string; relativePath: string; ref?: string }): Promise<void> {
+		log.info("→ openFileDiff", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		const settings = await loadSettings();
+		const diffToolId = settings.diffTool ?? "git-terminal";
+		if (diffToolId === "git-terminal") {
+			throw new Error("No external diff tool configured");
+		}
+
+		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		const ref = params.ref || `origin/${baseBranch}`;
+		const safeRelPath = params.relativePath.replace(/'/g, "'\\''");
+
+		// Create temp copy of old version
+		const tmpDir = `/tmp/dev3-${task.id}-filediff`;
+		const tmpFile = `${tmpDir}/${params.relativePath.replace(/\//g, "__")}`;
+		const remotePath = `${task.worktreePath}/${params.relativePath}`;
+
+		const script = [
+			"#!/bin/bash",
+			`mkdir -p "${tmpDir}"`,
+			`cd "${task.worktreePath}"`,
+			`git show '${ref}:${safeRelPath}' > '${tmpFile}' 2>/dev/null || touch '${tmpFile}'`,
+			`chmod 444 '${tmpFile}'`,
+			buildDiffCommand(diffToolId, settings.customDiffCommand, tmpFile, remotePath),
+			`rm -f '${tmpFile}'`,
+		].join("\n") + "\n";
+
+		const scriptPath = `/tmp/dev3-${task.id}-filediff.sh`;
+		await Bun.write(scriptPath, script);
+		chmodSync(scriptPath, 0o755);
+
+		// Run in tmux pane for visibility
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		await killExistingGitPane(task.id, tmuxSession, socket);
+
+		const proc = spawn(pty.tmuxArgs(socket,
+			"split-window", "-h",
+			"-t", tmuxSession,
+			"-c", task.worktreePath,
+			"-P", "-F", "#{pane_id}",
+			`bash "${scriptPath}"`,
+		), { stdout: "pipe", stderr: "pipe" });
+		const output = await new Response(proc.stdout).text();
+		const stderrOutput = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+
+		if (stderrOutput.trim()) {
+			log.warn("openFileDiff tmux stderr", { stderr: stderrOutput.trim() });
+		}
+		if (exitCode !== 0) {
+			throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+		}
+
+		const paneId = output.trim() || null;
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		log.info("← openFileDiff (pane opened)", { paneId, file: params.relativePath, tool: diffToolId });
 	},
 
 	async setAgentBinaryPath(params: { agentId: string; path: string }): Promise<void> {
