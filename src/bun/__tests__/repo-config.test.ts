@@ -732,6 +732,19 @@ describe("getConfigSources with app-level", () => {
 		expect(devSource?.source).toBe("app");
 	});
 
+	it("empty clonePaths in repo config is not reported as source (#378)", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			clonePaths: [],
+		}));
+
+		const sources = await getConfigSources(TEST_DIR, TEST_DIR);
+		const cloneSource = sources.find((s) => s.field === "clonePaths");
+		// Empty array should not be reported as a source — it's "not configured"
+		expect(cloneSource).toBeUndefined();
+	});
+
 	it("repo overrides app in source report", async () => {
 		await saveAppConfig(TEST_DIR, { setupScript: "app-setup" });
 

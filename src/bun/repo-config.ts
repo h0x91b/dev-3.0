@@ -17,7 +17,7 @@ const LOCAL_CONFIG_FILE = `${CONFIG_DIR}/config.local.json`;
  * A config file that contains `clonePaths: []` should not shadow a project-level
  * `clonePaths: ["node_modules"]`. See #378.
  */
-function effective(val: unknown): unknown {
+function effective<T>(val: T): T | undefined {
 	if (val === undefined || val === null) return undefined;
 	if (Array.isArray(val) && val.length === 0) return undefined;
 	return val;
@@ -158,11 +158,11 @@ export async function getConfigSources(
 
 	const entries: ConfigSourceEntry[] = [];
 	for (const field of DEV3_REPO_CONFIG_KEYS) {
-		if (localConfig && localConfig[field] !== undefined) {
+		if (localConfig && effective(localConfig[field]) !== undefined) {
 			entries.push({ field, source: "local" });
-		} else if (repoConfig && repoConfig[field] !== undefined) {
+		} else if (repoConfig && effective(repoConfig[field]) !== undefined) {
 			entries.push({ field, source: "repo" });
-		} else if (appConfig[field] !== undefined) {
+		} else if (effective(appConfig[field]) !== undefined) {
 			entries.push({ field, source: "app" });
 		}
 	}
