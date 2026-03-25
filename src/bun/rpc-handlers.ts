@@ -3218,6 +3218,9 @@ export const handlers = {
 		if (diffToolId === "git-terminal") {
 			throw new Error("No external diff tool configured");
 		}
+		if (diffToolId === "custom" && !settings.customDiffCommand) {
+			throw new Error("Custom diff command is not configured");
+		}
 
 		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 		const ref = params.ref || `origin/${baseBranch}`;
@@ -3226,16 +3229,21 @@ export const handlers = {
 		// Create temp copy of old version
 		const tmpDir = `/tmp/dev3-${task.id}-filediff`;
 		const tmpFile = `${tmpDir}/${params.relativePath.replace(/\//g, "__")}`;
+		// Escape single quotes for use inside single-quoted shell strings
+		const safeTmpFile = tmpFile.replace(/'/g, "'\\''");
 		const remotePath = `${task.worktreePath}/${params.relativePath}`;
 
 		const script = [
 			"#!/bin/bash",
 			`mkdir -p "${tmpDir}"`,
+			// Clean up any leftover temp file from a previous run before creating a new one.
+			// The rm is placed here (not at the end) so that non-blocking diff tools like
+			// opendiff/FileMerge can still read the file after the script exits.
+			`rm -f '${safeTmpFile}'`,
 			`cd "${task.worktreePath}"`,
-			`git show '${ref}:${safeRelPath}' > '${tmpFile}' 2>/dev/null || touch '${tmpFile}'`,
-			`chmod 444 '${tmpFile}'`,
+			`git show '${ref}:${safeRelPath}' > '${safeTmpFile}' 2>/dev/null || touch '${safeTmpFile}'`,
+			`chmod 444 '${safeTmpFile}'`,
 			buildDiffCommand(diffToolId, settings.customDiffCommand, tmpFile, remotePath),
-			`rm -f '${tmpFile}'`,
 		].join("\n") + "\n";
 
 		const scriptPath = `/tmp/dev3-${task.id}-filediff.sh`;
