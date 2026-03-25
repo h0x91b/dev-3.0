@@ -176,6 +176,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
 
+	// ---- Copy worktree path ----
+	const [copiedPath, setCopiedPath] = useState(false);
+
 	// ---- Status dropdown state ----
 	const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 	const [statusMenuPos, setStatusMenuPos] = useState({ top: 0, left: 0 });
@@ -1890,7 +1893,28 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{task.worktreePath && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.worktree")}</span>
-									<span className="text-fg-3 font-mono truncate">{task.worktreePath}</span>
+									<span className="flex items-center gap-1.5 min-w-0">
+										<span className="text-fg-3 font-mono truncate">{task.worktreePath}</span>
+										<button
+											onClick={() => {
+												navigator.clipboard.writeText(task.worktreePath!);
+												setCopiedPath(true);
+												setTimeout(() => setCopiedPath(false), 1500);
+											}}
+											className="flex-shrink-0 text-fg-muted hover:text-fg transition-colors"
+											title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
+										>
+											<span
+												className="text-[0.75rem] leading-none"
+												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+											>
+												{copiedPath ? "\u{F012C}" : "\u{F0198}"}
+											</span>
+										</button>
+										{copiedPath && (
+											<span className="text-[0.625rem] text-accent flex-shrink-0">{t("infoPanel.pathCopied")}</span>
+										)}
+									</span>
 								</>
 							)}
 

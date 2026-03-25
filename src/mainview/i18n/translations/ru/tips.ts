@@ -166,6 +166,8 @@ const tips = {
 	"tip.resourceUsageBadge.body": "Каждая активная задача показывает CPU и память — наведите на бейдж для деталей.",
 	"tip.preventSleep.title": "Не засыпать",
 	"tip.preventSleep.body": "Включите «Не давать уснуть» в настройках, чтобы Mac не засыпал пока работают агенты.",
+	"tip.copyWorktreePath.title": "Копирование пути worktree",
+	"tip.copyWorktreePath.body": "Нажмите иконку копирования рядом с путём worktree в панели задачи, или правый клик по карточке → Copy Path.",
 };
 
 export default tips;

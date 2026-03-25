@@ -57,6 +57,8 @@ const infoPanel = {
 	"infoPanel.refreshStatus": "Actualizar estado de la rama",
 	"infoPanel.movedAt": "Movido",
 	"infoPanel.baseBranch": "Rama base",
+	"infoPanel.copyPath": "Copiar ruta",
+	"infoPanel.pathCopied": "¡Copiado!",
 };
 
 export default infoPanel;

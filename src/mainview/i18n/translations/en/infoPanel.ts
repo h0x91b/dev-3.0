@@ -57,6 +57,8 @@ const infoPanel = {
 	"infoPanel.refreshStatus": "Refresh branch status",
 	"infoPanel.movedAt": "Moved",
 	"infoPanel.baseBranch": "Base Branch",
+	"infoPanel.copyPath": "Copy path",
+	"infoPanel.pathCopied": "Copied!",
 } as const;
 
 export default infoPanel;

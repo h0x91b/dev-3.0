@@ -1,0 +1,1 @@
+Added a copy-to-clipboard button for the worktree path in three places: a folder+clipboard icon in the collapsed task header bar (next to branch name), a clipboard icon next to the worktree path in the expanded info panel, and a "Copy Path" item in the right-click context menu on task cards. Also fixed the terminal preview popover overlapping the context menu.
