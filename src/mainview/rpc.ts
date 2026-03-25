@@ -200,7 +200,13 @@ function initBrowserApi(): ApiShape {
 
 		ws.addEventListener("close", () => {
 			console.warn("[browser-rpc] Disconnected, reconnecting in 2s...");
-			setTimeout(connect, 2000);
+			// Only reconnect if we have a valid session token (or are in Vite dev mode).
+			// Without a token the server returns 401 and we'd loop forever.
+			if (isViteDevServer || sessionToken) {
+				setTimeout(connect, 2000);
+			} else {
+				console.warn("[browser-rpc] No session token — skipping reconnect");
+			}
 		});
 
 		ws.addEventListener("error", () => {
@@ -227,6 +233,8 @@ function initBrowserApi(): ApiShape {
 			const packet = JSON.stringify({ type: "request", id, method, params });
 
 			const trySend = () => {
+				// Stop if the request was already resolved/rejected (timeout or response)
+				if (!pending.has(id)) return;
 				if (ws?.readyState === WebSocket.OPEN) {
 					ws.send(packet);
 				} else {

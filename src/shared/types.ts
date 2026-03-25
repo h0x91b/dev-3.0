@@ -1054,6 +1054,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: { available: boolean };
 			};
+			uploadImageBase64: {
+				params: { projectId: string; base64: string };
+				response: { path: string } | null;
+			};
 			getRemoteAccessQR: {
 				params: { tunnel?: boolean };
 				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
