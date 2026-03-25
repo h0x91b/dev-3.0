@@ -46,6 +46,7 @@ const dashboard = {
 	"header.changelogTooltip": "View changelog",
 	"header.githubTooltip": "Website",
 	"header.reportBugTooltip": "Report a bug",
+	"header.remoteAccessTooltip": "Open on your phone — scan QR code for remote access",
 	"header.reportLabel": "Report",
 	"header.switchProject": "Switch project",
 	"header.activeTaskCount_one": "{count} active",

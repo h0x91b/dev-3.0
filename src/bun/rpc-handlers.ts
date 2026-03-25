@@ -21,6 +21,7 @@ import { setupAgentHooks } from "./agent-hooks";
 import { BUNDLED_CHANGELOG } from "./changelog-bundled";
 import * as repoConfig from "./repo-config";
 import * as portPool from "./port-pool";
+import { generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 
 const log = createLogger("rpc");
 
@@ -3717,6 +3718,12 @@ export const handlers = {
 		const available = isCaffeinateAvailable();
 		log.info("← checkCaffeinateAvailable", { available });
 		return { available };
+	},
+
+	async getRemoteAccessQR(): Promise<{ qrDataUrl: string; accessUrl: string }> {
+		const qrDataUrl = await generateQrDataUrl();
+		const accessUrl = getAccessUrl();
+		return { qrDataUrl, accessUrl };
 	},
 
 };

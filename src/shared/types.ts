@@ -1054,6 +1054,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: { available: boolean };
 			};
+			getRemoteAccessQR: {
+				params: void;
+				response: { qrDataUrl: string; accessUrl: string };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
