@@ -238,6 +238,21 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("/tmp/wt/abc")).toBeInTheDocument();
 		});
 
+		it("copies worktree path to clipboard when clicking copy button", async () => {
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+			await act(async () => {
+				renderPanel(makeTask({ worktreePath: "/tmp/wt/abc" }));
+			});
+
+			const copyBtn = screen.getByTitle("Copy path");
+			await userEvent.click(copyBtn);
+
+			expect(writeText).toHaveBeenCalledWith("/tmp/wt/abc");
+			expect(screen.getByText("Copied!")).toBeInTheDocument();
+		});
+
 		it("renders notes section with empty state", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ notes: [] }));

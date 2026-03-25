@@ -43,6 +43,8 @@ const common = {
 	"openIn.menuTitle": "Abrir en...",
 	"openIn.noAppsFound": "No se encontraron aplicaciones externas",
 	"openIn.failedOpen": "Error al abrir en {app}: {error}",
+	"openIn.copyPath": "Copiar ruta",
+	"openIn.pathCopied": "¡Copiado!",
 
 	// GitHub CLI warning banner
 	"ghWarning.titleNotInstalled": "GitHub CLI (gh) no está instalado",

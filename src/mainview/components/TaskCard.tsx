@@ -324,6 +324,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		if (!task.worktreePath) return;
 		e.preventDefault();
 		e.stopPropagation();
+		preview.close();
 		setCtxMenuPos({ top: e.clientY, left: e.clientX });
 		setCtxMenuOpen(true);
 	}

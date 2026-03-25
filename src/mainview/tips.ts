@@ -521,6 +521,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.preventSleep.body",
 		icon: "\u{F0425}", // nf-md-sleep_off
 	},
+	// Batch 27: copy worktree path
+	{
+		id: "copy-worktree-path",
+		titleKey: "tip.copyWorktreePath.title",
+		bodyKey: "tip.copyWorktreePath.body",
+		icon: "\u{F0198}", // nf-md-content_copy
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

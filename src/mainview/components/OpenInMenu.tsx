@@ -35,6 +35,7 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [menuPos, setMenuPos] = useState(position);
 	const [visible, setVisible] = useState(false);
+	const [copied, setCopied] = useState(false);
 
 	// Close on click outside
 	useEffect(() => {
@@ -122,6 +123,23 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 					</button>
 				))
 			)}
+			<div className="border-t border-edge my-1" />
+			<button
+				onClick={() => {
+					navigator.clipboard.writeText(path);
+					setCopied(true);
+					setTimeout(() => { setCopied(false); onClose(); }, 800);
+				}}
+				className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+			>
+				<span
+					className="w-4 text-center text-[0.875rem] leading-none flex-shrink-0"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{copied ? "\u{F012C}" : "\uF0C5"}
+				</span>
+				{copied ? t("openIn.pathCopied") : t("openIn.copyPath")}
+			</button>
 		</div>,
 		document.body,
 	);

@@ -83,4 +83,20 @@ describe("OpenInMenu", () => {
 		await userEvent.keyboard("{Escape}");
 		expect(onClose).toHaveBeenCalled();
 	});
+
+	it("copies worktree path to clipboard when clicking Copy Path", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+		renderMenu("/tmp/my-worktree");
+
+		await waitFor(() => {
+			expect(screen.getByText("Copy Path")).toBeInTheDocument();
+		});
+
+		await userEvent.click(screen.getByText("Copy Path"));
+
+		expect(writeText).toHaveBeenCalledWith("/tmp/my-worktree");
+		expect(screen.getByText("Copied!")).toBeInTheDocument();
+	});
 });
