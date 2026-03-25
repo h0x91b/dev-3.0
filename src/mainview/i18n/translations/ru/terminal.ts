@@ -9,6 +9,10 @@ const terminal = {
 	"terminal.sessionEnded": "Терминальная сессия завершена",
 	"terminal.sessionEndedDesc": "Процесс терминала завершился. Worktree и все файлы на месте.",
 	"terminal.resumeAgentSession": "Возобновить сессию",
+	"terminal.recoveryTitle": "Найдена предыдущая сессия агента",
+	"terminal.recoveryDesc": "Терминал был отключён, но сессию агента можно восстановить.",
+	"terminal.resumeSession": "Возобновить сессию",
+	"terminal.startFresh": "Начать заново",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",

@@ -272,9 +272,33 @@ export interface CommandOptions {
 	 *  Supported agents: Claude (--continue), Codex (resume --last),
 	 *  Gemini (--resume latest), Cursor Agent (--continue). */
 	resume?: boolean;
+	/** Specific session ID to resume or pre-assign. When resuming, agents that
+	 *  support targeted resume (e.g. Claude --resume <id>) use this instead of
+	 *  --continue. For fresh launches, Claude uses --session-id <id>. */
+	sessionId?: string;
 	/** When true, skip injecting the DEV3_SYSTEM_PROMPT via --append-system-prompt.
 	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
 	skipSystemPrompt?: boolean;
+}
+
+/**
+ * Build a minimal resume command for a given agent command name and session ID.
+ * Used for resuming sessions after tmux death / app restart.
+ */
+export function buildResumeCommand(agentCmd: string, sessionId?: string): string | null {
+	if (isClaudeCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
+	}
+	if (isCodexCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} resume ${sessionId}` : `${agentCmd} resume --last`;
+	}
+	if (isGeminiCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --resume latest`;
+	}
+	if (isCursorCommand(agentCmd)) {
+		return `${agentCmd} --continue`;
+	}
+	return null;
 }
 
 /** Returns true when the agent CLI supports session resumption. */
@@ -295,12 +319,30 @@ export function resolveAgentCommand(
 
 	// Resume flags per agent (Codex uses a subcommand, handled at the end)
 	if (shouldResume) {
-		if (isClaudeCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd)) {
+		const sid = options?.sessionId;
+		if (isClaudeCommand(baseCmd)) {
+			// Prefer --resume <id> for targeted resume; fall back to --continue
+			if (sid) {
+				args.push("--resume", sid);
+			} else {
+				args.push("--continue");
+			}
+		} else if (isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd)) {
 			args.push("--continue");
 		} else if (isGeminiCommand(baseCmd)) {
-			args.push("--resume", "latest");
+			if (sid) {
+				args.push("--resume", sid);
+			} else {
+				args.push("--resume", "latest");
+			}
 		}
 		// Codex: handled below when building the final command
+	}
+
+	// For fresh Claude sessions, pre-assign a session ID so we can resume later
+	// without needing to observe file mtimes or scan for session files.
+	if (!shouldResume && isClaudeCommand(baseCmd) && options?.sessionId) {
+		args.push("--session-id", options.sessionId);
 	}
 
 	if (config?.model) {
@@ -386,9 +428,10 @@ export function resolveAgentCommand(
 		}
 	}
 
-	// Codex uses a subcommand for resume: `codex resume --last [args]`
+	// Codex uses a subcommand for resume: `codex resume [--last | <id>] [args]`
 	if (shouldResume && isCodexCommand(baseCmd)) {
-		return [baseCmd, "resume", "--last", ...args].join(" ");
+		const sid = options?.sessionId;
+		return [baseCmd, "resume", sid ?? "--last", ...args].join(" ");
 	}
 
 	return [baseCmd, ...args].join(" ");

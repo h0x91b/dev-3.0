@@ -556,6 +556,20 @@ export interface Task {
 	preparing?: boolean;
 	/** When true, native macOS notifications fire on status changes. */
 	watched?: boolean;
+	/** Persisted agent session state for recovery after tmux/app crash. */
+	sessionState?: TaskSessionState | null;
+}
+
+/** Captured session state for agent recovery after tmux death / app restart. */
+export interface TaskSessionState {
+	/** The agent + flags used to launch, so we can replay identical sessions. */
+	agentCmd: string;
+	/** Pre-assigned session ID (Claude --session-id). Null for agents that don't support it. */
+	sessionId: string | null;
+	/** Agent ID used at launch time (for resolving the binary on resume). */
+	agentId: string | null;
+	/** Agent config ID used at launch time (for resolving flags on resume). */
+	configId: string | null;
 }
 
 /** Returns the display title: custom override if set, otherwise auto-generated. */
@@ -926,6 +940,14 @@ export type AppRPCSchema = {
 			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
+				response: { url: string } | { recoverable: true; sessionState: TaskSessionState };
+			};
+			resumeTask: {
+				params: { taskId: string };
+				response: string;
+			};
+			restartTask: {
+				params: { taskId: string };
 				response: string;
 			};
 			getProjectPtyUrl: {

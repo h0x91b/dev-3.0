@@ -127,7 +127,10 @@ export async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 	resume = false,
+	opts?: { sessionId?: string; skipSessionPersist?: boolean },
 ): Promise<void> {
+	const sessionId = opts?.sessionId;
+	const skipSessionPersist = opts?.skipSessionPersist ?? false;
 	log.info("launchTaskPty START", {
 		taskId: task.id.slice(0, 8),
 		projectId: project.id.slice(0, 8),
@@ -136,6 +139,8 @@ export async function launchTaskPty(
 		configId: configId ?? "none",
 		runSetup,
 		resume,
+		sessionId: sessionId ?? "none",
+		skipSessionPersist,
 	});
 
 	const ctx: agents.TemplateContext = {
@@ -151,10 +156,23 @@ export async function launchTaskPty(
 	let resolvedBaseCmd = "";
 
 	try {
-		const cmdOptions = resume ? { resume } : undefined;
+		const cmdOptions: agents.CommandOptions = {};
+		let freshSessionId: string | null = null;
+
+		if (resume) {
+			cmdOptions.resume = true;
+			if (sessionId) cmdOptions.sessionId = sessionId;
+		} else {
+			// Fresh launch — always generate a new UUID.
+			// Claude rejects --session-id if the UUID was already used;
+			// stored session IDs are only for --resume.
+			freshSessionId = crypto.randomUUID();
+			cmdOptions.sessionId = freshSessionId;
+		}
+
 		if (agentId) {
 			log.info("Resolving command for agent", { agentId, configId });
-			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx, cmdOptions);
+			const resolved = await agents.resolveCommandForAgent(agentId, configId ?? null, ctx, Object.keys(cmdOptions).length ? cmdOptions : undefined);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
@@ -166,12 +184,34 @@ export async function launchTaskPty(
 				ctx.taskDescription,
 				worktreePath,
 				undefined,
-				cmdOptions,
+				Object.keys(cmdOptions).length ? cmdOptions : undefined,
 			);
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		}
+
+		// Persist session state as pane[0] for the main agent pane.
+		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
+		if (!skipSessionPersist) {
+			const effectiveSessionId = resume ? sessionId : (agents.isClaudeCommand(resolvedBaseCmd) ? freshSessionId : null);
+			if (effectiveSessionId || agents.isClaudeCommand(resolvedBaseCmd)) {
+				const paneEntry = {
+					agentCmd: resolvedBaseCmd,
+					sessionId: effectiveSessionId ?? freshSessionId,
+					agentId: agentId ?? task.agentId,
+					configId: configId ?? task.configId,
+				};
+				const sessionState = { panes: [paneEntry] };
+				try {
+					await data.updateTask(project, task.id, { sessionState });
+					log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
+				} catch (err) {
+					log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+				}
+			}
+		}
+
 		log.info("Command resolved", { tmuxCmd, envKeys: Object.keys(extraEnv) });
 	} catch (err) {
 		log.error("Failed to resolve command", {
@@ -685,12 +725,7 @@ async function checkWorktreeExists(params: { path: string }): Promise<boolean> {
 	return existsSync(params.path);
 }
 
-function shouldResumeRestoredTask(task: Task, requestedResume?: boolean): boolean {
-	if (requestedResume) return true;
-	return isActive(task.status) && !!task.worktreePath;
-}
-
-async function getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
+async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	log.info("→ getPtyUrl", {
 		taskId: params.taskId,
 		hasExistingSession: pty.hasSession(params.taskId),
@@ -698,71 +733,66 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<
 		ptyPort: pty.getPtyPort(),
 	});
 
-	// Dead in-memory sessions keep the original tmux command, which would
-	// replay the initial prompt if the websocket path respawns them directly.
-	// Always destroy them and go through the normal restore path instead.
-	if (pty.hasDeadSession(params.taskId)) {
-		log.info("Dead session detected — destroying to force clean restoration", {
+	// If resuming and the session is dead (proc exited but still in map),
+	// destroy it so launchTaskPty recreates it with the resume flag.
+	if (params.resume && pty.hasDeadSession(params.taskId)) {
+		log.info("Resume requested on dead session — destroying to force recreation", {
 			taskId: params.taskId.slice(0, 8),
-			resumeRequested: !!params.resume,
 		});
 		pty.destroySession(params.taskId);
 	}
 
+	// If session is in memory (alive or dead), verify the tmux session still
+	// exists. When the tmux server is killed externally, the proc may or may
+	// not have exited yet — but `has-session` is the ground truth.
+	if (pty.hasSession(params.taskId)) {
+		const socket = pty.getSessionSocket(params.taskId);
+		if (!pty.tmuxSessionExists(params.taskId, socket)) {
+			log.info("Session in memory but tmux session gone — destroying for recovery", {
+				taskId: params.taskId.slice(0, 8),
+			});
+			pty.destroySession(params.taskId);
+		}
+	}
+
+	// If no PTY session in memory, try to recreate it from persisted task data
 	if (!pty.hasSession(params.taskId)) {
 		log.info("No PTY session in memory, attempting to restore", {
 			taskId: params.taskId.slice(0, 8),
 		});
 
-		let foundTask: Task | null = null;
-		let foundProject: Project | null = null;
-		try {
-			const projects = await data.loadProjects();
-			log.info("Loaded projects for task search", { count: projects.length });
-			for (const project of projects) {
-				try {
-					const task = await data.getTask(project, params.taskId);
-					foundTask = task;
-					foundProject = project;
-					log.info("Found task in project", {
-						taskId: params.taskId.slice(0, 8),
-						projectId: project.id.slice(0, 8),
-						taskStatus: task.status,
-						worktreePath: task.worktreePath,
-					});
-					break;
-				} catch {}
-			}
-		} catch (err) {
-			log.error("Failed to load projects during PTY restore", {
-				taskId: params.taskId.slice(0, 8),
-				error: String(err),
-				stack: (err as Error)?.stack ?? "no stack",
-			});
-		}
+		const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
 
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
-			try {
-				const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
-				const shouldResume = shouldResumeRestoredTask(foundTask, params.resume);
-				log.info("Attempting to restore PTY session", {
+			const socket = foundTask.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+			const tmuxAlive = pty.tmuxSessionExists(params.taskId, socket);
+
+			if (tmuxAlive) {
+				// Tmux session exists — just reconnect (no resume needed).
+				// Skip session persist so we don't overwrite the real session ID.
+				try {
+					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false, { skipSessionPersist: true });
+					log.info("Reconnected to existing tmux session", { taskId: params.taskId.slice(0, 8) });
+				} catch (err) {
+					log.error("Failed to reconnect to tmux session", { taskId: params.taskId.slice(0, 8), error: String(err) });
+				}
+			} else if (foundTask.sessionState?.panes?.length) {
+				// No tmux session but we have stored pane sessions — offer recovery
+				log.info("Recoverable session detected", {
 					taskId: params.taskId.slice(0, 8),
-					status: foundTask.status,
-					worktreePath: foundTask.worktreePath,
-					resume: shouldResume,
+					paneCount: foundTask.sessionState.panes.length,
 				});
-				await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, shouldResume);
-				log.info("Restored PTY session for active task", {
-					taskId: params.taskId.slice(0, 8),
-					worktreePath: foundTask.worktreePath,
-					resume: shouldResume,
-				});
-			} catch (err) {
-				log.error("Failed to restore PTY session", {
-					taskId: params.taskId.slice(0, 8),
-					error: String(err),
-					stack: (err as Error)?.stack ?? "no stack",
-				});
+				return { recoverable: true as const, sessionState: foundTask.sessionState };
+			} else {
+				// No tmux, no session state — launch fresh
+				try {
+					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false);
+					log.info("Launched fresh PTY session", { taskId: params.taskId.slice(0, 8) });
+				} catch (err) {
+					log.error("Failed to launch fresh PTY session", { taskId: params.taskId.slice(0, 8), error: String(err) });
+				}
 			}
 		} else {
 			log.warn("Cannot restore PTY session: task not active or no worktree", {
@@ -776,10 +806,146 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<
 	}
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← getPtyUrl", {
-		url,
-		sessionExists: pty.hasSession(params.taskId),
-	});
+	log.info("← getPtyUrl", { url, sessionExists: pty.hasSession(params.taskId) });
+	return { url };
+}
+
+/** Find a task by ID across all projects. */
+async function findTaskAcrossProjects(taskId: string): Promise<{ task: Task | null; project: Project | null }> {
+	try {
+		const projects = await data.loadProjects();
+		for (const project of projects) {
+			try {
+				const task = await data.getTask(project, taskId);
+				return { task, project };
+			} catch {
+				// task not in this project
+			}
+		}
+	} catch (err) {
+		log.error("Failed to load projects during task search", {
+			taskId: taskId.slice(0, 8),
+			error: String(err),
+		});
+	}
+	return { task: null, project: null };
+}
+
+async function resumeTask(params: { taskId: string }): Promise<string> {
+	log.info("→ resumeTask", { taskId: params.taskId.slice(0, 8) });
+	const { task, project } = await findTaskAcrossProjects(params.taskId);
+	if (!task || !project || !task.worktreePath) {
+		throw new Error(`Cannot resume: task ${params.taskId} not found or has no worktree`);
+	}
+	const panes = task.sessionState?.panes;
+	if (!panes?.length) {
+		throw new Error(`Cannot resume: task ${params.taskId} has no stored pane sessions`);
+	}
+
+	// Destroy any dead session in memory
+	if (pty.hasSession(params.taskId)) {
+		pty.destroySession(params.taskId);
+	}
+
+	// Launch main pane (panes[0]) with resume
+	const main = panes[0];
+	const resolvedProject = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	await launchTaskPty(
+		resolvedProject,
+		task,
+		task.worktreePath,
+		main.agentId,
+		main.configId,
+		false,
+		true,
+		main.sessionId ? { sessionId: main.sessionId } : undefined,
+	);
+
+	// Resume extra panes (panes[1..]) via split-window.
+	// Wait for the tmux session to be ready before splitting.
+	if (panes.length > 1) {
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const maxWaitMs = 3000;
+		const pollMs = 100;
+		let waited = 0;
+		while (!pty.tmuxSessionExists(params.taskId, socket) && waited < maxWaitMs) {
+			await new Promise(r => setTimeout(r, pollMs));
+			waited += pollMs;
+		}
+		if (!pty.tmuxSessionExists(params.taskId, socket)) {
+			log.warn("Tmux session not ready after wait — skipping extra pane resume", { taskId: params.taskId.slice(0, 8) });
+		} else {
+			const ctx: agents.TemplateContext = {
+				taskTitle: task.title,
+				taskDescription: "",
+				projectName: project.name,
+				projectPath: project.path,
+				worktreePath: task.worktreePath,
+			};
+			for (let i = 1; i < panes.length; i++) {
+				const pane = panes[i];
+				try {
+					const cmdOpts: agents.CommandOptions = { resume: true };
+					if (pane.sessionId) cmdOpts.sessionId = pane.sessionId;
+					let resumeCmd: string;
+					let extraEnv: Record<string, string> = {};
+					if (pane.agentId) {
+						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
+						resumeCmd = resolved.command;
+						extraEnv = resolved.extraEnv;
+					} else {
+						resumeCmd = agents.buildResumeCommand(pane.agentCmd, pane.sessionId ?? undefined) ?? pane.agentCmd;
+					}
+					const scriptPath = `/tmp/dev3-${params.taskId}-resume-pane-${i}.sh`;
+					await Bun.write(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
+					const wrappedCmd = `bash "${scriptPath}"`;
+					const paneId = pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
+					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId, command: resumeCmd.slice(0, 100) });
+				} catch (err) {
+					log.warn("Failed to resume extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, error: String(err) });
+				}
+			}
+		}
+	}
+
+	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+	log.info("← resumeTask", { url });
+	return url;
+}
+
+async function restartTask(params: { taskId: string }): Promise<string> {
+	log.info("→ restartTask", { taskId: params.taskId.slice(0, 8) });
+	const { task, project } = await findTaskAcrossProjects(params.taskId);
+	if (!task || !project || !task.worktreePath) {
+		throw new Error(`Cannot restart: task ${params.taskId} not found or has no worktree`);
+	}
+
+	// Destroy any dead session in memory
+	if (pty.hasSession(params.taskId)) {
+		pty.destroySession(params.taskId);
+	}
+
+	// Remember agent info before clearing
+	const mainPane = task.sessionState?.panes?.[0];
+	const agentId = mainPane?.agentId ?? task.agentId;
+	const configId = mainPane?.configId ?? task.configId;
+
+	// Clear old session state — a new one will be generated by launchTaskPty
+	await data.updateTask(project, task.id, { sessionState: null });
+
+	const resolvedProject = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	await launchTaskPty(
+		resolvedProject,
+		task,
+		task.worktreePath,
+		agentId,
+		configId,
+		false,
+		false,
+	);
+
+	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+	log.info("← restartTask", { url });
 	return url;
 }
 
@@ -1123,4 +1289,6 @@ export const tmuxPtyHandlers = {
 	killTmuxSession,
 	tmuxAction,
 	spawnAgentInTask,
+	resumeTask,
+	restartTask,
 };

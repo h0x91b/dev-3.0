@@ -70,6 +70,7 @@ vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 	hasSession: vi.fn(),
 	hasDeadSession: vi.fn(),
+	tmuxSessionExists: vi.fn(() => false),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
 	getSessionSocket: vi.fn(() => "dev3"),
@@ -87,6 +88,7 @@ vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
 	ensureCodexTrust: vi.fn(),
 	ensureGeminiTrust: vi.fn(),
+	isClaudeCommand: vi.fn(() => false),
 	isCodexCommand: vi.fn((cmd: string) => cmd === "codex"),
 	isGeminiCommand: vi.fn(() => false),
 	resolveCommandForAgent: vi.fn(() => ({ command: "claude", extraEnv: {} })),
@@ -2250,22 +2252,52 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(pty.hasSession).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toBe("ws://localhost:9999?session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
 	});
 
-	it("tries to restore PTY when session is missing", async () => {
+	it("tries to restore PTY when session is missing and tmux alive", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("ws://localhost:9999");
-		expect(url).toContain("session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
+	});
+
+	it("launches fresh when no tmux session and no sessionState", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
+		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("returns recoverable when tmux is dead but sessionState exists", async () => {
+		const project = makeProject();
+		const sessionState = { agentCmd: "claude", sessionId: "sid-123", agentId: "builtin-claude", configId: "config-1" };
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", sessionState });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ recoverable: true, sessionState });
 	});
 
 	it("resolves project config before restoring a PTY session", async () => {
@@ -2274,6 +2306,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -2282,14 +2315,6 @@ describe("handlers.getPtyUrl", () => {
 		await handlers.getPtyUrl({ taskId: "task-1" });
 
 		expect(repoConfig.resolveProjectConfig).toHaveBeenCalledWith(project, "/tmp/wt");
-		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
-			resolvedProject,
-			task.title,
-			task.description,
-			"/tmp/wt",
-			undefined,
-			{ resume: true },
-		);
 	});
 
 	it("does not crash when worktree is missing during restore", async () => {
@@ -2297,12 +2322,13 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/deleted" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(existsSync).mockReturnValue(false);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 	});
 
 	it("handles task not found across projects", async () => {
@@ -2310,8 +2336,8 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
 		vi.mocked(data.getTask).mockRejectedValue(new Error("not found"));
 
-		const url = await handlers.getPtyUrl({ taskId: "task-unknown" });
-		expect(url).toContain("session=task-unknown");
+		const result = await handlers.getPtyUrl({ taskId: "task-unknown" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-unknown") });
 	});
 
 	it("skips restore for completed task", async () => {
@@ -2322,9 +2348,8 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("session=task-1");
-		// Should not attempt launchTaskPty for completed task
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).not.toHaveBeenCalled();
 	});
 
@@ -2332,17 +2357,17 @@ describe("handlers.getPtyUrl", () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
-		// Session exists in map but proc is dead; after destroySession, hasSession returns false
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
-		vi.mocked(pty.hasSession).mockReturnValue(false); // reflects state after destroy
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
+		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
 
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
-		expect(url).toContain("session=task-1");
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
@@ -2351,10 +2376,10 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(pty.hasSession).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
+		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
 
 		expect(pty.destroySession).not.toHaveBeenCalled();
-		expect(url).toBe("ws://localhost:9999?session=task-1");
+		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
 	});
 
 	it("destroys dead sessions even when resume is not set", async () => {
@@ -2363,6 +2388,7 @@ describe("handlers.getPtyUrl", () => {
 
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -2390,6 +2416,7 @@ describe("handlers.getPtyUrl", () => {
 		});
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -2400,31 +2427,7 @@ describe("handlers.getPtyUrl", () => {
 			"agent-claude",
 			"config-opus",
 			expect.any(Object),
-			{ resume: true },
-		);
-	});
-
-	it("restores active worktree-backed tasks in resume mode by default", async () => {
-		const project = makeProject();
-		const task = makeTask({
-			status: "review-by-user",
-			worktreePath: "/tmp/wt",
-			agentId: "agent-claude",
-			configId: "config-opus",
-		});
-
-		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-
-		await handlers.getPtyUrl({ taskId: "task-1" });
-
-		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
-			"agent-claude",
-			"config-opus",
 			expect.any(Object),
-			{ resume: true },
 		);
 	});
 
@@ -2439,18 +2442,15 @@ describe("handlers.getPtyUrl", () => {
 
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		await handlers.getPtyUrl({ taskId: "task-1", resume: true });
 
-		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
-			"agent-claude",
-			"config-opus",
-			expect.any(Object),
-			{ resume: true },
-		);
+		// Should launch fresh (no sessionState, no tmux) — not resume
+		expect(pty.createSession).toHaveBeenCalled();
 	});
 
 	it("uses resolveCommandForProject when task has no agentId", async () => {
@@ -2463,6 +2463,7 @@ describe("handlers.getPtyUrl", () => {
 		});
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -2478,8 +2479,8 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockRejectedValue(new Error("disk error"));
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 	});
 
 	it("does not crash when launchTaskPty throws during restore", async () => {
@@ -2487,13 +2488,14 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(agents.resolveCommandForProject).mockRejectedValueOnce(new Error("agent resolution failed"));
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 	});
 
 	it("skips restore when task has active status but null worktreePath", async () => {
@@ -2505,8 +2507,8 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).not.toHaveBeenCalled();
 	});
 
@@ -2516,14 +2518,15 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project1, project2]);
 		vi.mocked(data.getTask)
 			.mockRejectedValueOnce(new Error("not found"))
 			.mockResolvedValueOnce(task);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(url).toContain("session=task-1");
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
@@ -2533,14 +2536,15 @@ describe("handlers.getPtyUrl", () => {
 
 		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		const url = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
+		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
 
 		expect(pty.destroySession).not.toHaveBeenCalled();
-		expect(url).toContain("session=task-1");
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 });
@@ -3853,7 +3857,7 @@ describe("launchTaskPty", () => {
 			expect.objectContaining({
 				taskDescription: "Touch a text file and say hello world",
 			}),
-			undefined,
+			expect.objectContaining({ sessionId: expect.any(String) }),
 		);
 	});
 

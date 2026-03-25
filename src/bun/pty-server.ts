@@ -384,6 +384,119 @@ function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
+// ── Pane helpers ─────────────────────────────────────────────────────
+
+/** Get the first pane ID in a task's tmux session. */
+export function getFirstPaneId(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): string | null {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		const result = spawnSync(tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"));
+		if (result.exitCode !== 0) return null;
+		const ids = new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
+		return ids[0] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+export interface PaneProcessInfo {
+	paneId: string;
+	panePid: number;
+	childPid: number | null;
+	commandName: string | null;
+}
+
+/**
+ * For each pane in a tmux session, detect the foreground process (agent) running in it.
+ * Uses `pgrep -P <shell_pid>` to find children, then `ps -p <pid> -o comm=` for the name.
+ */
+export function getPaneProcessInfo(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): PaneProcessInfo[] {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		const result = spawnSync(
+			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}|#{pane_pid}"),
+		);
+		if (result.exitCode !== 0) return [];
+
+		const panes = new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
+		const infos: PaneProcessInfo[] = [];
+
+		for (const line of panes) {
+			const [paneId, pidStr] = line.split("|");
+			const panePid = Number(pidStr);
+
+			let childPid: number | null = null;
+			let commandName: string | null = null;
+			try {
+				const pgrepResult = spawnSync(["pgrep", "-P", String(panePid)]);
+				if (pgrepResult.exitCode === 0) {
+					const childPids = new TextDecoder().decode(pgrepResult.stdout).trim().split("\n").filter(Boolean).map(Number);
+					if (childPids.length > 0) {
+						childPid = childPids[0];
+						const psResult = spawnSync(["ps", "-p", String(childPid), "-o", "comm="]);
+						if (psResult.exitCode === 0) {
+							const fullPath = new TextDecoder().decode(psResult.stdout).trim();
+							commandName = fullPath.split("/").pop() || null;
+						}
+					}
+				}
+
+				if (commandName === null) {
+					const psResult = spawnSync(["ps", "-p", String(panePid), "-o", "comm="]);
+					if (psResult.exitCode === 0) {
+						const fullPath = new TextDecoder().decode(psResult.stdout).trim();
+						commandName = fullPath.split("/").pop() || null;
+					}
+				}
+			} catch {
+				// best effort
+			}
+
+			infos.push({ paneId, panePid, childPid, commandName });
+		}
+
+		return infos;
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Create an additional pane in an existing tmux session by splitting, and run a command in it.
+ * Returns the new pane ID, or null on failure.
+ */
+export function splitAndRunCommand(taskId: string, socket: string, command: string, cwd: string): string | null {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		const result = spawnSync(
+			tmuxArgs(socket, "split-window", "-v", "-t", tmuxSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", command),
+		);
+		if (result.exitCode !== 0) {
+			log.warn("splitAndRunCommand failed", { taskId: shortId(taskId), exitCode: result.exitCode });
+			return null;
+		}
+		const paneId = new TextDecoder().decode(result.stdout).trim();
+		spawnSync(tmuxArgs(socket, "select-layout", "-t", tmuxSessionName, "tiled"));
+		return paneId || null;
+	} catch (err) {
+		log.warn("splitAndRunCommand error", { taskId: shortId(taskId), error: String(err) });
+		return null;
+	}
+}
+
+/**
+ * Check if a tmux session exists on the given socket.
+ */
+export function tmuxSessionExists(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): boolean {
+	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
+	try {
+		const result = spawnSync(tmuxArgs(socket, "has-session", "-t", tmuxSessionName));
+		return result.exitCode === 0;
+	} catch {
+		return false;
+	}
+}
+
 const OSC52_RE = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/g;
 // Matches any OSC sequence terminated by BEL or ST — used to strip them
 // before checking for standalone BEL (\x07)
