@@ -247,7 +247,7 @@ describe("TaskTerminal", () => {
 		it("shows recovery prompt when getPtyUrl returns recoverable", async () => {
 			mockedApi.request.getPtyUrl.mockResolvedValue({
 				recoverable: true,
-				sessionState: { agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" },
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
 			});
 
 			await act(async () => {
@@ -265,7 +265,7 @@ describe("TaskTerminal", () => {
 			const user = userEvent.setup();
 			mockedApi.request.getPtyUrl.mockResolvedValue({
 				recoverable: true,
-				sessionState: { agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" },
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
 			});
 			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
 
@@ -288,7 +288,7 @@ describe("TaskTerminal", () => {
 			const user = userEvent.setup();
 			mockedApi.request.getPtyUrl.mockResolvedValue({
 				recoverable: true,
-				sessionState: { agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" },
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
 			});
 			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:9999?session=t1");
 
@@ -311,7 +311,7 @@ describe("TaskTerminal", () => {
 			const user = userEvent.setup();
 			mockedApi.request.getPtyUrl.mockResolvedValue({
 				recoverable: true,
-				sessionState: { agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" },
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
 			});
 			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
 

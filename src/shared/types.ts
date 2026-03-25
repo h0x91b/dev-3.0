@@ -560,16 +560,22 @@ export interface Task {
 	sessionState?: TaskSessionState | null;
 }
 
-/** Captured session state for agent recovery after tmux death / app restart. */
-export interface TaskSessionState {
-	/** The agent + flags used to launch, so we can replay identical sessions. */
+/** Per-pane session info for recovery. */
+export interface PaneSessionEntry {
+	/** The resolved agent base command (e.g. "claude", "/usr/local/bin/codex"). */
 	agentCmd: string;
 	/** Pre-assigned session ID (Claude --session-id). Null for agents that don't support it. */
 	sessionId: string | null;
-	/** Agent ID used at launch time (for resolving the binary on resume). */
+	/** Agent ID used at launch time. */
 	agentId: string | null;
-	/** Agent config ID used at launch time (for resolving flags on resume). */
+	/** Agent config ID used at launch time. */
 	configId: string | null;
+}
+
+/** Captured session state for agent recovery after tmux death / app restart. */
+export interface TaskSessionState {
+	/** Panes in order — index 0 is the main pane, rest are extra agent panes. */
+	panes: PaneSessionEntry[];
 }
 
 /** Returns the display title: custom override if set, otherwise auto-generated. */

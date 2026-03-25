@@ -2287,7 +2287,7 @@ describe("handlers.getPtyUrl", () => {
 
 	it("returns recoverable when tmux is dead but sessionState exists", async () => {
 		const project = makeProject();
-		const sessionState = { agentCmd: "claude", sessionId: "sid-123", agentId: "builtin-claude", configId: "config-1" };
+		const sessionState = { panes: [{ agentCmd: "claude", sessionId: "sid-123", agentId: "builtin-claude", configId: "config-1" }] };
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", sessionState });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
@@ -3796,7 +3796,7 @@ describe("handlers.spawnAgentInTask", () => {
 
 		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
 
-		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", "claude-default", expect.objectContaining({ worktreePath: "/tmp/wt" }));
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", "claude-default", expect.objectContaining({ worktreePath: "/tmp/wt" }), expect.objectContaining({ sessionId: expect.any(String) }));
 		expect(mockSpawn).toHaveBeenCalledWith(
 			expect.arrayContaining(["tmux", "-L", "dev3", "split-window", "-h", "-c", "/tmp/wt", "-t", "dev3-abcd1234"]),
 			expect.any(Object),
