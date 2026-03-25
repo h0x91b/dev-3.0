@@ -1722,27 +1722,31 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					{/* Bottom row: git (full width) */}
 					<div className="flex items-center gap-1.5 min-w-0 pb-1">
 						{task.branchName && (
-							<span className="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]">
+							<span className="text-fg-3 text-xs font-mono flex-shrink-0">
 								{task.branchName}
 							</span>
 						)}
 						{task.worktreePath && (
-							<button
-								onClick={() => {
-									navigator.clipboard.writeText(task.worktreePath!);
-									setCopiedPath(true);
-									setTimeout(() => setCopiedPath(false), 1500);
-								}}
-								className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
-								title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
-							>
-								<span
-									className="text-[0.6875rem] leading-none"
-									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							<>
+								<span className="text-fg-muted text-xs flex-shrink-0">|</span>
+								<span className="text-fg-muted text-[0.625rem] flex-shrink-0 uppercase tracking-wider">pwd</span>
+								<button
+									onClick={() => {
+										navigator.clipboard.writeText(task.worktreePath!);
+										setCopiedPath(true);
+										setTimeout(() => setCopiedPath(false), 1500);
+									}}
+									className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
+									title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
 								>
-									{copiedPath ? "\u{F012C}" : "\uF0C5"}
-								</span>
-							</button>
+									<span
+										className="text-xs leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{copiedPath ? "\u{F012C}" : "\uF0C5"}
+									</span>
+								</button>
+							</>
 						)}
 						{(branchStatusBadge || refDropdownButton || branchStatusLoading) && (
 							<>
