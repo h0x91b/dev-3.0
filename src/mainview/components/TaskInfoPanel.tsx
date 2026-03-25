@@ -1735,9 +1735,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 										setCopiedPath(true);
 										setTimeout(() => setCopiedPath(false), 1500);
 									}}
-									className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
+									className="flex-shrink-0 flex items-center gap-1 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
 									title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
 								>
+									<span
+										className="text-xs leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uEF81"}
+									</span>
 									<span
 										className="text-xs leading-none"
 										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
