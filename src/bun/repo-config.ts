@@ -12,6 +12,17 @@ const CONFIG_DIR = ".dev3";
 const CONFIG_FILE = `${CONFIG_DIR}/config.json`;
 const LOCAL_CONFIG_FILE = `${CONFIG_DIR}/config.local.json`;
 
+/**
+ * Treat empty arrays as "not configured" so they fall through the cascade.
+ * A config file that contains `clonePaths: []` should not shadow a project-level
+ * `clonePaths: ["node_modules"]`. See #378.
+ */
+function effective<T>(val: T): T | undefined {
+	if (val === undefined || val === null) return undefined;
+	if (Array.isArray(val) && val.length === 0) return undefined;
+	return val;
+}
+
 /** Default values for settings fields when nothing is configured. */
 const DEFAULTS: Dev3RepoConfig = {
 	setupScript: "",
@@ -147,11 +158,11 @@ export async function getConfigSources(
 
 	const entries: ConfigSourceEntry[] = [];
 	for (const field of DEV3_REPO_CONFIG_KEYS) {
-		if (localConfig && localConfig[field] !== undefined) {
+		if (localConfig && effective(localConfig[field]) !== undefined) {
 			entries.push({ field, source: "local" });
-		} else if (repoConfig && repoConfig[field] !== undefined) {
+		} else if (repoConfig && effective(repoConfig[field]) !== undefined) {
 			entries.push({ field, source: "repo" });
-		} else if (appConfig[field] !== undefined) {
+		} else if (effective(appConfig[field]) !== undefined) {
 			entries.push({ field, source: "app" });
 		}
 	}
@@ -178,7 +189,13 @@ export async function resolveProjectConfig(project: Project, configPath?: string
 
 	const resolved = { ...project };
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
-		const val = localConfig?.[key] ?? repoConfig?.[key] ?? appConfig?.[key] ?? (project as any)[key] ?? DEFAULTS[key];
+		// For array fields, treat empty arrays from file-based configs as "not configured"
+		// so they fall through to lower-priority layers. This prevents phantom empty arrays
+		// (e.g. clonePaths: []) from shadowing project-level values. See #378.
+		const localVal = effective(localConfig?.[key]);
+		const repoVal = effective(repoConfig?.[key]);
+		const appVal = effective(appConfig?.[key]);
+		const val = localVal ?? repoVal ?? appVal ?? (project as any)[key] ?? DEFAULTS[key];
 		if (val !== undefined) (resolved as any)[key] = val;
 	}
 
