@@ -3,6 +3,7 @@
 // script loading from the views:// custom protocol.
 
 import { api } from "./rpc";
+import { randomUUID } from "./uuid";
 
 const GA_MEASUREMENT_ID = "G-L1NSQH6FGY";
 const GA_API_SECRET = "WlYPp7bSTVS5cMRMS4dJwQ";
@@ -22,7 +23,7 @@ function getOrCreateClientId(): string {
 	const key = "dev3-ga-client-id";
 	let id = localStorage.getItem(key);
 	if (!id) {
-		id = crypto.randomUUID();
+		id = randomUUID();
 		localStorage.setItem(key, id);
 	}
 	return id;

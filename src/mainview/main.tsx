@@ -65,13 +65,15 @@ async function bootstrap() {
 		});
 	}
 
-	// Initialize Google Analytics with app version
+	// Initialize Google Analytics with app version + set page title
 	try {
 		const { version } = await api.request.getAppVersion();
 		initAnalytics(version);
+		document.title = `dev-3.0 v${version}`;
 	} catch (err) {
 		console.warn("[main] Failed to init analytics:", err);
 		initAnalytics("unknown");
+		document.title = "dev-3.0";
 	}
 
 	console.log("[main] Rendering React app...");

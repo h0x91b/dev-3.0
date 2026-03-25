@@ -46,11 +46,26 @@ const dashboard = {
 	"header.changelogTooltip": "View changelog",
 	"header.githubTooltip": "Website",
 	"header.reportBugTooltip": "Report a bug",
+	"header.remoteAccessTooltip": "Open on your phone — scan QR code for remote access",
 	"header.reportLabel": "Report",
 	"header.switchProject": "Switch project",
 	"header.activeTaskCount_one": "{count} active",
 	"header.activeTaskCount_other": "{count} active",
 	"header.noActiveTasks": "No active tasks",
+
+	// Remote Access QR Modal
+	"remote.title": "Remote Access",
+	"remote.subtitle": "Scan this QR code to open the UI on your phone or another device",
+	"remote.refreshIn": "Refreshes in {seconds}s",
+	"remote.anywhereToggle": "Accessible from anywhere (Cloudflare Tunnel)",
+	"remote.cloudflaredNotFound": "cloudflared is not installed",
+	"remote.cloudflaredInstall": "Install: brew install cloudflared",
+	"remote.recheckCloudflared": "Recheck",
+	"remote.tunnelStarting": "Starting tunnel...",
+	"remote.tunnelConnected": "Public tunnel active",
+	"remote.tunnelFailed": "Tunnel failed to start",
+	"remote.copyUrl": "Copy URL",
+	"remote.close": "Close",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi is not installed",

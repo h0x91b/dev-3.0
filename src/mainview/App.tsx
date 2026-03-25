@@ -38,6 +38,11 @@ function App() {
 	const updateStatusShownAtRef = useRef<number>(0);
 	const updateClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Remote access QR code modal
+	const [remoteQR, setRemoteQR] = useState<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean } | null>(null);
+	const [tunnelWanted, setTunnelWanted] = useState(false);
+	const [tunnelStarting, setTunnelStarting] = useState(false);
+
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
 	const [reqResults, setReqResults] = useState<RequirementCheckResult[]>([]);
@@ -379,6 +384,39 @@ function App() {
 		return () => window.removeEventListener("rpc:navigateToViewportLab", onNavigateToViewportLab);
 	}, [navigate]);
 
+	// Listen for View > Remote Access QR Code menu item
+	useEffect(() => {
+		function onShowRemoteQR(e: Event) {
+			const detail = (e as CustomEvent).detail;
+			setRemoteQR(detail);
+			// Sync tunnel checkbox with actual tunnel state
+			setTunnelWanted(detail?.tunnelState === "connected" || detail?.tunnelState === "starting");
+			setTunnelStarting(detail?.tunnelState === "starting");
+		}
+		window.addEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
+		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
+	}, []);
+
+	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
+	const qrModalOpen = remoteQR !== null;
+	const [qrCountdown, setQrCountdown] = useState(25);
+	const tunnelWantedRef = useRef(tunnelWanted);
+	tunnelWantedRef.current = tunnelWanted;
+	useEffect(() => {
+		if (!qrModalOpen) return;
+		setQrCountdown(25);
+		let counter = 25;
+		const tick = setInterval(() => {
+			counter -= 1;
+			if (counter <= 0) {
+				counter = 25;
+				api.request.getRemoteAccessQR({ tunnel: tunnelWantedRef.current }).then(setRemoteQR).catch(() => {});
+			}
+			setQrCountdown(counter);
+		}, 1000);
+		return () => clearInterval(tick);
+	}, [qrModalOpen]);
+
 	// Track page views on route changes
 	useEffect(() => {
 		const { screen } = state.route;
@@ -541,6 +579,124 @@ function App() {
 								className="px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
 							>
 								{t("quit.confirm")}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{remoteQR && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+					onMouseDown={(e) => {
+						if (e.target === e.currentTarget) { setRemoteQR(null); setTunnelStarting(false); }
+					}}
+				>
+					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[28rem] p-6 space-y-4 text-center">
+						<h2 className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
+						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
+						<div className="flex justify-center relative">
+							<img src={remoteQR.qrDataUrl} alt="QR Code" className="w-56 h-56 rounded-lg" />
+						</div>
+						<div className="flex items-center justify-center gap-2 text-fg-muted text-xs">
+							<div className="w-4 h-4 relative">
+								<svg className="w-4 h-4 -rotate-90" viewBox="0 0 20 20">
+									<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+									<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2"
+										strokeDasharray={`${(qrCountdown / 25) * 50.3} 50.3`}
+										strokeLinecap="round"
+										className="transition-all duration-1000 ease-linear"
+									/>
+								</svg>
+							</div>
+							<span>{t("remote.refreshIn", { seconds: String(qrCountdown) })}</span>
+						</div>
+						<div className="bg-base rounded-lg p-3">
+							<code className="text-fg text-xs break-all select-all">{remoteQR.accessUrl}</code>
+						</div>
+
+						{/* Tunnel toggle */}
+						<div className="bg-base rounded-lg p-3 text-left space-y-2">
+							<label className="flex items-center gap-2 cursor-pointer select-none">
+								<input
+									type="checkbox"
+									checked={tunnelWanted}
+									onChange={(e) => {
+										const want = e.target.checked;
+										setTunnelWanted(want);
+										if (want && remoteQR.cloudflaredInstalled && remoteQR.tunnelState === "idle") {
+											setTunnelStarting(true);
+											api.request.getRemoteAccessQR({ tunnel: true }).then((res) => {
+												setRemoteQR(res);
+												setTunnelStarting(false);
+												setQrCountdown(25);
+											}).catch(() => setTunnelStarting(false));
+										} else if (!want && remoteQR.tunnelState === "connected") {
+											api.request.stopTunnel().then(() => {
+												api.request.getRemoteAccessQR({ tunnel: false }).then((res) => {
+													setRemoteQR(res);
+													setQrCountdown(25);
+												}).catch(() => {});
+											}).catch(() => {});
+										}
+									}}
+									className="accent-accent w-4 h-4"
+								/>
+								<span className="text-fg text-sm">{t("remote.anywhereToggle")}</span>
+							</label>
+
+							{tunnelWanted && !remoteQR.cloudflaredInstalled && (
+								<div className="text-left space-y-1.5">
+									<p className="text-danger text-xs">{t("remote.cloudflaredNotFound")}</p>
+									<p className="text-fg-muted text-xs">{t("remote.cloudflaredInstall")}</p>
+									<button
+										onClick={() => {
+											api.request.getRemoteAccessQR({ tunnel: tunnelWanted }).then((res) => {
+												setRemoteQR(res);
+											}).catch(() => {});
+										}}
+										className="text-xs text-accent hover:text-accent-hover transition-colors"
+									>
+										{t("remote.recheckCloudflared")}
+									</button>
+								</div>
+							)}
+
+							{tunnelWanted && remoteQR.cloudflaredInstalled && (tunnelStarting || remoteQR.tunnelState === "starting") && (
+								<div className="flex items-center gap-2">
+									<div className="w-3 h-3 rounded-full bg-accent animate-pulse" />
+									<span className="text-fg-3 text-xs">{t("remote.tunnelStarting")}</span>
+								</div>
+							)}
+
+							{tunnelWanted && remoteQR.tunnelState === "connected" && (
+								<div className="flex items-center gap-2">
+									<div className="w-2 h-2 rounded-full bg-green-400" />
+									<span className="text-green-400 text-xs">{t("remote.tunnelConnected")}</span>
+								</div>
+							)}
+
+							{tunnelWanted && remoteQR.tunnelState === "failed" && (
+								<div className="flex items-center gap-2">
+									<div className="w-2 h-2 rounded-full bg-danger" />
+									<span className="text-danger text-xs">{t("remote.tunnelFailed")}</span>
+								</div>
+							)}
+						</div>
+
+						<div className="flex items-center justify-center gap-2">
+							<button
+								onClick={() => {
+									navigator.clipboard.writeText(remoteQR.accessUrl).catch(() => {});
+								}}
+								className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+							>
+								{t("remote.copyUrl")}
+							</button>
+							<button
+								onClick={() => { setRemoteQR(null); setTunnelStarting(false); }}
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							>
+								{t("remote.close")}
 							</button>
 						</div>
 					</div>

@@ -555,7 +555,7 @@ export interface BranchStatus {
 	diffDeletions: number; // total lines removed in branch vs base
 	diffFileNames: string[]; // list of changed file paths in branch vs base
 	prNumber: number | null; // open PR number for this branch, null if none
-	prUrl: string | null; // GitHub PR URL, null if no PR
+	prUrl: string | null; // full GitHub PR URL, null if no PR
 }
 
 export interface PRInfo {
@@ -1054,6 +1054,26 @@ export type AppRPCSchema = {
 				params: void;
 				response: { available: boolean };
 			};
+			uploadImageBase64: {
+				params: { projectId: string; base64: string };
+				response: { path: string } | null;
+			};
+			getRemoteAccessQR: {
+				params: { tunnel?: boolean };
+				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
+			};
+			checkCloudflared: {
+				params: void;
+				response: { installed: boolean };
+			};
+			startTunnel: {
+				params: void;
+				response: { url: string | null; state: string };
+			};
+			stopTunnel: {
+				params: void;
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
@@ -1077,6 +1097,7 @@ export type AppRPCSchema = {
 			navigateToViewportLab: {};
 			terminalSoftReset: {};
 			terminalHardReset: {};
+			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
 		};
 	}>;
 };

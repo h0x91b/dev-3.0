@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent mobile browser auto-zoom on tap while preserving pinch-to-zoom.
+   touch-action: manipulation disables double-tap zoom globally.
+   font-size: 16px on textarea/input prevents iOS/Android auto-zoom on focus
+   (browsers zoom when focused element has font-size < 16px). */
+html {
+	touch-action: manipulation;
+}
+.browser-mode textarea, .browser-mode input[type="text"], .browser-mode input:not([type]) {
+	font-size: 16px !important;
+}
+
 /* ---- Bundled terminal font (JetBrainsMono Nerd Font Mono) ---- */
 @font-face {
 	font-family: 'JetBrainsMono Nerd Font Mono';

@@ -425,6 +425,28 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 					</button>
 				)}
 
+				{/* Remote Access QR Code */}
+				<button
+					onClick={async () => {
+						try {
+							const result = await api.request.getRemoteAccessQR({});
+							window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
+						} catch {
+							// Remote access server may not be running
+						}
+					}}
+					className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+					title={t("header.remoteAccessTooltip")}
+				>
+					<span
+						className="text-[1.125rem] leading-none"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{"\u{F0433}"}
+					</span>
+					<span className="text-[0.6875rem] font-medium">Remote</span>
+				</button>
+
 				{/* Tmux Session Manager */}
 				<TmuxSessionManager navigate={navigate} />
 

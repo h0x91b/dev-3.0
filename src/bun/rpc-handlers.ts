@@ -21,6 +21,7 @@ import { setupAgentHooks } from "./agent-hooks";
 import { BUNDLED_CHANGELOG } from "./changelog-bundled";
 import * as repoConfig from "./repo-config";
 import * as portPool from "./port-pool";
+import { generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 
 const log = createLogger("rpc");
 
@@ -280,12 +281,7 @@ const gitOpPaneIds = new Map<string, string>();
 const mergeNotifiedTasks = new Set<string>();
 
 // Dedup in-flight getBranchStatus requests per task to prevent stampedes
-const branchStatusInFlight = new Map<string, Promise<{
-	ahead: number; behind: number; canRebase: boolean;
-	insertions: number; deletions: number; unpushed: number; mergedByContent: boolean;
-	diffFiles: number; diffInsertions: number; diffDeletions: number; diffFileNames: string[];
-	prNumber: number | null;
-}>>();
+const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 
 /** Build the env object for a task's wrapper script, ensuring dev3 binary is on PATH. */
 function buildAgentEnv(extraEnv: Record<string, string>, taskId: string): Record<string, string> {
@@ -1268,6 +1264,20 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 		subtitle: projectName,
 		silent: true,
 	});
+}
+
+async function saveUploadedImage(projectId: string, pngData: Buffer | Uint8Array): Promise<{ path: string }> {
+	const project = await data.getProject(projectId);
+	const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+	const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
+	const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
+	await mkdirProc.exited;
+	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
+	const filename = `img-${Date.now()}-${hex}.png`;
+	const fullPath = `${uploadsDir}/${filename}`;
+	await Bun.write(fullPath, pngData);
+	log.info("Image saved", { path: fullPath, size: pngData.length });
+	return { path: fullPath }
 }
 
 export const handlers = {
@@ -3530,17 +3540,22 @@ export const handlers = {
 			log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
 			return null;
 		}
-		const project = await data.getProject(params.projectId);
-		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
-		const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
-		const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
-		await mkdirProc.exited;
-		const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
-		const filename = `img-${Date.now()}-${hex}.png`;
-		const fullPath = `${uploadsDir}/${filename}`;
-		await Bun.write(fullPath, pngData);
-		log.info("← pasteClipboardImage", { path: fullPath, size: pngData.length });
-		return { path: fullPath };
+		return saveUploadedImage(params.projectId, pngData);
+	},
+
+	async uploadImageBase64(params: { projectId: string; base64: string }): Promise<{ path: string } | null> {
+		const MAX_BASE64_SIZE = 10 * 1024 * 1024; // 10 MB (~7.5 MB decoded)
+		if (params.base64.length > MAX_BASE64_SIZE) {
+			log.warn("← uploadImageBase64: payload too large", { len: params.base64.length });
+			throw new Error("Image too large (max 10 MB)");
+		}
+		log.info("→ uploadImageBase64", { projectId: params.projectId.slice(0, 8), len: params.base64.length });
+		const pngData = Buffer.from(params.base64, "base64");
+		if (pngData.length === 0) {
+			log.warn("← uploadImageBase64: empty image data");
+			return null;
+		}
+		return saveUploadedImage(params.projectId, pngData);
 	},
 
 	async readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {
@@ -3708,6 +3723,39 @@ export const handlers = {
 		const available = isCaffeinateAvailable();
 		log.info("← checkCaffeinateAvailable", { available });
 		return { available };
+	},
+
+	async getRemoteAccessQR(params: { tunnel?: boolean }): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean }> {
+		const { isCloudflaredAvailable, getTunnelState, startTunnel } = await import("./cloudflare-tunnel");
+		const { getServerPort } = await import("./remote-access-server");
+		const cloudflaredInstalled = isCloudflaredAvailable();
+		const tunnelState = getTunnelState();
+
+		// If tunnel requested and cloudflared available, auto-start tunnel
+		if (params?.tunnel && cloudflaredInstalled && tunnelState === "idle") {
+			await startTunnel(getServerPort());
+		}
+
+		const qrDataUrl = await generateQrDataUrl();
+		const accessUrl = await getAccessUrl();
+		return { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled };
+	},
+
+	async checkCloudflared(): Promise<{ installed: boolean }> {
+		const { isCloudflaredAvailable } = await import("./cloudflare-tunnel");
+		return { installed: isCloudflaredAvailable() };
+	},
+
+	async startTunnel(): Promise<{ url: string | null; state: string }> {
+		const { startTunnel: doStartTunnel, getTunnelState } = await import("./cloudflare-tunnel");
+		const { getServerPort } = await import("./remote-access-server");
+		const url = await doStartTunnel(getServerPort());
+		return { url, state: getTunnelState() };
+	},
+
+	async stopTunnel(): Promise<void> {
+		const { stopTunnel: stop } = await import("./cloudflare-tunnel");
+		stop();
 	},
 
 };
