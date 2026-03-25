@@ -48,16 +48,23 @@ export function isPreventSleepEnabled(): boolean {
 	return isCaffeinateAvailable();
 }
 
+// Safety timeout: caffeinate exits on its own after this period.
+// The 10-second poll cycle restarts it if sessions are still active.
+// This prevents caffeinate from running forever if the app crashes
+// or the poll loop breaks.
+const CAFFEINATE_TIMEOUT_SECS = 3600; // 1 hour
+
 /**
  * Start the caffeinate process if not already running.
- * Uses `caffeinate -s` to prevent system sleep (allows display sleep).
+ * Uses `caffeinate -s -t <timeout>` to prevent system sleep (allows display sleep)
+ * with a built-in safety timeout.
  */
 function startCaffeinate(): void {
 	if (caffeinateProc) return; // already running
 	if (!isCaffeinateAvailable()) return;
 
 	try {
-		caffeinateProc = spawn(["caffeinate", "-s"]);
+		caffeinateProc = spawn(["caffeinate", "-s", "-t", String(CAFFEINATE_TIMEOUT_SECS)]);
 		log.info("caffeinate started", { pid: caffeinateProc.pid });
 
 		// Clean up reference if the process exits unexpectedly
