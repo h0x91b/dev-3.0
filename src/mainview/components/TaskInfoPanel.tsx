@@ -1036,19 +1036,19 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					className="group/file flex items-center gap-1.5 py-0.5 leading-snug"
 				>
 					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{f}</span>
-					<div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover/file:opacity-100 transition-all">
+					<div className="flex items-center gap-1.5 flex-shrink-0">
 						{hasDiffTool && (
 							<button
 								onClick={(e) => handleFileDiff(e, f)}
-								className="text-[0.625rem] text-accent hover:text-accent-hover px-1.5 py-0.5 rounded bg-accent/10 hover:bg-accent/20"
+								className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
 								title={t("settings.diffTool")}
 							>
-								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F044B}"}</span>
+								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
 							</button>
 						)}
 						<button
 							onClick={(e) => handleFileOpenIn(e, f)}
-							className="text-[0.625rem] text-fg-3 hover:text-fg-2 px-1.5 py-0.5 rounded bg-raised hover:bg-elevated-hover"
+							className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
 							title={t("openIn.menuTitle")}
 						>
 							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
