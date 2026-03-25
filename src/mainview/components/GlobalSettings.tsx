@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
 import type { Locale } from "../i18n";
 import { randomUUID } from "../uuid";
-import type { AgentCheckResult, CodingAgent, AgentConfiguration, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, AgentConfiguration, DiffToolCheckResult, DiffToolId, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
@@ -41,6 +41,7 @@ function GlobalSettings() {
 	const [agentCustomPaths, setAgentCustomPaths] = useState<Record<string, string>>({});
 	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
 	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
+	const [diffTools, setDiffTools] = useState<DiffToolCheckResult[]>([]);
 
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
@@ -60,6 +61,7 @@ function GlobalSettings() {
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
 		loadAgentAvailability();
+		api.request.detectDiffTools().then(setDiffTools).catch(() => {});
 		api.request.getGlobalSettings().then((s) => {
 			setGlobalSettings(s);
 			if (s.terminalKeymap) {
@@ -167,6 +169,24 @@ function GlobalSettings() {
 		const updated = { ...globalSettings, preventSleepWhileRunning: enabled };
 		setGlobalSettings(updated);
 		api.request.saveGlobalSettings(updated).catch(() => {});
+	}
+
+	function handleDiffToolChange(toolId: DiffToolId) {
+		const updated = { ...globalSettings, diffTool: toolId === "git-terminal" ? undefined : toolId };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
+		trackEvent("settings_changed", { setting: "diff_tool", value: toolId });
+	}
+
+	const debouncedSaveCustomDiffCommand = useDebouncedCallback((cmd: string) => {
+		const updated = { ...globalSettings, customDiffCommand: cmd || undefined };
+		api.request.saveGlobalSettings(updated).catch(() => {});
+	}, 500);
+
+	function handleCustomDiffCommandChange(cmd: string) {
+		const updated = { ...globalSettings, customDiffCommand: cmd || undefined };
+		setGlobalSettings(updated);
+		debouncedSaveCustomDiffCommand(cmd);
 	}
 
 	/** Filter out apps with empty fields before persisting to disk. */
@@ -529,6 +549,49 @@ function GlobalSettings() {
 							</button>
 						))}
 					</div>
+				</div>
+
+				{/* Diff Tool */}
+				<div>
+					<label className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.diffTool")}
+					</label>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.diffToolDesc")}
+					</p>
+					<select
+						value={globalSettings.diffTool ?? "git-terminal"}
+						onChange={(e) => handleDiffToolChange(e.target.value as DiffToolId)}
+						className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+					>
+						{diffTools.map((tool) => (
+							<option
+								key={tool.id}
+								value={tool.id}
+								disabled={!tool.available}
+							>
+								{tool.name}{!tool.available ? ` (${t("settings.diffToolNotFound")})` : ""}
+							</option>
+						))}
+						{diffTools.length === 0 && (
+							<option value="git-terminal">Git Terminal Diff</option>
+						)}
+					</select>
+
+					{(globalSettings.diffTool ?? "git-terminal") === "custom" && (
+						<div className="mt-3">
+							<input
+								type="text"
+								value={globalSettings.customDiffCommand ?? ""}
+								onChange={(e) => handleCustomDiffCommandChange(e.target.value)}
+								placeholder="my-diff-tool --left $LOCAL --right $REMOTE"
+								className="w-full px-4 py-3 bg-elevated border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+							/>
+							<p className="text-fg-muted text-xs mt-2">
+								{t("settings.diffToolCustomHint")}
+							</p>
+						</div>
+					)}
 				</div>
 
 				{/* Tips */}

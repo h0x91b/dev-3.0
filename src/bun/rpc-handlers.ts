@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, 
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, DiffToolCheckResult, DiffToolId, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle, formatStatus } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -169,6 +169,22 @@ const FALLBACK_BIN_PATHS = [
 	"/usr/local/sbin",
 	// User-local dirs (pip, pipx, Claude CLI, etc.)
 	...(process.env.HOME ? [`${process.env.HOME}/.local/bin`, `${process.env.HOME}/bin`] : []),
+];
+
+// Built-in external diff tools with their CLI commands
+const BUILT_IN_DIFF_TOOLS: Array<{
+	id: DiffToolId;
+	name: string;
+	binaryName: string;
+	extcmd: string; // command prefix for `git difftool --extcmd`
+}> = [
+	{ id: "vscode", name: "VS Code", binaryName: "code", extcmd: "code --wait --diff" },
+	{ id: "intellij", name: "IntelliJ IDEA", binaryName: "idea", extcmd: "idea diff" },
+	{ id: "webstorm", name: "WebStorm", binaryName: "webstorm", extcmd: "webstorm diff" },
+	{ id: "kaleidoscope", name: "Kaleidoscope", binaryName: "ksdiff", extcmd: "ksdiff" },
+	{ id: "beyond-compare", name: "Beyond Compare", binaryName: "bcomp", extcmd: "bcomp" },
+	{ id: "filemerge", name: "FileMerge", binaryName: "opendiff", extcmd: "opendiff" },
+	{ id: "meld", name: "Meld", binaryName: "meld", extcmd: "meld" },
 ];
 
 /**
@@ -390,6 +406,54 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	} catch {
 		cleanup();
 	}
+}
+
+/**
+ * Resolve the extcmd string for git difftool.
+ * For built-in tools: returns the predefined extcmd.
+ * For custom: generates a wrapper script that maps $1/$2 to $LOCAL/$REMOTE.
+ */
+function resolveExtcmd(toolId: DiffToolId, customCommand: string | undefined, taskId: string): string {
+	if (toolId === "custom" && customCommand) {
+		const wrapperPath = `/tmp/dev3-${taskId}-custom-difftool.sh`;
+		const wrapperScript = [
+			"#!/bin/bash",
+			'LOCAL="$1"',
+			'REMOTE="$2"',
+			customCommand.replace(/\$LOCAL/g, '"$LOCAL"').replace(/\$REMOTE/g, '"$REMOTE"'),
+		].join("\n") + "\n";
+		Bun.write(wrapperPath, wrapperScript);
+		chmodSync(wrapperPath, 0o755);
+		return `bash "${wrapperPath}"`;
+	}
+	const tool = BUILT_IN_DIFF_TOOLS.find((t) => t.id === toolId);
+	if (!tool) throw new Error(`Unknown diff tool: ${toolId}`);
+	return tool.extcmd;
+}
+
+/**
+ * Run external diff tool via `git difftool --no-prompt --extcmd`.
+ * Fire-and-forget: spawns the process and returns immediately.
+ */
+function runExternalDiffTool(
+	worktreePath: string,
+	taskId: string,
+	diffToolId: DiffToolId,
+	customCommand: string | undefined,
+	diffArgs: string[],
+): void {
+	const extcmd = resolveExtcmd(diffToolId, customCommand, taskId);
+	const args = ["git", "difftool", "--no-prompt", `--extcmd=${extcmd}`, ...diffArgs];
+	log.info("Running external diff tool", { args, cwd: worktreePath });
+	const proc = spawn(args, { cwd: worktreePath, stdout: "ignore", stderr: "pipe" });
+	proc.exited.then(async (code) => {
+		if (code !== 0) {
+			const stderr = await new Response(proc.stderr).text();
+			log.warn("External diff tool exited with error", { code, stderr: stderr.trim(), tool: diffToolId });
+		}
+	}).catch((err) => {
+		log.warn("External diff tool spawn error", { error: String(err), tool: diffToolId });
+	});
 }
 
 export function setPushMessage(fn: (name: string, payload: any) => void): void {
@@ -2498,6 +2562,15 @@ export const handlers = {
 		// Fetch fresh refs before showing diff (deduped, won't re-fetch within cooldown)
 		await git.fetchOrigin(project.path);
 
+		const settings = await loadSettings();
+		const diffToolId = settings.diffTool ?? "git-terminal";
+
+		if (diffToolId !== "git-terminal") {
+			runExternalDiffTool(task.worktreePath, task.id, diffToolId, settings.customDiffCommand, [`${ref}...HEAD`]);
+			log.info("← showDiff (external tool launched)", { tool: diffToolId });
+			return;
+		}
+
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
 
@@ -2545,6 +2618,18 @@ export const handlers = {
 		const task = await data.getTask(project, params.taskId);
 
 		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		const settings = await loadSettings();
+		const diffToolId = settings.diffTool ?? "git-terminal";
+
+		if (diffToolId !== "git-terminal") {
+			// Unstaged changes
+			runExternalDiffTool(task.worktreePath, task.id, diffToolId, settings.customDiffCommand, []);
+			// Staged changes
+			runExternalDiffTool(task.worktreePath, task.id, diffToolId, settings.customDiffCommand, ["--cached"]);
+			log.info("← showUncommittedDiff (external tool launched)", { tool: diffToolId });
+			return;
+		}
 
 		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 		const scriptPath = `/tmp/dev3-${task.id}-git-uncommitted-diff.sh`;
@@ -3153,6 +3238,25 @@ export const handlers = {
 		}
 
 		log.info("<- checkAgentAvailability", { results: results.map((r) => `${r.agentId}:${r.installed}`) });
+		return results;
+	},
+
+	async detectDiffTools(): Promise<DiffToolCheckResult[]> {
+		log.info("-> detectDiffTools");
+		const results: DiffToolCheckResult[] = [
+			{ id: "git-terminal", name: "Git Terminal Diff", available: true },
+		];
+		for (const tool of BUILT_IN_DIFF_TOOLS) {
+			const { resolvedPath } = resolveBinaryPath(tool.binaryName);
+			results.push({
+				id: tool.id,
+				name: tool.name,
+				available: !!resolvedPath,
+				resolvedPath,
+			});
+		}
+		results.push({ id: "custom", name: "Custom Command", available: true });
+		log.info("<- detectDiffTools", { results: results.map((r) => `${r.id}:${r.available}`) });
 		return results;
 	},
 

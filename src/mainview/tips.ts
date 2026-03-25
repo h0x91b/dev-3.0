@@ -108,6 +108,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F044B}", // nf-md-source_diff
 	},
 	{
+		id: "diff-tool-setting",
+		titleKey: "tip.diffToolSetting.title",
+		bodyKey: "tip.diffToolSetting.body",
+		icon: "\u{F0ACA}", // nf-md-file_compare
+	},
+	{
 		id: "image-paste-attach",
 		titleKey: "tip.imagePasteAttach.title",
 		bodyKey: "tip.imagePasteAttach.body",

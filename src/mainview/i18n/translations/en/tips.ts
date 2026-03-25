@@ -36,6 +36,8 @@ const tips = {
 	"tip.prBadgeOnCard.body": "Task cards show a clickable PR badge when an open pull request exists — click it to jump to GitHub.",
 	"tip.showDiffButton.title": "Review your diff inline",
 	"tip.showDiffButton.body": "Click the \"Show Diff\" button in the task panel to open an interactive side-by-side git diff right in the terminal.",
+	"tip.diffToolSetting.title": "Pick your diff viewer",
+	"tip.diffToolSetting.body": "Open Settings and choose VS Code, IntelliJ, Kaleidoscope, or any custom tool as your default diff viewer.",
 	"tip.imagePasteAttach.title": "Paste images into notes",
 	"tip.imagePasteAttach.body": "Press Cmd+V or drag an image into a task description or note — it's saved automatically and shown as a thumbnail.",
 	"tip.customColumns.title": "Create custom board columns",
