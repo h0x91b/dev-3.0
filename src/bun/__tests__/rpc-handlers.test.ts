@@ -70,7 +70,7 @@ vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 	hasSession: vi.fn(),
 	hasDeadSession: vi.fn(),
-	tmuxSessionExists: vi.fn(() => false),
+	tmuxSessionExists: vi.fn(() => true),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
 	getSessionSocket: vi.fn(() => "dev3"),
@@ -2250,10 +2250,28 @@ describe("handlers.getPtyUrl", () => {
 
 	it("returns URL directly when session exists", async () => {
 		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+	});
+
+	it("destroys stale session when tmux is gone and offers recovery", async () => {
+		const project = makeProject();
+		const sessionState = { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "a", configId: "c" }] };
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", sessionState });
+
+		// hasSession: true (log), true (stale check), false (after destroy)
+		vi.mocked(pty.hasSession).mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValueOnce(false);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(result).toEqual({ recoverable: true, sessionState });
 	});
 
 	it("tries to restore PTY when session is missing and tmux alive", async () => {
@@ -2374,6 +2392,7 @@ describe("handlers.getPtyUrl", () => {
 	it("does not destroy session when resume=true but session is alive", async () => {
 		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
 		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
