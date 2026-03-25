@@ -1277,6 +1277,8 @@ export const handlers = {
 
 	async quitApp(): Promise<void> {
 		log.info("→ quitApp (Cmd+Q from renderer)");
+		const { shutdownCaffeinate } = await import("./caffeinate");
+		shutdownCaffeinate();
 		Utils.quit();
 	},
 
@@ -3698,6 +3700,14 @@ export const handlers = {
 	async setTmuxTheme(params: { theme: "dark" | "light" }) {
 		log.info("→ setTmuxTheme", params);
 		pty.applyTmuxTheme(params.theme);
+	},
+
+	async checkCaffeinateAvailable(): Promise<{ available: boolean }> {
+		log.info("→ checkCaffeinateAvailable");
+		const { isCaffeinateAvailable } = await import("./caffeinate");
+		const available = isCaffeinateAvailable();
+		log.info("← checkCaffeinateAvailable", { available });
+		return { available };
 	},
 
 };

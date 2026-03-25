@@ -156,6 +156,18 @@ function GlobalSettings() {
 		trackEvent("settings_changed", { setting: "task_open_mode", value: mode });
 	}
 
+	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
+
+	useEffect(() => {
+		api.request.checkCaffeinateAvailable().then((r) => setCaffeinateAvailable(r.available)).catch(() => {});
+	}, []);
+
+	function handlePreventSleepToggle(enabled: boolean) {
+		const updated = { ...globalSettings, preventSleepWhileRunning: enabled };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
+	}
+
 	/** Filter out apps with empty fields before persisting to disk. */
 	function saveExternalApps(apps: ExternalApp[]) {
 		const valid = apps.filter((a) => a.name.trim() && a.macAppName.trim());
@@ -461,6 +473,36 @@ function GlobalSettings() {
 								{globalSettings.playSoundOnTaskComplete !== false ? "On" : "Off"}
 							</span>
 						</label>
+					</div>
+
+					{/* Prevent Sleep */}
+					<div>
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.preventSleep")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.preventSleepDesc")}
+						</p>
+						<label className="inline-flex items-center gap-3 cursor-pointer select-none">
+							<div
+								role="switch"
+								aria-checked={globalSettings.preventSleepWhileRunning !== false && caffeinateAvailable}
+								tabIndex={0}
+								className={`relative w-11 h-6 rounded-full transition-colors ${!caffeinateAvailable ? "bg-raised border border-edge opacity-50 cursor-not-allowed" : (globalSettings.preventSleepWhileRunning !== false ? "bg-accent" : "bg-raised border border-edge")}`}
+								onClick={() => { if (caffeinateAvailable) handlePreventSleepToggle(globalSettings.preventSleepWhileRunning === false); }}
+								onKeyDown={(e) => { if (caffeinateAvailable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); handlePreventSleepToggle(globalSettings.preventSleepWhileRunning === false); } }}
+							>
+								<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.preventSleepWhileRunning !== false && caffeinateAvailable ? "translate-x-5" : ""}`} />
+							</div>
+							<span className="text-fg text-sm">
+								{globalSettings.preventSleepWhileRunning !== false && caffeinateAvailable ? "On" : "Off"}
+							</span>
+						</label>
+						{!caffeinateAvailable && (
+							<p className="text-fg-muted text-xs mt-2">
+								{t("settings.preventSleepNotAvailable")}
+							</p>
+						)}
 					</div>
 
 					{/* Task Open Mode */}

@@ -3,6 +3,7 @@ import { collectProcessInfo, collectDescendants, getSessionPanePids } from "./po
 import { tmuxArgs } from "./pty-server";
 import { spawnSync } from "./spawn";
 import { createLogger } from "./logger";
+import { updateCaffeinateState } from "./caffeinate";
 
 const log = createLogger("resource-monitor");
 const POLL_INTERVAL_MS = 10_000;
@@ -64,6 +65,9 @@ function poll() {
 
 		const sessionNames = discoverTmuxSessions();
 		const activeShortIds = new Set(sessionNames.map((n) => n.slice(5)));
+
+		// Update sleep prevention based on active session count
+		updateCaffeinateState(sessionNames.length);
 
 		// Clean up stale cache and notify renderer
 		for (const shortId of usageData.keys()) {

@@ -164,6 +164,8 @@ const tips = {
 	"tip.taskWatch.body": "Нажмите колокольчик на карточке задачи, чтобы получать уведомления при смене статуса.",
 	"tip.resourceUsageBadge.title": "Ресурсы по задачам",
 	"tip.resourceUsageBadge.body": "Каждая активная задача показывает CPU и память — наведите на бейдж для деталей.",
+	"tip.preventSleep.title": "Не засыпать",
+	"tip.preventSleep.body": "Включите «Не давать уснуть» в настройках, чтобы Mac не засыпал пока работают агенты.",
 };
 
 export default tips;

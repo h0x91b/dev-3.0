@@ -339,6 +339,7 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
+	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
 }
 
 export interface TipState {
@@ -1048,6 +1049,10 @@ export type AppRPCSchema = {
 			setTmuxTheme: {
 				params: { theme: "dark" | "light" };
 				response: void;
+			};
+			checkCaffeinateAvailable: {
+				params: void;
+				response: { available: boolean };
 			};
 		};
 		messages: {

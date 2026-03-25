@@ -19,6 +19,7 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[];
 	terminalKeymap?: "default" | "iterm2";
 	taskOpenMode?: "split" | "fullscreen";
+	preventSleepWhileRunning?: boolean;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -47,6 +48,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -78,6 +80,7 @@ export function loadSettingsSync(): GlobalSettings {
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

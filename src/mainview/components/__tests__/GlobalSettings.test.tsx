@@ -25,6 +25,7 @@ vi.mock("../../rpc", () => ({
 			saveGlobalSettings: vi.fn(),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
+			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
 		},
 	},
 }));

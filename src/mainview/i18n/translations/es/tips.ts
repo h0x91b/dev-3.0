@@ -164,6 +164,8 @@ const tips = {
 	"tip.taskWatch.body": "Haz clic en la campana de una tarjeta para recibir notificaciones cuando cambie su estado.",
 	"tip.resourceUsageBadge.title": "Recursos por tarea",
 	"tip.resourceUsageBadge.body": "Cada tarea activa muestra uso de CPU y memoria — pasa el ratón sobre la insignia para detalles.",
+	"tip.preventSleep.title": "Mantener despierto",
+	"tip.preventSleep.body": "Activa Evitar suspensión en Ajustes para que tu Mac no duerma mientras los agentes trabajan.",
 };
 
 export default tips;

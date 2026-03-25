@@ -514,6 +514,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskWatch.body",
 		icon: "\u{F009A}", // nf-md-bell
 	},
+	// Batch 26: prevent sleep
+	{
+		id: "prevent-sleep",
+		titleKey: "tip.preventSleep.title",
+		bodyKey: "tip.preventSleep.body",
+		icon: "\u{F0425}", // nf-md-sleep_off
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

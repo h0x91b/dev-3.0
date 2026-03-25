@@ -20,6 +20,10 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
+vi.mock("../caffeinate", () => ({
+	updateCaffeinateState: vi.fn(),
+}));
+
 // Partial mock: stub only getSessionPanePids; let collectProcessInfo and
 // collectDescendants run through their real implementations (which go through
 // the already-mocked spawnSync above).

@@ -164,6 +164,8 @@ const tips = {
 	"tip.taskWatch.body": "Click the bell on a task card to get notified when its status changes.",
 	"tip.resourceUsageBadge.title": "Resource usage per task",
 	"tip.resourceUsageBadge.body": "Each active task shows CPU and memory — hover the badge on the card for details.",
+	"tip.preventSleep.title": "Stay awake",
+	"tip.preventSleep.body": "Enable Prevent Sleep in Settings to keep your Mac awake while agents work.",
 } as const;
 
 export default tips;
