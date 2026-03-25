@@ -429,7 +429,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 				<button
 					onClick={async () => {
 						try {
-							const result = await api.request.getRemoteAccessQR();
+							const result = await api.request.getRemoteAccessQR({});
 							window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
 						} catch {
 							// Remote access server may not be running

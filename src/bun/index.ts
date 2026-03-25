@@ -15,7 +15,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl, getServerPort } from "./remote-access-server";
+import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
@@ -326,22 +326,6 @@ await startRemoteAccessServer({
 	getPtyPort,
 });
 
-// Start Cloudflare tunnel if enabled in settings
-loadSettings().then(async (settings) => {
-	if (!settings.tunnelEnabled) return;
-	try {
-		const { isCloudflaredAvailable, startTunnel } = await import("./cloudflare-tunnel");
-		if (!isCloudflaredAvailable()) {
-			log.info("Cloudflare tunnel enabled but cloudflared not installed");
-			return;
-		}
-		const url = await startTunnel(getServerPort());
-		if (url) log.info("Cloudflare tunnel active", { url });
-	} catch (err) {
-		log.warn("Failed to start Cloudflare tunnel", { error: String(err) });
-	}
-}).catch(() => {});
-
 // Start background merge detection poller
 startMergeDetectionPoller();
 
@@ -580,7 +564,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		try {
 			const qrDataUrl = await generateQrDataUrl();
 			const accessUrl = await getAccessUrl();
-			(mainWindow.webview.rpc as any).send.showRemoteAccessQR?.({ qrDataUrl, accessUrl });
+			const { isCloudflaredAvailable, getTunnelState } = await import("./cloudflare-tunnel");
+			(mainWindow.webview.rpc as any).send.showRemoteAccessQR?.({ qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable() });
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}

@@ -340,7 +340,6 @@ export interface GlobalSettings {
 	tipsDisabled?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
-	tunnelEnabled?: boolean; // enable Cloudflare Tunnel for public remote access
 }
 
 export interface TipState {
@@ -1056,8 +1055,20 @@ export type AppRPCSchema = {
 				response: { available: boolean };
 			};
 			getRemoteAccessQR: {
+				params: { tunnel?: boolean };
+				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
+			};
+			checkCloudflared: {
 				params: void;
-				response: { qrDataUrl: string; accessUrl: string };
+				response: { installed: boolean };
+			};
+			startTunnel: {
+				params: void;
+				response: { url: string | null; state: string };
+			};
+			stopTunnel: {
+				params: void;
+				response: void;
 			};
 		};
 		messages: {
@@ -1082,7 +1093,7 @@ export type AppRPCSchema = {
 			navigateToViewportLab: {};
 			terminalSoftReset: {};
 			terminalHardReset: {};
-			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string };
+			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
 		};
 	}>;
 };

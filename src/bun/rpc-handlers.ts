@@ -3720,15 +3720,37 @@ export const handlers = {
 		return { available };
 	},
 
-	async getRemoteAccessQR(): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState?: string }> {
+	async getRemoteAccessQR(params: { tunnel?: boolean }): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean }> {
+		const { isCloudflaredAvailable, getTunnelState, startTunnel } = await import("./cloudflare-tunnel");
+		const { getServerPort } = await import("./remote-access-server");
+		const cloudflaredInstalled = isCloudflaredAvailable();
+		const tunnelState = getTunnelState();
+
+		// If tunnel requested and cloudflared available, auto-start tunnel
+		if (params?.tunnel && cloudflaredInstalled && tunnelState === "idle") {
+			await startTunnel(getServerPort());
+		}
+
 		const qrDataUrl = await generateQrDataUrl();
 		const accessUrl = await getAccessUrl();
-		let tunnelState: string | undefined;
-		try {
-			const { getTunnelState } = await import("./cloudflare-tunnel");
-			tunnelState = getTunnelState();
-		} catch { /* not loaded */ }
-		return { qrDataUrl, accessUrl, tunnelState };
+		return { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled };
+	},
+
+	async checkCloudflared(): Promise<{ installed: boolean }> {
+		const { isCloudflaredAvailable } = await import("./cloudflare-tunnel");
+		return { installed: isCloudflaredAvailable() };
+	},
+
+	async startTunnel(): Promise<{ url: string | null; state: string }> {
+		const { startTunnel: doStartTunnel, getTunnelState } = await import("./cloudflare-tunnel");
+		const { getServerPort } = await import("./remote-access-server");
+		const url = await doStartTunnel(getServerPort());
+		return { url, state: getTunnelState() };
+	},
+
+	async stopTunnel(): Promise<void> {
+		const { stopTunnel: stop } = await import("./cloudflare-tunnel");
+		stop();
 	},
 
 };

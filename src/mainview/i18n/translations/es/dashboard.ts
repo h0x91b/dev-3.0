@@ -53,6 +53,20 @@ const dashboard = {
 	"header.activeTaskCount_other": "{count} en curso",
 	"header.noActiveTasks": "Sin tareas activas",
 
+	// Remote Access QR Modal
+	"remote.title": "Acceso remoto",
+	"remote.subtitle": "Escanea este código QR para abrir la interfaz en tu teléfono u otro dispositivo",
+	"remote.refreshIn": "Se actualiza en {seconds}s",
+	"remote.anywhereToggle": "Accesible desde cualquier lugar (Cloudflare Tunnel)",
+	"remote.cloudflaredNotFound": "cloudflared no está instalado",
+	"remote.cloudflaredInstall": "Instalar: brew install cloudflared",
+	"remote.recheckCloudflared": "Verificar de nuevo",
+	"remote.tunnelStarting": "Iniciando túnel...",
+	"remote.tunnelConnected": "Túnel público activo",
+	"remote.tunnelFailed": "No se pudo iniciar el túnel",
+	"remote.copyUrl": "Copiar URL",
+	"remote.close": "Cerrar",
+
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
 	"fileBrowser.notInstalledDesc": "El explorador de archivos requiere yazi. Ejecuta el comando para instalarlo:",

@@ -59,6 +59,20 @@ const dashboard = {
 	"header.activeTaskCount_other": "{count} активных",
 	"header.noActiveTasks": "Нет активных задач",
 
+	// Remote Access QR Modal
+	"remote.title": "Удалённый доступ",
+	"remote.subtitle": "Отсканируйте QR-код, чтобы открыть интерфейс на телефоне или другом устройстве",
+	"remote.refreshIn": "Обновится через {seconds}с",
+	"remote.anywhereToggle": "Доступ откуда угодно (Cloudflare Tunnel)",
+	"remote.cloudflaredNotFound": "cloudflared не установлен",
+	"remote.cloudflaredInstall": "Установка: brew install cloudflared",
+	"remote.recheckCloudflared": "Проверить снова",
+	"remote.tunnelStarting": "Запуск туннеля...",
+	"remote.tunnelConnected": "Публичный туннель активен",
+	"remote.tunnelFailed": "Не удалось запустить туннель",
+	"remote.copyUrl": "Скопировать URL",
+	"remote.close": "Закрыть",
+
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi не установлен",
 	"fileBrowser.notInstalledDesc": "Файловый браузер требует yazi. Выполните команду для установки:",

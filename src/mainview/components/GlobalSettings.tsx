@@ -561,38 +561,6 @@ function GlobalSettings() {
 						</div>
 					</div>
 
-					{/* Cloudflare Tunnel */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.tunnel")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.tunnelDesc")}
-						</p>
-						<label className="inline-flex items-center gap-3 cursor-pointer select-none">
-							<div
-								role="switch"
-								aria-checked={!!globalSettings.tunnelEnabled}
-								tabIndex={0}
-								className={`relative w-11 h-6 rounded-full transition-colors ${globalSettings.tunnelEnabled ? "bg-accent" : "bg-raised border border-edge"}`}
-								onClick={() => {
-									const updated = { ...globalSettings, tunnelEnabled: !globalSettings.tunnelEnabled };
-									setGlobalSettings(updated);
-									api.request.saveGlobalSettings(updated).catch(() => {});
-								}}
-								onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); const updated = { ...globalSettings, tunnelEnabled: !globalSettings.tunnelEnabled }; setGlobalSettings(updated); api.request.saveGlobalSettings(updated).catch(() => {}); } }}
-							>
-								<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.tunnelEnabled ? "translate-x-5" : ""}`} />
-							</div>
-							<span className="text-fg text-sm">
-								{globalSettings.tunnelEnabled ? "On" : "Off"}
-							</span>
-						</label>
-						<p className="text-fg-muted text-xs mt-2">
-							{t("settings.tunnelHint")}
-						</p>
-					</div>
-
 					{/* Update Channel */}
 					<div>
 						<label className="block text-fg text-sm font-semibold mb-2">
