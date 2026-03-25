@@ -167,7 +167,7 @@ const tips = {
 	"tip.preventSleep.title": "Stay awake",
 	"tip.preventSleep.body": "Enable Prevent Sleep in Settings to keep your Mac awake while agents work.",
 	"tip.copyWorktreePath.title": "Copy worktree path",
-	"tip.copyWorktreePath.body": "Click the copy icon next to the worktree path in the task panel, or right-click a task card and choose Copy Path.",
+	"tip.copyWorktreePath.body": "Click the folder+clipboard icon in the task header bar, or right-click a task card and choose Copy Path.",
 } as const;
 
 export default tips;

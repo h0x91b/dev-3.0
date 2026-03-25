@@ -167,7 +167,7 @@ const tips = {
 	"tip.preventSleep.title": "Mantener despierto",
 	"tip.preventSleep.body": "Activa Evitar suspensión en Ajustes para que tu Mac no duerma mientras los agentes trabajan.",
 	"tip.copyWorktreePath.title": "Copiar ruta del worktree",
-	"tip.copyWorktreePath.body": "Haz clic en el icono de copiar junto a la ruta del worktree en el panel de tarea, o clic derecho en la tarjeta → Copy Path.",
+	"tip.copyWorktreePath.body": "Haz clic en el icono de carpeta+portapapeles en la barra de la tarea, o clic derecho en la tarjeta → Copy Path.",
 };
 
 export default tips;
