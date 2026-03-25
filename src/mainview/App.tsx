@@ -389,6 +389,9 @@ function App() {
 		function onShowRemoteQR(e: Event) {
 			const detail = (e as CustomEvent).detail;
 			setRemoteQR(detail);
+			// Sync tunnel checkbox with actual tunnel state
+			setTunnelWanted(detail?.tunnelState === "connected" || detail?.tunnelState === "starting");
+			setTunnelStarting(detail?.tunnelState === "starting");
 		}
 		window.addEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
 		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);

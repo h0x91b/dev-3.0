@@ -16,6 +16,7 @@ import { DEV3_HOME } from "./paths";
 import { resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
+import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import electrobunConfig from "../../electrobun.config";
@@ -422,11 +423,7 @@ mainWindow.on("close", () => {
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopSocketServer();
-	try {
-		// Dynamic import — module may not be loaded if tunnel was never started
-		const { stopTunnel } = require("./cloudflare-tunnel") as typeof import("./cloudflare-tunnel");
-		stopTunnel();
-	} catch { /* module not loaded */ }
+	stopTunnel();
 	Utils.quit();
 });
 

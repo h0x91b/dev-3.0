@@ -3544,6 +3544,11 @@ export const handlers = {
 	},
 
 	async uploadImageBase64(params: { projectId: string; base64: string }): Promise<{ path: string } | null> {
+		const MAX_BASE64_SIZE = 10 * 1024 * 1024; // 10 MB (~7.5 MB decoded)
+		if (params.base64.length > MAX_BASE64_SIZE) {
+			log.warn("← uploadImageBase64: payload too large", { len: params.base64.length });
+			throw new Error("Image too large (max 10 MB)");
+		}
 		log.info("→ uploadImageBase64", { projectId: params.projectId.slice(0, 8), len: params.base64.length });
 		const pngData = Buffer.from(params.base64, "base64");
 		if (pngData.length === 0) {

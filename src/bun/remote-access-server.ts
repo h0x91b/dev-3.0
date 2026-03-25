@@ -69,10 +69,12 @@ function getStaticRoot(): string {
 const staticRoot = getStaticRoot();
 log.info("Static root for remote access", { staticRoot });
 
-async function serveStatic(pathname: string): Promise<Response | null> {
-	// Sanitize path traversal
-	const safePath = pathname.replace(/\.\./g, "").replace(/\/\//g, "/");
-	let filePath = join(staticRoot, safePath === "/" ? "index.html" : safePath);
+/** Exported for testing. */
+export async function serveStatic(pathname: string): Promise<Response | null> {
+	let filePath = resolve(staticRoot, "." + pathname);
+
+	// Reject any path that escapes the static root (path traversal)
+	if (!filePath.startsWith(staticRoot + "/") && filePath !== staticRoot) return null;
 
 	// If path doesn't exist, try as directory with index.html
 	if (!existsSync(filePath)) {
@@ -90,6 +92,9 @@ async function serveStatic(pathname: string): Promise<Response | null> {
 	} catch {
 		return null;
 	}
+
+	// Re-check after directory resolution
+	if (!filePath.startsWith(staticRoot + "/")) return null;
 
 	const ext = extname(filePath).toLowerCase();
 	const contentType = MIME_TYPES[ext] || "application/octet-stream";

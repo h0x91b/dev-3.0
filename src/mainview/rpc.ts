@@ -166,13 +166,23 @@ function initBrowserApi(): ApiShape {
 	let ws: WebSocket | null = null;
 	let requestId = 0;
 	const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+	// Promise that resolves when WS is open — reset on each connect
+	let wsReady: Promise<void>;
+	let wsReadyResolve: (() => void) | null = null;
+
+	function resetWsReady() {
+		wsReady = new Promise((resolve) => { wsReadyResolve = resolve; });
+	}
+	resetWsReady();
 
 	function connect() {
 		const wsUrl = buildWsUrl("/rpc");
+		resetWsReady();
 		ws = new WebSocket(wsUrl);
 
 		ws.addEventListener("open", () => {
 			console.log("[browser-rpc] Connected to", wsUrl);
+			wsReadyResolve?.();
 		});
 
 		ws.addEventListener("message", (event) => {
@@ -232,16 +242,13 @@ function initBrowserApi(): ApiShape {
 
 			const packet = JSON.stringify({ type: "request", id, method, params });
 
-			const trySend = () => {
-				// Stop if the request was already resolved/rejected (timeout or response)
-				if (!pending.has(id)) return;
+			// Wait for WS to be open before sending (no polling)
+			wsReady.then(() => {
+				if (!pending.has(id)) return; // already timed out
 				if (ws?.readyState === WebSocket.OPEN) {
 					ws.send(packet);
-				} else {
-					setTimeout(trySend, 100);
 				}
-			};
-			trySend();
+			});
 		});
 	}
 
