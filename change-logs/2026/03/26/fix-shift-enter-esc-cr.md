@@ -1,0 +1,1 @@
+Fix Shift+Enter not inserting newline in Claude Code 2.1.82+. Claude Code stopped recognizing raw LF (0x0a) as "insert newline" in the input prompt. Switched the Shift+Enter sequence from `\n` to `\x1b\r` (ESC+CR), which Claude Code reliably recognizes through tmux.
