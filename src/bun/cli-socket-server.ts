@@ -4,7 +4,7 @@ import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransition
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
-import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
+import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage, getPushMessageLocal, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
@@ -79,6 +79,31 @@ async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Pro
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
 
 const handlers: Record<string, Handler> = {
+	// Cross-instance notification: another dev-3.0 instance changed data.
+	// Re-read from disk and push to local renderer only (no re-broadcast).
+	"_notify": async (params) => {
+		const event = params.event as string;
+		const projectId = params.projectId as string;
+		const taskId = params.taskId as string | undefined;
+		const localPush = getPushMessageLocal();
+		if (!localPush) return {};
+
+		try {
+			if (event === "taskUpdated" && projectId && taskId) {
+				const project = await data.getProject(projectId);
+				const tasks = await data.loadTasks(project);
+				const task = tasks.find((t) => t.id === taskId);
+				if (task) localPush("taskUpdated", { projectId, task });
+			} else if (event === "projectUpdated" && projectId) {
+				const project = await data.getProject(projectId);
+				localPush("projectUpdated", { project });
+			}
+		} catch (err) {
+			log.debug("_notify handler error (non-fatal)", { event, error: String(err) });
+		}
+		return {};
+	},
+
 	"projects.list": async () => {
 		return data.loadProjects();
 	},

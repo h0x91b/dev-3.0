@@ -177,6 +177,7 @@ const {
 	handleBellAutoStatus,
 	setPushMessage,
 	getPushMessage,
+	getPushMessageLocal,
 	checkOpenPRsForPromotion,
 	_resetPRPollerState,
 	startMergeDetectionPoller,
@@ -303,7 +304,17 @@ describe("setPushMessage / getPushMessage", () => {
 	it("stores and retrieves the push message function", () => {
 		const fn = vi.fn();
 		setPushMessage(fn);
-		expect(getPushMessage()).toBe(fn);
+		// getPushMessage() returns a broadcast wrapper, not fn directly
+		const wrapped = getPushMessage();
+		expect(wrapped).toBeTruthy();
+		wrapped!("testEvent", { data: 1 });
+		expect(fn).toHaveBeenCalledWith("testEvent", { data: 1 });
+	});
+
+	it("getPushMessageLocal returns the raw function without broadcast", () => {
+		const fn = vi.fn();
+		setPushMessage(fn);
+		expect(getPushMessageLocal()).toBe(fn);
 	});
 });
 
