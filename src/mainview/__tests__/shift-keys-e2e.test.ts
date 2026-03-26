@@ -333,13 +333,15 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		// ── Specific byte-level assertions ────────────────────────────────────
 
 		it(
-			"Shift+Enter: 0x0a (LF) arrives as LF, not CR (0x0d)",
+			"Shift+Enter: ESC+CR (0x1b 0x0d) arrives intact through tmux",
 			async () => {
 				const bytes = getBytes("Enter", true);
-				expect(bytes.charCodeAt(0)).toBe(0x0a); // must be LF
+				expect(bytes).toBe("\x1b\r"); // ESC + CR
+				expect(bytes.charCodeAt(0)).toBe(0x1b); // ESC
+				expect(bytes.charCodeAt(1)).toBe(0x0d); // CR
 
 				const captured = await runPipelineTest(bytes);
-				expect(captured.charCodeAt(0)).toBe(0x0a);
+				expect(captured).toBe("\x1b\r");
 			},
 			5_000,
 		);

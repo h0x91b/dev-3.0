@@ -44,7 +44,7 @@ This turned out to be the harder problem. There is no universally agreed escape 
 | modifyOtherKeys | `\x1b[27;2;13~` | Passes through tmux but Claude Code displays it as literal text `[27;2;13~`. Claude Code 2.1.0 added native recognition of this format, but only for detected terminal types (Ghostty, Kitty, etc.). Inside tmux, TERM is `tmux-256color`, so native detection doesn't activate. |
 | Literal LF | `\n` (0x0a) | **Works.** Claude Code's input handler treats `\n` as "insert newline" and `\r` as "submit". This is what `/terminal-setup` configures terminals to send. |
 
-The solution: send `\n` for Shift+Enter. This matches what Claude Code's `/terminal-setup` command configures (it makes terminals send `\n` for Shift+Enter), and what multiple users in [claude-code#1282](https://github.com/anthropics/claude-code/issues/1282) converged on as the working tmux workaround.
+The original solution was to send `\n` (LF) for Shift+Enter, matching what Claude Code's `/terminal-setup` command configures. However, **Claude Code ~2.1.82+ broke `\n` handling** — it stopped treating LF as "insert newline" in the input prompt (see [claude-code#31734](https://github.com/anthropics/claude-code/issues/31734), [claude-code#22719](https://github.com/anthropics/claude-code/issues/22719)). The fix: send `\x1b\r` (ESC+CR) instead, which Claude Code recognizes as Shift+Enter through tmux. Multiple users in [claude-code#1282](https://github.com/anthropics/claude-code/issues/1282) confirmed this encoding works.
 
 ### Why the other keys don't have this problem
 
@@ -63,7 +63,7 @@ These all use CSI final bytes (`Z`, `H`, `F`, `~`, `P`, `Q`, `R`, `S`) that tmux
 We use `attachCustomKeyEventHandler()` (ghostty-web's official API for intercepting keys) to catch all Shift-only functional keys BEFORE the buggy shortcut fires. The handler sends sequences directly to the WebSocket:
 
 - Shift+Tab → `\x1b[Z` (standard back-tab)
-- Shift+Enter → `\n` (LF — tells Claude Code "insert newline, don't submit")
+- Shift+Enter → `\x1b\r` (ESC+CR — tells Claude Code "insert newline, don't submit")
 - Shift+Home → `\x1b[1;2H`, Shift+End → `\x1b[1;2F`, etc. (xterm-style `;2` modifier)
 - Shift+F1-F12 → xterm-style modified function key sequences
 
@@ -77,7 +77,7 @@ If a future inner application needs CSI u mode (Kitty keyboard protocol), add `s
 
 ## Risks
 
-- **`\n` for Shift+Enter is Claude Code-specific.** Other terminal applications might expect a proper escape sequence (modifyOtherKeys or CSI u) to distinguish Shift+Enter from a literal newline. If we need to support other apps in the future, see the notes below.
+- **`\x1b\r` for Shift+Enter is ambiguous.** Some applications interpret ESC+CR as Alt+Enter. Claude Code recognizes it as Shift+Enter, but other terminal applications might not. If we need to support other apps in the future, see the notes below.
 - **If ghostty-web fixes the bug upstream**, our handler is harmless — it fires first and sends the same sequences the fixed encoder would produce. No conflict.
 
 ## Notes for future maintainers
@@ -113,7 +113,7 @@ Multiple users in claude-code#1282 confirmed that `\x1b\r` works through tmux fo
 - **Patching/forking ghostty-web**: Rejected. Maintaining a fork is expensive. The `attachCustomKeyEventHandler` API is the intended extension point.
 - **CSI u (`\x1b[13;2u`) for Shift+Enter**: Doesn't work — tmux discards it without CSI u input parsing enabled.
 - **modifyOtherKeys (`\x1b[27;2;13~`) for Shift+Enter**: Passes through tmux but Claude Code inside tmux doesn't recognize it (native terminal detection doesn't activate for TERM=tmux-256color).
-- **`\x1b\r` (ESC+CR) for Shift+Enter**: Works, but ambiguous — could be Alt+Enter. `\n` is cleaner.
+- **`\n` (LF) for Shift+Enter**: Was the original solution but broke in Claude Code ~2.1.82+ (see issue history above). Claude Code stopped treating raw LF as "insert newline".
 - **`extended-keys on` instead of `always`**: Requires the outer terminal to negotiate capabilities. Our outer terminal (ghostty-web → Bun PTY) may not respond to tmux's queries.
 - **`terminal-features 'xterm-256color:extkeys'`**: Tried this to enable CSI u input parsing. Even with it, Claude Code still didn't recognize the escape sequences inside tmux. Removed to keep the config minimal, but documented above for future reference.
 
