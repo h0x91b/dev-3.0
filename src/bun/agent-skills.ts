@@ -166,6 +166,7 @@ const GENERIC_SKILL_DIRS = [
 	".codex/skills/dev3",
 	".gemini/skills/dev3",
 	".opencode/skills/dev3",
+	".config/opencode/skills/dev3",
 ];
 
 // ---- dev3-project-config skill ----
@@ -289,6 +290,7 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".codex/skills/dev3-project-config",
 	".gemini/skills/dev3-project-config",
 	".opencode/skills/dev3-project-config",
+	".config/opencode/skills/dev3-project-config",
 ];
 
 // ---- ~/.agents/AGENTS.md rule block ----

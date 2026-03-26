@@ -12,7 +12,7 @@ Last updated: 2026-03-26
 | Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/` |
 | Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/` |
 | Gemini CLI | `gemini` | `~/.gemini/skills/dev3/`, `~/.gemini/skills/dev3-project-config/` |
-| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/` |
+| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/` |
 
 ## Feature Matrix
 
