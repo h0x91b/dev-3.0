@@ -24,6 +24,12 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn(),
 			saveGlobalSettings: vi.fn(),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
+			detectDiffTools: vi.fn().mockResolvedValue([
+				{ id: "git-terminal", name: "Git Terminal Diff", available: true },
+				{ id: "vscode", name: "VS Code", available: true, resolvedPath: "/usr/local/bin/code" },
+				{ id: "intellij", name: "IntelliJ IDEA", available: false },
+				{ id: "custom", name: "Custom Command", available: true },
+			]),
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
 			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
 		},
@@ -854,6 +860,48 @@ describe("GlobalSettings", () => {
 			await waitForLoad();
 
 			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("iterm2");
+		});
+	});
+
+	describe("Diff Tool", () => {
+		it("renders diff tool dropdown with detected tools", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(screen.getByText("Diff Tool")).toBeInTheDocument();
+			const select = screen.getByDisplayValue("Git Terminal Diff");
+			expect(select).toBeInTheDocument();
+		});
+
+		it("saves diff tool selection", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const select = screen.getByDisplayValue("Git Terminal Diff");
+			await userEvent.selectOptions(select, "vscode");
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ diffTool: "vscode" }),
+			);
+		});
+
+		it("shows custom command input when custom is selected", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, diffTool: "custom" });
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const input = screen.getByPlaceholderText("my-diff-tool --left $LOCAL --right $REMOTE");
+			expect(input).toBeInTheDocument();
+		});
+
+		it("hides custom command input when non-custom tool is selected", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, diffTool: "vscode" });
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(screen.queryByPlaceholderText("my-diff-tool --left $LOCAL --right $REMOTE")).not.toBeInTheDocument();
 		});
 	});
 });

@@ -496,6 +496,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		}
 	}
 
+	// ---- Diff tool setting (for per-file diff in popover) ----
+	const [hasDiffTool, setHasDiffTool] = useState(false);
+	useEffect(() => {
+		api.request.getGlobalSettings().then((s) => {
+			setHasDiffTool(!!s.diffTool && s.diffTool !== "git-terminal");
+		}).catch(() => {});
+	}, []);
+
 	// ---- Branch status polling ----
 	const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
 	const [rebasing, setRebasing] = useState(false);
@@ -976,7 +984,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		setDiffFilesHover(true);
 	}
 	function hideDiffFilesPopover() {
-		diffFilesHoverTimer.current = setTimeout(() => setDiffFilesHover(false), 150);
+		diffFilesHoverTimer.current = setTimeout(() => {
+			setDiffFilesHover(false);
+			setFileOpenInMenu(null);
+		}, 150);
 	}
 	function cancelHideDiffFiles() {
 		if (diffFilesHoverTimer.current) clearTimeout(diffFilesHoverTimer.current);
@@ -1006,6 +1017,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		setFileOpenInMenu({ path: fullPath, pos: { top: e.clientY, left: e.clientX } });
 	}
 
+	function handleFileDiff(e: React.MouseEvent, relativePath: string) {
+		e.stopPropagation();
+		api.request.openFileDiff({ taskId: task.id, projectId: project.id, relativePath }).catch(() => {});
+	}
+
 	const diffFilesPopover = diffFilesHover && branchStatus && branchStatus.diffFileNames.length > 0 && createPortal(
 		<div
 			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 px-3 max-w-[25rem] max-h-[20rem] overflow-auto"
@@ -1020,13 +1036,24 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					className="group/file flex items-center gap-1.5 py-0.5 leading-snug"
 				>
 					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{f}</span>
-					<button
-						onClick={(e) => handleFileOpenIn(e, f)}
-						className="opacity-0 group-hover/file:opacity-100 text-[0.5625rem] text-accent hover:text-accent-hover transition-all px-1 py-0.5 rounded bg-accent/10 hover:bg-accent/20 flex-shrink-0"
-						title={t("openIn.menuTitle")}
-					>
-						<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-					</button>
+					<div className="flex items-center gap-1.5 flex-shrink-0">
+						{hasDiffTool && (
+							<button
+								onClick={(e) => handleFileDiff(e, f)}
+								className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
+								title={t("settings.diffTool")}
+							>
+								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
+							</button>
+						)}
+						<button
+							onClick={(e) => handleFileOpenIn(e, f)}
+							className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
+							title={t("openIn.menuTitle")}
+						>
+							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+						</button>
+					</div>
 				</div>
 			))}
 		</div>,

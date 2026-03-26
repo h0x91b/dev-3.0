@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { ExternalApp } from "../shared/types";
+import type { DiffToolId, ExternalApp } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
+
+const VALID_DIFF_TOOL_IDS: DiffToolId[] = [
+	"git-terminal", "vscode", "intellij", "webstorm",
+	"kaleidoscope", "beyond-compare", "filemerge", "meld", "custom",
+];
 
 const log = createLogger("settings");
 
@@ -20,6 +25,8 @@ export interface GlobalSettings {
 	terminalKeymap?: "default" | "iterm2";
 	taskOpenMode?: "split" | "fullscreen";
 	preventSleepWhileRunning?: boolean;
+	diffTool?: DiffToolId;
+	customDiffCommand?: string;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -49,12 +56,16 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
+			diffTool: VALID_DIFF_TOOL_IDS.includes(data.diffTool) ? data.diffTool : undefined,
+			customDiffCommand: typeof data.customDiffCommand === "string" ? data.customDiffCommand : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };
 	}
 }
+
+export { VALID_DIFF_TOOL_IDS };
 
 export async function saveSettings(settings: GlobalSettings): Promise<void> {
 	log.info("Saving global settings", { settings });
@@ -81,6 +92,8 @@ export function loadSettingsSync(): GlobalSettings {
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
+			diffTool: VALID_DIFF_TOOL_IDS.includes(data.diffTool) ? data.diffTool : undefined,
+			customDiffCommand: typeof data.customDiffCommand === "string" ? data.customDiffCommand : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

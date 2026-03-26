@@ -36,6 +36,8 @@ const tips = {
 	"tip.prBadgeOnCard.body": "Las tarjetas de tareas muestran una insignia de PR clicable cuando existe un pull request abierto — haz clic para ir a GitHub.",
 	"tip.showDiffButton.title": "Revisa tu diff en la tarea",
 	"tip.showDiffButton.body": "Pulsa el botón \"Show Diff\" en el panel de la tarea para abrir un diff interactivo de git directo en la terminal.",
+	"tip.diffToolSetting.title": "Elige tu visor de diff",
+	"tip.diffToolSetting.body": "Abre Ajustes y elige VS Code, IntelliJ, Kaleidoscope o cualquier herramienta personalizada como visor de diff.",
 	"tip.imagePasteAttach.title": "Pega imágenes en las notas",
 	"tip.imagePasteAttach.body": "Pulsa Cmd+V o arrastra una imagen a la descripción o nota de una tarea — se guarda sola y aparece como miniatura.",
 	"tip.customColumns.title": "Crea columnas personalizadas",

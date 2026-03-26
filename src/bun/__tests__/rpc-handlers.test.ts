@@ -2746,6 +2746,7 @@ describe("handlers.showDiff", () => {
 			handlers.showDiff({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Task has no worktree");
 	});
+
 });
 
 describe("handlers.showUncommittedDiff", () => {
@@ -4155,5 +4156,113 @@ describe("toggleTaskWatch", () => {
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { watched: false });
 		expect(result.watched).toBe(false);
+	});
+});
+
+// ---- detectDiffTools ----
+
+describe("detectDiffTools", () => {
+	beforeEach(() => {
+		mockSpawnSync.mockReset();
+		vi.mocked(existsSync).mockReset().mockReturnValue(false);
+	});
+
+	it("always includes git-terminal as available", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		const results = await handlers.detectDiffTools();
+		const gitTerminal = results.find((r) => r.id === "git-terminal");
+		expect(gitTerminal).toBeDefined();
+		expect(gitTerminal?.available).toBe(true);
+	});
+
+	it("always includes custom as available", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		const results = await handlers.detectDiffTools();
+		const custom = results.find((r) => r.id === "custom");
+		expect(custom).toBeDefined();
+		expect(custom?.available).toBe(true);
+	});
+
+	it("detects available tools via which", async () => {
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "code") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/code\n") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		const results = await handlers.detectDiffTools();
+		const vscode = results.find((r) => r.id === "vscode");
+		expect(vscode?.available).toBe(true);
+		expect(vscode?.resolvedPath).toBe("/usr/local/bin/code");
+	});
+
+	it("marks unavailable tools correctly", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		const results = await handlers.detectDiffTools();
+		const vscode = results.find((r) => r.id === "vscode");
+		expect(vscode?.available).toBe(false);
+		const meld = results.find((r) => r.id === "meld");
+		expect(meld?.available).toBe(false);
+	});
+
+	it("returns all expected tool ids", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		const results = await handlers.detectDiffTools();
+		const ids = results.map((r) => r.id);
+		expect(ids).toContain("git-terminal");
+		expect(ids).toContain("vscode");
+		expect(ids).toContain("intellij");
+		expect(ids).toContain("webstorm");
+		expect(ids).toContain("kaleidoscope");
+		expect(ids).toContain("beyond-compare");
+		expect(ids).toContain("filemerge");
+		expect(ids).toContain("meld");
+		expect(ids).toContain("custom");
+	});
+});
+
+// ---- openFileDiff ----
+
+describe("openFileDiff", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+	});
+
+	it("throws when no diff tool is configured (defaults to git-terminal)", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as any);
+
+		await expect(
+			handlers.openFileDiff({ taskId: "task-1", projectId: "proj-1", relativePath: "src/foo.ts" }),
+		).rejects.toThrow("No external diff tool configured");
+	});
+
+	it("throws when custom tool has no customDiffCommand", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", diffTool: "custom" } as any);
+
+		await expect(
+			handlers.openFileDiff({ taskId: "task-1", projectId: "proj-1", relativePath: "src/foo.ts" }),
+		).rejects.toThrow("Custom diff command is not configured");
+	});
+
+	it("throws when task has no worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", diffTool: "vscode" } as any);
+
+		await expect(
+			handlers.openFileDiff({ taskId: "task-1", projectId: "proj-1", relativePath: "src/foo.ts" }),
+		).rejects.toThrow("Task has no worktree");
 	});
 });

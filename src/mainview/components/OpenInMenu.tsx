@@ -91,7 +91,7 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 	return createPortal(
 		<div
 			ref={menuRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
+			className="fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
 			style={{
 				top: menuPos.top,
 				left: menuPos.left,

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, 
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
-import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
+import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, DiffToolCheckResult, DiffToolId, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle, formatStatus } from "../shared/types";
 import * as data from "./data";
 import * as git from "./git";
@@ -169,6 +169,22 @@ const FALLBACK_BIN_PATHS = [
 	"/usr/local/sbin",
 	// User-local dirs (pip, pipx, Claude CLI, etc.)
 	...(process.env.HOME ? [`${process.env.HOME}/.local/bin`, `${process.env.HOME}/bin`] : []),
+];
+
+// Built-in external diff tools with their CLI commands
+const BUILT_IN_DIFF_TOOLS: Array<{
+	id: DiffToolId;
+	name: string;
+	binaryName: string;
+	extcmd: string; // command prefix for `git difftool --extcmd`
+}> = [
+	{ id: "vscode", name: "VS Code", binaryName: "code", extcmd: "code --wait --diff" },
+	{ id: "intellij", name: "IntelliJ IDEA", binaryName: "idea", extcmd: "idea diff" },
+	{ id: "webstorm", name: "WebStorm", binaryName: "webstorm", extcmd: "webstorm diff" },
+	{ id: "kaleidoscope", name: "Kaleidoscope", binaryName: "ksdiff", extcmd: "ksdiff" },
+	{ id: "beyond-compare", name: "Beyond Compare", binaryName: "bcomp", extcmd: "bcomp" },
+	{ id: "filemerge", name: "FileMerge", binaryName: "opendiff", extcmd: "opendiff" },
+	{ id: "meld", name: "Meld", binaryName: "meld", extcmd: "meld" },
 ];
 
 /**
@@ -390,6 +406,22 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	} catch {
 		cleanup();
 	}
+}
+
+/**
+ * Build the shell command for a single-file diff invocation.
+ * For built-in tools: uses predefined command + localPath + remotePath.
+ * For custom: substitutes $LOCAL / $REMOTE placeholders.
+ */
+function buildDiffCommand(toolId: DiffToolId, customCommand: string | undefined, localPath: string, remotePath: string): string {
+	if (toolId === "custom" && customCommand) {
+		return customCommand
+			.replace(/\$LOCAL/g, `"${localPath}"`)
+			.replace(/\$REMOTE/g, `"${remotePath}"`);
+	}
+	const tool = BUILT_IN_DIFF_TOOLS.find((t) => t.id === toolId);
+	if (!tool) throw new Error(`Unknown diff tool: ${toolId}`);
+	return `${tool.extcmd} "${localPath}" "${remotePath}"`;
 }
 
 export function setPushMessage(fn: (name: string, payload: any) => void): void {
@@ -3154,6 +3186,96 @@ export const handlers = {
 
 		log.info("<- checkAgentAvailability", { results: results.map((r) => `${r.agentId}:${r.installed}`) });
 		return results;
+	},
+
+	async detectDiffTools(): Promise<DiffToolCheckResult[]> {
+		log.info("-> detectDiffTools");
+		const results: DiffToolCheckResult[] = [
+			{ id: "git-terminal", name: "Git Terminal Diff", available: true },
+		];
+		for (const tool of BUILT_IN_DIFF_TOOLS) {
+			const { resolvedPath } = resolveBinaryPath(tool.binaryName);
+			results.push({
+				id: tool.id,
+				name: tool.name,
+				available: !!resolvedPath,
+				resolvedPath,
+			});
+		}
+		results.push({ id: "custom", name: "Custom Command", available: true });
+		log.info("<- detectDiffTools", { results: results.map((r) => `${r.id}:${r.available}`) });
+		return results;
+	},
+
+	async openFileDiff(params: { taskId: string; projectId: string; relativePath: string; ref?: string }): Promise<void> {
+		log.info("→ openFileDiff", params);
+		const project = await data.getProject(params.projectId);
+		const task = await data.getTask(project, params.taskId);
+		if (!task.worktreePath) throw new Error("Task has no worktree");
+
+		const settings = await loadSettings();
+		const diffToolId = settings.diffTool ?? "git-terminal";
+		if (diffToolId === "git-terminal") {
+			throw new Error("No external diff tool configured");
+		}
+		if (diffToolId === "custom" && !settings.customDiffCommand) {
+			throw new Error("Custom diff command is not configured");
+		}
+
+		const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+		const ref = params.ref || `origin/${baseBranch}`;
+		const safeRelPath = params.relativePath.replace(/'/g, "'\\''");
+
+		// Create temp copy of old version
+		const tmpDir = `/tmp/dev3-${task.id}-filediff`;
+		const tmpFile = `${tmpDir}/${params.relativePath.replace(/\//g, "__")}`;
+		// Escape single quotes for use inside single-quoted shell strings
+		const safeTmpFile = tmpFile.replace(/'/g, "'\\''");
+		const remotePath = `${task.worktreePath}/${params.relativePath}`;
+
+		const script = [
+			"#!/bin/bash",
+			`mkdir -p "${tmpDir}"`,
+			// Clean up any leftover temp file from a previous run before creating a new one.
+			// The rm is placed here (not at the end) so that non-blocking diff tools like
+			// opendiff/FileMerge can still read the file after the script exits.
+			`rm -f '${safeTmpFile}'`,
+			`cd "${task.worktreePath}"`,
+			`git show '${ref}:${safeRelPath}' > '${safeTmpFile}' 2>/dev/null || touch '${safeTmpFile}'`,
+			`chmod 444 '${safeTmpFile}'`,
+			buildDiffCommand(diffToolId, settings.customDiffCommand, tmpFile, remotePath),
+		].join("\n") + "\n";
+
+		const scriptPath = `/tmp/dev3-${task.id}-filediff.sh`;
+		await Bun.write(scriptPath, script);
+		chmodSync(scriptPath, 0o755);
+
+		// Run in tmux pane for visibility
+		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		await killExistingGitPane(task.id, tmuxSession, socket);
+
+		const proc = spawn(pty.tmuxArgs(socket,
+			"split-window", "-h",
+			"-t", tmuxSession,
+			"-c", task.worktreePath,
+			"-P", "-F", "#{pane_id}",
+			`bash "${scriptPath}"`,
+		), { stdout: "pipe", stderr: "pipe" });
+		const output = await new Response(proc.stdout).text();
+		const stderrOutput = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+
+		if (stderrOutput.trim()) {
+			log.warn("openFileDiff tmux stderr", { stderr: stderrOutput.trim() });
+		}
+		if (exitCode !== 0) {
+			throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+		}
+
+		const paneId = output.trim() || null;
+		if (paneId) gitOpPaneIds.set(task.id, paneId);
+		log.info("← openFileDiff (pane opened)", { paneId, file: params.relativePath, tool: diffToolId });
 	},
 
 	async setAgentBinaryPath(params: { agentId: string; path: string }): Promise<void> {

@@ -1,5 +1,4 @@
 node_modules/
-bun.lock
 /build/
 /dist/
 /artifacts/

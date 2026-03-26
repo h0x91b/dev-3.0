@@ -36,6 +36,8 @@ const tips = {
 	"tip.prBadgeOnCard.body": "На карточках задач отображается кликабельный бейдж PR — нажмите, чтобы перейти на GitHub.",
 	"tip.showDiffButton.title": "Просматривайте diff прямо в задаче",
 	"tip.showDiffButton.body": "Нажмите кнопку «Show Diff» в панели задачи — откроется интерактивный git diff в терминале.",
+	"tip.diffToolSetting.title": "Выберите просмотрщик diff",
+	"tip.diffToolSetting.body": "Откройте Настройки и выберите VS Code, IntelliJ, Kaleidoscope или любой свой инструмент для просмотра diff.",
 	"tip.imagePasteAttach.title": "Вставляйте картинки в заметки",
 	"tip.imagePasteAttach.body": "Нажмите Cmd+V или перетащите изображение в описание задачи — оно сохранится и отобразится миниатюрой.",
 	"tip.customColumns.title": "Свои колонки на доске",

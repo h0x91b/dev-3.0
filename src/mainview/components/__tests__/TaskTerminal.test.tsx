@@ -14,6 +14,8 @@ vi.mock("../../rpc", () => ({
 			getResolvedProject: vi.fn().mockResolvedValue({}),
 			getBranchStatus: vi.fn().mockResolvedValue({}),
 			getPortAllocations: vi.fn().mockResolvedValue([]),
+			getGlobalSettings: vi.fn().mockResolvedValue({}),
+			openFileDiff: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 	isElectrobun: false,
