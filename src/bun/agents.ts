@@ -221,6 +221,12 @@ export function isGeminiCommand(baseCmd: string): boolean {
 	return name === "gemini";
 }
 
+/** Returns true when the resolved base command is the OpenCode CLI. */
+export function isOpenCodeCommand(baseCmd: string): boolean {
+	const name = baseCmd.split("/").pop() ?? "";
+	return name === "opencode";
+}
+
 export function shellEscape(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
 }
@@ -237,7 +243,7 @@ export interface CommandOptions {
 
 /** Returns true when the agent CLI supports session resumption. */
 export function supportsResume(baseCmd: string): boolean {
-	return isClaudeCommand(baseCmd) || isCodexCommand(baseCmd) || isGeminiCommand(baseCmd) || isCursorCommand(baseCmd);
+	return isClaudeCommand(baseCmd) || isCodexCommand(baseCmd) || isGeminiCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd);
 }
 
 export function resolveAgentCommand(
@@ -253,7 +259,7 @@ export function resolveAgentCommand(
 
 	// Resume flags per agent (Codex uses a subcommand, handled at the end)
 	if (shouldResume) {
-		if (isClaudeCommand(baseCmd) || isCursorCommand(baseCmd)) {
+		if (isClaudeCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd)) {
 			args.push("--continue");
 		} else if (isGeminiCommand(baseCmd)) {
 			args.push("--resume", "latest");
@@ -267,8 +273,9 @@ export function resolveAgentCommand(
 
 	const cursorAgent = isCursorCommand(baseCmd);
 	const geminiAgent = isGeminiCommand(baseCmd);
+	const openCodeAgent = isOpenCodeCommand(baseCmd);
 
-	if (config?.permissionMode && config.permissionMode !== "default" && !codexAgent) {
+	if (config?.permissionMode && config.permissionMode !== "default" && !codexAgent && !openCodeAgent) {
 		if (cursorAgent) {
 			// Cursor Agent uses different flags for modes
 			if (config.permissionMode === "plan") {
@@ -291,11 +298,11 @@ export function resolveAgentCommand(
 		}
 	}
 
-	if (config?.effort && !cursorAgent && !codexAgent && !geminiAgent) {
+	if (config?.effort && !cursorAgent && !codexAgent && !geminiAgent && !openCodeAgent) {
 		args.push("--effort", config.effort);
 	}
 
-	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent && !geminiAgent) {
+	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent && !geminiAgent && !openCodeAgent) {
 		args.push("--max-budget-usd", String(config.maxBudgetUsd));
 	}
 
@@ -320,13 +327,18 @@ export function resolveAgentCommand(
 			}
 		}
 
-		// Cursor Agent has no --append-system-prompt, so inject via prompt argument
-		if (cursorAgent) {
+		// Cursor Agent / OpenCode have no --append-system-prompt, so inject via prompt
+		if (cursorAgent || openCodeAgent) {
 			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT}` : DEV3_SYSTEM_PROMPT;
 		}
 
 		if (prompt) {
-			args.push(shellEscape(prompt));
+			// OpenCode uses --prompt flag instead of positional argument
+			if (openCodeAgent) {
+				args.push("--prompt", shellEscape(prompt));
+			} else {
+				args.push(shellEscape(prompt));
+			}
 		}
 	}
 

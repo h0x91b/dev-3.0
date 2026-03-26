@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-03-14
+Last updated: 2026-03-26
 
 ## Agents
 
@@ -16,18 +16,19 @@ Last updated: 2026-03-14
 
 ## Feature Matrix
 
-| Feature | Claude Code | Cursor Agent | Codex | Gemini CLI |
-|---------|:-----------:|:------------:|:-----:|:----------:|
-| **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) |
-| **System prompt injection** | `--append-system-prompt` | via prompt arg | — | — |
-| **Session resume** | `--continue` | `--continue` | `resume --last` | `--resume latest` |
-| **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` |
-| **Effort level** | `--effort` | — | `--effort` | — |
-| **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — |
-| **Model selection** | `--model` | `--model` | `--model` | `--model` |
-| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | — | Yes (`ensureGeminiTrust`) |
-| **Status hooks (automatic)** | Yes (4 hooks) | — | — | — |
-| **Status management** | Automatic via hooks | Manual (SKILL.md) | Manual (SKILL.md) | Manual (SKILL.md) |
+| Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode |
+|---------|:-----------:|:------------:|:-----:|:----------:|:--------:|
+| **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) |
+| **System prompt injection** | `--append-system-prompt` | via prompt arg | — | — | via `--prompt` |
+| **Session resume** | `--continue` | `--continue` | `resume --last` | `--resume latest` | `--continue` |
+| **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — |
+| **Effort level** | `--effort` | — | `--effort` | — | — |
+| **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — |
+| **Model selection** | `--model` | `--model` | `--model` | `--model` | `--model` |
+| **Agent selection** | — | — | — | — | `--agent` |
+| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | — | Yes (`ensureGeminiTrust`) | — |
+| **Status hooks (automatic)** | Yes (4 hooks) | — | — | — | — |
+| **Status management** | Automatic via hooks | Manual (SKILL.md) | Manual (SKILL.md) | Manual (SKILL.md) | Manual (SKILL.md) |
 
 ## Status Hooks (Claude Code only)
 

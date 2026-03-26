@@ -1,0 +1,1 @@
+Added Oh My OpenCode as a built-in agent with 12 presets covering Sisyphus (orchestrator), Prometheus (planner), Atlas (executor), Hephaestus (deep worker) agents, plus simple model-only presets for Haiku 4.5, GPT-5.4 Mini, and Big Pickle (free). OpenCode uses --prompt flag for prompt injection and --agent for agent selection, with --continue for session resume.
