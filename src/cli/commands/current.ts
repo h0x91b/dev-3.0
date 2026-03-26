@@ -3,6 +3,7 @@ import { STATUS_LABELS } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError } from "../output";
+import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
 
 /**
  * Show current project/task context detected from worktree.
@@ -73,6 +74,8 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 					}
 				}
 
+				process.stdout.write(`\nCLI build: v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
+
 				return;
 			}
 		} catch {
@@ -119,4 +122,6 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 		printDetail(fields);
 	}
+
+	process.stdout.write(`\nCLI build: v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
 }
