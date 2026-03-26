@@ -194,8 +194,9 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).not.toContain("--continue");
-		// Cursor injects DEV3_SYSTEM_PROMPT via prompt
+		// Cursor injects generic DEV3_SYSTEM_PROMPT via prompt (no hooks)
 		expect(cmd).toContain("MANDATORY");
+		expect(cmd).toContain("dev3 task move");
 	});
 
 	// ---- skipSystemPrompt ----
@@ -257,7 +258,7 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
 	});
 
-	it("OpenCode: injects DEV3_SYSTEM_PROMPT into --prompt", () => {
+	it("OpenCode: injects generic system prompt (not Claude hooks variant)", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "opencode" }),
 			makeConfig({ model: undefined }),
@@ -266,6 +267,8 @@ describe("resolveAgentCommand — resume", () => {
 
 		expect(cmd).toContain("--prompt");
 		expect(cmd).toContain("MANDATORY");
+		expect(cmd).toContain("dev3 task move");
+		expect(cmd).not.toContain("managed automatically by hooks");
 	});
 
 	it("OpenCode: does not emit --permission-mode, --effort, or --max-budget-usd", () => {

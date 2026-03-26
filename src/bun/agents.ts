@@ -197,6 +197,17 @@ export const DEV3_SYSTEM_PROMPT =
 	"automatically by hooks — do NOT call `dev3 task move` for status changes " +
 	"unless you need to move to a custom column.";
 
+/**
+ * Generic system-prompt for agents without automatic hooks (OpenCode,
+ * Cursor Agent, etc.).  Direct instructions — what to do, not what exists.
+ */
+export const DEV3_SYSTEM_PROMPT_GENERIC =
+	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
+	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
+	"You MUST manage task status yourself: run `dev3 task move --status in-progress` " +
+	"when you start working, `dev3 task move --status user-questions` when you need " +
+	"user input, and `dev3 task move --status review-by-user` when you finish.";
+
 /** Returns true when the resolved base command is the Claude CLI. */
 export function isClaudeCommand(baseCmd: string): boolean {
 	const name = baseCmd.split("/").pop() ?? "";
@@ -327,9 +338,10 @@ export function resolveAgentCommand(
 			}
 		}
 
-		// Cursor Agent / OpenCode have no --append-system-prompt, so inject via prompt
+		// Cursor Agent / OpenCode have no --append-system-prompt and no automatic
+		// hooks, so inject the generic system prompt via the prompt argument.
 		if (cursorAgent || openCodeAgent) {
-			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT}` : DEV3_SYSTEM_PROMPT;
+			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}` : DEV3_SYSTEM_PROMPT_GENERIC;
 		}
 
 		if (prompt) {
