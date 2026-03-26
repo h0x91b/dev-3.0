@@ -23,15 +23,29 @@ vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
 }));
 
-vi.mock("../TerminalView", () => ({
-	default: ({ ptyUrl }: { ptyUrl: string }) => (
-		<div data-testid="terminal-view">{ptyUrl}</div>
-	),
+vi.mock("../../TerminalView", () => ({
+	default: ({ ptyUrl, onReady }: { ptyUrl: string; onReady?: (h: unknown) => void }) => {
+		// Call onReady so termHandle is set (needed for ExtraKeyBar tests)
+		if (onReady) {
+			setTimeout(() => onReady({ sendInput: vi.fn(), focus: vi.fn() }), 0);
+		}
+		return <div data-testid="terminal-view">{ptyUrl}</div>;
+	},
 }));
 
-vi.mock("./TaskInfoPanel", () => ({
+vi.mock("../TaskInfoPanel", () => ({
 	default: () => <div data-testid="task-info-panel" />,
 }));
+
+vi.mock("../ExtraKeyBar", () => ({
+	default: () => <div data-testid="extra-key-bar" />,
+}));
+
+// Mock navigator.maxTouchPoints for ExtraKeyBar visibility tests
+const originalMaxTouchPoints = Object.getOwnPropertyDescriptor(Navigator.prototype, "maxTouchPoints");
+function setTouchDevice(isTouch: boolean) {
+	Object.defineProperty(navigator, "maxTouchPoints", { value: isTouch ? 5 : 0, configurable: true });
+}
 
 import { api } from "../../rpc";
 import { trackEvent } from "../../analytics";
@@ -109,6 +123,12 @@ describe("TaskTerminal", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		// Restore navigator.maxTouchPoints
+		if (originalMaxTouchPoints) {
+			Object.defineProperty(Navigator.prototype, "maxTouchPoints", originalMaxTouchPoints);
+		} else {
+			Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
+		}
 	});
 
 	describe("handleMove sets movedAt", () => {
@@ -272,6 +292,48 @@ describe("TaskTerminal", () => {
 			});
 
 			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("ExtraKeyBar visibility", () => {
+		it("does not show ExtraKeyBar on non-touch desktop browser", async () => {
+			setTouchDevice(false);
+			mockedApi.request.getPtyUrl.mockResolvedValue("ws://localhost:1234");
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await new Promise((r) => setTimeout(r, 10));
+			});
+
+			expect(screen.queryByTestId("extra-key-bar")).not.toBeInTheDocument();
+		});
+
+		it("shows ExtraKeyBar on touch device (mobile)", async () => {
+			setTouchDevice(true);
+			mockedApi.request.getPtyUrl.mockResolvedValue("ws://localhost:1234");
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await new Promise((r) => setTimeout(r, 10));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("extra-key-bar")).toBeInTheDocument();
+			});
 		});
 	});
 });

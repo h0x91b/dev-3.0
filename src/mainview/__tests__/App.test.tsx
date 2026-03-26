@@ -280,4 +280,71 @@ describe("App keyboard shortcuts", () => {
 			expect(mockedApplyZoom).toHaveBeenCalledWith(DEFAULT_ZOOM);
 		});
 	});
+
+	describe("QR modal consumed state", () => {
+		it("shows 'Connected' overlay and disables Copy when qrTokenConsumed fires", async () => {
+			await renderApp();
+
+			// Open QR modal via push event
+			const qrData = {
+				qrDataUrl: "data:image/png;base64,test",
+				accessUrl: "http://192.168.0.1:1234/?token=test",
+				tunnelState: "idle",
+				cloudflaredInstalled: false,
+			};
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
+
+			// QR modal should be open with active Copy button
+			await waitFor(() => {
+				expect(screen.getByText("Copy URL")).toBeInTheDocument();
+			});
+			expect(screen.getByText("Copy URL")).not.toBeDisabled();
+
+			// Simulate a client connecting
+			window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed"));
+
+			// Copy URL should be disabled, "Connected" label should appear
+			await waitFor(() => {
+				expect(screen.getByText("Copy URL")).toBeDisabled();
+			});
+			expect(screen.getByText("Connected")).toBeInTheDocument();
+		});
+
+		it("resets consumed state when modal is reopened", async () => {
+			await renderApp();
+
+			const qrData = {
+				qrDataUrl: "data:image/png;base64,test",
+				accessUrl: "http://192.168.0.1:1234/?token=test",
+				tunnelState: "idle",
+				cloudflaredInstalled: false,
+			};
+
+			// Open → consume → should be disabled
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
+			await waitFor(() => { expect(screen.getByText("Copy URL")).toBeInTheDocument(); });
+			window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed"));
+			await waitFor(() => { expect(screen.getByText("Copy URL")).toBeDisabled(); });
+
+			// Close modal
+			await userEvent.click(screen.getByText("Close"));
+			await waitFor(() => { expect(screen.queryByText("Copy URL")).not.toBeInTheDocument(); });
+
+			// Reopen — should be fresh (not consumed)
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
+			await waitFor(() => {
+				expect(screen.getByText("Copy URL")).toBeInTheDocument();
+				expect(screen.getByText("Copy URL")).not.toBeDisabled();
+			});
+			expect(screen.queryByText("Connected")).not.toBeInTheDocument();
+		});
+
+		it("shows auth failed screen when rpc:authFailed fires", async () => {
+			await renderApp();
+			window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { status: 401 } }));
+			await waitFor(() => {
+				expect(screen.getByText("Session Expired")).toBeInTheDocument();
+			});
+		});
+	});
 });

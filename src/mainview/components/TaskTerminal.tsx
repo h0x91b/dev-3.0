@@ -26,6 +26,10 @@ type ErrorKind = "worktree-gone" | "session-ended";
 
 function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, hideInfoPanel }: TaskTerminalProps) {
 	const t = useT();
+	// Show ExtraKeyBar on touch devices (phones/tablets) where a physical keyboard
+	// is unavailable. navigator.maxTouchPoints is more reliable than screen width
+	// because the viewport meta tag overrides CSS dimensions on mobile.
+	const isTouchDevice = navigator.maxTouchPoints > 0;
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
@@ -192,7 +196,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					</div>
 				)}
 			</div>
-			{!isElectrobun && termHandle && <ExtraKeyBar handle={termHandle} />}
+			{!isElectrobun && isTouchDevice && termHandle && <ExtraKeyBar handle={termHandle} />}
 		</div>
 	);
 }

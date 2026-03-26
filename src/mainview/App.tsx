@@ -51,12 +51,21 @@ function App() {
 	// GitHub CLI availability warning
 	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
 
+	// Auth failure for browser remote access (expired/invalid QR token)
+	const [authFailed, setAuthFailed] = useState(false);
+
+	useEffect(() => {
+		function onAuthFailed() { setAuthFailed(true); }
+		window.addEventListener("rpc:authFailed", onAuthFailed);
+		return () => window.removeEventListener("rpc:authFailed", onAuthFailed);
+	}, []);
+
 	const checkRequirements = useCallback(async () => {
 		setReqChecking(true);
 		try {
 			const results = await api.request.checkSystemRequirements();
-			setReqResults(results);
 			const allOk = results.every((r) => r.installed || r.optional);
+			setReqResults(results);
 			setReqStatus(allOk ? "passed" : "failed");
 		} catch (err) {
 			console.error("Failed to check system requirements:", err);
@@ -384,11 +393,21 @@ function App() {
 		return () => window.removeEventListener("rpc:navigateToViewportLab", onNavigateToViewportLab);
 	}, [navigate]);
 
+	// QR token consumed — someone connected via the QR code
+	const [qrConsumed, setQrConsumed] = useState(false);
+
+	useEffect(() => {
+		function onQrConsumed() { setQrConsumed(true); }
+		window.addEventListener("rpc:qrTokenConsumed", onQrConsumed);
+		return () => window.removeEventListener("rpc:qrTokenConsumed", onQrConsumed);
+	}, []);
+
 	// Listen for View > Remote Access QR Code menu item
 	useEffect(() => {
 		function onShowRemoteQR(e: Event) {
 			const detail = (e as CustomEvent).detail;
 			setRemoteQR(detail);
+			setQrConsumed(false); // Reset consumed state when opening fresh QR
 			// Sync tunnel checkbox with actual tunnel state
 			setTunnelWanted(detail?.tunnelState === "connected" || detail?.tunnelState === "starting");
 			setTunnelStarting(detail?.tunnelState === "starting");
@@ -398,12 +417,13 @@ function App() {
 	}, []);
 
 	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
+	// Stops when QR is consumed (someone connected).
 	const qrModalOpen = remoteQR !== null;
 	const [qrCountdown, setQrCountdown] = useState(25);
 	const tunnelWantedRef = useRef(tunnelWanted);
 	tunnelWantedRef.current = tunnelWanted;
 	useEffect(() => {
-		if (!qrModalOpen) return;
+		if (!qrModalOpen || qrConsumed) return;
 		setQrCountdown(25);
 		let counter = 25;
 		const tick = setInterval(() => {
@@ -415,7 +435,7 @@ function App() {
 			setQrCountdown(counter);
 		}, 1000);
 		return () => clearInterval(tick);
-	}, [qrModalOpen]);
+	}, [qrModalOpen, qrConsumed]);
 
 	// Track page views on route changes
 	useEffect(() => {
@@ -449,6 +469,18 @@ function App() {
 		},
 		[state, navigate, showQuitDialog],
 	);
+
+	if (authFailed) {
+		return (
+			<div className="h-full w-full flex items-center justify-center bg-base">
+				<div className="bg-raised border border-edge rounded-lg p-6 max-w-sm w-full space-y-3 text-center">
+					<div className="text-3xl">{"\uD83D\uDD12"}</div>
+					<h2 className="text-fg text-lg font-semibold">{t("remote.authFailed")}</h2>
+					<p className="text-fg-3 text-sm">{t("remote.authFailedDesc")}</p>
+				</div>
+			</div>
+		);
+	}
 
 	if (reqStatus === "checking") {
 		return (
@@ -595,23 +627,32 @@ function App() {
 						<h2 className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
 						<div className="flex justify-center relative">
-							<img src={remoteQR.qrDataUrl} alt="QR Code" className="w-56 h-56 rounded-lg" />
+							<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-all duration-500 ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
+							{qrConsumed && (
+								<div className="absolute inset-0 flex items-center justify-center">
+									<div className="bg-base/90 rounded-lg px-4 py-2">
+										<span className="text-accent text-sm font-medium">{t("remote.connected")}</span>
+									</div>
+								</div>
+							)}
 						</div>
-						<div className="flex items-center justify-center gap-2 text-fg-muted text-xs">
-							<div className="w-4 h-4 relative">
-								<svg className="w-4 h-4 -rotate-90" viewBox="0 0 20 20">
-									<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
-									<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2"
-										strokeDasharray={`${(qrCountdown / 25) * 50.3} 50.3`}
-										strokeLinecap="round"
-										className="transition-all duration-1000 ease-linear"
-									/>
-								</svg>
+						{!qrConsumed && (
+							<div className="flex items-center justify-center gap-2 text-fg-muted text-xs">
+								<div className="w-4 h-4 relative">
+									<svg className="w-4 h-4 -rotate-90" viewBox="0 0 20 20">
+										<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+										<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2"
+											strokeDasharray={`${(qrCountdown / 25) * 50.3} 50.3`}
+											strokeLinecap="round"
+											className="transition-all duration-1000 ease-linear"
+										/>
+									</svg>
+								</div>
+								<span>{t("remote.refreshIn", { seconds: String(qrCountdown) })}</span>
 							</div>
-							<span>{t("remote.refreshIn", { seconds: String(qrCountdown) })}</span>
-						</div>
-						<div className="bg-base rounded-lg p-3">
-							<code className="text-fg text-xs break-all select-all">{remoteQR.accessUrl}</code>
+						)}
+						<div className={`bg-base rounded-lg p-3 ${qrConsumed ? "opacity-40" : ""}`}>
+							<code className={`text-xs break-all ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}>{remoteQR.accessUrl}</code>
 						</div>
 
 						{/* Tunnel toggle */}
@@ -686,9 +727,10 @@ function App() {
 						<div className="flex items-center justify-center gap-2">
 							<button
 								onClick={() => {
-									navigator.clipboard.writeText(remoteQR.accessUrl).catch(() => {});
+									if (!qrConsumed) navigator.clipboard.writeText(remoteQR.accessUrl).catch(() => {});
 								}}
-								className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+								disabled={qrConsumed}
+								className={`px-4 py-2 text-sm rounded-lg transition-colors ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : "bg-accent text-white hover:bg-accent-hover"}`}
 							>
 								{t("remote.copyUrl")}
 							</button>

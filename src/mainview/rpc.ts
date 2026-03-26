@@ -24,6 +24,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	zoomOut: () => adjustZoom(-ZOOM_STEP),
 	zoomReset: () => applyZoom(DEFAULT_ZOOM),
 	showRemoteAccessQR: (payload) => window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: payload })),
+	qrTokenConsumed: () => window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed")),
 };
 
 /**
@@ -31,6 +32,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
  * Electrobun injects __electrobunWebviewId on the window object.
  */
 export const isElectrobun = typeof (window as any).__electrobunWebviewId !== "undefined";
+
 
 // Add .browser-mode class to <html> when running outside Electrobun.
 // Scopes mobile-friendly CSS rules (e.g. font-size: 16px on inputs) to browser only.
@@ -108,13 +110,18 @@ function initBrowserApi(): ApiShape {
 	// Extract QR token from URL and clean it from the address bar
 	const urlParams = new URLSearchParams(window.location.search);
 	const qrToken = urlParams.get("token") || "";
+	console.log("[browser-rpc] init", { isViteDevServer, hasQrToken: !!qrToken, protocol: wsProtocol });
 	if (qrToken) {
 		window.history.replaceState({}, "", window.location.pathname);
 	}
 
 	// Exchange QR token for session token
 	async function authenticate(): Promise<void> {
-		if (isViteDevServer || !qrToken) return;
+		if (isViteDevServer || !qrToken) {
+			console.log("[browser-rpc] auth skip", { isViteDevServer, hasToken: !!qrToken });
+			return;
+		}
+		console.log("[browser-rpc] Exchanging QR token...");
 		try {
 			const resp = await fetch("/auth/exchange", {
 				method: "POST",
@@ -124,12 +131,14 @@ function initBrowserApi(): ApiShape {
 			if (resp.ok) {
 				const data = await resp.json();
 				sessionToken = data.token;
-				console.log("[browser-rpc] Authenticated via QR token");
+				console.log("[browser-rpc] Auth OK, got session token");
 			} else {
 				console.error("[browser-rpc] Token exchange failed:", resp.status);
+				window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { status: resp.status } }));
 			}
 		} catch (err) {
 			console.error("[browser-rpc] Token exchange error:", err);
+			window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { error: String(err) } }));
 		}
 	}
 
@@ -183,11 +192,12 @@ function initBrowserApi(): ApiShape {
 
 	function connect() {
 		const wsUrl = buildWsUrl("/rpc");
+		console.log("[browser-rpc] Connecting WS to", wsUrl.replace(/token=[^&]+/, "token=***"));
 		resetWsReady();
 		ws = new WebSocket(wsUrl);
 
 		ws.addEventListener("open", () => {
-			console.log("[browser-rpc] Connected to", wsUrl);
+			console.log("[browser-rpc] WS OPEN");
 			wsReadyResolve?.();
 		});
 
@@ -214,8 +224,8 @@ function initBrowserApi(): ApiShape {
 			}
 		});
 
-		ws.addEventListener("close", () => {
-			console.warn("[browser-rpc] Disconnected, reconnecting in 2s...");
+		ws.addEventListener("close", (event) => {
+			console.warn("[browser-rpc] WS CLOSED", { code: event.code, reason: event.reason, hasToken: !!sessionToken });
 			// Only reconnect if we have a valid session token (or are in Vite dev mode).
 			// Without a token the server returns 401 and we'd loop forever.
 			if (isViteDevServer || sessionToken) {
@@ -225,8 +235,8 @@ function initBrowserApi(): ApiShape {
 			}
 		});
 
-		ws.addEventListener("error", () => {
-			// close event will fire after this, triggering reconnect
+		ws.addEventListener("error", (event) => {
+			console.error("[browser-rpc] WS ERROR", event);
 		});
 	}
 

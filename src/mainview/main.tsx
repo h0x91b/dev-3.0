@@ -65,9 +65,15 @@ async function bootstrap() {
 		});
 	}
 
-	// Initialize Google Analytics with app version + set page title
+	// Initialize Google Analytics with app version.
+	// Await with a 5s timeout so desktop IPC stays sequential (avoids
+	// Electrobun message loss under burst) while mobile/browser doesn't
+	// block forever if WS isn't connected.
 	try {
-		const { version } = await api.request.getAppVersion();
+		const { version } = await Promise.race([
+			api.request.getAppVersion(),
+			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+		]);
 		initAnalytics(version);
 		document.title = `dev-3.0 v${version}`;
 	} catch (err) {

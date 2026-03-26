@@ -103,7 +103,7 @@ export async function serveStatic(pathname: string): Promise<Response | null> {
 	return new Response(file, {
 		headers: {
 			"Content-Type": contentType,
-			"Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+			"Cache-Control": "no-cache, no-store, must-revalidate",
 		},
 	});
 }
@@ -194,28 +194,54 @@ let serverPort = 0;
 interface StartOptions {
 	rpcHandler: RpcRequestHandler;
 	getPtyPort: () => number;
+	onQrTokenConsumed?: () => void;
 }
+
+let qrConsumedCallback: (() => void) | null = null;
 
 export async function startRemoteAccessServer(options: StartOptions): Promise<void> {
 	await initSecret();
 	requestHandler = options.rpcHandler;
 	ptyPortGetter = options.getPtyPort;
+	qrConsumedCallback = options.onQrTokenConsumed ?? null;
 
 	const server = Bun.serve<WsData>({
 		hostname: "0.0.0.0",
 		port: 0, // random
 		async fetch(req, server) {
 			const url = new URL(req.url);
+			const ua = req.headers.get("user-agent")?.slice(0, 80) ?? "unknown";
+			const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "direct";
+
+			// Log all non-static requests
+			if (url.pathname.startsWith("/auth") || url.pathname === "/rpc" || url.pathname === "/pty" || url.pathname === "/health") {
+				log.info("Remote request", {
+					method: req.method,
+					path: url.pathname,
+					ip: clientIp,
+					ua,
+					hasToken: !!url.searchParams.get("token"),
+				});
+			}
 
 			// ── Auth endpoints (no session required) ──
 			if (url.pathname === "/auth/exchange" && req.method === "POST") {
 				try {
 					const body = await req.json() as { token?: string };
-					if (!body.token) return new Response("Missing token", { status: 400 });
+					if (!body.token) {
+						log.warn("Auth exchange: missing token", { ip: clientIp, ua });
+						return new Response("Missing token", { status: 400 });
+					}
 					const sessionToken = await exchangeQrForSession(body.token);
-					if (!sessionToken) return new Response("Invalid or expired token", { status: 401 });
+					if (!sessionToken) {
+						log.warn("Auth exchange: invalid/expired QR token", { ip: clientIp, ua });
+						return new Response("Invalid or expired token", { status: 401 });
+					}
+					log.info("Auth exchange: success", { ip: clientIp, ua });
+					qrConsumedCallback?.();
 					return Response.json({ token: sessionToken });
-				} catch {
+				} catch (err) {
+					log.error("Auth exchange: error", { ip: clientIp, error: String(err) });
 					return new Response("Bad request", { status: 400 });
 				}
 			}
@@ -225,7 +251,11 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					const body = await req.json() as { token?: string };
 					if (!body.token) return new Response("Missing token", { status: 400 });
 					const newToken = await refreshSession(body.token);
-					if (!newToken) return new Response("Invalid or expired token", { status: 401 });
+					if (!newToken) {
+						log.warn("Auth refresh: invalid/expired session", { ip: clientIp });
+						return new Response("Invalid or expired token", { status: 401 });
+					}
+					log.info("Auth refresh: success", { ip: clientIp });
 					return Response.json({ token: newToken });
 				} catch {
 					return new Response("Bad request", { status: 400 });
@@ -234,15 +264,25 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 			// ── WebSocket upgrades (session token required) ──
 			if (url.pathname === "/rpc") {
-				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
+				const authed = await isSessionAuthenticated(req);
+				if (!authed) {
+					log.warn("RPC WS upgrade: unauthorized", { ip: clientIp, ua, hasToken: !!extractToken(req) });
+					return new Response("Unauthorized", { status: 401 });
+				}
+				log.info("RPC WS upgrade: authorized", { ip: clientIp, ua });
 				if (server.upgrade(req, { data: { type: "rpc" } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
 			if (url.pathname === "/pty") {
-				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
+				const authed = await isSessionAuthenticated(req);
+				if (!authed) {
+					log.warn("PTY WS upgrade: unauthorized", { ip: clientIp, ua });
+					return new Response("Unauthorized", { status: 401 });
+				}
 				const sessionId = url.searchParams.get("session");
 				if (!sessionId) return new Response("Missing session param", { status: 400 });
+				log.info("PTY WS upgrade: authorized", { ip: clientIp, session: sessionId.slice(0, 8) });
 				if (server.upgrade(req, { data: { type: "pty", sessionId } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}

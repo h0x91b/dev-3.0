@@ -66,6 +66,9 @@ const dashboard = {
 	"remote.tunnelFailed": "No se pudo iniciar el túnel",
 	"remote.copyUrl": "Copiar URL",
 	"remote.close": "Cerrar",
+	"remote.connected": "Conectado",
+	"remote.authFailed": "Sesión expirada",
+	"remote.authFailedDesc": "Tu enlace de acceso ha expirado. Escanea un nuevo código QR desde la app de escritorio.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
