@@ -108,6 +108,25 @@ describe("exchangeQrForSession", () => {
 		expect(second).toBeNull();
 	});
 
+	it("each QR token is independently single-use", async () => {
+		const qr1 = await createQrToken();
+		const qr2 = await createQrToken();
+		const qr3 = await createQrToken();
+
+		// Exchange qr1 — should succeed
+		expect(await exchangeQrForSession(qr1)).toBeTruthy();
+		// Replay qr1 — should fail
+		expect(await exchangeQrForSession(qr1)).toBeNull();
+
+		// qr2 is still valid (different token)
+		expect(await exchangeQrForSession(qr2)).toBeTruthy();
+		// Replay qr2 — should fail
+		expect(await exchangeQrForSession(qr2)).toBeNull();
+
+		// qr3 still valid
+		expect(await exchangeQrForSession(qr3)).toBeTruthy();
+	});
+
 	it("rejects session token (wrong type)", async () => {
 		const sessionToken = await createSessionToken();
 		const result = await exchangeQrForSession(sessionToken);

@@ -72,6 +72,9 @@ const dashboard = {
 	"remote.tunnelFailed": "Не удалось запустить туннель",
 	"remote.copyUrl": "Скопировать URL",
 	"remote.close": "Закрыть",
+	"remote.connected": "Подключено",
+	"remote.authFailed": "Сессия истекла",
+	"remote.authFailedDesc": "Ссылка доступа устарела. Отсканируйте новый QR-код в десктопном приложении.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi не установлен",

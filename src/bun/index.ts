@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -325,6 +325,9 @@ await startRemoteAccessServer({
 		return await handler(params);
 	},
 	getPtyPort,
+	onQrTokenConsumed: () => {
+		getPushMessage()?.("qrTokenConsumed", {});
+	},
 });
 
 // Start background merge detection poller
