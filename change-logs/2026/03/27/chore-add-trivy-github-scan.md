@@ -1,1 +1,1 @@
-Add the same Trivy filesystem scan used in the neighboring repository to the pull request build workflow. The scan posts or updates a PR comment with the vulnerability report after lint, tests, and build checks pass.
+Add the same Trivy filesystem scan used in the neighboring repository to the pull request build workflow. The scan posts or updates a PR comment with a markdown summary table after lint, tests, and build checks pass.
