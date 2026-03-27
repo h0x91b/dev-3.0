@@ -3,6 +3,7 @@ node_modules/
 /dist/
 /artifacts/
 .claude/settings.local.json
+.codex/hooks.json
 src/shared/build-info.generated.ts
 src/bun/changelog-bundled.ts
 changelog.json
