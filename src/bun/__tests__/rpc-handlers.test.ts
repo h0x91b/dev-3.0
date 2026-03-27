@@ -186,6 +186,7 @@ const {
 	stopPRDetectionPoller,
 	resolveBinaryPath,
 	launchTaskPty,
+	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
 } = await import("../rpc-handlers");
@@ -1423,6 +1424,40 @@ describe("handlers.editTask", () => {
 		await expect(
 			handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "Edit" }),
 		).rejects.toThrow("Can only edit tasks in todo status");
+	});
+});
+
+describe("resolveOperationalProjectConfig", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("prefers project-level operational scripts over stale worktree config", async () => {
+		const projectResolved = makeProject({
+			setupScript: "project setup",
+			devScript: "project dev",
+			cleanupScript: "project cleanup",
+			...( { setupScriptLaunchMode: "blocking" } as any ),
+		});
+		const worktreeResolved = makeProject({
+			setupScript: "worktree setup",
+			devScript: "worktree dev",
+			cleanupScript: "worktree cleanup",
+			defaultBaseBranch: "release",
+			...( { setupScriptLaunchMode: "parallel" } as any ),
+		});
+
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(projectResolved)
+			.mockResolvedValueOnce(worktreeResolved);
+
+		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenNthCalledWith(1, projectResolved);
+		expect(repoConfig.resolveProjectConfig).toHaveBeenNthCalledWith(2, projectResolved, "/tmp/wt");
+		expect(resolved.setupScript).toBe("project setup");
+		expect(resolved.devScript).toBe("project dev");
+		expect(resolved.cleanupScript).toBe("project cleanup");
+		expect((resolved as any).setupScriptLaunchMode).toBe("blocking");
+		expect(resolved.defaultBaseBranch).toBe("release");
 	});
 });
 
@@ -3332,6 +3367,54 @@ describe("launchTaskPty", () => {
 			}),
 			undefined,
 		);
+	});
+
+	it("waits for setup completion before opening the agent pane in blocking mode", async () => {
+		const project = makeProject({
+			setupScript: "bun install",
+			...( { setupScriptLaunchMode: "blocking" } as any ),
+		});
+		const task = makeTask();
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+
+		try {
+			await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", true);
+
+			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
+			const script = String(startupCall?.[1] ?? "");
+			const setupIndex = script.indexOf('bash -x "/tmp/dev3-task-1-setup.sh"');
+			const splitIndex = script.indexOf('tmux split-window -v -c "/tmp/wt" "bash \'/tmp/dev3-task-1-cmd.sh\'"');
+
+			expect(setupIndex).toBeGreaterThanOrEqual(0);
+			expect(splitIndex).toBeGreaterThanOrEqual(0);
+			expect(setupIndex).toBeLessThan(splitIndex);
+		} finally {
+			writeSpy.mockRestore();
+		}
+	});
+
+	it("opens the agent pane immediately in parallel mode", async () => {
+		const project = makeProject({
+			setupScript: "bun install",
+			...( { setupScriptLaunchMode: "parallel" } as any ),
+		});
+		const task = makeTask();
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+
+		try {
+			await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", true);
+
+			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
+			const script = String(startupCall?.[1] ?? "");
+			const splitIndex = script.indexOf('tmux split-window -v -c "/tmp/wt" "bash \'/tmp/dev3-task-1-cmd.sh\'"');
+			const setupIndex = script.indexOf('bash -x "/tmp/dev3-task-1-setup.sh"');
+
+			expect(splitIndex).toBeGreaterThanOrEqual(0);
+			expect(setupIndex).toBeGreaterThanOrEqual(0);
+			expect(splitIndex).toBeLessThan(setupIndex);
+		} finally {
+			writeSpy.mockRestore();
+		}
 	});
 });
 

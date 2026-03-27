@@ -131,6 +131,7 @@ export async function addProject(
 			name,
 			path,
 			setupScript: "",
+			setupScriptLaunchMode: "parallel",
 			devScript: "",
 			cleanupScript: "",
 			defaultBaseBranch: "main",
@@ -161,7 +162,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels">>,
+	updates: Partial<Pick<Project, "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels">>,
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project", { projectId, updates });

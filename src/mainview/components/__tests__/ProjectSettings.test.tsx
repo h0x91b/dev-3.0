@@ -162,6 +162,27 @@ describe("ProjectSettings", () => {
 				expect(textarea.getAttribute("spellcheck")).toBe("false");
 			});
 		});
+
+		it("saves blocking setup startup order", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			const user = userEvent.setup();
+
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			await goToProjectTab();
+
+			await user.click(screen.getByRole("radio", { name: "Wait for setup" }));
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({
+						projectId: "proj-1",
+						setupScriptLaunchMode: "blocking",
+					}),
+				);
+			});
+		});
 	});
 
 	describe("port count field", () => {

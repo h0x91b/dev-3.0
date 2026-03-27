@@ -124,6 +124,15 @@ const settings = {
 	"projectSettings.setupScript": "Setup Script",
 	"projectSettings.setupScriptDesc":
 		"Runs in the worktree directory after creation",
+	"projectSettings.setupScriptLaunchMode": "Startup Order",
+	"projectSettings.setupScriptLaunchModeDesc":
+		"Choose whether the agent starts immediately or waits for setup to finish successfully.",
+	"projectSettings.setupScriptLaunchModeParallel": "Run in parallel",
+	"projectSettings.setupScriptLaunchModeParallelDesc":
+		"Open the agent right away in a split tmux pane while setup keeps running.",
+	"projectSettings.setupScriptLaunchModeBlocking": "Wait for setup",
+	"projectSettings.setupScriptLaunchModeBlockingDesc":
+		"Start the agent only after the setup script exits successfully.",
 	"projectSettings.devScript": "Dev Script",
 	"projectSettings.devScriptDesc":
 		"Runs when starting the dev server for this project",

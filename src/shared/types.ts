@@ -449,10 +449,12 @@ export const LABEL_COLORS = [
 // ---- Repo-local config (.dev3/config.json) ----
 
 export type CompareRefMode = "remote" | "local";
+export type SetupScriptLaunchMode = "parallel" | "blocking";
 
 /** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
 export interface Dev3RepoConfig {
 	setupScript?: string;
+	setupScriptLaunchMode?: SetupScriptLaunchMode;
 	devScript?: string;
 	cleanupScript?: string;
 	clonePaths?: string[];
@@ -471,6 +473,7 @@ export interface Dev3RepoConfig {
 /** Keys of Dev3RepoConfig — used for merge logic. */
 export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"setupScript",
+	"setupScriptLaunchMode",
 	"devScript",
 	"cleanupScript",
 	"clonePaths",
@@ -497,6 +500,7 @@ export interface Project {
 	name: string;
 	path: string;
 	setupScript: string;
+	setupScriptLaunchMode?: SetupScriptLaunchMode;
 	devScript: string;
 	cleanupScript: string;
 	defaultBaseBranch: string;
