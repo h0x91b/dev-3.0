@@ -219,6 +219,8 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    - Check \`package.json\` scripts for port references (\`--port\`, \`PORT=\`, \`localhost:XXXX\`)
    - Check config files (\`vite.config.*\`, \`next.config.*\`, \`webpack.config.*\`, \`docker-compose.yml\`, \`.env.example\`) for port settings
    - Identify which env var controls each port and what its default value is
+   - For every mapping, record the exact evidence from this repo (file + env var/flag), e.g. "\`vite.config.ts\` reads \`process.env.VITE_PORT\`"
+   - Do NOT infer env vars from the framework name alone. Only map env vars or CLI flags you actually found in this project.
 
    **Wire ports in \`devScript\`.** Prepend env var assignments using \`\${DEV3_PORTx:-default}\` syntax so dev3's allocated port is forwarded to the project's own env var:
    \`\`\`
@@ -226,15 +228,8 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    \`\`\`
    The \`:-default\` fallback ensures the command still works when run manually (outside dev3).
 
-   **Common frameworks & their port env vars:**
-   | Framework | Env var | Default |
-   |-----------|---------|---------|
-   | Vite | \`VITE_PORT\` or \`PORT\` | 5173 |
-   | Next.js / CRA / Express | \`PORT\` | 3000 |
-   | Django | \`DJANGO_PORT\` or \`PORT\` | 8000 |
-   | Flask | \`FLASK_RUN_PORT\` | 5000 |
-
-   If the project hardcodes a port with no env var support, try \`PORT=\${DEV3_PORT0:-XXXX}\` — many frameworks read \`PORT\` implicitly. If nothing works, set \`portCount: 0\` and note why in the commit message.
+   Before writing the config, briefly state the evidence for each mapping in your response so the user can verify it.
+   If you cannot find an explicit port override mechanism in this project, do NOT guess with a generic \`PORT=\` assignment. Set \`portCount: 0\` and explain why.
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
@@ -257,7 +252,7 @@ EOF
 
 6. **Update clonePaths after setup.** After the setupScript finishes, check which heavy directories now exist (node_modules, .venv, target, build, dist, .next, etc.) and add any missing ones to \`clonePaths\` in the config. Re-write the config if needed.
 
-7. **Verify** by running \`dev3 config show\` and confirm all fields show the correct source.
+7. **Verify** by running \`dev3 config show\` and confirm all fields show the correct source. If \`portCount > 0\`, also smoke-test the mapping: run the dev command briefly with explicit \`DEV3_PORT0\` (and others if needed) and confirm the project uses the forwarded port. If a smoke test is impractical, say so explicitly.
 
 8. **Commit** the config file: \`git add .dev3/config.json && git commit -m "chore: add dev3 project config"\`
 
@@ -306,6 +301,10 @@ description: "${PROJECT_CONFIG_SKILL_DESCRIPTION}"
 ---
 
 ${PROJECT_CONFIG_SKILL_BODY}`;
+
+export function getProjectConfigSkillContent(): string {
+	return PROJECT_CONFIG_SKILL_BODY;
+}
 
 /** Claude Code project-config skill directory. */
 const CLAUDE_PROJECT_CONFIG_DIR = ".claude/skills/dev3-project-config";
