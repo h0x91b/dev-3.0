@@ -11,6 +11,9 @@ export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export interface HookEntry {
 	type: string;
 	command: string;
+	timeout?: number;
+	timeoutSec?: number;
+	statusMessage?: string;
 }
 
 /**
@@ -24,12 +27,50 @@ export interface HookEntry {
  * - Stop: primary agent → stopTarget; review agent → review-by-user
  */
 export interface MatcherGroup {
+	matcher?: string;
 	hooks: HookEntry[];
+}
+
+type HookMap = Record<string, MatcherGroup[]>;
+
+function buildStopGroups(stopTarget: TaskStatus): MatcherGroup[] {
+	const move = (status: string, extra?: string) =>
+		`${DEV3_CLI} task move --status ${status}${extra ? ` ${extra}` : ""}`;
+
+	const stopGroups: MatcherGroup[] = [
+		{
+			hooks: [{ type: "command", command: move(stopTarget, "--if-status in-progress") }],
+		},
+	];
+
+	if (stopTarget !== "review-by-user") {
+		stopGroups.push({
+			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
+		});
+	}
+
+	return stopGroups;
+}
+
+function mergeHookMaps(
+	existing: Record<string, unknown>,
+	newHooks: HookMap,
+): Record<string, unknown> {
+	const existingHooks = (existing.hooks ?? {}) as HookMap;
+	const merged: HookMap = { ...existingHooks };
+
+	for (const [event, groups] of Object.entries(newHooks)) {
+		const current = merged[event] ?? [];
+		const filtered = current.filter((g) => !isDev3Entry(g));
+		merged[event] = [...filtered, ...groups];
+	}
+
+	return { ...existing, hooks: merged };
 }
 
 export function buildClaudeHooks(
 	options?: { stopTarget?: TaskStatus },
-): Record<string, MatcherGroup[]> {
+): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const move = (status: string, extra?: string) =>
 		`${DEV3_CLI} task move --status ${status}${extra ? ` ${extra}` : ""}`;
@@ -39,22 +80,6 @@ export function buildClaudeHooks(
 	// review-by-user is intentionally allowed: when the user leaves feedback
 	// and the primary agent resumes, UserPromptSubmit should move the task back.
 	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
-
-	// Primary Stop hook: only fires when task is in-progress (primary agent working).
-	// This prevents it from firing after the review agent has already moved the task.
-	const stopGroups: MatcherGroup[] = [
-		{
-			hooks: [{ type: "command", command: move(stopTarget, "--if-status in-progress") }],
-		},
-	];
-	// When AI review is enabled (stopTarget != review-by-user), add a second
-	// Stop hook for the review agent: move to review-by-user only if currently
-	// in review-by-ai.
-	if (stopTarget !== "review-by-user") {
-		stopGroups.push({
-			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
-		});
-	}
 
 	return {
 		UserPromptSubmit: [
@@ -66,7 +91,42 @@ export function buildClaudeHooks(
 		PermissionRequest: [
 			{ hooks: [{ type: "command", command: move("user-questions") }] },
 		],
-		Stop: stopGroups,
+		Stop: buildStopGroups(stopTarget),
+	};
+}
+
+/**
+ * Build the Codex hooks object for a given task.
+ *
+ * Codex currently lacks a PermissionRequest event, so we mirror the Claude
+ * behavior as closely as possible with:
+ *
+ * - SessionStart/UserPromptSubmit/PreToolUse(Bash): → in-progress
+ * - Stop: primary agent → stopTarget; review agent → review-by-user
+ */
+export function buildCodexHooks(
+	options?: { stopTarget?: TaskStatus },
+): HookMap {
+	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
+	const workingCmd = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai`;
+
+	return {
+		SessionStart: [
+			{
+				matcher: "startup|resume",
+				hooks: [{ type: "command", command: workingCmd }],
+			},
+		],
+		UserPromptSubmit: [
+			{ hooks: [{ type: "command", command: workingCmd }] },
+		],
+		PreToolUse: [
+			{
+				matcher: "Bash",
+				hooks: [{ type: "command", command: workingCmd }],
+			},
+		],
+		Stop: buildStopGroups(stopTarget),
 	};
 }
 
@@ -94,18 +154,14 @@ export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
 	options?: { stopTarget?: TaskStatus },
 ): Record<string, unknown> {
-	const newHooks = buildClaudeHooks(options);
-	const existingHooks = (existing.hooks ?? {}) as Record<string, MatcherGroup[]>;
-	const merged: Record<string, MatcherGroup[]> = { ...existingHooks };
+	return mergeHookMaps(existing, buildClaudeHooks(options));
+}
 
-	for (const [event, groups] of Object.entries(newHooks)) {
-		const current = merged[event] ?? [];
-		// Remove any previous dev3 matcher groups (idempotency)
-		const filtered = current.filter((g) => !isDev3Entry(g));
-		merged[event] = [...filtered, ...groups];
-	}
-
-	return { ...existing, hooks: merged };
+export function mergeCodexHooks(
+	existing: Record<string, unknown>,
+	options?: { stopTarget?: TaskStatus },
+): Record<string, unknown> {
+	return mergeHookMaps(existing, buildCodexHooks(options));
 }
 
 /**
@@ -181,4 +237,27 @@ export function writeClaudeHooks(worktreePath: string, options?: { stopTarget?: 
 			writeFileSync(permPath, JSON.stringify(updatedPerm, null, 2) + "\n", "utf-8");
 		}
 	}
+}
+
+/**
+ * Read .codex/hooks.json, merge dev3 hooks, and write it back.
+ * Creates the .codex/ directory if it doesn't exist.
+ */
+export function writeCodexHooks(worktreePath: string, options?: { stopTarget?: TaskStatus }): void {
+	const codexDir = join(worktreePath, ".codex");
+	mkdirSync(codexDir, { recursive: true });
+
+	const hooksPath = join(codexDir, "hooks.json");
+
+	let settings: Record<string, unknown> = {};
+	try {
+		if (existsSync(hooksPath)) {
+			settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
+		}
+	} catch {
+		// Corrupted file — overwrite
+	}
+
+	const updated = mergeCodexHooks(settings, options);
+	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 }

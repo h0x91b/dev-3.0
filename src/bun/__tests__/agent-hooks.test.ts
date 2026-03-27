@@ -2,7 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildClaudeHooks, mergeClaudeHooks, writeClaudeHooks } from "../agent-hooks";
+import {
+	buildClaudeHooks,
+	buildCodexHooks,
+	mergeClaudeHooks,
+	mergeCodexHooks,
+	writeClaudeHooks,
+	writeCodexHooks,
+} from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
 import { DEV3_BASH_PERMISSION } from "../../shared/agent-hooks";
 
@@ -223,6 +230,104 @@ describe("mergeClaudeHooks", () => {
 	});
 });
 
+describe("buildCodexHooks", () => {
+	it("returns SessionStart, UserPromptSubmit, PreToolUse, and Stop matcher groups", () => {
+		const hooks = buildCodexHooks();
+
+		expect(hooks).toHaveProperty("SessionStart");
+		expect(hooks).toHaveProperty("UserPromptSubmit");
+		expect(hooks).toHaveProperty("PreToolUse");
+		expect(hooks).toHaveProperty("Stop");
+		expect(hooks).not.toHaveProperty("PermissionRequest");
+		expect(hooks.SessionStart).toHaveLength(1);
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		expect(hooks.PreToolUse).toHaveLength(1);
+		expect(hooks.Stop).toHaveLength(1);
+	});
+
+	it("SessionStart hook uses startup|resume matcher and moves to in-progress", () => {
+		const hooks = buildCodexHooks();
+		const group = hooks.SessionStart[0];
+		const cmd = group.hooks[0].command;
+
+		expect(group.matcher).toBe("startup|resume");
+		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+	});
+
+	it("PreToolUse hook is scoped to Bash and moves to in-progress", () => {
+		const hooks = buildCodexHooks();
+		const group = hooks.PreToolUse[0];
+		const cmd = group.hooks[0].command;
+
+		expect(group.matcher).toBe("Bash");
+		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+	});
+
+	it("Stop hook with review-by-ai stopTarget creates two matcher groups", () => {
+		const hooks = buildCodexHooks({ stopTarget: "review-by-ai" });
+
+		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
+		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+	});
+});
+
+describe("mergeCodexHooks", () => {
+	it("adds hooks to empty settings", () => {
+		const result = mergeCodexHooks({});
+
+		expect(result.hooks).toBeDefined();
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
+		expect(hooks.SessionStart).toHaveLength(1);
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		expect(hooks.PreToolUse).toHaveLength(1);
+		expect(hooks.Stop).toHaveLength(1);
+	});
+
+	it("preserves existing hooks on unrelated events", () => {
+		const existing = {
+			hooks: {
+				PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo post" }] }],
+			},
+		};
+		const result = mergeCodexHooks(existing);
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.PostToolUse).toHaveLength(1);
+		expect(hooks.SessionStart).toHaveLength(1);
+		expect(hooks.Stop).toHaveLength(1);
+	});
+
+	it("preserves non-dev3 matcher groups on the same events", () => {
+		const existing = {
+			hooks: {
+				PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo audit" }] }],
+				Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
+			},
+		};
+		const result = mergeCodexHooks(existing);
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.PreToolUse).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(2);
+	});
+
+	it("is idempotent", () => {
+		const first = mergeCodexHooks({}, { stopTarget: "review-by-ai" });
+		const second = mergeCodexHooks(first as Record<string, unknown>, { stopTarget: "review-by-ai" });
+		const hooks = second.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.SessionStart).toHaveLength(1);
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		expect(hooks.PreToolUse).toHaveLength(1);
+		expect(hooks.Stop).toHaveLength(2);
+	});
+});
+
 describe("writeClaudeHooks", () => {
 	let tmp: string;
 
@@ -367,6 +472,78 @@ describe("writeClaudeHooks", () => {
 
 		writeClaudeHooks(tmp);
 		const second = readFileSync(settingsPath, "utf-8");
+
+		expect(first).toBe(second);
+	});
+});
+
+describe("writeCodexHooks", () => {
+	let tmp: string;
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "agent-hooks-codex-test-"));
+	});
+
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("creates .codex dir and hooks file from scratch", () => {
+		writeCodexHooks(tmp);
+
+		const hooksPath = join(tmp, ".codex", "hooks.json");
+		const content = JSON.parse(readFileSync(hooksPath, "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.SessionStart).toHaveLength(1);
+		expect(hooks.UserPromptSubmit).toHaveLength(1);
+		expect(hooks.PreToolUse).toHaveLength(1);
+		expect(hooks.Stop).toHaveLength(1);
+	});
+
+	it("writes hooks with stopTarget review-by-ai", () => {
+		writeCodexHooks(tmp, { stopTarget: "review-by-ai" });
+
+		const hooksPath = join(tmp, ".codex", "hooks.json");
+		const content = JSON.parse(readFileSync(hooksPath, "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+
+		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
+		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+	});
+
+	it("preserves existing non-hook settings when merging", () => {
+		const codexDir = join(tmp, ".codex");
+		mkdirSync(codexDir, { recursive: true });
+		writeFileSync(join(codexDir, "hooks.json"), JSON.stringify({ version: 1 }));
+
+		writeCodexHooks(tmp);
+
+		const content = JSON.parse(readFileSync(join(codexDir, "hooks.json"), "utf-8"));
+		expect(content.version).toBe(1);
+		expect(content.hooks).toBeDefined();
+	});
+
+	it("overwrites corrupted JSON gracefully", () => {
+		const codexDir = join(tmp, ".codex");
+		mkdirSync(codexDir, { recursive: true });
+		writeFileSync(join(codexDir, "hooks.json"), "NOT VALID JSON{{{");
+
+		writeCodexHooks(tmp);
+
+		const content = JSON.parse(readFileSync(join(codexDir, "hooks.json"), "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+		expect(hooks.Stop).toHaveLength(1);
+	});
+
+	it("produces identical output on repeated writes", () => {
+		writeCodexHooks(tmp, { stopTarget: "review-by-ai" });
+		const hooksPath = join(tmp, ".codex", "hooks.json");
+		const first = readFileSync(hooksPath, "utf-8");
+
+		writeCodexHooks(tmp, { stopTarget: "review-by-ai" });
+		const second = readFileSync(hooksPath, "utf-8");
 
 		expect(first).toBe(second);
 	});

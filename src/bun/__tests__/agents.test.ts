@@ -149,6 +149,18 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("Some task");
 	});
 
+	it("Codex: injects the dev3 reminder into new-session prompts", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("Fresh Codex sessions use hooks");
+		expect(cmd).toContain("shell=\"/bin/bash\"");
+		expect(cmd).toContain("user-questions");
+	});
+
 	// ---- Gemini ----
 	it("Gemini: adds --resume latest when resume=true", () => {
 		const cmd = resolveAgentCommand(

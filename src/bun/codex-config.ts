@@ -21,6 +21,7 @@ interface CodexPermissionsProfile {
 
 interface CodexConfig {
 	default_permissions?: string;
+	features?: Record<string, unknown>;
 	projects?: Record<string, { trust_level?: string; sandbox_mode?: string }>;
 	profiles?: Record<string, Record<string, unknown>>;
 	permissions?: Record<string, CodexPermissionsProfile | undefined>;
@@ -157,6 +158,17 @@ export function ensureCodexConfig(
 		config = appendBlock(config, block);
 	}
 
+	// --- 4. Ensure [features] codex_hooks = true ---
+	const codexHooksEnabled = parsed.features?.codex_hooks === true;
+	if (!codexHooksEnabled) {
+		const featuresHeader = "[features]";
+		if (!config.includes(featuresHeader)) {
+			config = appendBlock(config, `\n${featuresHeader}\ncodex_hooks = true\n`);
+		} else {
+			config = upsertSectionLine(config, featuresHeader, "codex_hooks", "true");
+		}
+	}
+
 	return config;
 }
 
@@ -247,6 +259,29 @@ function insertAfterSectionHeader(
 		"\n" +
 		config.slice(nextNewline + 1)
 	);
+}
+
+function upsertSectionLine(
+	config: string,
+	sectionHeader: string,
+	key: string,
+	value: string,
+): string {
+	const escapedHeader = sectionHeader.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const sectionPattern = new RegExp(`(${escapedHeader}\\n)([\\s\\S]*?)(?=\\n\\[|$)`);
+	const existingKeyPattern = new RegExp(`^${escapedKey}\\s*=\\s*.*$`, "m");
+
+	if (!sectionPattern.test(config)) {
+		return appendBlock(config, `\n${sectionHeader}\n${key} = ${value}\n`);
+	}
+
+	return config.replace(sectionPattern, (_match, header, body) => {
+		if (existingKeyPattern.test(body)) {
+			return `${header}${body.replace(existingKeyPattern, `${key} = ${value}`)}`;
+		}
+		return `${header}${key} = ${value}\n${body}`;
+	});
 }
 
 /**

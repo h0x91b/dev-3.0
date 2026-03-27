@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { exitError } from "../output";
-import { writeClaudeHooks } from "../../shared/agent-hooks";
+import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
 
 const WORKTREES_DIR = `${process.env.HOME || "/tmp"}/.dev3.0/worktrees`;
 
@@ -31,13 +31,20 @@ export async function handleInstallHooks(): Promise<void> {
 		exitError("Cannot detect worktree path", "Run this command from inside a dev-3.0 worktree.");
 	}
 
-	const settingsPath = join(worktreePath, ".claude", "settings.local.json");
+	const claudeSettingsPath = join(worktreePath, ".claude", "settings.local.json");
+	const codexHooksPath = join(worktreePath, ".codex", "hooks.json");
 
 	writeClaudeHooks(worktreePath);
+	writeCodexHooks(worktreePath);
 
-	process.stdout.write(`Installed Claude Code hooks → ${settingsPath}\n`);
+	process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
 	process.stdout.write(`  PreToolUse → in-progress\n`);
 	process.stdout.write(`  PermissionRequest → user-questions\n`);
+	process.stdout.write(`  Stop → review-by-user\n`);
+	process.stdout.write(`Installed Codex hooks → ${codexHooksPath}\n`);
+	process.stdout.write(`  SessionStart → in-progress\n`);
+	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
+	process.stdout.write(`  PreToolUse(Bash) → in-progress\n`);
 	process.stdout.write(`  Stop → review-by-user\n`);
 }

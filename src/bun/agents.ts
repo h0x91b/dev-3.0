@@ -208,6 +208,19 @@ export const DEV3_SYSTEM_PROMPT_GENERIC =
 	"when you start working, `dev3 task move --status user-questions` when you need " +
 	"user input, and `dev3 task move --status review-by-user` when you finish.";
 
+/**
+ * Codex uses automatic hooks for active/review transitions, but still needs
+ * explicit fallback instructions because skill loading is not guaranteed and
+ * Codex has no PermissionRequest hook for user-questions.
+ */
+export const DEV3_SYSTEM_PROMPT_CODEX =
+	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
+	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
+	"Fresh Codex sessions use hooks for `in-progress` and review transitions. " +
+	"If you need user input, move the task to `user-questions` before your final response. " +
+	"If hooks appear inactive in this session, manage statuses manually with `dev3 task move`. " +
+	"For exec_command calls, always set `shell=\"/bin/bash\"` and `login=false`.";
+
 /** Returns true when the resolved base command is the Claude CLI. */
 export function isClaudeCommand(baseCmd: string): boolean {
 	const name = baseCmd.split("/").pop() ?? "";
@@ -340,7 +353,10 @@ export function resolveAgentCommand(
 
 		// Cursor Agent / OpenCode have no --append-system-prompt and no automatic
 		// hooks, so inject the generic system prompt via the prompt argument.
-		if (cursorAgent || openCodeAgent) {
+		// Codex also gets a prompt reminder because skill loading is not guaranteed.
+		if (codexAgent) {
+			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_CODEX}` : DEV3_SYSTEM_PROMPT_CODEX;
+		} else if (cursorAgent || openCodeAgent) {
 			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}` : DEV3_SYSTEM_PROMPT_GENERIC;
 		}
 

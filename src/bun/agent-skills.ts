@@ -74,7 +74,7 @@ const SKILL_PROJECT_CONFIG_REDIRECT = `
 For ANY question about project configuration — setting up scripts (setup, dev, cleanup), clone paths, base branch, sparse checkout, or anything related to \`.dev3/config.json\` / \`.dev3/config.local.json\` — you MUST invoke the \`/dev3-project-config\` skill. Do NOT attempt to configure the project without it. The dedicated skill knows the full schema, auto-detection logic, and correct workflow.
 `;
 
-// Full manual status management — for agents without hooks (Cursor, Codex, Gemini, etc.)
+// Full manual status management — for agents without hooks (Cursor, Gemini, etc.)
 const SKILL_STATUS_MANUAL = `
 ## Task status management (CRITICAL — NON-NEGOTIABLE)
 
@@ -99,6 +99,14 @@ Hooks automatically manage task status transitions (\`in-progress\`, \`user-ques
 Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
 ${SKILL_CUSTOM_COLUMNS}`;
 
+// Codex also uses hooks, but the session must be restarted after config changes.
+const SKILL_STATUS_CODEX_HOOKS = `
+## Task status management
+
+Hooks automatically manage task status transitions (\`in-progress\`, \`review-by-ai\`, \`review-by-user\`) for Codex sessions started after the dev3 config was installed.
+Do NOT call \`dev3 task move\` for normal active/review transitions when hooks are active. If you need user input or clarification, move the task to \`user-questions\` before your final response. If you are in an older Codex session where hooks clearly are not firing yet, fall back to manual status management: move to \`in-progress\` when you start, \`user-questions\` when blocked, and \`review-by-user\` when finished.
+${SKILL_CUSTOM_COLUMNS}`;
+
 const SKILL_CODEX_SHELL = `
 ## Codex shell note
 
@@ -107,6 +115,7 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 
 // Composed bodies for each agent type
 const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT;
+const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
@@ -137,7 +146,24 @@ ${CLAUDE_SKILL_BODY}
 \\\`\\\`\\\`
 `;
 
-// ---- Generic skill for other agents (Cursor, Codex, Gemini, etc.) ----
+// ---- Codex and generic skills (no command injection support) ----
+
+const CODEX_SKILL_CONTENT = `---
+name: dev3
+description: "${SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${CODEX_SKILL_BODY}
+## On session start
+
+Run these two commands to learn about available CLI commands and your current task:
+
+- \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
+- \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
+
+Then begin working. If hooks are not active in this Codex session yet, set \`in-progress\` manually and continue.
+`;
 
 const GENERIC_SKILL_CONTENT = `---
 name: dev3
@@ -159,11 +185,13 @@ Then set \`in-progress\` and begin working.
 /** Claude Code skill directory (supports !`command` injection). */
 const CLAUDE_SKILL_DIR = ".claude/skills/dev3";
 
+/** Codex skill directory (hook-aware, but no command injection support). */
+const CODEX_SKILL_DIR = ".codex/skills/dev3";
+
 /** Generic agent skill directories (no command injection support). */
 const GENERIC_SKILL_DIRS = [
 	".cursor/skills/dev3",
 	".agents/skills/dev3",
-	".codex/skills/dev3",
 	".gemini/skills/dev3",
 	".opencode/skills/dev3",
 	".config/opencode/skills/dev3",
@@ -435,6 +463,20 @@ export function installAgentSkills(): void {
 	} catch (err) {
 		log.warn("Failed to install Claude skill (non-fatal)", {
 			path: claudeSkillFile,
+			error: String(err),
+		});
+	}
+
+	// Install Codex-specific skill (hook-aware + shell note)
+	const codexSkillDir = `${home}/${CODEX_SKILL_DIR}`;
+	const codexSkillFile = `${codexSkillDir}/SKILL.md`;
+	try {
+		mkdirSync(codexSkillDir, { recursive: true });
+		writeFileSync(codexSkillFile, CODEX_SKILL_CONTENT, "utf-8");
+		log.info("Codex skill installed", { path: codexSkillFile });
+	} catch (err) {
+		log.warn("Failed to install Codex skill (non-fatal)", {
+			path: codexSkillFile,
 			error: String(err),
 		});
 	}
