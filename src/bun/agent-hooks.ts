@@ -10,10 +10,17 @@
 
 import type { TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
-import { isClaudeCommand } from "./agents";
-import { writeClaudeHooks } from "../shared/agent-hooks";
+import { isClaudeCommand, isCodexCommand } from "./agents";
+import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
 
-export { buildClaudeHooks, mergeClaudeHooks, writeClaudeHooks } from "../shared/agent-hooks";
+export {
+	buildClaudeHooks,
+	buildCodexHooks,
+	mergeClaudeHooks,
+	mergeCodexHooks,
+	writeClaudeHooks,
+	writeCodexHooks,
+} from "../shared/agent-hooks";
 
 const log = createLogger("agent-hooks");
 
@@ -29,6 +36,13 @@ export function setupAgentHooks(
 	if (isClaudeCommand(baseCommand)) {
 		writeClaudeHooks(worktreePath, options);
 		log.info("Claude hooks installed", {
+			worktreePath,
+		});
+		return;
+	}
+	if (isCodexCommand(baseCommand)) {
+		writeCodexHooks(worktreePath, options);
+		log.info("Codex hooks installed", {
 			worktreePath,
 		});
 		return;

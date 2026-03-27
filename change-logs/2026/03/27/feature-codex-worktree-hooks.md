@@ -1,0 +1,1 @@
+Codex tasks now install worktree-local dev3 hooks and enable the `codex_hooks` feature automatically, so `in-progress` and review transitions work like Claude without relying only on manual skill instructions. Codex also gets a hook-aware dev3 skill plus a launch-time fallback reminder for `user-questions` and older sessions.

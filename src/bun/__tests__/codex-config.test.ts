@@ -24,6 +24,8 @@ describe("ensureCodexConfig", () => {
 			// Config profile
 			expect(result).toContain("[profiles.dev3]");
 			expect(result).toContain('web_search = "live"');
+			expect(result).toContain("[features]");
+			expect(result).toContain("codex_hooks = true");
 		});
 
 		it("does NOT set default_permissions", () => {
@@ -70,6 +72,9 @@ allow_unix_sockets = ["${SOCKETS_PATH}"]
 
 [profiles.dev3]
 web_search = "live"
+
+[features]
+codex_hooks = true
 `;
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			const projectMatches = result.match(/\[projects\."[^"]*worktrees"\]/g);
@@ -78,6 +83,31 @@ web_search = "live"
 			expect(netMatches).toHaveLength(1);
 			const profileMatches = result.match(/\[profiles\.dev3\]/g);
 			expect(profileMatches).toHaveLength(1);
+			const featuresMatches = result.match(/\[features\]/g);
+			expect(featuresMatches).toHaveLength(1);
+		});
+	});
+
+	describe("when features section exists", () => {
+		it("adds codex_hooks without removing other feature flags", () => {
+			const existing = `[features]
+experimental_resume = true
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+
+			expect(result).toContain("[features]");
+			expect(result).toContain("experimental_resume = true");
+			expect(result).toContain("codex_hooks = true");
+		});
+
+		it("updates codex_hooks to true when it was false", () => {
+			const existing = `[features]
+codex_hooks = false
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+
+			expect(result).toContain("codex_hooks = true");
+			expect(result).not.toContain("codex_hooks = false");
 		});
 	});
 
