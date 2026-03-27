@@ -186,6 +186,7 @@ const {
 	stopPRDetectionPoller,
 	resolveBinaryPath,
 	launchTaskPty,
+	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
 } = await import("../rpc-handlers");
@@ -1423,6 +1424,40 @@ describe("handlers.editTask", () => {
 		await expect(
 			handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "Edit" }),
 		).rejects.toThrow("Can only edit tasks in todo status");
+	});
+});
+
+describe("resolveOperationalProjectConfig", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("prefers project-level operational scripts over stale worktree config", async () => {
+		const projectResolved = makeProject({
+			setupScript: "project setup",
+			devScript: "project dev",
+			cleanupScript: "project cleanup",
+			...( { setupScriptLaunchMode: "blocking" } as any ),
+		});
+		const worktreeResolved = makeProject({
+			setupScript: "worktree setup",
+			devScript: "worktree dev",
+			cleanupScript: "worktree cleanup",
+			defaultBaseBranch: "release",
+			...( { setupScriptLaunchMode: "parallel" } as any ),
+		});
+
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(projectResolved)
+			.mockResolvedValueOnce(worktreeResolved);
+
+		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
+
+		expect(repoConfig.resolveProjectConfig).toHaveBeenNthCalledWith(1, projectResolved);
+		expect(repoConfig.resolveProjectConfig).toHaveBeenNthCalledWith(2, projectResolved, "/tmp/wt");
+		expect(resolved.setupScript).toBe("project setup");
+		expect(resolved.devScript).toBe("project dev");
+		expect(resolved.cleanupScript).toBe("project cleanup");
+		expect((resolved as any).setupScriptLaunchMode).toBe("blocking");
+		expect(resolved.defaultBaseBranch).toBe("release");
 	});
 });
 

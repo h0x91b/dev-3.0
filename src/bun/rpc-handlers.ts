@@ -691,7 +691,7 @@ export async function activateTask(
 	const preResolved = await repoConfig.resolveProjectConfig(project);
 	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
 	// Re-resolve from the worktree to pick up any .dev3/config.json on the branch
-	const resolved = await repoConfig.resolveProjectConfig(project, wt.worktreePath);
+	const resolved = await resolveOperationalProjectConfig(project, wt.worktreePath);
 	if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: resolved.sparseCheckoutPaths });
 		await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
@@ -747,6 +747,24 @@ export async function isTaskInProgress(taskId: string): Promise<boolean> {
 
 const DEFAULT_CLEANUP_SCRIPT = 'echo "Task finished"';
 
+/**
+ * Runtime operational scripts should follow the current project-level .dev3 config,
+ * even when an older task branch carries a stale committed copy in its worktree.
+ */
+export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
+	const projectResolved = await repoConfig.resolveProjectConfig(project);
+	if (!worktreePath || worktreePath === project.path) return projectResolved;
+
+	const worktreeResolved = await repoConfig.resolveProjectConfig(project, worktreePath);
+	return {
+		...worktreeResolved,
+		setupScript: projectResolved.setupScript,
+		setupScriptLaunchMode: projectResolved.setupScriptLaunchMode,
+		devScript: projectResolved.devScript,
+		cleanupScript: projectResolved.cleanupScript,
+	};
+}
+
 export async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath) return;
 
@@ -758,7 +776,7 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 		return;
 	}
 
-	const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath);
 	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
@@ -1895,7 +1913,7 @@ export const handlers = {
 							: undefined;
 						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
-						const resolved = await repoConfig.resolveProjectConfig(resolvedProject, wt.worktreePath);
+						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
@@ -1995,7 +2013,7 @@ export const handlers = {
 					try {
 						const wt = await git.createWorktree(resolvedProject, task);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
-						const resolved = await repoConfig.resolveProjectConfig(resolvedProject, wt.worktreePath);
+						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
 						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
 						}
@@ -2065,7 +2083,7 @@ export const handlers = {
 		try {
 			const project = await data.getProject(params.projectId);
 			const task = await data.getTask(project, params.taskId);
-			const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath ?? undefined);
+			const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
 
 			if (!resolved.devScript.trim()) throw new Error("No dev script configured");
 			if (!task.worktreePath) throw new Error("Task has no worktree");
