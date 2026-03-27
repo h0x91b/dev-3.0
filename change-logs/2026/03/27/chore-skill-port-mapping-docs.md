@@ -1,0 +1,1 @@
+Improved the dev3-project-config skill with mandatory port discovery and mapping instructions (step 3a). Agents now must inspect the repo's actual dev/runtime configuration, wire DEV3_PORT0..N into proven project port settings, and avoid guessing generic framework env vars when the repo does not prove the mapping.
