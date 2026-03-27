@@ -1,0 +1,1 @@
+Add the same Trivy filesystem scan used in the neighboring repository to the pull request build workflow. The scan now runs in parallel with the other PR checks and posts or updates a PR comment with a markdown summary table.

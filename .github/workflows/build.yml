@@ -109,3 +109,104 @@ jobs:
 
       - name: Build check
         run: bunx vite build && bun run build:cli
+
+  trivy-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          output: 'trivy-results.txt'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          trivy-config: ''
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: 'true'
+        continue-on-error: true
+
+      - name: Post Trivy results to PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## 🔍 Trivy Vulnerability Scan\n\n';
+            if (fs.existsSync('trivy-results.txt')) {
+              const results = fs.readFileSync('trivy-results.txt', 'utf8').trim();
+              if (results.length === 0) {
+                body += '✅ No vulnerabilities found.\n';
+              } else {
+                const lines = results
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter(Boolean);
+                const tableLines = lines.filter((line) => line.startsWith('│'));
+                const legendIndex = lines.findIndex((line) => line === 'Legend:');
+
+                if (tableLines.length >= 2) {
+                  const parseRow = (line) =>
+                    line
+                      .split('│')
+                      .slice(1, -1)
+                      .map((cell) => cell.trim());
+
+                  const header = parseRow(tableLines[0]);
+                  const rows = tableLines.slice(1).map(parseRow);
+
+                  body += '### Report Summary\n\n';
+                  body += `| ${header.join(' | ')} |\n`;
+                  body += `| ${header.map(() => '---').join(' | ')} |\n`;
+                  body += rows.map((row) => `| ${row.join(' | ')} |`).join('\n');
+                  body += '\n';
+
+                  if (legendIndex !== -1) {
+                    const legendLines = lines
+                      .slice(legendIndex + 1)
+                      .filter((line) => line.startsWith('-'));
+                    if (legendLines.length > 0) {
+                      body += '\n';
+                      body += legendLines.join('\n');
+                      body += '\n';
+                    }
+                  }
+                } else {
+                  body += '### Raw Output\n\n';
+                  body += '```\n' + results + '\n```\n';
+                }
+              }
+            } else {
+              body += '⚠️ Trivy results file not found.\n';
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const trivyComment = comments.find((comment) =>
+              comment.body.includes('Trivy Vulnerability Scan'),
+            );
+            if (trivyComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: trivyComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+        continue-on-error: true
