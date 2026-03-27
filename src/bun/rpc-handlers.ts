@@ -233,6 +233,12 @@ export function resolveBinaryPath(binaryName: string, customPath?: string): { re
 }
 
 // Will be set by index.ts after window creation
+import { broadcastToOtherInstances } from "./instance-broadcast";
+
+/** Raw push — local renderer only (no cross-instance broadcast). */
+let pushMessageRaw: ((name: string, payload: any) => void) | null = null;
+
+/** Wrapped push — local renderer + broadcast to other instances. */
 let pushMessage: ((name: string, payload: any) => void) | null = null;
 
 function devServerSessionName(taskId: string): string {
@@ -425,11 +431,28 @@ function buildDiffCommand(toolId: DiffToolId, customCommand: string | undefined,
 }
 
 export function setPushMessage(fn: (name: string, payload: any) => void): void {
-	pushMessage = fn;
+	pushMessageRaw = fn;
+	pushMessage = (name, payload) => {
+		fn(name, payload);
+		if (name === "taskUpdated" || name === "projectUpdated") {
+			const params: Record<string, string> = { event: name };
+			if (payload.projectId) params.projectId = payload.projectId;
+			if (payload.project?.id) params.projectId = payload.project.id;
+			if (payload.task?.id) params.taskId = payload.task.id;
+			broadcastToOtherInstances(name, params);
+		}
+	};
 }
 
+/** Returns push function that broadcasts to other instances. Used by most call sites. */
 export function getPushMessage(): ((name: string, payload: any) => void) | null {
 	return pushMessage;
+}
+
+/** Returns push function that only notifies the local renderer (no broadcast).
+ *  Used by the _notify handler to prevent infinite loops. */
+export function getPushMessageLocal(): ((name: string, payload: any) => void) | null {
+	return pushMessageRaw;
 }
 
 export function isActive(status: TaskStatus): boolean {

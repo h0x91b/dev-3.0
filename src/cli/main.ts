@@ -10,6 +10,7 @@ import { handleLabel } from "./commands/label";
 import { handleInstallHooks } from "./commands/install-hooks";
 import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
+import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 
 const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
@@ -54,7 +55,7 @@ async function main(): Promise<void> {
 	}
 
 	if (rawArgs.includes("--version") || rawArgs.includes("-v")) {
-		process.stdout.write("dev3 cli v0.1.0\n");
+		process.stdout.write(`dev3 v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
 		process.exit(0);
 	}
 

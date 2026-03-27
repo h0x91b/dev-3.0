@@ -299,6 +299,34 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		],
 		defaultConfigId: "cursor-default",
 	},
+	{
+		id: "builtin-opencode",
+		name: "Oh My OpenCode",
+		baseCommand: "opencode",
+		isDefault: true,
+		installCommand: "bunx oh-my-openagent install",
+		installUrl: "https://github.com/code-yeongyu/oh-my-openagent",
+		configurations: [
+			// --- Sisyphus (Orchestrator) ---
+			{ id: "opencode-default", name: "Orchestrator / Sisyphus (Opus 4.6)", model: "anthropic/claude-opus-4-6", additionalArgs: ["--agent", "sisyphus"], version: 2 },
+			{ id: "opencode-sisyphus-sonnet", name: "Orchestrator / Sisyphus (Sonnet 4.6)", model: "anthropic/claude-sonnet-4-6", additionalArgs: ["--agent", "sisyphus"], version: 2 },
+			{ id: "opencode-sisyphus-gpt54", name: "Orchestrator / Sisyphus (GPT-5.4)", model: "openai/gpt-5.4", additionalArgs: ["--agent", "sisyphus"], version: 2 },
+			// --- Prometheus (Planner) ---
+			{ id: "opencode-prometheus", name: "Planner / Prometheus (Opus 4.6)", model: "anthropic/claude-opus-4-6", additionalArgs: ["--agent", "prometheus"], version: 2 },
+			{ id: "opencode-prometheus-gpt54", name: "Planner / Prometheus (GPT-5.4)", model: "openai/gpt-5.4", additionalArgs: ["--agent", "prometheus"], version: 2 },
+			// --- Atlas (Executor) ---
+			{ id: "opencode-atlas", name: "Executor / Atlas (Sonnet 4.6)", model: "anthropic/claude-sonnet-4-6", additionalArgs: ["--agent", "atlas"], version: 2 },
+			{ id: "opencode-atlas-gpt54", name: "Executor / Atlas (GPT-5.4)", model: "openai/gpt-5.4", additionalArgs: ["--agent", "atlas"], version: 2 },
+			// --- Hephaestus (Deep Worker) ---
+			{ id: "opencode-hephaestus", name: "Deep Worker / Hephaestus (GPT-5.4)", model: "openai/gpt-5.4", additionalArgs: ["--agent", "hephaestus"], version: 2 },
+			{ id: "opencode-hephaestus-codex", name: "Deep Worker / Hephaestus (5.3 Codex)", model: "openai/gpt-5.3-codex", additionalArgs: ["--agent", "hephaestus"], version: 2 },
+			// --- Simple (no agent) ---
+			{ id: "opencode-haiku", name: "Haiku 4.5", model: "anthropic/claude-haiku-4-5", version: 1 },
+			{ id: "opencode-gpt54-mini", name: "GPT-5.4 Mini", model: "openai/gpt-5.4-mini", version: 1 },
+			{ id: "opencode-big-pickle", name: "Big Pickle (Free)", model: "opencode/big-pickle", version: 1 },
+		],
+		defaultConfigId: "opencode-default",
+	},
 ];
 
 export type TerminalKeymapPreset = "default" | "iterm2";

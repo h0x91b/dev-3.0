@@ -81,7 +81,7 @@ function Select({
 				<div
 					ref={dropdownRef}
 					style={{ position: "fixed", top: dropdownStyle.top, left: dropdownStyle.left, width: dropdownStyle.width, zIndex: 9999 }}
-					className="bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/50 overflow-hidden"
+					className="bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/50 overflow-y-auto max-h-72"
 				>
 					{options.map((opt) => (
 						<button

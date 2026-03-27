@@ -8,6 +8,7 @@ const SKILL_PATHS = [
 	".codex/skills/dev3/SKILL.md",
 	".gemini/skills/dev3/SKILL.md",
 	".opencode/skills/dev3/SKILL.md",
+	".config/opencode/skills/dev3/SKILL.md",
 ];
 
 export async function handleInstallSkills(): Promise<void> {

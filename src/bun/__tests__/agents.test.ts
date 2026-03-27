@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, isOpenCodeCommand, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 
 const makeAgent = (overrides?: Partial<CodingAgent>): CodingAgent => ({
@@ -27,13 +27,27 @@ const makeCtx = (overrides?: Partial<TemplateContext>): TemplateContext => ({
 	...overrides,
 });
 
+describe("isOpenCodeCommand", () => {
+	it.each([
+		["opencode", true],
+		["/opt/homebrew/bin/opencode", true],
+		["claude", false],
+		["codex", false],
+		["bash", false],
+	])("%s → %s", (cmd, expected) => {
+		expect(isOpenCodeCommand(cmd)).toBe(expected);
+	});
+});
+
 describe("supportsResume", () => {
 	it.each([
 		["claude", true],
 		["codex", true],
 		["gemini", true],
 		["agent", true],
+		["opencode", true],
 		["/usr/local/bin/claude", true],
+		["/opt/homebrew/bin/opencode", true],
 		["bash", false],
 		["aider", false],
 		["my-custom-agent", false],
@@ -180,8 +194,9 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).not.toContain("--continue");
-		// Cursor injects DEV3_SYSTEM_PROMPT via prompt
+		// Cursor injects generic DEV3_SYSTEM_PROMPT via prompt (no hooks)
 		expect(cmd).toContain("MANDATORY");
+		expect(cmd).toContain("dev3 task move");
 	});
 
 	// ---- skipSystemPrompt ----
@@ -216,6 +231,83 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).toContain("--append-system-prompt");
+	});
+
+	// ---- OpenCode ----
+	it("OpenCode: adds --continue when resume=true", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({ model: "anthropic/claude-opus-4-6" }),
+			makeCtx({ taskDescription: "Some task" }),
+			{ resume: true },
+		);
+
+		expect(cmd).toContain("--continue");
+		expect(cmd).not.toContain("Some task");
+	});
+
+	it("OpenCode: uses --prompt flag for prompt (not positional)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({ model: "anthropic/claude-opus-4-6" }),
+			makeCtx({ taskDescription: "Fix the login bug" }),
+		);
+
+		expect(cmd).toContain("--prompt");
+		expect(cmd).toContain("Fix the login bug");
+		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
+	});
+
+	it("OpenCode: injects generic system prompt (not Claude hooks variant)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("--prompt");
+		expect(cmd).toContain("MANDATORY");
+		expect(cmd).toContain("dev3 task move");
+		expect(cmd).not.toContain("managed automatically by hooks");
+	});
+
+	it("OpenCode: does not emit --permission-mode, --effort, or --max-budget-usd", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({
+				model: "anthropic/claude-opus-4-6",
+				permissionMode: "bypassPermissions",
+				effort: "high",
+				maxBudgetUsd: 10,
+			}),
+			makeCtx(),
+		);
+
+		expect(cmd).not.toContain("--permission-mode");
+		expect(cmd).not.toContain("--effort");
+		expect(cmd).not.toContain("--max-budget-usd");
+	});
+
+	it("OpenCode: does not emit --append-system-prompt", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig(),
+			makeCtx(),
+		);
+
+		expect(cmd).not.toContain("--append-system-prompt");
+	});
+
+	it("OpenCode: passes additionalArgs (e.g. --agent sisyphus)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({ model: "anthropic/claude-opus-4-6", additionalArgs: ["--agent", "sisyphus"] }),
+			makeCtx({ taskDescription: "Build feature" }),
+		);
+
+		expect(cmd).toContain("--agent sisyphus");
+		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
+		expect(cmd).toContain("--prompt");
 	});
 
 	// ---- Unsupported agents ----
