@@ -1,0 +1,1 @@
+Improved the dev3-project-config skill with mandatory port discovery and mapping instructions (step 3a). Agents now must research project port env vars and wire DEV3_PORT0..N into devScript before writing the config, preventing port allocation without actual usage.

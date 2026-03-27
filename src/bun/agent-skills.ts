@@ -207,7 +207,34 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`defaultCompareRefMode\` | Default diff comparison target. Use \`"remote"\` for \`origin/<baseBranch>\` (recommended default) or \`"local"\` for the local base branch. |
    | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
-   | \`portCount\` | Number of ports to auto-allocate per task/worktree. Set to 0 (default) to disable. Look at \`package.json\` scripts and \`docker-compose.yml\` to estimate how many concurrent ports the dev stack needs (e.g., frontend + backend + DB = 3). Allocated ports are injected as \`$DEV3_PORT0\`, \`$DEV3_PORT1\`, ..., \`$DEV3_PORTS\` (comma-separated), and \`$DEV3_PORT_COUNT\`. |
+   | \`portCount\` | Number of ports to auto-allocate per task/worktree. Set to 0 (default) to disable. Look at \`package.json\` scripts and \`docker-compose.yml\` to estimate how many concurrent ports the dev stack needs (e.g., frontend + backend + DB = 3). **Setting portCount alone is NOT enough** — you MUST also complete step 3a (port mapping) to wire the allocated ports into the project. |
+
+3a. **Port discovery & mapping (MANDATORY when portCount > 0).**
+   \`portCount\` only allocates ports — the project won't use them until you wire them into its own env vars.
+   Dev3 injects: \`$DEV3_PORT0\`, \`$DEV3_PORT1\`, … \`$DEV3_PORTS\` (comma-separated), \`$DEV3_PORT_COUNT\`.
+   The project has its **own** port env vars (e.g., \`VITE_PORT\`, \`PORT\`, \`API_PORT\`). You must bridge them.
+
+   **Research steps (do this BEFORE writing the config):**
+   - Search the codebase for port-related env vars and hardcoded port numbers (patterns: \`PORT\`, \`localhost:\`, \`127.0.0.1:\`, \`0.0.0.0:\`)
+   - Check \`package.json\` scripts for port references (\`--port\`, \`PORT=\`, \`localhost:XXXX\`)
+   - Check config files (\`vite.config.*\`, \`next.config.*\`, \`webpack.config.*\`, \`docker-compose.yml\`, \`.env.example\`) for port settings
+   - Identify which env var controls each port and what its default value is
+
+   **Wire ports in \`devScript\`.** Prepend env var assignments using \`\${DEV3_PORTx:-default}\` syntax so dev3's allocated port is forwarded to the project's own env var:
+   \`\`\`
+   "devScript": "VITE_PORT=\${DEV3_PORT0:-5173} API_PORT=\${DEV3_PORT1:-3001} bun run dev"
+   \`\`\`
+   The \`:-default\` fallback ensures the command still works when run manually (outside dev3).
+
+   **Common frameworks & their port env vars:**
+   | Framework | Env var | Default |
+   |-----------|---------|---------|
+   | Vite | \`VITE_PORT\` or \`PORT\` | 5173 |
+   | Next.js / CRA / Express | \`PORT\` | 3000 |
+   | Django | \`DJANGO_PORT\` or \`PORT\` | 8000 |
+   | Flask | \`FLASK_RUN_PORT\` | 5000 |
+
+   If the project hardcodes a port with no env var support, try \`PORT=\${DEV3_PORT0:-XXXX}\` — many frameworks read \`PORT\` implicitly. If nothing works, set \`portCount: 0\` and note why in the commit message.
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
@@ -216,7 +243,7 @@ mkdir -p .dev3
 cat > .dev3/config.json << 'EOF'
 {
   "setupScript": "bun install",
-  "devScript": "bun run dev",
+  "devScript": "VITE_PORT=\${DEV3_PORT0:-5173} API_PORT=\${DEV3_PORT1:-3001} bun run dev",
   "cleanupScript": "rm -rf dist node_modules/.cache",
   "clonePaths": ["node_modules"],
   "defaultBaseBranch": "main",
@@ -247,7 +274,7 @@ EOF
 | \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
 | \`sparseCheckoutEnabled\` | boolean | Enable sparse checkout for worktrees (default: \`false\`) |
 | \`sparseCheckoutPaths\` | string[] | Paths to include in sparse checkout |
-| \`portCount\` | number | Ports to allocate per task (injected as \`DEV3_PORT0\`..N env vars). Default: \`0\` |
+| \`portCount\` | number | Ports to allocate per task (injected as \`DEV3_PORT0\`..N env vars). Default: \`0\`. **You must map these to the project's own port env vars in \`devScript\` — see step 3a.** |
 
 **Only include these fields.** Unknown keys are silently ignored. Do NOT include project metadata (id, name, path).
 
