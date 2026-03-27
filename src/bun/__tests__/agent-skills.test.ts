@@ -8,6 +8,18 @@ describe("dev3-project-config skill content", () => {
 		);
 	});
 
+	it("keeps port discovery guidance tool-agnostic", () => {
+		expect(getProjectConfigSkillContent()).toContain(
+			"Inspect the codebase and dev/runtime configuration to estimate how many concurrent ports the dev stack needs",
+		);
+		expect(getProjectConfigSkillContent()).toContain(
+			"Check app start commands and dev scripts for port references",
+		);
+		expect(getProjectConfigSkillContent()).not.toContain(
+			"Look at `package.json` scripts and `docker-compose.yml` to estimate",
+		);
+	});
+
 	it("forbids inferring env vars from the framework name alone", () => {
 		expect(getProjectConfigSkillContent()).toContain(
 			"Do NOT infer env vars from the framework name alone.",

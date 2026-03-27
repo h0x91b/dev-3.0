@@ -207,7 +207,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`defaultCompareRefMode\` | Default diff comparison target. Use \`"remote"\` for \`origin/<baseBranch>\` (recommended default) or \`"local"\` for the local base branch. |
    | \`peerReviewEnabled\` | Default \`true\`. Only set \`false\` for personal/solo projects. |
-   | \`portCount\` | Number of ports to auto-allocate per task/worktree. Set to 0 (default) to disable. Look at \`package.json\` scripts and \`docker-compose.yml\` to estimate how many concurrent ports the dev stack needs (e.g., frontend + backend + DB = 3). **Setting portCount alone is NOT enough** — you MUST also complete step 3a (port mapping) to wire the allocated ports into the project. |
+   | \`portCount\` | Number of ports to auto-allocate per task/worktree. Set to 0 (default) to disable. Inspect the codebase and dev/runtime configuration to estimate how many concurrent ports the dev stack needs (e.g., frontend + backend + DB = 3). Common sources include app start scripts, compose files, container configs, process managers, and framework config files. **Setting portCount alone is NOT enough** — you MUST also complete step 3a (port mapping) to wire the allocated ports into the project. |
 
 3a. **Port discovery & mapping (MANDATORY when portCount > 0).**
    \`portCount\` only allocates ports — the project won't use them until you wire them into its own env vars.
@@ -216,8 +216,8 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
 
    **Research steps (do this BEFORE writing the config):**
    - Search the codebase for port-related env vars and hardcoded port numbers (patterns: \`PORT\`, \`localhost:\`, \`127.0.0.1:\`, \`0.0.0.0:\`)
-   - Check \`package.json\` scripts for port references (\`--port\`, \`PORT=\`, \`localhost:XXXX\`)
-   - Check config files (\`vite.config.*\`, \`next.config.*\`, \`webpack.config.*\`, \`docker-compose.yml\`, \`.env.example\`) for port settings
+   - Check app start commands and dev scripts for port references (\`--port\`, \`PORT=\`, \`localhost:XXXX\`). For example: \`package.json\` scripts, Make targets, shell scripts, Procfiles, npm/bun/pnpm task runners.
+   - Check project config and infrastructure files for port settings. For example: \`vite.config.*\`, \`next.config.*\`, \`webpack.config.*\`, compose files, Docker files, \`.env.example\`, service configs.
    - Identify which env var controls each port and what its default value is
    - For every mapping, record the exact evidence from this repo (file + env var/flag), e.g. "\`vite.config.ts\` reads \`process.env.VITE_PORT\`"
    - Do NOT infer env vars from the framework name alone. Only map env vars or CLI flags you actually found in this project.
