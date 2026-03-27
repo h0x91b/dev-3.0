@@ -111,7 +111,6 @@ jobs:
         run: bunx vite build && bun run build:cli
 
   trivy-scan:
-    needs: [lint, test, build-check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
