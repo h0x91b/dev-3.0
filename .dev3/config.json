@@ -1,6 +1,5 @@
 {
-  "setupScript": "echo \"first sleep 10 seconds\"\nsleep 10\necho setup\nbun install",
-  "setupScriptLaunchMode": "blocking",
+  "setupScript": "echo setup\nbun install",
   "devScript": "bun run dev",
   "clonePaths": [
     "node_modules",
