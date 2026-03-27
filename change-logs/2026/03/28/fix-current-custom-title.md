@@ -1,0 +1,1 @@
+Fixed `dev3 current` so it shows the effective task title, including `customTitle` overrides set by `dev3 task update --title`. Added CLI tests covering both live-socket and offline output paths to prevent regressions.

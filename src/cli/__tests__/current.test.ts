@@ -8,8 +8,15 @@ vi.mock("../socket-client", () => ({
 
 vi.mock("../context", () => ({
 	detectContext: vi.fn(),
+	detectContextDiagnostics: vi.fn(() => "mock diagnostics"),
 	readProjectDirect: vi.fn(),
 	readTaskDirect: vi.fn(),
+}));
+
+vi.mock("../../shared/build-info.generated", () => ({
+	BUILD_TIME: "Sat, 28 Mar 2026 · 00:00:00",
+	BUILD_COMMIT: "deadbeef",
+	BUILD_VERSION: "test",
 }));
 
 import { handleCurrent } from "../commands/current";
@@ -109,6 +116,24 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
+		it("shows custom title from live task data when present", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: SOCKET,
+			});
+			mockSend.mockResolvedValue(okResp({
+				...FAKE_TASK,
+				customTitle: "Test 1",
+			}));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toContain("Test 1");
+			expect(stdoutOutput).not.toContain("Implement auth");
+		});
+
 		it("shows description when different from title", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",
@@ -203,6 +228,24 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("(offline)");
 			// Should NOT call sendRequest
 			expect(mockSend).not.toHaveBeenCalled();
+		});
+
+		it("shows custom title from offline task data when present", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: "",
+			});
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+			mockReadTask.mockReturnValue({
+				...FAKE_TASK,
+				customTitle: "Test 1",
+			});
+
+			await handleCurrent(null);
+
+			expect(stdoutOutput).toContain("Test 1");
+			expect(stdoutOutput).not.toContain("Implement auth");
 		});
 
 		it("shows minimal info when task data not available offline", async () => {

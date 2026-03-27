@@ -1,5 +1,5 @@
 import type { Project, Task } from "../../shared/types";
-import { STATUS_LABELS } from "../../shared/types";
+import { STATUS_LABELS, getTaskTitle } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError } from "../output";
@@ -31,6 +31,7 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 			if (resp.ok) {
 				const task = resp.data as Task;
 				const project = readProjectDirect(context.projectId);
+				const displayTitle = getTaskTitle(task);
 
 				const statusDisplay = task.customColumnId
 					? `${STATUS_LABELS[task.status] || task.status} (in custom column)`
@@ -41,21 +42,21 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 					["Project ID:", context.projectId],
 					["Task ID:", task.id],
 					["Seq:", String(task.seq)],
-					["Title:", task.title],
+					["Title:", displayTitle],
 					["Status:", statusDisplay],
 				];
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 
-				if (task.description && task.description !== task.title) {
+				if (task.description && task.description !== displayTitle) {
 					fields.push(["", ""]);
 					fields.push(["Description:", ""]);
 				}
 
 				printDetail(fields);
 
-				if (task.description && task.description !== task.title) {
+				if (task.description && task.description !== displayTitle) {
 					for (const line of task.description.split("\n")) {
 						process.stdout.write(`  ${line}\n`);
 					}
@@ -94,14 +95,17 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 	];
 
 	if (task) {
+		const displayTask = task as Pick<Task, "title" | "customTitle">;
+		const displayTitle = getTaskTitle(displayTask as Task);
+
 		if (task.seq !== undefined) fields.push(["Seq:", String(task.seq)]);
-		if (task.title) fields.push(["Title:", task.title as string]);
+		if (displayTitle) fields.push(["Title:", displayTitle]);
 		if (task.status) fields.push(["Status:", STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] || (task.status as string)]);
 		if (task.branchName) fields.push(["Branch:", task.branchName as string]);
 		if (task.worktreePath) fields.push(["Worktree:", task.worktreePath as string]);
 
 		const desc = task.description as string | undefined;
-		if (desc && desc !== (task.title as string)) {
+		if (desc && desc !== displayTitle) {
 			fields.push(["", ""]);
 			fields.push(["Description:", ""]);
 		}
@@ -111,7 +115,7 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 		printDetail(fields);
 
-		if (desc && desc !== (task.title as string)) {
+		if (desc && desc !== displayTitle) {
 			for (const line of desc.split("\n")) {
 				process.stdout.write(`  ${line}\n`);
 			}
