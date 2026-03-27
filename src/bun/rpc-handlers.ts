@@ -982,6 +982,7 @@ export async function launchTaskPty(
 
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
+		const setupScriptLaunchMode = project.setupScriptLaunchMode ?? "parallel";
 		const prefix = `/tmp/dev3-${task.id}`;
 		const setupPath = `${prefix}-setup.sh`;
 		const claudePath = `${prefix}-cmd.sh`;
@@ -1005,16 +1006,18 @@ export async function launchTaskPty(
 			"exit 0",
 		].join("\n");
 
-		const startupScript = [
+		const startupLines = [
 			"#!/bin/bash",
-			splitCmd,
+			...(setupScriptLaunchMode === "parallel" ? [splitCmd] : []),
 			`bash -x "${setupPath}"`,
 			"S=$?",
 			`if [ $S -ne 0 ]; then`,
 			setupFail,
 			"fi",
+			...(setupScriptLaunchMode === "blocking" ? [splitCmd] : []),
 			setupOkClose,
-		].join("\n");
+		];
+		const startupScript = startupLines.join("\n");
 
 		await Bun.write(startupPath, startupScript + "\n");
 		tmuxCmd = `bash "${startupPath}"`;

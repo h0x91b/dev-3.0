@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
-import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project, Task } from "../../shared/types";
+import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -462,6 +462,7 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 	const t = useT();
 	const [detecting, setDetecting] = useState(false);
 	const [detectFeedback, setDetectFeedback] = useState<string | null>(null);
+	const setupScriptLaunchMode = config.setupScriptLaunchMode ?? inherited?.setupScriptLaunchMode ?? "parallel";
 
 	function update(field: keyof Dev3RepoConfig, value: Dev3RepoConfig[keyof Dev3RepoConfig]) {
 		onChange({ ...config, [field]: value });
@@ -513,6 +514,48 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 					spellCheck={false}
 					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 				/>
+				<fieldset className="mt-4">
+					<legend className="block text-fg text-sm font-semibold mb-2">
+						{t("projectSettings.setupScriptLaunchMode")}
+					</legend>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("projectSettings.setupScriptLaunchModeDesc")}
+					</p>
+					<div className="grid gap-3 sm:grid-cols-2">
+						{([
+							{
+								value: "parallel",
+								title: t("projectSettings.setupScriptLaunchModeParallel"),
+								description: t("projectSettings.setupScriptLaunchModeParallelDesc"),
+							},
+							{
+								value: "blocking",
+								title: t("projectSettings.setupScriptLaunchModeBlocking"),
+								description: t("projectSettings.setupScriptLaunchModeBlockingDesc"),
+							},
+						] as const).map((option) => {
+							const checked = setupScriptLaunchMode === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									role="radio"
+									aria-checked={checked}
+									aria-label={option.title}
+									onClick={() => update("setupScriptLaunchMode", option.value as SetupScriptLaunchMode)}
+									className={`rounded-xl border p-4 text-left transition-colors ${
+										checked
+											? "border-accent/60 bg-accent/10"
+											: "border-edge bg-raised hover:border-edge-active hover:bg-raised-hover"
+									}`}
+								>
+									<div className="text-fg text-sm font-semibold">{option.title}</div>
+									<div className="mt-1 text-fg-3 text-sm">{option.description}</div>
+								</button>
+							);
+						})}
+					</div>
+				</fieldset>
 			</div>
 
 			{/* Clone Paths (CoW) */}
@@ -823,6 +866,7 @@ function ProjectSettings({
 	// ---- Project tab state (reads/writes projects.json) ----
 	const projectConfigFromProject = useCallback((p: Project): Dev3RepoConfig => ({
 		setupScript: p.setupScript,
+		setupScriptLaunchMode: p.setupScriptLaunchMode,
 		devScript: p.devScript,
 		cleanupScript: p.cleanupScript,
 		clonePaths: p.clonePaths,
@@ -918,6 +962,7 @@ function ProjectSettings({
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
 		const stringKeys: (keyof Dev3RepoConfig)[] = [
 			"setupScript",
+			"setupScriptLaunchMode",
 			"devScript",
 			"cleanupScript",
 			"defaultBaseBranch",

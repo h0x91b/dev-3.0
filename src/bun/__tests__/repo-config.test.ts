@@ -273,6 +273,7 @@ describe("resolveProjectConfig", () => {
 		});
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.setupScript).toBe("");
+		expect((resolved as any).setupScriptLaunchMode).toBe("parallel");
 		expect(resolved.defaultBaseBranch).toBe("main");
 		expect(resolved.defaultCompareRef).toBe("origin/main");
 		expect(resolved.autoReviewEnabled).toBe(false);

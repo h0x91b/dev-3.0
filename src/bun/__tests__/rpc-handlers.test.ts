@@ -3333,6 +3333,54 @@ describe("launchTaskPty", () => {
 			undefined,
 		);
 	});
+
+	it("waits for setup completion before opening the agent pane in blocking mode", async () => {
+		const project = makeProject({
+			setupScript: "bun install",
+			...( { setupScriptLaunchMode: "blocking" } as any ),
+		});
+		const task = makeTask();
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+
+		try {
+			await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", true);
+
+			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
+			const script = String(startupCall?.[1] ?? "");
+			const setupIndex = script.indexOf('bash -x "/tmp/dev3-task-1-setup.sh"');
+			const splitIndex = script.indexOf('tmux split-window -v -c "/tmp/wt" "bash \'/tmp/dev3-task-1-cmd.sh\'"');
+
+			expect(setupIndex).toBeGreaterThanOrEqual(0);
+			expect(splitIndex).toBeGreaterThanOrEqual(0);
+			expect(setupIndex).toBeLessThan(splitIndex);
+		} finally {
+			writeSpy.mockRestore();
+		}
+	});
+
+	it("opens the agent pane immediately in parallel mode", async () => {
+		const project = makeProject({
+			setupScript: "bun install",
+			...( { setupScriptLaunchMode: "parallel" } as any ),
+		});
+		const task = makeTask();
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+
+		try {
+			await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", true);
+
+			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
+			const script = String(startupCall?.[1] ?? "");
+			const splitIndex = script.indexOf('tmux split-window -v -c "/tmp/wt" "bash \'/tmp/dev3-task-1-cmd.sh\'"');
+			const setupIndex = script.indexOf('bash -x "/tmp/dev3-task-1-setup.sh"');
+
+			expect(splitIndex).toBeGreaterThanOrEqual(0);
+			expect(setupIndex).toBeGreaterThanOrEqual(0);
+			expect(splitIndex).toBeLessThan(setupIndex);
+		} finally {
+			writeSpy.mockRestore();
+		}
+	});
 });
 
 describe("reorderColumns", () => {

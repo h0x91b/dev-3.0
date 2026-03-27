@@ -124,6 +124,15 @@ const settings = {
 	"projectSettings.setupScript": "Script de configuración",
 	"projectSettings.setupScriptDesc":
 		"Se ejecuta en el directorio worktree después de la creación",
+	"projectSettings.setupScriptLaunchMode": "Orden de inicio",
+	"projectSettings.setupScriptLaunchModeDesc":
+		"Elige si el agente arranca de inmediato o espera a que el script de setup termine correctamente.",
+	"projectSettings.setupScriptLaunchModeParallel": "Ejecutar en paralelo",
+	"projectSettings.setupScriptLaunchModeParallelDesc":
+		"Abre el agente enseguida en un panel tmux dividido mientras el setup sigue corriendo.",
+	"projectSettings.setupScriptLaunchModeBlocking": "Esperar al setup",
+	"projectSettings.setupScriptLaunchModeBlockingDesc":
+		"Inicia el agente solo después de que el script de setup termine con éxito.",
 	"projectSettings.devScript": "Script de desarrollo",
 	"projectSettings.devScriptDesc":
 		"Se ejecuta al iniciar el servidor de desarrollo de este proyecto",

@@ -26,6 +26,7 @@ function effective<T>(val: T): T | undefined {
 /** Default values for settings fields when nothing is configured. */
 const DEFAULTS: Dev3RepoConfig = {
 	setupScript: "",
+	setupScriptLaunchMode: "parallel",
 	devScript: "",
 	cleanupScript: "",
 	clonePaths: [],
