@@ -1,7 +1,21 @@
 import { useState, useCallback, useRef } from "react";
 import { api } from "../rpc";
 
+async function fileToBase64(file: File): Promise<string> {
+	const buffer = await file.arrayBuffer();
+	const bytes = new Uint8Array(buffer);
+	const chunks: string[] = [];
+	const CHUNK_SIZE = 0x8000;
+
+	for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+		chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE)));
+	}
+
+	return btoa(chunks.join(""));
+}
+
 export function useFileDrop(
+	projectId: string,
 	onFileDropped: (path: string) => void,
 ): {
 	handleDragOver: (e: React.DragEvent) => void;
@@ -38,28 +52,43 @@ export function useFileDrop(
 			e.preventDefault();
 			dragCounter.current = 0;
 			setIsDragging(false);
-			const files = e.dataTransfer.files;
+			const files = Array.from(e.dataTransfer.files);
 			if (!files.length) return;
 
-			const promises: Promise<void>[] = [];
-			for (let i = 0; i < files.length; i++) {
-				const file = files[i];
-				promises.push(
-					api.request.resolveFilename({
+			void Promise.all(files.map(async (file) => {
+				if (projectId && file.type.startsWith("image/")) {
+					try {
+						const base64 = await fileToBase64(file);
+						const uploaded = await api.request.uploadImageBase64({
+							projectId,
+							base64,
+							filename: file.name,
+							mimeType: file.type || undefined,
+						});
+						if (uploaded?.path) {
+							onFileDropped(uploaded.path);
+							return;
+						}
+					} catch (err) {
+						console.error(`[useFileDrop] image upload failed for "${file.name}":`, err);
+					}
+				}
+
+				try {
+					const resolvedPath = await api.request.resolveFilename({
 						filename: file.name,
 						size: file.size,
 						lastModified: file.lastModified,
-					}).then((resolvedPath) => {
-						if (resolvedPath) {
-							onFileDropped(resolvedPath);
-						}
-					}).catch(() => {}),
-				);
-			}
-
-			Promise.all(promises);
+					});
+					if (resolvedPath) {
+						onFileDropped(resolvedPath);
+					}
+				} catch (err) {
+					console.error(`[useFileDrop] resolveFilename failed for "${file.name}":`, err);
+				}
+			}));
 		},
-		[onFileDropped],
+		[onFileDropped, projectId],
 	);
 
 	return { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging };

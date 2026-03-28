@@ -1,0 +1,1 @@
+Fixed task description and note image drag-and-drop to upload the dropped file directly instead of relying on Spotlight path resolution. Non-image drops still use filename resolution as a fallback, and image uploads now preserve the correct file extension.

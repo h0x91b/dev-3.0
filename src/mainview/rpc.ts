@@ -293,6 +293,7 @@ function initBrowserApi(): ApiShape {
 						return rpcRequest("uploadImageBase64", {
 							projectId: params.projectId,
 							base64,
+							mimeType: imageType,
 						});
 					}
 				}

@@ -1117,7 +1117,7 @@ export type AppRPCSchema = {
 				response: { available: boolean };
 			};
 			uploadImageBase64: {
-				params: { projectId: string; base64: string };
+				params: { projectId: string; base64: string; filename?: string; mimeType?: string };
 				response: { path: string } | null;
 			};
 			getRemoteAccessQR: {

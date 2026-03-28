@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync, mkdirSync, unlinkSync, symlinkSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { PATHS, Utils } from "electrobun/bun";
 import type { AgentCheckResult, BranchStatus, ChangelogEntry, CodingAgent, ColumnAgentConfig, ConfigSourceEntry, CustomColumn, Dev3RepoConfig, DiffToolCheckResult, DiffToolId, ExternalApp, GlobalSettings, Label, NoteSource, PortInfo, PRInfo, Project, RequirementCheckResult, Task, TaskNote, TaskStatus, TipState, TmuxSessionInfo } from "../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, DEFAULT_EXTERNAL_APPS, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getPrimaryStopTarget, titleFromDescription, extractRepoName, getTaskTitle, formatStatus } from "../shared/types";
@@ -1342,17 +1342,52 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 	});
 }
 
-async function saveUploadedImage(projectId: string, pngData: Buffer | Uint8Array): Promise<{ path: string }> {
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+	"image/png": ".png",
+	"image/jpeg": ".jpg",
+	"image/gif": ".gif",
+	"image/webp": ".webp",
+	"image/bmp": ".bmp",
+	"image/svg+xml": ".svg",
+};
+
+function getUploadedImageExtension(filename?: string, mimeType?: string): string {
+	const fileExt = filename ? extname(filename).toLowerCase() : "";
+	if (fileExt in {
+		".png": true,
+		".jpg": true,
+		".jpeg": true,
+		".gif": true,
+		".webp": true,
+		".bmp": true,
+		".svg": true,
+	}) {
+		return fileExt;
+	}
+
+	if (mimeType) {
+		return IMAGE_MIME_EXTENSIONS[mimeType.toLowerCase()] ?? ".png";
+	}
+
+	return ".png";
+}
+
+async function saveUploadedImage(
+	projectId: string,
+	imageData: Buffer | Uint8Array,
+	opts?: { filename?: string; mimeType?: string },
+): Promise<{ path: string }> {
 	const project = await data.getProject(projectId);
 	const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
 	const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
 	const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
 	await mkdirProc.exited;
 	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
-	const filename = `img-${Date.now()}-${hex}.png`;
+	const extension = getUploadedImageExtension(opts?.filename, opts?.mimeType);
+	const filename = `img-${Date.now()}-${hex}${extension}`;
 	const fullPath = `${uploadsDir}/${filename}`;
-	await Bun.write(fullPath, pngData);
-	log.info("Image saved", { path: fullPath, size: pngData.length });
+	await Bun.write(fullPath, imageData);
+	log.info("Image saved", { path: fullPath, size: imageData.length });
 	return { path: fullPath }
 }
 
@@ -3709,7 +3744,7 @@ export const handlers = {
 		return saveUploadedImage(params.projectId, pngData);
 	},
 
-	async uploadImageBase64(params: { projectId: string; base64: string }): Promise<{ path: string } | null> {
+	async uploadImageBase64(params: { projectId: string; base64: string; filename?: string; mimeType?: string }): Promise<{ path: string } | null> {
 		const MAX_BASE64_SIZE = 10 * 1024 * 1024; // 10 MB (~7.5 MB decoded)
 		if (params.base64.length > MAX_BASE64_SIZE) {
 			log.warn("← uploadImageBase64: payload too large", { len: params.base64.length });
@@ -3721,7 +3756,10 @@ export const handlers = {
 			log.warn("← uploadImageBase64: empty image data");
 			return null;
 		}
-		return saveUploadedImage(params.projectId, pngData);
+		return saveUploadedImage(params.projectId, pngData, {
+			filename: params.filename,
+			mimeType: params.mimeType,
+		});
 	},
 
 	async readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {
