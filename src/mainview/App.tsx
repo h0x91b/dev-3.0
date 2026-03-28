@@ -214,7 +214,7 @@ function App() {
 		})();
 	}, [dispatch, reqStatus]);
 
-	// Refresh projects from disk whenever user navigates to dashboard
+	// Refresh projects from disk whenever user returns to the dashboard project list
 	useEffect(() => {
 		if (state.route.screen !== "dashboard" || state.loading) return;
 		(async () => {

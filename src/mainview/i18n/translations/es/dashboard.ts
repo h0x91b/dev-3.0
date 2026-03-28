@@ -10,8 +10,6 @@ const dashboard = {
 	"dashboard.failedRemove": "Error al eliminar proyecto: {error}",
 	"dashboard.projectCount_one": "{count} proyecto",
 	"dashboard.projectCount_other": "{count} proyectos",
-	"dashboard.tabActivity": "Actividad",
-	"dashboard.tabProjects": "Proyectos",
 
 	// Activity overview
 	"activity.noActiveTasks": "Sin tareas activas en ningún proyecto",
