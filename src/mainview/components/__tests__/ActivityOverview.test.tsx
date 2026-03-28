@@ -51,6 +51,7 @@ const mockTask: Task = {
 function renderActivityOverview(
 	navigate: (route: Route) => void = vi.fn(),
 	onRemoveProject?: (projectId: string) => void | Promise<void>,
+	onOpenAddProject?: () => void,
 ) {
 	return render(
 		<I18nProvider>
@@ -59,6 +60,7 @@ function renderActivityOverview(
 				navigate={navigate}
 				bellCounts={new Map()}
 				onRemoveProject={onRemoveProject}
+				onOpenAddProject={onOpenAddProject}
 			/>
 		</I18nProvider>,
 	);
@@ -74,10 +76,12 @@ describe("ActivityOverview", () => {
 	});
 
 	it("shows project quick actions for active projects", async () => {
-		renderActivityOverview(vi.fn(), vi.fn());
+		renderActivityOverview(vi.fn(), vi.fn(), vi.fn());
 
 		await screen.findByText("My Project");
 
+		expect(screen.getByText("/home/user/my-project")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Add Project" })).toBeInTheDocument();
 		expect(screen.getByTitle("Project Settings")).toBeInTheDocument();
 		expect(screen.getByTitle("Open in Finder")).toBeInTheDocument();
 		expect(screen.getByTitle("Open a terminal in the project root")).toBeInTheDocument();
@@ -85,7 +89,7 @@ describe("ActivityOverview", () => {
 	});
 
 	it("renders project quick actions before the activity count", async () => {
-		renderActivityOverview(vi.fn(), vi.fn());
+		renderActivityOverview(vi.fn(), vi.fn(), vi.fn());
 
 		const settingsButton = await screen.findByTitle("Project Settings");
 		const activeCount = screen.getByText("1 active");
@@ -118,7 +122,7 @@ describe("ActivityOverview", () => {
 		const navigate = vi.fn();
 		const onRemoveProject = vi.fn();
 
-		renderActivityOverview(navigate, onRemoveProject);
+		renderActivityOverview(navigate, onRemoveProject, vi.fn());
 		await screen.findByText("My Project");
 
 		await user.click(screen.getByTitle("Project Settings"));
@@ -136,5 +140,30 @@ describe("ActivityOverview", () => {
 		await waitFor(() => {
 			expect(onRemoveProject).toHaveBeenCalledWith("p1");
 		});
+	});
+
+	it("shows all projects even when there are no active tasks", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [] },
+		]);
+
+		renderActivityOverview();
+
+		expect(await screen.findByText("My Project")).toBeInTheDocument();
+		expect(screen.getByText("/home/user/my-project")).toBeInTheDocument();
+		expect(screen.getByText("No active tasks across any project")).toBeInTheDocument();
+		expect(screen.getByText("no active tasks")).toBeInTheDocument();
+	});
+
+	it("opens the add project flow from the activity header", async () => {
+		const user = userEvent.setup();
+		const onOpenAddProject = vi.fn();
+
+		renderActivityOverview(vi.fn(), vi.fn(), onOpenAddProject);
+
+		await screen.findByText("My Project");
+		await user.click(screen.getByRole("button", { name: "Add Project" }));
+
+		expect(onOpenAddProject).toHaveBeenCalled();
 	});
 });

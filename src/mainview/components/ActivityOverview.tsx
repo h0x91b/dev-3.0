@@ -13,6 +13,7 @@ interface ActivityOverviewProps {
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	onRemoveProject?: (projectId: string) => void | Promise<void>;
+	onOpenAddProject?: () => void;
 }
 
 /** Statuses that require the user's attention — shown as individual task rows. */
@@ -33,7 +34,7 @@ function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => strin
 	return t("activity.daysAgo", { count: String(days) });
 }
 
-function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject }: ActivityOverviewProps) {
+function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
@@ -107,17 +108,28 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject }: A
 		});
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
-	if (totalActive === 0) {
-		return (
-			<div className="h-full flex flex-col items-center justify-center">
-				<p className="text-fg-3 text-sm">{t("activity.noActiveTasks")}</p>
-			</div>
-		);
-	}
-
 	return (
 		<div className="h-full overflow-y-auto p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
+				<div className="flex items-start justify-between gap-4">
+					<div>
+						<div className="text-fg-2 text-sm font-medium">
+							{t.plural("dashboard.projectCount", sortedProjects.length)}
+						</div>
+						{totalActive === 0 && (
+							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
+						)}
+					</div>
+					{onOpenAddProject && (
+						<button
+							type="button"
+							onClick={onOpenAddProject}
+							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
+						>
+							{t("dashboard.addProject")}
+						</button>
+					)}
+				</div>
 				{sortedProjects.map((project) => {
 					const tasks = tasksByProject.get(project.id) ?? [];
 					const hasActiveTasks = tasks.length > 0;
@@ -149,7 +161,14 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject }: A
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 										</svg>
 									</div>
-									<span className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate`}>{project.name}</span>
+									<div className="min-w-0 flex-1">
+										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate`}>
+											{project.name}
+										</div>
+										<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">
+											{project.path}
+										</div>
+									</div>
 								</button>
 								<ProjectActionButtons
 									project={project}

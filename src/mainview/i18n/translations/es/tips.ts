@@ -162,6 +162,8 @@ const tips = {
 	"tip.projectTerminalDashboard.body": "También puedes abrir el terminal del proyecto directamente desde el Dashboard — haz clic en el icono de terminal de cualquier tarjeta de proyecto.",
 	"tip.activityProjectActions.title": "Acciones del proyecto en Activity",
 	"tip.activityProjectActions.body": "Usa los botones de la fila Activity para abrir ajustes del proyecto, la carpeta del repo o el terminal del proyecto.",
+	"tip.addProjectMenu.title": "Agrega proyectos desde el menú",
+	"tip.addProjectMenu.body": "Usa File > Add Project... para abrir el diálogo de importación desde cualquier parte de la app.",
 	"tip.portAllocation.title": "Asignar puertos automáticamente",
 	"tip.portAllocation.body": "Configura portCount en ajustes del proyecto para asignar puertos libres por tarea. Usa $DEV3_PORT0, $DEV3_PORT1 en scripts.",
 	"tip.taskWatch.title": "Vigila tus tareas",

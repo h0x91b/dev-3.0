@@ -1154,6 +1154,7 @@ export type AppRPCSchema = {
 	webview: RPCSchema<{
 		requests: Record<string, never>;
 		messages: {
+			openAddProjectModal: {};
 			navigateToSettings: {};
 			navigateToGaugeDemo: {};
 			navigateToViewportLab: {};

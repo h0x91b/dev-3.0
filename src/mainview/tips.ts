@@ -507,6 +507,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0493}", // nf-md-tune
 	},
 	{
+		id: "add-project-menu",
+		titleKey: "tip.addProjectMenu.title",
+		bodyKey: "tip.addProjectMenu.body",
+		icon: "\u{F0415}", // nf-md-plus_box
+	},
+	{
 		id: "port-allocation",
 		titleKey: "tip.portAllocation.title",
 		bodyKey: "tip.portAllocation.body",

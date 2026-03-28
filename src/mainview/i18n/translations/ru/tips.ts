@@ -162,6 +162,8 @@ const tips = {
 	"tip.projectTerminalDashboard.body": "Терминал проекта можно открыть прямо с Dashboard — нажми иконку терминала на карточке проекта.",
 	"tip.activityProjectActions.title": "Действия проекта в Activity",
 	"tip.activityProjectActions.body": "Кнопки в строке Activity сразу открывают настройки проекта, папку репо или терминал проекта.",
+	"tip.addProjectMenu.title": "Добавление проекта через меню",
+	"tip.addProjectMenu.body": "Используй File > Add Project..., чтобы открыть импорт проекта из любого экрана приложения.",
 	"tip.portAllocation.title": "Авто-выделение портов",
 	"tip.portAllocation.body": "Задайте portCount в настройках проекта — каждой задаче выделяются свободные порты. Используйте $DEV3_PORT0, $DEV3_PORT1 в скриптах.",
 	"tip.taskWatch.title": "Следите за задачами",

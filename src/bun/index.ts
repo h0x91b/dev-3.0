@@ -223,6 +223,12 @@ ApplicationMenu.setApplicationMenu([
 		],
 	},
 	{
+		label: "File",
+		submenu: [
+			{ label: "Add Project...", action: "open-add-project" },
+		],
+	},
+	{
 		label: "Edit",
 		submenu: [
 			{ role: "undo" },
@@ -473,6 +479,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		});
 	} else if (e.data.action === "open-settings") {
 		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
+	} else if (e.data.action === "open-add-project") {
+		(mainWindow.webview.rpc as any).send.openAddProjectModal?.({});
 	} else if (e.data.action === "gauge-demo") {
 		(mainWindow.webview.rpc as any).send.navigateToGaugeDemo?.({});
 	} else if (e.data.action === "viewport-lab") {
