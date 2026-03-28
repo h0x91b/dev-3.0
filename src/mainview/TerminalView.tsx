@@ -4,6 +4,7 @@ import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
+import { uploadDroppedImage } from "./utils/uploadDroppedImage";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -849,11 +850,17 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 						size: f.size,
 						lastModified: f.lastModified,
 					});
-					const p = resolved ?? f.name;
+					const uploadedPath = resolved ? null : await uploadDroppedImage(projectId, f);
+					const p = resolved ?? uploadedPath ?? f.name;
 					return p.replace(/ /g, "\\ ");
 				} catch (err) {
 					console.error(`[TerminalView] resolveFilename failed for "${f.name}":`, err);
-					return f.name.replace(/ /g, "\\ ");
+					try {
+						const uploadedPath = await uploadDroppedImage(projectId, f);
+						return (uploadedPath ?? f.name).replace(/ /g, "\\ ");
+					} catch {
+						return f.name.replace(/ /g, "\\ ");
+					}
 				}
 			}),
 		);

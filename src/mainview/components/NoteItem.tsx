@@ -59,7 +59,7 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 	}, [onSave]);
 
 	const { handlePaste, isPasting } = useImagePaste(projectId ?? "", insertPath);
-	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(insertPath);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(projectId ?? "", insertPath);
 
 	const handleRemovePath = useCallback((pathToRemove: string) => {
 		const next = removeImagePath(value, pathToRemove);

@@ -56,7 +56,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	}, []);
 
 	const { handlePaste, isPasting } = useImagePaste(project.id, insertPathAtCursor);
-	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(insertPathAtCursor);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
 
 	const handleRemovePath = useCallback((path: string) => {
 		setDescription((prev) => removeImagePath(prev, path));

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CreateTaskModal from "../CreateTaskModal";
 import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
@@ -8,12 +8,15 @@ import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
 	api: {
-		request: {
+	request: {
 			createTask: vi.fn(),
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
 			getProjectCurrentBranch: vi.fn(),
+			uploadImageBase64: vi.fn(),
+			resolveFilename: vi.fn(),
+			readImageBase64: vi.fn(),
 		},
 	},
 }));
@@ -72,11 +75,35 @@ function renderModal(props: {
 	);
 }
 
+function makeFileList(files: File[]): FileList {
+	return {
+		length: files.length,
+		item: (index: number) => files[index] ?? null,
+		...Object.fromEntries(files.map((file, index) => [index, file])),
+	} as unknown as FileList;
+}
+
+function dispatchDrop(target: Element, files: File[]) {
+	const event = new MouseEvent("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "dataTransfer", {
+		value: {
+			files: makeFileList(files),
+			dropEffect: "copy" as const,
+		},
+	});
+	act(() => {
+		target.dispatchEvent(event);
+	});
+}
+
 describe("CreateTaskModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
+		mockedApi.request.uploadImageBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
+		mockedApi.request.resolveFilename.mockResolvedValue("/tmp/fallback-path.txt");
+		mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,abc" });
 	});
 
 	it("shows Save & Start button when onCreateAndRun is provided", () => {
@@ -314,6 +341,49 @@ describe("CreateTaskModal", () => {
 
 		const keepEditingBtn = screen.getByText("Keep editing");
 		expect(document.activeElement).toBe(keepEditingBtn);
+	});
+
+	it("uploads dropped images and inserts the saved path", async () => {
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
+		const file = new File(["abc"], "drop.jpg", { type: "image/jpeg", lastModified: 1711111111111 });
+
+		dispatchDrop(textarea.parentElement!, [file]);
+
+		await waitFor(() => {
+			expect(mockedApi.request.uploadImageBase64).toHaveBeenCalledWith({
+				projectId: "p1",
+				base64: "YWJj",
+				filename: "drop.jpg",
+				mimeType: "image/jpeg",
+			});
+		});
+		await waitFor(() => {
+			expect(textarea.value).toBe("/tmp/uploaded-drop.png\n");
+		});
+		expect(mockedApi.request.resolveFilename).not.toHaveBeenCalled();
+	});
+
+	it("falls back to resolveFilename for non-image drops", async () => {
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
+		const file = new File(["notes"], "notes.txt", { type: "text/plain", lastModified: 1712222222222 });
+
+		dispatchDrop(textarea.parentElement!, [file]);
+
+		await waitFor(() => {
+			expect(mockedApi.request.resolveFilename).toHaveBeenCalledWith({
+				filename: "notes.txt",
+				size: 5,
+				lastModified: 1712222222222,
+			});
+		});
+		await waitFor(() => {
+			expect(textarea.value).toBe("/tmp/fallback-path.txt\n");
+		});
+		expect(mockedApi.request.uploadImageBase64).not.toHaveBeenCalled();
 	});
 
 	// ---- Branch selector ----
