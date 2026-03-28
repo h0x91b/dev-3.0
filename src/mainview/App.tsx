@@ -10,6 +10,7 @@ import { useViewport } from "./hooks/useViewport";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
+import AddProjectModal from "./components/AddProjectModal";
 import ProjectView from "./components/ProjectView";
 import TaskTerminal from "./components/TaskTerminal";
 import ProjectTerminal from "./components/ProjectTerminal";
@@ -50,6 +51,7 @@ function App() {
 
 	// GitHub CLI availability warning
 	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
+	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 
 	// Auth failure for browser remote access (expired/invalid QR token)
 	const [authFailed, setAuthFailed] = useState(false);
@@ -212,7 +214,7 @@ function App() {
 		})();
 	}, [dispatch, reqStatus]);
 
-	// Refresh projects from disk whenever user navigates to dashboard
+	// Refresh projects from disk whenever user returns to the dashboard project list
 	useEffect(() => {
 		if (state.route.screen !== "dashboard" || state.loading) return;
 		(async () => {
@@ -375,6 +377,14 @@ function App() {
 		return () => window.removeEventListener("rpc:navigateToSettings", onNavigateToSettings);
 	}, [navigate]);
 
+	useEffect(() => {
+		function onOpenAddProjectModal() {
+			setShowAddProjectModal(true);
+		}
+		window.addEventListener("rpc:openAddProjectModal", onOpenAddProjectModal);
+		return () => window.removeEventListener("rpc:openAddProjectModal", onOpenAddProjectModal);
+	}, []);
+
 	// Listen for View > Gauge Demo menu item
 	useEffect(() => {
 		function onNavigateToGaugeDemo() {
@@ -534,6 +544,12 @@ function App() {
 				/>
 			)}
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
+			{showAddProjectModal && (
+				<AddProjectModal
+					dispatch={dispatch}
+					onClose={() => setShowAddProjectModal(false)}
+				/>
+			)}
 			{pendingNavigation && (
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -756,6 +772,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						onOpenAddProject={() => setShowAddProjectModal(true)}
 					/>
 				);
 			case "project":

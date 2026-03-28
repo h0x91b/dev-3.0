@@ -6,11 +6,14 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useStatusColors } from "../hooks/useStatusColors";
+import ProjectActionButtons from "./ProjectActionButtons";
 
 interface ActivityOverviewProps {
 	projects: Project[];
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	onRemoveProject?: (projectId: string) => void | Promise<void>;
+	onOpenAddProject?: () => void;
 }
 
 /** Statuses that require the user's attention — shown as individual task rows. */
@@ -31,11 +34,15 @@ function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => strin
 	return t("activity.daysAgo", { count: String(days) });
 }
 
-function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewProps) {
+function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	const [loading, setLoading] = useState(true);
+
+	function openProject(projectId: string) {
+		navigate({ screen: "project", projectId });
+	}
 
 	const fetchAllTasks = useCallback(async () => {
 		try {
@@ -101,17 +108,28 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 		});
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
-	if (totalActive === 0) {
-		return (
-			<div className="h-full flex flex-col items-center justify-center">
-				<p className="text-fg-3 text-sm">{t("activity.noActiveTasks")}</p>
-			</div>
-		);
-	}
-
 	return (
 		<div className="h-full overflow-y-auto p-7">
-			<div className="max-w-3xl mx-auto space-y-4">
+			<div className="max-w-5xl mx-auto space-y-4">
+				<div className="flex items-start justify-between gap-4">
+					<div>
+						<div className="text-fg-2 text-sm font-medium">
+							{t.plural("dashboard.projectCount", sortedProjects.length)}
+						</div>
+						{totalActive === 0 && (
+							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
+						)}
+					</div>
+					{onOpenAddProject && (
+						<button
+							type="button"
+							onClick={onOpenAddProject}
+							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
+						>
+							{t("dashboard.addProject")}
+						</button>
+					)}
+				</div>
 				{sortedProjects.map((project) => {
 					const tasks = tasksByProject.get(project.id) ?? [];
 					const hasActiveTasks = tasks.length > 0;
@@ -132,25 +150,47 @@ function ActivityOverview({ projects, navigate, bellCounts }: ActivityOverviewPr
 					return (
 						<div key={project.id} className="bg-raised rounded-2xl border border-edge overflow-hidden">
 							{/* Project header */}
-							<button
-								onClick={() => navigate({ screen: "project", projectId: project.id })}
-								className={`w-full flex items-center gap-3 px-5 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors text-left`}
-							>
-								<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
-									<svg className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							<div className={`group flex items-center gap-2 pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+								<button
+									type="button"
+									onClick={() => openProject(project.id)}
+									className="min-w-0 flex-1 flex items-center gap-3 pl-5 text-left"
+								>
+									<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
+										<svg className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+										</svg>
+									</div>
+									<div className="min-w-0 flex-1">
+										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate`}>
+											{project.name}
+										</div>
+										<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">
+											{project.path}
+										</div>
+									</div>
+								</button>
+								<ProjectActionButtons
+									project={project}
+									navigate={navigate}
+									onRemove={onRemoveProject}
+									className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+								/>
+								<button
+									type="button"
+									onClick={() => openProject(project.id)}
+									className="flex items-center gap-3 pr-1 text-left"
+								>
+									{hasActiveTasks ? (
+										<span className="text-fg-3 text-xs">{t.plural("activity.taskCount", tasks.length)}</span>
+									) : (
+										<span className="text-fg-muted text-xs">{t("activity.noActiveInProject")}</span>
+									)}
+									<svg className="w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
 									</svg>
-								</div>
-								<span className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate flex-1`}>{project.name}</span>
-								{hasActiveTasks ? (
-									<span className="text-fg-3 text-xs">{t.plural("activity.taskCount", tasks.length)}</span>
-								) : (
-									<span className="text-fg-muted text-xs">{t("activity.noActiveInProject")}</span>
-								)}
-								<svg className="w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-								</svg>
-							</button>
+								</button>
+							</div>
 
 							{hasActiveTasks && (
 								<div className="border-t border-edge">

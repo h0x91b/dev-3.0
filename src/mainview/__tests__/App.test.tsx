@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { I18nProvider } from "../i18n";
@@ -36,6 +36,13 @@ vi.mock("../zoom", () => ({
 // Mock child screens so they don't trigger their own API calls
 vi.mock("../components/Dashboard", () => ({
 	default: () => <div data-testid="dashboard-screen" />,
+}));
+vi.mock("../components/AddProjectModal", () => ({
+	default: ({ onClose }: { onClose: () => void }) => (
+		<div data-testid="add-project-modal">
+			<button onClick={onClose}>Close Add Project</button>
+		</div>
+	),
 }));
 vi.mock("../components/GlobalSettings", () => ({
 	default: () => <div data-testid="settings-screen" />,
@@ -150,6 +157,25 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+	});
+
+	describe("Add Project modal", () => {
+		it("opens when rpc:openAddProjectModal fires", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal"));
+			});
+			expect(await screen.findByTestId("add-project-modal")).toBeInTheDocument();
+		});
+
+		it("closes when the modal requests close", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal"));
+			});
+			await userEvent.click(await screen.findByText("Close Add Project"));
+			expect(screen.queryByTestId("add-project-modal")).not.toBeInTheDocument();
 		});
 	});
 

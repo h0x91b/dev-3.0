@@ -12,8 +12,6 @@ const dashboard = {
 	"dashboard.projectCount_few": "{count} проекта",
 	"dashboard.projectCount_many": "{count} проектов",
 	"dashboard.projectCount_other": "{count} проектов",
-	"dashboard.tabActivity": "Активность",
-	"dashboard.tabProjects": "Проекты",
 
 	// Activity overview
 	"activity.noActiveTasks": "Нет активных задач ни в одном проекте",
