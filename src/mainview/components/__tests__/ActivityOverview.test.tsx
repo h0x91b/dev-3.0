@@ -84,6 +84,17 @@ describe("ActivityOverview", () => {
 		expect(screen.getByTitle("Remove")).toBeInTheDocument();
 	});
 
+	it("renders project quick actions before the activity count", async () => {
+		renderActivityOverview(vi.fn(), vi.fn());
+
+		const settingsButton = await screen.findByTitle("Project Settings");
+		const activeCount = screen.getByText("1 active");
+
+		expect(
+			settingsButton.compareDocumentPosition(activeCount) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
+
 	it("opens the project folder without navigating to the project page", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();

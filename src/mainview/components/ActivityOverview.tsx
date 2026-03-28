@@ -39,6 +39,10 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject }: A
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	const [loading, setLoading] = useState(true);
 
+	function openProject(projectId: string) {
+		navigate({ screen: "project", projectId });
+	}
+
 	const fetchAllTasks = useCallback(async () => {
 		try {
 			const results = await api.request.getAllProjectTasks();
@@ -137,15 +141,27 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject }: A
 							<div className={`group flex items-center gap-2 pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
 								<button
 									type="button"
-									onClick={() => navigate({ screen: "project", projectId: project.id })}
-									className="min-w-0 flex-1 flex items-center gap-3 px-5 text-left"
+									onClick={() => openProject(project.id)}
+									className="min-w-0 flex-1 flex items-center gap-3 pl-5 text-left"
 								>
 									<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
 										<svg className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 										</svg>
 									</div>
-									<span className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate flex-1`}>{project.name}</span>
+									<span className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate`}>{project.name}</span>
+								</button>
+								<ProjectActionButtons
+									project={project}
+									navigate={navigate}
+									onRemove={onRemoveProject}
+									className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+								/>
+								<button
+									type="button"
+									onClick={() => openProject(project.id)}
+									className="flex items-center gap-3 pr-1 text-left"
+								>
 									{hasActiveTasks ? (
 										<span className="text-fg-3 text-xs">{t.plural("activity.taskCount", tasks.length)}</span>
 									) : (
@@ -155,12 +171,6 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject }: A
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
 									</svg>
 								</button>
-								<ProjectActionButtons
-									project={project}
-									navigate={navigate}
-									onRemove={onRemoveProject}
-									className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-								/>
 							</div>
 
 							{hasActiveTasks && (
