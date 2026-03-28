@@ -1,4 +1,4 @@
-import { render, act } from "@testing-library/react";
+import { render, act, waitFor } from "@testing-library/react";
 import TerminalView from "../TerminalView";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
@@ -61,7 +61,7 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
-	api: { request: { resolveFilename: vi.fn(), tmuxAction: vi.fn() } },
+	api: { request: { resolveFilename: vi.fn(), uploadImageBase64: vi.fn(), tmuxAction: vi.fn() } },
 }));
 
 vi.mock("../zoom", () => ({
@@ -82,14 +82,21 @@ vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
 });
 
 // Minimal WebSocket stub (just needs to not throw during connectPty)
+let lastWebSocket: MockWebSocket | null = null;
+
 class MockWebSocket {
-	readyState = 0;
+	static OPEN = 1;
+	readyState = MockWebSocket.OPEN;
 	send = vi.fn();
 	close = vi.fn();
 	onopen: ((e: Event) => void) | null = null;
 	onmessage: ((e: MessageEvent) => void) | null = null;
 	onclose: ((e: CloseEvent) => void) | null = null;
 	onerror: ((e: Event) => void) | null = null;
+
+	constructor() {
+		lastWebSocket = this;
+	}
 }
 vi.stubGlobal("WebSocket", class extends MockWebSocket {});
 
@@ -281,6 +288,8 @@ describe("TerminalView – focus-on-type", () => {
 // ── Terminal keymap shortcuts ─────────────────────────────────────────────────
 
 const mockedTmuxAction = vi.mocked(api.request.tmuxAction);
+const mockedResolveFilename = vi.mocked(api.request.resolveFilename);
+const mockedUploadImageBase64 = vi.mocked(api.request.uploadImageBase64);
 
 /** Focus a child element inside the terminal container so the keymap guard passes. */
 function focusInsideTerminal(): HTMLElement {
@@ -292,11 +301,34 @@ function focusInsideTerminal(): HTMLElement {
 	return target;
 }
 
+function makeFileList(files: File[]): FileList {
+	return {
+		length: files.length,
+		item: (index: number) => files[index] ?? null,
+		...Object.fromEntries(files.map((file, index) => [index, file])),
+	} as unknown as FileList;
+}
+
+function dispatchDrop(target: Element, files: File[]) {
+	const event = new MouseEvent("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "dataTransfer", {
+		value: {
+			files: makeFileList(files),
+		},
+	});
+	act(() => {
+		target.dispatchEvent(event);
+	});
+}
+
 describe("TerminalView – keymap shortcuts", () => {
 	beforeEach(() => {
 		localStorage.clear();
 		mockedTmuxAction.mockClear();
 		mockedTmuxAction.mockResolvedValue(undefined as any);
+		mockedResolveFilename.mockReset();
+		mockedUploadImageBase64.mockReset();
+		lastWebSocket = null;
 	});
 
 	it("iterm2 mode: Cmd+W calls tmuxAction with killPane", async () => {
@@ -374,6 +406,34 @@ describe("TerminalView – keymap shortcuts", () => {
 		});
 
 		expect(mockedTmuxAction).not.toHaveBeenCalled();
+	});
+});
+
+describe("TerminalView – drag-and-drop", () => {
+	it("uploads dropped images when resolveFilename cannot find the original path", async () => {
+		mockedResolveFilename.mockResolvedValue(null);
+		mockedUploadImageBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.jpg" } as any);
+
+		await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+		const file = new File(["abc"], "Screenshot 2026-03-28 at 7.13.32.jpg", {
+			type: "image/jpeg",
+			lastModified: 1711600000000,
+		});
+
+		dispatchDrop(terminal, [file]);
+
+		await waitFor(() => {
+			expect(mockedUploadImageBase64).toHaveBeenCalledWith({
+				projectId: "p1",
+				base64: "YWJj",
+				filename: "Screenshot 2026-03-28 at 7.13.32.jpg",
+				mimeType: "image/jpeg",
+			});
+		});
+		await waitFor(() => {
+			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploaded-drop.jpg");
+		});
 	});
 });
 

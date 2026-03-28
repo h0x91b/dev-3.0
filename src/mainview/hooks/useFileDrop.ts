@@ -1,18 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { api } from "../rpc";
-
-async function fileToBase64(file: File): Promise<string> {
-	const buffer = await file.arrayBuffer();
-	const bytes = new Uint8Array(buffer);
-	const chunks: string[] = [];
-	const CHUNK_SIZE = 0x8000;
-
-	for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-		chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE)));
-	}
-
-	return btoa(chunks.join(""));
-}
+import { uploadDroppedImage } from "../utils/uploadDroppedImage";
 
 export function useFileDrop(
 	projectId: string,
@@ -58,15 +46,9 @@ export function useFileDrop(
 			void Promise.all(files.map(async (file) => {
 				if (projectId && file.type.startsWith("image/")) {
 					try {
-						const base64 = await fileToBase64(file);
-						const uploaded = await api.request.uploadImageBase64({
-							projectId,
-							base64,
-							filename: file.name,
-							mimeType: file.type || undefined,
-						});
-						if (uploaded?.path) {
-							onFileDropped(uploaded.path);
+						const uploadedPath = await uploadDroppedImage(projectId, file);
+						if (uploadedPath) {
+							onFileDropped(uploadedPath);
 							return;
 						}
 					} catch (err) {
