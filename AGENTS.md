@@ -135,13 +135,7 @@ Non-obvious architectural decisions, hacks, and workarounds are documented in `d
 ## Commands
 
 ```bash
-# Main development workflow with HMR (Vite dev server + main watcher)
-bun run watch
-
-# Vite HMR server only
-bun run hmr
-
-# Development without HMR (build, package, then launch locally)
+# Main local development flow (build, package, then launch locally)
 bun run dev
 
 # Alternative local launch path (reuses existing Vite output)
