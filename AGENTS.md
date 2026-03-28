@@ -135,11 +135,11 @@ Non-obvious architectural decisions, hacks, and workarounds are documented in `d
 ## Commands
 
 ```bash
-# Development with HMR (Vite dev server + Electrobun concurrently)
+# Main local development flow (build, package, then launch locally)
 bun run dev
 
-# Development without HMR (build once, then run)
-bun run dev:once
+# Alternative local launch path (reuses existing Vite output)
+bun run start
 
 # Build (staging channel)
 bun run build
@@ -148,7 +148,7 @@ bun run build
 bun run build:prod
 ```
 
-No linter is configured.
+Use `bun run lint` for the repository's TypeScript/type-check validation step before committing.
 
 ## Architecture
 
