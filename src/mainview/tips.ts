@@ -501,6 +501,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0489}", // nf-md-console
 	},
 	{
+		id: "activity-project-actions",
+		titleKey: "tip.activityProjectActions.title",
+		bodyKey: "tip.activityProjectActions.body",
+		icon: "\u{F0493}", // nf-md-tune
+	},
+	{
 		id: "port-allocation",
 		titleKey: "tip.portAllocation.title",
 		bodyKey: "tip.portAllocation.body",

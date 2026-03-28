@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import AddProjectModal from "./AddProjectModal";
 import ActivityOverview from "./ActivityOverview";
+import ProjectActionButtons from "./ProjectActionButtons";
 
 type DashboardTab = "activity" | "projects";
 
@@ -77,6 +78,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 						projects={projects}
 						navigate={navigate}
 						bellCounts={bellCounts}
+						onRemoveProject={handleRemoveProject}
 					/>
 				) : (
 					<div className="h-full overflow-y-auto p-7">
@@ -151,69 +153,12 @@ function Dashboard({ projects, dispatch, navigate, bellCounts }: DashboardProps)
 													{project.path}
 												</div>
 											</div>
-											{/* Action buttons — visible on hover, grouped together */}
-											<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														navigate({ screen: "project-settings", projectId: project.id });
-													}}
-													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
-													title={t("header.projectSettings")}
-												>
-													<span
-														className="text-[1rem] leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\u{F0493}"}
-													</span>
-												</button>
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														api.request.openFolder({ path: project.path }).catch(() => {});
-													}}
-													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
-													title={t("dashboard.openInFinder")}
-												>
-													<span
-														className="text-[1rem] leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\u{F115}"}
-													</span>
-												</button>
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														navigate({ screen: "project-terminal", projectId: project.id });
-													}}
-													className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
-													title={t("projectTerminal.tooltip")}
-												>
-													<span
-														className="text-[1rem] leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\uF489"}
-													</span>
-												</button>
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														handleRemoveProject(project.id);
-													}}
-													className="text-fg-3 hover:text-danger transition-colors p-1.5 rounded-lg hover:bg-danger/10"
-													title={t("dashboard.remove")}
-												>
-													<span
-														className="text-[1rem] leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\u{F0A79}"}
-													</span>
-												</button>
-											</div>
+											<ProjectActionButtons
+												project={project}
+												navigate={navigate}
+												onRemove={handleRemoveProject}
+												className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+											/>
 											<span
 												className="text-[0.875rem] leading-none text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0"
 												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
