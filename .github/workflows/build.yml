@@ -138,52 +138,13 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let body = '## 🔍 Trivy Vulnerability Scan\n\n';
+            const { buildTrivyCommentBody } = require('./src/bun/trivy-pr-comment.js');
+            let body = null;
             if (fs.existsSync('trivy-results.txt')) {
-              const results = fs.readFileSync('trivy-results.txt', 'utf8').trim();
-              if (results.length === 0) {
-                body += '✅ No vulnerabilities found.\n';
-              } else {
-                const lines = results
-                  .split('\n')
-                  .map((line) => line.trim())
-                  .filter(Boolean);
-                const tableLines = lines.filter((line) => line.startsWith('│'));
-                const legendIndex = lines.findIndex((line) => line === 'Legend:');
-
-                if (tableLines.length >= 2) {
-                  const parseRow = (line) =>
-                    line
-                      .split('│')
-                      .slice(1, -1)
-                      .map((cell) => cell.trim());
-
-                  const header = parseRow(tableLines[0]);
-                  const rows = tableLines.slice(1).map(parseRow);
-
-                  body += '### Report Summary\n\n';
-                  body += `| ${header.join(' | ')} |\n`;
-                  body += `| ${header.map(() => '---').join(' | ')} |\n`;
-                  body += rows.map((row) => `| ${row.join(' | ')} |`).join('\n');
-                  body += '\n';
-
-                  if (legendIndex !== -1) {
-                    const legendLines = lines
-                      .slice(legendIndex + 1)
-                      .filter((line) => line.startsWith('-'));
-                    if (legendLines.length > 0) {
-                      body += '\n';
-                      body += legendLines.join('\n');
-                      body += '\n';
-                    }
-                  }
-                } else {
-                  body += '### Raw Output\n\n';
-                  body += '```\n' + results + '\n```\n';
-                }
-              }
+              const results = fs.readFileSync('trivy-results.txt', 'utf8');
+              body = buildTrivyCommentBody(results);
             } else {
-              body += '⚠️ Trivy results file not found.\n';
+              body = '## 🔍 Trivy Vulnerability Scan\n\n⚠️ Trivy results file not found.\n';
             }
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -194,6 +155,16 @@ jobs:
             const trivyComment = comments.find((comment) =>
               comment.body.includes('Trivy Vulnerability Scan'),
             );
+            if (!body) {
+              if (trivyComment) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: trivyComment.id,
+                });
+              }
+              return;
+            }
             if (trivyComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
