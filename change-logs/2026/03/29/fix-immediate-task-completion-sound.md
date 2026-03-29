@@ -1,0 +1,1 @@
+Task completion and cancellation sounds now play immediately when the status change is accepted instead of waiting for tmux cleanup and worktree teardown. Added regression coverage for both RPC and CLI task move flows so delayed audio feedback does not creep back in.

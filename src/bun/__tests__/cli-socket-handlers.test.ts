@@ -69,7 +69,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, runCleanupScript, getPushMessage } from "../rpc-handlers";
+import { activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage } from "../rpc-handlers";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
@@ -964,6 +964,30 @@ describe("task.move", () => {
 			branchName: null,
 			customColumnId: null,
 		}, { dropPosition: "top" });
+	});
+
+	it("active → completed: plays sound before cleanup starts", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		const updated = { ...task, status: "completed" as const, worktreePath: null, branchName: null };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.move", {
+				taskId: task.id,
+				projectId: "proj-1",
+				newStatus: "completed",
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(vi.mocked(playTaskCompleteSound).mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(runCleanupScript).mock.invocationCallOrder[0],
+		);
 	});
 
 	it("active → cancelled: same cleanup flow", async () => {
