@@ -32,6 +32,14 @@ describe("ensureCodexConfig", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).not.toContain("default_permissions");
 		});
+
+		it("can trust an exact worktree path in addition to the shared worktrees root", () => {
+			const worktreePath = "/Users/testuser/.dev3.0/worktrees/proj/abcd1234/worktree";
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [worktreePath]);
+
+			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
+			expect(result).toContain(`[projects."${worktreePath}"]`);
+		});
 	});
 
 	describe("when config exists with user settings", () => {

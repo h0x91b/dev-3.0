@@ -1,9 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
+import { ensureCodexConfig } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 
@@ -510,6 +511,8 @@ export function buildTaskEnv(
 
 // ---- Gemini Trust ----
 
+const CODEX_CONFIG = `${homedir()}/.codex/config.toml`;
+
 const GEMINI_TRUSTED_FOLDERS = `${homedir()}/.gemini/trustedFolders.json`;
 
 /**
@@ -537,6 +540,40 @@ export async function ensureGeminiTrust(dirPath: string): Promise<void> {
 	} catch (err) {
 		// Non-fatal — worst case the user sees the trust dialog
 		log.warn("Failed to register Gemini worktree trust", { error: String(err) });
+	}
+}
+
+// ---- Codex Trust ----
+
+/**
+ * Ensure a directory is marked as trusted in ~/.codex/config.toml so that
+ * `codex` CLI skips the "Do you trust the contents of this directory?" dialog.
+ * Resolves symlinks (e.g. /tmp → /private/tmp on macOS).
+ */
+export async function ensureCodexTrust(dirPath: string): Promise<void> {
+	try {
+		const resolved = await realpath(dirPath);
+		const home = homedir();
+		const worktreesPath = `${home}/.dev3.0/worktrees`;
+		const socketsPath = `${home}/.dev3.0/sockets`;
+
+		let content: string | null = null;
+		try {
+			content = readFileSync(CODEX_CONFIG, "utf-8");
+		} catch {
+			// File doesn't exist yet — create with defaults below.
+		}
+
+		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved]);
+		if (updated === content) {
+			return;
+		}
+
+		writeFileSync(CODEX_CONFIG, updated, "utf-8");
+		log.info("Registered worktree as trusted in ~/.codex/config.toml", { path: resolved });
+	} catch (err) {
+		// Non-fatal — worst case the user sees the trust dialog
+		log.warn("Failed to register Codex worktree trust", { error: String(err) });
 	}
 }
 

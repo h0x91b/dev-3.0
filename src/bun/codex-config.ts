@@ -43,6 +43,7 @@ export function ensureCodexConfig(
 	content: string | null,
 	worktreesPath: string,
 	socketsPath: string,
+	trustedPaths: string[] = [],
 ): string {
 	let config = content ?? "";
 	let parsed: CodexConfig = {};
@@ -70,10 +71,11 @@ export function ensureCodexConfig(
 		}
 	}
 
-	// --- 1. Ensure [projects."<worktreesPath>"] with trust_level = "trusted" ---
-	const hasProject = parsed.projects?.[worktreesPath] != null;
-	if (!hasProject) {
-		const block = `\n[projects."${worktreesPath}"]\ntrust_level = "trusted"\n`;
+	// --- 1. Ensure trusted [projects."<path>"] entries ---
+	for (const trustedPath of new Set([worktreesPath, ...trustedPaths])) {
+		if (!trustedPath) continue;
+		if (parsed.projects?.[trustedPath] != null) continue;
+		const block = `\n[projects."${trustedPath}"]\ntrust_level = "trusted"\n`;
 		config = appendBlock(config, block);
 	}
 

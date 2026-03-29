@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-03-27
+Last updated: 2026-03-29
 
 ## Agents
 
@@ -26,7 +26,7 @@ Last updated: 2026-03-27
 | **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — |
 | **Model selection** | `--model` | `--model` | `--model` | `--model` | `--model` |
 | **Agent selection** | — | — | — | — | `--agent` |
-| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | — | Yes (`ensureGeminiTrust`) | — |
+| **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
 | **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (4 hooks) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
 
