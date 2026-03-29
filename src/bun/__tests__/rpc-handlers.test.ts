@@ -77,7 +77,9 @@ vi.mock("../pty-server", () => ({
 
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
+	ensureCodexTrust: vi.fn(),
 	ensureGeminiTrust: vi.fn(),
+	isCodexCommand: vi.fn((cmd: string) => cmd === "codex"),
 	isGeminiCommand: vi.fn(() => false),
 	resolveCommandForAgent: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	resolveCommandForProject: vi.fn(() => ({ command: "claude", extraEnv: {} })),
@@ -3415,6 +3417,26 @@ describe("launchTaskPty", () => {
 		} finally {
 			writeSpy.mockRestore();
 		}
+	});
+
+	it("pre-registers the exact worktree as trusted before launching Codex", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		mockSpawnSync.mockReturnValue({
+			exitCode: 0,
+			stdout: new TextEncoder().encode("/usr/local/bin/codex\n"),
+			stderr: new Uint8Array(),
+		});
+		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
+			command: "codex",
+			extraEnv: {},
+			agent: { baseCommand: "codex" },
+			config: {},
+		});
+
+		await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
+
+		expect((agents as any).ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
 	});
 });
 

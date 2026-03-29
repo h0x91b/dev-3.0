@@ -972,6 +972,20 @@ export async function launchTaskPty(
 		});
 	}
 
+	// Pre-register worktree as trusted so codex skips the trust dialog
+	if (agents.isCodexCommand(resolvedBaseCmd)) {
+		try {
+			await agents.ensureCodexTrust(worktreePath);
+			log.info("Codex trust ensured", { worktreePath });
+		} catch (err) {
+			log.error("ensureCodexTrust failed (non-fatal)", {
+				worktreePath,
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+		}
+	}
+
 	// Pre-register worktree as trusted so gemini skips the trust dialog
 	if (agents.isGeminiCommand(resolvedBaseCmd)) {
 		try {

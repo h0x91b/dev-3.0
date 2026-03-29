@@ -1,0 +1,1 @@
+Fix Codex spawned worktrees asking for the trust prompt again by pre-registering the exact worktree path in `~/.codex/config.toml` before launch. The dev3 Codex config patcher now keeps the shared worktrees root trust entry and can add per-worktree trust entries without duplicating the permission profile logic.
