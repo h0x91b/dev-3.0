@@ -2731,14 +2731,17 @@ export const handlers = {
 		log.info("→ getPtyUrl", {
 			taskId: params.taskId,
 			hasExistingSession: pty.hasSession(params.taskId),
+			hasDeadSession: pty.hasDeadSession(params.taskId),
 			ptyPort: pty.getPtyPort(),
 		});
 
-		// If resuming and the session is dead (proc exited but still in map),
-		// destroy it so launchTaskPty recreates it with the resume flag.
-		if (params.resume && pty.hasDeadSession(params.taskId)) {
-			log.info("Resume requested on dead session — destroying to force recreation", {
+		// Dead in-memory sessions keep the original tmux command, which would
+		// replay the initial prompt if the websocket path respawns them directly.
+		// Always destroy them and go through the normal restore path instead.
+		if (pty.hasDeadSession(params.taskId)) {
+			log.info("Dead session detected — destroying to force clean restoration", {
 				taskId: params.taskId.slice(0, 8),
+				resumeRequested: !!params.resume,
 			});
 			pty.destroySession(params.taskId);
 		}
