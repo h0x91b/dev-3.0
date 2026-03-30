@@ -459,6 +459,11 @@ export function isActive(status: TaskStatus): boolean {
 	return ACTIVE_STATUSES.includes(status);
 }
 
+function shouldResumeRestoredTask(task: Task, requestedResume?: boolean): boolean {
+	if (requestedResume) return true;
+	return isActive(task.status) && !!task.worktreePath;
+}
+
 /**
  * Background poller: detect when a "review-by-user" task's branch has been
  * merged into the base branch (squash, rebase, or regular merge).
@@ -2777,15 +2782,18 @@ export const handlers = {
 			if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 				try {
 					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					const shouldResume = shouldResumeRestoredTask(foundTask, params.resume);
 					log.info("Attempting to restore PTY session", {
 						taskId: params.taskId.slice(0, 8),
 						status: foundTask.status,
 						worktreePath: foundTask.worktreePath,
+						resume: shouldResume,
 					});
-					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
+					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, shouldResume);
 					log.info("Restored PTY session for active task", {
 						taskId: params.taskId.slice(0, 8),
 						worktreePath: foundTask.worktreePath,
+						resume: shouldResume,
 					});
 				} catch (err) {
 					log.error("Failed to restore PTY session", {

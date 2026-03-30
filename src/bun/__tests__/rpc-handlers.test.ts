@@ -1941,7 +1941,7 @@ describe("handlers.getPtyUrl", () => {
 			task.description,
 			"/tmp/wt",
 			undefined,
-			undefined,
+			{ resume: true },
 		);
 	});
 
@@ -2045,7 +2045,31 @@ describe("handlers.getPtyUrl", () => {
 			"agent-claude",
 			"config-opus",
 			expect.any(Object),
-			undefined,
+			{ resume: true },
+		);
+	});
+
+	it("restores active worktree-backed tasks in resume mode by default", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/wt",
+			agentId: "agent-claude",
+			configId: "config-opus",
+		});
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"agent-claude",
+			"config-opus",
+			expect.any(Object),
+			{ resume: true },
 		);
 	});
 
