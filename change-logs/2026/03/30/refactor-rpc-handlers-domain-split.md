@@ -1,0 +1,1 @@
+Refactored Bun RPC handlers out of the monolithic `src/bun/rpc-handlers.ts` file into domain modules for app/project, settings/config, task lifecycle, git operations, tmux/PTY, notes/labels, and remote access. Kept the public `rpc-handlers.ts` API as a thin composition layer so existing imports and tests keep working while handler ownership is obvious.
