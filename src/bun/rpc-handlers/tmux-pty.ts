@@ -622,16 +622,26 @@ async function checkWorktreeExists(params: { path: string }): Promise<boolean> {
 	return existsSync(params.path);
 }
 
+function shouldResumeRestoredTask(task: Task, requestedResume?: boolean): boolean {
+	if (requestedResume) return true;
+	return isActive(task.status) && !!task.worktreePath;
+}
+
 async function getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
 	log.info("→ getPtyUrl", {
 		taskId: params.taskId,
 		hasExistingSession: pty.hasSession(params.taskId),
+		hasDeadSession: pty.hasDeadSession(params.taskId),
 		ptyPort: pty.getPtyPort(),
 	});
 
-	if (params.resume && pty.hasDeadSession(params.taskId)) {
-		log.info("Resume requested on dead session — destroying to force recreation", {
+	// Dead in-memory sessions keep the original tmux command, which would
+	// replay the initial prompt if the websocket path respawns them directly.
+	// Always destroy them and go through the normal restore path instead.
+	if (pty.hasDeadSession(params.taskId)) {
+		log.info("Dead session detected — destroying to force clean restoration", {
 			taskId: params.taskId.slice(0, 8),
+			resumeRequested: !!params.resume,
 		});
 		pty.destroySession(params.taskId);
 	}
@@ -671,15 +681,18 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 			try {
 				const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+				const shouldResume = shouldResumeRestoredTask(foundTask, params.resume);
 				log.info("Attempting to restore PTY session", {
 					taskId: params.taskId.slice(0, 8),
 					status: foundTask.status,
 					worktreePath: foundTask.worktreePath,
+					resume: shouldResume,
 				});
-				await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, params.resume ?? false);
+				await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, shouldResume);
 				log.info("Restored PTY session for active task", {
 					taskId: params.taskId.slice(0, 8),
 					worktreePath: foundTask.worktreePath,
+					resume: shouldResume,
 				});
 			} catch (err) {
 				log.error("Failed to restore PTY session", {
