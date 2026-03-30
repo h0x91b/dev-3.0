@@ -1705,6 +1705,76 @@ describe("handlers.spawnVariants", () => {
 			);
 		});
 	});
+
+	it("clears preparing when project config resolution fails before variant setup starts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5 });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
+		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(data.updateTask).mockResolvedValue(unstuckVariant);
+		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad repo config"));
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", { preparing: false });
+		});
+
+		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
+});
+
+describe("handlers.addAttempts", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("clears preparing when project config resolution fails before attempt setup starts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			preparing: true,
+		});
+		const unstuckAttempt = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			preparing: false,
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(data.updateTask).mockResolvedValue(unstuckAttempt);
+		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad repo config"));
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", { preparing: false });
+		});
+
+		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
 });
 
 // ================================================================

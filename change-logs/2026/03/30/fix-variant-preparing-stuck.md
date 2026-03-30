@@ -1,0 +1,1 @@
+Fixed a background preparation failure path where `spawnVariants` and `addAttempts` could reject before entering per-task error handling, leaving tasks stuck in `Preparing...`. Added regression coverage to ensure failed project config resolution clears the preparing state instead of silently hanging the card.

@@ -241,6 +241,17 @@ let pushMessageRaw: ((name: string, payload: any) => void) | null = null;
 /** Wrapped push — local renderer + broadcast to other instances. */
 let pushMessage: ((name: string, payload: any) => void) | null = null;
 
+async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<void> {
+	for (const task of tasks) {
+		try {
+			const updated = await data.updateTask(project, task.id, { preparing: false });
+			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+		} catch {
+			// Best-effort cleanup only. The triggering error is logged by the caller.
+		}
+	}
+}
+
 function devServerSessionName(taskId: string): string {
 	return `dev3-dev-${taskId.slice(0, 8)}`;
 }
@@ -1958,7 +1969,7 @@ export const handlers = {
 
 		// Phase 2: Heavy I/O (worktree + CoW + PTY) runs in the background
 		if (needsWorktree) {
-			(async () => {
+			void (async () => {
 				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
@@ -1992,7 +2003,10 @@ export const handlers = {
 						} catch { /* best effort */ }
 					}
 				}
-			})();
+			})().catch(async (err) => {
+				log.error("Failed to initialize variant preparation", { groupId, error: String(err) });
+				await clearPreparingTasks(project, resultTasks);
+			});
 		}
 
 		return resultTasks;
@@ -2061,7 +2075,7 @@ export const handlers = {
 
 		// Phase 2: Heavy I/O in background
 		if (needsWorktree) {
-			(async () => {
+			void (async () => {
 				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
@@ -2091,7 +2105,10 @@ export const handlers = {
 						} catch { /* best effort */ }
 					}
 				}
-			})();
+			})().catch(async (err) => {
+				log.error("Failed to initialize attempt preparation", { groupId, error: String(err) });
+				await clearPreparingTasks(project, resultTasks);
+			});
 		}
 
 		return [updatedSource, ...resultTasks];
