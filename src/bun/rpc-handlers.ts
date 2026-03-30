@@ -246,6 +246,7 @@ async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<voi
 		try {
 			const updated = await data.updateTask(project, task.id, { preparing: false });
 			pushMessage?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("Cleared preparing state after background initialization failure", { projectId: project.id, taskId: task.id });
 		} catch {
 			// Best-effort cleanup only. The triggering error is logged by the caller.
 		}
@@ -1970,7 +1971,19 @@ export const handlers = {
 		// Phase 2: Heavy I/O (worktree + CoW + PTY) runs in the background
 		if (needsWorktree) {
 			void (async () => {
+				log.info("Starting variant preparation background job", {
+					projectId: project.id,
+					groupId,
+					taskIds: resultTasks.map((task) => task.id),
+					count: resultTasks.length,
+				});
+				log.info("Resolving project config for variant preparation", { projectId: project.id, groupId });
 				const resolvedProject = await repoConfig.resolveProjectConfig(project);
+				log.info("Resolved project config for variant preparation", {
+					projectId: resolvedProject.id,
+					groupId,
+					projectPath: resolvedProject.path,
+				});
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
@@ -1978,6 +1991,16 @@ export const handlers = {
 						const variantBranchName = (isMultiVariant && srcBranch)
 							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
 							: undefined;
+						log.info("Preparing variant", {
+							projectId: project.id,
+							groupId,
+							taskId: task.id,
+							variantIndex: task.variantIndex,
+							agentId: variant.agentId,
+							configId: variant.configId,
+							existingBranch: task.existingBranch,
+							variantBranchName,
+						});
 						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
 						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
@@ -2076,11 +2099,33 @@ export const handlers = {
 		// Phase 2: Heavy I/O in background
 		if (needsWorktree) {
 			void (async () => {
+				log.info("Starting attempt preparation background job", {
+					projectId: project.id,
+					groupId,
+					sourceTaskId: sourceTask.id,
+					taskIds: resultTasks.map((task) => task.id),
+					count: resultTasks.length,
+				});
+				log.info("Resolving project config for attempt preparation", { projectId: project.id, groupId });
 				const resolvedProject = await repoConfig.resolveProjectConfig(project);
+				log.info("Resolved project config for attempt preparation", {
+					projectId: resolvedProject.id,
+					groupId,
+					projectPath: resolvedProject.path,
+				});
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
 					try {
+						log.info("Preparing attempt", {
+							projectId: project.id,
+							groupId,
+							sourceTaskId: sourceTask.id,
+							taskId: task.id,
+							variantIndex: task.variantIndex,
+							agentId: variant.agentId,
+							configId: variant.configId,
+						});
 						const wt = await git.createWorktree(resolvedProject, task);
 						// Re-resolve from worktree to pick up .dev3/config.json (setupScript, sparse checkout, etc.)
 						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
