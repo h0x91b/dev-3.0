@@ -164,6 +164,8 @@ const tips = {
 	"tip.activityProjectActions.body": "Use the Activity row buttons to open project settings, the repo folder, or the project terminal directly.",
 	"tip.addProjectMenu.title": "Add projects from the menu",
 	"tip.addProjectMenu.body": "Use File > Add Project... to open the import dialog from anywhere in the app.",
+	"tip.openLogsMenu.title": "Open logs quickly",
+	"tip.openLogsMenu.body": "Use View > Open Logs Directory to jump straight to the app log folder in Finder.",
 	"tip.portAllocation.title": "Auto-allocate ports",
 	"tip.portAllocation.body": "Set portCount in Project Settings to auto-assign free ports per task. Use $DEV3_PORT0, $DEV3_PORT1 in scripts.",
 	"tip.taskWatch.title": "Watch tasks",

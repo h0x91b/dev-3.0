@@ -19,6 +19,7 @@ import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAc
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
+import { openLogsDirectory } from "./menu-actions";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
@@ -247,6 +248,7 @@ ApplicationMenu.setApplicationMenu([
 		submenu: [
 			{ label: "Hard Refresh", action: "hard-refresh", accelerator: "r" },
 			{ label: "Toggle Developer Tools", action: "toggle-devtools" },
+			{ label: "Open Logs Directory", action: "open-logs-directory" },
 			{ type: "separator" },
 			{ label: "Soft Reset Terminal", action: "terminal-soft-reset" },
 			{ label: "Hard Reset Terminal", action: "terminal-hard-reset" },
@@ -562,6 +564,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		(mainWindow.webview.rpc as any).send.terminalHardReset?.({});
 	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
+	} else if (e.data.action === "open-logs-directory") {
+		openLogsDirectory();
 	} else if (e.data.action === "zoom-in") {
 		(mainWindow.webview.rpc as any).send.zoomIn?.({});
 	} else if (e.data.action === "zoom-out") {

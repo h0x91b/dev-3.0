@@ -164,6 +164,8 @@ const tips = {
 	"tip.activityProjectActions.body": "Кнопки в строке Activity сразу открывают настройки проекта, папку репо или терминал проекта.",
 	"tip.addProjectMenu.title": "Добавление проекта через меню",
 	"tip.addProjectMenu.body": "Используй File > Add Project..., чтобы открыть импорт проекта из любого экрана приложения.",
+	"tip.openLogsMenu.title": "Быстрый доступ к логам",
+	"tip.openLogsMenu.body": "Используй View > Open Logs Directory, чтобы сразу открыть папку с логами приложения в Finder.",
 	"tip.portAllocation.title": "Авто-выделение портов",
 	"tip.portAllocation.body": "Задайте portCount в настройках проекта — каждой задаче выделяются свободные порты. Используйте $DEV3_PORT0, $DEV3_PORT1 в скриптах.",
 	"tip.taskWatch.title": "Следите за задачами",
