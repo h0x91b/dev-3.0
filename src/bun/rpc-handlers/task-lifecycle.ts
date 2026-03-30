@@ -27,6 +27,17 @@ async function runCowClones(project: Project, worktreePath: string): Promise<voi
 	await clonePaths(project.path, worktreePath, project.clonePaths);
 }
 
+async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<void> {
+	for (const task of tasks) {
+		try {
+			const updated = await data.updateTask(project, task.id, { preparing: false });
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		} catch {
+			// Best effort — do not crash background preparation cleanup.
+		}
+	}
+}
+
 export async function activateTask(
 	project: Project,
 	task: Task,
@@ -431,36 +442,41 @@ async function spawnVariants(params: {
 
 	if (needsWorktree) {
 		(async () => {
-			const resolvedProject = await repoConfig.resolveProjectConfig(project);
-			for (let i = 0; i < resultTasks.length; i++) {
-				const task = resultTasks[i];
-				const variant = params.variants[i];
-				try {
-					const variantBranchName = (isMultiVariant && srcBranch)
-						? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
-						: undefined;
-					const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
-					const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
-					if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
-						await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
-					}
-					await runCowClones(resolved, wt.worktreePath);
-					await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
-
-					const updated = await data.updateTask(project, task.id, {
-						worktreePath: wt.worktreePath,
-						branchName: wt.branchName,
-						preparing: false,
-					});
-					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-					log.info("Variant ready", { taskId: task.id, worktreePath: wt.worktreePath });
-				} catch (err) {
-					log.error("Failed to prepare variant", { taskId: task.id, error: String(err) });
+			try {
+				const resolvedProject = await repoConfig.resolveProjectConfig(project);
+				for (let i = 0; i < resultTasks.length; i++) {
+					const task = resultTasks[i];
+					const variant = params.variants[i];
 					try {
-						const updated = await data.updateTask(project, task.id, { preparing: false });
+						const variantBranchName = (isMultiVariant && srcBranch)
+							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+							: undefined;
+						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
+						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
+						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
+						}
+						await runCowClones(resolved, wt.worktreePath);
+						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
+
+						const updated = await data.updateTask(project, task.id, {
+							worktreePath: wt.worktreePath,
+							branchName: wt.branchName,
+							preparing: false,
+						});
 						getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-					} catch {}
+						log.info("Variant ready", { taskId: task.id, worktreePath: wt.worktreePath });
+					} catch (err) {
+						log.error("Failed to prepare variant", { taskId: task.id, error: String(err) });
+						try {
+							const updated = await data.updateTask(project, task.id, { preparing: false });
+							getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+						} catch {}
+					}
 				}
+			} catch (err) {
+				log.error("Failed to start variant preparation", { projectId: project.id, error: String(err) });
+				await clearPreparingTasks(project, resultTasks);
 			}
 		})();
 	}
@@ -526,33 +542,38 @@ async function addAttempts(params: {
 
 	if (needsWorktree) {
 		(async () => {
-			const resolvedProject = await repoConfig.resolveProjectConfig(project);
-			for (let i = 0; i < resultTasks.length; i++) {
-				const task = resultTasks[i];
-				const variant = params.variants[i];
-				try {
-					const wt = await git.createWorktree(resolvedProject, task);
-					const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
-					if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
-						await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
-					}
-					await runCowClones(resolved, wt.worktreePath);
-					await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
-
-					const updated = await data.updateTask(project, task.id, {
-						worktreePath: wt.worktreePath,
-						branchName: wt.branchName,
-						preparing: false,
-					});
-					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-					log.info("Attempt ready", { taskId: task.id, worktreePath: wt.worktreePath });
-				} catch (err) {
-					log.error("Failed to prepare attempt", { taskId: task.id, error: String(err) });
+			try {
+				const resolvedProject = await repoConfig.resolveProjectConfig(project);
+				for (let i = 0; i < resultTasks.length; i++) {
+					const task = resultTasks[i];
+					const variant = params.variants[i];
 					try {
-						const updated = await data.updateTask(project, task.id, { preparing: false });
+						const wt = await git.createWorktree(resolvedProject, task);
+						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
+						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
+						}
+						await runCowClones(resolved, wt.worktreePath);
+						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
+
+						const updated = await data.updateTask(project, task.id, {
+							worktreePath: wt.worktreePath,
+							branchName: wt.branchName,
+							preparing: false,
+						});
 						getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-					} catch {}
+						log.info("Attempt ready", { taskId: task.id, worktreePath: wt.worktreePath });
+					} catch (err) {
+						log.error("Failed to prepare attempt", { taskId: task.id, error: String(err) });
+						try {
+							const updated = await data.updateTask(project, task.id, { preparing: false });
+							getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+						} catch {}
+					}
 				}
+			} catch (err) {
+				log.error("Failed to start attempt preparation", { projectId: project.id, error: String(err) });
+				await clearPreparingTasks(project, resultTasks);
 			}
 		})();
 	}
