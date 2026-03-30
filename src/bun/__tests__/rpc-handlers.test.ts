@@ -38,6 +38,7 @@ vi.mock("../data", () => ({
 vi.mock("../git", () => ({
 	removeWorktree: vi.fn(),
 	createWorktree: vi.fn(),
+	applySparseCheckout: vi.fn(),
 	isGitRepo: vi.fn(),
 	getDefaultBranch: vi.fn(),
 	fetchOrigin: vi.fn(),
@@ -116,6 +117,10 @@ vi.mock("../agent-hooks", () => ({
 	setupAgentHooks: vi.fn(),
 }));
 
+vi.mock("../cow-clone", () => ({
+	clonePaths: vi.fn(),
+}));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -165,6 +170,7 @@ import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
+import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
 import { existsSync } from "node:fs";
 
@@ -188,6 +194,7 @@ const {
 	stopPRDetectionPoller,
 	resolveBinaryPath,
 	launchTaskPty,
+	activateTask,
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
@@ -1488,6 +1495,67 @@ describe("resolveOperationalProjectConfig", () => {
 	});
 });
 
+describe("activateTask", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("applies sparse checkout and CoW clones using the worktree-resolved config", async () => {
+		const project = makeProject({
+			setupScript: "project setup",
+			clonePaths: ["project-cache"],
+		} as any);
+		const preResolved = {
+			...project,
+			setupScript: "project setup",
+			clonePaths: ["project-cache"],
+		} as Project;
+		const worktreeResolved = {
+			...project,
+			sparseCheckoutEnabled: true,
+			sparseCheckoutPaths: ["src", "tests"],
+			clonePaths: ["branch-cache"],
+			setupScript: "branch setup",
+		} as Project;
+		const task = makeTask({ worktreePath: null, branchName: null });
+
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(preResolved)
+			.mockResolvedValueOnce(preResolved)
+			.mockResolvedValueOnce(worktreeResolved);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+
+		const result = await activateTask(project, task);
+
+		expect(result).toEqual({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+		expect(git.createWorktree).toHaveBeenCalledWith(preResolved, task, undefined);
+		expect(git.applySparseCheckout).toHaveBeenCalledWith("/tmp/wt", ["src", "tests"]);
+		expect(cowClone.clonePaths).toHaveBeenCalledWith(project.path, "/tmp/wt", ["branch-cache"]);
+		expect(pty.createSession).toHaveBeenCalledOnce();
+	});
+
+	it("clears description for reopened tasks before launching the agent", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "completed",
+			description: "old task context that should not be resent",
+			worktreePath: null,
+			branchName: null,
+		});
+
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+
+		await activateTask(project, task, { isReopen: true });
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			expect.objectContaining({ id: project.id, path: project.path }),
+			task.title,
+			"",
+			"/tmp/wt",
+			undefined,
+			{ resume: true },
+		);
+	});
+});
+
 // ================================================================
 // handlers.spawnVariants
 // ================================================================
@@ -1731,6 +1799,69 @@ describe("handlers.spawnVariants", () => {
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
+
+	it("clears preparing when PTY launch fails after the worktree is created", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5 });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
+		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(unstuckVariant);
+		vi.mocked(pty.createSession).mockImplementationOnce(() => {
+			throw new Error("pty boom");
+		});
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", { preparing: false });
+		});
+	});
+
+	it("uses worktree-resolved sparse checkout and clone paths while preparing variants", async () => {
+		const project = makeProject({ clonePaths: ["project-cache"] } as any);
+		const resolvedProject = { ...project, clonePaths: ["project-cache"] } as Project;
+		const worktreeResolved = {
+			...project,
+			sparseCheckoutEnabled: true,
+			sparseCheckoutPaths: ["src", "tests"],
+			clonePaths: ["branch-cache"],
+		} as Project;
+		const sourceTask = makeTask({ status: "todo", seq: 5 });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(resolvedProject)
+			.mockResolvedValueOnce(resolvedProject)
+			.mockResolvedValueOnce(worktreeResolved);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(git.applySparseCheckout).toHaveBeenCalledWith("/tmp/vwt", ["src", "tests"]);
+		});
+		expect(cowClone.clonePaths).toHaveBeenCalledWith(project.path, "/tmp/vwt", ["branch-cache"]);
+	});
 });
 
 describe("handlers.addAttempts", () => {
@@ -1774,6 +1905,64 @@ describe("handlers.addAttempts", () => {
 		});
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
+
+	it("keeps preparing isolated per attempt when one attempt fails and another succeeds", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
+		const firstAttempt = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			preparing: true,
+		});
+		const secondAttempt = makeTask({
+			id: "attempt-3",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 3,
+			preparing: true,
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask)
+			.mockResolvedValueOnce(firstAttempt)
+			.mockResolvedValueOnce(secondAttempt);
+		vi.mocked(git.createWorktree)
+			.mockRejectedValueOnce(new Error("wt boom"))
+			.mockResolvedValueOnce({ worktreePath: "/tmp/attempt-3", branchName: "dev3/a3" });
+		vi.mocked(data.updateTask)
+			.mockResolvedValueOnce({ ...firstAttempt, preparing: false })
+			.mockResolvedValueOnce({
+				...secondAttempt,
+				worktreePath: "/tmp/attempt-3",
+				branchName: "dev3/a3",
+				preparing: false,
+			});
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [
+				{ agentId: "agent-1", configId: null },
+				{ agentId: "agent-2", configId: null },
+			],
+		});
+
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledTimes(2);
+		});
+		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", { preparing: false });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-3", {
+			worktreePath: "/tmp/attempt-3",
+			branchName: "dev3/a3",
+			preparing: false,
+		});
 	});
 });
 
@@ -3564,6 +3753,40 @@ describe("launchTaskPty", () => {
 		await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
 
 		expect((agents as any).ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
+	});
+
+	it("throws without creating a PTY session when command resolution fails", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("resolve boom"));
+
+		await expect(
+			launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default"),
+		).rejects.toThrow("resolve boom");
+
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("continues launching when ensureClaudeTrust fails", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(agents.ensureClaudeTrust).mockRejectedValueOnce(new Error("trust boom"));
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		expect(pty.createSession).toHaveBeenCalledOnce();
+	});
+
+	it("continues launching when setupAgentHooks throws", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(setupAgentHooks).mockImplementationOnce(() => {
+			throw new Error("hooks boom");
+		});
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		expect(pty.createSession).toHaveBeenCalledOnce();
 	});
 });
 
