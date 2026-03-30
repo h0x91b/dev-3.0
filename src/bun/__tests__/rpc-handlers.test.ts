@@ -163,7 +163,7 @@ import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
-import { loadSettings, saveSettings } from "../settings";
+import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import { Utils } from "electrobun/bun";
 import { existsSync } from "node:fs";
@@ -1172,6 +1172,31 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("completed");
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
+	});
+
+	it("in-progress → completed: plays sound before cleanup finishes", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
+		mockSpawn.mockImplementation(() => {
+			return { stdout: "", stderr: new Response(""), exited: Promise.resolve(0) };
+		});
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
+
+		const spawnCalls = mockSpawn.mock.calls.map(([args]) => args as string[]);
+		const afplayCall = spawnCalls.findIndex((args) => args[0] === "afplay");
+		const cleanupCall = spawnCalls.findIndex((args) => args.includes("new-session"));
+		expect(afplayCall).toBeGreaterThanOrEqual(0);
+		expect(cleanupCall).toBeGreaterThanOrEqual(0);
+		expect(afplayCall).toBeLessThan(cleanupCall);
+		expect(result.status).toBe("completed");
 	});
 
 	it("in-progress → cancelled: same cleanup as completed", async () => {

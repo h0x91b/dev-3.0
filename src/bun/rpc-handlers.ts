@@ -810,8 +810,10 @@ export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
 	const filename = status === "completed" ? "task-completed.mp3" : "task-cancelled.mp3";
 	const volume = status === "completed" ? "0.3" : "0.7";
 	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", filename);
-	const devPath = join(import.meta.dir, "..", "assets", "sounds", filename);
-	const soundPath = existsSync(prodPath) ? prodPath : existsSync(devPath) ? devPath : null;
+	const devPath = typeof import.meta.dir === "string"
+		? join(import.meta.dir, "..", "assets", "sounds", filename)
+		: null;
+	const soundPath = existsSync(prodPath) ? prodPath : devPath && existsSync(devPath) ? devPath : null;
 
 	if (!soundPath) {
 		log.warn("Task complete sound file not found", { prodPath, devPath, status });
@@ -1785,6 +1787,8 @@ export const handlers = {
 		if (newStatus === "completed" || newStatus === "cancelled") {
 			cleanupTaskState(task.id);
 			portPool.releasePorts(task.id);
+			// Confirm the user's action immediately; cleanup can take a few seconds.
+			playTaskCompleteSound(newStatus as "completed" | "cancelled");
 			if (params.force) {
 				// Force mode: skip PTY destruction, cleanup script, and worktree removal.
 				// The environment is already broken — just update the status.
@@ -1820,8 +1824,6 @@ export const handlers = {
 						error: String(err),
 					});
 				}
-
-				playTaskCompleteSound(newStatus as "completed" | "cancelled");
 
 				try {
 					await git.removeWorktree(project, task);
