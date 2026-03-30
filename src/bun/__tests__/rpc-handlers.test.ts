@@ -1941,7 +1941,7 @@ describe("handlers.getPtyUrl", () => {
 			task.description,
 			"/tmp/wt",
 			undefined,
-			undefined,
+			{ resume: true },
 		);
 	});
 
@@ -2010,7 +2010,7 @@ describe("handlers.getPtyUrl", () => {
 		expect(url).toBe("ws://localhost:9999?session=task-1");
 	});
 
-	it("does not destroy dead session when resume is not set", async () => {
+	it("destroys dead sessions even when resume is not set", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
@@ -2022,7 +2022,15 @@ describe("handlers.getPtyUrl", () => {
 
 		await handlers.getPtyUrl({ taskId: "task-1" });
 
-		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			project,
+			task.title,
+			task.description,
+			"/tmp/wt",
+			undefined,
+			{ resume: true },
+		);
 	});
 
 	it("passes task agentId and configId when restoring session", async () => {
@@ -2045,7 +2053,31 @@ describe("handlers.getPtyUrl", () => {
 			"agent-claude",
 			"config-opus",
 			expect.any(Object),
-			undefined,
+			{ resume: true },
+		);
+	});
+
+	it("restores active worktree-backed tasks in resume mode by default", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/wt",
+			agentId: "agent-claude",
+			configId: "config-opus",
+		});
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"agent-claude",
+			"config-opus",
+			expect.any(Object),
+			{ resume: true },
 		);
 	});
 
