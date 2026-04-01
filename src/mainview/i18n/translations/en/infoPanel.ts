@@ -57,7 +57,7 @@ const infoPanel = {
 	"infoPanel.refreshStatus": "Refresh branch status",
 	"infoPanel.movedAt": "Moved",
 	"infoPanel.baseBranch": "Base Branch",
-	"infoPanel.copyPath": "Copy path",
+	"infoPanel.copyPath": "Copy path to this git worktree",
 	"infoPanel.pathCopied": "Copied!",
 } as const;
 

@@ -57,7 +57,7 @@ const infoPanel = {
 	"infoPanel.refreshStatus": "Обновить статус ветки",
 	"infoPanel.movedAt": "Перемещено",
 	"infoPanel.baseBranch": "Базовая ветка",
-	"infoPanel.copyPath": "Скопировать путь",
+	"infoPanel.copyPath": "Скопировать путь к этому git worktree",
 	"infoPanel.pathCopied": "Скопировано!",
 };
 
