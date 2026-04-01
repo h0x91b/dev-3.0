@@ -474,13 +474,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
 				const topLabel = agent && !hasLauncherIcon ? `${prefixLabel} · ${agent.name}` : prefixLabel;
 				return (
-					<div className="text-xs text-accent font-semibold mb-1.5 flex flex-wrap items-center gap-1.5">
+					<div className="text-xs text-accent font-semibold mb-1.5 flex flex-col items-start gap-0.5">
 						<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center gap-1.5">
 							{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
 							<span>{topLabel}</span>
 						</span>
 						{configLabel && (
-							<span className="bg-accent/10 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center text-accent/90">
+							<span className="pl-1 text-[0.6875rem] font-medium leading-tight text-accent/80">
 								{configLabel}
 							</span>
 						)}
