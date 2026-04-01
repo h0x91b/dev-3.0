@@ -1,5 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { getProjectConfigSkillContent } from "../agent-skills";
+import {
+	getClaudeSkillContent,
+	getCodexSkillContent,
+	getGenericSkillContent,
+	getProjectConfigSkillContent,
+} from "../agent-skills";
+
+describe("dev3 skill content", () => {
+	it("folds label guidance into the session-start title pass", () => {
+		const codexSkill = getCodexSkillContent();
+		expect(codexSkill).toContain(
+			"Aim for **1-2 meaningful labels per task** in the normal case",
+		);
+		expect(codexSkill).toContain("In the same session-start pass, also assign task labels:");
+		expect(codexSkill).toContain("dev3 label list");
+		expect(codexSkill).toContain('dev3 label create "name"');
+		expect(codexSkill).toContain("dev3 label set <id> [<id>...]");
+		expect(codexSkill).toContain("Creating a label without attaching it does **not** complete this step.");
+		expect(codexSkill).not.toContain("## Task labels");
+		expect(codexSkill.indexOf("## Title generation")).toBeLessThan(
+			codexSkill.indexOf("dev3 label list"),
+		);
+	});
+
+	it("keeps embedded label guidance consistent across agent variants", () => {
+		expect(getClaudeSkillContent()).toContain("In the same session-start pass, also assign task labels:");
+		expect(getGenericSkillContent()).toContain("In the same session-start pass, also assign task labels:");
+		expect(getClaudeSkillContent()).toContain("reuse existing labels whenever possible.");
+		expect(getGenericSkillContent()).toContain("reuse existing labels whenever possible.");
+		expect(getClaudeSkillContent()).toContain("attach it to the current task immediately.");
+		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
+	});
+});
 
 describe("dev3-project-config skill content", () => {
 	it("requires repo-specific evidence for each port mapping", () => {

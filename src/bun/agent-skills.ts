@@ -49,6 +49,16 @@ longer than ~6 words, synthesize a concise title and update it:
 
 Good titles: "Fix auth race condition", "Map missing keyboard bindings", "Add drag-to-reorder support"
 Bad titles: copies of the description, vague summaries, titles with ellipsis
+
+In the same session-start pass, also assign task labels:
+
+- Run \`dev3 label list\` and reuse existing labels whenever possible.
+- Aim for **1-2 meaningful labels per task** in the normal case.
+- If the task still needs a label and there is no good fit, create **one short reusable label** with \`dev3 label create "name"\` and attach it to the current task immediately.
+- Apply the final label set with \`dev3 label set <id> [<id>...]\`. Creating a label without attaching it does **not** complete this step.
+- If the task already has sensible labels, leave them alone unless they are clearly wrong or incomplete.
+- Do not spam labels, create near-duplicates, or use labels for workflow state (\`in-progress\`, \`review\`, \`blocked\`, etc.).
+
 Run this ONCE at session start, before doing any other work.
 `;
 
@@ -332,6 +342,18 @@ ${PROJECT_CONFIG_SKILL_BODY}`;
 
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
+}
+
+export function getClaudeSkillContent(): string {
+	return CLAUDE_SKILL_CONTENT;
+}
+
+export function getCodexSkillContent(): string {
+	return CODEX_SKILL_CONTENT;
+}
+
+export function getGenericSkillContent(): string {
+	return GENERIC_SKILL_CONTENT;
 }
 
 /** Claude Code project-config skill directory. */
