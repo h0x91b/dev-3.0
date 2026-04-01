@@ -387,6 +387,7 @@ function TaskDiffFileSection({
 				sectionRef(element);
 			}}
 			className={`border border-edge rounded-xl ${isRead ? "bg-elevated" : "bg-raised"}`}
+			data-file-id={file.id}
 		>
 			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
 				<button
@@ -463,7 +464,10 @@ function TaskDiffFileSection({
 function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps) {
 	const t = useT();
 	const resolvedTheme = useResolvedTheme();
+	const toolbarRef = useRef<HTMLDivElement | null>(null);
+	const scrollRegionRef = useRef<HTMLDivElement | null>(null);
 	const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+	const pendingScrollFrameRef = useRef<number | null>(null);
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
 	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(request);
@@ -515,6 +519,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		window.addEventListener("keydown", onKeyDown, { capture: true });
 		return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
 	}, [onBack]);
+
+	useEffect(() => () => {
+		if (pendingScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingScrollFrameRef.current);
+		}
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -626,16 +636,57 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			[targetFile.id]: true,
 		}));
 		setActiveFileId(targetFile.id);
-		const frame = window.requestAnimationFrame(() => {
-			sectionRefs.current[targetFile.id]?.scrollIntoView({
-				block: "start",
-				behavior: "smooth",
-			});
-		});
-		return () => window.cancelAnimationFrame(frame);
+		scrollToFile(targetFile.id, { behavior: "smooth", retries: 4 });
 	}, [currentRequest.focusFile, payload]);
 
-	function scrollToFile(fileId: string, options?: { expand?: boolean }) {
+	function getScrollOffset(fileId: string): number | null {
+		const scrollRegion = scrollRegionRef.current;
+		const section = sectionRefs.current[fileId];
+		if (!scrollRegion || !section) {
+			return null;
+		}
+		const scrollRegionRect = scrollRegion.getBoundingClientRect();
+		const sectionRect = section.getBoundingClientRect();
+		const toolbarHeight = toolbarRef.current?.getBoundingClientRect().height ?? 0;
+		return sectionRect.top - scrollRegionRect.top - toolbarHeight - 8;
+	}
+
+	function alignFileScroll(fileId: string, behavior: ScrollBehavior, retriesLeft: number) {
+		const scrollRegion = scrollRegionRef.current;
+		const offset = getScrollOffset(fileId);
+		if (!scrollRegion || offset === null) {
+			pendingScrollFrameRef.current = null;
+			return;
+		}
+
+		if (Math.abs(offset) <= 4) {
+			pendingScrollFrameRef.current = null;
+			return;
+		}
+
+		scrollRegion.scrollTo({
+			top: Math.max(0, scrollRegion.scrollTop + offset),
+			behavior,
+		});
+
+		if (retriesLeft <= 0) {
+			pendingScrollFrameRef.current = null;
+			return;
+		}
+
+		pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
+			alignFileScroll(fileId, "auto", retriesLeft - 1);
+		});
+	}
+
+	function scrollToFile(
+		fileId: string,
+		options?: { expand?: boolean; behavior?: ScrollBehavior; retries?: number },
+	) {
+		if (pendingScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingScrollFrameRef.current);
+			pendingScrollFrameRef.current = null;
+		}
 		if (options?.expand) {
 			setExpandedFiles((current) => ({
 				...current,
@@ -643,9 +694,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			}));
 		}
 		setActiveFileId(fileId);
-		sectionRefs.current[fileId]?.scrollIntoView({
-			block: "start",
-			behavior: "smooth",
+		const behavior = options?.behavior ?? "smooth";
+		const retries = options?.retries ?? 3;
+		pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
+			alignFileScroll(fileId, behavior, retries);
 		});
 	}
 
@@ -796,7 +848,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			className="h-full flex flex-col bg-base"
 			data-inline-diff="true"
 		>
-			<div className="sticky top-0 z-10 border-b border-edge bg-base/95 backdrop-blur px-4 py-2">
+			<div ref={toolbarRef} className="sticky top-0 z-10 border-b border-edge bg-base/95 backdrop-blur px-4 py-2" data-testid="inline-diff-toolbar">
 				<div className="flex flex-wrap items-center gap-2">
 					<button
 						onClick={onBack}
@@ -876,7 +928,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</aside>
 				)}
 
-				<div className="flex-1 min-w-0 overflow-auto px-4 pt-1 pb-4">
+				<div ref={scrollRegionRef} className="flex-1 min-w-0 overflow-auto px-4 pt-1 pb-4" data-testid="inline-diff-scroll-region">
 				{error && renderState(t("infoPanel.diffLoadFailed"), error)}
 
 				{!error && isBusy && showLoadingState && (

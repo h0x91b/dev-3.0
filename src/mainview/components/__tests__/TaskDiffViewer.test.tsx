@@ -276,6 +276,16 @@ describe("TaskDiffViewer", () => {
 	});
 
 	it("scrolls to a requested file when opened from changed files popup", async () => {
+		const rafQueue: FrameRequestCallback[] = [];
+		const originalRequestAnimationFrame = window.requestAnimationFrame;
+		const originalCancelAnimationFrame = window.cancelAnimationFrame;
+
+		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+			rafQueue.push(callback);
+			return rafQueue.length;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn();
+
 		render(
 			<I18nProvider>
 				<TaskDiffViewer
@@ -291,9 +301,85 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
-		await waitFor(() => {
-			expect(scrollIntoViewMock).toHaveBeenCalled();
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		let scrollTop = 0;
+		Object.defineProperty(scrollRegion, "scrollTop", {
+			configurable: true,
+			get: () => scrollTop,
+			set: (value: number) => {
+				scrollTop = value;
+			},
 		});
+		const scrollToMock = vi.fn(({ top }: ScrollToOptions) => {
+			scrollTop = typeof top === "number" ? top : scrollTop;
+		});
+		Object.defineProperty(scrollRegion, "scrollTo", {
+			configurable: true,
+			value: scrollToMock,
+		});
+		Object.defineProperty(scrollRegion, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 120,
+				bottom: 720,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 600,
+				x: 0,
+				y: 120,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		Object.defineProperty(toolbar, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 0,
+				bottom: 64,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 64,
+				x: 0,
+				y: 0,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const targetSection = document.querySelector('[data-file-id="src/utils/format.ts"]') as HTMLDivElement | null;
+		expect(targetSection).not.toBeNull();
+		let targetRectCall = 0;
+		Object.defineProperty(targetSection as HTMLDivElement, "getBoundingClientRect", {
+			configurable: true,
+			value: () => {
+				targetRectCall += 1;
+				const top = targetRectCall === 1 ? 480 : 192;
+				return {
+					top,
+					bottom: top + 160,
+					left: 0,
+					right: 900,
+					width: 900,
+					height: 160,
+					x: 0,
+					y: top,
+					toJSON: () => ({}),
+				};
+			},
+		});
+
+		while (rafQueue.length > 0) {
+			const callback = rafQueue.shift();
+			callback?.(performance.now());
+		}
+
+		expect(scrollToMock).toHaveBeenCalled();
+		expect(scrollToMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ top: 288, behavior: "smooth" }));
+
+		window.requestAnimationFrame = originalRequestAnimationFrame;
+		window.cancelAnimationFrame = originalCancelAnimationFrame;
 	});
 
 	it("renders a left file tree with collapsible folders", async () => {
@@ -321,6 +407,119 @@ describe("TaskDiffViewer", () => {
 
 		expect(screen.queryByRole("button", { name: /open diff file src\/utils\/format\.ts/i })).not.toBeInTheDocument();
 		expect(screen.getByRole("button", { name: /^expand folder src$/i })).toBeInTheDocument();
+	});
+
+	it("retries sidebar file navigation until the target lands under the sticky toolbar", async () => {
+		const user = userEvent.setup();
+		const rafQueue: FrameRequestCallback[] = [];
+		const originalRequestAnimationFrame = window.requestAnimationFrame;
+		const originalCancelAnimationFrame = window.cancelAnimationFrame;
+
+		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+			rafQueue.push(callback);
+			return rafQueue.length;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		let scrollTop = 0;
+		Object.defineProperty(scrollRegion, "scrollTop", {
+			configurable: true,
+			get: () => scrollTop,
+			set: (value: number) => {
+				scrollTop = value;
+			},
+		});
+
+		const scrollToMock = vi.fn(({ top }: ScrollToOptions) => {
+			scrollTop = typeof top === "number" ? top : scrollTop;
+		});
+		Object.defineProperty(scrollRegion, "scrollTo", {
+			configurable: true,
+			value: scrollToMock,
+		});
+
+		Object.defineProperty(scrollRegion, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 120,
+				bottom: 720,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 600,
+				x: 0,
+				y: 120,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		Object.defineProperty(toolbar, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 0,
+				bottom: 64,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 64,
+				x: 0,
+				y: 0,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const targetSection = document.querySelector('[data-file-id="docs/readme.md"]') as HTMLDivElement | null;
+		expect(targetSection).not.toBeNull();
+		let targetRectCall = 0;
+		Object.defineProperty(targetSection as HTMLDivElement, "getBoundingClientRect", {
+			configurable: true,
+			value: () => {
+				targetRectCall += 1;
+				const top = targetRectCall === 1 ? 840 : targetRectCall === 2 ? 260 : 192;
+				return {
+					top,
+					bottom: top + 200,
+					left: 0,
+					right: 900,
+					width: 900,
+					height: 200,
+					x: 0,
+					y: top,
+					toJSON: () => ({}),
+				};
+			},
+		});
+
+		await user.click(screen.getByRole("button", { name: /open diff file docs\/readme\.md/i }));
+
+		while (rafQueue.length > 0) {
+			const callback = rafQueue.shift();
+			callback?.(performance.now());
+		}
+
+		expect(scrollToMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+		expect(scrollToMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ top: 648, behavior: "smooth" }));
+		expect(scrollToMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ top: 716, behavior: "auto" }));
+
+		window.requestAnimationFrame = originalRequestAnimationFrame;
+		window.cancelAnimationFrame = originalCancelAnimationFrame;
 	});
 
 	it("follows the app light theme", async () => {
