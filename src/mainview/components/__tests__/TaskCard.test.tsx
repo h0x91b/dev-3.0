@@ -268,7 +268,8 @@ describe("TaskCard", () => {
 					/>
 				</I18nProvider>,
 			);
-			expect(screen.getByText("#2 · Attempt 1 · Custom (First · fast)")).toBeInTheDocument();
+			expect(screen.getByText("#2 · Attempt 1 · Custom")).toBeInTheDocument();
+			expect(screen.getByText("(First · fast)")).toBeInTheDocument();
 		});
 	});
 

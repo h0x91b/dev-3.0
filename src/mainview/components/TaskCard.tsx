@@ -27,13 +27,13 @@ function resolveAgentLauncherIcon(agent: CodingAgent): AgentLauncherIconComponen
 	const agentName = agent.name.toLowerCase();
 
 	if (agent.id === "builtin-claude" || agent.baseCommand === "claude" || agentName.includes("claude")) {
-		return Claude.Avatar;
+		return Claude.Color;
 	}
 	if (agent.id === "builtin-codex" || agent.baseCommand === "codex" || agentName.includes("codex")) {
-		return Codex.Avatar;
+		return Codex.Color;
 	}
 	if (agent.id === "builtin-gemini" || agent.baseCommand === "gemini" || agentName.includes("gemini")) {
-		return Gemini.Avatar;
+		return Gemini.Color;
 	}
 	if (agent.id === "builtin-cursor" || agentName.includes("cursor")) {
 		return Cursor.Avatar;
@@ -51,12 +51,12 @@ function AgentLauncherBadge({ agent }: { agent: CodingAgent }) {
 
 	return (
 		<span
-			className="inline-flex h-4 w-4 items-center justify-center shrink-0"
+			className="inline-flex items-center justify-center shrink-0"
 			role="img"
 			aria-label={agent.name}
 			title={agent.name}
 		>
-			<Icon size={16} className="block shrink-0" aria-hidden />
+			<Icon size={18} className="block shrink-0" aria-hidden />
 		</span>
 	);
 }
@@ -473,20 +473,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				const prefixLabel = `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`;
 				const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
 				const topLabel = agent && !hasLauncherIcon ? `${prefixLabel} · ${agent.name}` : prefixLabel;
-
-				let label = topLabel;
-				if (agent && !hasLauncherIcon && configLabel) label += ` ${configLabel}`;
 				return (
 					<div className="text-xs text-accent font-semibold mb-1.5 flex flex-wrap items-center gap-1.5">
 						<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center gap-1.5">
-							<span>{label}</span>
-							{agent && hasLauncherIcon && (
-								<span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-base/80 ring-1 ring-edge/60">
-									<AgentLauncherBadge agent={agent} />
-								</span>
-							)}
+							{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
+							<span>{topLabel}</span>
 						</span>
-						{agent && hasLauncherIcon && configLabel && (
+						{configLabel && (
 							<span className="bg-accent/10 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center text-accent/90">
 								{configLabel}
 							</span>
