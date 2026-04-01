@@ -946,8 +946,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				{!error && !isBusy && payload && payload.files.length > 0 && (
 					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
 						<div className="h-full overflow-auto px-3 py-2">
-							<div className="sticky top-0 z-10 pb-2">
-								<div className="rounded-lg border border-edge bg-base/80 p-2 space-y-2">
+							<div className="sticky top-0 z-10 bg-raised/35 pb-2">
+								<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-1.5">
 									<div className="flex items-center justify-between gap-2 px-1">
 										<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
 											{t("infoPanel.diffFiles")}
@@ -959,13 +959,13 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 									<div className="grid grid-cols-2 gap-2">
 										<button
 											onClick={() => setAllFilesExpanded(!allFilesExpanded)}
-											className="inline-flex min-h-9 items-center justify-center rounded-md border border-edge bg-raised px-2 py-1 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+											className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.625rem] font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
 										>
 											{allFilesExpanded ? t("infoPanel.diffCollapseAll") : t("infoPanel.diffExpandAll")}
 										</button>
 										<button
 											onClick={() => setAllFilesRead(!allFilesRead)}
-											className="inline-flex min-h-9 items-center justify-center rounded-md border border-edge bg-raised px-2 py-1 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+											className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.625rem] font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
 										>
 											{allFilesRead ? t("infoPanel.diffMarkAllUnread") : t("infoPanel.diffMarkAllRead")}
 										</button>
