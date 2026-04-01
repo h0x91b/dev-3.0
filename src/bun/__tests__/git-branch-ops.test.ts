@@ -59,6 +59,7 @@ import {
 	getBranchStatus,
 	canRebaseCleanly,
 	getUncommittedChanges,
+	getTaskDiff,
 	listBranches,
 	detectDefaultCompareRef,
 	getOriginUrl,
@@ -256,6 +257,99 @@ describe("getUncommittedChanges", () => {
 			expect(result.insertions).toBe(1); // only small.ts
 			expect(result.deletions).toBe(0);
 		});
+	});
+});
+
+// ─── getTaskDiff ─────────────────────────────────────────────────────────────
+
+describe("getTaskDiff", () => {
+	it("builds a branch diff from git blobs", async () => {
+		queueResponse(0, "M\0src/app.ts\0");
+		queueResponse(0, " 1 file changed, 2 insertions(+), 1 deletion(-)");
+		queueResponse(0, "src/app.ts\n");
+		queueResponse(0, "13\n");
+		queueResponse(0, "13\n");
+		queueResponse(0, "const a = 1;\n");
+		queueResponse(0, "const a = 2;\n");
+
+		const result = await getTaskDiff("/repo", "branch", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		expect(result.compareRef).toBe("origin/main");
+		expect(result.compareLabel).toBe("origin/main");
+		expect(result.summary).toEqual({
+			files: 1,
+			insertions: 2,
+			deletions: 1,
+		});
+		expect(result.files).toEqual([
+			expect.objectContaining({
+				status: "modified",
+				displayPath: "src/app.ts",
+				oldContent: "const a = 1;\n",
+				newContent: "const a = 2;\n",
+			}),
+		]);
+	});
+
+	it("builds an uncommitted diff with untracked files from the worktree", async () => {
+		const tmpDir = join(tmpdir(), `git-inline-diff-${Date.now()}`);
+		mkdirSync(tmpDir, { recursive: true });
+		writeFileSync(join(tmpDir, "notes.txt"), "line 1\nline 2\n");
+
+		queueResponse(0, "");
+		queueResponse(0, "notes.txt\0");
+		queueResponse(0, "");
+		queueResponse(0, "notes.txt\n");
+
+		const result = await getTaskDiff(tmpDir, "uncommitted", {
+			baseBranch: "main",
+		});
+
+		expect(result.compareRef).toBeNull();
+		expect(result.summary).toEqual({
+			files: 1,
+			insertions: 2,
+			deletions: 0,
+		});
+		expect(result.files).toEqual([
+			expect.objectContaining({
+				status: "untracked",
+				displayPath: "notes.txt",
+				oldContent: "",
+				newContent: "line 1\nline 2\n",
+			}),
+		]);
+
+		rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	it("falls back to branch diff when unpushed mode has no upstream", async () => {
+		queueResponse(128, "", "fatal: no upstream configured");
+		queueResponse(0, "A\0src/new.ts\0");
+		queueResponse(0, " 1 file changed, 4 insertions(+)");
+		queueResponse(0, "src/new.ts\n");
+		queueResponse(0, "9\n");
+		queueResponse(0, "export {};\n");
+
+		const result = await getTaskDiff("/repo", "unpushed", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		expect(result.fallbackReason).toBe("no-upstream");
+		expect(result.compareRef).toBe("origin/main");
+		expect(result.summary.files).toBe(1);
+		expect(result.files[0]).toEqual(expect.objectContaining({
+			status: "added",
+			displayPath: "src/new.ts",
+			oldContent: "",
+			newContent: "export {};\n",
+		}));
 	});
 });
 

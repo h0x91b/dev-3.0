@@ -3,13 +3,14 @@ import type { PortInfo, Project, Task, ResourceUsage } from "../../shared/types"
 import type { AppAction, Route } from "../state";
 import { api, isElectrobun } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
-import TaskTerminal from "./TaskTerminal";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
 import { useState, useCallback } from "react";
 import { useT } from "../i18n";
 import ActiveTasksStrip from "./ActiveTasksStrip";
+import TaskWorkspacePane from "./TaskWorkspacePane";
+import { useTaskInlineDiffState } from "./task-inline-diff";
 
 type SidebarMode = "sidebar" | "board";
 const LS_SIDEBAR_MODE = "dev3-split-sidebar-mode";
@@ -48,6 +49,7 @@ function ProjectView({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 	const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readSidebarMode);
+	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 
 	const toggleSidebarMode = useCallback((mode: SidebarMode) => {
 		setSidebarMode(mode);
@@ -83,7 +85,16 @@ function ProjectView({
 		if (isBrowserMode) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col">
-					{activeTask && <TaskInfoPanel task={activeTask} project={project} dispatch={dispatch} navigate={navigate} taskPorts={taskPorts} />}
+					{activeTask && (
+						<TaskInfoPanel
+							task={activeTask}
+							project={project}
+							dispatch={dispatch}
+							navigate={navigate}
+							taskPorts={taskPorts}
+							onOpenInlineDiff={inlineDiff.open}
+						/>
+					)}
 					<ActiveTasksStrip
 						project={project}
 						tasks={tasks}
@@ -92,14 +103,15 @@ function ProjectView({
 						bellCounts={bellCounts}
 					/>
 					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-						<TaskTerminal
+						<TaskWorkspacePane
 							projectId={projectId}
 							taskId={activeTaskId}
 							tasks={tasks}
 							projects={projects}
 							navigate={navigate}
 							dispatch={dispatch}
-							hideInfoPanel
+							inlineDiffRequest={inlineDiff.request}
+							onCloseInlineDiff={inlineDiff.close}
 						/>
 					</div>
 				</div>
@@ -133,18 +145,29 @@ function ProjectView({
 
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
-				{activeTask && <TaskInfoPanel task={activeTask} project={project} dispatch={dispatch} navigate={navigate} taskPorts={taskPorts} taskResourceUsage={taskResourceUsage} />}
+				{activeTask && (
+					<TaskInfoPanel
+						task={activeTask}
+						project={project}
+						dispatch={dispatch}
+						navigate={navigate}
+						taskPorts={taskPorts}
+						taskResourceUsage={taskResourceUsage}
+						onOpenInlineDiff={inlineDiff.open}
+					/>
+				)}
 				<SplitLayout
 					kanbanContent={leftContent}
 					terminalContent={
-						<TaskTerminal
+						<TaskWorkspacePane
 							projectId={projectId}
 							taskId={activeTaskId}
 							tasks={tasks}
 							projects={projects}
 							navigate={navigate}
 							dispatch={dispatch}
-							hideInfoPanel
+							inlineDiffRequest={inlineDiff.request}
+							onCloseInlineDiff={inlineDiff.close}
 						/>
 					}
 					mode={sidebarMode}

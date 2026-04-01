@@ -6,6 +6,7 @@ import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import OpenInMenu from "../OpenInMenu";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
+import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
 interface TaskGitActionsProps {
 	task: Task;
@@ -17,6 +18,7 @@ interface TaskGitActionsProps {
 	showLoading?: boolean;
 	branchNameClassName?: string;
 	onBranchStatusChange?: (branchStatus: BranchStatus | null) => void;
+	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
 export default function TaskGitActions({
@@ -29,6 +31,7 @@ export default function TaskGitActions({
 	showLoading = false,
 	branchNameClassName = "text-fg-3 text-xs font-mono flex-shrink-0",
 	onBranchStatusChange,
+	onOpenInlineDiff,
 }: TaskGitActionsProps) {
 	const t = useT();
 	const [copiedPath, setCopiedPath] = useState(false);
@@ -55,8 +58,6 @@ export default function TaskGitActions({
 		handlePushThenCreatePR,
 		handleRebase,
 		handleRefreshStatus,
-		handleShowDiff,
-		handleShowUncommittedDiff,
 		merging,
 		pushing,
 		rebasing,
@@ -352,18 +353,27 @@ export default function TaskGitActions({
 				? t("infoPanel.mergeDisabledBehind")
 				: t("infoPanel.merge");
 
-	const showDiffDisabled = !branchStatus;
+	const showDiffDisabled = !branchStatus || !onOpenInlineDiff;
 	const showDiffTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: t("infoPanel.showDiffTooltip", { branch: displayRef });
 
 	const hasUncommitted = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
-	const uncommittedDiffDisabled = !branchStatus || !hasUncommitted;
+	const uncommittedDiffDisabled = !branchStatus || !hasUncommitted || !onOpenInlineDiff;
 	const uncommittedDiffTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: !hasUncommitted
 			? t("infoPanel.uncommittedDiffDisabled")
 			: t("infoPanel.uncommittedDiffTooltip");
+
+	const unpushedDiffDisabled = !branchStatus || branchStatus.ahead === 0 || !onOpenInlineDiff;
+	const unpushedDiffTooltip = !branchStatus
+		? t("infoPanel.statusLoading")
+		: branchStatus.ahead === 0
+			? t("infoPanel.unpushedDiffDisabled")
+			: branchStatus.unpushed === -1
+				? t("infoPanel.unpushedDiffFallback")
+				: t("infoPanel.unpushedDiffTooltip", { branch: task.branchName || "HEAD" });
 
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
@@ -371,7 +381,11 @@ export default function TaskGitActions({
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
 			<button
-				onClick={handleShowDiff}
+				onClick={() => onOpenInlineDiff?.({
+					mode: "branch",
+					compareRef: compareRef || undefined,
+					compareLabel: displayRef,
+				})}
 				disabled={showDiffDisabled}
 				className={`px-2 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
 					showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
@@ -381,7 +395,7 @@ export default function TaskGitActions({
 				{t("infoPanel.showDiff")}
 			</button>
 			<button
-				onClick={handleShowUncommittedDiff}
+				onClick={() => onOpenInlineDiff?.({ mode: "uncommitted" })}
 				disabled={uncommittedDiffDisabled}
 				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					uncommittedDiffDisabled ? disabledBtnClass : enabledBtnClass
@@ -389,6 +403,20 @@ export default function TaskGitActions({
 				title={uncommittedDiffTooltip}
 			>
 				{t("infoPanel.uncommittedDiff")}
+			</button>
+			<button
+				onClick={() => onOpenInlineDiff?.({
+					mode: "unpushed",
+					compareRef: compareRef || undefined,
+					compareLabel: displayRef,
+				})}
+				disabled={unpushedDiffDisabled}
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+					unpushedDiffDisabled ? disabledBtnClass : enabledBtnClass
+				}`}
+				title={unpushedDiffTooltip}
+			>
+				{t("infoPanel.unpushedDiff")}
 			</button>
 			<button
 				onClick={handleRebase}

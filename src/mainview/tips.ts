@@ -114,6 +114,18 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0ACA}", // nf-md-file_compare
 	},
 	{
+		id: "inline-diff-modes",
+		titleKey: "tip.inlineDiffModes.title",
+		bodyKey: "tip.inlineDiffModes.body",
+		icon: "\u{F0156}", // nf-md-view_split_vertical
+	},
+	{
+		id: "unpushed-diff",
+		titleKey: "tip.unpushedDiff.title",
+		bodyKey: "tip.unpushedDiff.body",
+		icon: "\u{F07E7}", // nf-md-cloud_upload_outline
+	},
+	{
 		id: "image-paste-attach",
 		titleKey: "tip.imagePasteAttach.title",
 		bodyKey: "tip.imagePasteAttach.body",

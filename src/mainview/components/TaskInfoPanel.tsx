@@ -22,6 +22,7 @@ import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskTmuxControls from "./task-info-panel/TaskTmuxControls";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
+import type { TaskInlineDiffRequest } from "./task-inline-diff";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -31,6 +32,7 @@ interface TaskInfoPanelProps {
 	taskPorts?: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	isFullPage?: boolean;
+	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
 const COLLAPSED_HEIGHT_REM = 3.875;
@@ -63,7 +65,7 @@ function readNumber(key: string, fallback: number): number {
 	return fallback;
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -454,6 +456,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							showWorktreeCopy
 							showLoading
 							onBranchStatusChange={setMetadataBranchStatus}
+							onOpenInlineDiff={onOpenInlineDiff}
 						/>
 					</div>
 				</div>
@@ -508,6 +511,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								isTaskActive={isTaskActive}
 								branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
 								onBranchStatusChange={setMetadataBranchStatus}
+								onOpenInlineDiff={onOpenInlineDiff}
 							/>
 						</div>
 					</div>

@@ -4,6 +4,7 @@ import TaskInfoPanel from "../TaskInfoPanel";
 import { I18nProvider } from "../../i18n";
 import type { Task, Project, BranchStatus, Label } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
+import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -110,6 +111,7 @@ function renderPanel(
 		navigate?: (route: Route) => void;
 		project?: Project;
 		isFullPage?: boolean;
+		onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 	},
 ) {
 	const dispatch = opts?.dispatch ?? vi.fn();
@@ -125,6 +127,7 @@ function renderPanel(
 				dispatch={dispatch}
 				navigate={navigate}
 				isFullPage={opts?.isFullPage}
+				onOpenInlineDiff={opts?.onOpenInlineDiff}
 			/>
 		</I18nProvider>,
 	);
@@ -1096,10 +1099,10 @@ describe("TaskInfoPanel", () => {
 
 		it("calls showDiff on Show Diff click", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockedApi.request.showDiff.mockResolvedValue(undefined);
+			const onOpenInlineDiff = vi.fn();
 
 			await act(async () => {
-				renderPanel(makeTask());
+				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
 
 			const diffButtons = screen.getAllByText("Show Diff");
@@ -1107,9 +1110,9 @@ describe("TaskInfoPanel", () => {
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);
 
-			expect(mockedApi.request.showDiff).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "branch",
+				compareLabel: "origin/main",
 			});
 		});
 
@@ -1137,15 +1140,15 @@ describe("TaskInfoPanel", () => {
 
 		it("calls showUncommittedDiff on Uncommitted click", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				insertions: 5,
 				deletions: 2,
 			});
-			mockedApi.request.showUncommittedDiff.mockResolvedValue(undefined);
 
 			await act(async () => {
-				renderPanel(makeTask());
+				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
 
 			const uncommittedButtons = screen.getAllByText("Uncommitted");
@@ -1153,9 +1156,32 @@ describe("TaskInfoPanel", () => {
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);
 
-			expect(mockedApi.request.showUncommittedDiff).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "uncommitted",
+			});
+		});
+
+		it("calls inline unpushed diff on Unpushed click", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 2,
+				unpushed: 2,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+
+			const unpushedButtons = screen.getAllByText("Unpushed");
+			const enabledBtn = unpushedButtons.find((button) => !button.closest("button")!.disabled);
+			expect(enabledBtn).toBeTruthy();
+			await user.click(enabledBtn!.closest("button")!);
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "unpushed",
+				compareLabel: "origin/main",
 			});
 		});
 

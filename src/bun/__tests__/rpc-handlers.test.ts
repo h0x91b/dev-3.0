@@ -43,6 +43,7 @@ vi.mock("../git", () => ({
 	getDefaultBranch: vi.fn(),
 	fetchOrigin: vi.fn(),
 	getBranchStatus: vi.fn(),
+	getTaskDiff: vi.fn(),
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),
 	getBranchDiffStats: vi.fn(),
@@ -2148,6 +2149,86 @@ describe("handlers.getBranchStatus", () => {
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
+	});
+});
+
+// ================================================================
+// handlers.getTaskDiff
+// ================================================================
+
+describe("handlers.getTaskDiff", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("throws when task has no worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.getTaskDiff({ taskId: "task-1", projectId: "proj-1", mode: "branch" }),
+		).rejects.toThrow("Task has no worktree");
+	});
+
+	it("fetches origin for branch diffs and returns git payload", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", baseBranch: "main" });
+		const diffPayload = {
+			mode: "branch" as const,
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+			fallbackReason: null,
+			summary: { files: 1, insertions: 3, deletions: 1 },
+			files: [],
+			skippedBinaryFiles: [],
+			skippedLargeFiles: [],
+		};
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getTaskDiff).mockResolvedValue(diffPayload);
+
+		const result = await handlers.getTaskDiff({
+			taskId: "task-1",
+			projectId: "proj-1",
+			mode: "branch",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path);
+		expect(git.getTaskDiff).toHaveBeenCalledWith("/tmp/wt", "branch", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+		expect(result).toBe(diffPayload);
+	});
+
+	it("skips origin fetch for uncommitted diffs", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", baseBranch: "main" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getTaskDiff).mockResolvedValue({
+			mode: "uncommitted",
+			compareRef: null,
+			compareLabel: "Working tree",
+			fallbackReason: null,
+			summary: { files: 0, insertions: 0, deletions: 0 },
+			files: [],
+			skippedBinaryFiles: [],
+			skippedLargeFiles: [],
+		});
+
+		await handlers.getTaskDiff({ taskId: "task-1", projectId: "proj-1", mode: "uncommitted" });
+
+		expect(git.fetchOrigin).not.toHaveBeenCalled();
+		expect(git.getTaskDiff).toHaveBeenCalledWith("/tmp/wt", "uncommitted", {
+			baseBranch: "main",
+			compareRef: undefined,
+			compareLabel: undefined,
+		});
 	});
 });
 

@@ -612,6 +612,47 @@ export interface BranchStatus {
 	prUrl: string | null; // full GitHub PR URL, null if no PR
 }
 
+export type TaskDiffMode = "branch" | "uncommitted" | "unpushed";
+
+export type TaskDiffFileStatus =
+	| "added"
+	| "modified"
+	| "deleted"
+	| "renamed"
+	| "copied"
+	| "type-changed"
+	| "untracked"
+	| "unknown";
+
+export type TaskDiffFallbackReason = "no-upstream";
+
+export interface TaskDiffFile {
+	id: string;
+	status: TaskDiffFileStatus;
+	displayPath: string;
+	oldPath: string | null;
+	newPath: string | null;
+	oldContent: string;
+	newContent: string;
+}
+
+export interface TaskDiffSummary {
+	files: number;
+	insertions: number;
+	deletions: number;
+}
+
+export interface TaskDiffResponse {
+	mode: TaskDiffMode;
+	compareRef: string | null;
+	compareLabel: string;
+	fallbackReason: TaskDiffFallbackReason | null;
+	summary: TaskDiffSummary;
+	files: TaskDiffFile[];
+	skippedBinaryFiles: string[];
+	skippedLargeFiles: string[];
+}
+
 export interface PRInfo {
 	number: number;
 	url: string;
@@ -895,6 +936,10 @@ export type AppRPCSchema = {
 			getBranchStatus: {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: BranchStatus;
+			};
+			getTaskDiff: {
+				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string };
+				response: TaskDiffResponse;
 			};
 			rebaseTask: {
 				params: { taskId: string; projectId: string; compareRef?: string };

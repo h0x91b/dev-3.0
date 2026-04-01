@@ -1,5 +1,5 @@
 import { chmodSync } from "node:fs";
-import type { BranchStatus, DiffToolId, PRInfo } from "../../shared/types";
+import type { BranchStatus, DiffToolId, PRInfo, TaskDiffMode, TaskDiffResponse } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -386,6 +386,41 @@ async function getBranchStatus(params: { taskId: string; projectId: string; comp
 	} finally {
 		branchStatusInFlight.delete(dedupKey);
 	}
+}
+
+async function getTaskDiff(params: {
+	taskId: string;
+	projectId: string;
+	mode: TaskDiffMode;
+	compareRef?: string;
+	compareLabel?: string;
+}): Promise<TaskDiffResponse> {
+	log.info("→ getTaskDiff", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+
+	if (!task.worktreePath) {
+		throw new Error("Task has no worktree");
+	}
+
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	if (params.mode !== "uncommitted") {
+		await git.fetchOrigin(project.path);
+	}
+
+	const result = await git.getTaskDiff(task.worktreePath, params.mode, {
+		baseBranch,
+		compareRef: params.compareRef,
+		compareLabel: params.compareLabel,
+	});
+	log.info("← getTaskDiff", {
+		mode: result.mode,
+		files: result.files.length,
+		binary: result.skippedBinaryFiles.length,
+		large: result.skippedLargeFiles.length,
+		fallbackReason: result.fallbackReason,
+	});
+	return result;
 }
 
 async function rebaseTask(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {
@@ -844,6 +879,7 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 
 export const gitOperationHandlers = {
 	getBranchStatus,
+	getTaskDiff,
 	rebaseTask,
 	mergeTask,
 	pushTask,

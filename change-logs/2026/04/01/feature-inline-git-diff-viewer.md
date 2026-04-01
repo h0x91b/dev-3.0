@@ -1,0 +1,1 @@
+Added an inline git diff mode that replaces the task terminal with an in-app diff viewer for branch, uncommitted, and unpushed changes. The new viewer supports unified/split layouts, dark theme, visible whitespace markers, ESC/back navigation, and graceful fallbacks for branches without an upstream or files that are binary/too large.
