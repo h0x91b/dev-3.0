@@ -186,7 +186,9 @@ describe("TaskCard", () => {
 				configId: "claude-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Attempt 1 · Claude (Default · sonnet)")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Attempt 1")).toBeInTheDocument();
+			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
+			expect(screen.getByText("(Default · sonnet)")).toBeInTheDocument();
 		});
 
 		it("shows badge with config name without model", () => {
@@ -200,7 +202,9 @@ describe("TaskCard", () => {
 				configId: "codex-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Attempt 2 · Codex (Default)")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Attempt 2")).toBeInTheDocument();
+			expect(screen.getByRole("img", { name: "Codex" })).toBeInTheDocument();
+			expect(screen.getByText("(Default)")).toBeInTheDocument();
 		});
 
 		it("shows seq and attempt when agent not found", () => {
@@ -228,8 +232,8 @@ describe("TaskCard", () => {
 				configId: "nonexistent-config",
 				groupId: "g1",
 			}));
-			// configId is truthy but doesn't match any config → config is undefined
-			expect(screen.getByText("#5 · Attempt 1 · Claude")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Attempt 1")).toBeInTheDocument();
+			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 		});
 
 		it("falls back to first config when no defaultConfigId and configId missing", () => {
@@ -264,7 +268,8 @@ describe("TaskCard", () => {
 					/>
 				</I18nProvider>,
 			);
-			expect(screen.getByText("#2 · Attempt 1 · Custom (First · fast)")).toBeInTheDocument();
+			expect(screen.getByText("#2 · Attempt 1 · Custom")).toBeInTheDocument();
+			expect(screen.getByText("(First · fast)")).toBeInTheDocument();
 		});
 	});
 

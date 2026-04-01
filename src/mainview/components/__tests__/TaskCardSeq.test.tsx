@@ -93,7 +93,9 @@ describe("TaskCard — seq display", () => {
 			configId: "claude-default",
 			groupId: "g1",
 		}));
-		expect(screen.getByText("#3 · Attempt 2 · Claude (Default · sonnet)")).toBeInTheDocument();
+		expect(screen.getByText("#3 · Attempt 2")).toBeInTheDocument();
+		expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
+		expect(screen.getByText("(Default · sonnet)")).toBeInTheDocument();
 	});
 
 	it("seq number is visible for todo task", () => {
