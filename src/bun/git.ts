@@ -32,6 +32,10 @@ type DiffContentSource =
 	| { kind: "ref"; ref: string }
 	| { kind: "worktree" };
 
+type DiffRenderSource =
+	| { kind: "git"; buildArgs: (entry: ParsedNameStatusEntry) => string[] }
+	| { kind: "file" };
+
 export async function run(
 	cmd: string[],
 	cwd: string,
@@ -82,6 +86,27 @@ async function runBinary(
 		});
 	}
 	return result;
+}
+
+async function runWithCode(
+	cmd: string[],
+	cwd: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+	log.debug(`exec(code): ${cmd.join(" ")}`, { cwd });
+	const proc = spawn(cmd, {
+		cwd,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
+	return {
+		code: await proc.exited,
+		stdout,
+		stderr: stderr.trim(),
+	};
 }
 
 function isProbablyBinary(bytes: Uint8Array): boolean {
@@ -297,11 +322,32 @@ async function readTextFromSource(
 	return readWorktreeTextFile(worktreePath, filePath);
 }
 
+function getEntryPathArgs(entry: ParsedNameStatusEntry): string[] {
+	if (entry.oldPath && entry.newPath && entry.oldPath !== entry.newPath) {
+		return [entry.oldPath, entry.newPath];
+	}
+	return [entry.newPath ?? entry.oldPath ?? entry.displayPath];
+}
+
+async function readGitPatch(
+	worktreePath: string,
+	args: string[],
+): Promise<string[] | null> {
+	const result = await runWithCode(["git", ...args], worktreePath);
+	if (result.code !== 0 && result.code !== 1) {
+		log.warn("readGitPatch failed", { args, code: result.code, stderr: result.stderr });
+		return null;
+	}
+	const patch = result.stdout.trim();
+	return patch ? [patch] : null;
+}
+
 async function buildTaskDiffFiles(
 	worktreePath: string,
 	entries: ParsedNameStatusEntry[],
 	oldSource: DiffContentSource,
 	newSource: DiffContentSource,
+	renderSource: DiffRenderSource,
 ): Promise<Pick<TaskDiffResponse, "files" | "skippedBinaryFiles" | "skippedLargeFiles">> {
 	const files: TaskDiffFile[] = [];
 	const skippedBinaryFiles: string[] = [];
@@ -322,6 +368,10 @@ async function buildTaskDiffFiles(
 			continue;
 		}
 
+		const hunks = renderSource.kind === "git"
+			? await readGitPatch(worktreePath, renderSource.buildArgs(entry))
+			: null;
+
 		files.push({
 			id: entry.oldPath ?? entry.newPath ?? entry.displayPath,
 			status: entry.status,
@@ -330,6 +380,7 @@ async function buildTaskDiffFiles(
 			newPath: entry.newPath,
 			oldContent: oldContent.kind === "text" ? oldContent.content : "",
 			newContent: newContent.kind === "text" ? newContent.content : "",
+			hunks,
 		});
 	}
 
@@ -1131,6 +1182,16 @@ export async function getTaskDiff(
 			allEntries,
 			{ kind: "ref", ref: "HEAD" },
 			{ kind: "worktree" },
+			{
+				kind: "git",
+				buildArgs: (entry) => {
+					if (entry.status === "untracked") {
+						const path = entry.newPath ?? entry.displayPath;
+						return ["diff", "--no-index", "--no-ext-diff", "--no-color", "--", "/dev/null", path];
+					}
+					return ["diff", "--no-ext-diff", "--no-color", "HEAD", "--", ...getEntryPathArgs(entry)];
+				},
+			},
 		);
 		return {
 			mode,
@@ -1157,6 +1218,18 @@ export async function getTaskDiff(
 					entries,
 					{ kind: "ref", ref: upstreamRef },
 					{ kind: "ref", ref: "HEAD" },
+					{
+						kind: "git",
+						buildArgs: (entry) => [
+							"diff",
+							"--no-ext-diff",
+							"--no-color",
+							upstreamRef,
+							"HEAD",
+							"--",
+							...getEntryPathArgs(entry),
+						],
+					},
 				),
 			]);
 			return {
@@ -1180,6 +1253,17 @@ export async function getTaskDiff(
 				branchEntries,
 				{ kind: "ref", ref: defaultCompareRef },
 				{ kind: "ref", ref: "HEAD" },
+				{
+					kind: "git",
+					buildArgs: (entry) => [
+						"diff",
+						"--no-ext-diff",
+						"--no-color",
+						`${defaultCompareRef}...HEAD`,
+						"--",
+						...getEntryPathArgs(entry),
+					],
+				},
 			),
 		]);
 		return {
@@ -1204,6 +1288,17 @@ export async function getTaskDiff(
 			branchEntries,
 			{ kind: "ref", ref: defaultCompareRef },
 			{ kind: "ref", ref: "HEAD" },
+			{
+				kind: "git",
+				buildArgs: (entry) => [
+					"diff",
+					"--no-ext-diff",
+					"--no-color",
+					`${defaultCompareRef}...HEAD`,
+					"--",
+					...getEntryPathArgs(entry),
+				],
+			},
 		),
 	]);
 	return {

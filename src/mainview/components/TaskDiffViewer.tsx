@@ -6,7 +6,7 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
 const LS_DIFF_VIEW_MODE = "dev3-inline-diff-view-mode";
-const EAGER_FILE_COUNT = 6;
+const EAGER_FILE_COUNT = 2;
 
 type DiffViewMode = "unified" | "split";
 
@@ -19,6 +19,16 @@ type DiffInstance = {
 
 type DiffLibrary = {
 	DiffView: ComponentType<any>;
+	DiffFile: new (
+		oldFileName: string,
+		oldFileContent: string,
+		newFileName: string,
+		newFileContent: string,
+		diffList: string[],
+		oldFileLang?: string,
+		newFileLang?: string,
+		uuid?: string,
+	) => DiffInstance;
 	DiffModeEnum: {
 		Split: number;
 		Unified: number;
@@ -38,14 +48,15 @@ interface TaskDiffFileSectionProps {
 	diffLib: DiffLibrary;
 	viewMode: DiffViewMode;
 	eager: boolean;
+	defaultExpanded: boolean;
 	sectionRef: (element: HTMLDivElement | null) => void;
 }
 
 function readStoredMode(): DiffViewMode {
 	try {
-		return localStorage.getItem(LS_DIFF_VIEW_MODE) === "split" ? "split" : "unified";
+		return localStorage.getItem(LS_DIFF_VIEW_MODE) === "unified" ? "unified" : "split";
 	} catch {
-		return "unified";
+		return "split";
 	}
 }
 
@@ -90,12 +101,34 @@ function TaskDiffFileSection({
 	diffLib,
 	viewMode,
 	eager,
+	defaultExpanded,
 	sectionRef,
 }: TaskDiffFileSectionProps) {
-	const [activated, setActivated] = useState(eager);
+	const [expanded, setExpanded] = useState(defaultExpanded);
+	const [activated, setActivated] = useState(eager || defaultExpanded);
 	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
 	const hostRef = useRef<HTMLDivElement | null>(null);
+	const diffInstanceRef = useRef<DiffInstance | null>(null);
+	const builtModesRef = useRef<Set<DiffViewMode>>(new Set());
+
+	useEffect(() => {
+		setExpanded(defaultExpanded);
+		setActivated(eager || defaultExpanded);
+	}, [defaultExpanded, eager, file.id]);
+
+	useEffect(() => {
+		diffInstanceRef.current = null;
+		builtModesRef.current = new Set();
+		setDiffFile(null);
+		setBuildError(null);
+	}, [diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath]);
+
+	useEffect(() => {
+		if (expanded) {
+			setActivated(true);
+		}
+	}, [expanded]);
 
 	useEffect(() => {
 		if (activated) {
@@ -121,7 +154,7 @@ function TaskDiffFileSection({
 					}
 				}
 			},
-			{ rootMargin: "1200px 0px" },
+			{ rootMargin: "2000px 0px" },
 		);
 		observer.observe(element);
 		return () => observer.disconnect();
@@ -133,32 +166,36 @@ function TaskDiffFileSection({
 		}
 
 		let cancelled = false;
-		setBuildError(null);
-		setDiffFile(null);
 
 		const timer = window.setTimeout(() => {
 			try {
-				const oldPath = file.oldPath ?? file.newPath ?? "/dev/null";
-				const newPath = file.newPath ?? file.oldPath ?? "/dev/null";
-				const nextDiffFile = diffLib.generateDiffFile(
-					oldPath,
-					file.oldContent,
-					newPath,
-					file.newContent,
-				);
-				nextDiffFile.initTheme("dark");
-				nextDiffFile.initRaw();
-				if (viewMode === "split") {
-					nextDiffFile.buildSplitDiffLines();
-				} else {
-					nextDiffFile.buildUnifiedDiffLines();
+				let nextDiffFile = diffInstanceRef.current;
+				if (!nextDiffFile) {
+					const oldPath = file.oldPath ?? file.newPath ?? "/dev/null";
+					const newPath = file.newPath ?? file.oldPath ?? "/dev/null";
+					nextDiffFile = file.hunks
+						? new diffLib.DiffFile(oldPath, file.oldContent, newPath, file.newContent, file.hunks, undefined, undefined, file.id)
+						: diffLib.generateDiffFile(oldPath, file.oldContent, newPath, file.newContent);
+					nextDiffFile.initTheme("dark");
+					nextDiffFile.initRaw();
+					diffInstanceRef.current = nextDiffFile;
+				}
+				if (!builtModesRef.current.has(viewMode)) {
+					if (viewMode === "split") {
+						nextDiffFile.buildSplitDiffLines();
+					} else {
+						nextDiffFile.buildUnifiedDiffLines();
+					}
+					builtModesRef.current.add(viewMode);
 				}
 				if (!cancelled) {
+					setBuildError(null);
 					setDiffFile(nextDiffFile);
 				}
 			} catch (err) {
 				if (!cancelled) {
 					setBuildError(String(err));
+					setDiffFile(null);
 				}
 			}
 		}, 0);
@@ -167,7 +204,7 @@ function TaskDiffFileSection({
 			cancelled = true;
 			window.clearTimeout(timer);
 		};
-	}, [activated, diffLib, file.displayPath, file.newContent, file.newPath, file.oldContent, file.oldPath, viewMode]);
+	}, [activated, diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath, viewMode]);
 
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
@@ -180,31 +217,39 @@ function TaskDiffFileSection({
 			}}
 			className="border border-edge rounded-xl overflow-hidden bg-raised"
 		>
-			<div className="px-4 py-3 border-b border-edge flex flex-wrap items-center gap-2 bg-raised">
+			<button
+				onClick={() => setExpanded((value) => !value)}
+				className="w-full px-4 py-3 border-b border-edge flex flex-wrap items-center gap-2 bg-raised hover:bg-elevated-hover transition-colors text-left"
+			>
 				<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
 					{statusLabel(file.status)}
 				</span>
-				<span className="font-mono text-sm text-fg break-all">{file.displayPath}</span>
-			</div>
+				<span className="font-mono text-sm text-fg break-all flex-1 min-w-0">{file.displayPath}</span>
+				<span className="text-xs text-fg-3 whitespace-nowrap">
+					{expanded ? "\u25BE" : "\u25B8"}
+				</span>
+			</button>
 
-			{buildError ? (
-				<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
-			) : diffFile ? (
-				<div className="overflow-x-auto">
-					<DiffView
-						diffFile={diffFile}
-						diffViewTheme="dark"
-						diffViewMode={diffMode}
-						diffViewWrap={false}
-						diffViewHighlight={false}
-						className="diff-tailwindcss-wrapper"
-					/>
-				</div>
-			) : (
-				<div className="p-4 space-y-3 animate-pulse">
-					<div className="h-4 w-36 rounded bg-elevated" />
-					<div className="h-24 rounded bg-base" />
-				</div>
+			{expanded && (
+				buildError ? (
+					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
+				) : diffFile ? (
+					<div className="overflow-x-auto">
+						<DiffView
+							diffFile={diffFile}
+							diffViewTheme="dark"
+							diffViewMode={diffMode}
+							diffViewWrap={false}
+							diffViewHighlight={false}
+							className="diff-tailwindcss-wrapper"
+						/>
+					</div>
+				) : (
+					<div className="p-4 space-y-3 animate-pulse">
+						<div className="h-4 w-36 rounded bg-elevated" />
+						<div className="h-24 rounded bg-base" />
+					</div>
+				)
 			)}
 		</div>
 	);
@@ -253,6 +298,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			}
 			setDiffLib({
 				DiffView: reactLib.DiffView,
+				DiffFile: reactLib.DiffFile,
 				DiffModeEnum: reactLib.DiffModeEnum,
 				generateDiffFile: fileLib.generateDiffFile,
 			});
@@ -453,11 +499,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					<div className="space-y-5">
 						{payload.files.map((file, index) => (
 							<TaskDiffFileSection
-								key={`${file.id}:${viewMode}`}
+								key={file.id}
 								file={file}
 								diffLib={diffLib}
 								viewMode={viewMode}
 								eager={index < EAGER_FILE_COUNT}
+								defaultExpanded={index < EAGER_FILE_COUNT}
 								sectionRef={(element) => {
 									sectionRefs.current[file.id] = element;
 								}}

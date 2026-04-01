@@ -271,6 +271,7 @@ describe("getTaskDiff", () => {
 		queueResponse(0, "13\n");
 		queueResponse(0, "const a = 1;\n");
 		queueResponse(0, "const a = 2;\n");
+		queueResponse(0, "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n");
 
 		const result = await getTaskDiff("/repo", "branch", {
 			baseBranch: "main",
@@ -291,6 +292,7 @@ describe("getTaskDiff", () => {
 				displayPath: "src/app.ts",
 				oldContent: "const a = 1;\n",
 				newContent: "const a = 2;\n",
+				hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;"],
 			}),
 		]);
 	});
@@ -304,6 +306,7 @@ describe("getTaskDiff", () => {
 		queueResponse(0, "notes.txt\0");
 		queueResponse(0, "");
 		queueResponse(0, "notes.txt\n");
+		queueResponse(1, "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\n@@ -0,0 +1,2 @@\n+line 1\n+line 2\n");
 
 		const result = await getTaskDiff(tmpDir, "uncommitted", {
 			baseBranch: "main",
@@ -321,6 +324,7 @@ describe("getTaskDiff", () => {
 				displayPath: "notes.txt",
 				oldContent: "",
 				newContent: "line 1\nline 2\n",
+				hunks: ["diff --git a/notes.txt b/notes.txt\nnew file mode 100644\n@@ -0,0 +1,2 @@\n+line 1\n+line 2"],
 			}),
 		]);
 
@@ -334,6 +338,7 @@ describe("getTaskDiff", () => {
 		queueResponse(0, "src/new.ts\n");
 		queueResponse(0, "9\n");
 		queueResponse(0, "export {};\n");
+		queueResponse(0, "diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n@@ -0,0 +1 @@\n+export {};\n");
 
 		const result = await getTaskDiff("/repo", "unpushed", {
 			baseBranch: "main",
@@ -349,6 +354,7 @@ describe("getTaskDiff", () => {
 			displayPath: "src/new.ts",
 			oldContent: "",
 			newContent: "export {};\n",
+			hunks: ["diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n@@ -0,0 +1 @@\n+export {};"],
 		}));
 	});
 });

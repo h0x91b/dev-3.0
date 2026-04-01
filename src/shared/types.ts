@@ -634,6 +634,7 @@ export interface TaskDiffFile {
 	newPath: string | null;
 	oldContent: string;
 	newContent: string;
+	hunks: string[] | null;
 }
 
 export interface TaskDiffSummary {
