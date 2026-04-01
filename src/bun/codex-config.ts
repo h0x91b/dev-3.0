@@ -10,6 +10,7 @@ const log = createLogger("codex-config");
  * Used as [permissions.dev3] and [profiles.dev3].
  */
 export const DEV3_CODEX_PROFILE = "dev3";
+export const WORKSPACE_CODEX_PROFILE = "workspace";
 
 interface CodexPermissionsProfile {
 	filesystem?: Record<string, unknown>;
@@ -30,11 +31,13 @@ interface CodexConfig {
 /**
  * Ensure the Codex config.toml has:
  * 1. The dev3 worktree project trusted
- * 2. A dedicated [permissions.dev3] permission profile with filesystem + network access
- * 3. A dedicated [profiles.dev3] config profile for dev3 launches
+ * 2. A generic [permissions.workspace] fallback profile + default_permissions
+ * 3. A dedicated [permissions.dev3] permission profile with filesystem + network access
+ * 4. A dedicated [profiles.dev3] config profile for dev3 launches
  *
- * Does NOT touch the user's `default_permissions` — dev3 selects its own
- * permission profile at launch time via `-c 'default_permissions="dev3"'`.
+ * Preserves the user's `default_permissions` when already set. If missing,
+ * creates a generic `workspace` permission profile and sets it as the default
+ * so Codex accepts configs that define [permissions.*] profiles.
  *
  * Uses js-toml to parse and inspect the config, but writes via text
  * manipulation to preserve comments and user formatting.
@@ -148,7 +151,54 @@ export function ensureCodexConfig(
 		}
 	}
 
-	// --- 3. Ensure [profiles.dev3] config profile ---
+	// --- 3. Ensure default_permissions points to a valid generic workspace profile ---
+	if (parsed.default_permissions == null) {
+		const workspacePerm = parsed.permissions?.[WORKSPACE_CODEX_PROFILE] as CodexPermissionsProfile | undefined;
+		const workspaceFsHeader = `[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem]`;
+		const workspaceProjectRootsHeader = `[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem.":project_roots"]`;
+		const workspaceNetworkHeader = `[permissions.${WORKSPACE_CODEX_PROFILE}.network]`;
+
+		if (workspacePerm == null) {
+			const block = [
+				"",
+				`[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem]`,
+				'":minimal" = "read"',
+				"",
+				workspaceProjectRootsHeader,
+				'"." = "write"',
+				"",
+				workspaceNetworkHeader,
+				"enabled = true",
+				"",
+			].join("\n");
+			config = appendBlock(config, block);
+		} else {
+			if (workspacePerm.filesystem == null) {
+				const block = `\n${workspaceFsHeader}\n":minimal" = "read"\n`;
+				config = appendBlock(config, block);
+			} else {
+				config = upsertSectionLine(config, workspaceFsHeader, '":minimal"', '"read"');
+			}
+
+			if (!config.includes(workspaceProjectRootsHeader)) {
+				const block = `\n${workspaceProjectRootsHeader}\n"." = "write"\n`;
+				config = appendBlock(config, block);
+			} else {
+				config = upsertSectionLine(config, workspaceProjectRootsHeader, '"."', '"write"');
+			}
+
+			if (workspacePerm.network == null) {
+				const block = `\n${workspaceNetworkHeader}\nenabled = true\n`;
+				config = appendBlock(config, block);
+			} else if (workspacePerm.network.enabled !== true) {
+				config = upsertSectionLine(config, workspaceNetworkHeader, "enabled", "true");
+			}
+		}
+
+		config = upsertRootLine(config, "default_permissions", '"workspace"');
+	}
+
+	// --- 4. Ensure [profiles.dev3] config profile ---
 	const dev3Profile = parsed.profiles?.[DEV3_CODEX_PROFILE];
 	if (dev3Profile == null) {
 		const block = [
@@ -160,7 +210,7 @@ export function ensureCodexConfig(
 		config = appendBlock(config, block);
 	}
 
-	// --- 4. Ensure [features] codex_hooks = true ---
+	// --- 5. Ensure [features] codex_hooks = true ---
 	const codexHooksEnabled = parsed.features?.codex_hooks === true;
 	if (!codexHooksEnabled) {
 		const featuresHeader = "[features]";
@@ -223,6 +273,30 @@ function removeSectionByHeader(content: string, header: string): string {
 	}
 
 	return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+function upsertRootLine(config: string, key: string, value: string): string {
+	const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const keyPattern = new RegExp(`^${escapedKey}\\s*=\\s*.*$`, "m");
+
+	if (keyPattern.test(config)) {
+		return config.replace(keyPattern, `${key} = ${value}`);
+	}
+
+	const lines = config.split("\n");
+	let insertIndex = 0;
+
+	while (insertIndex < lines.length) {
+		const line = lines[insertIndex];
+		if (line.trim() === "" || line.trim().startsWith("#")) {
+			insertIndex++;
+			continue;
+		}
+		break;
+	}
+
+	lines.splice(insertIndex, 0, `${key} = ${value}`);
+	return lines.join("\n");
 }
 
 /**

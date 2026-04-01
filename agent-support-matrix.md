@@ -76,5 +76,5 @@ A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/c
 |-------------|--------|---------|
 | `~/.agents/AGENTS.md` | All (fallback) | Appended rule block for agents that read `AGENTS.md` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds `Bash(~/.dev3.0/bin/dev3 *)` permission |
-| `~/.codex/config.toml` | Codex | Configures trust, sandbox access, and enables `codex_hooks` |
+| `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables `codex_hooks` |
 | `<worktree>/.codex/hooks.json` | Codex | Auto-installs SessionStart/UserPromptSubmit/PreToolUse(Bash)/Stop lifecycle hooks |
