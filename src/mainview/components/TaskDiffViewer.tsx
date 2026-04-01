@@ -155,6 +155,14 @@ function escapeXml(value: string): string {
 		.replaceAll("'", "&apos;");
 }
 
+function getReviewCommentPreview(value: string, maxLength = 150): string {
+	const normalized = value.trim().replace(/\s+/g, " ");
+	if (normalized.length <= maxLength) {
+		return normalized;
+	}
+	return `${normalized.slice(0, maxLength)}...`;
+}
+
 function parseDiffHunkLines(hunk: string): Array<{
 	kind: "+" | "-" | " ";
 	text: string;
@@ -1620,112 +1628,39 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 														? t("infoPanel.diffReviewExportBody")
 														: t("infoPanel.diffReviewExportEmpty")}
 												</p>
-											</div>
-											<div className="flex items-center gap-2">
-												<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
-													{reviewExportEntries.length}
-												</span>
-												<button
-													onClick={handleCopyReviewXml}
-													disabled={reviewExportEntries.length === 0}
-													className={`inline-flex h-8 items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
-														copiedReviewXml
-															? "border-success/40 bg-success/15 text-success"
-															: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-													}`}
-												>
-													<span
-														aria-hidden="true"
-														className="text-[0.95rem] leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\u{F0198}"}
-													</span>
-													<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
-												</button>
-											</div>
+										</div>
+										<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
+											{reviewExportEntries.length}
+										</span>
 										</div>
 
 										{reviewExportEntries.length > 0 ? (
 											<div className="space-y-2">
 												{reviewExportEntries.map((entry, index) => {
 													const isEditing = editingCommentId === entry.id;
-													const locationLabel = t("infoPanel.diffCommentLine", {
-														side: t(getInlineCommentSideLabel(entry.side)),
-														line: String(entry.startLine),
-													});
 
 													return (
 														<div
 															key={entry.id}
+															role={isEditing ? undefined : "button"}
+															tabIndex={isEditing ? undefined : 0}
+															onClick={isEditing ? undefined : () => scrollToComment(entry.id, entry.fileId)}
+															onKeyDown={isEditing ? undefined : (event) => {
+																if (event.key !== "Enter" && event.key !== " ") {
+																	return;
+																}
+																event.preventDefault();
+																scrollToComment(entry.id, entry.fileId);
+															}}
+															aria-label={isEditing ? undefined : t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
 															className={`rounded-lg border px-3 py-2 space-y-2 ${
 																isEditing
 																	? "border-accent/40 bg-accent/10"
-																	: "border-edge bg-raised/65"
+																	: "border-edge bg-raised/65 cursor-pointer transition-colors hover:border-accent/30 hover:bg-accent/5 focus:outline-none focus:ring-1 focus:ring-accent/40"
 															}`}
 														>
-															<div className="flex items-start justify-between gap-3">
-																<div className="min-w-0 space-y-1">
-																	<button
-																		type="button"
-																		onClick={() => scrollToComment(entry.id, entry.fileId)}
-																		className="text-left text-xs font-semibold text-fg hover:text-accent transition-colors"
-																	>
-																		{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
-																	</button>
-																	<div className="text-[0.6875rem] leading-snug text-fg-3 break-all">
-																		{entry.filePath} · {locationLabel}
-																	</div>
-																</div>
-																<div className="flex items-center gap-1">
-																	<button
-																		type="button"
-																		onClick={() => scrollToComment(entry.id, entry.fileId)}
-																		aria-label={t("infoPanel.diffReviewJump")}
-																		className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-																	>
-																		{t("infoPanel.diffReviewJump")}
-																	</button>
-																	<button
-																		type="button"
-																		onClick={() => startEditingComment(entry.id, entry.comment)}
-																		aria-label={t("infoPanel.diffReviewEdit")}
-																		className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-																	>
-																		{t("infoPanel.diffReviewEdit")}
-																	</button>
-																	<button
-																		type="button"
-																		onClick={() => deleteInlineComment(entry.id)}
-																		aria-label={t("infoPanel.diffReviewDelete")}
-																		className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-[0.6875rem] font-semibold text-danger transition-colors hover:bg-danger/15"
-																	>
-																		{t("infoPanel.diffReviewDelete")}
-																	</button>
-																</div>
-															</div>
-
-															<div className="grid gap-2">
-																{entry.snippet.before !== null && (
-																	<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2">
-																		<div className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
-																			{t("infoPanel.diffReviewBefore")}
-																		</div>
-																		<div className="mt-1 font-mono text-[0.6875rem] text-fg break-all">
-																			{entry.snippet.before}
-																		</div>
-																	</div>
-																)}
-																{entry.snippet.after !== null && (
-																	<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2">
-																		<div className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
-																			{t("infoPanel.diffReviewAfter")}
-																		</div>
-																		<div className="mt-1 font-mono text-[0.6875rem] text-fg break-all">
-																			{entry.snippet.after}
-																		</div>
-																	</div>
-																)}
+															<div className="text-xs font-semibold text-fg">
+																{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
 															</div>
 
 															{isEditing ? (
@@ -1739,14 +1674,20 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 																	<div className="flex items-center justify-end gap-2">
 																		<button
 																			type="button"
-																			onClick={cancelEditingComment}
+																			onClick={(event) => {
+																				event.stopPropagation();
+																				cancelEditingComment();
+																			}}
 																			className="inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
 																		>
 																			{t("infoPanel.diffCommentCancel")}
 																		</button>
 																		<button
 																			type="button"
-																			onClick={() => updateInlineComment(entry.id, editingCommentDraft)}
+																			onClick={(event) => {
+																				event.stopPropagation();
+																				updateInlineComment(entry.id, editingCommentDraft);
+																			}}
 																			disabled={!editingCommentDraft.trim()}
 																			aria-label={t("infoPanel.diffReviewSave")}
 																			className="inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
@@ -1756,8 +1697,34 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 																	</div>
 																</div>
 															) : (
-																<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2 text-sm text-fg whitespace-pre-wrap break-words">
-																	{entry.comment}
+																<div className="flex items-start justify-between gap-2 rounded-md border border-edge bg-base/75 px-2.5 py-2">
+																	<div className="min-w-0 flex-1 text-sm text-fg whitespace-pre-wrap break-words">
+																		{getReviewCommentPreview(entry.comment)}
+																	</div>
+																	<div className="flex items-center gap-1">
+																		<button
+																			type="button"
+																			onClick={(event) => {
+																				event.stopPropagation();
+																				startEditingComment(entry.id, entry.comment);
+																			}}
+																			aria-label={t("infoPanel.diffReviewEdit")}
+																			className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+																		>
+																			{t("infoPanel.diffReviewEdit")}
+																		</button>
+																		<button
+																			type="button"
+																			onClick={(event) => {
+																				event.stopPropagation();
+																				deleteInlineComment(entry.id);
+																			}}
+																			aria-label={t("infoPanel.diffReviewDelete")}
+																			className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-[0.6875rem] font-semibold text-danger transition-colors hover:bg-danger/15"
+																		>
+																			{t("infoPanel.diffReviewDelete")}
+																		</button>
+																	</div>
 																</div>
 															)}
 														</div>
@@ -1769,6 +1736,24 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 												{t("infoPanel.diffReviewExportHint")}
 											</div>
 										)}
+										<button
+											onClick={handleCopyReviewXml}
+											disabled={reviewExportEntries.length === 0}
+											className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+												copiedReviewXml
+													? "border-success/40 bg-success/15 text-success"
+													: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+											}`}
+										>
+											<span
+												aria-hidden="true"
+												className="text-[0.95rem] leading-none"
+												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+											>
+												{"\u{F0198}"}
+											</span>
+											<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
+										</button>
 									</div>
 
 									<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-1.5">

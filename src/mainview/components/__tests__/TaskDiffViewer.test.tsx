@@ -780,6 +780,8 @@ describe("TaskDiffViewer", () => {
 	it("manages inline review comments from the sidebar and copies compact xml", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
+		const longComment = "Watch this branch edge case. ".repeat(8).trim();
+		const truncatedPreview = `${longComment.slice(0, 150)}...`;
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 
 		render(
@@ -799,32 +801,30 @@ describe("TaskDiffViewer", () => {
 
 		await user.type(
 			screen.getByPlaceholderText("Leave a comment on this line..."),
-			"Watch this branch edge case.",
+			longComment,
 		);
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		expect(screen.queryByPlaceholderText("Leave a comment on this line...")).not.toBeInTheDocument();
-		expect(screen.getAllByText("Watch this branch edge case.").length).toBeGreaterThanOrEqual(1);
+		expect(screen.getByText(longComment)).toBeInTheDocument();
 		expect(screen.getByText("New line 1")).toBeInTheDocument();
 		expect(document.querySelector(".dev3-inline-comment--thread")).not.toBeNull();
 		expect(screen.queryByTestId("review-export-xml")).not.toBeInTheDocument();
 		expect(screen.getByText("Comment 1")).toBeInTheDocument();
-		expect(screen.getByText("Before")).toBeInTheDocument();
-		expect(screen.getByText("After")).toBeInTheDocument();
-		expect(screen.getByText("const a = 1;")).toBeInTheDocument();
-		expect(screen.getByText("const a = 2;")).toBeInTheDocument();
+		expect(screen.getByText(truncatedPreview)).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toHaveClass("w-full");
 
-		await user.click(screen.getByRole("button", { name: "Jump to comment" }));
+		await user.click(screen.getByRole("button", { name: "Comment 1" }));
 		expect(scrollIntoViewMock).toHaveBeenCalled();
 
 		await user.click(screen.getByRole("button", { name: "Edit comment" }));
-		const sidebarEditor = screen.getByDisplayValue("Watch this branch edge case.");
+		const sidebarEditor = screen.getByDisplayValue(longComment);
 		await user.clear(sidebarEditor);
 		await user.type(sidebarEditor, "Rename this callback.");
 		await user.click(screen.getByRole("button", { name: "Save comment" }));
 
 		expect(screen.getAllByText("Rename this callback.").length).toBeGreaterThanOrEqual(1);
-		expect(screen.queryByText("Watch this branch edge case.")).not.toBeInTheDocument();
+		expect(screen.queryByText(truncatedPreview)).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
 		expect(writeText).toHaveBeenCalledWith([
