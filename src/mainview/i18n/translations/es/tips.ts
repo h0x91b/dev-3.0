@@ -68,8 +68,6 @@ const tips = {
 	"tip.zoomSupport.body": "Pulsa \u2318= / \u2318- para acercar o alejar; el tamaño del terminal escala de forma independiente y se guarda.",
 	"tip.configurableAgents.title": "Elige tu agente de código",
 	"tip.configurableAgents.body": "Selecciona Claude, Codex, Gemini o un agente shell personalizado por proyecto en Global Settings.",
-	"tip.agentLauncherIcons.title": "Iconos del launcher en tarjetas",
-	"tip.agentLauncherIcons.body": "Mira el badge del intento en la tarjeta para ver por el icono qué launcher inició cada variante.",
 	"tip.osc52Clipboard.title": "Las selecciones se copian solas",
 	"tip.osc52Clipboard.body": "Selecciona texto en cualquier terminal y se copia al portapapeles del sistema al instante, sin necesidad de Cmd+C.",
 	"tip.taskInfoPanel.title": "Detalles de tarea integrados",

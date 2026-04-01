@@ -206,12 +206,6 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.configurableAgents.body",
 		icon: "\u{F0219}", // nf-md-robot
 	},
-	{
-		id: "agent-launcher-icons",
-		titleKey: "tip.agentLauncherIcons.title",
-		bodyKey: "tip.agentLauncherIcons.body",
-		icon: "\u{F0219}", // nf-md-robot
-	},
 	// Batch 6: clipboard, info panel, bell indicator, branch status
 	{
 		id: "osc52-clipboard",

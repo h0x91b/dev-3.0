@@ -68,8 +68,6 @@ const tips = {
 	"tip.zoomSupport.body": "Press \u2318= / \u2318- to zoom in and out; the terminal font scales independently and the level is saved across sessions.",
 	"tip.configurableAgents.title": "Pick your coding agent",
 	"tip.configurableAgents.body": "Choose Claude, Codex, Gemini, or a custom shell agent per project in Global Settings.",
-	"tip.agentLauncherIcons.title": "Launcher icons on cards",
-	"tip.agentLauncherIcons.body": "Check the attempt badge on a task card to see which launcher started each variant from the icon.",
 	"tip.osc52Clipboard.title": "Terminal selections auto-copy",
 	"tip.osc52Clipboard.body": "Selecting text in any terminal pane copies it to your system clipboard instantly — no Cmd+C needed.",
 	"tip.taskInfoPanel.title": "Expand task details inline",
