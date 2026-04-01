@@ -105,6 +105,12 @@ const infoPanel = {
 	"infoPanel.diffCommentLine": "{side} line {line}",
 	"infoPanel.diffCommentSideOld": "Old",
 	"infoPanel.diffCommentSideNew": "New",
+	"infoPanel.diffReviewExport": "Review Export",
+	"infoPanel.diffReviewExportBody": "Этот XML собирается из ваших inline comments. Скопируйте его и вставьте обратно агенту.",
+	"infoPanel.diffReviewExportEmpty": "XML для review появится здесь после того, как вы оставите inline comments.",
+	"infoPanel.diffReviewExportHint": "Оставляйте комментарии прямо в diff, а в конце review копируйте готовый XML-блок.",
+	"infoPanel.diffReviewExportCopy": "Скопировать в буфер",
+	"infoPanel.diffReviewExportCopied": "Скопировано!",
 };
 
 export default infoPanel;

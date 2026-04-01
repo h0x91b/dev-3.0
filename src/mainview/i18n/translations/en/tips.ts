@@ -46,6 +46,8 @@ const tips = {
 	"tip.inlineDiffBulkReview.body": "Use the Files sidebar to collapse everything or mark the current diff as read in one shot.",
 	"tip.inlineDiffComments.title": "Comment right on the diff",
 	"tip.inlineDiffComments.body": "In Show Diff, click the + button next to a line to leave an inline note exactly where it matters.",
+	"tip.inlineDiffReviewExport.title": "Copy your review as XML",
+	"tip.inlineDiffReviewExport.body": "The sidebar builds an XML review block from your inline comments so you can paste it straight back into the agent chat.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",
 	"tip.unpushedDiff.body": "Click \"Unpushed\" in the task panel to review committed work that is still only on your machine.",
 	"tip.imagePasteAttach.title": "Paste images into notes",

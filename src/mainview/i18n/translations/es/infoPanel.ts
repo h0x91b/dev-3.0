@@ -103,6 +103,12 @@ const infoPanel = {
 	"infoPanel.diffCommentLine": "Línea {line} de {side}",
 	"infoPanel.diffCommentSideOld": "anterior",
 	"infoPanel.diffCommentSideNew": "nueva",
+	"infoPanel.diffReviewExport": "Exportar review",
+	"infoPanel.diffReviewExportBody": "Este XML se genera desde tus comentarios inline. Cópialo y pégalo de vuelta en el chat del agente.",
+	"infoPanel.diffReviewExportEmpty": "El XML del review aparecerá aquí después de que dejes comentarios inline.",
+	"infoPanel.diffReviewExportHint": "Deja comentarios en el diff y, al terminar el review, copia el bloque XML generado.",
+	"infoPanel.diffReviewExportCopy": "Copiar al portapapeles",
+	"infoPanel.diffReviewExportCopied": "¡Copiado!",
 };
 
 export default infoPanel;

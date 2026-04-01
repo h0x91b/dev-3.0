@@ -779,6 +779,8 @@ describe("TaskDiffViewer", () => {
 
 	it("adds inline comments through the diff widget and renders them under the line", async () => {
 		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 
 		render(
 			<I18nProvider>
@@ -805,5 +807,23 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByText("Watch this branch edge case.")).toBeInTheDocument();
 		expect(screen.getByText("New line 2")).toBeInTheDocument();
 		expect(document.querySelector(".dev3-inline-comment--thread")).not.toBeNull();
+
+		const reviewExport = screen.getByTestId("review-export-xml") as HTMLTextAreaElement;
+		expect(reviewExport.value).toBe([
+			"<reviews>",
+			"<review>",
+			"<file src=\"src/app.ts\" line=2>",
+			"-const a = 1;",
+			"+const a = 2;",
+			"+const b = 3;",
+			"</file>",
+			"<comment>Watch this branch edge case.</comment>",
+			"</review>",
+			"</reviews>",
+		].join("\n"));
+
+		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		expect(writeText).toHaveBeenCalledWith(reviewExport.value);
+		expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
 	});
 });
