@@ -6,10 +6,14 @@ describe("ensureCodexConfig", () => {
 	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
 
 	describe("when config does not exist", () => {
-		it("creates config with project trust, permissions.dev3, and profiles.dev3", () => {
+		it("creates config with project trust, workspace default permissions, permissions.dev3, and profiles.dev3", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain('trust_level = "trusted"');
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.filesystem]");
+			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain("[permissions.workspace.network]");
 			// Permission profile
 			expect(result).toContain("[permissions.dev3.filesystem]");
 			expect(result).toContain('":minimal" = "read"');
@@ -28,9 +32,15 @@ describe("ensureCodexConfig", () => {
 			expect(result).toContain("codex_hooks = true");
 		});
 
-		it("does NOT set default_permissions", () => {
+		it("creates a generic workspace profile and uses it as default_permissions when missing", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
-			expect(result).not.toContain("default_permissions");
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.filesystem]");
+			expect(result).toContain('":minimal" = "read"');
+			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain('"." = "write"');
+			expect(result).toContain("[permissions.workspace.network]");
+			expect(result).toContain("enabled = true");
 		});
 
 		it("can trust an exact worktree path in addition to the shared worktrees root", () => {
@@ -56,6 +66,43 @@ trust_level = "trusted"
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain("[permissions.dev3.network]");
 			expect(result).toContain("[profiles.dev3]");
+		});
+
+		it("adds default_permissions = workspace when permissions exist but no default is set", () => {
+			const existing = `model = "gpt-5.4"
+
+[permissions.dev3.filesystem]
+":minimal" = "read"
+
+[permissions.dev3.filesystem.":project_roots"]
+"." = "write"
+
+[permissions.dev3.network]
+enabled = true
+allow_unix_sockets = ["${SOCKETS_PATH}"]
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.filesystem]");
+			expect(result).toContain("[permissions.workspace.network]");
+			expect(result).toContain("[permissions.dev3.network]");
+		});
+
+		it("fills missing workspace entries before setting default_permissions = workspace", () => {
+			const existing = `[permissions.workspace.filesystem]
+"/tmp/custom" = "read"
+
+[permissions.workspace.network]
+enabled = false
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.filesystem]");
+			expect(result).toContain('":minimal" = "read"');
+			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain('"." = "write"');
+			expect(result).toContain("[permissions.workspace.network]");
+			expect(result).toContain("enabled = true");
 		});
 	});
 

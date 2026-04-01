@@ -1,0 +1,1 @@
+Fix Codex startup failures caused by dev3-managed `config.toml` files that defined permission profiles without `default_permissions`. dev3 now creates a minimal fallback `permissions.workspace` profile, sets it as the default when missing, and covers the migration with Codex config tests.

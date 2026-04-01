@@ -104,6 +104,8 @@ trust_level = "trusted"
 			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
 			// Old section removed
 			expect(result).not.toMatch(/^\[permissions\.network\]$/m);
+			expect(result).toContain('default_permissions = "workspace"');
+			expect(result).toContain("[permissions.workspace.filesystem]");
 			// New dev3 profile added
 			expect(result).toContain("[permissions.dev3.network]");
 			expect(result).toContain("[profiles.dev3]");
