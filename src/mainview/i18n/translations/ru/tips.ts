@@ -36,8 +36,6 @@ const tips = {
 	"tip.prBadgeOnCard.body": "На карточках задач отображается кликабельный бейдж PR — нажмите, чтобы перейти на GitHub.",
 	"tip.showDiffButton.title": "Просматривайте diff прямо в задаче",
 	"tip.showDiffButton.body": "Нажмите «Show Diff» в панели задачи, чтобы заменить терминал inline diff’ом ветки, а потом нажмите Esc, чтобы вернуться.",
-	"tip.diffToolSetting.title": "Выберите просмотрщик diff",
-	"tip.diffToolSetting.body": "Откройте Настройки и выберите VS Code, IntelliJ, Kaleidoscope или любой свой инструмент для просмотра diff.",
 	"tip.inlineDiffModes.title": "Меняйте layout diff’а",
 	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, чтобы быстро менять компактный обзор на side-by-side сравнение.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",

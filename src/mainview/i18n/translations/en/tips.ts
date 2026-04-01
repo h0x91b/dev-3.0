@@ -36,8 +36,6 @@ const tips = {
 	"tip.prBadgeOnCard.body": "Task cards show a clickable PR badge when an open pull request exists — click it to jump to GitHub.",
 	"tip.showDiffButton.title": "Review your diff inline",
 	"tip.showDiffButton.body": "Click \"Show Diff\" in the task panel to swap the terminal for an inline branch diff, then press Esc to jump back.",
-	"tip.diffToolSetting.title": "Pick your diff viewer",
-	"tip.diffToolSetting.body": "Open Settings and choose VS Code, IntelliJ, Kaleidoscope, or any custom tool as your default diff viewer.",
 	"tip.inlineDiffModes.title": "Switch diff layout fast",
 	"tip.inlineDiffModes.body": "Use Unified or Split in the diff toolbar to switch between a compact review and a side-by-side comparison.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",

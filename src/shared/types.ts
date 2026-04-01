@@ -331,26 +331,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 
 export type TerminalKeymapPreset = "default" | "iterm2";
 
-// ---- Diff Tools ----
-
-export type DiffToolId =
-	| "git-terminal"
-	| "vscode"
-	| "intellij"
-	| "webstorm"
-	| "kaleidoscope"
-	| "beyond-compare"
-	| "filemerge"
-	| "meld"
-	| "custom";
-
-export interface DiffToolCheckResult {
-	id: DiffToolId;
-	name: string;
-	available: boolean;
-	resolvedPath?: string;
-}
-
 // ---- External Apps ("Open in...") ----
 
 export interface ExternalApp {
@@ -388,8 +368,6 @@ export interface GlobalSettings {
 	tipsDisabled?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
-	diffTool?: DiffToolId; // default diff viewer; undefined = "git-terminal"
-	customDiffCommand?: string; // template with $LOCAL / $REMOTE placeholders
 }
 
 export interface TipState {
@@ -962,18 +940,6 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
-			showDiff: {
-				params: { taskId: string; projectId: string; compareRef?: string };
-				response: void;
-			};
-			showUncommittedDiff: {
-				params: { taskId: string; projectId: string };
-				response: void;
-			};
-			openFileDiff: {
-				params: { taskId: string; projectId: string; relativePath: string; ref?: string };
-				response: void;
-			};
 			getTerminalPreview: {
 				params: { taskId: string };
 				response: string | null;
@@ -1021,10 +987,6 @@ export type AppRPCSchema = {
 			checkAgentAvailability: {
 				params: void;
 				response: AgentCheckResult[];
-			};
-			detectDiffTools: {
-				params: void;
-				response: DiffToolCheckResult[];
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };

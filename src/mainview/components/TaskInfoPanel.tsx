@@ -368,17 +368,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		event.stopPropagation();
 		setDiffFilesHover(false);
 		setFileOpenInMenu(null);
-		const compareLabel = metadataBranchState?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`;
-		if (onOpenInlineDiff) {
-			onOpenInlineDiff({
-				mode: "branch",
-				compareRef: metadataBranchState?.compareRef,
-				compareLabel,
-				focusFile: relativePath,
-			});
+		if (!onOpenInlineDiff) {
 			return;
 		}
-		api.request.openFileDiff({ taskId: task.id, projectId: project.id, relativePath }).catch(() => {});
+		const compareLabel = metadataBranchState?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`;
+		onOpenInlineDiff({
+			mode: "branch",
+			compareRef: metadataBranchState?.compareRef,
+			compareLabel,
+			focusFile: relativePath,
+		});
 	}
 
 	const metadataBranchStatus = metadataBranchState?.branchStatus ?? null;

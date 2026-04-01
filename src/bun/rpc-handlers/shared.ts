@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { extname } from "node:path";
 import { Utils } from "electrobun/bun";
 import { dlopen, FFIType } from "bun:ffi";
-import type { DiffToolId, RequirementCheckResult, Task, TaskStatus } from "../../shared/types";
+import type { RequirementCheckResult, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS, formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
@@ -112,21 +112,6 @@ const FALLBACK_BIN_PATHS = [
 	"/opt/homebrew/sbin",
 	"/usr/local/sbin",
 	...(process.env.HOME ? [`${process.env.HOME}/.local/bin`, `${process.env.HOME}/bin`] : []),
-];
-
-export const BUILT_IN_DIFF_TOOLS: Array<{
-	id: DiffToolId;
-	name: string;
-	binaryName: string;
-	extcmd: string;
-}> = [
-	{ id: "vscode", name: "VS Code", binaryName: "code", extcmd: "code --wait --diff" },
-	{ id: "intellij", name: "IntelliJ IDEA", binaryName: "idea", extcmd: "idea diff" },
-	{ id: "webstorm", name: "WebStorm", binaryName: "webstorm", extcmd: "webstorm diff" },
-	{ id: "kaleidoscope", name: "Kaleidoscope", binaryName: "ksdiff", extcmd: "ksdiff" },
-	{ id: "beyond-compare", name: "Beyond Compare", binaryName: "bcomp", extcmd: "bcomp" },
-	{ id: "filemerge", name: "FileMerge", binaryName: "opendiff", extcmd: "opendiff" },
-	{ id: "meld", name: "Meld", binaryName: "meld", extcmd: "meld" },
 ];
 
 export function getSystemRequirements(): RequirementCheckResult[] {
