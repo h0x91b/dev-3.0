@@ -859,7 +859,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				{!error && !isBusy && payload && payload.files.length > 0 && (
 					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
 						<div className="h-full overflow-auto px-3 py-2">
-							<div className="sticky top-0 z-10 bg-raised/95 backdrop-blur pb-2">
+							<div className="sticky top-0 z-10 pb-2">
 								<div className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-base/80 px-3 py-1.5">
 									<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
 										{t("infoPanel.diffFiles")}
