@@ -4,16 +4,19 @@ import { createElement } from "react";
 vi.mock("@lobehub/icons/es/icons", () => {
 	const makeIcon = (name: string) => {
 		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });
-		(Icon as typeof Icon & { Color: typeof Icon }).Color = (props: Record<string, unknown>) =>
+		const Compound = Icon as typeof Icon & { Color: typeof Icon; Avatar: typeof Icon };
+		Compound.Color = (props: Record<string, unknown>) =>
 			createElement("svg", { "data-icon": `${name}-color`, ...props });
-		return Icon as typeof Icon & { Color: typeof Icon };
+		Compound.Avatar = (props: Record<string, unknown>) =>
+			createElement("svg", { "data-icon": `${name}-avatar`, ...props });
+		return Compound;
 	};
 
 	return {
-		ClaudeCode: makeIcon("claude-code"),
+		Claude: makeIcon("claude"),
 		Codex: makeIcon("codex"),
 		Cursor: makeIcon("cursor"),
-		GeminiCLI: makeIcon("gemini-cli"),
+		Gemini: makeIcon("gemini"),
 		OpenCode: makeIcon("opencode"),
 	};
 });

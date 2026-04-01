@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, type ComponentType, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import { ClaudeCode, Codex, Cursor, GeminiCLI, OpenCode } from "@lobehub/icons/es/icons";
+import { Claude, Codex, Cursor, Gemini, OpenCode } from "@lobehub/icons/es/icons";
 import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -27,19 +27,19 @@ function resolveAgentLauncherIcon(agent: CodingAgent): AgentLauncherIconComponen
 	const agentName = agent.name.toLowerCase();
 
 	if (agent.id === "builtin-claude" || agent.baseCommand === "claude" || agentName.includes("claude")) {
-		return ClaudeCode.Color;
+		return Claude.Avatar;
 	}
 	if (agent.id === "builtin-codex" || agent.baseCommand === "codex" || agentName.includes("codex")) {
-		return Codex.Color;
+		return Codex.Avatar;
 	}
 	if (agent.id === "builtin-gemini" || agent.baseCommand === "gemini" || agentName.includes("gemini")) {
-		return GeminiCLI.Color;
+		return Gemini.Avatar;
 	}
 	if (agent.id === "builtin-cursor" || agentName.includes("cursor")) {
-		return Cursor;
+		return Cursor.Avatar;
 	}
 	if (agent.id === "builtin-opencode" || agent.baseCommand === "opencode" || agentName.includes("opencode")) {
-		return OpenCode;
+		return OpenCode.Avatar;
 	}
 
 	return null;
@@ -51,12 +51,12 @@ function AgentLauncherBadge({ agent }: { agent: CodingAgent }) {
 
 	return (
 		<span
-			className="inline-flex items-center shrink-0"
+			className="inline-flex h-4 w-4 items-center justify-center shrink-0"
 			role="img"
 			aria-label={agent.name}
 			title={agent.name}
 		>
-			<Icon size={14} className="block shrink-0" aria-hidden />
+			<Icon size={16} className="block shrink-0" aria-hidden />
 		</span>
 	);
 }
@@ -472,26 +472,25 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					: "";
 				const prefixLabel = `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`;
 				const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
+				const topLabel = agent && !hasLauncherIcon ? `${prefixLabel} · ${agent.name}` : prefixLabel;
 
-				let label = prefixLabel;
-				if (agent && !hasLauncherIcon) {
-					label += ` · ${agent.name}`;
-					if (configLabel) {
-						label += ` ${configLabel}`;
-					}
-				}
+				let label = topLabel;
+				if (agent && !hasLauncherIcon && configLabel) label += ` ${configLabel}`;
 				return (
-					<div className="text-xs text-accent font-semibold mb-1.5 flex items-center gap-1.5">
-						<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex items-center gap-1.5 flex-wrap">
+					<div className="text-xs text-accent font-semibold mb-1.5 flex flex-wrap items-center gap-1.5">
+						<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center gap-1.5">
 							<span>{label}</span>
 							{agent && hasLauncherIcon && (
-								<>
-									<span aria-hidden="true">·</span>
+								<span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-base/80 ring-1 ring-edge/60">
 									<AgentLauncherBadge agent={agent} />
-									{configLabel && <span>{configLabel}</span>}
-								</>
+								</span>
 							)}
 						</span>
+						{agent && hasLauncherIcon && configLabel && (
+							<span className="bg-accent/10 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center text-accent/90">
+								{configLabel}
+							</span>
+						)}
 					</div>
 				);
 			})() : (
