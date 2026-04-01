@@ -1,6 +1,7 @@
 import type { BranchStatus, PRInfo, TaskDiffMode, TaskDiffResponse } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
+import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
 import { getPushMessage, log } from "./shared";
@@ -175,7 +176,7 @@ async function checkMergedBranches(): Promise<void> {
 				const hasRemote = await git.getUnpushedCount(task.worktreePath!, branchName);
 				if (hasRemote === -1) continue;
 
-				const merged = await git.isContentMergedInto(task.worktreePath!, ref);
+				const merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
 				if (!merged) continue;
 
 				mergeNotifiedTasks.add(task.id);
@@ -253,9 +254,10 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 				const unpushed = await git.getUnpushedCount(task.worktreePath!, branchName);
 				if (unpushed === -1) continue;
 
-				const ghResult = await git.run(
-					["gh", "pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft", "--limit", "1"],
+				const ghResult = await github.runGitHub(
+					project,
 					task.worktreePath!,
+					["pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft", "--limit", "1"],
 				);
 				if (!ghResult.ok || !ghResult.stdout) continue;
 
@@ -314,9 +316,10 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const ref = params.compareRef || `origin/${baseBranch}`;
 	const prDetection: Promise<{ number: number; url: string } | null> = (async () => {
 		try {
-			const ghResult = await git.run(
-				["gh", "pr", "list", "--head", branchForPush, "--state", "open", "--json", "number,url", "--limit", "1"],
+			const ghResult = await github.runGitHub(
+				project,
 				task.worktreePath!,
+				["pr", "list", "--head", branchForPush, "--state", "open", "--json", "number,url", "--limit", "1"],
 			);
 			if (ghResult.ok && ghResult.stdout) {
 				const prs = JSON.parse(ghResult.stdout);
@@ -341,7 +344,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const prUrl = prInfo?.url ?? null;
 	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
-	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref) : false;
+	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref, project) : false;
 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
@@ -571,9 +574,11 @@ async function createPullRequest(params: { taskId: string; projectId: string }):
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const githubEnvExports = await github.getGitHubShellExports(project);
 
 	const script = [
 		`#!/bin/bash`,
+		...githubEnvExports,
 		`set -x`,
 		`gh pr create --base "${baseBranch}" --fill --web 2>&1`,
 		`EXIT_CODE=$?`,
@@ -617,9 +622,11 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 	const scriptPath = `/tmp/dev3-${task.id}-git-openPR.sh`;
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
+	const githubEnvExports = await github.getGitHubShellExports(project);
 
 	const script = [
 		`#!/bin/bash`,
+		...githubEnvExports,
 		`set -x`,
 		`gh pr view --web 2>&1`,
 		`EXIT_CODE=$?`,
@@ -678,9 +685,10 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 	const project = await data.getProject(params.projectId);
 
 	try {
-		const result = await git.run(
-			["gh", "pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "100"],
+		const result = await github.runGitHub(
+			project,
 			project.path,
+			["pr", "list", "--state", "open", "--json", "number,headRefName,url", "--limit", "100"],
 		);
 		if (result.ok && result.stdout) {
 			const prs = JSON.parse(result.stdout);

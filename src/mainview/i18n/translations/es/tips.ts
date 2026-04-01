@@ -32,6 +32,8 @@ const tips = {
 	"tip.pushAndCreatePr.body": "Cuando tu rama tenga commits sin subir, haz clic en \"Push & Create PR\" para publicar y abrir un pull request de una vez.",
 	"tip.prAwareness.title": "¿Ya tienes PR? Un clic",
 	"tip.prAwareness.body": "Cuando tu rama tiene un PR abierto, el botón se vuelve verde — haz clic para ir directo al PR en tu navegador.",
+	"tip.projectGitHubAccount.title": "Elige gh por proyecto",
+	"tip.projectGitHubAccount.body": "Abre Config del proyecto y elige la cuenta de gh de ese repo antes de crear PRs o revisar su estado.",
 	"tip.prBadgeOnCard.title": "Número de PR en la tarjeta",
 	"tip.prBadgeOnCard.body": "Las tarjetas de tareas muestran una insignia de PR clicable cuando existe un pull request abierto — haz clic para ir a GitHub.",
 	"tip.showDiffButton.title": "Revisa tu diff en la tarea",

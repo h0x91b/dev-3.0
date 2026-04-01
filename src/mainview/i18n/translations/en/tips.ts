@@ -32,6 +32,8 @@ const tips = {
 	"tip.pushAndCreatePr.body": "When your branch has unpushed commits, click \"Push & Create PR\" to push and open a pull request in one click.",
 	"tip.prAwareness.title": "Existing PR? One click away",
 	"tip.prAwareness.body": "When your branch has an open PR, the button turns green — click it to jump straight to the PR in your browser.",
+	"tip.projectGitHubAccount.title": "Pick gh per project",
+	"tip.projectGitHubAccount.body": "Open Project Settings and choose the gh account for that repo before creating PRs or checking PR status.",
 	"tip.prBadgeOnCard.title": "PR number on every card",
 	"tip.prBadgeOnCard.body": "Task cards show a clickable PR badge when an open pull request exists — click it to jump to GitHub.",
 	"tip.showDiffButton.title": "Review your diff inline",

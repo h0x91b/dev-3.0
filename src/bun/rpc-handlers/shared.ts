@@ -6,8 +6,8 @@ import type { RequirementCheckResult, Task, TaskStatus } from "../../shared/type
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS, formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
-import { spawnSync } from "../spawn";
 import { broadcastToOtherInstances } from "../instance-broadcast";
+import { whichSync } from "../which";
 
 export const log = createLogger("rpc");
 
@@ -131,11 +131,7 @@ export function resolveBinaryPath(binaryName: string, customPath?: string): { re
 	}
 
 	if (!resolvedPath) {
-		const proc = spawnSync(["which", binaryName]);
-		if (proc.exitCode === 0) {
-			const whichOutput = proc.stdout ? new TextDecoder().decode(proc.stdout).trim() : "";
-			resolvedPath = whichOutput || binaryName;
-		}
+		resolvedPath = whichSync(binaryName) ?? undefined;
 	}
 
 	if (!resolvedPath) {

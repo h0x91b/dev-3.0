@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
+import * as github from "./github";
 
 const log = createLogger("git");
 const MAX_INLINE_DIFF_FILE_BYTES = 250_000;
@@ -1009,6 +1010,7 @@ export async function getBranchDiffStats(
 export async function isContentMergedInto(
 	worktreePath: string,
 	ref: string,
+	project?: Pick<Project, "githubAuthHost" | "githubAuthLogin">,
 ): Promise<boolean> {
 	// Strategy 1: merge-tree comparison.
 	// Compute a hypothetical merge of ref and HEAD. If the resulting tree
@@ -1096,18 +1098,28 @@ export async function isContentMergedInto(
 	// This is the definitive source of truth for GitHub-hosted repos.
 	const branchResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath);
 	if (branchResult.ok && branchResult.stdout) {
-		const ghResult = await run(
-			["gh", "pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number", "--limit", "1"],
-			worktreePath,
-		);
-		if (ghResult.ok && ghResult.stdout) {
-			try {
-				const prs = JSON.parse(ghResult.stdout);
-				if (Array.isArray(prs) && prs.length > 0) {
-					log.info("isContentMergedInto", { ref, method: "github-pr", pr: prs[0].number, merged: true });
-					return true;
-				}
-			} catch { /* ignore parse errors */ }
+		try {
+			const ghResult = project
+				? await github.runGitHub(
+					project,
+					worktreePath,
+					["pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number", "--limit", "1"],
+				)
+				: await run(
+					["gh", "pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number", "--limit", "1"],
+					worktreePath,
+				);
+			if (ghResult.ok && ghResult.stdout) {
+				try {
+					const prs = JSON.parse(ghResult.stdout);
+					if (Array.isArray(prs) && prs.length > 0) {
+						log.info("isContentMergedInto", { ref, method: "github-pr", pr: prs[0].number, merged: true });
+						return true;
+					}
+				} catch { /* ignore parse errors */ }
+			}
+		} catch {
+			// Ignore gh lookup/auth failures and fall back to the offline result.
 		}
 	}
 

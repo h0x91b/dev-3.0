@@ -59,6 +59,12 @@ vi.mock("../git", () => ({
 	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
 }));
 
+vi.mock("../github", () => ({
+	runGitHub: vi.fn(),
+	getGitHubShellExports: vi.fn().mockResolvedValue([]),
+	getGitHubCliStatus: vi.fn(),
+}));
+
 vi.mock("../pty-server", () => ({
 	createSession: vi.fn(),
 	destroySession: vi.fn(),
@@ -165,6 +171,7 @@ vi.mock("bun:ffi", () => ({
 
 import * as data from "../data";
 import * as git from "../git";
+import * as github from "../github";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as updater from "../updater";
@@ -2077,7 +2084,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42 }]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42 }]), stderr: "", code: 0 });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(42);
@@ -2094,7 +2101,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: "[]", stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", code: 0 });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBeNull();
@@ -2111,7 +2118,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: false, stdout: "", stderr: "gh not found" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: false, stdout: "", stderr: "gh not found", code: 1 });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBeNull();
@@ -2128,7 +2135,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: "not json", stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "not json", stderr: "", code: 0 });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBeNull();
@@ -2145,7 +2152,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileNames: [] });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 10 }]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 10 }]), stderr: "", code: 0 });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
@@ -4021,7 +4028,7 @@ describe("checkOpenPRsForPromotion", () => {
 		vi.mocked(data.updateTask).mockReset();
 		vi.mocked(git.getCurrentBranch).mockReset();
 		vi.mocked(git.getUnpushedCount).mockReset();
-		vi.mocked(git.run).mockReset();
+		vi.mocked(github.runGitHub).mockReset();
 		_resetPRPollerState();
 	});
 
@@ -4038,7 +4045,7 @@ describe("checkOpenPRsForPromotion", () => {
 	it("promotes task to review-by-colleague when open non-draft PR found", async () => {
 		const { project, task } = setup();
 		const promoted = { ...task, status: "review-by-colleague" as const };
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, isDraft: false }]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, isDraft: false }]), stderr: "", code: 0 });
 		vi.mocked(data.updateTask).mockResolvedValue(promoted);
 
 		const push = vi.fn();
@@ -4052,7 +4059,7 @@ describe("checkOpenPRsForPromotion", () => {
 
 	it("does not promote when PR is a draft", async () => {
 		setup();
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 7, isDraft: true }]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 7, isDraft: true }]), stderr: "", code: 0 });
 
 		await checkOpenPRsForPromotion();
 
@@ -4061,7 +4068,7 @@ describe("checkOpenPRsForPromotion", () => {
 
 	it("does not promote when no PR exists", async () => {
 		setup();
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([]), stderr: "", code: 0 });
 
 		await checkOpenPRsForPromotion();
 
@@ -4070,7 +4077,7 @@ describe("checkOpenPRsForPromotion", () => {
 
 	it("skips projects with peerReviewEnabled === false", async () => {
 		setup({}, { peerReviewEnabled: false });
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "", code: 0 });
 
 		await checkOpenPRsForPromotion();
 
@@ -4102,14 +4109,14 @@ describe("checkOpenPRsForPromotion", () => {
 
 		await checkOpenPRsForPromotion();
 
-		expect(git.run).not.toHaveBeenCalled();
+		expect(github.runGitHub).not.toHaveBeenCalled();
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("does not re-check already promoted tasks", async () => {
 		const { task } = setup();
 		const promoted = { ...task, status: "review-by-colleague" as const };
-		vi.mocked(git.run).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 1, isDraft: false }]), stderr: "", code: 0 });
 		vi.mocked(data.updateTask).mockResolvedValue(promoted);
 
 		const push = vi.fn();
@@ -4128,7 +4135,7 @@ describe("checkOpenPRsForPromotion", () => {
 
 	it("skips when gh pr list call fails", async () => {
 		setup();
-		vi.mocked(git.run).mockResolvedValue({ ok: false, stdout: "", stderr: "gh: not found" });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: false, stdout: "", stderr: "gh: not found", code: 1 });
 
 		await checkOpenPRsForPromotion();
 
