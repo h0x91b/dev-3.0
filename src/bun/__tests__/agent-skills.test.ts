@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { getProjectConfigSkillContent } from "../agent-skills";
+import {
+	getClaudeSkillContent,
+	getCodexSkillContent,
+	getGenericSkillContent,
+	getProjectConfigSkillContent,
+} from "../agent-skills";
+
+describe("dev3 skill content", () => {
+	it("encourages active label usage without label spam", () => {
+		expect(getCodexSkillContent()).toContain(
+			"Aim for **1-2 meaningful labels per task** in the normal case",
+		);
+		expect(getCodexSkillContent()).toContain("dev3 label list");
+		expect(getCodexSkillContent()).toContain('dev3 label create "name"');
+		expect(getCodexSkillContent()).toContain("dev3 label set <id> [<id>...]");
+		expect(getCodexSkillContent()).toContain(
+			"Do not create more than one new label for a task unless there is a strong project-specific reason.",
+		);
+	});
+
+	it("keeps label guidance consistent across agent variants", () => {
+		expect(getClaudeSkillContent()).toContain("## Task labels");
+		expect(getGenericSkillContent()).toContain("## Task labels");
+		expect(getClaudeSkillContent()).toContain("Reuse existing labels whenever possible.");
+		expect(getGenericSkillContent()).toContain("Reuse existing labels whenever possible.");
+	});
+});
 
 describe("dev3-project-config skill content", () => {
 	it("requires repo-specific evidence for each port mapping", () => {

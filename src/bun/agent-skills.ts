@@ -62,6 +62,25 @@ If the project defines custom columns (visible in \`dev3 current\` output), you 
 Each custom column has an 8-char ID prefix and a description of when to use it.
 `;
 
+const SKILL_LABELS = `
+## Task labels
+
+Use labels proactively when they improve filtering or make the task easier to find later. Aim for **1-2 meaningful labels per task** in the normal case; zero is acceptable only when no label would add real value.
+
+Recommended flow:
+
+1. Run \`dev3 label list\` to see the project's existing labels.
+2. Reuse existing labels whenever possible.
+3. If the task still needs a label and there is no good fit, create **one short reusable label** with \`dev3 label create "name"\`.
+4. Apply the final label set with \`dev3 label set <id> [<id>...]\`.
+
+Rules:
+- Do not spam labels or create near-duplicates.
+- Do not treat status as a label substitute (\`in-progress\`, \`review\`, \`blocked\`, etc. belong in statuses/custom columns).
+- Do not create more than one new label for a task unless there is a strong project-specific reason.
+- If the task already has sensible labels, leave them alone unless they are clearly wrong or incomplete.
+`;
+
 const SKILL_NOTES = `
 ## Notes (per-task scratchpad)
 
@@ -114,9 +133,9 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 `;
 
 // Composed bodies for each agent type
-const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT;
-const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_LABELS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT;
+const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_LABELS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_LABELS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
@@ -332,6 +351,18 @@ ${PROJECT_CONFIG_SKILL_BODY}`;
 
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
+}
+
+export function getClaudeSkillContent(): string {
+	return CLAUDE_SKILL_CONTENT;
+}
+
+export function getCodexSkillContent(): string {
+	return CODEX_SKILL_CONTENT;
+}
+
+export function getGenericSkillContent(): string {
+	return GENERIC_SKILL_CONTENT;
 }
 
 /** Claude Code project-config skill directory. */
