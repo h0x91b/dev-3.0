@@ -812,6 +812,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.queryByTestId("review-export-xml")).not.toBeInTheDocument();
 		expect(screen.getByText("Comment 1")).toBeInTheDocument();
 		expect(screen.getByText(truncatedPreview)).toBeInTheDocument();
+		expect(screen.getByTestId("review-export-list")).toHaveClass("max-h-64", "overflow-y-auto");
 		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toHaveClass("w-full");
 
 		await user.click(screen.getByRole("button", { name: "Comment 1" }));

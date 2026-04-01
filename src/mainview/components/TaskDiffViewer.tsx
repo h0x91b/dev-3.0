@@ -1735,7 +1735,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 										</div>
 
 										{reviewExportEntries.length > 0 ? (
-											<div className="space-y-2">
+											<div
+												className="max-h-64 space-y-2 overflow-y-auto pr-1"
+												data-testid="review-export-list"
+											>
 												{reviewExportEntries.map((entry, index) => {
 													const isEditing = editingCommentId === entry.id;
 
