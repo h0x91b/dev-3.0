@@ -1,0 +1,52 @@
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment,
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment *,
+.diff-tailwindcss-wrapper .diff-line-extend-wrapper .dev3-inline-comment,
+.diff-tailwindcss-wrapper .diff-line-extend-wrapper .dev3-inline-comment * {
+	color: rgb(var(--text-primary));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__meta,
+.diff-tailwindcss-wrapper .diff-line-extend-wrapper .dev3-inline-comment__meta {
+	color: rgb(var(--text-tertiary));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__bubble,
+.diff-tailwindcss-wrapper .diff-line-extend-wrapper .dev3-inline-comment__bubble {
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-raised));
+	border-color: rgb(var(--border-default));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__textarea {
+	color: rgb(var(--text-primary));
+	background: rgb(var(--surface-raised));
+	border-color: rgb(var(--border-default));
+	caret-color: rgb(var(--accent));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__textarea::placeholder {
+	color: rgb(var(--text-muted));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__textarea:focus {
+	border-color: rgb(var(--border-active));
+	background: rgb(var(--surface-elevated));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__button--secondary {
+	color: rgb(var(--text-secondary));
+	background: rgb(var(--surface-base));
+	border-color: rgb(var(--border-default));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__button--primary {
+	color: rgb(255 255 255);
+	background: rgb(var(--accent));
+	border-color: rgb(var(--accent));
+}
+
+.diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment__button--primary:disabled {
+	color: rgb(var(--text-muted));
+	background: rgb(var(--surface-base));
+	border-color: rgb(var(--border-default));
+}
