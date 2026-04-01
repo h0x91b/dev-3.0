@@ -103,6 +103,8 @@ const diffPayload: TaskDiffResponse = {
 };
 
 describe("TaskDiffViewer", () => {
+	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
@@ -112,6 +114,11 @@ describe("TaskDiffViewer", () => {
 			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
 		}));
 		localStorage.clear();
+		scrollIntoViewMock = vi.fn();
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoViewMock,
+		});
 	});
 
 	it("defaults to split mode, opens files by default, and lets a file be marked as read", async () => {
@@ -211,6 +218,27 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i })).toBeChecked();
 			expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
 			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
+		});
+	});
+
+	it("scrolls to a requested file when opened from changed files popup", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFile: "src/utils.ts" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		await waitFor(() => {
+			expect(scrollIntoViewMock).toHaveBeenCalled();
 		});
 	});
 });

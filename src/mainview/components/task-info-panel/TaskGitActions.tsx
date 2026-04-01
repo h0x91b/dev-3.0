@@ -6,6 +6,12 @@ import { useT } from "../../i18n";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
+export interface TaskBranchStatusMeta {
+	branchStatus: BranchStatus | null;
+	compareRef?: string;
+	compareLabel: string;
+}
+
 interface TaskGitActionsProps {
 	task: Task;
 	project: Project;
@@ -15,7 +21,7 @@ interface TaskGitActionsProps {
 	showWorktreeCopy?: boolean;
 	showLoading?: boolean;
 	branchNameClassName?: string;
-	onBranchStatusChange?: (branchStatus: BranchStatus | null) => void;
+	onBranchStatusChange?: (meta: TaskBranchStatusMeta) => void;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
@@ -65,8 +71,12 @@ export default function TaskGitActions({
 	});
 
 	useEffect(() => {
-		onBranchStatusChange?.(branchStatus);
-	}, [branchStatus, onBranchStatusChange]);
+		onBranchStatusChange?.({
+			branchStatus,
+			compareRef: compareRef || undefined,
+			compareLabel: displayRef,
+		});
+	}, [branchStatus, compareRef, displayRef, onBranchStatusChange]);
 
 	useEffect(() => {
 		if (!refMenuOpen) {

@@ -4,7 +4,7 @@ import type { Project, Task } from "../../../shared/types";
 import TaskWorkspaceView from "../TaskWorkspaceView";
 
 vi.mock("../TaskInfoPanel", () => ({
-	default: ({ onOpenInlineDiff }: { onOpenInlineDiff?: (request: { mode: "branch"; compareLabel: string }) => void }) => (
+	default: ({ onOpenInlineDiff }: { onOpenInlineDiff?: (request: { mode: "branch"; compareLabel: string; focusFile?: string }) => void }) => (
 		<button onClick={() => onOpenInlineDiff?.({ mode: "branch", compareLabel: "origin/main" })}>
 			Open Inline Diff
 		</button>

@@ -5,6 +5,7 @@ export interface TaskInlineDiffRequest {
 	mode: TaskDiffMode;
 	compareRef?: string;
 	compareLabel?: string;
+	focusFile?: string;
 }
 
 export function useTaskInlineDiffState(taskId?: string) {

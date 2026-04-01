@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskInfoPanel from "../TaskInfoPanel";
 import { I18nProvider } from "../../i18n";
@@ -179,6 +179,54 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("2 files")).toBeInTheDocument();
 			expect(screen.getByText("+12")).toBeInTheDocument();
 			expect(screen.getByText("−4")).toBeInTheDocument();
+		});
+
+		it("shows changed files popup from the top diff summary badge", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 2,
+				diffInsertions: 12,
+				diffDeletions: 4,
+				diffFileNames: ["bun.lock", "src/mainview/App.tsx"],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			await user.hover(screen.getByText("2 files").closest("span")!);
+
+			expect(await screen.findByText("Changed files")).toBeInTheDocument();
+			expect(screen.getByText("bun.lock")).toBeInTheDocument();
+			expect(screen.getByText("src/mainview/App.tsx")).toBeInTheDocument();
+		});
+
+		it("opens inline diff focused on the selected changed file from the popup", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 2,
+				diffInsertions: 12,
+				diffDeletions: 4,
+				diffFileNames: ["bun.lock", "src/mainview/App.tsx"],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+
+			await user.hover(screen.getByText("2 files").closest("span")!);
+			const fileRow = (await screen.findByText("bun.lock")).closest("div")!;
+			await user.click(within(fileRow).getByRole("button", { name: "Show Diff" }));
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "branch",
+				compareRef: undefined,
+				compareLabel: "origin/main",
+				focusFile: "bun.lock",
+			});
 		});
 
 		it("skips unknown label IDs", async () => {

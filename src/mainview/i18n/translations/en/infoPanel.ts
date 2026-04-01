@@ -63,6 +63,7 @@ const infoPanel = {
 	"infoPanel.baseBranch": "Base Branch",
 	"infoPanel.copyPath": "Copy path to this git worktree",
 	"infoPanel.pathCopied": "Copied!",
+	"infoPanel.changedFiles": "Changed files",
 	"infoPanel.diffViewer": "Diff",
 	"infoPanel.backToTerminal": "Back to Terminal",
 	"infoPanel.diffBranch": "Branch",

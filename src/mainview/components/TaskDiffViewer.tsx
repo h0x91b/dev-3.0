@@ -98,6 +98,25 @@ function writeStoredReadState(state: Record<string, boolean>): void {
 	} catch {}
 }
 
+function normalizeDiffPath(value: string | null | undefined): string {
+	return (value ?? "")
+		.replace(/^\.?\//, "")
+		.replace(/^[ab]\//, "");
+}
+
+function findDiffFileByPath(files: TaskDiffFile[], path: string | undefined): TaskDiffFile | null {
+	if (!path) {
+		return null;
+	}
+	const targetPath = normalizeDiffPath(path);
+	return files.find((file) => (
+		normalizeDiffPath(file.id) === targetPath
+		|| normalizeDiffPath(file.displayPath) === targetPath
+		|| normalizeDiffPath(file.newPath) === targetPath
+		|| normalizeDiffPath(file.oldPath) === targetPath
+	)) ?? null;
+}
+
 function statusClassName(status: TaskDiffFile["status"]): string {
 	switch (status) {
 		case "added":
@@ -344,7 +363,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 	useEffect(() => {
 		setCurrentRequest(request);
-	}, [request.compareLabel, request.compareRef, request.mode]);
+	}, [request.compareLabel, request.compareRef, request.focusFile, request.mode]);
 
 	useEffect(() => {
 		try {
@@ -458,6 +477,27 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		setReadFiles(nextReadFiles);
 	}, [payload, task.id]);
 
+	useEffect(() => {
+		if (!payload || !currentRequest.focusFile) {
+			return;
+		}
+		const targetFile = findDiffFileByPath(payload.files, currentRequest.focusFile);
+		if (!targetFile) {
+			return;
+		}
+		setExpandedFiles((current) => ({
+			...current,
+			[targetFile.id]: true,
+		}));
+		const frame = window.requestAnimationFrame(() => {
+			sectionRefs.current[targetFile.id]?.scrollIntoView({
+				block: "start",
+				behavior: "smooth",
+			});
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [currentRequest.focusFile, payload]);
+
 	function scrollToFile(fileId: string) {
 		sectionRefs.current[fileId]?.scrollIntoView({
 			block: "start",
@@ -506,13 +546,17 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			return;
 		}
 		if (mode === "uncommitted") {
-			setCurrentRequest({ mode: "uncommitted" });
+			setCurrentRequest({
+				mode: "uncommitted",
+				focusFile: currentRequest.focusFile,
+			});
 			return;
 		}
 		setCurrentRequest({
 			mode,
 			compareRef: request.compareRef,
 			compareLabel: request.compareLabel,
+			focusFile: currentRequest.focusFile,
 		});
 	}
 
