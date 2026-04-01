@@ -663,13 +663,13 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						aria-label={collapsed
 							? t("infoPanel.diffExpandFolder", { folder: node.path })
 							: t("infoPanel.diffCollapseFolder", { folder: node.path })}
-						className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-fg-2 hover:bg-elevated-hover transition-colors"
-						style={{ paddingLeft: `${depth * 0.85 + 0.5}rem` }}
+						className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm text-fg-2 hover:bg-elevated-hover transition-colors"
+						style={{ paddingLeft: `${depth * 0.55 + 0.35}rem` }}
 					>
-						<span className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center text-[0.95rem] leading-none text-fg-muted">
+						<span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-[1.05rem] leading-none text-fg-muted">
 							{collapsed ? "\u25B8" : "\u25BE"}
 						</span>
-						<span className="text-[0.95rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						<span className="text-[1rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uF07B"}
 						</span>
 						<span className="min-w-0 truncate font-medium">{node.name}</span>
@@ -690,12 +690,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				key={node.key}
 				onClick={() => scrollToFile(node.fileId, { expand: true })}
 				aria-label={t("infoPanel.diffOpenFile", { file: node.path })}
-				className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+				className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm transition-colors ${
 					isActive
 						? "bg-accent/15 text-fg border border-accent/30"
 						: "text-fg-2 hover:bg-elevated-hover border border-transparent"
 				}`}
-				style={{ paddingLeft: `${depth * 0.85 + 1.55}rem` }}
+				style={{ paddingLeft: `${depth * 0.55 + 1.15}rem` }}
 			>
 				<span className={`inline-flex items-center justify-center min-w-[1.1rem] rounded border px-1 py-0.5 text-[0.6rem] font-bold ${statusClassName(node.status)}`}>
 					{statusLabel(node.status)}
