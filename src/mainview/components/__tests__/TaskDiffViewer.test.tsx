@@ -174,10 +174,14 @@ describe("TaskDiffViewer", () => {
 
 		expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
 		expect(within(screen.getByRole("button", { name: /open diff file src\/app\.ts/i })).getByText("app.ts")).toHaveClass("line-through");
-		expect(screen.getAllByTestId("mock-diff")).toHaveLength(1);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(1);
+		});
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
-		expect(await screen.findAllByTestId("mock-diff")).toHaveLength(2);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
 	});
 
 	it("uses unified as the initial layout when configured in global settings", async () => {
@@ -559,6 +563,120 @@ describe("TaskDiffViewer", () => {
 		expect(scrollToMock.mock.calls.length).toBeGreaterThanOrEqual(2);
 		expect(scrollToMock).toHaveBeenNthCalledWith(1, expect.objectContaining({ top: 648, behavior: "smooth" }));
 		expect(scrollToMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ top: 716, behavior: "auto" }));
+
+		window.requestAnimationFrame = originalRequestAnimationFrame;
+		window.cancelAnimationFrame = originalCancelAnimationFrame;
+	});
+
+	it("aligns a sticky file header before collapsing the file", async () => {
+		const user = userEvent.setup();
+		const rafQueue: FrameRequestCallback[] = [];
+		const originalRequestAnimationFrame = window.requestAnimationFrame;
+		const originalCancelAnimationFrame = window.cancelAnimationFrame;
+
+		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+			rafQueue.push(callback);
+			return rafQueue.length;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		let scrollTop = 400;
+		Object.defineProperty(scrollRegion, "scrollTop", {
+			configurable: true,
+			get: () => scrollTop,
+			set: (value: number) => {
+				scrollTop = value;
+			},
+		});
+
+		const scrollToMock = vi.fn(({ top }: ScrollToOptions) => {
+			scrollTop = typeof top === "number" ? top : scrollTop;
+		});
+		Object.defineProperty(scrollRegion, "scrollTo", {
+			configurable: true,
+			value: scrollToMock,
+		});
+
+		Object.defineProperty(scrollRegion, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 120,
+				bottom: 720,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 600,
+				x: 0,
+				y: 120,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		Object.defineProperty(toolbar, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 0,
+				bottom: 64,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 64,
+				x: 0,
+				y: 0,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const targetSection = document.querySelector('[data-file-id="src/utils/format.ts"]') as HTMLDivElement | null;
+		expect(targetSection).not.toBeNull();
+		Object.defineProperty(targetSection as HTMLDivElement, "getBoundingClientRect", {
+			configurable: true,
+			value: () => {
+				const top = scrollTop > 300 ? 80 : 194;
+				return {
+					top,
+					bottom: top + 180,
+					left: 0,
+					right: 900,
+					width: 900,
+					height: 180,
+					x: 0,
+					y: top,
+					toJSON: () => ({}),
+				};
+			},
+		});
+
+		await user.click(screen.getByRole("button", { name: /collapse src\/utils\/format\.ts/i }));
+
+		await act(async () => {
+			while (rafQueue.length > 0) {
+				const callback = rafQueue.shift();
+				callback?.(performance.now());
+			}
+		});
+
+		expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 288, behavior: "auto" }));
+		await waitFor(() => {
+			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
+		});
 
 		window.requestAnimationFrame = originalRequestAnimationFrame;
 		window.cancelAnimationFrame = originalCancelAnimationFrame;

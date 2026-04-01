@@ -651,16 +651,30 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		return sectionRect.top - scrollRegionRect.top - toolbarHeight - 8;
 	}
 
-	function alignFileScroll(fileId: string, behavior: ScrollBehavior, retriesLeft: number) {
+	function cancelPendingScroll() {
+		if (pendingScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingScrollFrameRef.current);
+			pendingScrollFrameRef.current = null;
+		}
+	}
+
+	function alignFileScroll(
+		fileId: string,
+		behavior: ScrollBehavior,
+		retriesLeft: number,
+		onSettled?: () => void,
+	) {
 		const scrollRegion = scrollRegionRef.current;
 		const offset = getScrollOffset(fileId);
 		if (!scrollRegion || offset === null) {
 			pendingScrollFrameRef.current = null;
+			onSettled?.();
 			return;
 		}
 
 		if (Math.abs(offset) <= 4) {
 			pendingScrollFrameRef.current = null;
+			onSettled?.();
 			return;
 		}
 
@@ -671,11 +685,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 		if (retriesLeft <= 0) {
 			pendingScrollFrameRef.current = null;
+			onSettled?.();
 			return;
 		}
 
 		pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
-			alignFileScroll(fileId, "auto", retriesLeft - 1);
+			alignFileScroll(fileId, "auto", retriesLeft - 1, onSettled);
 		});
 	}
 
@@ -683,10 +698,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		fileId: string,
 		options?: { expand?: boolean; behavior?: ScrollBehavior; retries?: number },
 	) {
-		if (pendingScrollFrameRef.current !== null) {
-			window.cancelAnimationFrame(pendingScrollFrameRef.current);
-			pendingScrollFrameRef.current = null;
-		}
+		cancelPendingScroll();
 		if (options?.expand) {
 			setExpandedFiles((current) => ({
 				...current,
@@ -701,6 +713,27 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		});
 	}
 
+	function collapseFilePreservingStickyAnchor(fileId: string) {
+		const offset = getScrollOffset(fileId);
+		const finishCollapse = () => {
+			setExpandedFiles((current) => ({
+				...current,
+				[fileId]: false,
+			}));
+		};
+
+		if (offset === null || offset >= -4) {
+			finishCollapse();
+			return;
+		}
+
+		cancelPendingScroll();
+		setActiveFileId(fileId);
+		pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
+			alignFileScroll(fileId, "auto", 3, finishCollapse);
+		});
+	}
+
 	function toggleFolderCollapsed(folderKey: string) {
 		setCollapsedFolders((current) => ({
 			...current,
@@ -709,9 +742,14 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	}
 
 	function toggleFileExpanded(fileId: string) {
+		const currentlyExpanded = expandedFiles[fileId] ?? true;
+		if (currentlyExpanded) {
+			collapseFilePreservingStickyAnchor(fileId);
+			return;
+		}
 		setExpandedFiles((current) => ({
 			...current,
-			[fileId]: !(current[fileId] ?? true),
+			[fileId]: true,
 		}));
 	}
 
@@ -724,24 +762,26 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			return;
 		}
 		const signature = getFileReadSignature(task.id, targetFile);
-		setReadFiles((current) => {
-			const nextRead = !(current[fileId] ?? false);
-			const storedReadState = readStoredReadState();
-			if (nextRead) {
-				storedReadState[signature] = true;
-			} else {
-				delete storedReadState[signature];
-			}
-			writeStoredReadState(storedReadState);
-			setExpandedFiles((expanded) => ({
-				...expanded,
-				[fileId]: nextRead ? false : true,
-			}));
-			return {
-				...current,
-				[fileId]: nextRead,
-			};
-		});
+		const nextRead = !(readFiles[fileId] ?? false);
+		const storedReadState = readStoredReadState();
+		if (nextRead) {
+			storedReadState[signature] = true;
+		} else {
+			delete storedReadState[signature];
+		}
+		writeStoredReadState(storedReadState);
+		setReadFiles((current) => ({
+			...current,
+			[fileId]: nextRead,
+		}));
+		if (nextRead) {
+			collapseFilePreservingStickyAnchor(fileId);
+			return;
+		}
+		setExpandedFiles((expanded) => ({
+			...expanded,
+			[fileId]: true,
+		}));
 	}
 
 	function setAllFilesExpanded(nextExpanded: boolean) {
