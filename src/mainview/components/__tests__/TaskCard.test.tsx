@@ -1137,13 +1137,14 @@ describe("TaskCard", () => {
 	});
 
 	describe("PR badge", () => {
-		it("keeps the footer layout stable when a PR badge is shown", () => {
+		it("renders the PR badge in the lower action row for active tasks", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
 			});
 
-			expect(screen.getByTestId("task-card-footer")).toHaveClass("flex", "items-center");
-			expect(screen.getByRole("button", { name: "Agent is Working" })).toHaveClass("min-w-0");
+			const badge = screen.getByText("#42").closest("button");
+			expect(screen.getByTestId("task-card-action-row")).toContainElement(badge);
+			expect(screen.getByTestId("task-card-footer")).not.toContainElement(badge);
 		});
 
 		it("shows PR badge when prInfo is provided", () => {
@@ -1151,6 +1152,17 @@ describe("TaskCard", () => {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
 			});
 			expect(screen.getByText("#42")).toBeInTheDocument();
+		});
+
+		it("keeps the PR badge centered inside the lower action row", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
+				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
+			});
+
+			expect(screen.getByTestId("task-card-action-row")).toHaveClass("grid", "grid-cols-[auto_minmax(0,1fr)_auto]");
+			const badge = screen.getByText("#42").closest("button");
+			expect(badge).toHaveClass("h-5", "items-center", "leading-none");
+			expect(screen.getByText("#42")).toHaveClass("leading-none");
 		});
 
 		it("does not show PR badge when prInfo is undefined", () => {

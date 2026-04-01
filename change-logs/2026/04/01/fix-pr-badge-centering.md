@@ -1,0 +1,1 @@
+Moved the PR badge off the crowded footer row and into the lower action row of active task cards, with centered badge text and spacing. Added regression coverage so active cards keep the PR badge in the lower row instead of squeezing it into the footer.
