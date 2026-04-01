@@ -808,6 +808,40 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" })}
 						</div>
 					</div>
+					{payload && (
+						<>
+							<span className="px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-[0.6875rem]">
+								{t("infoPanel.diffSummary", {
+									files: String(payload.summary.files),
+									insertions: String(payload.summary.insertions),
+									deletions: String(payload.summary.deletions),
+								})}
+							</span>
+							{payload.files.length !== payload.summary.files && (
+								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+									{t("infoPanel.diffShownCount", {
+										shown: String(payload.files.length),
+										total: String(payload.summary.files),
+									})}
+								</span>
+							)}
+							{payload.fallbackReason === "no-upstream" && (
+								<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25 text-[0.6875rem]">
+									{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
+								</span>
+							)}
+							{payload.skippedBinaryFiles.length > 0 && (
+								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+									{t("infoPanel.diffBinarySkipped", { count: String(payload.skippedBinaryFiles.length) })}
+								</span>
+							)}
+							{payload.skippedLargeFiles.length > 0 && (
+								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+									{t("infoPanel.diffLargeSkipped", { count: String(payload.skippedLargeFiles.length) })}
+								</span>
+							)}
+						</>
+					)}
 					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
 					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
 					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
@@ -816,42 +850,6 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
 					</div>
 				</div>
-
-				{payload && (
-					<div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.6875rem]">
-						<span className="px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge">
-							{t("infoPanel.diffSummary", {
-								files: String(payload.summary.files),
-								insertions: String(payload.summary.insertions),
-								deletions: String(payload.summary.deletions),
-							})}
-						</span>
-						{payload.files.length !== payload.summary.files && (
-							<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge">
-								{t("infoPanel.diffShownCount", {
-									shown: String(payload.files.length),
-									total: String(payload.summary.files),
-								})}
-							</span>
-						)}
-						{payload.fallbackReason === "no-upstream" && (
-							<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25">
-								{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
-							</span>
-						)}
-						{payload.skippedBinaryFiles.length > 0 && (
-							<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge">
-								{t("infoPanel.diffBinarySkipped", { count: String(payload.skippedBinaryFiles.length) })}
-							</span>
-						)}
-						{payload.skippedLargeFiles.length > 0 && (
-							<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge">
-								{t("infoPanel.diffLargeSkipped", { count: String(payload.skippedLargeFiles.length) })}
-							</span>
-						)}
-					</div>
-				)}
-
 			</div>
 
 			<div className="flex-1 min-h-0 flex overflow-hidden">
