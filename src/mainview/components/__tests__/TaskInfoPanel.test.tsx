@@ -164,6 +164,23 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("Feature")).toBeInTheDocument();
 		});
 
+		it("renders diff summary badge in the top row when branch diff stats exist", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 2,
+				diffInsertions: 12,
+				diffDeletions: 4,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask({ labelIds: ["lbl1"] }));
+			});
+
+			expect(screen.getByText("2 files")).toBeInTheDocument();
+			expect(screen.getByText("+12")).toBeInTheDocument();
+			expect(screen.getByText("−4")).toBeInTheDocument();
+		});
+
 		it("skips unknown label IDs", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ labelIds: ["nonexistent"] }));
@@ -943,7 +960,6 @@ describe("TaskInfoPanel", () => {
 			});
 
 			expect(screen.getAllByText("Show Diff").length).toBeGreaterThanOrEqual(1);
-			expect(screen.getAllByText("Uncommitted").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Rebase").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Push").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Merge").length).toBeGreaterThanOrEqual(1);
@@ -1116,6 +1132,27 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("keeps Show Diff active while branch status is still loading", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			mockedApi.request.getBranchStatus.mockImplementation(() => new Promise(() => {}));
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+
+			const diffButtons = screen.getAllByText("Show Diff");
+			const enabledBtn = diffButtons.find((button) => !button.closest("button")!.disabled);
+			expect(enabledBtn).toBeTruthy();
+
+			await user.click(enabledBtn!.closest("button")!);
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "branch",
+				compareLabel: "origin/main",
+			});
+		});
+
 		it("uses the project's default comparison ref when configured", async () => {
 			const localCompareProject = {
 				...project,
@@ -1135,29 +1172,6 @@ describe("TaskInfoPanel", () => {
 					projectId: "p1",
 					compareRef: "master",
 				});
-			});
-		});
-
-		it("calls showUncommittedDiff on Uncommitted click", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const onOpenInlineDiff = vi.fn();
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				insertions: 5,
-				deletions: 2,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff });
-			});
-
-			const uncommittedButtons = screen.getAllByText("Uncommitted");
-			const enabledBtn = uncommittedButtons.find(b => !b.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
-
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({
-				mode: "uncommitted",
 			});
 		});
 
@@ -1183,23 +1197,6 @@ describe("TaskInfoPanel", () => {
 				mode: "unpushed",
 				compareLabel: "origin/main",
 			});
-		});
-
-		it("uncommitted diff disabled when no uncommitted changes", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				insertions: 0,
-				deletions: 0,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask());
-			});
-
-			const uncommittedButtons = screen.getAllByText("Uncommitted");
-			for (const btn of uncommittedButtons) {
-				expect(btn.closest("button")).toBeDisabled();
-			}
 		});
 
 		it("shows alert on rebase failure", async () => {

@@ -228,7 +228,7 @@ function TaskDiffFileSection({
 			}}
 			className={`border border-edge rounded-xl overflow-hidden ${isRead ? "bg-elevated" : "bg-raised"}`}
 		>
-			<div className={`px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 ${isRead ? "bg-elevated/80" : "bg-raised"}`}>
+			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
 				<button
 					onClick={onToggleExpanded}
 					aria-expanded={expanded}

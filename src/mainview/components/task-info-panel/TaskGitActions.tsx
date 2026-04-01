@@ -1,10 +1,8 @@
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import type { BranchStatus, Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
-import { api } from "../../rpc";
 import { useT } from "../../i18n";
-import OpenInMenu from "../OpenInMenu";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
@@ -35,16 +33,10 @@ export default function TaskGitActions({
 }: TaskGitActionsProps) {
 	const t = useT();
 	const [copiedPath, setCopiedPath] = useState(false);
-	const [hasDiffTool, setHasDiffTool] = useState(false);
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
-	const [diffFilesHover, setDiffFilesHover] = useState(false);
-	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
-	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
 	const refTriggerRef = useRef<HTMLButtonElement>(null);
 	const refMenuRef = useRef<HTMLDivElement>(null);
-	const diffFilesTriggerRef = useRef<HTMLSpanElement>(null);
-	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const {
 		baseBranch,
 		branchStatus,
@@ -77,14 +69,6 @@ export default function TaskGitActions({
 	}, [branchStatus, onBranchStatusChange]);
 
 	useEffect(() => {
-		api.request.getGlobalSettings()
-			.then((settings) => {
-				setHasDiffTool(!!settings.diffTool && settings.diffTool !== "git-terminal");
-			})
-			.catch(() => {});
-	}, []);
-
-	useEffect(() => {
 		if (!refMenuOpen) {
 			return;
 		}
@@ -104,12 +88,6 @@ export default function TaskGitActions({
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [refMenuOpen]);
 
-	useEffect(() => () => {
-		if (diffFilesHoverTimer.current) {
-			clearTimeout(diffFilesHoverTimer.current);
-		}
-	}, []);
-
 	function handleCopyPath() {
 		if (!task.worktreePath) {
 			return;
@@ -118,46 +96,6 @@ export default function TaskGitActions({
 		navigator.clipboard.writeText(task.worktreePath);
 		setCopiedPath(true);
 		setTimeout(() => setCopiedPath(false), 1500);
-	}
-
-	function showDiffFilesPopover() {
-		if (diffFilesHoverTimer.current) {
-			clearTimeout(diffFilesHoverTimer.current);
-		}
-		if (diffFilesTriggerRef.current) {
-			const rect = diffFilesTriggerRef.current.getBoundingClientRect();
-			setDiffFilesPos({ top: rect.bottom + 4, left: rect.left });
-		}
-		setDiffFilesHover(true);
-	}
-
-	function hideDiffFilesPopover() {
-		diffFilesHoverTimer.current = setTimeout(() => {
-			setDiffFilesHover(false);
-			setFileOpenInMenu(null);
-		}, 150);
-	}
-
-	function cancelHideDiffFiles() {
-		if (diffFilesHoverTimer.current) {
-			clearTimeout(diffFilesHoverTimer.current);
-		}
-	}
-
-	function handleFileOpenIn(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
-		event.stopPropagation();
-		if (!task.worktreePath) {
-			return;
-		}
-		setFileOpenInMenu({
-			path: `${task.worktreePath}/${relativePath}`,
-			pos: { top: event.clientY, left: event.clientX },
-		});
-	}
-
-	function handleFileDiff(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
-		event.stopPropagation();
-		api.request.openFileDiff({ taskId: task.id, projectId: project.id, relativePath }).catch(() => {});
 	}
 
 	const refOptions = [
@@ -182,20 +120,6 @@ export default function TaskGitActions({
 					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
 				</span>
 			)}
-		</span>
-	) : null;
-
-	const diffStatsBadge = branchStatus && branchStatus.diffFiles > 0 ? (
-		<span
-			ref={diffFilesTriggerRef}
-			className="flex items-center gap-1.5 text-[0.6875rem] text-fg-3 flex-shrink-0 font-mono cursor-default"
-			onMouseEnter={showDiffFilesPopover}
-			onMouseLeave={hideDiffFilesPopover}
-		>
-			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
-			<span>{branchStatus.diffFiles} {branchStatus.diffFiles === 1 ? "file" : "files"}</span>
-			<span className="text-success">+{branchStatus.diffInsertions}</span>
-			<span className="text-danger">−{branchStatus.diffDeletions}</span>
 		</span>
 	) : null;
 
@@ -259,49 +183,6 @@ export default function TaskGitActions({
 		document.body,
 	);
 
-	const diffFilesPopover = diffFilesHover && branchStatus && branchStatus.diffFileNames.length > 0 && createPortal(
-		<div
-			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 px-3 max-w-[25rem] max-h-[20rem] overflow-auto"
-			style={{ top: diffFilesPos.top, left: diffFilesPos.left, zIndex: 9999 }}
-			onMouseEnter={cancelHideDiffFiles}
-			onMouseLeave={hideDiffFilesPopover}
-		>
-			<div className="text-[0.625rem] text-fg-muted font-semibold uppercase tracking-wider mb-1.5">Changed files</div>
-			{branchStatus.diffFileNames.map((fileName) => (
-				<div key={fileName} className="group/file flex items-center gap-1.5 py-0.5 leading-snug">
-					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{fileName}</span>
-					<div className="flex items-center gap-1.5 flex-shrink-0">
-						{hasDiffTool && (
-							<button
-								onClick={(event) => handleFileDiff(event, fileName)}
-								className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
-								title={t("settings.diffTool")}
-							>
-								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
-							</button>
-						)}
-						<button
-							onClick={(event) => handleFileOpenIn(event, fileName)}
-							className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
-							title={t("openIn.menuTitle")}
-						>
-							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-						</button>
-					</div>
-				</div>
-			))}
-		</div>,
-		document.body,
-	);
-
-	const fileOpenInMenuPortal = fileOpenInMenu ? (
-		<OpenInMenu
-			position={fileOpenInMenu.pos}
-			path={fileOpenInMenu.path}
-			onClose={() => setFileOpenInMenu(null)}
-		/>
-	) : null;
-
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] font-medium text-danger flex-shrink-0">
 			<span>+{branchStatus.insertions}</span>
@@ -353,18 +234,8 @@ export default function TaskGitActions({
 				? t("infoPanel.mergeDisabledBehind")
 				: t("infoPanel.merge");
 
-	const showDiffDisabled = !branchStatus || !onOpenInlineDiff;
-	const showDiffTooltip = !branchStatus
-		? t("infoPanel.statusLoading")
-		: t("infoPanel.showDiffTooltip", { branch: displayRef });
-
-	const hasUncommitted = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
-	const uncommittedDiffDisabled = !branchStatus || !hasUncommitted || !onOpenInlineDiff;
-	const uncommittedDiffTooltip = !branchStatus
-		? t("infoPanel.statusLoading")
-		: !hasUncommitted
-			? t("infoPanel.uncommittedDiffDisabled")
-			: t("infoPanel.uncommittedDiffTooltip");
+	const showDiffDisabled = !onOpenInlineDiff;
+	const showDiffTooltip = t("infoPanel.showDiffTooltip", { branch: displayRef });
 
 	const unpushedDiffDisabled = !branchStatus || branchStatus.ahead === 0 || !onOpenInlineDiff;
 	const unpushedDiffTooltip = !branchStatus
@@ -393,16 +264,6 @@ export default function TaskGitActions({
 				title={showDiffTooltip}
 			>
 				{t("infoPanel.showDiff")}
-			</button>
-			<button
-				onClick={() => onOpenInlineDiff?.({ mode: "uncommitted" })}
-				disabled={uncommittedDiffDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					uncommittedDiffDisabled ? disabledBtnClass : enabledBtnClass
-				}`}
-				title={uncommittedDiffTooltip}
-			>
-				{t("infoPanel.uncommittedDiff")}
 			</button>
 			<button
 				onClick={() => onOpenInlineDiff?.({
@@ -499,8 +360,6 @@ export default function TaskGitActions({
 	return (
 		<>
 			{refDropdownPortal}
-			{diffFilesPopover}
-			{fileOpenInMenuPortal}
 
 			{task.branchName && (
 				<span className={branchNameClassName}>
@@ -547,7 +406,6 @@ export default function TaskGitActions({
 				</>
 			)}
 
-			{diffStatsBadge}
 			{prBadge}
 
 			{gitActionButtons && (

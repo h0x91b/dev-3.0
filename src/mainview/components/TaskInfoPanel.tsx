@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, BranchStatus, PortInfo, ResourceUsage } from "../../shared/types";
+import type { Task, Project, TaskStatus, BranchStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import { formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
@@ -312,6 +312,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const activeCustomColumn = task.customColumnId
 		? (project.customColumns ?? []).find((column) => column.id === task.customColumnId)
 		: null;
+	const assignedLabels = (task.labelIds ?? [])
+		.map((id) => (project.labels ?? []).find((item) => item.id === id))
+		.filter(Boolean) as Label[];
+	const diffSummaryBadge = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+		<span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-[0.6875rem] font-mono text-fg-2 flex-shrink-0">
+			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
+			<span>{metadataBranchStatus.diffFiles} {metadataBranchStatus.diffFiles === 1 ? "file" : "files"}</span>
+			<span className="text-success">+{metadataBranchStatus.diffInsertions}</span>
+			<span className="text-danger">−{metadataBranchStatus.diffDeletions}</span>
+		</span>
+	) : null;
 
 	const watchToggleButton = (
 		<button
@@ -410,10 +421,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{watchToggleButton}
 						{statusDropdownButton}
 						{statusDropdownPortal}
-						{(task.labelIds ?? []).map((id) => {
-							const label = (project.labels ?? []).find((item) => item.id === id);
-							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
-						})}
+						{diffSummaryBadge}
+						{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 						<div className="flex-1" />
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
@@ -467,10 +476,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{watchToggleButton}
 							{statusDropdownButton}
 							{statusDropdownPortal}
-							{(task.labelIds ?? []).map((id) => {
-								const label = (project.labels ?? []).find((item) => item.id === id);
-								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
-							})}
+							{diffSummaryBadge}
+							{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 							<div className="flex-1" />
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />

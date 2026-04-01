@@ -128,6 +128,7 @@ describe("TaskDiffViewer", () => {
 		});
 
 		expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3");
+		expect(screen.getByRole("button", { name: /collapse src\/app\.ts/i }).closest("div")).toHaveClass("sticky");
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
 
