@@ -162,9 +162,9 @@ const diffPayload: TaskDiffResponse = {
 			displayPath: "src/app.ts",
 			oldPath: "src/app.ts",
 			newPath: "src/app.ts",
-			oldContent: "const a = 1;\n",
-			newContent: "const a = 2;\nconst b = 3;\n",
-			hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1,2 @@\n-const a = 1;\n+const a = 2;\n+const b = 3;\n"],
+			oldContent: "const a = \"one\";\n",
+			newContent: "const a = \"two\";\nconst b = 3;\n",
+			hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1,2 @@\n-const a = \"one\";\n+const a = \"two\";\n+const b = 3;\n"],
 		},
 		{
 			id: "src/utils/format.ts",
@@ -780,8 +780,8 @@ describe("TaskDiffViewer", () => {
 	it("manages inline review comments from the sidebar and copies compact xml", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
-		const longComment = "Watch this branch edge case. ".repeat(8).trim();
-		const truncatedPreview = `${longComment.slice(0, 150)}...`;
+		const longComment = 'Watch this branch edge case with "Show diff" label in the Russian locale. '.repeat(4).trim();
+		const truncatedPreview = `${longComment.slice(0, 100)}...`;
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 
 		render(
@@ -817,7 +817,8 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: "Comment 1" }));
 		expect(scrollIntoViewMock).toHaveBeenCalled();
 
-		await user.click(screen.getByRole("button", { name: "Edit comment" }));
+		const inlineThread = screen.getByTestId("inline-comment-thread");
+		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
 		const sidebarEditor = screen.getByDisplayValue(longComment);
 		await user.clear(sidebarEditor);
 		await user.type(sidebarEditor, "Rename this callback.");
@@ -831,8 +832,8 @@ describe("TaskDiffViewer", () => {
 			"<reviews>",
 			"<review>",
 			"<file src=\"src/app.ts\" line=1>",
-			"-const a = 1;",
-			"+const a = 2;",
+			"-const a = \"one\";",
+			"+const a = \"two\";",
 			"</file>",
 			"<comment>Rename this callback.</comment>",
 			"</review>",
@@ -840,7 +841,7 @@ describe("TaskDiffViewer", () => {
 		].join("\n"));
 		expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Delete comment" }));
+		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Delete comment" }));
 		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
 	});

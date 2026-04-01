@@ -102,6 +102,13 @@ interface TaskDiffFileSectionProps {
 		lineNumber: number;
 		body: string;
 	}) => void;
+	editingCommentId: string | null;
+	editingCommentDraft: string;
+	onEditDraftChange: (value: string) => void;
+	onStartEditComment: (commentId: string, body: string) => void;
+	onCancelEditComment: () => void;
+	onSaveEditComment: (commentId: string, body: string) => void;
+	onDeleteComment: (commentId: string) => void;
 	onToggleExpanded: () => void;
 	onToggleRead: () => void;
 	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
@@ -146,7 +153,7 @@ function getReviewFilePath(file: TaskDiffFile): string {
 	return file.newPath ?? file.oldPath ?? file.displayPath;
 }
 
-function escapeXml(value: string): string {
+function escapeXmlAttribute(value: string): string {
 	return value
 		.replaceAll("&", "&amp;")
 		.replaceAll("<", "&lt;")
@@ -155,7 +162,14 @@ function escapeXml(value: string): string {
 		.replaceAll("'", "&apos;");
 }
 
-function getReviewCommentPreview(value: string, maxLength = 150): string {
+function escapeXmlText(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;");
+}
+
+function getReviewCommentPreview(value: string, maxLength = 100): string {
 	const normalized = value.trim().replace(/\s+/g, " ");
 	if (normalized.length <= maxLength) {
 		return normalized;
@@ -350,15 +364,15 @@ function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
 			? String(entry.startLine)
 			: `"${entry.startLine}-${entry.endLine}"`;
 		lines.push("<review>");
-		lines.push(`<file src="${escapeXml(entry.filePath)}" line=${lineAttr}>`);
+		lines.push(`<file src="${escapeXmlAttribute(entry.filePath)}" line=${lineAttr}>`);
 		if (entry.snippet.before) {
-			lines.push(`-${escapeXml(entry.snippet.before)}`);
+			lines.push(`-${escapeXmlText(entry.snippet.before)}`);
 		}
 		if (entry.snippet.after) {
-			lines.push(`+${escapeXml(entry.snippet.after)}`);
+			lines.push(`+${escapeXmlText(entry.snippet.after)}`);
 		}
 		lines.push("</file>");
-		lines.push(`<comment>${escapeXml(entry.comment)}</comment>`);
+		lines.push(`<comment>${escapeXmlText(entry.comment)}</comment>`);
 		lines.push("</review>");
 	}
 
@@ -371,11 +385,25 @@ function InlineCommentThreadView({
 	side,
 	lineNumber,
 	registerCommentRef,
+	editingCommentId,
+	editingCommentDraft,
+	onEditDraftChange,
+	onStartEdit,
+	onCancelEdit,
+	onSaveEdit,
+	onDeleteComment,
 }: {
 	thread: InlineDiffCommentThread;
 	side: InlineCommentSideKey;
 	lineNumber: number;
 	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
+	editingCommentId: string | null;
+	editingCommentDraft: string;
+	onEditDraftChange: (value: string) => void;
+	onStartEdit: (commentId: string, body: string) => void;
+	onCancelEdit: () => void;
+	onSaveEdit: (commentId: string, body: string) => void;
+	onDeleteComment: (commentId: string) => void;
 }) {
 	const t = useT();
 
@@ -395,9 +423,61 @@ function InlineCommentThreadView({
 					key={comment.id}
 					ref={(element) => registerCommentRef(comment.id, element)}
 					data-inline-comment-id={comment.id}
-					className="dev3-inline-comment__bubble scroll-mt-24 rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-fg whitespace-pre-wrap break-words"
+					className="dev3-inline-comment__bubble scroll-mt-24 rounded-lg border border-edge bg-raised px-3 py-2"
 				>
-					{comment.body}
+					{editingCommentId === comment.id ? (
+						<div className="space-y-2">
+							<textarea
+								value={editingCommentDraft}
+								onChange={(event) => onEditDraftChange(event.target.value)}
+								rows={3}
+								autoFocus
+								className="dev3-inline-comment__textarea w-full resize-y rounded-lg border border-edge bg-base px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
+							/>
+							<div className="flex items-center justify-end gap-2">
+								<button
+									type="button"
+									onClick={onCancelEdit}
+									className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+								>
+									{t("infoPanel.diffCommentCancel")}
+								</button>
+								<button
+									type="button"
+									onClick={() => onSaveEdit(comment.id, editingCommentDraft)}
+									disabled={!editingCommentDraft.trim()}
+									aria-label={t("infoPanel.diffReviewSave")}
+									className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+								>
+									{t("infoPanel.diffReviewSave")}
+								</button>
+							</div>
+						</div>
+					) : (
+						<div className="flex items-start justify-between gap-3">
+							<div className="min-w-0 flex-1 text-sm text-fg whitespace-pre-wrap break-words">
+								{comment.body}
+							</div>
+							<div className="flex shrink-0 items-center gap-1">
+								<button
+									type="button"
+									onClick={() => onStartEdit(comment.id, comment.body)}
+									aria-label={t("infoPanel.diffReviewEdit")}
+									className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+								>
+									{t("infoPanel.diffReviewEdit")}
+								</button>
+								<button
+									type="button"
+									onClick={() => onDeleteComment(comment.id)}
+									aria-label={t("infoPanel.diffReviewDelete")}
+									className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-[0.6875rem] font-semibold text-danger transition-colors hover:bg-danger/15"
+								>
+									{t("infoPanel.diffReviewDelete")}
+								</button>
+							</div>
+						</div>
+					)}
 				</div>
 			))}
 		</div>
@@ -661,6 +741,13 @@ function TaskDiffFileSection({
 	expanded,
 	isRead,
 	onAddComment,
+	editingCommentId,
+	editingCommentDraft,
+	onEditDraftChange,
+	onStartEditComment,
+	onCancelEditComment,
+	onSaveEditComment,
+	onDeleteComment,
 	onToggleExpanded,
 	onToggleRead,
 	registerCommentRef,
@@ -871,6 +958,13 @@ function TaskDiffFileSection({
 									side={getInlineCommentSideKey(side, diffLib.SplitSide)}
 									lineNumber={lineNumber}
 									registerCommentRef={registerCommentRef}
+									editingCommentId={editingCommentId}
+									editingCommentDraft={editingCommentDraft}
+									onEditDraftChange={onEditDraftChange}
+									onStartEdit={onStartEditComment}
+									onCancelEdit={onCancelEditComment}
+									onSaveEdit={onSaveEditComment}
+									onDeleteComment={onDeleteComment}
 								/>
 							)}
 							className="diff-tailwindcss-wrapper"
@@ -1663,70 +1757,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 																{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
 															</div>
 
-															{isEditing ? (
-																<div className="space-y-2">
-																	<textarea
-																		value={editingCommentDraft}
-																		onChange={(event) => setEditingCommentDraft(event.target.value)}
-																		rows={3}
-																		className="w-full resize-y rounded-lg border border-edge bg-base px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
-																	/>
-																	<div className="flex items-center justify-end gap-2">
-																		<button
-																			type="button"
-																			onClick={(event) => {
-																				event.stopPropagation();
-																				cancelEditingComment();
-																			}}
-																			className="inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-																		>
-																			{t("infoPanel.diffCommentCancel")}
-																		</button>
-																		<button
-																			type="button"
-																			onClick={(event) => {
-																				event.stopPropagation();
-																				updateInlineComment(entry.id, editingCommentDraft);
-																			}}
-																			disabled={!editingCommentDraft.trim()}
-																			aria-label={t("infoPanel.diffReviewSave")}
-																			className="inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-																		>
-																			{t("infoPanel.diffReviewSave")}
-																		</button>
-																	</div>
-																</div>
-															) : (
-																<div className="flex items-start justify-between gap-2 rounded-md border border-edge bg-base/75 px-2.5 py-2">
-																	<div className="min-w-0 flex-1 text-sm text-fg whitespace-pre-wrap break-words">
-																		{getReviewCommentPreview(entry.comment)}
-																	</div>
-																	<div className="flex items-center gap-1">
-																		<button
-																			type="button"
-																			onClick={(event) => {
-																				event.stopPropagation();
-																				startEditingComment(entry.id, entry.comment);
-																			}}
-																			aria-label={t("infoPanel.diffReviewEdit")}
-																			className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
-																		>
-																			{t("infoPanel.diffReviewEdit")}
-																		</button>
-																		<button
-																			type="button"
-																			onClick={(event) => {
-																				event.stopPropagation();
-																				deleteInlineComment(entry.id);
-																			}}
-																			aria-label={t("infoPanel.diffReviewDelete")}
-																			className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-[0.6875rem] font-semibold text-danger transition-colors hover:bg-danger/15"
-																		>
-																			{t("infoPanel.diffReviewDelete")}
-																		</button>
-																	</div>
-																</div>
-															)}
+															<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2 text-sm leading-snug text-fg whitespace-normal break-words">
+																{getReviewCommentPreview(entry.comment)}
+															</div>
 														</div>
 													);
 												})}
@@ -1827,6 +1860,13 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								expanded={expandedFiles[file.id] ?? true}
 								isRead={readFiles[file.id] ?? false}
 								onAddComment={addInlineComment}
+								editingCommentId={editingCommentId}
+								editingCommentDraft={editingCommentDraft}
+								onEditDraftChange={setEditingCommentDraft}
+								onStartEditComment={startEditingComment}
+								onCancelEditComment={cancelEditingComment}
+								onSaveEditComment={updateInlineComment}
+								onDeleteComment={deleteInlineComment}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
 								onToggleRead={() => toggleFileRead(file.id)}
 								registerCommentRef={registerCommentRef}
