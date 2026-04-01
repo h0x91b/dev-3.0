@@ -66,12 +66,16 @@ type InlineDiffCommentsState = Record<string, InlineDiffCommentFileData>;
 
 interface InlineReviewExportEntry {
 	id: string;
+	fileId: string;
 	filePath: string;
 	side: InlineCommentSideKey;
 	startLine: number;
 	endLine: number;
 	comment: string;
-	snippet: string;
+	snippet: {
+		before: string | null;
+		after: string | null;
+	};
 	fileOrder: number;
 	createdAt: string;
 }
@@ -100,6 +104,7 @@ interface TaskDiffFileSectionProps {
 	}) => void;
 	onToggleExpanded: () => void;
 	onToggleRead: () => void;
+	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
 	sectionRef: (element: HTMLDivElement | null) => void;
 }
 
@@ -141,9 +146,19 @@ function getReviewFilePath(file: TaskDiffFile): string {
 	return file.newPath ?? file.oldPath ?? file.displayPath;
 }
 
+function escapeXml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll("\"", "&quot;")
+		.replaceAll("'", "&apos;");
+}
+
 function parseDiffHunkLines(hunk: string): Array<{
 	kind: "+" | "-" | " ";
 	text: string;
+	content: string;
 	oldLine: number | null;
 	newLine: number | null;
 }> {
@@ -151,6 +166,7 @@ function parseDiffHunkLines(hunk: string): Array<{
 	const parsed: Array<{
 		kind: "+" | "-" | " ";
 		text: string;
+		content: string;
 		oldLine: number | null;
 		newLine: number | null;
 	}> = [];
@@ -178,6 +194,7 @@ function parseDiffHunkLines(hunk: string): Array<{
 		const entry = {
 			kind: prefix,
 			text: line,
+			content: line.slice(1),
 			oldLine: prefix === "+" ? null : oldLine,
 			newLine: prefix === "-" ? null : newLine,
 		} as const;
@@ -194,7 +211,12 @@ function parseDiffHunkLines(hunk: string): Array<{
 	return parsed;
 }
 
-function extractReviewSnippet(file: TaskDiffFile, side: InlineCommentSideKey, startLine: number, endLine: number): string {
+function extractReviewSnippet(
+	file: TaskDiffFile,
+	side: InlineCommentSideKey,
+	startLine: number,
+	endLine: number,
+): { before: string | null; after: string | null } {
 	const lineKey = side === "oldFile" ? "oldLine" : "newLine";
 	for (const hunk of file.hunks ?? []) {
 		const lines = parseDiffHunkLines(hunk);
@@ -216,11 +238,6 @@ function extractReviewSnippet(file: TaskDiffFile, side: InlineCommentSideKey, st
 
 		let from = targetIndexes[0];
 		let to = targetIndexes[targetIndexes.length - 1];
-
-		if (lines[from]?.kind === " ") {
-			return lines.slice(from, to + 1).map((line) => line.text).join("\n");
-		}
-
 		while (from > 0 && lines[from - 1]?.kind !== " ") {
 			from -= 1;
 		}
@@ -228,16 +245,53 @@ function extractReviewSnippet(file: TaskDiffFile, side: InlineCommentSideKey, st
 			to += 1;
 		}
 
-		return lines.slice(from, to + 1).map((line) => line.text).join("\n");
+		const block = lines.slice(from, to + 1).map((line, relativeIndex) => ({
+			...line,
+			relativeIndex,
+		}));
+		const targetRelativeIndex = targetIndexes[0] - from;
+		const targetLine = block[targetRelativeIndex];
+
+		if (!targetLine) {
+			continue;
+		}
+
+		if (targetLine.kind === " ") {
+			return {
+				before: targetLine.content,
+				after: targetLine.content,
+			};
+		}
+
+		const removedLines = block.filter((line) => line.kind === "-");
+		const addedLines = block.filter((line) => line.kind === "+");
+
+		if (targetLine.kind === "-") {
+			const removedIndex = removedLines.findIndex((line) => line.relativeIndex === targetRelativeIndex);
+			return {
+				before: targetLine.content,
+				after: removedIndex >= 0 && removedIndex < addedLines.length
+					? addedLines[removedIndex]?.content ?? null
+					: null,
+			};
+		}
+
+		const addedIndex = addedLines.findIndex((line) => line.relativeIndex === targetRelativeIndex);
+		return {
+			before: addedIndex >= 0 && addedIndex < removedLines.length
+				? removedLines[addedIndex]?.content ?? null
+				: null,
+			after: targetLine.content,
+		};
 	}
 
 	const fallbackLines = (side === "oldFile" ? file.oldContent : file.newContent).split("\n");
-	const selected = fallbackLines.slice(Math.max(0, startLine - 1), endLine);
-	const prefix = side === "oldFile" ? "-" : "+";
-	return selected
-		.filter((line) => line.length > 0)
-		.map((line) => `${prefix} ${line}`)
-		.join("\n");
+	const selected = fallbackLines
+		.slice(Math.max(0, startLine - 1), endLine)
+		.find((line) => line.length > 0) ?? null;
+	return side === "oldFile"
+		? { before: selected, after: null }
+		: { before: null, after: selected };
 }
 
 function buildInlineReviewExportEntries(
@@ -258,6 +312,7 @@ function buildInlineReviewExportEntries(
 				for (const comment of thread.data.comments) {
 					result.push({
 						id: comment.id,
+						fileId: file.id,
 						filePath: getReviewFilePath(file),
 						side: comment.side,
 						startLine: comment.startLine,
@@ -287,12 +342,15 @@ function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
 			? String(entry.startLine)
 			: `"${entry.startLine}-${entry.endLine}"`;
 		lines.push("<review>");
-		lines.push(`<file src="${entry.filePath}" line=${lineAttr}>`);
-		if (entry.snippet) {
-			lines.push(entry.snippet);
+		lines.push(`<file src="${escapeXml(entry.filePath)}" line=${lineAttr}>`);
+		if (entry.snippet.before) {
+			lines.push(`-${escapeXml(entry.snippet.before)}`);
+		}
+		if (entry.snippet.after) {
+			lines.push(`+${escapeXml(entry.snippet.after)}`);
 		}
 		lines.push("</file>");
-		lines.push(`<comment>${entry.comment}</comment>`);
+		lines.push(`<comment>${escapeXml(entry.comment)}</comment>`);
 		lines.push("</review>");
 	}
 
@@ -304,10 +362,12 @@ function InlineCommentThreadView({
 	thread,
 	side,
 	lineNumber,
+	registerCommentRef,
 }: {
 	thread: InlineDiffCommentThread;
 	side: InlineCommentSideKey;
 	lineNumber: number;
+	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
 }) {
 	const t = useT();
 
@@ -325,7 +385,9 @@ function InlineCommentThreadView({
 			{thread.comments.map((comment) => (
 				<div
 					key={comment.id}
-					className="dev3-inline-comment__bubble rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-fg whitespace-pre-wrap break-words"
+					ref={(element) => registerCommentRef(comment.id, element)}
+					data-inline-comment-id={comment.id}
+					className="dev3-inline-comment__bubble scroll-mt-24 rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-fg whitespace-pre-wrap break-words"
 				>
 					{comment.body}
 				</div>
@@ -593,6 +655,7 @@ function TaskDiffFileSection({
 	onAddComment,
 	onToggleExpanded,
 	onToggleRead,
+	registerCommentRef,
 	sectionRef,
 }: TaskDiffFileSectionProps) {
 	const t = useT();
@@ -799,6 +862,7 @@ function TaskDiffFileSection({
 									thread={data}
 									side={getInlineCommentSideKey(side, diffLib.SplitSide)}
 									lineNumber={lineNumber}
+									registerCommentRef={registerCommentRef}
 								/>
 							)}
 							className="diff-tailwindcss-wrapper"
@@ -822,6 +886,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const scrollRegionRef = useRef<HTMLDivElement | null>(null);
 	const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const pendingScrollFrameRef = useRef<number | null>(null);
+	const pendingCommentScrollFrameRef = useRef<number | null>(null);
+	const commentRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
 	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(request);
@@ -835,10 +901,11 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
 	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>({});
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
+	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+	const [editingCommentDraft, setEditingCommentDraft] = useState("");
 	const fileTree = payload ? buildDiffTree(payload.files) : [];
 	const reviewExportEntries = payload ? buildInlineReviewExportEntries(payload.files, inlineComments) : [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
-	const reviewExportRows = Math.min(18, Math.max(8, reviewExportXml.split("\n").length));
 
 	useEffect(() => {
 		setCurrentRequest(request);
@@ -882,6 +949,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	useEffect(() => () => {
 		if (pendingScrollFrameRef.current !== null) {
 			window.cancelAnimationFrame(pendingScrollFrameRef.current);
+		}
+		if (pendingCommentScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingCommentScrollFrameRef.current);
 		}
 	}, []);
 
@@ -966,6 +1036,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			setReadFiles({});
 			setActiveFileId(null);
 			setInlineComments({});
+			setEditingCommentId(null);
+			setEditingCommentDraft("");
 			return;
 		}
 
@@ -983,6 +1055,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		setReadFiles(nextReadFiles);
 		setActiveFileId(initialActiveFileId);
 		setInlineComments({});
+		setEditingCommentId(null);
+		setEditingCommentDraft("");
 	}, [currentRequest.focusFile, payload, task.id]);
 
 	function addInlineComment({
@@ -1037,6 +1111,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		}).catch(() => {});
 	}
 
+	function registerCommentRef(commentId: string, element: HTMLDivElement | null) {
+		commentRefs.current[commentId] = element;
+	}
+
 	useEffect(() => {
 		if (!payload || !currentRequest.focusFile) {
 			return;
@@ -1073,6 +1151,13 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		if (pendingScrollFrameRef.current !== null) {
 			window.cancelAnimationFrame(pendingScrollFrameRef.current);
 			pendingScrollFrameRef.current = null;
+		}
+	}
+
+	function cancelPendingCommentScroll() {
+		if (pendingCommentScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingCommentScrollFrameRef.current);
+			pendingCommentScrollFrameRef.current = null;
 		}
 	}
 
@@ -1129,6 +1214,115 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
 			alignFileScroll(fileId, behavior, retries);
 		});
+	}
+
+	function scrollToComment(commentId: string, fileId: string) {
+		cancelPendingCommentScroll();
+		scrollToFile(fileId, { expand: true, behavior: "smooth", retries: 4 });
+		let attemptsLeft = 10;
+		const tryScroll = () => {
+			const element = commentRefs.current[commentId];
+			if (element) {
+				element.scrollIntoView({
+					behavior: "smooth",
+					block: "start",
+				});
+				pendingCommentScrollFrameRef.current = null;
+				return;
+			}
+			attemptsLeft -= 1;
+			if (attemptsLeft <= 0) {
+				pendingCommentScrollFrameRef.current = null;
+				return;
+			}
+			pendingCommentScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
+		};
+		pendingCommentScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
+	}
+
+	function startEditingComment(commentId: string, body: string) {
+		setEditingCommentId(commentId);
+		setEditingCommentDraft(body);
+		setCopiedReviewXml(false);
+	}
+
+	function cancelEditingComment() {
+		setEditingCommentId(null);
+		setEditingCommentDraft("");
+	}
+
+	function updateInlineComment(commentId: string, body: string) {
+		const trimmedBody = body.trim();
+		if (!trimmedBody) {
+			return;
+		}
+
+		setInlineComments((current) => {
+			const nextState: InlineDiffCommentsState = {};
+			for (const [fileId, fileComments] of Object.entries(current)) {
+				nextState[fileId] = {
+					oldFile: Object.fromEntries(
+						Object.entries(fileComments.oldFile).map(([lineNumber, thread]) => [
+							lineNumber,
+							{
+								data: {
+									comments: thread.data.comments.map((comment) => (
+										comment.id === commentId
+											? { ...comment, body: trimmedBody }
+											: comment
+									)),
+								},
+							},
+						]),
+					),
+					newFile: Object.fromEntries(
+						Object.entries(fileComments.newFile).map(([lineNumber, thread]) => [
+							lineNumber,
+							{
+								data: {
+									comments: thread.data.comments.map((comment) => (
+										comment.id === commentId
+											? { ...comment, body: trimmedBody }
+											: comment
+									)),
+								},
+							},
+						]),
+					),
+				};
+			}
+			return nextState;
+		});
+		cancelEditingComment();
+	}
+
+	function deleteInlineComment(commentId: string) {
+		setInlineComments((current) => {
+			const nextState: InlineDiffCommentsState = {};
+			for (const [fileId, fileComments] of Object.entries(current)) {
+				const nextFileComments = {
+					oldFile: {} as InlineDiffCommentFileData["oldFile"],
+					newFile: {} as InlineDiffCommentFileData["newFile"],
+				};
+				for (const side of ["oldFile", "newFile"] as const) {
+					for (const [lineNumber, thread] of Object.entries(fileComments[side])) {
+						const remainingComments = thread.data.comments.filter((comment) => comment.id !== commentId);
+						if (remainingComments.length > 0) {
+							nextFileComments[side][lineNumber] = {
+								data: {
+									comments: remainingComments,
+								},
+							};
+						}
+					}
+				}
+				if (Object.keys(nextFileComments.oldFile).length > 0 || Object.keys(nextFileComments.newFile).length > 0) {
+					nextState[fileId] = nextFileComments;
+				}
+			}
+			return nextState;
+		});
+		cancelEditingComment();
 	}
 
 	function collapseFilePreservingStickyAnchor(fileId: string) {
@@ -1427,26 +1621,17 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 														: t("infoPanel.diffReviewExportEmpty")}
 												</p>
 											</div>
-											<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
-												{reviewExportEntries.length}
-											</span>
-										</div>
-
-										{reviewExportEntries.length > 0 ? (
-											<>
-												<textarea
-													readOnly
-													value={reviewExportXml}
-													rows={reviewExportRows}
-													className="w-full resize-y rounded-lg border border-edge bg-raised px-3 py-2 text-[0.6875rem] leading-5 font-mono text-fg outline-none"
-													data-testid="review-export-xml"
-												/>
+											<div className="flex items-center gap-2">
+												<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
+													{reviewExportEntries.length}
+												</span>
 												<button
 													onClick={handleCopyReviewXml}
-													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+													disabled={reviewExportEntries.length === 0}
+													className={`inline-flex h-8 items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
 														copiedReviewXml
 															? "border-success/40 bg-success/15 text-success"
-															: "border-accent bg-accent text-white hover:bg-accent-hover"
+															: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
 													}`}
 												>
 													<span
@@ -1458,7 +1643,127 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 													</span>
 													<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
 												</button>
-											</>
+											</div>
+										</div>
+
+										{reviewExportEntries.length > 0 ? (
+											<div className="space-y-2">
+												{reviewExportEntries.map((entry, index) => {
+													const isEditing = editingCommentId === entry.id;
+													const locationLabel = t("infoPanel.diffCommentLine", {
+														side: t(getInlineCommentSideLabel(entry.side)),
+														line: String(entry.startLine),
+													});
+
+													return (
+														<div
+															key={entry.id}
+															className={`rounded-lg border px-3 py-2 space-y-2 ${
+																isEditing
+																	? "border-accent/40 bg-accent/10"
+																	: "border-edge bg-raised/65"
+															}`}
+														>
+															<div className="flex items-start justify-between gap-3">
+																<div className="min-w-0 space-y-1">
+																	<button
+																		type="button"
+																		onClick={() => scrollToComment(entry.id, entry.fileId)}
+																		className="text-left text-xs font-semibold text-fg hover:text-accent transition-colors"
+																	>
+																		{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
+																	</button>
+																	<div className="text-[0.6875rem] leading-snug text-fg-3 break-all">
+																		{entry.filePath} · {locationLabel}
+																	</div>
+																</div>
+																<div className="flex items-center gap-1">
+																	<button
+																		type="button"
+																		onClick={() => scrollToComment(entry.id, entry.fileId)}
+																		aria-label={t("infoPanel.diffReviewJump")}
+																		className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+																	>
+																		{t("infoPanel.diffReviewJump")}
+																	</button>
+																	<button
+																		type="button"
+																		onClick={() => startEditingComment(entry.id, entry.comment)}
+																		aria-label={t("infoPanel.diffReviewEdit")}
+																		className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+																	>
+																		{t("infoPanel.diffReviewEdit")}
+																	</button>
+																	<button
+																		type="button"
+																		onClick={() => deleteInlineComment(entry.id)}
+																		aria-label={t("infoPanel.diffReviewDelete")}
+																		className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-[0.6875rem] font-semibold text-danger transition-colors hover:bg-danger/15"
+																	>
+																		{t("infoPanel.diffReviewDelete")}
+																	</button>
+																</div>
+															</div>
+
+															<div className="grid gap-2">
+																{entry.snippet.before !== null && (
+																	<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2">
+																		<div className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
+																			{t("infoPanel.diffReviewBefore")}
+																		</div>
+																		<div className="mt-1 font-mono text-[0.6875rem] text-fg break-all">
+																			{entry.snippet.before}
+																		</div>
+																	</div>
+																)}
+																{entry.snippet.after !== null && (
+																	<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2">
+																		<div className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
+																			{t("infoPanel.diffReviewAfter")}
+																		</div>
+																		<div className="mt-1 font-mono text-[0.6875rem] text-fg break-all">
+																			{entry.snippet.after}
+																		</div>
+																	</div>
+																)}
+															</div>
+
+															{isEditing ? (
+																<div className="space-y-2">
+																	<textarea
+																		value={editingCommentDraft}
+																		onChange={(event) => setEditingCommentDraft(event.target.value)}
+																		rows={3}
+																		className="w-full resize-y rounded-lg border border-edge bg-base px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
+																	/>
+																	<div className="flex items-center justify-end gap-2">
+																		<button
+																			type="button"
+																			onClick={cancelEditingComment}
+																			className="inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+																		>
+																			{t("infoPanel.diffCommentCancel")}
+																		</button>
+																		<button
+																			type="button"
+																			onClick={() => updateInlineComment(entry.id, editingCommentDraft)}
+																			disabled={!editingCommentDraft.trim()}
+																			aria-label={t("infoPanel.diffReviewSave")}
+																			className="inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+																		>
+																			{t("infoPanel.diffReviewSave")}
+																		</button>
+																	</div>
+																</div>
+															) : (
+																<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2 text-sm text-fg whitespace-pre-wrap break-words">
+																	{entry.comment}
+																</div>
+															)}
+														</div>
+													);
+												})}
+											</div>
 										) : (
 											<div className="rounded-lg border border-dashed border-edge bg-raised/35 px-3 py-2 text-[0.6875rem] leading-snug text-fg-3">
 												{t("infoPanel.diffReviewExportHint")}
@@ -1539,6 +1844,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								onAddComment={addInlineComment}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
 								onToggleRead={() => toggleFileRead(file.id)}
+								registerCommentRef={registerCommentRef}
 								sectionRef={(element) => {
 									sectionRefs.current[file.id] = element;
 								}}

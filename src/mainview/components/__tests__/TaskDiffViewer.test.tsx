@@ -62,7 +62,7 @@ vi.mock("@git-diff-view/react", async () => {
 						<button
 							type="button"
 							aria-label="Open inline comment composer"
-							onClick={() => setWidget({ lineNumber: 2, side: SplitSide.new })}
+							onClick={() => setWidget({ lineNumber: 1, side: SplitSide.new })}
 						>
 							+
 						</button>
@@ -777,7 +777,7 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
-	it("adds inline comments through the diff widget and renders them under the line", async () => {
+	it("manages inline review comments from the sidebar and copies compact xml", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
@@ -804,26 +804,44 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
 		expect(screen.queryByPlaceholderText("Leave a comment on this line...")).not.toBeInTheDocument();
-		expect(screen.getByText("Watch this branch edge case.")).toBeInTheDocument();
-		expect(screen.getByText("New line 2")).toBeInTheDocument();
+		expect(screen.getAllByText("Watch this branch edge case.").length).toBeGreaterThanOrEqual(1);
+		expect(screen.getByText("New line 1")).toBeInTheDocument();
 		expect(document.querySelector(".dev3-inline-comment--thread")).not.toBeNull();
+		expect(screen.queryByTestId("review-export-xml")).not.toBeInTheDocument();
+		expect(screen.getByText("Comment 1")).toBeInTheDocument();
+		expect(screen.getByText("Before")).toBeInTheDocument();
+		expect(screen.getByText("After")).toBeInTheDocument();
+		expect(screen.getByText("const a = 1;")).toBeInTheDocument();
+		expect(screen.getByText("const a = 2;")).toBeInTheDocument();
 
-		const reviewExport = screen.getByTestId("review-export-xml") as HTMLTextAreaElement;
-		expect(reviewExport.value).toBe([
+		await user.click(screen.getByRole("button", { name: "Jump to comment" }));
+		expect(scrollIntoViewMock).toHaveBeenCalled();
+
+		await user.click(screen.getByRole("button", { name: "Edit comment" }));
+		const sidebarEditor = screen.getByDisplayValue("Watch this branch edge case.");
+		await user.clear(sidebarEditor);
+		await user.type(sidebarEditor, "Rename this callback.");
+		await user.click(screen.getByRole("button", { name: "Save comment" }));
+
+		expect(screen.getAllByText("Rename this callback.").length).toBeGreaterThanOrEqual(1);
+		expect(screen.queryByText("Watch this branch edge case.")).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		expect(writeText).toHaveBeenCalledWith([
 			"<reviews>",
 			"<review>",
-			"<file src=\"src/app.ts\" line=2>",
+			"<file src=\"src/app.ts\" line=1>",
 			"-const a = 1;",
 			"+const a = 2;",
-			"+const b = 3;",
 			"</file>",
-			"<comment>Watch this branch edge case.</comment>",
+			"<comment>Rename this callback.</comment>",
 			"</review>",
 			"</reviews>",
 		].join("\n"));
-
-		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
-		expect(writeText).toHaveBeenCalledWith(reviewExport.value);
 		expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Delete comment" }));
+		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
+		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
 	});
 });

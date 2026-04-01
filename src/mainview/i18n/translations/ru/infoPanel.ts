@@ -106,11 +106,18 @@ const infoPanel = {
 	"infoPanel.diffCommentSideOld": "Old",
 	"infoPanel.diffCommentSideNew": "New",
 	"infoPanel.diffReviewExport": "Review Export",
-	"infoPanel.diffReviewExportBody": "Этот XML собирается из ваших inline comments. Скопируйте его и вставьте обратно агенту.",
-	"infoPanel.diffReviewExportEmpty": "XML для review появится здесь после того, как вы оставите inline comments.",
-	"infoPanel.diffReviewExportHint": "Оставляйте комментарии прямо в diff, а в конце review копируйте готовый XML-блок.",
+	"infoPanel.diffReviewExportBody": "Здесь собирается список review comments. Кнопка Copy выгружает XML в буфер для вставки обратно агенту.",
+	"infoPanel.diffReviewExportEmpty": "Ваши review comments появятся здесь после того, как вы оставите inline comments.",
+	"infoPanel.diffReviewExportHint": "Оставляйте комментарии прямо в diff, а в конце review копируйте готовый XML в буфер.",
 	"infoPanel.diffReviewExportCopy": "Скопировать в буфер",
 	"infoPanel.diffReviewExportCopied": "Скопировано!",
+	"infoPanel.diffReviewCommentItem": "Comment {number}",
+	"infoPanel.diffReviewJump": "Прыгнуть к comment",
+	"infoPanel.diffReviewEdit": "Редактировать comment",
+	"infoPanel.diffReviewDelete": "Удалить comment",
+	"infoPanel.diffReviewSave": "Сохранить comment",
+	"infoPanel.diffReviewBefore": "Было",
+	"infoPanel.diffReviewAfter": "Стало",
 };
 
 export default infoPanel;
