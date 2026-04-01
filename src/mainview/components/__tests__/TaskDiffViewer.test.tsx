@@ -409,6 +409,48 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByRole("button", { name: /^expand folder src$/i })).toBeInTheDocument();
 	});
 
+	it("supports bulk collapse and bulk read actions from the files sidebar", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		expect(screen.getByText("0/3 Read")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Collapse all" }));
+		expect(screen.queryAllByTestId("mock-diff")).toHaveLength(0);
+		expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Expand all" }));
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+
+		await user.click(screen.getByRole("button", { name: "Mark all read" }));
+		expect(screen.getByText("3/3 Read")).toBeInTheDocument();
+		expect(screen.queryAllByTestId("mock-diff")).toHaveLength(0);
+		expect(within(screen.getByRole("button", { name: /open diff file src\/app\.ts/i })).getByText("app.ts")).toHaveClass("line-through");
+		expect(screen.getByRole("button", { name: "Mark all unread" })).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Mark all unread" }));
+		expect(screen.getByText("0/3 Read")).toBeInTheDocument();
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+	});
+
 	it("retries sidebar file navigation until the target lands under the sticky toolbar", async () => {
 		const user = userEvent.setup();
 		const rafQueue: FrameRequestCallback[] = [];

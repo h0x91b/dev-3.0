@@ -40,6 +40,8 @@ const tips = {
 	"tip.diffDefaultLayout.body": "Откройте Глобальные настройки и выберите, должен ли Show Diff стартовать в side-by-side или Unified режиме.",
 	"tip.inlineDiffModes.title": "Меняйте layout diff’а",
 	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, чтобы быстро менять компактный обзор на side-by-side сравнение.",
+	"tip.inlineDiffBulkReview.title": "Просматривайте файлы пачкой",
+	"tip.inlineDiffBulkReview.body": "В sidebar Files можно одним нажатием свернуть всё или отметить текущий diff как прочитанный.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",
 	"tip.unpushedDiff.body": "Нажмите «Unpushed» в панели задачи, чтобы посмотреть уже закоммиченные изменения, которые пока живут только у вас.",
 	"tip.imagePasteAttach.title": "Вставляйте картинки в заметки",

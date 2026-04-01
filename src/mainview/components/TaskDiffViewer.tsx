@@ -744,6 +744,41 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		});
 	}
 
+	function setAllFilesExpanded(nextExpanded: boolean) {
+		if (!payload) {
+			return;
+		}
+		setExpandedFiles(
+			Object.fromEntries(payload.files.map((file) => [file.id, nextExpanded])),
+		);
+	}
+
+	function setAllFilesRead(nextRead: boolean) {
+		if (!payload) {
+			return;
+		}
+		const storedReadState = readStoredReadState();
+		for (const file of payload.files) {
+			const signature = getFileReadSignature(task.id, file);
+			if (nextRead) {
+				storedReadState[signature] = true;
+			} else {
+				delete storedReadState[signature];
+			}
+		}
+		writeStoredReadState(storedReadState);
+		setReadFiles(
+			Object.fromEntries(payload.files.map((file) => [file.id, nextRead])),
+		);
+		setExpandedFiles(
+			Object.fromEntries(payload.files.map((file) => [file.id, nextRead ? false : true])),
+		);
+	}
+
+	const readCount = payload ? Object.values(readFiles).filter(Boolean).length : 0;
+	const allFilesExpanded = payload ? payload.files.every((file) => expandedFiles[file.id] ?? true) : false;
+	const allFilesRead = payload ? payload.files.length > 0 && payload.files.every((file) => readFiles[file.id] ?? false) : false;
+
 	function renderFileTreeNode(node: DiffTreeNode, depth = 0): JSX.Element {
 		if (node.type === "folder") {
 			const collapsed = collapsedFolders[node.key] ?? false;
@@ -912,13 +947,29 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
 						<div className="h-full overflow-auto px-3 py-2">
 							<div className="sticky top-0 z-10 pb-2">
-								<div className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-base/80 px-3 py-1.5">
-									<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
-										{t("infoPanel.diffFiles")}
-									</span>
-									<span className="text-[0.6875rem] text-fg-3 font-mono">
-										{Object.values(readFiles).filter(Boolean).length}/{payload.files.length} {t("infoPanel.diffRead")}
-									</span>
+								<div className="rounded-lg border border-edge bg-base/80 p-2 space-y-2">
+									<div className="flex items-center justify-between gap-2 px-1">
+										<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
+											{t("infoPanel.diffFiles")}
+										</span>
+										<span className="text-[0.6875rem] text-fg-3 font-mono">
+											{readCount}/{payload.files.length} {t("infoPanel.diffRead")}
+										</span>
+									</div>
+									<div className="grid grid-cols-2 gap-2">
+										<button
+											onClick={() => setAllFilesExpanded(!allFilesExpanded)}
+											className="inline-flex min-h-9 items-center justify-center rounded-md border border-edge bg-raised px-2 py-1 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+										>
+											{allFilesExpanded ? t("infoPanel.diffCollapseAll") : t("infoPanel.diffExpandAll")}
+										</button>
+										<button
+											onClick={() => setAllFilesRead(!allFilesRead)}
+											className="inline-flex min-h-9 items-center justify-center rounded-md border border-edge bg-raised px-2 py-1 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+										>
+											{allFilesRead ? t("infoPanel.diffMarkAllUnread") : t("infoPanel.diffMarkAllRead")}
+										</button>
+									</div>
 								</div>
 							</div>
 							<div className="space-y-1">

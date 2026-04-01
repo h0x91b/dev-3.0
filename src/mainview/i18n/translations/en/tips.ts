@@ -40,6 +40,8 @@ const tips = {
 	"tip.diffDefaultLayout.body": "Open Global Settings and choose whether Show Diff starts in side-by-side or Unified mode.",
 	"tip.inlineDiffModes.title": "Switch diff layout fast",
 	"tip.inlineDiffModes.body": "Use Unified or Split in the diff toolbar to switch between a compact review and a side-by-side comparison.",
+	"tip.inlineDiffBulkReview.title": "Review files in batches",
+	"tip.inlineDiffBulkReview.body": "Use the Files sidebar to collapse everything or mark the current diff as read in one shot.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",
 	"tip.unpushedDiff.body": "Click \"Unpushed\" in the task panel to review committed work that is still only on your machine.",
 	"tip.imagePasteAttach.title": "Paste images into notes",

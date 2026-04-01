@@ -120,6 +120,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0156}", // nf-md-view_split_vertical
 	},
 	{
+		id: "inline-diff-bulk-review",
+		titleKey: "tip.inlineDiffBulkReview.title",
+		bodyKey: "tip.inlineDiffBulkReview.body",
+		icon: "\u{F04E3}", // nf-md-check_all
+	},
+	{
 		id: "unpushed-diff",
 		titleKey: "tip.unpushedDiff.title",
 		bodyKey: "tip.unpushedDiff.body",

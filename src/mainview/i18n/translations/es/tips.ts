@@ -40,6 +40,8 @@ const tips = {
 	"tip.diffDefaultLayout.body": "Abre Ajustes globales y elige si Show Diff empieza en modo lado a lado o Unified.",
 	"tip.inlineDiffModes.title": "Cambia el layout del diff",
 	"tip.inlineDiffModes.body": "Usa Unified o Split en la barra del diff para alternar rápido entre una revisión compacta y una comparación lado a lado.",
+	"tip.inlineDiffBulkReview.title": "Revisa archivos por bloques",
+	"tip.inlineDiffBulkReview.body": "En la barra Files puedes colapsarlo todo o marcar el diff actual como leído de una sola vez.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",
 	"tip.unpushedDiff.body": "Haz clic en \"Unpushed\" en el panel de la tarea para revisar cambios ya confirmados que aún solo existen en tu máquina.",
 	"tip.imagePasteAttach.title": "Pega imágenes en las notas",
