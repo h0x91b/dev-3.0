@@ -57,7 +57,7 @@ const infoPanel = {
 	"infoPanel.refreshStatus": "Actualizar estado de la rama",
 	"infoPanel.movedAt": "Movido",
 	"infoPanel.baseBranch": "Rama base",
-	"infoPanel.copyPath": "Copiar ruta",
+	"infoPanel.copyPath": "Copiar la ruta de este git worktree",
 	"infoPanel.pathCopied": "¡Copiado!",
 };
 

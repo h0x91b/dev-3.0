@@ -248,7 +248,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask({ worktreePath: "/tmp/wt/abc" }));
 			});
 
-			const copyBtn = screen.getByTitle("Copy path");
+			const copyBtn = screen.getByTitle("Copy path to this git worktree");
 			await userEvent.click(copyBtn);
 
 			expect(writeText).toHaveBeenCalledWith("/tmp/wt/abc");
