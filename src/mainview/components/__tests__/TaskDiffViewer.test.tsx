@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, Task, TaskDiffResponse } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -105,7 +105,12 @@ const diffPayload: TaskDiffResponse = {
 describe("TaskDiffViewer", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(api.request.getTaskDiff).mockResolvedValue(diffPayload);
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
+			...diffPayload,
+			mode,
+			compareRef: mode === "uncommitted" ? null : "origin/main",
+			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
+		}));
 		localStorage.clear();
 	});
 
@@ -137,5 +142,75 @@ describe("TaskDiffViewer", () => {
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
 		expect(await screen.findAllByTestId("mock-diff")).toHaveLength(2);
+	});
+
+	it("switches diff source modes inside the viewer", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.click(screen.getByRole("button", { name: "Unpushed" }));
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(expect.objectContaining({
+				mode: "unpushed",
+			}));
+		});
+
+		await user.click(screen.getByRole("button", { name: "Uncommitted" }));
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(expect.objectContaining({
+				mode: "uncommitted",
+			}));
+		});
+	});
+
+	it("persists read state for the same unchanged file across reopen", async () => {
+		const user = userEvent.setup();
+		const view = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
+
+		view.unmount();
+
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<TaskDiffViewer
+						task={task}
+						project={project}
+						request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+						onBack={vi.fn()}
+					/>
+				</I18nProvider>,
+			);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i })).toBeChecked();
+			expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
+			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
+		});
 	});
 });

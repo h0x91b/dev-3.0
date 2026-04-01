@@ -960,6 +960,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			expect(screen.getAllByText("Show Diff").length).toBeGreaterThanOrEqual(1);
+			expect(screen.queryByText("Unpushed")).not.toBeInTheDocument();
 			expect(screen.getAllByText("Rebase").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Push").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Merge").length).toBeGreaterThanOrEqual(1);
@@ -1172,30 +1173,6 @@ describe("TaskInfoPanel", () => {
 					projectId: "p1",
 					compareRef: "master",
 				});
-			});
-		});
-
-		it("calls inline unpushed diff on Unpushed click", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const onOpenInlineDiff = vi.fn();
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 2,
-				unpushed: 2,
-			});
-
-			await act(async () => {
-				renderPanel(makeTask(), { onOpenInlineDiff });
-			});
-
-			const unpushedButtons = screen.getAllByText("Unpushed");
-			const enabledBtn = unpushedButtons.find((button) => !button.closest("button")!.disabled);
-			expect(enabledBtn).toBeTruthy();
-			await user.click(enabledBtn!.closest("button")!);
-
-			expect(onOpenInlineDiff).toHaveBeenCalledWith({
-				mode: "unpushed",
-				compareLabel: "origin/main",
 			});
 		});
 

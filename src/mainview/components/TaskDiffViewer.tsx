@@ -6,6 +6,7 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
 const LS_DIFF_VIEW_MODE = "dev3-inline-diff-view-mode";
+const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
 const EAGER_FILE_COUNT = 2;
 
 type DiffViewMode = "unified" | "split";
@@ -61,6 +62,40 @@ function readStoredMode(): DiffViewMode {
 	} catch {
 		return "split";
 	}
+}
+
+function hashText(value: string): string {
+	let hash = 5381;
+	for (let i = 0; i < value.length; i++) {
+		hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+	}
+	return (hash >>> 0).toString(36);
+}
+
+function getFileReadSignature(taskId: string, file: TaskDiffFile): string {
+	const payload = file.hunks?.join("\n")
+		?? `${file.oldContent}\u0000${file.newContent}`;
+	return `${taskId}:${file.oldPath ?? ""}:${file.newPath ?? ""}:${hashText(payload)}`;
+}
+
+function readStoredReadState(): Record<string, boolean> {
+	try {
+		const raw = localStorage.getItem(LS_DIFF_READ_STATE);
+		if (!raw) {
+			return {};
+		}
+		const parsed = JSON.parse(raw);
+		if (parsed && typeof parsed === "object") {
+			return parsed as Record<string, boolean>;
+		}
+	} catch {}
+	return {};
+}
+
+function writeStoredReadState(state: Record<string, boolean>): void {
+	try {
+		localStorage.setItem(LS_DIFF_READ_STATE, JSON.stringify(state));
+	} catch {}
 }
 
 function statusClassName(status: TaskDiffFile["status"]): string {
@@ -226,7 +261,7 @@ function TaskDiffFileSection({
 				hostRef.current = element;
 				sectionRef(element);
 			}}
-			className={`border border-edge rounded-xl overflow-hidden ${isRead ? "bg-elevated" : "bg-raised"}`}
+			className={`border border-edge rounded-xl ${isRead ? "bg-elevated" : "bg-raised"}`}
 		>
 			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
 				<button
@@ -299,12 +334,17 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
+	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(request);
 	const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
 	const [readFiles, setReadFiles] = useState<Record<string, boolean>>({});
 	const [loading, setLoading] = useState(true);
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode>(readStoredMode);
+
+	useEffect(() => {
+		setCurrentRequest(request);
+	}, [request.compareLabel, request.compareRef, request.mode]);
 
 	useEffect(() => {
 		try {
@@ -378,9 +418,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		api.request.getTaskDiff({
 			taskId: task.id,
 			projectId: project.id,
-			mode: request.mode,
-			compareRef: request.compareRef,
-			compareLabel: request.compareLabel,
+			mode: currentRequest.mode,
+			compareRef: currentRequest.compareRef,
+			compareLabel: currentRequest.compareLabel,
 		}).then((result) => {
 			if (cancelled) {
 				return;
@@ -398,7 +438,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		return () => {
 			cancelled = true;
 		};
-	}, [project.id, request.compareLabel, request.compareRef, request.mode, task.id]);
+	}, [currentRequest.compareLabel, currentRequest.compareRef, currentRequest.mode, project.id, task.id]);
 
 	useEffect(() => {
 		if (!payload) {
@@ -407,12 +447,16 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			return;
 		}
 
+		const storedReadState = readStoredReadState();
+		const nextReadFiles = Object.fromEntries(
+			payload.files.map((file) => [file.id, !!storedReadState[getFileReadSignature(task.id, file)]]),
+		);
 		const nextExpandedFiles = Object.fromEntries(
-			payload.files.map((file) => [file.id, true]),
+			payload.files.map((file) => [file.id, !nextReadFiles[file.id]]),
 		);
 		setExpandedFiles(nextExpandedFiles);
-		setReadFiles({});
-	}, [payload]);
+		setReadFiles(nextReadFiles);
+	}, [payload, task.id]);
 
 	function scrollToFile(fileId: string) {
 		sectionRefs.current[fileId]?.scrollIntoView({
@@ -429,8 +473,23 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	}
 
 	function toggleFileRead(fileId: string) {
+		if (!payload) {
+			return;
+		}
+		const targetFile = payload.files.find((file) => file.id === fileId);
+		if (!targetFile) {
+			return;
+		}
+		const signature = getFileReadSignature(task.id, targetFile);
 		setReadFiles((current) => {
 			const nextRead = !(current[fileId] ?? false);
+			const storedReadState = readStoredReadState();
+			if (nextRead) {
+				storedReadState[signature] = true;
+			} else {
+				delete storedReadState[signature];
+			}
+			writeStoredReadState(storedReadState);
 			setExpandedFiles((expanded) => ({
 				...expanded,
 				[fileId]: nextRead ? false : true,
@@ -439,6 +498,21 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				...current,
 				[fileId]: nextRead,
 			};
+		});
+	}
+
+	function switchDiffMode(mode: TaskInlineDiffRequest["mode"]) {
+		if (mode === currentRequest.mode) {
+			return;
+		}
+		if (mode === "uncommitted") {
+			setCurrentRequest({ mode: "uncommitted" });
+			return;
+		}
+		setCurrentRequest({
+			mode,
+			compareRef: request.compareRef,
+			compareLabel: request.compareLabel,
 		});
 	}
 
@@ -485,13 +559,19 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					<div className="min-w-0 flex-1">
 						<div className="text-sm font-semibold text-fg">{t("infoPanel.diffViewer")}</div>
 						<div className="text-xs text-fg-3">
-							{request.mode === "uncommitted"
+							{currentRequest.mode === "uncommitted"
 								? t("infoPanel.diffWorkingTreeBase")
-								: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || request.compareLabel || request.compareRef || "HEAD" })}
+								: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" })}
 						</div>
 					</div>
 					{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
 					{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
+				</div>
+
+				<div className="mt-3 flex flex-wrap items-center gap-2">
+					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
+					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
+					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
 				</div>
 
 				{payload && (

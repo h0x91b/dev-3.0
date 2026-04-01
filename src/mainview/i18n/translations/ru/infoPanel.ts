@@ -65,6 +65,7 @@ const infoPanel = {
 	"infoPanel.pathCopied": "Скопировано!",
 	"infoPanel.diffViewer": "Diff",
 	"infoPanel.backToTerminal": "Назад в терминал",
+	"infoPanel.diffBranch": "Branch",
 	"infoPanel.diffComparedTo": "Сравнение с {ref}",
 	"infoPanel.diffWorkingTreeBase": "Рабочее дерево против HEAD",
 	"infoPanel.diffUnified": "Unified",

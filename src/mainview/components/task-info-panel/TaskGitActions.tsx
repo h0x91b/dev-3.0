@@ -237,15 +237,6 @@ export default function TaskGitActions({
 	const showDiffDisabled = !onOpenInlineDiff;
 	const showDiffTooltip = t("infoPanel.showDiffTooltip", { branch: displayRef });
 
-	const unpushedDiffDisabled = !branchStatus || branchStatus.ahead === 0 || !onOpenInlineDiff;
-	const unpushedDiffTooltip = !branchStatus
-		? t("infoPanel.statusLoading")
-		: branchStatus.ahead === 0
-			? t("infoPanel.unpushedDiffDisabled")
-			: branchStatus.unpushed === -1
-				? t("infoPanel.unpushedDiffFallback")
-				: t("infoPanel.unpushedDiffTooltip", { branch: task.branchName || "HEAD" });
-
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
 
@@ -264,20 +255,6 @@ export default function TaskGitActions({
 				title={showDiffTooltip}
 			>
 				{t("infoPanel.showDiff")}
-			</button>
-			<button
-				onClick={() => onOpenInlineDiff?.({
-					mode: "unpushed",
-					compareRef: compareRef || undefined,
-					compareLabel: displayRef,
-				})}
-				disabled={unpushedDiffDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					unpushedDiffDisabled ? disabledBtnClass : enabledBtnClass
-				}`}
-				title={unpushedDiffTooltip}
-			>
-				{t("infoPanel.unpushedDiff")}
 			</button>
 			<button
 				onClick={handleRebase}
