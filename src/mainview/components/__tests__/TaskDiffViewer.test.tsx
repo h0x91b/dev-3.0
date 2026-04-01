@@ -13,21 +13,97 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
-vi.mock("@git-diff-view/react", () => ({
-	DiffView: ({ diffViewMode, diffViewTheme }: { diffViewMode: number; diffViewTheme: "dark" | "light" }) => (
-		<div data-testid="mock-diff">mode:{diffViewMode} theme:{diffViewTheme}</div>
-	),
-	DiffModeEnum: {
-		Split: 3,
-		Unified: 4,
-	},
-	DiffFile: class {
-		initTheme() {}
-		initRaw() {}
-		buildSplitDiffLines() {}
-		buildUnifiedDiffLines() {}
-	},
-}));
+vi.mock("@git-diff-view/react", async () => {
+	const React = await import("react");
+	const SplitSide = {
+		old: 0,
+		new: 1,
+	} as const;
+
+	return {
+		DiffView: ({
+			diffViewMode,
+			diffViewTheme,
+			diffViewAddWidget,
+			renderWidgetLine,
+			renderExtendLine,
+			extendData,
+		}: {
+			diffViewMode: number;
+			diffViewTheme: "dark" | "light";
+			diffViewAddWidget?: boolean;
+			renderWidgetLine?: (props: { lineNumber: number; side: number; onClose: () => void; diffFile: object }) => React.ReactNode;
+			renderExtendLine?: (props: { lineNumber: number; side: number; data: unknown; onUpdate: () => void; diffFile: object }) => React.ReactNode;
+			extendData?: {
+				oldFile?: Record<string, { data: unknown }>;
+				newFile?: Record<string, { data: unknown }>;
+			};
+		}) => {
+			const [widget, setWidget] = React.useState<{ lineNumber: number; side: number } | null>(null);
+			const threadEntries = [
+				...Object.entries(extendData?.oldFile ?? {}).map(([lineNumber, entry]) => ({
+					key: `old-${lineNumber}`,
+					lineNumber: Number(lineNumber),
+					side: SplitSide.old,
+					data: entry.data,
+				})),
+				...Object.entries(extendData?.newFile ?? {}).map(([lineNumber, entry]) => ({
+					key: `new-${lineNumber}`,
+					lineNumber: Number(lineNumber),
+					side: SplitSide.new,
+					data: entry.data,
+				})),
+			];
+
+			return (
+				<div data-testid="mock-diff">
+					mode:{diffViewMode} theme:{diffViewTheme}
+					{diffViewAddWidget && (
+						<button
+							type="button"
+							aria-label="Open inline comment composer"
+							onClick={() => setWidget({ lineNumber: 2, side: SplitSide.new })}
+						>
+							+
+						</button>
+					)}
+					{widget && renderWidgetLine && (
+						<div data-testid="mock-widget">
+							{renderWidgetLine({
+								diffFile: {},
+								side: widget.side,
+								lineNumber: widget.lineNumber,
+								onClose: () => setWidget(null),
+							})}
+						</div>
+					)}
+					{threadEntries.map((entry) => (
+						<div key={entry.key} data-testid="mock-extend">
+							{renderExtendLine?.({
+								diffFile: {},
+								side: entry.side,
+								lineNumber: entry.lineNumber,
+								data: entry.data,
+								onUpdate: () => {},
+							})}
+						</div>
+					))}
+				</div>
+			);
+		},
+		DiffModeEnum: {
+			Split: 3,
+			Unified: 4,
+		},
+		SplitSide,
+		DiffFile: class {
+			initTheme() {}
+			initRaw() {}
+			buildSplitDiffLines() {}
+			buildUnifiedDiffLines() {}
+		},
+	};
+});
 
 vi.mock("@git-diff-view/file", () => ({
 	generateDiffFile: () => ({
@@ -699,5 +775,35 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("theme:light");
 		});
+	});
+
+	it("adds inline comments through the diff widget and renders them under the line", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		expect(screen.getByTestId("mock-widget").querySelector(".dev3-inline-comment--composer")).not.toBeNull();
+
+		await user.type(
+			screen.getByPlaceholderText("Leave a comment on this line..."),
+			"Watch this branch edge case.",
+		);
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(screen.queryByPlaceholderText("Leave a comment on this line...")).not.toBeInTheDocument();
+		expect(screen.getByText("Watch this branch edge case.")).toBeInTheDocument();
+		expect(screen.getByText("New line 2")).toBeInTheDocument();
+		expect(document.querySelector(".dev3-inline-comment--thread")).not.toBeNull();
 	});
 });

@@ -96,6 +96,13 @@ const infoPanel = {
 	"infoPanel.diffNoChangesBody": "Este diff está vacío para el modo seleccionado.",
 	"infoPanel.diffNoRenderableFiles": "No hay nada renderizable en este diff",
 	"infoPanel.diffNoRenderableFilesBody": "Solo cambiaron archivos binarios o demasiado grandes, así que el visor inline los omitió.",
+	"infoPanel.diffCommentAdd": "Agregar comentario inline",
+	"infoPanel.diffCommentPlaceholder": "Deja un comentario en esta línea...",
+	"infoPanel.diffCommentCancel": "Cancelar",
+	"infoPanel.diffCommentSubmit": "Agregar comentario",
+	"infoPanel.diffCommentLine": "Línea {line} de {side}",
+	"infoPanel.diffCommentSideOld": "anterior",
+	"infoPanel.diffCommentSideNew": "nueva",
 };
 
 export default infoPanel;

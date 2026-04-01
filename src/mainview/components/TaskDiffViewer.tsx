@@ -5,6 +5,7 @@ import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
+import "./TaskDiffViewer.css";
 
 const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
 const EAGER_FILE_COUNT = 2;
@@ -34,8 +35,33 @@ type DiffLibrary = {
 		Split: number;
 		Unified: number;
 	};
+	SplitSide: {
+		old: number;
+		new: number;
+	};
 	generateDiffFile: (...args: any[]) => DiffInstance;
 };
+
+type InlineCommentSideKey = "oldFile" | "newFile";
+
+interface InlineDiffComment {
+	id: string;
+	body: string;
+	createdAt: string;
+	startLine: number;
+	endLine: number;
+}
+
+interface InlineDiffCommentThread {
+	comments: InlineDiffComment[];
+}
+
+interface InlineDiffCommentFileData {
+	oldFile: Record<string, { data: InlineDiffCommentThread }>;
+	newFile: Record<string, { data: InlineDiffCommentThread }>;
+}
+
+type InlineDiffCommentsState = Record<string, InlineDiffCommentFileData>;
 
 interface TaskDiffViewerProps {
 	task: Task;
@@ -49,9 +75,16 @@ interface TaskDiffFileSectionProps {
 	diffLib: DiffLibrary;
 	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
+	comments: InlineDiffCommentFileData;
 	eager: boolean;
 	expanded: boolean;
 	isRead: boolean;
+	onAddComment: (params: {
+		fileId: string;
+		side: InlineCommentSideKey;
+		lineNumber: number;
+		body: string;
+	}) => void;
 	onToggleExpanded: () => void;
 	onToggleRead: () => void;
 	sectionRef: (element: HTMLDivElement | null) => void;
@@ -74,6 +107,123 @@ interface DiffTreeFileNode {
 	path: string;
 	fileId: string;
 	status: TaskDiffFile["status"];
+}
+
+function createEmptyInlineCommentFileData(): InlineDiffCommentFileData {
+	return {
+		oldFile: {},
+		newFile: {},
+	};
+}
+
+function getInlineCommentSideKey(side: number, splitSide: DiffLibrary["SplitSide"]): InlineCommentSideKey {
+	return side === splitSide.old ? "oldFile" : "newFile";
+}
+
+function getInlineCommentSideLabel(side: InlineCommentSideKey): "infoPanel.diffCommentSideOld" | "infoPanel.diffCommentSideNew" {
+	return side === "oldFile" ? "infoPanel.diffCommentSideOld" : "infoPanel.diffCommentSideNew";
+}
+
+function InlineCommentThreadView({
+	thread,
+	side,
+	lineNumber,
+}: {
+	thread: InlineDiffCommentThread;
+	side: InlineCommentSideKey;
+	lineNumber: number;
+}) {
+	const t = useT();
+
+	return (
+		<div
+			className="dev3-inline-comment dev3-inline-comment--thread border-t border-edge bg-base/75 px-4 py-3 space-y-2"
+			data-testid="inline-comment-thread"
+		>
+			<div className="dev3-inline-comment__meta text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+				{t("infoPanel.diffCommentLine", {
+					side: t(getInlineCommentSideLabel(side)),
+					line: String(lineNumber),
+				})}
+			</div>
+			{thread.comments.map((comment) => (
+				<div
+					key={comment.id}
+					className="dev3-inline-comment__bubble rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-fg whitespace-pre-wrap break-words"
+				>
+					{comment.body}
+				</div>
+			))}
+		</div>
+	);
+}
+
+function InlineCommentComposer({
+	filePath,
+	side,
+	lineNumber,
+	onCancel,
+	onSubmit,
+}: {
+	filePath: string;
+	side: InlineCommentSideKey;
+	lineNumber: number;
+	onCancel: () => void;
+	onSubmit: (body: string) => void;
+}) {
+	const t = useT();
+	const [value, setValue] = useState("");
+	const trimmedValue = value.trim();
+
+	return (
+		<form
+			className="dev3-inline-comment dev3-inline-comment--composer border-t border-edge bg-base/90 px-4 py-3 space-y-3"
+			onSubmit={(event) => {
+				event.preventDefault();
+				if (!trimmedValue) {
+					return;
+				}
+				onSubmit(trimmedValue);
+				setValue("");
+			}}
+		>
+			<div className="space-y-1">
+				<div className="dev3-inline-comment__title text-[0.75rem] font-semibold text-fg">
+					{t("infoPanel.diffCommentAdd")}
+				</div>
+				<div className="dev3-inline-comment__meta text-[0.6875rem] text-fg-3">
+					{filePath} · {t("infoPanel.diffCommentLine", {
+						side: t(getInlineCommentSideLabel(side)),
+						line: String(lineNumber),
+					})}
+				</div>
+			</div>
+			<textarea
+				value={value}
+				onChange={(event) => setValue(event.target.value)}
+				placeholder={t("infoPanel.diffCommentPlaceholder")}
+				rows={3}
+				autoFocus
+				className="dev3-inline-comment__textarea w-full resize-y rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
+			/>
+			<div className="dev3-inline-comment__actions flex items-center justify-end gap-2">
+				<button
+					type="button"
+					onClick={onCancel}
+					className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+				>
+					{t("infoPanel.diffCommentCancel")}
+				</button>
+				<button
+					type="submit"
+					disabled={!trimmedValue}
+					className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+				>
+					{t("infoPanel.diffCommentSubmit")}
+				</button>
+			</div>
+		</form>
+	);
 }
 
 function hashText(value: string): string {
@@ -260,9 +410,11 @@ function TaskDiffFileSection({
 	diffLib,
 	resolvedTheme,
 	viewMode,
+	comments,
 	eager,
 	expanded,
 	isRead,
+	onAddComment,
 	onToggleExpanded,
 	onToggleRead,
 	sectionRef,
@@ -447,6 +599,32 @@ function TaskDiffFileSection({
 							diffViewMode={diffMode}
 							diffViewWrap={false}
 							diffViewHighlight={false}
+							diffViewAddWidget
+							extendData={comments}
+							renderWidgetLine={({ lineNumber, side, onClose }: { lineNumber: number; side: number; onClose: () => void }) => (
+								<InlineCommentComposer
+									filePath={file.displayPath}
+									side={getInlineCommentSideKey(side, diffLib.SplitSide)}
+									lineNumber={lineNumber}
+									onCancel={onClose}
+									onSubmit={(body) => {
+										onAddComment({
+											fileId: file.id,
+											side: getInlineCommentSideKey(side, diffLib.SplitSide),
+											lineNumber,
+											body,
+										});
+										onClose();
+									}}
+								/>
+							)}
+							renderExtendLine={({ data, lineNumber, side }: { data: InlineDiffCommentThread; lineNumber: number; side: number }) => (
+								<InlineCommentThreadView
+									thread={data}
+									side={getInlineCommentSideKey(side, diffLib.SplitSide)}
+									lineNumber={lineNumber}
+								/>
+							)}
 							className="diff-tailwindcss-wrapper"
 						/>
 					</div>
@@ -479,6 +657,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
+	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>({});
 	const fileTree = payload ? buildDiffTree(payload.files) : [];
 
 	useEffect(() => {
@@ -540,6 +719,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				DiffView: reactLib.DiffView,
 				DiffFile: reactLib.DiffFile,
 				DiffModeEnum: reactLib.DiffModeEnum,
+				SplitSide: reactLib.SplitSide,
 				generateDiffFile: fileLib.generateDiffFile,
 			});
 		}).catch((err) => {
@@ -605,6 +785,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			setExpandedFiles({});
 			setReadFiles({});
 			setActiveFileId(null);
+			setInlineComments({});
 			return;
 		}
 
@@ -621,7 +802,52 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		setExpandedFiles(nextExpandedFiles);
 		setReadFiles(nextReadFiles);
 		setActiveFileId(initialActiveFileId);
+		setInlineComments({});
 	}, [currentRequest.focusFile, payload, task.id]);
+
+	function addInlineComment({
+		fileId,
+		side,
+		lineNumber,
+		body,
+	}: {
+		fileId: string;
+		side: InlineCommentSideKey;
+		lineNumber: number;
+		body: string;
+	}) {
+		const trimmedBody = body.trim();
+		if (!trimmedBody) {
+			return;
+		}
+
+		setInlineComments((current) => {
+			const fileComments = current[fileId] ?? createEmptyInlineCommentFileData();
+			const sideComments = fileComments[side];
+			const existingThread = sideComments[lineNumber]?.data;
+			const nextComment: InlineDiffComment = {
+				id: `${fileId}:${side}:${lineNumber}:${Date.now().toString(36)}`,
+				body: trimmedBody,
+				createdAt: new Date().toISOString(),
+				startLine: lineNumber,
+				endLine: lineNumber,
+			};
+			return {
+				...current,
+				[fileId]: {
+					...fileComments,
+					[side]: {
+						...sideComments,
+						[lineNumber]: {
+							data: {
+								comments: [...(existingThread?.comments ?? []), nextComment],
+							},
+						},
+					},
+				},
+			};
+		});
+	}
 
 	useEffect(() => {
 		if (!payload || !currentRequest.focusFile) {
@@ -1052,9 +1278,11 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}
+								comments={inlineComments[file.id] ?? createEmptyInlineCommentFileData()}
 								eager={index < EAGER_FILE_COUNT}
 								expanded={expandedFiles[file.id] ?? true}
 								isRead={readFiles[file.id] ?? false}
+								onAddComment={addInlineComment}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
 								onToggleRead={() => toggleFileRead(file.id)}
 								sectionRef={(element) => {

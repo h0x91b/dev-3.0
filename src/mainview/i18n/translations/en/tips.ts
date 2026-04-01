@@ -44,6 +44,8 @@ const tips = {
 	"tip.inlineDiffModes.body": "Use Unified or Split in the diff toolbar to switch between a compact review and a side-by-side comparison.",
 	"tip.inlineDiffBulkReview.title": "Review files in batches",
 	"tip.inlineDiffBulkReview.body": "Use the Files sidebar to collapse everything or mark the current diff as read in one shot.",
+	"tip.inlineDiffComments.title": "Comment right on the diff",
+	"tip.inlineDiffComments.body": "In Show Diff, click the + button next to a line to leave an inline note exactly where it matters.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",
 	"tip.unpushedDiff.body": "Click \"Unpushed\" in the task panel to review committed work that is still only on your machine.",
 	"tip.imagePasteAttach.title": "Paste images into notes",

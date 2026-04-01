@@ -1,0 +1,1 @@
+Added inline comments to the built-in diff viewer using `@git-diff-view/react` widgets for comment composers and extend data for rendered threads. Comments are local to the current viewer session for now, and the internal data model is already range-ready so multi-line targets can be added later without reshaping stored comment state.

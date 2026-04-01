@@ -44,6 +44,8 @@ const tips = {
 	"tip.inlineDiffModes.body": "Usa Unified o Split en la barra del diff para alternar rápido entre una revisión compacta y una comparación lado a lado.",
 	"tip.inlineDiffBulkReview.title": "Revisa archivos por bloques",
 	"tip.inlineDiffBulkReview.body": "En la barra Files puedes colapsarlo todo o marcar el diff actual como leído de una sola vez.",
+	"tip.inlineDiffComments.title": "Comenta directo en el diff",
+	"tip.inlineDiffComments.body": "En Show Diff, pulsa el botón + junto a una línea para dejar una nota inline justo donde importa.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",
 	"tip.unpushedDiff.body": "Haz clic en \"Unpushed\" en el panel de la tarea para revisar cambios ya confirmados que aún solo existen en tu máquina.",
 	"tip.imagePasteAttach.title": "Pega imágenes en las notas",

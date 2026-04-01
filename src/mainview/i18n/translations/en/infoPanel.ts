@@ -96,6 +96,13 @@ const infoPanel = {
 	"infoPanel.diffNoChangesBody": "This diff is empty for the selected mode.",
 	"infoPanel.diffNoRenderableFiles": "Nothing renderable in this diff",
 	"infoPanel.diffNoRenderableFilesBody": "Only binary or oversized files changed, so the inline viewer skipped them.",
+	"infoPanel.diffCommentAdd": "Add inline comment",
+	"infoPanel.diffCommentPlaceholder": "Leave a comment on this line...",
+	"infoPanel.diffCommentCancel": "Cancel",
+	"infoPanel.diffCommentSubmit": "Add comment",
+	"infoPanel.diffCommentLine": "{side} line {line}",
+	"infoPanel.diffCommentSideOld": "Old",
+	"infoPanel.diffCommentSideNew": "New",
 } as const;
 
 export default infoPanel;

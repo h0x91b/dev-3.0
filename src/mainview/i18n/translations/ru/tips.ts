@@ -44,6 +44,8 @@ const tips = {
 	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, чтобы быстро менять компактный обзор на side-by-side сравнение.",
 	"tip.inlineDiffBulkReview.title": "Просматривайте файлы пачкой",
 	"tip.inlineDiffBulkReview.body": "В sidebar Files можно одним нажатием свернуть всё или отметить текущий diff как прочитанный.",
+	"tip.inlineDiffComments.title": "Комментируйте прямо в diff",
+	"tip.inlineDiffComments.body": "В Show Diff нажмите + рядом со строкой, чтобы оставить inline comment ровно в нужном месте.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",
 	"tip.unpushedDiff.body": "Нажмите «Unpushed» в панели задачи, чтобы посмотреть уже закоммиченные изменения, которые пока живут только у вас.",
 	"tip.imagePasteAttach.title": "Вставляйте картинки в заметки",

@@ -98,6 +98,13 @@ const infoPanel = {
 	"infoPanel.diffNoChangesBody": "Для выбранного режима diff пустой.",
 	"infoPanel.diffNoRenderableFiles": "В этом diff нечего рендерить",
 	"infoPanel.diffNoRenderableFilesBody": "Изменились только binary или слишком большие файлы, поэтому inline viewer их пропустил.",
+	"infoPanel.diffCommentAdd": "Добавить inline comment",
+	"infoPanel.diffCommentPlaceholder": "Оставьте комментарий к этой строке...",
+	"infoPanel.diffCommentCancel": "Отмена",
+	"infoPanel.diffCommentSubmit": "Добавить comment",
+	"infoPanel.diffCommentLine": "{side} line {line}",
+	"infoPanel.diffCommentSideOld": "Old",
+	"infoPanel.diffCommentSideNew": "New",
 };
 
 export default infoPanel;
