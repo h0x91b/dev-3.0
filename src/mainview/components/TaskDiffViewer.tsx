@@ -174,6 +174,33 @@ function statusLabel(status: TaskDiffFile["status"]): string {
 	}
 }
 
+function getFileDiffStats(file: TaskDiffFile): { insertions: number; deletions: number } {
+	if (file.hunks && file.hunks.length > 0) {
+		let insertions = 0;
+		let deletions = 0;
+		for (const hunk of file.hunks) {
+			for (const line of hunk.split("\n")) {
+				if (line.startsWith("+++ ") || line.startsWith("--- ")) {
+					continue;
+				}
+				if (line.startsWith("+")) {
+					insertions += 1;
+				} else if (line.startsWith("-")) {
+					deletions += 1;
+				}
+			}
+		}
+		return { insertions, deletions };
+	}
+
+	const oldLines = file.oldContent ? file.oldContent.split("\n") : [];
+	const newLines = file.newContent ? file.newContent.split("\n") : [];
+	return {
+		insertions: Math.max(0, newLines.length - oldLines.length),
+		deletions: Math.max(0, oldLines.length - newLines.length),
+	};
+}
+
 function buildDiffTree(files: TaskDiffFile[]): DiffTreeNode[] {
 	const root: DiffTreeNode[] = [];
 
@@ -250,6 +277,7 @@ function TaskDiffFileSection({
 	sectionRef,
 }: TaskDiffFileSectionProps) {
 	const t = useT();
+	const fileStats = getFileDiffStats(file);
 	const [activated, setActivated] = useState(eager);
 	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
@@ -381,6 +409,12 @@ function TaskDiffFileSection({
 					<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}`}>
 						{file.displayPath}
 					</span>
+					{(fileStats.insertions > 0 || fileStats.deletions > 0) && (
+						<span className="ml-1 inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-[0.6875rem] font-mono">
+							{fileStats.insertions > 0 && <span className="text-success">+{fileStats.insertions}</span>}
+							{fileStats.deletions > 0 && <span className="text-danger">−{fileStats.deletions}</span>}
+						</span>
+					)}
 				</button>
 
 				<label className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${isRead ? "border-success/30 bg-success/10 text-success" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}>

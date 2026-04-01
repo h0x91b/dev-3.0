@@ -86,8 +86,8 @@ const diffPayload: TaskDiffResponse = {
 			oldPath: "src/app.ts",
 			newPath: "src/app.ts",
 			oldContent: "const a = 1;\n",
-			newContent: "const a = 2;\n",
-			hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n"],
+			newContent: "const a = 2;\nconst b = 3;\n",
+			hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1,2 @@\n-const a = 1;\n+const a = 2;\n+const b = 3;\n"],
 		},
 		{
 			id: "src/utils/format.ts",
@@ -153,7 +153,11 @@ describe("TaskDiffViewer", () => {
 		});
 
 		expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3 theme:dark");
-		expect(screen.getByRole("button", { name: /collapse src\/app\.ts/i }).closest("div")).toHaveClass("sticky");
+		const firstFileHeader = screen.getByRole("button", { name: /collapse src\/app\.ts/i }).closest("div");
+		expect(firstFileHeader).toHaveClass("sticky");
+		expect(firstFileHeader).not.toBeNull();
+		expect(within(firstFileHeader as HTMLDivElement).getByText("+2")).toBeInTheDocument();
+		expect(within(firstFileHeader as HTMLDivElement).getByText("−1")).toBeInTheDocument();
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
 
