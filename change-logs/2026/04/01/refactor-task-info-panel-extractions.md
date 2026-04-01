@@ -1,0 +1,1 @@
+Refactored TaskInfoPanel into focused task-info-panel modules for git actions, dev server controls, notes, open-in actions, tmux controls, and task-specific polling hooks. This cuts parent component state sprawl and isolates async effects without changing the covered task UI behavior.
