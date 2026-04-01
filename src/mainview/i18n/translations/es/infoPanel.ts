@@ -72,6 +72,8 @@ const infoPanel = {
 	"infoPanel.diffUnified": "Unified",
 	"infoPanel.diffSplit": "Split",
 	"infoPanel.diffWhitespace": "Whitespace",
+	"infoPanel.diffFileCount_one": "{count} archivo",
+	"infoPanel.diffFileCount_other": "{count} archivos",
 	"infoPanel.diffSummary": "{files} archivos · +{insertions} · −{deletions}",
 	"infoPanel.diffShownCount": "Mostrando {shown} de {total} archivos modificados",
 	"infoPanel.diffFallbackNoUpstream": "Esta rama aún no tiene upstream. Mostrando el diff completo de la rama contra {ref}.",

@@ -72,6 +72,8 @@ const infoPanel = {
 	"infoPanel.diffUnified": "Unified",
 	"infoPanel.diffSplit": "Split",
 	"infoPanel.diffWhitespace": "Whitespace",
+	"infoPanel.diffFileCount_one": "{count} file",
+	"infoPanel.diffFileCount_other": "{count} files",
 	"infoPanel.diffSummary": "{files} files · +{insertions} · −{deletions}",
 	"infoPanel.diffShownCount": "Showing {shown} of {total} changed files",
 	"infoPanel.diffFallbackNoUpstream": "This branch has no upstream yet. Showing the full branch diff vs {ref}.",

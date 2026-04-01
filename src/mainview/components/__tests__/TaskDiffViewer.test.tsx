@@ -153,6 +153,10 @@ describe("TaskDiffViewer", () => {
 		});
 
 		expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3 theme:dark");
+		const viewerSummary = screen.getByText("3 files").parentElement;
+		expect(viewerSummary).not.toBeNull();
+		expect(within(viewerSummary as HTMLSpanElement).getByText("+5")).toHaveClass("text-success");
+		expect(within(viewerSummary as HTMLSpanElement).getByText("−1")).toHaveClass("text-danger");
 		const firstFileHeader = screen.getByRole("button", { name: /collapse src\/app\.ts/i }).closest("div");
 		expect(firstFileHeader).toHaveClass("sticky");
 		expect(firstFileHeader).not.toBeNull();

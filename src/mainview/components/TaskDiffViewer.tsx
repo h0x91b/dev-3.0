@@ -810,12 +810,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</div>
 					{payload && (
 						<>
-							<span className="px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-[0.6875rem]">
-								{t("infoPanel.diffSummary", {
-									files: String(payload.summary.files),
-									insertions: String(payload.summary.insertions),
-									deletions: String(payload.summary.deletions),
-								})}
+							<span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-[0.6875rem] font-mono">
+								<span>{t.plural("infoPanel.diffFileCount", payload.summary.files)}</span>
+								<span className="text-success">+{payload.summary.insertions}</span>
+								<span className="text-danger">−{payload.summary.deletions}</span>
 							</span>
 							{payload.files.length !== payload.summary.files && (
 								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">

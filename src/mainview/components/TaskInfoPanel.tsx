@@ -397,7 +397,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && metadataBranchStatus.diffFileNames.length > 0 && createPortal(
 		<div
-			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 px-3 max-w-[25rem] max-h-[20rem] overflow-auto"
+			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 pl-3 pr-1.5 max-w-[25rem] max-h-[20rem] overflow-auto"
 			style={{ top: diffFilesPos.top, left: diffFilesPos.left, zIndex: 9999 }}
 			onMouseEnter={cancelHideDiffFiles}
 			onMouseLeave={hideDiffFilesPopover}
