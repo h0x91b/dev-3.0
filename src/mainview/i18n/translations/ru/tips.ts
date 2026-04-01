@@ -39,7 +39,7 @@ const tips = {
 	"tip.diffToolSetting.title": "Выберите просмотрщик diff",
 	"tip.diffToolSetting.body": "Откройте Настройки и выберите VS Code, IntelliJ, Kaleidoscope или любой свой инструмент для просмотра diff.",
 	"tip.inlineDiffModes.title": "Меняйте layout diff’а",
-	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, а Whitespace включайте, когда нужно поймать табы и хвостовые пробелы.",
+	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, чтобы быстро менять компактный обзор на side-by-side сравнение.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",
 	"tip.unpushedDiff.body": "Нажмите «Unpushed» в панели задачи, чтобы посмотреть уже закоммиченные изменения, которые пока живут только у вас.",
 	"tip.imagePasteAttach.title": "Вставляйте картинки в заметки",

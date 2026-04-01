@@ -39,7 +39,7 @@ const tips = {
 	"tip.diffToolSetting.title": "Elige tu visor de diff",
 	"tip.diffToolSetting.body": "Abre Ajustes y elige VS Code, IntelliJ, Kaleidoscope o cualquier herramienta personalizada como visor de diff.",
 	"tip.inlineDiffModes.title": "Cambia el layout del diff",
-	"tip.inlineDiffModes.body": "Usa Unified o Split en la barra del diff, y activa Whitespace cuando necesites ver tabs y espacios finales.",
+	"tip.inlineDiffModes.body": "Usa Unified o Split en la barra del diff para alternar rápido entre una revisión compacta y una comparación lado a lado.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",
 	"tip.unpushedDiff.body": "Haz clic en \"Unpushed\" en el panel de la tarea para revisar cambios ya confirmados que aún solo existen en tu máquina.",
 	"tip.imagePasteAttach.title": "Pega imágenes en las notas",

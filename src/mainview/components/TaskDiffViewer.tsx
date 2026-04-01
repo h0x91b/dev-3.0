@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import type { Project, Task, TaskDiffFile, TaskDiffResponse } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -6,9 +6,16 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
 const LS_DIFF_VIEW_MODE = "dev3-inline-diff-view-mode";
-const LS_DIFF_SHOW_WHITESPACE = "dev3-inline-diff-show-whitespace";
+const EAGER_FILE_COUNT = 6;
 
 type DiffViewMode = "unified" | "split";
+
+type DiffInstance = {
+	initTheme: (theme?: "light" | "dark") => void;
+	initRaw: () => void;
+	buildSplitDiffLines: () => void;
+	buildUnifiedDiffLines: () => void;
+};
 
 type DiffLibrary = {
 	DiffView: ComponentType<any>;
@@ -16,11 +23,7 @@ type DiffLibrary = {
 		Split: number;
 		Unified: number;
 	};
-	generateDiffFile: (...args: any[]) => any;
-};
-
-type RenderableDiffFile = TaskDiffFile & {
-	diffFile: any;
+	generateDiffFile: (...args: any[]) => DiffInstance;
 };
 
 interface TaskDiffViewerProps {
@@ -30,70 +33,19 @@ interface TaskDiffViewerProps {
 	onBack: () => void;
 }
 
+interface TaskDiffFileSectionProps {
+	file: TaskDiffFile;
+	diffLib: DiffLibrary;
+	viewMode: DiffViewMode;
+	eager: boolean;
+	sectionRef: (element: HTMLDivElement | null) => void;
+}
+
 function readStoredMode(): DiffViewMode {
 	try {
 		return localStorage.getItem(LS_DIFF_VIEW_MODE) === "split" ? "split" : "unified";
 	} catch {
 		return "unified";
-	}
-}
-
-function readStoredWhitespace(): boolean {
-	try {
-		return localStorage.getItem(LS_DIFF_SHOW_WHITESPACE) === "true";
-	} catch {
-		return false;
-	}
-}
-
-function visualizeWhitespace(content: string): string {
-	return content.replace(/\t/g, "⇥   ").replace(/ /g, "·");
-}
-
-function inferLanguage(filePath: string | null): string | undefined {
-	if (!filePath) {
-		return undefined;
-	}
-
-	const ext = filePath.split(".").pop()?.toLowerCase();
-	switch (ext) {
-		case "ts":
-		case "tsx":
-			return "typescript";
-		case "js":
-		case "jsx":
-		case "mjs":
-		case "cjs":
-			return "javascript";
-		case "json":
-			return "json";
-		case "md":
-			return "markdown";
-		case "yml":
-		case "yaml":
-			return "yaml";
-		case "css":
-			return "css";
-		case "html":
-			return "html";
-		case "sh":
-			return "bash";
-		case "py":
-			return "python";
-		case "go":
-			return "go";
-		case "rs":
-			return "rust";
-		case "rb":
-			return "ruby";
-		case "java":
-			return "java";
-		case "kt":
-			return "kotlin";
-		case "swift":
-			return "swift";
-		default:
-			return undefined;
 	}
 }
 
@@ -133,29 +85,146 @@ function statusLabel(status: TaskDiffFile["status"]): string {
 	}
 }
 
+function TaskDiffFileSection({
+	file,
+	diffLib,
+	viewMode,
+	eager,
+	sectionRef,
+}: TaskDiffFileSectionProps) {
+	const [activated, setActivated] = useState(eager);
+	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
+	const [buildError, setBuildError] = useState<string | null>(null);
+	const hostRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (activated) {
+			return;
+		}
+
+		const element = hostRef.current;
+		if (!element) {
+			return;
+		}
+		if (typeof IntersectionObserver === "undefined") {
+			setActivated(true);
+			return;
+		}
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (entry.isIntersecting) {
+						setActivated(true);
+						observer.disconnect();
+						break;
+					}
+				}
+			},
+			{ rootMargin: "1200px 0px" },
+		);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [activated]);
+
+	useEffect(() => {
+		if (!activated) {
+			return;
+		}
+
+		let cancelled = false;
+		setBuildError(null);
+		setDiffFile(null);
+
+		const timer = window.setTimeout(() => {
+			try {
+				const oldPath = file.oldPath ?? file.newPath ?? "/dev/null";
+				const newPath = file.newPath ?? file.oldPath ?? "/dev/null";
+				const nextDiffFile = diffLib.generateDiffFile(
+					oldPath,
+					file.oldContent,
+					newPath,
+					file.newContent,
+				);
+				nextDiffFile.initTheme("dark");
+				nextDiffFile.initRaw();
+				if (viewMode === "split") {
+					nextDiffFile.buildSplitDiffLines();
+				} else {
+					nextDiffFile.buildUnifiedDiffLines();
+				}
+				if (!cancelled) {
+					setDiffFile(nextDiffFile);
+				}
+			} catch (err) {
+				if (!cancelled) {
+					setBuildError(String(err));
+				}
+			}
+		}, 0);
+
+		return () => {
+			cancelled = true;
+			window.clearTimeout(timer);
+		};
+	}, [activated, diffLib, file.displayPath, file.newContent, file.newPath, file.oldContent, file.oldPath, viewMode]);
+
+	const DiffView = diffLib.DiffView;
+	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
+
+	return (
+		<div
+			ref={(element) => {
+				hostRef.current = element;
+				sectionRef(element);
+			}}
+			className="border border-edge rounded-xl overflow-hidden bg-raised"
+		>
+			<div className="px-4 py-3 border-b border-edge flex flex-wrap items-center gap-2 bg-raised">
+				<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
+					{statusLabel(file.status)}
+				</span>
+				<span className="font-mono text-sm text-fg break-all">{file.displayPath}</span>
+			</div>
+
+			{buildError ? (
+				<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
+			) : diffFile ? (
+				<div className="overflow-x-auto">
+					<DiffView
+						diffFile={diffFile}
+						diffViewTheme="dark"
+						diffViewMode={diffMode}
+						diffViewWrap={false}
+						diffViewHighlight={false}
+						className="diff-tailwindcss-wrapper"
+					/>
+				</div>
+			) : (
+				<div className="p-4 space-y-3 animate-pulse">
+					<div className="h-4 w-36 rounded bg-elevated" />
+					<div className="h-24 rounded bg-base" />
+				</div>
+			)}
+		</div>
+	);
+}
+
 function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps) {
 	const t = useT();
 	const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
-	const [renderedFiles, setRenderedFiles] = useState<RenderableDiffFile[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode>(readStoredMode);
-	const [showWhitespace, setShowWhitespace] = useState(readStoredWhitespace);
 
 	useEffect(() => {
 		try {
 			localStorage.setItem(LS_DIFF_VIEW_MODE, viewMode);
 		} catch {}
 	}, [viewMode]);
-
-	useEffect(() => {
-		try {
-			localStorage.setItem(LS_DIFF_SHOW_WHITESPACE, String(showWhitespace));
-		} catch {}
-	}, [showWhitespace]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -200,8 +269,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		};
 	}, []);
 
-	const isRenderingDiffFiles = !!payload && payload.files.length > 0 && renderedFiles.length !== payload.files.length;
-	const isBusy = loading || !diffLib || isRenderingDiffFiles;
+	const isBusy = loading || !diffLib;
 
 	useEffect(() => {
 		if (!isBusy) {
@@ -209,8 +277,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			return;
 		}
 
-		const timer = setTimeout(() => setShowLoadingState(true), 300);
-		return () => clearTimeout(timer);
+		const timer = window.setTimeout(() => setShowLoadingState(true), 300);
+		return () => window.clearTimeout(timer);
 	}, [isBusy]);
 
 	useEffect(() => {
@@ -219,7 +287,6 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		setLoading(true);
 		setError(null);
 		setPayload(null);
-		setRenderedFiles([]);
 
 		api.request.getTaskDiff({
 			taskId: task.id,
@@ -245,49 +312,6 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			cancelled = true;
 		};
 	}, [project.id, request.compareLabel, request.compareRef, request.mode, task.id]);
-
-	useEffect(() => {
-		if (!diffLib || !payload) {
-			return;
-		}
-
-		let cancelled = false;
-		const nextFiles = payload.files.map((file) => {
-			const oldContent = showWhitespace ? visualizeWhitespace(file.oldContent) : file.oldContent;
-			const newContent = showWhitespace ? visualizeWhitespace(file.newContent) : file.newContent;
-			const oldPath = file.oldPath ?? file.newPath ?? "/dev/null";
-			const newPath = file.newPath ?? file.oldPath ?? "/dev/null";
-			const fileLang = inferLanguage(file.newPath ?? file.oldPath);
-			const diffFile = diffLib.generateDiffFile(
-				oldPath,
-				oldContent,
-				newPath,
-				newContent,
-				fileLang,
-				fileLang,
-			);
-			diffFile.initTheme("dark");
-			diffFile.init();
-			diffFile.buildUnifiedDiffLines();
-			diffFile.buildSplitDiffLines();
-			return { ...file, diffFile };
-		});
-
-		startTransition(() => {
-			if (!cancelled) {
-				setRenderedFiles(nextFiles);
-			}
-		});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [diffLib, payload, showWhitespace]);
-
-	const DiffView = diffLib?.DiffView;
-	const diffMode = diffLib?.DiffModeEnum ? (
-		viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified
-	) : undefined;
 
 	function scrollToFile(fileId: string) {
 		sectionRefs.current[fileId]?.scrollIntoView({
@@ -346,7 +370,6 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</div>
 					{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
 					{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
-					{renderToolbarButton(t("infoPanel.diffWhitespace"), showWhitespace, () => setShowWhitespace((value) => !value))}
 				</div>
 
 				{payload && (
@@ -384,12 +407,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</div>
 				)}
 
-				{renderedFiles.length > 1 && (
+				{payload && payload.files.length > 1 && (
 					<div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
 						<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold flex-shrink-0">
 							{t("infoPanel.diffFiles")}
 						</span>
-						{renderedFiles.map((file) => (
+						{payload.files.map((file) => (
 							<button
 								key={file.id}
 								onClick={() => scrollToFile(file.id)}
@@ -416,41 +439,29 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</div>
 				)}
 
-				{!error && !isBusy && payload && renderedFiles.length === 0 && payload.summary.files === 0 && renderState(
+				{!error && !isBusy && payload && payload.files.length === 0 && payload.summary.files === 0 && renderState(
 					t("infoPanel.diffNoChanges"),
 					t("infoPanel.diffNoChangesBody"),
 				)}
 
-				{!error && !isBusy && payload && renderedFiles.length === 0 && payload.summary.files > 0 && renderState(
+				{!error && !isBusy && payload && payload.files.length === 0 && payload.summary.files > 0 && renderState(
 					t("infoPanel.diffNoRenderableFiles"),
 					t("infoPanel.diffNoRenderableFilesBody"),
 				)}
 
-				{!error && !isBusy && payload && DiffView && renderedFiles.length > 0 && (
+				{!error && !isBusy && payload && diffLib && payload.files.length > 0 && (
 					<div className="space-y-5">
-						{renderedFiles.map((file) => (
-							<div
-								key={file.id}
-								ref={(element) => { sectionRefs.current[file.id] = element; }}
-								className="border border-edge rounded-xl overflow-hidden bg-raised"
-							>
-								<div className="px-4 py-3 border-b border-edge flex flex-wrap items-center gap-2 bg-raised">
-									<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
-										{statusLabel(file.status)}
-									</span>
-									<span className="font-mono text-sm text-fg break-all">{file.displayPath}</span>
-								</div>
-								<div className="overflow-x-auto">
-									<DiffView
-										diffFile={file.diffFile}
-										diffViewTheme="dark"
-										diffViewMode={diffMode}
-										diffViewWrap={false}
-										diffViewHighlight
-										className="diff-tailwindcss-wrapper"
-									/>
-								</div>
-							</div>
+						{payload.files.map((file, index) => (
+							<TaskDiffFileSection
+								key={`${file.id}:${viewMode}`}
+								file={file}
+								diffLib={diffLib}
+								viewMode={viewMode}
+								eager={index < EAGER_FILE_COUNT}
+								sectionRef={(element) => {
+									sectionRefs.current[file.id] = element;
+								}}
+							/>
 						))}
 					</div>
 				)}

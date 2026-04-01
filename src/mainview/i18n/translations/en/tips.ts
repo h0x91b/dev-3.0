@@ -39,7 +39,7 @@ const tips = {
 	"tip.diffToolSetting.title": "Pick your diff viewer",
 	"tip.diffToolSetting.body": "Open Settings and choose VS Code, IntelliJ, Kaleidoscope, or any custom tool as your default diff viewer.",
 	"tip.inlineDiffModes.title": "Switch diff layout fast",
-	"tip.inlineDiffModes.body": "Use Unified or Split in the diff toolbar, then toggle Whitespace when you need to spot tabs and trailing spaces.",
+	"tip.inlineDiffModes.body": "Use Unified or Split in the diff toolbar to switch between a compact review and a side-by-side comparison.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",
 	"tip.unpushedDiff.body": "Click \"Unpushed\" in the task panel to review committed work that is still only on your machine.",
 	"tip.imagePasteAttach.title": "Paste images into notes",
