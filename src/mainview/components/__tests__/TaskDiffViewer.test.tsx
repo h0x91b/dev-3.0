@@ -862,4 +862,36 @@ describe("TaskDiffViewer", () => {
 		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
 	});
+
+	it("keeps the caret position while editing an inline comment", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "abcdef");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		const inlineThread = screen.getByTestId("inline-comment-thread");
+		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
+
+		const editor = screen.getByDisplayValue("abcdef") as HTMLTextAreaElement;
+		editor.focus();
+		editor.setSelectionRange(3, 3);
+		await user.keyboard("XY");
+
+		expect(editor.value).toBe("abcXYdef");
+		expect(editor.selectionStart).toBe(5);
+		expect(editor.selectionEnd).toBe(5);
+	});
 });

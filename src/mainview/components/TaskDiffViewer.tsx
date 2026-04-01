@@ -392,6 +392,26 @@ function InlineCommentThreadView({
 	onDeleteComment: (commentId: string) => void;
 }) {
 	const t = useT();
+	const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const focusedEditCommentIdRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		if (!editingCommentId) {
+			focusedEditCommentIdRef.current = null;
+			return;
+		}
+		if (focusedEditCommentIdRef.current === editingCommentId) {
+			return;
+		}
+		const textarea = editTextareaRef.current;
+		if (!textarea) {
+			return;
+		}
+		textarea.focus();
+		const end = textarea.value.length;
+		textarea.setSelectionRange(end, end);
+		focusedEditCommentIdRef.current = editingCommentId;
+	}, [editingCommentId]);
 
 	return (
 		<div
@@ -414,10 +434,10 @@ function InlineCommentThreadView({
 					{editingCommentId === comment.id ? (
 						<div className="space-y-2">
 							<textarea
+								ref={editTextareaRef}
 								value={editingCommentDraft}
 								onChange={(event) => onEditDraftChange(event.target.value)}
 								rows={3}
-								autoFocus
 								className="dev3-inline-comment__textarea w-full resize-y rounded-lg border border-edge bg-base px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
 							/>
 							<div className="flex items-center justify-end gap-2">
