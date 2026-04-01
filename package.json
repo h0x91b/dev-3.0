@@ -21,6 +21,7 @@
 		"bump": "bun run scripts/bump.ts"
 	},
 	"dependencies": {
+		"@lobehub/icons": "^5.2.0",
 		"electrobun": "1.14.4",
 		"ghostty-web": "^0.4.0",
 		"js-toml": "^1.0.2",

@@ -1,4 +1,22 @@
 import "@testing-library/jest-dom/vitest";
+import { createElement } from "react";
+
+vi.mock("@lobehub/icons/es/icons", () => {
+	const makeIcon = (name: string) => {
+		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });
+		(Icon as typeof Icon & { Color: typeof Icon }).Color = (props: Record<string, unknown>) =>
+			createElement("svg", { "data-icon": `${name}-color`, ...props });
+		return Icon as typeof Icon & { Color: typeof Icon };
+	};
+
+	return {
+		ClaudeCode: makeIcon("claude-code"),
+		Codex: makeIcon("codex"),
+		Cursor: makeIcon("cursor"),
+		GeminiCLI: makeIcon("gemini-cli"),
+		OpenCode: makeIcon("opencode"),
+	};
+});
 
 // Suppress happy-dom AbortError noise during window teardown.
 // When happy-dom tears down the test window it aborts all pending fetch requests,

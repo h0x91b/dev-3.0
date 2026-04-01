@@ -68,6 +68,8 @@ const tips = {
 	"tip.zoomSupport.body": "Нажмите \u2318= / \u2318−, чтобы увеличить или уменьшить UI; шрифт терминала масштабируется отдельно и сохраняется.",
 	"tip.configurableAgents.title": "Выберите агента для проекта",
 	"tip.configurableAgents.body": "В Global Settings выберите Claude, Codex, Gemini или собственный shell-агент для каждого проекта.",
+	"tip.agentLauncherIcons.title": "Иконки лаунчеров на карточках",
+	"tip.agentLauncherIcons.body": "Смотрите бейдж попытки на карточке задачи — по иконке сразу видно, чем запущен каждый вариант.",
 	"tip.osc52Clipboard.title": "Выделение копируется само",
 	"tip.osc52Clipboard.body": "Выделите текст в терминале — он сразу попадёт в системный буфер обмена, без Cmd+C.",
 	"tip.taskInfoPanel.title": "Детали задачи прямо в экране",

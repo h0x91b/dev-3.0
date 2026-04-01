@@ -1,0 +1,1 @@
+Replaced text-only launcher names in task variant badges with @lobehub/icons logos for known agents while keeping a text fallback for unknown launchers. Added a feature-discovery tip and updated task card tests with a shared icon mock for the new package.
