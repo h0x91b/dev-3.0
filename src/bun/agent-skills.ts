@@ -54,8 +54,8 @@ In the same session-start pass, also assign task labels:
 
 - Run \`dev3 label list\` and reuse existing labels whenever possible.
 - Aim for **1-2 meaningful labels per task** in the normal case.
-- If the task still needs a label and there is no good fit, create **one short reusable label** with \`dev3 label create "name"\`.
-- Apply the final label set with \`dev3 label set <id> [<id>...]\`.
+- If the task still needs a label and there is no good fit, create **one short reusable label** with \`dev3 label create "name"\` and attach it to the current task immediately.
+- Apply the final label set with \`dev3 label set <id> [<id>...]\`. Creating a label without attaching it does **not** complete this step.
 - If the task already has sensible labels, leave them alone unless they are clearly wrong or incomplete.
 - Do not spam labels, create near-duplicates, or use labels for workflow state (\`in-progress\`, \`review\`, \`blocked\`, etc.).
 

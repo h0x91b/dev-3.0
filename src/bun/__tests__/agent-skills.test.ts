@@ -16,6 +16,7 @@ describe("dev3 skill content", () => {
 		expect(codexSkill).toContain("dev3 label list");
 		expect(codexSkill).toContain('dev3 label create "name"');
 		expect(codexSkill).toContain("dev3 label set <id> [<id>...]");
+		expect(codexSkill).toContain("Creating a label without attaching it does **not** complete this step.");
 		expect(codexSkill).not.toContain("## Task labels");
 		expect(codexSkill.indexOf("## Title generation")).toBeLessThan(
 			codexSkill.indexOf("dev3 label list"),
@@ -27,6 +28,8 @@ describe("dev3 skill content", () => {
 		expect(getGenericSkillContent()).toContain("In the same session-start pass, also assign task labels:");
 		expect(getClaudeSkillContent()).toContain("reuse existing labels whenever possible.");
 		expect(getGenericSkillContent()).toContain("reuse existing labels whenever possible.");
+		expect(getClaudeSkillContent()).toContain("attach it to the current task immediately.");
+		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
 	});
 });
 
