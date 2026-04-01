@@ -660,7 +660,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-fg-2 hover:bg-elevated-hover transition-colors"
 						style={{ paddingLeft: `${depth * 0.85 + 0.5}rem` }}
 					>
-						<span className="w-4 text-center text-fg-muted">{collapsed ? "\u25B8" : "\u25BE"}</span>
+						<span className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-[0.95rem] leading-none text-fg-2">
+							{collapsed ? "\u25B8" : "\u25BE"}
+						</span>
 						<span className="text-[0.95rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uF07B"}
 						</span>
@@ -722,7 +724,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		return (
 			<button
 				onClick={onClick}
-				className={`px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors ${
+				className={`px-2.5 py-0.5 rounded-md border text-[0.6875rem] font-semibold transition-colors ${
 					active
 						? "bg-accent text-white border-accent"
 						: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
@@ -749,35 +751,34 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			className="h-full flex flex-col bg-base"
 			data-inline-diff="true"
 		>
-			<div className="sticky top-0 z-10 border-b border-edge bg-base/95 backdrop-blur px-4 py-3">
+			<div className="sticky top-0 z-10 border-b border-edge bg-base/95 backdrop-blur px-4 py-2">
 				<div className="flex flex-wrap items-center gap-2">
 					<button
 						onClick={onBack}
-						className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
+						className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
 					>
-						<span className="text-base leading-none">{"\u2190"}</span>
+						<span className="text-[0.95rem] leading-none">{"\u2190"}</span>
 						<span>{t("infoPanel.backToTerminal")}</span>
 					</button>
-					<div className="min-w-0 flex-1">
-						<div className="text-sm font-semibold text-fg">{t("infoPanel.diffViewer")}</div>
-						<div className="text-xs text-fg-3">
+					<div className="min-w-0 flex-1 pr-2">
+						<div className="text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
+						<div className="text-[0.6875rem] leading-tight text-fg-3">
 							{currentRequest.mode === "uncommitted"
 								? t("infoPanel.diffWorkingTreeBase")
 								: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" })}
 						</div>
 					</div>
-					{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
-					{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
-				</div>
-
-				<div className="mt-3 flex flex-wrap items-center gap-2">
 					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
 					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
 					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
+					<div className="ml-auto flex items-center gap-2">
+						{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
+						{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
+					</div>
 				</div>
 
 				{payload && (
-					<div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+					<div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.6875rem]">
 						<span className="px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge">
 							{t("infoPanel.diffSummary", {
 								files: String(payload.summary.files),
@@ -815,14 +816,14 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 			<div className="flex-1 min-h-0 flex overflow-hidden">
 				{!error && !isBusy && payload && payload.files.length > 0 && (
-					<aside className="w-[18rem] shrink-0 border-r border-edge bg-raised/35">
-						<div className="h-full overflow-auto px-3 py-3">
-							<div className="sticky top-0 z-10 bg-raised/95 backdrop-blur pb-3">
-								<div className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-base/80 px-3 py-2">
+					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
+						<div className="h-full overflow-auto px-3 py-2">
+							<div className="sticky top-0 z-10 bg-raised/95 backdrop-blur pb-2">
+								<div className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-base/80 px-3 py-1.5">
 									<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
 										{t("infoPanel.diffFiles")}
 									</span>
-									<span className="text-xs text-fg-3 font-mono">
+									<span className="text-[0.6875rem] text-fg-3 font-mono">
 										{Object.values(readFiles).filter(Boolean).length}/{payload.files.length} {t("infoPanel.diffRead")}
 									</span>
 								</div>
