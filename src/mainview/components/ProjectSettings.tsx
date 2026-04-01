@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
-import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
+import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -15,6 +15,11 @@ const CONFIG_BOOLEAN_DEFAULTS = {
 	peerReviewEnabled: true,
 	sparseCheckoutEnabled: false,
 } as const;
+
+type ProjectConfigValues = Dev3RepoConfig & {
+	githubAuthHost?: string | null;
+	githubAuthLogin?: string | null;
+};
 
 function normalizeReviewPrompt(prompt: string): string {
 	return prompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : prompt.trim();
@@ -450,6 +455,23 @@ function getEffectiveCompareRef(config: Dev3RepoConfig, fallbackBaseBranch: stri
 	return fallbackCompareRef;
 }
 
+function encodeGitHubAccountValue(account: Pick<GitHubAccount, "host" | "login">): string {
+	return `${account.host}\t${account.login}`;
+}
+
+function decodeGitHubAccountValue(value: string): Pick<ProjectConfigValues, "githubAuthHost" | "githubAuthLogin"> {
+	const [host, login] = value.split("\t");
+	return {
+		githubAuthHost: host || null,
+		githubAuthLogin: login || null,
+	};
+}
+
+function formatGitHubAccountLabel(account: GitHubAccount, accounts: GitHubAccount[]): string {
+	const multipleHosts = new Set(accounts.map((item) => item.host)).size > 1;
+	return multipleHosts ? `${account.login} @ ${account.host}` : account.login;
+}
+
 function normalizeLocalConfig(config: Dev3RepoConfig, inherited: Dev3RepoConfig): Dev3RepoConfig {
 	const fallbackBaseBranch = inherited.defaultBaseBranch ?? "main";
 	const defaultCompareRef = getEffectiveCompareRef(config, fallbackBaseBranch);
@@ -825,9 +847,9 @@ interface NavigationGuard {
  * Only includes these fields if they were actually present in the input config —
  * avoids creating phantom `clonePaths: []` entries that shadow project-level values. See #378.
  */
-function sanitizeConfigPaths(config: Dev3RepoConfig): Dev3RepoConfig {
-	const { defaultCompareRefMode: _legacyCompareRefMode, ...rest } = config;
-	const result: Dev3RepoConfig = { ...rest };
+function sanitizeConfigPaths<T extends Dev3RepoConfig>(config: T): T {
+	const { defaultCompareRefMode: _legacyCompareRefMode, ...rest } = config as T & { defaultCompareRefMode?: string };
+	const result = { ...rest } as T;
 	if (rest.clonePaths !== undefined) {
 		result.clonePaths = rest.clonePaths.filter((p) => p.trim() !== "");
 	}
@@ -864,7 +886,7 @@ function ProjectSettings({
 	const [activeTab, setActiveTab] = useState<ConfigTab>(initialTab ?? "global");
 
 	// ---- Project tab state (reads/writes projects.json) ----
-	const projectConfigFromProject = useCallback((p: Project): Dev3RepoConfig => ({
+	const projectConfigFromProject = useCallback((p: Project): ProjectConfigValues => ({
 		setupScript: p.setupScript,
 		setupScriptLaunchMode: p.setupScriptLaunchMode,
 		devScript: p.devScript,
@@ -876,14 +898,16 @@ function ProjectSettings({
 			p.defaultBaseBranch,
 			p.defaultCompareRef ?? `origin/${p.defaultBaseBranch}`,
 		),
+		githubAuthHost: p.githubAuthHost ?? null,
+		githubAuthLogin: p.githubAuthLogin ?? null,
 		autoReviewEnabled: p.autoReviewEnabled,
 		peerReviewEnabled: p.peerReviewEnabled,
 		sparseCheckoutEnabled: p.sparseCheckoutEnabled,
 		sparseCheckoutPaths: p.sparseCheckoutPaths,
 	}), []);
-	const [projectConfig, setProjectConfig] = useState<Dev3RepoConfig>(() => project ? projectConfigFromProject(project) : {});
+	const [projectConfig, setProjectConfig] = useState<ProjectConfigValues>(() => project ? projectConfigFromProject(project) : {});
 	const [savingProject, setSavingProject] = useState(false);
-	const loadedProjectConfig = useRef<Dev3RepoConfig>(project ? projectConfigFromProject(project) : {});
+	const loadedProjectConfig = useRef<ProjectConfigValues>(project ? projectConfigFromProject(project) : {});
 
 	// ---- Worktree tab state ----
 	const [worktreeSubTab, setWorktreeSubTab] = useState<WorktreeSubTab>("repo");
@@ -898,6 +922,7 @@ function ProjectSettings({
 	// ---- Global tab state ----
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
+	const [githubStatus, setGitHubStatus] = useState<GitHubCliStatus | null>(null);
 
 	// ---- Config file presence (for override warning on Project Config tab) ----
 	const [configFileOverride, setConfigFileOverride] = useState<string | null>(null);
@@ -910,6 +935,10 @@ function ProjectSettings({
 			}).catch(() => {});
 		}
 	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	useEffect(() => {
+		api.request.getGitHubCliStatus().then(setGitHubStatus).catch(() => {});
+	}, []);
 
 	// AI Review state (stored as builtinColumnAgents["review-by-ai"])
 	const reviewConfig = project?.builtinColumnAgents?.["review-by-ai"];
@@ -988,6 +1017,12 @@ function ProjectSettings({
 		return true;
 	}, []);
 
+	const projectConfigsEqual = useCallback((a: ProjectConfigValues, b: ProjectConfigValues) => {
+		return configsEqual(a, b)
+			&& (a.githubAuthHost ?? "") === (b.githubAuthHost ?? "")
+			&& (a.githubAuthLogin ?? "") === (b.githubAuthLogin ?? "");
+	}, [configsEqual]);
+
 	const isAiReviewDirty = useCallback(() => {
 		const init = initialAiReviewRef.current;
 		return aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
@@ -995,14 +1030,14 @@ function ProjectSettings({
 
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {
-			return !configsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty();
+			return !projectConfigsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty();
 		}
 		if (activeTab === "worktree") {
 			if (worktreeSubTab === "repo") return !configsEqual(wtRepoConfig, loadedWtRepoConfig.current);
 			return !configsEqual(wtLocalConfig, loadedWtLocalConfig.current);
 		}
 		return false; // Global tab uses immediate save
-	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, configsEqual, isAiReviewDirty]);
+	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, projectConfigsEqual, configsEqual, isAiReviewDirty]);
 
 	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
 
@@ -1191,6 +1226,13 @@ function ProjectSettings({
 
 	const dirty = isDirty();
 	const saving = savingProject || savingWtRepo || savingWtLocal;
+	const githubAccounts = githubStatus?.accounts ?? [];
+	const activeGitHubAccount = githubAccounts.find((account) => account.active) ?? null;
+	const selectedGitHubValue = projectConfig.githubAuthHost && projectConfig.githubAuthLogin
+		? encodeGitHubAccountValue({ host: projectConfig.githubAuthHost, login: projectConfig.githubAuthLogin })
+		: "";
+	const selectedGitHubMissing = !!selectedGitHubValue
+		&& !githubAccounts.some((account) => encodeGitHubAccountValue(account) === selectedGitHubValue);
 
 	function handleDiscardCurrentTab() {
 		if (activeTab === "project") {
@@ -1341,6 +1383,60 @@ function ProjectSettings({
 								projectId={projectId}
 								projectPath={project.path}
 							/>
+
+							<div className="space-y-2">
+								<div>
+									<label className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.githubAccount")}
+									</label>
+									<p className="text-fg-3 text-sm">
+										{t("projectSettings.githubAccountDesc")}
+									</p>
+								</div>
+								<select
+									aria-label={t("projectSettings.githubAccount")}
+									value={selectedGitHubValue}
+									onChange={(event) => {
+										const nextValue = event.target.value;
+										setProjectConfig((current) => ({
+											...current,
+											...(nextValue
+												? decodeGitHubAccountValue(nextValue)
+												: { githubAuthHost: null, githubAuthLogin: null }),
+										}));
+									}}
+									disabled={githubStatus?.authStatus !== "authenticated"}
+									className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+								>
+									<option value="">
+										{activeGitHubAccount
+											? t("projectSettings.githubAccountUseActive", {
+												account: formatGitHubAccountLabel(activeGitHubAccount, githubAccounts),
+											})
+											: t("projectSettings.githubAccountUseActiveUnknown")}
+									</option>
+									{githubAccounts.map((account) => (
+										<option key={encodeGitHubAccountValue(account)} value={encodeGitHubAccountValue(account)}>
+											{formatGitHubAccountLabel(account, githubAccounts)}
+										</option>
+									))}
+								</select>
+								{githubStatus?.authStatus === "not_installed" && (
+									<p className="text-fg-muted text-xs">
+										{t("projectSettings.githubAccountNotInstalled")}
+									</p>
+								)}
+								{githubStatus?.authStatus === "not_authenticated" && (
+									<p className="text-fg-muted text-xs">
+										{t("projectSettings.githubAccountNotAuthenticated")}
+									</p>
+								)}
+								{selectedGitHubMissing && (
+									<p className="text-danger text-xs">
+										{t("projectSettings.githubAccountMissing")}
+									</p>
+								)}
+							</div>
 
 							{/* AI Review Column */}
 							<div className="space-y-4">

@@ -1,15 +1,16 @@
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { PATHS } from "electrobun/bun";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GlobalSettings, Project, RequirementCheckResult } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, Project, ProjectSettingsUpdate, RequirementCheckResult } from "../../shared/types";
 import * as data from "../data";
 import * as agents from "../agents";
+import * as github from "../github";
 import * as updater from "../updater";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
 import { DEV3_HOME } from "../paths";
-import { spawn, spawnSync } from "../spawn";
+import { spawn } from "../spawn";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
 
 export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
@@ -61,9 +62,13 @@ async function saveAppConfig(params: { projectId: string } & Dev3RepoConfig): Pr
 	log.info("← saveAppConfig done");
 }
 
-async function updateProjectSettings(params: { projectId: string } & Dev3RepoConfig): Promise<Project> {
+async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
 	log.info("→ updateProjectSettings", { projectId: params.projectId });
-	const updates = extractConfigFromParams(params);
+	const updates = {
+		...extractConfigFromParams(params),
+		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
+		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
+	};
 	const updated = await data.updateProject(params.projectId, updates);
 	getPushMessage()?.("projectUpdated", { project: updated });
 	log.info("← updateProjectSettings done");
@@ -115,6 +120,17 @@ async function getGlobalSettings(): Promise<GlobalSettings> {
 	const settings = await loadSettings();
 	log.info("← getGlobalSettings", { settings });
 	return settings;
+}
+
+async function getGitHubCliStatus(): Promise<GitHubCliStatus> {
+	log.info("→ getGitHubCliStatus");
+	const status = await github.getGitHubCliStatus();
+	log.info("← getGitHubCliStatus", {
+		authStatus: status.authStatus,
+		accountCount: status.accounts.length,
+		binaryPath: status.binaryPath,
+	});
+	return status;
 }
 
 async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
@@ -235,15 +251,11 @@ async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 
 async function checkGhAvailable(): Promise<{ available: boolean; notInstalled: boolean }> {
 	log.info("-> checkGhAvailable");
-	const whichResult = spawnSync(["which", "gh"]);
-	if (whichResult.exitCode !== 0) {
-		log.info("<- checkGhAvailable: gh not installed");
-		return { available: false, notInstalled: true };
-	}
-	const authResult = spawnSync(["gh", "auth", "status"]);
-	const available = authResult.exitCode === 0;
-	log.info("<- checkGhAvailable", { available });
-	return { available, notInstalled: false };
+	const status = await github.getGitHubCliStatus();
+	const available = status.authStatus === "authenticated";
+	const notInstalled = status.authStatus === "not_installed";
+	log.info("<- checkGhAvailable", { available, notInstalled });
+	return { available, notInstalled };
 }
 
 async function setCustomBinaryPath(params: { requirementId: string; path: string }): Promise<void> {
@@ -320,6 +332,7 @@ export const settingsConfigHandlers = {
 	saveLocalConfig,
 	getRepoConfigSources,
 	getGlobalSettings,
+	getGitHubCliStatus,
 	saveGlobalSettings,
 	installDev3Cli,
 	getAgents,

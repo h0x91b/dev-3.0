@@ -15,6 +15,14 @@ vi.mock("../../rpc", () => ({
 			listBranches: vi.fn().mockResolvedValue([]),
 			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {}, app: {} }),
 			getProjectConfigFiles: vi.fn().mockResolvedValue({ hasRepoConfig: false, hasLocalConfig: false }),
+			getGitHubCliStatus: vi.fn().mockResolvedValue({
+				authStatus: "authenticated",
+				binaryPath: "/opt/homebrew/bin/gh",
+				accounts: [
+					{ login: "h0x91b", host: "github.com", active: true },
+					{ login: "h0x91b-wix", host: "github.com", active: false },
+				],
+			}),
 			updateProjectSettings: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", path: "/tmp/test", defaultBaseBranch: "main", setupScript: "", devScript: "", cleanupScript: "", createdAt: "" }),
 			saveRepoConfig: vi.fn().mockResolvedValue(undefined),
 			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
@@ -179,6 +187,28 @@ describe("ProjectSettings", () => {
 					expect.objectContaining({
 						projectId: "proj-1",
 						setupScriptLaunchMode: "blocking",
+					}),
+				);
+			});
+		});
+
+		it("renders gh accounts and saves the selected project account", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			const user = userEvent.setup();
+
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			await user.selectOptions(screen.getByRole("combobox", { name: "GitHub Account" }), "github.com\th0x91b-wix");
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({
+						projectId: "proj-1",
+						githubAuthHost: "github.com",
+						githubAuthLogin: "h0x91b-wix",
 					}),
 				);
 			});

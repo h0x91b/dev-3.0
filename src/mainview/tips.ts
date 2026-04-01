@@ -95,6 +95,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0408}", // nf-md-source_pull
 	},
 	{
+		id: "project-github-account",
+		titleKey: "tip.projectGitHubAccount.title",
+		bodyKey: "tip.projectGitHubAccount.body",
+		icon: "\u{F0370}", // nf-md-github
+	},
+	{
 		id: "pr-badge-on-card",
 		titleKey: "tip.prBadgeOnCard.title",
 		bodyKey: "tip.prBadgeOnCard.body",

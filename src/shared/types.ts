@@ -429,6 +429,19 @@ export const LABEL_COLORS = [
 
 export type CompareRefMode = "remote" | "local";
 export type SetupScriptLaunchMode = "parallel" | "blocking";
+export type GitHubCliAuthStatus = "authenticated" | "not_authenticated" | "not_installed";
+
+export interface GitHubAccount {
+	login: string;
+	host: string;
+	active: boolean;
+}
+
+export interface GitHubCliStatus {
+	authStatus: GitHubCliAuthStatus;
+	binaryPath: string | null;
+	accounts: GitHubAccount[];
+}
 
 /** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
 export interface Dev3RepoConfig {
@@ -474,6 +487,11 @@ export interface ConfigSourceEntry {
 	source: ConfigSource;
 }
 
+export interface ProjectSettingsUpdate extends Dev3RepoConfig {
+	githubAuthHost?: string | null;
+	githubAuthLogin?: string | null;
+}
+
 export interface Project {
 	id: string;
 	name: string;
@@ -485,6 +503,9 @@ export interface Project {
 	defaultBaseBranch: string;
 	defaultCompareRef?: string;
 	defaultCompareRefMode?: CompareRefMode;
+	// Optional project-scoped gh account selection. Empty = use the current active gh account.
+	githubAuthHost?: string | null;
+	githubAuthLogin?: string | null;
 	clonePaths?: string[];
 	createdAt: string;
 	deleted?: boolean;
@@ -789,7 +810,7 @@ export type AppRPCSchema = {
 			};
 			/** Update project settings in projects.json (scripts, clone paths, AI Review, etc.). */
 			updateProjectSettings: {
-				params: { projectId: string } & Dev3RepoConfig;
+				params: { projectId: string } & ProjectSettingsUpdate;
 				response: Project;
 			};
 			/** Save to .dev3/config.json. When autoCommit is true, commits the change in the worktree. */
@@ -810,6 +831,10 @@ export type AppRPCSchema = {
 			getGlobalSettings: {
 				params: void;
 				response: GlobalSettings;
+			};
+			getGitHubCliStatus: {
+				params: void;
+				response: GitHubCliStatus;
 			};
 			saveGlobalSettings: {
 				params: GlobalSettings;
