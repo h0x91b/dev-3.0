@@ -1,1 +1,1 @@
-Centered the PR badge text in task card footers by giving the badge a fixed height and zero-leading text. Added a regression test so the PR number stays aligned with the rest of the footer controls.
+Moved the PR badge off the crowded footer row and into the lower action row of active task cards, with centered badge text and spacing. Added regression coverage so active cards keep the PR badge in the lower row instead of squeezing it into the footer.

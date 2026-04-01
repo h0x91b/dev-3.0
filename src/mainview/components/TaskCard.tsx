@@ -386,6 +386,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
+	const prBadge = prInfo ? (
+		<button
+			onClick={(e) => {
+				e.stopPropagation();
+				window.open(prInfo.url, "_blank");
+			}}
+			className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-green-400 transition-colors hover:bg-green-500/20"
+			title={t("task.openPR", { number: String(prInfo.number) })}
+		>
+			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+			<span className="leading-none">#{prInfo.number}</span>
+		</button>
+	) : null;
 
 	function handleShowDescription(e: React.MouseEvent) {
 		e.stopPropagation();
@@ -659,20 +672,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					);
 				})()}
 
-				{/* PR badge */}
-				{prInfo && (
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							window.open(prInfo.url, "_blank");
-						}}
-						className="inline-flex h-5 max-w-full flex-shrink-0 self-center items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-green-400 transition-colors hover:bg-green-500/20"
-						title={t("task.openPR", { number: String(prInfo.number) })}
-					>
-						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-						<span className="leading-none">#{prInfo.number}</span>
-					</button>
-				)}
+				{/* PR badge for non-active cards */}
+				{!isActive && prBadge}
 
 				{/* Sibling variant dots */}
 				{hasSiblings && (
@@ -762,8 +763,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 			{/* Action row for active tasks — Open in... | Watch | + Variant */}
 			{isActive && (
-				<div className="mt-1 flex items-center justify-between">
-					<div className="flex items-center gap-1">
+				<div data-testid="task-card-action-row" className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+					<div className="flex min-w-0 items-center gap-1">
 						{task.worktreePath && (
 							<button
 								onClick={(e) => {
@@ -806,13 +807,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
 						</button>
 					</div>
+					<div className="flex min-w-0 justify-center">
+						{prBadge}
+					</div>
 					<button
 						onClick={(e) => {
 							e.stopPropagation();
 							preview.close();
 							onAddAttempts(task);
 						}}
-						className="flex flex-shrink-0 items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
+						className="flex flex-shrink-0 justify-self-end items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
 						title={t("task.addVariant")}
 						disabled={isDisabled}
 					>
