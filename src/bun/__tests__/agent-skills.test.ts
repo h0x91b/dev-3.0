@@ -7,23 +7,26 @@ import {
 } from "../agent-skills";
 
 describe("dev3 skill content", () => {
-	it("encourages active label usage without label spam", () => {
-		expect(getCodexSkillContent()).toContain(
+	it("folds label guidance into the session-start title pass", () => {
+		const codexSkill = getCodexSkillContent();
+		expect(codexSkill).toContain(
 			"Aim for **1-2 meaningful labels per task** in the normal case",
 		);
-		expect(getCodexSkillContent()).toContain("dev3 label list");
-		expect(getCodexSkillContent()).toContain('dev3 label create "name"');
-		expect(getCodexSkillContent()).toContain("dev3 label set <id> [<id>...]");
-		expect(getCodexSkillContent()).toContain(
-			"Do not create more than one new label for a task unless there is a strong project-specific reason.",
+		expect(codexSkill).toContain("In the same session-start pass, also assign task labels:");
+		expect(codexSkill).toContain("dev3 label list");
+		expect(codexSkill).toContain('dev3 label create "name"');
+		expect(codexSkill).toContain("dev3 label set <id> [<id>...]");
+		expect(codexSkill).not.toContain("## Task labels");
+		expect(codexSkill.indexOf("## Title generation")).toBeLessThan(
+			codexSkill.indexOf("dev3 label list"),
 		);
 	});
 
-	it("keeps label guidance consistent across agent variants", () => {
-		expect(getClaudeSkillContent()).toContain("## Task labels");
-		expect(getGenericSkillContent()).toContain("## Task labels");
-		expect(getClaudeSkillContent()).toContain("Reuse existing labels whenever possible.");
-		expect(getGenericSkillContent()).toContain("Reuse existing labels whenever possible.");
+	it("keeps embedded label guidance consistent across agent variants", () => {
+		expect(getClaudeSkillContent()).toContain("In the same session-start pass, also assign task labels:");
+		expect(getGenericSkillContent()).toContain("In the same session-start pass, also assign task labels:");
+		expect(getClaudeSkillContent()).toContain("reuse existing labels whenever possible.");
+		expect(getGenericSkillContent()).toContain("reuse existing labels whenever possible.");
 	});
 });
 

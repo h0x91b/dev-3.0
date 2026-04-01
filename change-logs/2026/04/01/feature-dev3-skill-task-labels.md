@@ -1,1 +1,1 @@
-Expanded the generated dev3 skill so agents proactively assign 1-2 meaningful task labels, reuse existing labels first, and create a new label only when there is no good fit. Added tests to keep the label guidance consistent across Claude, Codex, and generic skill variants.
+Expanded the generated dev3 skill so agents assign 1-2 meaningful task labels during the same session-start metadata pass as branch renaming and task title cleanup. Added tests to keep the embedded label guidance consistent across Claude, Codex, and generic skill variants.
