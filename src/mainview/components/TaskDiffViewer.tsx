@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import type { Project, Task, TaskDiffFile, TaskDiffResponse } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
@@ -47,6 +48,7 @@ interface TaskDiffViewerProps {
 interface TaskDiffFileSectionProps {
 	file: TaskDiffFile;
 	diffLib: DiffLibrary;
+	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
 	eager: boolean;
 	expanded: boolean;
@@ -238,6 +240,7 @@ function buildDiffTree(files: TaskDiffFile[]): DiffTreeNode[] {
 function TaskDiffFileSection({
 	file,
 	diffLib,
+	resolvedTheme,
 	viewMode,
 	eager,
 	expanded,
@@ -323,9 +326,11 @@ function TaskDiffFileSection({
 					nextDiffFile = file.hunks
 						? new diffLib.DiffFile(oldPath, file.oldContent, newPath, file.newContent, file.hunks, undefined, undefined, file.id)
 						: diffLib.generateDiffFile(oldPath, file.oldContent, newPath, file.newContent);
-					nextDiffFile.initTheme("dark");
+					nextDiffFile.initTheme(resolvedTheme);
 					nextDiffFile.initRaw();
 					diffInstanceRef.current = nextDiffFile;
+				} else {
+					nextDiffFile.initTheme(resolvedTheme);
 				}
 				if (!builtModesRef.current.has(viewMode)) {
 					if (viewMode === "split") {
@@ -351,7 +356,7 @@ function TaskDiffFileSection({
 			cancelled = true;
 			window.clearTimeout(timer);
 		};
-	}, [activated, diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath, viewMode]);
+	}, [activated, diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath, resolvedTheme, viewMode]);
 
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
@@ -412,7 +417,7 @@ function TaskDiffFileSection({
 					<div className="overflow-x-auto">
 						<DiffView
 							diffFile={diffFile}
-							diffViewTheme="dark"
+							diffViewTheme={resolvedTheme}
 							diffViewMode={diffMode}
 							diffViewWrap={false}
 							diffViewHighlight={false}
@@ -432,6 +437,7 @@ function TaskDiffFileSection({
 
 function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps) {
 	const t = useT();
+	const resolvedTheme = useResolvedTheme();
 	const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
@@ -660,7 +666,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-fg-2 hover:bg-elevated-hover transition-colors"
 						style={{ paddingLeft: `${depth * 0.85 + 0.5}rem` }}
 					>
-						<span className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-[0.95rem] leading-none text-fg-2">
+						<span className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center text-[0.95rem] leading-none text-fg-muted">
 							{collapsed ? "\u25B8" : "\u25BE"}
 						</span>
 						<span className="text-[0.95rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
@@ -866,6 +872,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								key={file.id}
 								file={file}
 								diffLib={diffLib}
+								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}
 								eager={index < EAGER_FILE_COUNT}
 								expanded={expandedFiles[file.id] ?? true}

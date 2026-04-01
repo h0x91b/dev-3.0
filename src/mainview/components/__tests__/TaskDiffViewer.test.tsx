@@ -13,7 +13,9 @@ vi.mock("../../rpc", () => ({
 }));
 
 vi.mock("@git-diff-view/react", () => ({
-	DiffView: ({ diffViewMode }: { diffViewMode: number }) => <div data-testid="mock-diff">mode:{diffViewMode}</div>,
+	DiffView: ({ diffViewMode, diffViewTheme }: { diffViewMode: number; diffViewTheme: "dark" | "light" }) => (
+		<div data-testid="mock-diff">mode:{diffViewMode} theme:{diffViewTheme}</div>
+	),
 	DiffModeEnum: {
 		Split: 3,
 		Unified: 4,
@@ -124,6 +126,7 @@ describe("TaskDiffViewer", () => {
 			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
 		}));
 		localStorage.clear();
+		document.documentElement.dataset.theme = "dark";
 		scrollIntoViewMock = vi.fn();
 		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 			configurable: true,
@@ -149,7 +152,7 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
-		expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3");
+		expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3 theme:dark");
 		expect(screen.getByRole("button", { name: /collapse src\/app\.ts/i }).closest("div")).toHaveClass("sticky");
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
@@ -278,5 +281,24 @@ describe("TaskDiffViewer", () => {
 
 		expect(screen.queryByRole("button", { name: /open diff file src\/utils\/format\.ts/i })).not.toBeInTheDocument();
 		expect(screen.getByRole("button", { name: /^expand folder src$/i })).toBeInTheDocument();
+	});
+
+	it("follows the app light theme", async () => {
+		document.documentElement.dataset.theme = "light";
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("theme:light");
+		});
 	});
 });
