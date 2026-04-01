@@ -79,6 +79,24 @@ describe("TmuxSessionManager", () => {
 		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
 	});
 
+	it("does not refetch immediately when opening the popover after a fresh load", async () => {
+		mockedApi.request.listTmuxSessions.mockResolvedValue([projectTerminalSession]);
+		const user = userEvent.setup();
+		renderManager();
+
+		await waitFor(() => {
+			expect(screen.getByText("1")).toBeInTheDocument();
+		});
+		expect(mockedApi.request.listTmuxSessions).toHaveBeenCalledTimes(1);
+
+		await user.click(screen.getByTitle("tmux Sessions"));
+
+		await waitFor(() => {
+			expect(screen.getByText("Project Terminal")).toBeInTheDocument();
+		});
+		expect(mockedApi.request.listTmuxSessions).toHaveBeenCalledTimes(1);
+	});
+
 	it("navigates to project-terminal when clicking a project terminal session", async () => {
 		mockedApi.request.listTmuxSessions.mockResolvedValue([projectTerminalSession]);
 		const navigate = vi.fn();

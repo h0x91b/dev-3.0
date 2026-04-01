@@ -10,6 +10,8 @@ interface TmuxSessionManagerProps {
 	navigate: (route: Route) => void;
 }
 
+const SESSION_REFRESH_FRESH_MS = 5000;
+
 function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	const t = useT();
 
@@ -22,14 +24,42 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const popoverRef = useRef<HTMLDivElement>(null);
+	const lastLoadedAtRef = useRef(0);
+	const inFlightFetchRef = useRef<Promise<TmuxSessionInfo[]> | null>(null);
+	const sessionsRef = useRef<TmuxSessionInfo[]>([]);
 
-	const fetchSessions = useCallback(async () => {
-		try {
-			const result = await api.request.listTmuxSessions();
-			setSessions(result);
-		} catch {
-			/* silently ignore */
+	useEffect(() => {
+		sessionsRef.current = sessions;
+	}, [sessions]);
+
+	const fetchSessions = useCallback(async (options?: { force?: boolean }) => {
+		const force = options?.force ?? false;
+		const listTmuxSessions = api.request.listTmuxSessions;
+		if (typeof listTmuxSessions !== "function") {
+			return sessionsRef.current;
 		}
+
+		if (!force && Date.now() - lastLoadedAtRef.current < SESSION_REFRESH_FRESH_MS) {
+			return inFlightFetchRef.current ?? sessionsRef.current;
+		}
+
+		if (inFlightFetchRef.current) {
+			return inFlightFetchRef.current;
+		}
+
+		const request = listTmuxSessions()
+			.then((result) => {
+				setSessions(result);
+				lastLoadedAtRef.current = Date.now();
+				return result;
+			})
+			.catch(() => sessionsRef.current)
+			.finally(() => {
+				inFlightFetchRef.current = null;
+			});
+
+		inFlightFetchRef.current = request;
+		return request;
 	}, []);
 
 	// Poll every 30 seconds — use setTimeout chain (not setInterval) to
@@ -50,13 +80,13 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	// Refresh on popover open
 	useEffect(() => {
-		if (popoverOpen) fetchSessions();
+		if (popoverOpen) void fetchSessions();
 	}, [popoverOpen, fetchSessions]);
 
 	// Refresh when any task is updated (e.g. title renamed)
 	useEffect(() => {
 		function onTaskUpdated() {
-			fetchSessions();
+			void fetchSessions({ force: true });
 		}
 		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
@@ -64,7 +94,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	async function handleRefresh() {
 		setRefreshing(true);
-		await fetchSessions();
+		await fetchSessions({ force: true });
 		setRefreshing(false);
 	}
 

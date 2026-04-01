@@ -3195,6 +3195,42 @@ describe("handlers.stopDevServer", () => {
 describe("handlers.listTmuxSessions", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+	it("does not load projects or tasks when tmux server is unavailable", async () => {
+		mockSpawn.mockReturnValue({
+			stdout: "",
+			stderr: new Response("failed to connect to server"),
+			exited: Promise.resolve(1),
+		});
+
+		const result = await handlers.listTmuxSessions();
+
+		expect(result).toEqual([]);
+		expect(data.loadProjects).not.toHaveBeenCalled();
+		expect(data.loadTasks).not.toHaveBeenCalled();
+	});
+
+	it("skips task loading when only project terminal sessions exist", async () => {
+		const project = makeProject({ id: "a1c9fe4e-full-uuid", name: "dev-3.0" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		mockSpawn.mockReturnValue({
+			stdout: "dev3-pt-a1c9fe4e|/tmp/project|1|1700000001",
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		const result = await handlers.listTmuxSessions();
+
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({
+			name: "dev3-pt-a1c9fe4e",
+			projectId: "a1c9fe4e-full-uuid",
+			projectName: "dev-3.0",
+			isProjectTerminal: true,
+		});
+		expect(data.loadProjects).toHaveBeenCalledOnce();
+		expect(data.loadTasks).not.toHaveBeenCalled();
+	});
+
 	it("filters out dev3-dev-* sessions", async () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([]);
 		// stdout must be a plain string — new Response(Response) does not propagate the body
