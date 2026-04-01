@@ -153,22 +153,6 @@ function getReviewFilePath(file: TaskDiffFile): string {
 	return file.newPath ?? file.oldPath ?? file.displayPath;
 }
 
-function escapeXmlAttribute(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll("\"", "&quot;")
-		.replaceAll("'", "&apos;");
-}
-
-function escapeXmlText(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;");
-}
-
 function getReviewCommentPreview(value: string, maxLength = 100): string {
 	const normalized = value.trim().replace(/\s+/g, " ");
 	if (normalized.length <= maxLength) {
@@ -364,19 +348,21 @@ function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
 			? String(entry.startLine)
 			: `"${entry.startLine}-${entry.endLine}"`;
 		lines.push("<review>");
-		lines.push(`<file src="${escapeXmlAttribute(entry.filePath)}" line=${lineAttr}>`);
+		lines.push(`<file src="${entry.filePath}" line=${lineAttr}>`);
 		if (entry.snippet.before) {
-			lines.push(`-${escapeXmlText(entry.snippet.before)}`);
+			lines.push(`-${entry.snippet.before}`);
 		}
 		if (entry.snippet.after) {
-			lines.push(`+${escapeXmlText(entry.snippet.after)}`);
+			lines.push(`+${entry.snippet.after}`);
 		}
 		lines.push("</file>");
-		lines.push(`<comment>${escapeXmlText(entry.comment)}</comment>`);
+		lines.push(`<comment>${entry.comment}</comment>`);
 		lines.push("</review>");
 	}
 
 	lines.push("</reviews>");
+	lines.push("---");
+	lines.push("Above my comments about code changes, read them carefully and process all of them.");
 	return lines.join("\n");
 }
 

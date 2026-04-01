@@ -817,6 +817,22 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: "Comment 1" }));
 		expect(scrollIntoViewMock).toHaveBeenCalled();
 
+		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		expect(writeText).toHaveBeenLastCalledWith([
+			"<reviews>",
+			"<review>",
+			"<file src=\"src/app.ts\" line=1>",
+			"-const a = \"one\";",
+			"+const a = \"two\";",
+			"</file>",
+			`<comment>${longComment}</comment>`,
+			"</review>",
+			"</reviews>",
+			"---",
+			"Above my comments about code changes, read them carefully and process all of them.",
+		].join("\n"));
+		expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+
 		const inlineThread = screen.getByTestId("inline-comment-thread");
 		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
 		const sidebarEditor = screen.getByDisplayValue(longComment);
@@ -838,8 +854,9 @@ describe("TaskDiffViewer", () => {
 			"<comment>Rename this callback.</comment>",
 			"</review>",
 			"</reviews>",
+			"---",
+			"Above my comments about code changes, read them carefully and process all of them.",
 		].join("\n"));
-		expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
 
 		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Delete comment" }));
 		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
