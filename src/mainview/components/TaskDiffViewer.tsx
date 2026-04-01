@@ -1307,7 +1307,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 	function scrollToFile(
 		fileId: string,
-		options?: { expand?: boolean; behavior?: ScrollBehavior; retries?: number },
+		options?: { expand?: boolean; behavior?: ScrollBehavior; retries?: number; onSettled?: () => void },
 	) {
 		cancelPendingScroll();
 		if (options?.expand) {
@@ -1319,33 +1319,41 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		setActiveFileId(fileId);
 		const behavior = options?.behavior ?? "smooth";
 		const retries = options?.retries ?? 3;
+		const onSettled = options?.onSettled;
 		pendingScrollFrameRef.current = window.requestAnimationFrame(() => {
-			alignFileScroll(fileId, behavior, retries);
+			alignFileScroll(fileId, behavior, retries, onSettled);
 		});
 	}
 
 	function scrollToComment(commentId: string, fileId: string) {
 		cancelPendingCommentScroll();
-		scrollToFile(fileId, { expand: true, behavior: "smooth", retries: 4 });
-		let attemptsLeft = 10;
-		const tryScroll = () => {
-			const element = commentRefs.current[commentId];
-			if (element) {
-				element.scrollIntoView({
-					behavior: "smooth",
-					block: "start",
-				});
-				pendingCommentScrollFrameRef.current = null;
-				return;
-			}
-			attemptsLeft -= 1;
-			if (attemptsLeft <= 0) {
-				pendingCommentScrollFrameRef.current = null;
-				return;
-			}
+		const startCommentScroll = () => {
+			let attemptsLeft = 10;
+			const tryScroll = () => {
+				const element = commentRefs.current[commentId];
+				if (element) {
+					element.scrollIntoView({
+						behavior: "smooth",
+						block: "start",
+					});
+					pendingCommentScrollFrameRef.current = null;
+					return;
+				}
+				attemptsLeft -= 1;
+				if (attemptsLeft <= 0) {
+					pendingCommentScrollFrameRef.current = null;
+					return;
+				}
+				pendingCommentScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
+			};
 			pendingCommentScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
 		};
-		pendingCommentScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
+		scrollToFile(fileId, {
+			expand: true,
+			behavior: "smooth",
+			retries: 4,
+			onSettled: startCommentScroll,
+		});
 	}
 
 	function startEditingComment(commentId: string, body: string) {

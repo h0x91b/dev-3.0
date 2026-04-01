@@ -40,6 +40,7 @@ vi.mock("@git-diff-view/react", async () => {
 			};
 		}) => {
 			const [widget, setWidget] = React.useState<{ lineNumber: number; side: number } | null>(null);
+			const [nextWidgetLineNumber, setNextWidgetLineNumber] = React.useState(1);
 			const threadEntries = [
 				...Object.entries(extendData?.oldFile ?? {}).map(([lineNumber, entry]) => ({
 					key: `old-${lineNumber}`,
@@ -62,7 +63,10 @@ vi.mock("@git-diff-view/react", async () => {
 						<button
 							type="button"
 							aria-label="Open inline comment composer"
-							onClick={() => setWidget({ lineNumber: 1, side: SplitSide.new })}
+							onClick={() => {
+								setWidget({ lineNumber: nextWidgetLineNumber, side: SplitSide.new });
+								setNextWidgetLineNumber((current) => current + 1);
+							}}
 						>
 							+
 						</button>
@@ -816,7 +820,9 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toHaveClass("w-full");
 
 		await user.click(screen.getByRole("button", { name: "Comment 1" }));
-		expect(scrollIntoViewMock).toHaveBeenCalled();
+		await waitFor(() => {
+			expect(scrollIntoViewMock).toHaveBeenCalled();
+		});
 
 		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
 		expect(writeText).toHaveBeenLastCalledWith([
@@ -894,5 +900,131 @@ describe("TaskDiffViewer", () => {
 		expect(editor.value).toBe("abcXYdef");
 		expect(editor.selectionStart).toBe(5);
 		expect(editor.selectionEnd).toBe(5);
+	});
+
+	it("finishes review card jump on the target comment instead of snapping back to file alignment", async () => {
+		const user = userEvent.setup();
+		const rafQueue: FrameRequestCallback[] = [];
+		const originalRequestAnimationFrame = window.requestAnimationFrame;
+		const originalCancelAnimationFrame = window.cancelAnimationFrame;
+
+		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+			rafQueue.push(callback);
+			return rafQueue.length;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "first");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "second");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		let scrollTop = 0;
+		Object.defineProperty(scrollRegion, "scrollTop", {
+			configurable: true,
+			get: () => scrollTop,
+			set: (value: number) => {
+				scrollTop = value;
+			},
+		});
+
+		const scrollEvents: string[] = [];
+		Object.defineProperty(scrollRegion, "scrollTo", {
+			configurable: true,
+			value: vi.fn(({ top }: ScrollToOptions) => {
+				scrollEvents.push(`file:${String(top)}`);
+				scrollTop = typeof top === "number" ? top : scrollTop;
+			}),
+		});
+
+		Object.defineProperty(scrollRegion, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 120,
+				bottom: 720,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 600,
+				x: 0,
+				y: 120,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		Object.defineProperty(toolbar, "getBoundingClientRect", {
+			configurable: true,
+			value: () => ({
+				top: 0,
+				bottom: 64,
+				left: 0,
+				right: 900,
+				width: 900,
+				height: 64,
+				x: 0,
+				y: 0,
+				toJSON: () => ({}),
+			}),
+		});
+
+		const targetSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLDivElement | null;
+		expect(targetSection).not.toBeNull();
+		let targetRectCall = 0;
+		Object.defineProperty(targetSection as HTMLDivElement, "getBoundingClientRect", {
+			configurable: true,
+			value: () => {
+				targetRectCall += 1;
+				const top = targetRectCall === 1 ? 520 : targetRectCall === 2 ? 260 : 192;
+				return {
+					top,
+					bottom: top + 220,
+					left: 0,
+					right: 900,
+					width: 900,
+					height: 220,
+					x: 0,
+					y: top,
+					toJSON: () => ({}),
+				};
+			},
+		});
+
+		const secondComment = document.querySelector('[data-inline-comment-id*=":newFile:2:"]') as HTMLDivElement | null;
+		expect(secondComment).not.toBeNull();
+		Object.defineProperty(secondComment as HTMLDivElement, "scrollIntoView", {
+			configurable: true,
+			value: vi.fn(() => {
+				scrollEvents.push("comment:2");
+			}),
+		});
+
+		await user.click(screen.getByRole("button", { name: "Comment 2" }));
+
+		while (rafQueue.length > 0) {
+			const callback = rafQueue.shift();
+			callback?.(performance.now());
+		}
+
+		expect(scrollEvents[scrollEvents.length - 1]).toBe("comment:2");
+
+		window.requestAnimationFrame = originalRequestAnimationFrame;
+		window.cancelAnimationFrame = originalCancelAnimationFrame;
 	});
 });
