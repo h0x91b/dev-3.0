@@ -767,24 +767,7 @@ async function getPortAllocations(params: { taskId: string }): Promise<number[]>
 }
 
 async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
-	log.info("→ listTmuxSessions");
-
-	const taskMap = new Map<string, { title: string; taskId: string; projectId: string }>();
-	const projectMap = new Map<string, { name: string; projectId: string }>();
-	try {
-		const projects = await data.loadProjects();
-		for (const project of projects) {
-			projectMap.set(project.id.slice(0, 8), { name: project.name, projectId: project.id });
-			const tasks = await data.loadTasks(project);
-			for (const task of tasks) {
-				taskMap.set(task.id.slice(0, 8), {
-					title: getTaskTitle(task),
-					taskId: task.id,
-					projectId: project.id,
-				});
-			}
-		}
-	} catch {}
+	log.debug("→ listTmuxSessions");
 
 	const format = "#{session_name}|#{pane_current_path}|#{session_windows}|#{session_created}";
 	const proc = spawn(pty.tmuxArgs("dev3", "list-sessions", "-F", format), { stdout: "pipe", stderr: "pipe" });
@@ -792,11 +775,22 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 	const exitCode = await proc.exited;
 
 	if (exitCode !== 0) {
-		log.info("← listTmuxSessions (no tmux server or error)");
+		log.debug("← listTmuxSessions (no tmux server or error)", { exitCode });
 		return [];
 	}
 
-	const sessions: TmuxSessionInfo[] = [];
+	const taskShortIds = new Set<string>();
+	const projectShortIds = new Set<string>();
+	const rawSessions: Array<{
+		name: string;
+		cwd: string;
+		createdAt: number;
+		windowCount: number;
+		isCleanup: boolean;
+		isProjectTerminal: boolean;
+		shortId: string;
+	}> = [];
+
 	for (const line of output.trim().split("\n")) {
 		if (!line) continue;
 		const [name, cwd, windowsStr, createdStr] = line.split("|");
@@ -805,15 +799,74 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 
 		const isCleanup = name.startsWith("dev3-cl-");
 		const isProjectTerminal = name.startsWith("dev3-pt-");
+		const shortId = isProjectTerminal ? name.slice(8) : isCleanup ? name.slice(8) : name.slice(5);
+		if (!shortId) continue;
+
+		rawSessions.push({
+			name,
+			cwd: cwd || "",
+			createdAt: parseInt(createdStr, 10) || 0,
+			windowCount: parseInt(windowsStr, 10) || 1,
+			isCleanup,
+			isProjectTerminal,
+			shortId,
+		});
 
 		if (isProjectTerminal) {
-			const shortProjectId = name.slice(8);
-			const projectInfo = projectMap.get(shortProjectId);
+			projectShortIds.add(shortId);
+		} else {
+			taskShortIds.add(shortId);
+		}
+	}
+
+	if (rawSessions.length === 0) {
+		log.debug("← listTmuxSessions", { count: 0 });
+		return [];
+	}
+
+	const taskMap = new Map<string, { title: string; taskId: string; projectId: string }>();
+	const projectMap = new Map<string, { name: string; projectId: string }>();
+	try {
+		const projects = await data.loadProjects();
+		const pendingTaskIds = new Set(taskShortIds);
+
+		for (const project of projects) {
+			const shortProjectId = project.id.slice(0, 8);
+			if (projectShortIds.has(shortProjectId)) {
+				projectMap.set(shortProjectId, { name: project.name, projectId: project.id });
+			}
+
+			if (pendingTaskIds.size === 0) {
+				if (projectMap.size === projectShortIds.size) break;
+				continue;
+			}
+
+			const tasks = await data.loadTasks(project);
+			for (const task of tasks) {
+				const shortTaskId = task.id.slice(0, 8);
+				if (!pendingTaskIds.has(shortTaskId)) continue;
+				taskMap.set(shortTaskId, {
+					title: getTaskTitle(task),
+					taskId: task.id,
+					projectId: project.id,
+				});
+				pendingTaskIds.delete(shortTaskId);
+			}
+
+			if (pendingTaskIds.size === 0 && projectMap.size === projectShortIds.size) break;
+		}
+	} catch {}
+
+	const sessions: TmuxSessionInfo[] = [];
+	for (const rawSession of rawSessions) {
+		const { name, cwd, windowCount, createdAt, isCleanup, isProjectTerminal, shortId } = rawSession;
+		if (isProjectTerminal) {
+			const projectInfo = projectMap.get(shortId);
 			sessions.push({
 				name,
-				cwd: cwd || "",
-				createdAt: parseInt(createdStr, 10) || 0,
-				windowCount: parseInt(windowsStr, 10) || 1,
+				cwd,
+				createdAt,
+				windowCount,
 				isCleanup: false,
 				isProjectTerminal: true,
 				projectName: projectInfo?.name,
@@ -822,14 +875,13 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 			continue;
 		}
 
-		const shortId = isCleanup ? name.slice(8) : name.slice(5);
 		const taskInfo = taskMap.get(shortId);
 
 		sessions.push({
 			name,
-			cwd: cwd || "",
-			createdAt: parseInt(createdStr, 10) || 0,
-			windowCount: parseInt(windowsStr, 10) || 1,
+			cwd,
+			createdAt,
+			windowCount,
 			isCleanup,
 			taskTitle: taskInfo?.title,
 			taskId: taskInfo?.taskId,
@@ -840,7 +892,7 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 	}
 
 	sessions.sort((a, b) => b.createdAt - a.createdAt);
-	log.info("← listTmuxSessions", { count: sessions.length });
+	log.debug("← listTmuxSessions", { count: sessions.length });
 	return sessions;
 }
 

@@ -1,0 +1,1 @@
+Reduced `listTmuxSessions` overhead by listing tmux sessions before loading project/task metadata, skipping task loads for project-terminal-only results, and downgrading routine session logs to debug. The tmux session popover also avoids an immediate redundant refetch after a fresh load, with tests covering both backend and UI behavior.
