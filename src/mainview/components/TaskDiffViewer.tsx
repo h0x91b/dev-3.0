@@ -674,7 +674,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				)}
 			</div>
 
-			<div className="flex-1 min-h-0 overflow-auto px-4 py-4">
+			<div className="flex-1 min-h-0 overflow-auto px-4 pt-1 pb-4">
 				{error && renderState(t("infoPanel.diffLoadFailed"), error)}
 
 				{!error && isBusy && showLoadingState && (
