@@ -225,7 +225,10 @@ function TaskDiffFileSection({
 					{statusLabel(file.status)}
 				</span>
 				<span className="font-mono text-sm text-fg break-all flex-1 min-w-0">{file.displayPath}</span>
-				<span className="text-xs text-fg-3 whitespace-nowrap">
+				<span
+					aria-hidden="true"
+					className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-[0.95rem] leading-none text-fg-2"
+				>
 					{expanded ? "\u25BE" : "\u25B8"}
 				</span>
 			</button>
