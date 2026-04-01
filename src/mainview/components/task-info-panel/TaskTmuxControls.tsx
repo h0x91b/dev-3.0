@@ -120,6 +120,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	};
 
 	const tmuxBtnClass = "px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
+	const tmuxIconBtnClass = "px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
 	const svgProps = {
 		className: tmuxSvgClass,
@@ -204,7 +205,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 				</button>
 				<button
 					ref={hintsTriggerRef}
-					className="w-5 h-5 rounded-full text-fg-muted hover:text-fg-2 hover:bg-elevated flex items-center justify-center transition-colors flex-shrink-0"
+					className={tmuxIconBtnClass}
 					onClick={(event) => {
 						event.stopPropagation();
 						setHintsOpen((open) => !open);
@@ -213,12 +214,12 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					onMouseLeave={hideHints}
 					title={t("tmux.title")}
 				>
-					<svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+					<svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
 						<path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5a5.5 5.5 0 110-11 5.5 5.5 0 010 11zM7.25 5a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM7.25 7.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z" />
 					</svg>
 				</button>
 				<button
-					className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25 ml-2`}
+					className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25`}
 					onClick={handleTmuxAction("killPane")}
 					title={t("tmux.closePaneDesc")}
 				>
