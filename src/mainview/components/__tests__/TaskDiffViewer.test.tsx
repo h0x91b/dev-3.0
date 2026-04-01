@@ -8,6 +8,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			getTaskDiff: vi.fn(),
+			getGlobalSettings: vi.fn(),
 		},
 	},
 }));
@@ -125,6 +126,12 @@ describe("TaskDiffViewer", () => {
 			compareRef: mode === "uncommitted" ? null : "origin/main",
 			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
 		}));
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		});
 		localStorage.clear();
 		document.documentElement.dataset.theme = "dark";
 		scrollIntoViewMock = vi.fn();
@@ -171,6 +178,31 @@ describe("TaskDiffViewer", () => {
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
 		expect(await screen.findAllByTestId("mock-diff")).toHaveLength(2);
+	});
+
+	it("uses unified as the initial layout when configured in global settings", async () => {
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			defaultDiffViewMode: "unified",
+		});
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
+		});
 	});
 
 	it("switches diff source modes inside the viewer", async () => {

@@ -19,6 +19,7 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[];
 	terminalKeymap?: "default" | "iterm2";
 	taskOpenMode?: "split" | "fullscreen";
+	defaultDiffViewMode?: "split" | "unified";
 	preventSleepWhileRunning?: boolean;
 }
 
@@ -48,6 +49,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+			defaultDiffViewMode: data.defaultDiffViewMode === "unified" ? "unified" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 		};
 	} catch (err) {
@@ -80,6 +82,7 @@ export function loadSettingsSync(): GlobalSettings {
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+			defaultDiffViewMode: data.defaultDiffViewMode === "unified" ? "unified" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 		};
 	} catch (err) {

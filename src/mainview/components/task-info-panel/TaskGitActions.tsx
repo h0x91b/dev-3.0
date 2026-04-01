@@ -264,7 +264,12 @@ export default function TaskGitActions({
 				}`}
 				title={showDiffTooltip}
 			>
-				{t("infoPanel.showDiff")}
+				<span className="inline-flex items-center gap-1.5">
+					<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						{"\uEC0B"}
+					</span>
+					<span>{t("infoPanel.showDiff")}</span>
+				</span>
 			</button>
 			<button
 				onClick={handleRebase}

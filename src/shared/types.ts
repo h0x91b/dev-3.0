@@ -367,6 +367,7 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
+	defaultDiffViewMode?: "split" | "unified"; // default inline diff layout
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
 }
 

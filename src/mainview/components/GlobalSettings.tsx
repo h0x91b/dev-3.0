@@ -157,6 +157,13 @@ function GlobalSettings() {
 		trackEvent("settings_changed", { setting: "task_open_mode", value: mode });
 	}
 
+	function handleDefaultDiffViewModeChange(mode: "split" | "unified") {
+		const updated = { ...globalSettings, defaultDiffViewMode: mode === "unified" ? "unified" as const : undefined };
+		setGlobalSettings(updated);
+		api.request.saveGlobalSettings(updated).catch(() => {});
+		trackEvent("settings_changed", { setting: "default_diff_view_mode", value: mode });
+	}
+
 	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
 
 	useEffect(() => {
@@ -526,6 +533,29 @@ function GlobalSettings() {
 								}`}
 							>
 								{mode === "split" ? t("settings.taskOpenModeSplit") : t("settings.taskOpenModeFullscreen")}
+							</button>
+						))}
+					</div>
+				</div>
+				<div>
+					<label className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.defaultDiffViewMode")}
+					</label>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.defaultDiffViewModeDesc")}
+					</p>
+					<div className="flex gap-3">
+						{(["split", "unified"] as const).map((mode) => (
+							<button
+								key={mode}
+								onClick={() => handleDefaultDiffViewModeChange(mode)}
+								className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
+									(globalSettings.defaultDiffViewMode ?? "split") === mode
+										? "border-accent bg-accent/10 text-accent"
+										: "border-edge bg-raised text-fg hover:border-edge-active"
+								}`}
+							>
+								{mode === "split" ? t("settings.defaultDiffViewModeSplit") : t("settings.defaultDiffViewModeUnified")}
 							</button>
 						))}
 					</div>

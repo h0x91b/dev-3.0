@@ -207,6 +207,30 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	describe("default diff view mode", () => {
+		it("selects side by side by default", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const splitButton = screen.getByText("Side by side").closest("button")!;
+			expect(splitButton.className).toContain("border-accent");
+		});
+
+		it("switches to unified and saves", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByText("Unified"));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ defaultDiffViewMode: "unified" }),
+			);
+		});
+	});
+
 	describe("update channel", () => {
 		it("shows stable selected by default", async () => {
 			setupMocks();

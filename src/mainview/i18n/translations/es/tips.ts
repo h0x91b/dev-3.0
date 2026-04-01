@@ -36,6 +36,8 @@ const tips = {
 	"tip.prBadgeOnCard.body": "Las tarjetas de tareas muestran una insignia de PR clicable cuando existe un pull request abierto — haz clic para ir a GitHub.",
 	"tip.showDiffButton.title": "Revisa tu diff en la tarea",
 	"tip.showDiffButton.body": "Pulsa \"Show Diff\" en el panel de la tarea para reemplazar el terminal por un diff inline de la rama, y usa Esc para volver.",
+	"tip.diffDefaultLayout.title": "Elige el layout del diff",
+	"tip.diffDefaultLayout.body": "Abre Ajustes globales y elige si Show Diff empieza en modo lado a lado o Unified.",
 	"tip.inlineDiffModes.title": "Cambia el layout del diff",
 	"tip.inlineDiffModes.body": "Usa Unified o Split en la barra del diff para alternar rápido entre una revisión compacta y una comparación lado a lado.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",

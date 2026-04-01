@@ -6,7 +6,6 @@ import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 
-const LS_DIFF_VIEW_MODE = "dev3-inline-diff-view-mode";
 const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
 const EAGER_FILE_COUNT = 2;
 
@@ -75,14 +74,6 @@ interface DiffTreeFileNode {
 	path: string;
 	fileId: string;
 	status: TaskDiffFile["status"];
-}
-
-function readStoredMode(): DiffViewMode {
-	try {
-		return localStorage.getItem(LS_DIFF_VIEW_MODE) === "unified" ? "unified" : "split";
-	} catch {
-		return "split";
-	}
 }
 
 function hashText(value: string): string {
@@ -483,7 +474,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const [loading, setLoading] = useState(true);
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [viewMode, setViewMode] = useState<DiffViewMode>(readStoredMode);
+	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
 	const fileTree = payload ? buildDiffTree(payload.files) : [];
 
 	useEffect(() => {
@@ -491,10 +482,24 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	}, [request.compareLabel, request.compareRef, request.focusFile, request.mode]);
 
 	useEffect(() => {
-		try {
-			localStorage.setItem(LS_DIFF_VIEW_MODE, viewMode);
-		} catch {}
-	}, [viewMode]);
+		let cancelled = false;
+
+		api.request.getGlobalSettings()
+			.then((settings) => {
+				if (!cancelled) {
+					setViewMode(settings.defaultDiffViewMode === "unified" ? "unified" : "split");
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setViewMode("split");
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -540,7 +545,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		};
 	}, []);
 
-	const isBusy = loading || !diffLib;
+	const isBusy = loading || !diffLib || !viewMode;
 
 	useEffect(() => {
 		if (!isBusy) {
@@ -895,7 +900,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					t("infoPanel.diffNoRenderableFilesBody"),
 				)}
 
-				{!error && !isBusy && payload && diffLib && payload.files.length > 0 && (
+				{!error && !isBusy && payload && diffLib && viewMode && payload.files.length > 0 && (
 					<div className="space-y-5">
 						{payload.files.map((file, index) => (
 							<TaskDiffFileSection

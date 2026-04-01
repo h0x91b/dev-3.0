@@ -108,6 +108,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F044B}", // nf-md-source_diff
 	},
 	{
+		id: "diff-default-layout",
+		titleKey: "tip.diffDefaultLayout.title",
+		bodyKey: "tip.diffDefaultLayout.body",
+		icon: "\u{F0156}", // nf-md-view_split_vertical
+	},
+	{
 		id: "inline-diff-modes",
 		titleKey: "tip.inlineDiffModes.title",
 		bodyKey: "tip.inlineDiffModes.body",
