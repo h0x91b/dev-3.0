@@ -48,7 +48,10 @@ interface TaskDiffFileSectionProps {
 	diffLib: DiffLibrary;
 	viewMode: DiffViewMode;
 	eager: boolean;
-	defaultExpanded: boolean;
+	expanded: boolean;
+	isRead: boolean;
+	onToggleExpanded: () => void;
+	onToggleRead: () => void;
 	sectionRef: (element: HTMLDivElement | null) => void;
 }
 
@@ -101,21 +104,25 @@ function TaskDiffFileSection({
 	diffLib,
 	viewMode,
 	eager,
-	defaultExpanded,
+	expanded,
+	isRead,
+	onToggleExpanded,
+	onToggleRead,
 	sectionRef,
 }: TaskDiffFileSectionProps) {
-	const [expanded, setExpanded] = useState(defaultExpanded);
-	const [activated, setActivated] = useState(eager || defaultExpanded);
+	const t = useT();
+	const [activated, setActivated] = useState(eager);
 	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
 	const hostRef = useRef<HTMLDivElement | null>(null);
 	const diffInstanceRef = useRef<DiffInstance | null>(null);
 	const builtModesRef = useRef<Set<DiffViewMode>>(new Set());
+	const isFirstExpandedEffectRef = useRef(true);
 
 	useEffect(() => {
-		setExpanded(defaultExpanded);
-		setActivated(eager || defaultExpanded);
-	}, [defaultExpanded, eager, file.id]);
+		setActivated(eager);
+		isFirstExpandedEffectRef.current = true;
+	}, [eager, file.id]);
 
 	useEffect(() => {
 		diffInstanceRef.current = null;
@@ -125,6 +132,10 @@ function TaskDiffFileSection({
 	}, [diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath]);
 
 	useEffect(() => {
+		if (isFirstExpandedEffectRef.current) {
+			isFirstExpandedEffectRef.current = false;
+			return;
+		}
 		if (expanded) {
 			setActivated(true);
 		}
@@ -215,23 +226,48 @@ function TaskDiffFileSection({
 				hostRef.current = element;
 				sectionRef(element);
 			}}
-			className="border border-edge rounded-xl overflow-hidden bg-raised"
+			className={`border border-edge rounded-xl overflow-hidden ${isRead ? "bg-elevated" : "bg-raised"}`}
 		>
-			<button
-				onClick={() => setExpanded((value) => !value)}
-				className="w-full px-4 py-3 border-b border-edge flex flex-wrap items-center gap-2 bg-raised hover:bg-elevated-hover transition-colors text-left"
-			>
-				<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
-					{statusLabel(file.status)}
-				</span>
-				<span className="font-mono text-sm text-fg break-all flex-1 min-w-0">{file.displayPath}</span>
-				<span
-					aria-hidden="true"
-					className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-[0.95rem] leading-none text-fg-2"
+			<div className={`px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 ${isRead ? "bg-elevated/80" : "bg-raised"}`}>
+				<button
+					onClick={onToggleExpanded}
+					aria-expanded={expanded}
+					className="min-w-0 flex-1 flex items-center gap-2 text-left hover:text-fg transition-colors"
+				>
+					<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
+						{statusLabel(file.status)}
+					</span>
+					<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}`}>
+						{file.displayPath}
+					</span>
+				</button>
+
+				<label className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${isRead ? "border-success/30 bg-success/10 text-success" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}>
+					<input
+						type="checkbox"
+						checked={isRead}
+						onChange={onToggleRead}
+						aria-label={t("infoPanel.diffReadFile", { file: file.displayPath })}
+						className="sr-only"
+					/>
+					<span
+						aria-hidden="true"
+						className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] border text-[0.7rem] leading-none ${isRead ? "border-success bg-success text-base" : "border-edge bg-base text-transparent"}`}
+					>
+						{"\u2713"}
+					</span>
+					<span>{t("infoPanel.diffRead")}</span>
+				</label>
+
+				<button
+					onClick={onToggleExpanded}
+					aria-label={expanded ? t("infoPanel.diffCollapseFile", { file: file.displayPath }) : t("infoPanel.diffExpandFile", { file: file.displayPath })}
+					aria-expanded={expanded}
+					className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-[0.95rem] leading-none text-fg-2 hover:bg-elevated-hover transition-colors"
 				>
 					{expanded ? "\u25BE" : "\u25B8"}
-				</span>
-			</button>
+				</button>
+			</div>
 
 			{expanded && (
 				buildError ? (
@@ -263,6 +299,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
+	const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
+	const [readFiles, setReadFiles] = useState<Record<string, boolean>>({});
 	const [loading, setLoading] = useState(true);
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -362,10 +400,45 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		};
 	}, [project.id, request.compareLabel, request.compareRef, request.mode, task.id]);
 
+	useEffect(() => {
+		if (!payload) {
+			setExpandedFiles({});
+			setReadFiles({});
+			return;
+		}
+
+		const nextExpandedFiles = Object.fromEntries(
+			payload.files.map((file) => [file.id, true]),
+		);
+		setExpandedFiles(nextExpandedFiles);
+		setReadFiles({});
+	}, [payload]);
+
 	function scrollToFile(fileId: string) {
 		sectionRefs.current[fileId]?.scrollIntoView({
 			block: "start",
 			behavior: "smooth",
+		});
+	}
+
+	function toggleFileExpanded(fileId: string) {
+		setExpandedFiles((current) => ({
+			...current,
+			[fileId]: !(current[fileId] ?? true),
+		}));
+	}
+
+	function toggleFileRead(fileId: string) {
+		setReadFiles((current) => {
+			const nextRead = !(current[fileId] ?? false);
+			setExpandedFiles((expanded) => ({
+				...expanded,
+				[fileId]: nextRead ? false : true,
+			}));
+			return {
+				...current,
+				[fileId]: nextRead,
+			};
 		});
 	}
 
@@ -465,7 +538,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							<button
 								key={file.id}
 								onClick={() => scrollToFile(file.id)}
-								className="flex-shrink-0 px-2 py-1 rounded-md bg-raised text-fg-2 hover:bg-elevated-hover border border-edge text-xs font-mono"
+								className={`flex-shrink-0 px-2 py-1 rounded-md border text-xs font-mono transition-colors ${readFiles[file.id]
+									? "bg-elevated text-fg-muted border-edge line-through decoration-1"
+									: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
+								}`}
 							>
 								{file.newPath ?? file.oldPath ?? file.displayPath}
 							</button>
@@ -507,7 +583,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								diffLib={diffLib}
 								viewMode={viewMode}
 								eager={index < EAGER_FILE_COUNT}
-								defaultExpanded={index < EAGER_FILE_COUNT}
+								expanded={expandedFiles[file.id] ?? true}
+								isRead={readFiles[file.id] ?? false}
+								onToggleExpanded={() => toggleFileExpanded(file.id)}
+								onToggleRead={() => toggleFileRead(file.id)}
 								sectionRef={(element) => {
 									sectionRefs.current[file.id] = element;
 								}}

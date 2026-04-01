@@ -72,8 +72,8 @@ const diffPayload: TaskDiffResponse = {
 	compareLabel: "origin/main",
 	fallbackReason: null,
 	summary: {
-		files: 1,
-		insertions: 3,
+		files: 2,
+		insertions: 4,
 		deletions: 1,
 	},
 	files: [
@@ -87,6 +87,16 @@ const diffPayload: TaskDiffResponse = {
 			newContent: "const a = 2;\n",
 			hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n"],
 		},
+		{
+			id: "src/utils.ts",
+			status: "added",
+			displayPath: "src/utils.ts",
+			oldPath: null,
+			newPath: "src/utils.ts",
+			oldContent: "",
+			newContent: "export const ok = true;\n",
+			hunks: ["diff --git a/src/utils.ts b/src/utils.ts\n@@ -0,0 +1 @@\n+export const ok = true;\n"],
+		},
 	],
 	skippedBinaryFiles: [],
 	skippedLargeFiles: [],
@@ -99,7 +109,7 @@ describe("TaskDiffViewer", () => {
 		localStorage.clear();
 	});
 
-	it("defaults to split mode and allows collapsing a file", async () => {
+	it("defaults to split mode, opens files by default, and lets a file be marked as read", async () => {
 		const user = userEvent.setup();
 
 		render(
@@ -114,13 +124,17 @@ describe("TaskDiffViewer", () => {
 		);
 
 		await waitFor(() => {
-			expect(screen.getByTestId("mock-diff")).toHaveTextContent("mode:3");
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
-		await user.click(screen.getByRole("button", { name: /src\/app\.ts/i }));
-		expect(screen.queryByTestId("mock-diff")).not.toBeInTheDocument();
+		expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3");
 
-		await user.click(screen.getByRole("button", { name: /src\/app\.ts/i }));
-		expect(await screen.findByTestId("mock-diff")).toHaveTextContent("mode:3");
+		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
+
+		expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
+		expect(screen.getAllByTestId("mock-diff")).toHaveLength(1);
+
+		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
+		expect(await screen.findAllByTestId("mock-diff")).toHaveLength(2);
 	});
 });
