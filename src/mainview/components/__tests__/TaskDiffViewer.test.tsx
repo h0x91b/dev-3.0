@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, Task, TaskDiffResponse } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -72,8 +72,8 @@ const diffPayload: TaskDiffResponse = {
 	compareLabel: "origin/main",
 	fallbackReason: null,
 	summary: {
-		files: 2,
-		insertions: 4,
+		files: 3,
+		insertions: 5,
 		deletions: 1,
 	},
 	files: [
@@ -88,14 +88,24 @@ const diffPayload: TaskDiffResponse = {
 			hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n"],
 		},
 		{
-			id: "src/utils.ts",
+			id: "src/utils/format.ts",
 			status: "added",
-			displayPath: "src/utils.ts",
+			displayPath: "src/utils/format.ts",
 			oldPath: null,
-			newPath: "src/utils.ts",
+			newPath: "src/utils/format.ts",
 			oldContent: "",
 			newContent: "export const ok = true;\n",
-			hunks: ["diff --git a/src/utils.ts b/src/utils.ts\n@@ -0,0 +1 @@\n+export const ok = true;\n"],
+			hunks: ["diff --git a/src/utils/format.ts b/src/utils/format.ts\n@@ -0,0 +1 @@\n+export const ok = true;\n"],
+		},
+		{
+			id: "docs/readme.md",
+			status: "modified",
+			displayPath: "docs/readme.md",
+			oldPath: "docs/readme.md",
+			newPath: "docs/readme.md",
+			oldContent: "old\n",
+			newContent: "new\n",
+			hunks: ["diff --git a/docs/readme.md b/docs/readme.md\n@@ -1 +1 @@\n-old\n+new\n"],
 		},
 	],
 	skippedBinaryFiles: [],
@@ -145,6 +155,7 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
 
 		expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
+		expect(within(screen.getByRole("button", { name: /open diff file src\/app\.ts/i })).getByText("app.ts")).toHaveClass("line-through");
 		expect(screen.getAllByTestId("mock-diff")).toHaveLength(1);
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
@@ -227,7 +238,7 @@ describe("TaskDiffViewer", () => {
 				<TaskDiffViewer
 					task={task}
 					project={project}
-					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFile: "src/utils.ts" }}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFile: "src/utils/format.ts" }}
 					onBack={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -240,5 +251,32 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(scrollIntoViewMock).toHaveBeenCalled();
 		});
+	});
+
+	it("renders a left file tree with collapsible folders", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		expect(screen.getByText("Files")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /open diff file src\/utils\/format\.ts/i })).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /^collapse folder src$/i }));
+
+		expect(screen.queryByRole("button", { name: /open diff file src\/utils\/format\.ts/i })).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /^expand folder src$/i })).toBeInTheDocument();
 	});
 });

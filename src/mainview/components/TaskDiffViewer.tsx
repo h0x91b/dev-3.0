@@ -56,6 +56,25 @@ interface TaskDiffFileSectionProps {
 	sectionRef: (element: HTMLDivElement | null) => void;
 }
 
+type DiffTreeNode = DiffTreeFolderNode | DiffTreeFileNode;
+
+interface DiffTreeFolderNode {
+	type: "folder";
+	key: string;
+	name: string;
+	path: string;
+	children: DiffTreeNode[];
+}
+
+interface DiffTreeFileNode {
+	type: "file";
+	key: string;
+	name: string;
+	path: string;
+	fileId: string;
+	status: TaskDiffFile["status"];
+}
+
 function readStoredMode(): DiffViewMode {
 	try {
 		return localStorage.getItem(LS_DIFF_VIEW_MODE) === "unified" ? "unified" : "split";
@@ -151,6 +170,69 @@ function statusLabel(status: TaskDiffFile["status"]): string {
 		default:
 			return "•";
 	}
+}
+
+function buildDiffTree(files: TaskDiffFile[]): DiffTreeNode[] {
+	const root: DiffTreeNode[] = [];
+
+	function findOrCreateFolder(children: DiffTreeNode[], name: string, path: string): DiffTreeFolderNode {
+		const existing = children.find((child): child is DiffTreeFolderNode => child.type === "folder" && child.name === name);
+		if (existing) {
+			return existing;
+		}
+		const nextFolder: DiffTreeFolderNode = {
+			type: "folder",
+			key: `folder:${path}`,
+			name,
+			path,
+			children: [],
+		};
+		children.push(nextFolder);
+		return nextFolder;
+	}
+
+	function sortNodes(nodes: DiffTreeNode[]): DiffTreeNode[] {
+		nodes.sort((left, right) => {
+			if (left.type !== right.type) {
+				return left.type === "folder" ? -1 : 1;
+			}
+			return left.name.localeCompare(right.name);
+		});
+		for (const node of nodes) {
+			if (node.type === "folder") {
+				sortNodes(node.children);
+			}
+		}
+		return nodes;
+	}
+
+	for (const file of files) {
+		const fullPath = file.newPath ?? file.oldPath ?? file.displayPath;
+		const segments = fullPath.split("/").filter(Boolean);
+		if (segments.length === 0) {
+			continue;
+		}
+
+		let currentChildren = root;
+		let currentPath = "";
+		for (let index = 0; index < segments.length - 1; index++) {
+			const segment = segments[index];
+			currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+			currentChildren = findOrCreateFolder(currentChildren, segment, currentPath).children;
+		}
+
+		const fileName = segments[segments.length - 1];
+		currentChildren.push({
+			type: "file",
+			key: `file:${file.id}`,
+			name: fileName,
+			path: fullPath,
+			fileId: file.id,
+			status: file.status,
+		});
+	}
+
+	return sortNodes(root);
 }
 
 function TaskDiffFileSection({
@@ -354,12 +436,15 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
 	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(request);
+	const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 	const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
 	const [readFiles, setReadFiles] = useState<Record<string, boolean>>({});
+	const [activeFileId, setActiveFileId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode>(readStoredMode);
+	const fileTree = payload ? buildDiffTree(payload.files) : [];
 
 	useEffect(() => {
 		setCurrentRequest(request);
@@ -461,8 +546,10 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 	useEffect(() => {
 		if (!payload) {
+			setCollapsedFolders({});
 			setExpandedFiles({});
 			setReadFiles({});
+			setActiveFileId(null);
 			return;
 		}
 
@@ -473,9 +560,13 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		const nextExpandedFiles = Object.fromEntries(
 			payload.files.map((file) => [file.id, !nextReadFiles[file.id]]),
 		);
+		const focusedFile = currentRequest.focusFile ? findDiffFileByPath(payload.files, currentRequest.focusFile) : null;
+		const initialActiveFileId = focusedFile?.id ?? payload.files[0]?.id ?? null;
+		setCollapsedFolders({});
 		setExpandedFiles(nextExpandedFiles);
 		setReadFiles(nextReadFiles);
-	}, [payload, task.id]);
+		setActiveFileId(initialActiveFileId);
+	}, [currentRequest.focusFile, payload, task.id]);
 
 	useEffect(() => {
 		if (!payload || !currentRequest.focusFile) {
@@ -489,6 +580,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			...current,
 			[targetFile.id]: true,
 		}));
+		setActiveFileId(targetFile.id);
 		const frame = window.requestAnimationFrame(() => {
 			sectionRefs.current[targetFile.id]?.scrollIntoView({
 				block: "start",
@@ -498,11 +590,25 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		return () => window.cancelAnimationFrame(frame);
 	}, [currentRequest.focusFile, payload]);
 
-	function scrollToFile(fileId: string) {
+	function scrollToFile(fileId: string, options?: { expand?: boolean }) {
+		if (options?.expand) {
+			setExpandedFiles((current) => ({
+				...current,
+				[fileId]: true,
+			}));
+		}
+		setActiveFileId(fileId);
 		sectionRefs.current[fileId]?.scrollIntoView({
 			block: "start",
 			behavior: "smooth",
 		});
+	}
+
+	function toggleFolderCollapsed(folderKey: string) {
+		setCollapsedFolders((current) => ({
+			...current,
+			[folderKey]: !(current[folderKey] ?? false),
+		}));
 	}
 
 	function toggleFileExpanded(fileId: string) {
@@ -539,6 +645,58 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				[fileId]: nextRead,
 			};
 		});
+	}
+
+	function renderFileTreeNode(node: DiffTreeNode, depth = 0): JSX.Element {
+		if (node.type === "folder") {
+			const collapsed = collapsedFolders[node.key] ?? false;
+			return (
+				<div key={node.key}>
+					<button
+						onClick={() => toggleFolderCollapsed(node.key)}
+						aria-label={collapsed
+							? t("infoPanel.diffExpandFolder", { folder: node.path })
+							: t("infoPanel.diffCollapseFolder", { folder: node.path })}
+						className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-fg-2 hover:bg-elevated-hover transition-colors"
+						style={{ paddingLeft: `${depth * 0.85 + 0.5}rem` }}
+					>
+						<span className="w-4 text-center text-fg-muted">{collapsed ? "\u25B8" : "\u25BE"}</span>
+						<span className="text-[0.95rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\uF07B"}
+						</span>
+						<span className="min-w-0 truncate font-medium">{node.name}</span>
+					</button>
+					{!collapsed && (
+						<div>
+							{node.children.map((child) => renderFileTreeNode(child, depth + 1))}
+						</div>
+					)}
+				</div>
+			);
+		}
+
+		const isRead = readFiles[node.fileId] ?? false;
+		const isActive = activeFileId === node.fileId;
+		return (
+			<button
+				key={node.key}
+				onClick={() => scrollToFile(node.fileId, { expand: true })}
+				aria-label={t("infoPanel.diffOpenFile", { file: node.path })}
+				className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+					isActive
+						? "bg-accent/15 text-fg border border-accent/30"
+						: "text-fg-2 hover:bg-elevated-hover border border-transparent"
+				}`}
+				style={{ paddingLeft: `${depth * 0.85 + 1.55}rem` }}
+			>
+				<span className={`inline-flex items-center justify-center min-w-[1.1rem] rounded border px-1 py-0.5 text-[0.6rem] font-bold ${statusClassName(node.status)}`}>
+					{statusLabel(node.status)}
+				</span>
+				<span className={`min-w-0 truncate font-mono ${isRead ? "text-fg-muted line-through decoration-1" : ""}`}>
+					{node.name}
+				</span>
+			</button>
+		);
 	}
 
 	function switchDiffMode(mode: TaskInlineDiffRequest["mode"]) {
@@ -653,28 +811,30 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</div>
 				)}
 
-				{payload && payload.files.length > 1 && (
-					<div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
-						<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold flex-shrink-0">
-							{t("infoPanel.diffFiles")}
-						</span>
-						{payload.files.map((file) => (
-							<button
-								key={file.id}
-								onClick={() => scrollToFile(file.id)}
-								className={`flex-shrink-0 px-2 py-1 rounded-md border text-xs font-mono transition-colors ${readFiles[file.id]
-									? "bg-elevated text-fg-muted border-edge line-through decoration-1"
-									: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
-								}`}
-							>
-								{file.newPath ?? file.oldPath ?? file.displayPath}
-							</button>
-						))}
-					</div>
-				)}
 			</div>
 
-			<div className="flex-1 min-h-0 overflow-auto px-4 pt-1 pb-4">
+			<div className="flex-1 min-h-0 flex overflow-hidden">
+				{!error && !isBusy && payload && payload.files.length > 0 && (
+					<aside className="w-[18rem] shrink-0 border-r border-edge bg-raised/35">
+						<div className="h-full overflow-auto px-3 py-3">
+							<div className="sticky top-0 z-10 bg-raised/95 backdrop-blur pb-3">
+								<div className="flex items-center justify-between gap-2 rounded-lg border border-edge bg-base/80 px-3 py-2">
+									<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
+										{t("infoPanel.diffFiles")}
+									</span>
+									<span className="text-xs text-fg-3 font-mono">
+										{Object.values(readFiles).filter(Boolean).length}/{payload.files.length} {t("infoPanel.diffRead")}
+									</span>
+								</div>
+							</div>
+							<div className="space-y-1">
+								{fileTree.map((node) => renderFileTreeNode(node))}
+							</div>
+						</div>
+					</aside>
+				)}
+
+				<div className="flex-1 min-w-0 overflow-auto px-4 pt-1 pb-4">
 				{error && renderState(t("infoPanel.diffLoadFailed"), error)}
 
 				{!error && isBusy && showLoadingState && (
@@ -718,6 +878,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						))}
 					</div>
 				)}
+			</div>
 			</div>
 		</div>
 	);
