@@ -1153,6 +1153,16 @@ describe("TaskCard", () => {
 			expect(screen.getByText("#42")).toBeInTheDocument();
 		});
 
+		it("keeps the PR badge vertically centered in the footer row", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
+				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
+			});
+
+			const badge = screen.getByText("#42").closest("button");
+			expect(badge).toHaveClass("h-5", "self-center", "items-center", "leading-none");
+			expect(screen.getByText("#42")).toHaveClass("leading-none");
+		});
+
 		it("does not show PR badge when prInfo is undefined", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }));
 			expect(screen.queryByText(/#\d+.*PR/)).not.toBeInTheDocument();

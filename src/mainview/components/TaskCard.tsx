@@ -666,11 +666,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							e.stopPropagation();
 							window.open(prInfo.url, "_blank");
 						}}
-						className="inline-flex max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold text-green-400 transition-colors hover:bg-green-500/20"
+						className="inline-flex h-5 max-w-full flex-shrink-0 self-center items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-green-400 transition-colors hover:bg-green-500/20"
 						title={t("task.openPR", { number: String(prInfo.number) })}
 					>
 						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-						#{prInfo.number}
+						<span className="leading-none">#{prInfo.number}</span>
 					</button>
 				)}
 
