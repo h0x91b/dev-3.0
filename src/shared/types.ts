@@ -331,26 +331,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 
 export type TerminalKeymapPreset = "default" | "iterm2";
 
-// ---- Diff Tools ----
-
-export type DiffToolId =
-	| "git-terminal"
-	| "vscode"
-	| "intellij"
-	| "webstorm"
-	| "kaleidoscope"
-	| "beyond-compare"
-	| "filemerge"
-	| "meld"
-	| "custom";
-
-export interface DiffToolCheckResult {
-	id: DiffToolId;
-	name: string;
-	available: boolean;
-	resolvedPath?: string;
-}
-
 // ---- External Apps ("Open in...") ----
 
 export interface ExternalApp {
@@ -387,9 +367,8 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
+	defaultDiffViewMode?: "split" | "unified"; // default inline diff layout
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
-	diffTool?: DiffToolId; // default diff viewer; undefined = "git-terminal"
-	customDiffCommand?: string; // template with $LOCAL / $REMOTE placeholders
 }
 
 export interface TipState {
@@ -610,6 +589,48 @@ export interface BranchStatus {
 	diffFileNames: string[]; // list of changed file paths in branch vs base
 	prNumber: number | null; // open PR number for this branch, null if none
 	prUrl: string | null; // full GitHub PR URL, null if no PR
+}
+
+export type TaskDiffMode = "branch" | "uncommitted" | "unpushed";
+
+export type TaskDiffFileStatus =
+	| "added"
+	| "modified"
+	| "deleted"
+	| "renamed"
+	| "copied"
+	| "type-changed"
+	| "untracked"
+	| "unknown";
+
+export type TaskDiffFallbackReason = "no-upstream";
+
+export interface TaskDiffFile {
+	id: string;
+	status: TaskDiffFileStatus;
+	displayPath: string;
+	oldPath: string | null;
+	newPath: string | null;
+	oldContent: string;
+	newContent: string;
+	hunks: string[] | null;
+}
+
+export interface TaskDiffSummary {
+	files: number;
+	insertions: number;
+	deletions: number;
+}
+
+export interface TaskDiffResponse {
+	mode: TaskDiffMode;
+	compareRef: string | null;
+	compareLabel: string;
+	fallbackReason: TaskDiffFallbackReason | null;
+	summary: TaskDiffSummary;
+	files: TaskDiffFile[];
+	skippedBinaryFiles: string[];
+	skippedLargeFiles: string[];
 }
 
 export interface PRInfo {
@@ -896,6 +917,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: BranchStatus;
 			};
+			getTaskDiff: {
+				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string };
+				response: TaskDiffResponse;
+			};
 			rebaseTask: {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: void;
@@ -914,18 +939,6 @@ export type AppRPCSchema = {
 			};
 			openPullRequest: {
 				params: { taskId: string; projectId: string };
-				response: void;
-			};
-			showDiff: {
-				params: { taskId: string; projectId: string; compareRef?: string };
-				response: void;
-			};
-			showUncommittedDiff: {
-				params: { taskId: string; projectId: string };
-				response: void;
-			};
-			openFileDiff: {
-				params: { taskId: string; projectId: string; relativePath: string; ref?: string };
 				response: void;
 			};
 			getTerminalPreview: {
@@ -975,10 +988,6 @@ export type AppRPCSchema = {
 			checkAgentAvailability: {
 				params: void;
 				response: AgentCheckResult[];
-			};
-			detectDiffTools: {
-				params: void;
-				response: DiffToolCheckResult[];
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };

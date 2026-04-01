@@ -1,12 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { DiffToolId, ExternalApp } from "../shared/types";
+import type { ExternalApp } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
-
-const VALID_DIFF_TOOL_IDS: DiffToolId[] = [
-	"git-terminal", "vscode", "intellij", "webstorm",
-	"kaleidoscope", "beyond-compare", "filemerge", "meld", "custom",
-];
 
 const log = createLogger("settings");
 
@@ -24,9 +19,8 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[];
 	terminalKeymap?: "default" | "iterm2";
 	taskOpenMode?: "split" | "fullscreen";
+	defaultDiffViewMode?: "split" | "unified";
 	preventSleepWhileRunning?: boolean;
-	diffTool?: DiffToolId;
-	customDiffCommand?: string;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -55,17 +49,14 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+			defaultDiffViewMode: data.defaultDiffViewMode === "unified" ? "unified" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
-			diffTool: VALID_DIFF_TOOL_IDS.includes(data.diffTool) ? data.diffTool : undefined,
-			customDiffCommand: typeof data.customDiffCommand === "string" ? data.customDiffCommand : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };
 	}
 }
-
-export { VALID_DIFF_TOOL_IDS };
 
 export async function saveSettings(settings: GlobalSettings): Promise<void> {
 	log.info("Saving global settings", { settings });
@@ -91,9 +82,8 @@ export function loadSettingsSync(): GlobalSettings {
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+			defaultDiffViewMode: data.defaultDiffViewMode === "unified" ? "unified" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
-			diffTool: VALID_DIFF_TOOL_IDS.includes(data.diffTool) ? data.diffTool : undefined,
-			customDiffCommand: typeof data.customDiffCommand === "string" ? data.customDiffCommand : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

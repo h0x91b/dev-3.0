@@ -1,4 +1,4 @@
-import type { Project, Task } from "../shared/types";
+import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
 import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
@@ -6,6 +6,35 @@ import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("git");
+const MAX_INLINE_DIFF_FILE_BYTES = 250_000;
+const MAX_BINARY_CHECK_BYTES = 8_192;
+
+type BinaryRunResult = {
+	ok: boolean;
+	stdout: Uint8Array;
+	stderr: string;
+};
+
+type ParsedNameStatusEntry = {
+	status: TaskDiffFileStatus;
+	oldPath: string | null;
+	newPath: string | null;
+	displayPath: string;
+};
+
+type TextReadResult =
+	| { kind: "text"; content: string }
+	| { kind: "binary" }
+	| { kind: "large" }
+	| { kind: "missing" };
+
+type DiffContentSource =
+	| { kind: "ref"; ref: string }
+	| { kind: "worktree" };
+
+type DiffRenderSource =
+	| { kind: "git"; buildArgs: (entry: ParsedNameStatusEntry) => string[] }
+	| { kind: "file" };
 
 export async function run(
 	cmd: string[],
@@ -29,6 +58,333 @@ export async function run(
 		});
 	}
 	return result;
+}
+
+async function runBinary(
+	cmd: string[],
+	cwd: string,
+): Promise<BinaryRunResult> {
+	log.debug(`exec(binary): ${cmd.join(" ")}`, { cwd });
+	const proc = spawn(cmd, {
+		cwd,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdoutBuffer, stderr] = await Promise.all([
+		new Response(proc.stdout).arrayBuffer(),
+		new Response(proc.stderr).text(),
+	]);
+	const code = await proc.exited;
+	const result = {
+		ok: code === 0,
+		stdout: new Uint8Array(stdoutBuffer),
+		stderr: stderr.trim(),
+	};
+	if (!result.ok) {
+		log.warn(`Binary command failed (exit ${code}): ${cmd.join(" ")}`, {
+			stderr: result.stderr,
+		});
+	}
+	return result;
+}
+
+async function runWithCode(
+	cmd: string[],
+	cwd: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+	log.debug(`exec(code): ${cmd.join(" ")}`, { cwd });
+	const proc = spawn(cmd, {
+		cwd,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
+	return {
+		code: await proc.exited,
+		stdout,
+		stderr: stderr.trim(),
+	};
+}
+
+function isProbablyBinary(bytes: Uint8Array): boolean {
+	const limit = Math.min(bytes.length, MAX_BINARY_CHECK_BYTES);
+	for (let i = 0; i < limit; i++) {
+		if (bytes[i] === 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function parseShortStat(text: string): TaskDiffSummary {
+	const trimmed = text.trim();
+	const filesMatch = trimmed.match(/(\d+)\s+file/);
+	const insertionsMatch = trimmed.match(/(\d+)\s+insertion/);
+	const deletionsMatch = trimmed.match(/(\d+)\s+deletion/);
+	return {
+		files: filesMatch ? parseInt(filesMatch[1], 10) : 0,
+		insertions: insertionsMatch ? parseInt(insertionsMatch[1], 10) : 0,
+		deletions: deletionsMatch ? parseInt(deletionsMatch[1], 10) : 0,
+	};
+}
+
+function mapNameStatus(code: string): TaskDiffFileStatus {
+	switch (code[0]) {
+		case "A":
+			return "added";
+		case "M":
+			return "modified";
+		case "D":
+			return "deleted";
+		case "R":
+			return "renamed";
+		case "C":
+			return "copied";
+		case "T":
+			return "type-changed";
+		default:
+			return "unknown";
+	}
+}
+
+function parseNameStatusZ(output: string): ParsedNameStatusEntry[] {
+	if (!output) {
+		return [];
+	}
+
+	const tokens = output.split("\0").filter((token) => token.length > 0);
+	const entries: ParsedNameStatusEntry[] = [];
+
+	for (let index = 0; index < tokens.length; index++) {
+		const code = tokens[index];
+		const status = mapNameStatus(code);
+		if (status === "renamed" || status === "copied") {
+			const oldPath = tokens[index + 1] ?? null;
+			const newPath = tokens[index + 2] ?? null;
+			if (oldPath && newPath) {
+				entries.push({
+					status,
+					oldPath,
+					newPath,
+					displayPath: `${oldPath} -> ${newPath}`,
+				});
+			}
+			index += 2;
+			continue;
+		}
+
+		const path = tokens[index + 1] ?? null;
+		if (!path) {
+			continue;
+		}
+
+		entries.push({
+			status,
+			oldPath: status === "added" ? null : path,
+			newPath: status === "deleted" ? null : path,
+			displayPath: path,
+		});
+		index += 1;
+	}
+
+	return entries;
+}
+
+async function listDiffEntries(
+	worktreePath: string,
+	diffArgs: string[],
+): Promise<ParsedNameStatusEntry[]> {
+	const result = await run(
+		[
+			"git",
+			"diff",
+			"--name-status",
+			"-z",
+			"--find-renames=90%",
+			"--find-copies=90%",
+			"--diff-filter=ACDMRT",
+			...diffArgs,
+		],
+		worktreePath,
+	);
+	return result.ok ? parseNameStatusZ(result.stdout) : [];
+}
+
+async function listUntrackedEntries(worktreePath: string): Promise<ParsedNameStatusEntry[]> {
+	const result = await run(
+		["git", "ls-files", "--others", "--exclude-standard", "-z"],
+		worktreePath,
+	);
+	if (!result.ok || !result.stdout) {
+		return [];
+	}
+
+	return result.stdout
+		.split("\0")
+		.filter((path) => path.length > 0)
+		.map((path) => ({
+			status: "untracked" as const,
+			oldPath: null,
+			newPath: path,
+			displayPath: path,
+		}));
+}
+
+async function getDiffShortStat(
+	worktreePath: string,
+	diffArgs: string[],
+): Promise<TaskDiffSummary> {
+	const result = await run(
+		["git", "diff", "--shortstat", ...diffArgs],
+		worktreePath,
+	);
+	return result.ok && result.stdout ? parseShortStat(result.stdout) : { files: 0, insertions: 0, deletions: 0 };
+}
+
+async function getBlobSizeAtRef(
+	worktreePath: string,
+	ref: string,
+	filePath: string,
+): Promise<number | null> {
+	const result = await run(
+		["git", "cat-file", "-s", `${ref}:${filePath}`],
+		worktreePath,
+	);
+	return result.ok ? parseInt(result.stdout, 10) || 0 : null;
+}
+
+async function readRefTextFile(
+	worktreePath: string,
+	ref: string,
+	filePath: string,
+): Promise<TextReadResult> {
+	const size = await getBlobSizeAtRef(worktreePath, ref, filePath);
+	if (size === null) {
+		return { kind: "missing" };
+	}
+	if (size > MAX_INLINE_DIFF_FILE_BYTES) {
+		return { kind: "large" };
+	}
+
+	const result = await runBinary(
+		["git", "show", "--no-textconv", `${ref}:${filePath}`],
+		worktreePath,
+	);
+	if (!result.ok) {
+		return { kind: "missing" };
+	}
+	if (result.stdout.byteLength > MAX_INLINE_DIFF_FILE_BYTES) {
+		return { kind: "large" };
+	}
+	if (isProbablyBinary(result.stdout)) {
+		return { kind: "binary" };
+	}
+
+	return { kind: "text", content: new TextDecoder().decode(result.stdout) };
+}
+
+async function readWorktreeTextFile(
+	worktreePath: string,
+	filePath: string,
+): Promise<TextReadResult> {
+	try {
+		const file = Bun.file(`${worktreePath}/${filePath}`);
+		if (file.size > MAX_INLINE_DIFF_FILE_BYTES) {
+			return { kind: "large" };
+		}
+		const content = await file.text();
+		if (Buffer.byteLength(content, "utf-8") > MAX_INLINE_DIFF_FILE_BYTES) {
+			return { kind: "large" };
+		}
+		if (content.includes("\0")) {
+			return { kind: "binary" };
+		}
+		return { kind: "text", content };
+	} catch {
+		return { kind: "missing" };
+	}
+}
+
+async function readTextFromSource(
+	worktreePath: string,
+	source: DiffContentSource,
+	filePath: string | null,
+): Promise<TextReadResult> {
+	if (!filePath) {
+		return { kind: "text", content: "" };
+	}
+	if (source.kind === "ref") {
+		return readRefTextFile(worktreePath, source.ref, filePath);
+	}
+	return readWorktreeTextFile(worktreePath, filePath);
+}
+
+function getEntryPathArgs(entry: ParsedNameStatusEntry): string[] {
+	if (entry.oldPath && entry.newPath && entry.oldPath !== entry.newPath) {
+		return [entry.oldPath, entry.newPath];
+	}
+	return [entry.newPath ?? entry.oldPath ?? entry.displayPath];
+}
+
+async function readGitPatch(
+	worktreePath: string,
+	args: string[],
+): Promise<string[] | null> {
+	const result = await runWithCode(["git", ...args], worktreePath);
+	if (result.code !== 0 && result.code !== 1) {
+		log.warn("readGitPatch failed", { args, code: result.code, stderr: result.stderr });
+		return null;
+	}
+	const patch = result.stdout.trim();
+	return patch ? [patch] : null;
+}
+
+async function buildTaskDiffFiles(
+	worktreePath: string,
+	entries: ParsedNameStatusEntry[],
+	oldSource: DiffContentSource,
+	newSource: DiffContentSource,
+	renderSource: DiffRenderSource,
+): Promise<Pick<TaskDiffResponse, "files" | "skippedBinaryFiles" | "skippedLargeFiles">> {
+	const files: TaskDiffFile[] = [];
+	const skippedBinaryFiles: string[] = [];
+	const skippedLargeFiles: string[] = [];
+
+	for (const entry of entries) {
+		const [oldContent, newContent] = await Promise.all([
+			readTextFromSource(worktreePath, oldSource, entry.oldPath),
+			readTextFromSource(worktreePath, newSource, entry.newPath),
+		]);
+
+		if (oldContent.kind === "binary" || newContent.kind === "binary") {
+			skippedBinaryFiles.push(entry.displayPath);
+			continue;
+		}
+		if (oldContent.kind === "large" || newContent.kind === "large") {
+			skippedLargeFiles.push(entry.displayPath);
+			continue;
+		}
+
+		const hunks = renderSource.kind === "git"
+			? await readGitPatch(worktreePath, renderSource.buildArgs(entry))
+			: null;
+
+		files.push({
+			id: entry.oldPath ?? entry.newPath ?? entry.displayPath,
+			status: entry.status,
+			displayPath: entry.displayPath,
+			oldPath: entry.oldPath,
+			newPath: entry.newPath,
+			oldContent: oldContent.kind === "text" ? oldContent.content : "",
+			newContent: newContent.kind === "text" ? newContent.content : "",
+			hunks,
+		});
+	}
+
+	return { files, skippedBinaryFiles, skippedLargeFiles };
 }
 
 // Validates that a string is a safe git ref (SHA, branch name, origin/xxx).
@@ -790,6 +1146,173 @@ export async function getUnpushedCount(
 	);
 	if (!result.ok) return 0;
 	return parseInt(result.stdout, 10) || 0;
+}
+
+export async function getUpstreamRef(
+	worktreePath: string,
+): Promise<string | null> {
+	const result = await run(
+		["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+		worktreePath,
+	);
+	return result.ok && result.stdout ? result.stdout : null;
+}
+
+export async function getTaskDiff(
+	worktreePath: string,
+	mode: TaskDiffMode,
+	options: {
+		baseBranch: string;
+		compareRef?: string;
+		compareLabel?: string;
+	},
+): Promise<TaskDiffResponse> {
+	const defaultCompareRef = options.compareRef || `origin/${options.baseBranch}`;
+	const defaultCompareLabel = options.compareLabel || defaultCompareRef;
+
+	if (mode === "uncommitted") {
+		const [entries, untrackedEntries, summary] = await Promise.all([
+			listDiffEntries(worktreePath, ["HEAD"]),
+			listUntrackedEntries(worktreePath),
+			getUncommittedChanges(worktreePath),
+		]);
+		const allEntries = [...entries, ...untrackedEntries];
+		const filesResult = await buildTaskDiffFiles(
+			worktreePath,
+			allEntries,
+			{ kind: "ref", ref: "HEAD" },
+			{ kind: "worktree" },
+			{
+				kind: "git",
+				buildArgs: (entry) => {
+					if (entry.status === "untracked") {
+						const path = entry.newPath ?? entry.displayPath;
+						return ["diff", "--no-index", "--no-ext-diff", "--no-color", "--", "/dev/null", path];
+					}
+					return ["diff", "--no-ext-diff", "--no-color", "HEAD", "--", ...getEntryPathArgs(entry)];
+				},
+			},
+		);
+		return {
+			mode,
+			compareRef: null,
+			compareLabel: "Working tree",
+			fallbackReason: null,
+			summary: {
+				files: allEntries.length,
+				insertions: summary.insertions,
+				deletions: summary.deletions,
+			},
+			...filesResult,
+		};
+	}
+
+	if (mode === "unpushed") {
+		const upstreamRef = await getUpstreamRef(worktreePath);
+		if (upstreamRef) {
+			const entries = await listDiffEntries(worktreePath, [upstreamRef, "HEAD"]);
+			const [summary, filesResult] = await Promise.all([
+				getDiffShortStat(worktreePath, [upstreamRef, "HEAD"]),
+				buildTaskDiffFiles(
+					worktreePath,
+					entries,
+					{ kind: "ref", ref: upstreamRef },
+					{ kind: "ref", ref: "HEAD" },
+					{
+						kind: "git",
+						buildArgs: (entry) => [
+							"diff",
+							"--no-ext-diff",
+							"--no-color",
+							upstreamRef,
+							"HEAD",
+							"--",
+							...getEntryPathArgs(entry),
+						],
+					},
+				),
+			]);
+			return {
+				mode,
+				compareRef: upstreamRef,
+				compareLabel: upstreamRef,
+				fallbackReason: null,
+				summary: {
+					...summary,
+					files: entries.length,
+				},
+				...filesResult,
+			};
+		}
+
+		const branchEntries = await listDiffEntries(worktreePath, [`${defaultCompareRef}...HEAD`]);
+		const [summary, filesResult] = await Promise.all([
+			getBranchDiffStats(worktreePath, defaultCompareRef),
+			buildTaskDiffFiles(
+				worktreePath,
+				branchEntries,
+				{ kind: "ref", ref: defaultCompareRef },
+				{ kind: "ref", ref: "HEAD" },
+				{
+					kind: "git",
+					buildArgs: (entry) => [
+						"diff",
+						"--no-ext-diff",
+						"--no-color",
+						`${defaultCompareRef}...HEAD`,
+						"--",
+						...getEntryPathArgs(entry),
+					],
+				},
+			),
+		]);
+		return {
+			mode,
+			compareRef: defaultCompareRef,
+			compareLabel: defaultCompareLabel,
+			fallbackReason: "no-upstream",
+			summary: {
+				files: branchEntries.length,
+				insertions: summary.insertions,
+				deletions: summary.deletions,
+			},
+			...filesResult,
+		};
+	}
+
+	const branchEntries = await listDiffEntries(worktreePath, [`${defaultCompareRef}...HEAD`]);
+	const [summary, filesResult] = await Promise.all([
+		getBranchDiffStats(worktreePath, defaultCompareRef),
+		buildTaskDiffFiles(
+			worktreePath,
+			branchEntries,
+			{ kind: "ref", ref: defaultCompareRef },
+			{ kind: "ref", ref: "HEAD" },
+			{
+				kind: "git",
+				buildArgs: (entry) => [
+					"diff",
+					"--no-ext-diff",
+					"--no-color",
+					`${defaultCompareRef}...HEAD`,
+					"--",
+					...getEntryPathArgs(entry),
+				],
+			},
+		),
+	]);
+	return {
+		mode,
+		compareRef: defaultCompareRef,
+		compareLabel: defaultCompareLabel,
+		fallbackReason: null,
+		summary: {
+			files: branchEntries.length,
+			insertions: summary.insertions,
+			deletions: summary.deletions,
+		},
+		...filesResult,
+	};
 }
 
 export async function cloneRepo(

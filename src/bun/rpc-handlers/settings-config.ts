@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { PATHS } from "electrobun/bun";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, DiffToolCheckResult, GlobalSettings, Project, RequirementCheckResult } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GlobalSettings, Project, RequirementCheckResult } from "../../shared/types";
 import * as data from "../data";
 import * as agents from "../agents";
 import * as updater from "../updater";
@@ -10,7 +10,7 @@ import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
 import { DEV3_HOME } from "../paths";
 import { spawn, spawnSync } from "../spawn";
-import { BUILT_IN_DIFF_TOOLS, extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
+import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
 
 export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
 	const projectResolved = await repoConfig.resolveProjectConfig(project);
@@ -293,25 +293,6 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 	return results;
 }
 
-async function detectDiffTools(): Promise<DiffToolCheckResult[]> {
-	log.info("-> detectDiffTools");
-	const results: DiffToolCheckResult[] = [
-		{ id: "git-terminal", name: "Git Terminal Diff", available: true },
-	];
-	for (const tool of BUILT_IN_DIFF_TOOLS) {
-		const { resolvedPath } = resolveBinaryPath(tool.binaryName);
-		results.push({
-			id: tool.id,
-			name: tool.name,
-			available: !!resolvedPath,
-			resolvedPath,
-		});
-	}
-	results.push({ id: "custom", name: "Custom Command", available: true });
-	log.info("<- detectDiffTools", { results: results.map((r) => `${r.id}:${r.available}`) });
-	return results;
-}
-
 async function setAgentBinaryPath(params: { agentId: string; path: string }): Promise<void> {
 	log.info("-> setAgentBinaryPath", params);
 	if (!existsSync(params.path)) {
@@ -353,7 +334,6 @@ export const settingsConfigHandlers = {
 	checkGhAvailable,
 	setCustomBinaryPath,
 	checkAgentAvailability,
-	detectDiffTools,
 	setAgentBinaryPath,
 	setTmuxTheme,
 };

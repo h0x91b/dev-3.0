@@ -108,10 +108,28 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F044B}", // nf-md-source_diff
 	},
 	{
-		id: "diff-tool-setting",
-		titleKey: "tip.diffToolSetting.title",
-		bodyKey: "tip.diffToolSetting.body",
-		icon: "\u{F0ACA}", // nf-md-file_compare
+		id: "diff-default-layout",
+		titleKey: "tip.diffDefaultLayout.title",
+		bodyKey: "tip.diffDefaultLayout.body",
+		icon: "\u{F0156}", // nf-md-view_split_vertical
+	},
+	{
+		id: "inline-diff-modes",
+		titleKey: "tip.inlineDiffModes.title",
+		bodyKey: "tip.inlineDiffModes.body",
+		icon: "\u{F0156}", // nf-md-view_split_vertical
+	},
+	{
+		id: "inline-diff-bulk-review",
+		titleKey: "tip.inlineDiffBulkReview.title",
+		bodyKey: "tip.inlineDiffBulkReview.body",
+		icon: "\u{F04E3}", // nf-md-check_all
+	},
+	{
+		id: "unpushed-diff",
+		titleKey: "tip.unpushedDiff.title",
+		bodyKey: "tip.unpushedDiff.body",
+		icon: "\u{F07E7}", // nf-md-cloud_upload_outline
 	},
 	{
 		id: "image-paste-attach",

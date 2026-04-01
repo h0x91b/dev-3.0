@@ -265,29 +265,6 @@ export function useTaskBranchStatus({
 		setPushing(false);
 	}, [project.id, pushing, task.id, t]);
 
-	const handleShowDiff = useCallback(async () => {
-		try {
-			await api.request.showDiff({
-				taskId: task.id,
-				projectId: project.id,
-				compareRef: compareRef || undefined,
-			});
-		} catch (err) {
-			alert(t("infoPanel.showDiffFailed", { error: String(err) }));
-		}
-	}, [compareRef, project.id, task.id, t]);
-
-	const handleShowUncommittedDiff = useCallback(async () => {
-		try {
-			await api.request.showUncommittedDiff({
-				taskId: task.id,
-				projectId: project.id,
-			});
-		} catch (err) {
-			alert(t("infoPanel.uncommittedDiffFailed", { error: String(err) }));
-		}
-	}, [project.id, task.id, t]);
-
 	const handleOpenPR = useCallback(() => {
 		if (branchStatus?.prUrl) {
 			window.open(branchStatus.prUrl, "_blank");
@@ -317,8 +294,6 @@ export function useTaskBranchStatus({
 		handlePushThenCreatePR,
 		handleRebase,
 		handleRefreshStatus,
-		handleShowDiff,
-		handleShowUncommittedDiff,
 		merging,
 		pushing,
 		rebasing,

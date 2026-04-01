@@ -1,11 +1,9 @@
-import { chmodSync } from "node:fs";
-import type { BranchStatus, DiffToolId, PRInfo } from "../../shared/types";
+import type { BranchStatus, PRInfo, TaskDiffMode, TaskDiffResponse } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { loadSettings } from "../settings";
 import { spawn } from "../spawn";
-import { BUILT_IN_DIFF_TOOLS, getPushMessage, log } from "./shared";
+import { getPushMessage, log } from "./shared";
 
 const gitOpPaneIds = new Map<string, string>();
 const mergeNotifiedTasks = new Set<string>();
@@ -107,17 +105,6 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	} catch {
 		cleanup();
 	}
-}
-
-function buildDiffCommand(toolId: DiffToolId, customCommand: string | undefined, localPath: string, remotePath: string): string {
-	if (toolId === "custom" && customCommand) {
-		return customCommand
-			.replace(/\$LOCAL/g, `"${localPath}"`)
-			.replace(/\$REMOTE/g, `"${remotePath}"`);
-	}
-	const tool = BUILT_IN_DIFF_TOOLS.find((item) => item.id === toolId);
-	if (!tool) throw new Error(`Unknown diff tool: ${toolId}`);
-	return `${tool.extcmd} "${localPath}" "${remotePath}"`;
 }
 
 let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
@@ -388,6 +375,41 @@ async function getBranchStatus(params: { taskId: string; projectId: string; comp
 	}
 }
 
+async function getTaskDiff(params: {
+	taskId: string;
+	projectId: string;
+	mode: TaskDiffMode;
+	compareRef?: string;
+	compareLabel?: string;
+}): Promise<TaskDiffResponse> {
+	log.info("→ getTaskDiff", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+
+	if (!task.worktreePath) {
+		throw new Error("Task has no worktree");
+	}
+
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	if (params.mode !== "uncommitted") {
+		await git.fetchOrigin(project.path);
+	}
+
+	const result = await git.getTaskDiff(task.worktreePath, params.mode, {
+		baseBranch,
+		compareRef: params.compareRef,
+		compareLabel: params.compareLabel,
+	});
+	log.info("← getTaskDiff", {
+		mode: result.mode,
+		files: result.files.length,
+		binary: result.skippedBinaryFiles.length,
+		large: result.skippedLargeFiles.length,
+		fallbackReason: result.fallbackReason,
+	});
+	return result;
+}
+
 async function rebaseTask(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {
 	log.info("→ rebaseTask", params);
 	const project = await data.getProject(params.projectId);
@@ -622,168 +644,6 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 	log.info("← openPullRequest (pane opened)", { paneId });
 }
 
-async function showDiff(params: { taskId: string; projectId: string; compareRef?: string }): Promise<void> {
-	log.info("→ showDiff", params);
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-
-	if (!task.worktreePath) throw new Error("Task has no worktree");
-
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	const ref = params.compareRef || `origin/${baseBranch}`;
-	await git.fetchOrigin(project.path);
-
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-diff.sh`;
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	await killExistingGitPane(task.id, tmuxSession, socket);
-
-	const script = [
-		`#!/bin/bash`,
-		`git diff --color=always ${ref}...HEAD | less -R`,
-		`EXIT_CODE=\${PIPESTATUS[0]}`,
-		`if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 141 ]; then`,
-		`  printf '\\033[1;31m✗ git diff failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
-		`  echo "Press any key to close."`,
-		`  read -n 1 -s`,
-		`fi`,
-	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
-
-	const proc = spawn(pty.tmuxArgs(socket,
-		"split-window", "-h",
-		"-t", tmuxSession,
-		"-c", task.worktreePath,
-		"-P", "-F", "#{pane_id}",
-		`bash "${scriptPath}"`,
-	), { stdout: "pipe", stderr: "pipe" });
-	const output = await new Response(proc.stdout).text();
-	const stderrOutput = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (stderrOutput.trim()) {
-		log.warn("showDiff tmux stderr", { stderr: stderrOutput.trim() });
-	}
-	if (exitCode !== 0) {
-		throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
-	}
-
-	const paneId = output.trim() || null;
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
-	log.info("← showDiff (pane opened)", { paneId });
-}
-
-async function showUncommittedDiff(params: { taskId: string; projectId: string }): Promise<void> {
-	log.info("→ showUncommittedDiff", params);
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-
-	if (!task.worktreePath) throw new Error("Task has no worktree");
-
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-uncommitted-diff.sh`;
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	await killExistingGitPane(task.id, tmuxSession, socket);
-
-	const script = [
-		`#!/bin/bash`,
-		`{ git diff --color=always --stat && echo "" && git diff --color=always; git diff --cached --color=always --stat && echo "" && git diff --cached --color=always; } | less -R`,
-		`EXIT_CODE=\${PIPESTATUS[0]}`,
-		`if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 141 ]; then`,
-		`  printf '\\033[1;31m✗ git diff failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
-		`  echo "Press any key to close."`,
-		`  read -n 1 -s`,
-		`fi`,
-	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
-
-	const proc = spawn(pty.tmuxArgs(socket,
-		"split-window", "-h",
-		"-t", tmuxSession,
-		"-c", task.worktreePath,
-		"-P", "-F", "#{pane_id}",
-		`bash "${scriptPath}"`,
-	), { stdout: "pipe", stderr: "pipe" });
-	const output = await new Response(proc.stdout).text();
-	const stderrOutput = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (stderrOutput.trim()) {
-		log.warn("showUncommittedDiff tmux stderr", { stderr: stderrOutput.trim() });
-	}
-	if (exitCode !== 0) {
-		throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
-	}
-
-	const paneId = output.trim() || null;
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
-	log.info("← showUncommittedDiff (pane opened)", { paneId });
-}
-
-async function openFileDiff(params: { taskId: string; projectId: string; relativePath: string; ref?: string }): Promise<void> {
-	log.info("→ openFileDiff", params);
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	if (!task.worktreePath) throw new Error("Task has no worktree");
-
-	const settings = await loadSettings();
-	const diffToolId = settings.diffTool ?? "git-terminal";
-	if (diffToolId === "git-terminal") {
-		throw new Error("No external diff tool configured");
-	}
-	if (diffToolId === "custom" && !settings.customDiffCommand) {
-		throw new Error("Custom diff command is not configured");
-	}
-
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	const ref = params.ref || `origin/${baseBranch}`;
-	const safeRelPath = params.relativePath.replace(/'/g, "'\\''");
-	const tmpDir = `/tmp/dev3-${task.id}-filediff`;
-	const tmpFile = `${tmpDir}/${params.relativePath.replace(/\//g, "__")}`;
-	const safeTmpFile = tmpFile.replace(/'/g, "'\\''");
-	const remotePath = `${task.worktreePath}/${params.relativePath}`;
-
-	const script = [
-		"#!/bin/bash",
-		`mkdir -p "${tmpDir}"`,
-		`rm -f '${safeTmpFile}'`,
-		`cd "${task.worktreePath}"`,
-		`git show '${ref}:${safeRelPath}' > '${safeTmpFile}' 2>/dev/null || touch '${safeTmpFile}'`,
-		`chmod 444 '${safeTmpFile}'`,
-		buildDiffCommand(diffToolId, settings.customDiffCommand, tmpFile, remotePath),
-	].join("\n") + "\n";
-
-	const scriptPath = `/tmp/dev3-${task.id}-filediff.sh`;
-	await Bun.write(scriptPath, script);
-	chmodSync(scriptPath, 0o755);
-
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	await killExistingGitPane(task.id, tmuxSession, socket);
-
-	const proc = spawn(pty.tmuxArgs(socket,
-		"split-window", "-h",
-		"-t", tmuxSession,
-		"-c", task.worktreePath,
-		"-P", "-F", "#{pane_id}",
-		`bash "${scriptPath}"`,
-	), { stdout: "pipe", stderr: "pipe" });
-	const output = await new Response(proc.stdout).text();
-	const stderrOutput = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (stderrOutput.trim()) {
-		log.warn("openFileDiff tmux stderr", { stderr: stderrOutput.trim() });
-	}
-	if (exitCode !== 0) {
-		throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
-	}
-
-	const paneId = output.trim() || null;
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
-	log.info("← openFileDiff (pane opened)", { paneId, file: params.relativePath, tool: diffToolId });
-}
-
 async function listBranches(params: { projectId: string }): Promise<Array<{ name: string; isRemote: boolean }>> {
 	const project = await data.getProject(params.projectId);
 	return git.listBranches(project.path);
@@ -844,14 +704,12 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 
 export const gitOperationHandlers = {
 	getBranchStatus,
+	getTaskDiff,
 	rebaseTask,
 	mergeTask,
 	pushTask,
 	createPullRequest,
 	openPullRequest,
-	showDiff,
-	showUncommittedDiff,
-	openFileDiff,
 	listBranches,
 	fetchBranches,
 	getProjectCurrentBranch,

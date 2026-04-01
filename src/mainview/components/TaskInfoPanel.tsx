@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, BranchStatus, PortInfo, ResourceUsage } from "../../shared/types";
+import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
 import LabelChip from "./LabelChip";
+import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import InlineRename from "./InlineRename";
@@ -18,10 +19,12 @@ import PipelineDropdown from "./PipelineDropdown";
 import SpawnAgentModal from "./SpawnAgentModal";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
+import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskTmuxControls from "./task-info-panel/TaskTmuxControls";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
+import type { TaskInlineDiffRequest } from "./task-inline-diff";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -31,6 +34,7 @@ interface TaskInfoPanelProps {
 	taskPorts?: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	isFullPage?: boolean;
+	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
 const COLLAPSED_HEIGHT_REM = 3.875;
@@ -63,7 +67,7 @@ function readNumber(key: string, fallback: number): number {
 	return fallback;
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -73,17 +77,28 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const [statusMenuVisible, setStatusMenuVisible] = useState(false);
 	const [movingStatus, setMovingStatus] = useState(false);
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
-	const [metadataBranchStatus, setMetadataBranchStatus] = useState<BranchStatus | null>(null);
+	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
+	const [diffFilesHover, setDiffFilesHover] = useState(false);
+	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
+	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
 	const statusTriggerRef = useRef<HTMLButtonElement>(null);
 	const statusMenuRef = useRef<HTMLDivElement>(null);
+	const diffFilesTriggerRef = useRef<HTMLSpanElement>(null);
+	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 
 	useEffect(() => {
-		setMetadataBranchStatus(null);
+		setMetadataBranchState(null);
 	}, [task.id]);
+
+	useEffect(() => () => {
+		if (diffFilesHoverTimer.current) {
+			clearTimeout(diffFilesHoverTimer.current);
+		}
+	}, []);
 
 	useEffect(() => {
 		if (!statusMenuOpen) {
@@ -310,6 +325,118 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const activeCustomColumn = task.customColumnId
 		? (project.customColumns ?? []).find((column) => column.id === task.customColumnId)
 		: null;
+	const assignedLabels = (task.labelIds ?? [])
+		.map((id) => (project.labels ?? []).find((item) => item.id === id))
+		.filter(Boolean) as Label[];
+
+	function showDiffFilesPopover() {
+		if (diffFilesHoverTimer.current) {
+			clearTimeout(diffFilesHoverTimer.current);
+		}
+		if (diffFilesTriggerRef.current) {
+			const rect = diffFilesTriggerRef.current.getBoundingClientRect();
+			setDiffFilesPos({ top: rect.bottom + 4, left: rect.left });
+		}
+		setDiffFilesHover(true);
+	}
+
+	function hideDiffFilesPopover() {
+		diffFilesHoverTimer.current = setTimeout(() => {
+			setDiffFilesHover(false);
+			setFileOpenInMenu(null);
+		}, 150);
+	}
+
+	function cancelHideDiffFiles() {
+		if (diffFilesHoverTimer.current) {
+			clearTimeout(diffFilesHoverTimer.current);
+		}
+	}
+
+	function handleFileOpenIn(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
+		event.stopPropagation();
+		if (!task.worktreePath) {
+			return;
+		}
+		setFileOpenInMenu({
+			path: `${task.worktreePath}/${relativePath}`,
+			pos: { top: event.clientY, left: event.clientX },
+		});
+	}
+
+	function handleFileDiff(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
+		event.stopPropagation();
+		setDiffFilesHover(false);
+		setFileOpenInMenu(null);
+		if (!onOpenInlineDiff) {
+			return;
+		}
+		const compareLabel = metadataBranchState?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`;
+		onOpenInlineDiff({
+			mode: "branch",
+			compareRef: metadataBranchState?.compareRef,
+			compareLabel,
+			focusFile: relativePath,
+		});
+	}
+
+	const metadataBranchStatus = metadataBranchState?.branchStatus ?? null;
+	const diffSummaryBadge = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+		<span
+			ref={diffFilesTriggerRef}
+			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-[0.6875rem] font-mono text-fg-2 flex-shrink-0 cursor-default"
+			onMouseEnter={showDiffFilesPopover}
+			onMouseLeave={hideDiffFilesPopover}
+		>
+			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
+			<span>{metadataBranchStatus.diffFiles} {metadataBranchStatus.diffFiles === 1 ? "file" : "files"}</span>
+			<span className="text-success">+{metadataBranchStatus.diffInsertions}</span>
+			<span className="text-danger">−{metadataBranchStatus.diffDeletions}</span>
+		</span>
+	) : null;
+	const diffFilesPopover = diffFilesHover && metadataBranchStatus && metadataBranchStatus.diffFileNames.length > 0 && createPortal(
+		<div
+			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 pl-3 pr-1.5 max-w-[25rem] max-h-[20rem] overflow-auto"
+			style={{ top: diffFilesPos.top, left: diffFilesPos.left, zIndex: 9999 }}
+			onMouseEnter={cancelHideDiffFiles}
+			onMouseLeave={hideDiffFilesPopover}
+		>
+			<div className="text-[0.625rem] text-fg-muted font-semibold uppercase tracking-wider mb-1.5">
+				{t("infoPanel.changedFiles")}
+			</div>
+			{metadataBranchStatus.diffFileNames.map((fileName) => (
+				<div key={fileName} className="group/file flex items-center gap-1.5 py-0.5 leading-snug">
+					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{fileName}</span>
+					<div className="flex items-center gap-1.5 flex-shrink-0">
+						<button
+							onClick={(event) => handleFileDiff(event, fileName)}
+							aria-label={t("infoPanel.showDiff")}
+							className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
+							title={t("infoPanel.showDiff")}
+						>
+							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
+						</button>
+						<button
+							onClick={(event) => handleFileOpenIn(event, fileName)}
+							aria-label={t("openIn.menuTitle")}
+							className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
+							title={t("openIn.menuTitle")}
+						>
+							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+						</button>
+					</div>
+				</div>
+			))}
+		</div>,
+		document.body,
+	);
+	const fileOpenInMenuPortal = fileOpenInMenu ? (
+		<OpenInMenu
+			position={fileOpenInMenu.pos}
+			path={fileOpenInMenu.path}
+			onClose={() => setFileOpenInMenu(null)}
+		/>
+	) : null;
 
 	const watchToggleButton = (
 		<button
@@ -402,16 +529,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
 			style={{ height }}
 		>
+			{diffFilesPopover}
+			{fileOpenInMenuPortal}
 			{collapsed ? (
 				<div className="flex flex-col h-full px-4">
 					<div className="flex items-center gap-1.5 min-w-0 pt-1">
 						{watchToggleButton}
 						{statusDropdownButton}
 						{statusDropdownPortal}
-						{(task.labelIds ?? []).map((id) => {
-							const label = (project.labels ?? []).find((item) => item.id === id);
-							return label ? <LabelChip key={id} label={label} size="xs" /> : null;
-						})}
+						{diffSummaryBadge}
+						{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 						<div className="flex-1" />
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
@@ -453,7 +580,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							isTaskActive={isTaskActive}
 							showWorktreeCopy
 							showLoading
-							onBranchStatusChange={setMetadataBranchStatus}
+							onBranchStatusChange={setMetadataBranchState}
+							onOpenInlineDiff={onOpenInlineDiff}
 						/>
 					</div>
 				</div>
@@ -464,10 +592,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{watchToggleButton}
 							{statusDropdownButton}
 							{statusDropdownPortal}
-							{(task.labelIds ?? []).map((id) => {
-								const label = (project.labels ?? []).find((item) => item.id === id);
-								return label ? <LabelChip key={id} label={label} size="xs" /> : null;
-							})}
+							{diffSummaryBadge}
+							{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 							<div className="flex-1" />
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
@@ -507,7 +633,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								navigate={navigate}
 								isTaskActive={isTaskActive}
 								branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
-								onBranchStatusChange={setMetadataBranchStatus}
+								onBranchStatusChange={setMetadataBranchState}
+								onOpenInlineDiff={onOpenInlineDiff}
 							/>
 						</div>
 					</div>

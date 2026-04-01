@@ -12,7 +12,7 @@ import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
 import ProjectView from "./components/ProjectView";
-import TaskTerminal from "./components/TaskTerminal";
+import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
@@ -803,7 +803,7 @@ function App() {
 			}
 			case "task":
 				return (
-					<TaskTerminal
+					<TaskWorkspaceView
 						projectId={route.projectId}
 						taskId={route.taskId}
 						tasks={state.currentProjectTasks}
