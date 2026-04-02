@@ -1,0 +1,967 @@
+import { useCallback, useEffect, useState } from "react";
+import type {
+	AgentCheckResult,
+	AgentConfiguration,
+	CodingAgent,
+	EffortLevel,
+	GlobalSettings,
+	PermissionMode,
+} from "../../../shared/types";
+import { randomUUID } from "../../uuid";
+import { ListEditor } from "../ListEditor";
+import { api } from "../../rpc";
+import type { TFunction } from "../../i18n";
+import SettingsSection from "./SettingsSection";
+import { buildCommandPreview } from "./utils";
+
+interface AgentSettingsSectionProps {
+	t: TFunction;
+	agents: CodingAgent[];
+	globalSettings: GlobalSettings;
+	onAgentsChange: (updated: CodingAgent[]) => void | Promise<void>;
+	onDefaultAgentChange: (agentId: string) => void;
+	onDefaultConfigChange: (configId: string) => void;
+}
+
+export default function AgentSettingsSection({
+	t,
+	agents,
+	globalSettings,
+	onAgentsChange,
+	onDefaultAgentChange,
+	onDefaultConfigChange,
+}: AgentSettingsSectionProps) {
+	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
+	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
+	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>(
+		[],
+	);
+	const [agentCheckLoading, setAgentCheckLoading] = useState(false);
+	const [agentCustomPaths, setAgentCustomPaths] = useState<Record<string, string>>(
+		{},
+	);
+	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
+	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
+
+	const selectedDefaultAgent = agents.find(
+		(agent) => agent.id === globalSettings.defaultAgentId,
+	);
+	const defaultAgentConfigs = selectedDefaultAgent?.configurations || [];
+
+	const loadAgentAvailability = useCallback(() => {
+		setAgentCheckLoading(true);
+		api.request.checkAgentAvailability()
+			.then(setAgentAvailability)
+			.catch(() => {})
+			.finally(() => setAgentCheckLoading(false));
+	}, []);
+
+	useEffect(() => {
+		loadAgentAvailability();
+	}, [loadAgentAvailability]);
+
+	function persistAgents(updated: CodingAgent[]) {
+		onAgentsChange(updated);
+	}
+
+	function updateAgent(agentId: string, patch: Partial<CodingAgent>) {
+		const updated = agents.map((agent) =>
+			agent.id === agentId ? { ...agent, ...patch } : agent,
+		);
+		persistAgents(updated);
+	}
+
+	function updateConfig(
+		agentId: string,
+		configId: string,
+		patch: Partial<AgentConfiguration>,
+	) {
+		const updated = agents.map((agent) => {
+			if (agent.id !== agentId) return agent;
+			return {
+				...agent,
+				configurations: agent.configurations.map((config) =>
+					config.id === configId ? { ...config, ...patch } : config,
+				),
+			};
+		});
+		persistAgents(updated);
+	}
+
+	function addConfig(agentId: string) {
+		const newConfig: AgentConfiguration = {
+			id: randomUUID(),
+			name: "New Config",
+		};
+		const updated = agents.map((agent) => {
+			if (agent.id !== agentId) return agent;
+			return {
+				...agent,
+				configurations: [...agent.configurations, newConfig],
+			};
+		});
+		persistAgents(updated);
+		setExpandedConfigId(newConfig.id);
+	}
+
+	function deleteConfig(agentId: string, configId: string) {
+		const updated = agents.map((agent) => {
+			if (agent.id !== agentId) return agent;
+			const filtered = agent.configurations.filter(
+				(config) => config.id !== configId,
+			);
+			const newDefault =
+				agent.defaultConfigId === configId
+					? filtered[0]?.id
+					: agent.defaultConfigId;
+			return {
+				...agent,
+				configurations: filtered,
+				defaultConfigId: newDefault,
+			};
+		});
+		persistAgents(updated);
+		if (expandedConfigId === configId) {
+			setExpandedConfigId(null);
+		}
+	}
+
+	function addAgent() {
+		const agentId = randomUUID();
+		const configId = randomUUID();
+		const newAgent: CodingAgent = {
+			id: agentId,
+			name: "New Agent",
+			baseCommand: "",
+			configurations: [{ id: configId, name: "Default" }],
+			defaultConfigId: configId,
+		};
+		persistAgents([...agents, newAgent]);
+		setExpandedAgentId(agentId);
+		setExpandedConfigId(null);
+	}
+
+	function deleteAgent(agentId: string) {
+		persistAgents(agents.filter((agent) => agent.id !== agentId));
+		if (expandedAgentId === agentId) {
+			setExpandedAgentId(null);
+			setExpandedConfigId(null);
+		}
+	}
+
+	return (
+		<SettingsSection title={t("settings.agents")}>
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.defaultAgent")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.defaultAgentDesc")}
+				</p>
+				<select
+					value={globalSettings.defaultAgentId}
+					onChange={(event) => onDefaultAgentChange(event.target.value)}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+				>
+					{agents.map((agent) => (
+						<option key={agent.id} value={agent.id}>
+							{agent.name}
+						</option>
+					))}
+				</select>
+
+				{defaultAgentConfigs.length > 0 ? (
+					<div className="mt-4">
+						<label className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.defaultConfig")}
+						</label>
+						<p className="text-fg-3 text-sm mb-3">
+							{t("settings.defaultConfigDesc")}
+						</p>
+						<select
+							value={globalSettings.defaultConfigId}
+							onChange={(event) => onDefaultConfigChange(event.target.value)}
+							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+						>
+							{defaultAgentConfigs.map((config) => (
+								<option key={config.id} value={config.id}>
+									{config.name}
+									{config.model ? ` (${config.model})` : ""}
+								</option>
+							))}
+						</select>
+						{(() => {
+							const selectedConfig =
+								defaultAgentConfigs.find(
+									(config) => config.id === globalSettings.defaultConfigId,
+								) ?? defaultAgentConfigs[0];
+							if (!selectedConfig) return null;
+							return (
+								<ConfigPreviewCard
+									config={selectedConfig}
+									agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
+									t={t}
+								/>
+							);
+						})()}
+					</div>
+				) : null}
+			</div>
+
+			<div>
+				<div className="space-y-2 mb-3">
+					{agents.map((agent) => {
+						const isExpanded = expandedAgentId === agent.id;
+						const availability = agentAvailability.find(
+							(item) => item.agentId === agent.id,
+						);
+						return (
+							<div
+								key={agent.id}
+								className="bg-raised border border-edge rounded-xl overflow-hidden"
+							>
+								<button
+									onClick={() => {
+										setExpandedAgentId(isExpanded ? null : agent.id);
+										setExpandedConfigId(null);
+									}}
+									className="w-full flex items-center gap-3 px-4 py-3 hover:bg-raised-hover transition-colors text-left"
+								>
+									<span className="text-fg-3 text-xs">
+										{isExpanded ? "▼" : "▶"}
+									</span>
+									<span className="text-fg text-sm font-medium flex-1">
+										{agent.name}
+									</span>
+									<span className="text-fg-3 text-xs font-mono">
+										{agent.baseCommand}
+									</span>
+									{availability ? (
+										<span
+											className={`text-xs px-1.5 py-0.5 rounded ${
+												availability.installed
+													? "bg-success/15 text-success"
+													: "bg-danger/15 text-danger"
+											}`}
+										>
+											{availability.installed
+												? t("settings.agentInstalled")
+												: t("settings.agentNotInstalled")}
+										</span>
+									) : null}
+									<span className="text-fg-muted text-xs">
+										{agent.configurations.length} config
+										{agent.configurations.length !== 1 ? "s" : ""}
+									</span>
+									{agent.isDefault ? (
+										<span className="text-fg-muted text-xs px-2 py-0.5 bg-elevated rounded-md">
+											{t("settings.defaultBadge")}
+										</span>
+									) : null}
+								</button>
+
+								{isExpanded ? (
+									<div className="border-t border-edge px-4 py-4 space-y-4">
+										{availability ? (
+											<div
+												className={`p-3 rounded-lg ${
+													availability.installed
+														? "bg-success/5 border border-success/20"
+														: "bg-danger/5 border border-danger/20"
+												}`}
+											>
+												{availability.installed ? (
+													<div className="flex items-center gap-2">
+														<span className="text-success text-sm">
+															&#10003;
+														</span>
+														<span className="text-fg-2 text-xs">
+															{t("settings.agentInstalled")}
+														</span>
+														{availability.resolvedPath ? (
+															<span className="text-fg-muted text-xs font-mono truncate">
+																{availability.resolvedPath}
+															</span>
+														) : null}
+													</div>
+												) : (
+													<div className="space-y-2">
+														<div className="flex items-center gap-2">
+															<span className="text-danger text-sm">
+																&#10007;
+															</span>
+															<span className="text-fg-2 text-xs">
+																{t("settings.agentNotInstalledHint")}
+															</span>
+														</div>
+														{availability.installCommand ? (
+															<div>
+																<p className="text-fg-3 text-xs mb-1">
+																	{t("settings.agentInstallHint")}
+																</p>
+																<div className="flex items-center gap-1.5">
+																	<code className="text-warning bg-warning/10 px-2 py-1 rounded text-xs font-mono">
+																		{availability.installCommand}
+																	</code>
+																	<button
+																		type="button"
+																		onClick={(event) => {
+																			event.stopPropagation();
+																			navigator.clipboard.writeText(
+																				availability.installCommand!,
+																			);
+																			setAgentCopiedId(agent.id);
+																			setTimeout(() => {
+																				setAgentCopiedId((current) =>
+																					current === agent.id ? null : current,
+																				);
+																			}, 2000);
+																		}}
+																		className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+																		title="Copy"
+																	>
+																		{agentCopiedId === agent.id ? (
+																			<svg
+																				width="14"
+																				height="14"
+																				viewBox="0 0 24 24"
+																				fill="none"
+																				stroke="currentColor"
+																				strokeWidth="2"
+																				strokeLinecap="round"
+																				strokeLinejoin="round"
+																			>
+																				<polyline points="20 6 9 17 4 12" />
+																			</svg>
+																		) : (
+																			<svg
+																				width="14"
+																				height="14"
+																				viewBox="0 0 24 24"
+																				fill="none"
+																				stroke="currentColor"
+																				strokeWidth="2"
+																				strokeLinecap="round"
+																				strokeLinejoin="round"
+																			>
+																				<rect
+																					x="9"
+																					y="9"
+																					width="13"
+																					height="13"
+																					rx="2"
+																					ry="2"
+																				/>
+																				<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+																			</svg>
+																		)}
+																	</button>
+																</div>
+															</div>
+														) : null}
+														<p className="text-fg-muted text-xs">
+															{t("settings.agentLoginReminder")}
+														</p>
+														<div className="pt-2 border-t border-edge/50">
+															<p className="text-fg-3 text-xs mb-1.5">
+																{t("settings.agentCustomPath")}
+															</p>
+															{availability.customPathError ? (
+																<p className="text-danger text-xs mb-1.5">
+																	{t("settings.agentPathNotFound")}
+																</p>
+															) : null}
+															<div className="flex items-center gap-1.5">
+																<input
+																	type="text"
+																	value={agentCustomPaths[agent.id] ?? ""}
+																	onChange={(event) =>
+																		setAgentCustomPaths((current) => ({
+																			...current,
+																			[agent.id]: event.target.value,
+																		}))
+																	}
+																	onClick={(event) => event.stopPropagation()}
+																	placeholder={`/path/to/${agent.baseCommand}`}
+																	className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${
+																		availability.customPathError
+																			? "border-danger"
+																			: "border-edge"
+																	}`}
+																/>
+																<button
+																	type="button"
+																	onClick={async (event) => {
+																		event.stopPropagation();
+																		const path =
+																			agentCustomPaths[agent.id]?.trim();
+																		if (!path) return;
+																		setAgentSavingId(agent.id);
+																		try {
+																			await api.request.setAgentBinaryPath({
+																				agentId: agent.id,
+																				path,
+																			});
+																			loadAgentAvailability();
+																		} catch (error) {
+																			console.error(
+																				"Failed to save agent binary path:",
+																				error,
+																			);
+																		}
+																		setAgentSavingId(null);
+																	}}
+																	disabled={
+																		!agentCustomPaths[agent.id]?.trim() ||
+																		agentSavingId === agent.id
+																	}
+																	className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+																>
+																	{t("requirements.setPath")}
+																</button>
+															</div>
+														</div>
+													</div>
+												)}
+											</div>
+										) : null}
+
+										<div>
+											<label className="block text-fg-2 text-xs mb-1">
+												{t("settings.agentName")}
+											</label>
+											<input
+												type="text"
+												value={agent.name}
+												onChange={(event) =>
+													updateAgent(agent.id, {
+														name: event.target.value,
+													})
+												}
+												className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+											/>
+										</div>
+
+										<div>
+											<label className="block text-fg-2 text-xs mb-1">
+												{t("settings.agentBaseCommand")}
+											</label>
+											<input
+												type="text"
+												value={agent.baseCommand}
+												onChange={(event) =>
+													updateAgent(agent.id, {
+														baseCommand: event.target.value,
+													})
+												}
+												placeholder="claude"
+												autoCapitalize="off"
+												autoCorrect="off"
+												spellCheck={false}
+												className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+											/>
+										</div>
+
+										<div>
+											<label className="block text-fg-2 text-xs font-semibold mb-2">
+												{t("settings.configurations")}
+											</label>
+											<div className="space-y-2">
+												{agent.configurations.map((config) => {
+													const isConfigExpanded =
+														expandedConfigId === config.id;
+													return (
+														<ConfigEditor
+															key={config.id}
+															config={config}
+															agentBaseCommand={agent.baseCommand}
+															isExpanded={isConfigExpanded}
+															canDelete={agent.configurations.length > 1}
+															onToggle={() =>
+																setExpandedConfigId(
+																	isConfigExpanded ? null : config.id,
+																)
+															}
+															onChange={(patch) =>
+																updateConfig(agent.id, config.id, patch)
+															}
+															onDelete={() =>
+																deleteConfig(agent.id, config.id)
+															}
+															t={t}
+														/>
+													);
+												})}
+											</div>
+											<button
+												onClick={() => addConfig(agent.id)}
+												className="mt-2 px-3 py-1.5 text-accent text-xs font-semibold hover:bg-accent/10 rounded-lg transition-colors"
+											>
+												+ {t("settings.addConfig")}
+											</button>
+										</div>
+
+										{agent.isDefault ? (
+											<p className="text-fg-muted text-xs italic">
+												{t("settings.cantDeleteDefault")}
+											</p>
+										) : (
+											<button
+												onClick={() => deleteAgent(agent.id)}
+												className="text-danger text-xs hover:underline"
+											>
+												{t("settings.deleteAgent")}
+											</button>
+										)}
+									</div>
+								) : null}
+							</div>
+						);
+					})}
+				</div>
+
+				<div className="flex items-center gap-3">
+					<button
+						onClick={addAgent}
+						className="px-4 py-2 text-accent text-sm font-semibold hover:bg-accent/10 rounded-lg transition-colors"
+					>
+						+ {t("settings.addAgent")}
+					</button>
+					<button
+						onClick={loadAgentAvailability}
+						disabled={agentCheckLoading}
+						className="px-4 py-2 text-fg-3 text-sm hover:text-fg hover:bg-elevated rounded-lg transition-colors disabled:opacity-50"
+					>
+						{agentCheckLoading ? (
+							<span className="flex items-center gap-1.5">
+								<span className="w-2.5 h-2.5 rounded-full border-2 border-fg-muted/30 border-t-fg-muted animate-spin" />
+								{t("settings.recheckAgents")}
+							</span>
+						) : (
+							t("settings.recheckAgents")
+						)}
+					</button>
+				</div>
+			</div>
+		</SettingsSection>
+	);
+}
+
+function ConfigPreviewCard({
+	config,
+	agentBaseCommand,
+	t,
+}: {
+	config: AgentConfiguration;
+	agentBaseCommand: string;
+	t: TFunction;
+}) {
+	const tags: { label: string; value: string }[] = [];
+	const cmdName = (
+		config.baseCommandOverride ||
+		agentBaseCommand ||
+		""
+	).split("/").pop() ?? "";
+	const isCodex = cmdName === "codex";
+
+	if (config.model) {
+		tags.push({ label: t("settings.configModel"), value: config.model });
+	}
+	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
+		const modeLabels: Record<string, string> = {
+			plan: t("settings.permPlan"),
+			auto: t("settings.permAuto"),
+			acceptEdits: t("settings.permAcceptEdits"),
+			dontAsk: t("settings.permDontAsk"),
+			bypassPermissions: t("settings.permBypass"),
+		};
+		tags.push({
+			label: t("settings.configPermissionMode"),
+			value: modeLabels[config.permissionMode] ?? config.permissionMode,
+		});
+	}
+	if (!isCodex && config.effort) {
+		const effortLabels: Record<string, string> = {
+			low: t("settings.effortLow"),
+			medium: t("settings.effortMedium"),
+			high: t("settings.effortHigh"),
+		};
+		tags.push({
+			label: t("settings.configEffort"),
+			value: effortLabels[config.effort] ?? config.effort,
+		});
+	}
+	if (!isCodex && config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
+		tags.push({
+			label: t("settings.configMaxBudget"),
+			value: `$${config.maxBudgetUsd}`,
+		});
+	}
+
+	const { command, envLine } = buildCommandPreview(agentBaseCommand, config);
+
+	return (
+		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
+			{tags.length > 0 ? (
+				<div className="flex flex-wrap gap-2">
+					{tags.map((tag) => (
+						<span
+							key={tag.label}
+							className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-raised rounded-lg text-xs"
+						>
+							<span className="text-fg-3">{tag.label}:</span>
+							<span className="text-fg font-medium">{tag.value}</span>
+						</span>
+					))}
+				</div>
+			) : null}
+			<CommandPreview command={command} envLine={envLine} />
+		</div>
+	);
+}
+
+function CommandPreview({
+	command,
+	envLine,
+}: {
+	command: string;
+	envLine: string | null;
+}) {
+	const parts = command.split(/(\{\{\w+\}\})/g);
+
+	return (
+		<div className="bg-base border border-edge rounded-lg p-3 font-mono text-xs leading-relaxed overflow-x-auto">
+			{envLine ? (
+				<div className="text-fg-3 mb-1">
+					<span className="text-fg-muted">env: </span>
+					{envLine}
+				</div>
+			) : null}
+			<div className="text-fg-2">
+				<span className="text-fg-muted">$ </span>
+				{parts.map((part, index) =>
+					/^\{\{\w+\}\}$/.test(part) ? (
+						<span key={index} className="text-accent font-semibold">
+							{part}
+						</span>
+					) : (
+						<span key={index}>{part}</span>
+					),
+				)}
+			</div>
+		</div>
+	);
+}
+
+function ConfigEditor({
+	config,
+	agentBaseCommand,
+	isExpanded,
+	canDelete,
+	onToggle,
+	onChange,
+	onDelete,
+	t,
+}: {
+	config: AgentConfiguration;
+	agentBaseCommand: string;
+	isExpanded: boolean;
+	canDelete: boolean;
+	onToggle: () => void;
+	onChange: (patch: Partial<AgentConfiguration>) => void;
+	onDelete: () => void;
+	t: TFunction;
+}) {
+	const preview = buildCommandPreview(agentBaseCommand, config);
+	const baseCommandName = agentBaseCommand.split("/").pop() ?? agentBaseCommand;
+
+	return (
+		<div className="bg-elevated border border-edge rounded-lg overflow-hidden">
+			<button
+				onClick={onToggle}
+				className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated-hover transition-colors text-left"
+			>
+				<span className="text-fg-3 text-xs">{isExpanded ? "▼" : "▶"}</span>
+				<span className="text-fg text-sm flex-1">{config.name}</span>
+				{config.model ? (
+					<span className="text-accent text-xs font-mono px-1.5 py-0.5 bg-accent/10 rounded">
+						{config.model}
+					</span>
+				) : null}
+			</button>
+
+			{isExpanded ? (
+				<div className="border-t border-edge px-3 py-3 space-y-3">
+					<div>
+						<label className="block text-fg-2 text-xs font-semibold mb-1.5">
+							{t("settings.commandPreview")}
+						</label>
+						<CommandPreview
+							command={preview.command}
+							envLine={preview.envLine}
+						/>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configName")}
+						</label>
+						<input
+							type="text"
+							value={config.name}
+							onChange={(event) => onChange({ name: event.target.value })}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+						/>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configModel")}
+						</label>
+						<input
+							type="text"
+							value={config.model || ""}
+							onChange={(event) =>
+								onChange({ model: event.target.value || undefined })
+							}
+							placeholder={
+								baseCommandName === "codex"
+									? "gpt-5.4, o3, etc."
+									: baseCommandName === "gemini"
+										? "gemini-2.5-pro, etc."
+										: "opus, sonnet, etc."
+							}
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+						/>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configPermissionMode")}
+						</label>
+						<select
+							value={config.permissionMode || "default"}
+							onChange={(event) =>
+								onChange({
+									permissionMode:
+										(event.target.value as PermissionMode) === "default"
+											? undefined
+											: (event.target.value as PermissionMode),
+								})
+							}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+						>
+							<option value="default">{t("settings.permDefault")}</option>
+							<option value="plan">{t("settings.permPlan")}</option>
+							<option value="auto">{t("settings.permAuto")}</option>
+							<option value="acceptEdits">
+								{t("settings.permAcceptEdits")}
+							</option>
+							<option value="dontAsk">{t("settings.permDontAsk")}</option>
+							<option value="bypassPermissions">
+								{t("settings.permBypass")}
+							</option>
+						</select>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configEffort")}
+						</label>
+						<select
+							value={config.effort || ""}
+							onChange={(event) =>
+								onChange({
+									effort: (event.target.value as EffortLevel) || undefined,
+								})
+							}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+						>
+							<option value="">{t("settings.effortDefault")}</option>
+							<option value="low">{t("settings.effortLow")}</option>
+							<option value="medium">{t("settings.effortMedium")}</option>
+							<option value="high">{t("settings.effortHigh")}</option>
+						</select>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configMaxBudget")}
+						</label>
+						<input
+							type="number"
+							min={0}
+							step={0.5}
+							value={config.maxBudgetUsd ?? ""}
+							onChange={(event) =>
+								onChange({
+									maxBudgetUsd: event.target.value
+										? Number(event.target.value)
+										: undefined,
+								})
+							}
+							placeholder="0"
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+						/>
+						<p className="text-fg-muted text-xs mt-1">
+							{t("settings.configMaxBudgetHint")}
+						</p>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configAppendPrompt")}
+						</label>
+						<textarea
+							value={config.appendPrompt || ""}
+							onChange={(event) =>
+								onChange({ appendPrompt: event.target.value || undefined })
+							}
+							rows={3}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+						/>
+						<p className="text-fg-muted text-xs mt-1">
+							{t("settings.configAppendPromptHint")}
+						</p>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configAdditionalArgs")}
+						</label>
+						<ListEditor
+							items={config.additionalArgs || []}
+							onChange={(items) =>
+								onChange({
+									additionalArgs: items.length > 0 ? items : undefined,
+								})
+							}
+							placeholder="--flag"
+							addLabel={t("settings.configAddArg")}
+						/>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configEnvVars")}
+						</label>
+						<KeyValueEditor
+							entries={config.envVars || {}}
+							onChange={(entries) =>
+								onChange({
+									envVars:
+										Object.keys(entries).length > 0 ? entries : undefined,
+								})
+							}
+							addLabel={t("settings.configAddEnvVar")}
+						/>
+					</div>
+
+					<div>
+						<label className="block text-fg-2 text-xs mb-1">
+							{t("settings.configBaseCommandOverride")}
+						</label>
+						<input
+							type="text"
+							value={config.baseCommandOverride || ""}
+							onChange={(event) =>
+								onChange({
+									baseCommandOverride:
+										event.target.value || undefined,
+								})
+							}
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+						/>
+					</div>
+
+					{canDelete ? (
+						<button
+							onClick={onDelete}
+							className="text-danger text-xs hover:underline"
+						>
+							{t("settings.deleteConfig")}
+						</button>
+					) : null}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function KeyValueEditor({
+	entries,
+	onChange,
+	addLabel,
+}: {
+	entries: Record<string, string>;
+	onChange: (entries: Record<string, string>) => void;
+	addLabel: string;
+}) {
+	const pairs = Object.entries(entries);
+
+	function updateKey(oldKey: string, newKey: string) {
+		const next: Record<string, string> = {};
+		for (const [key, value] of pairs) {
+			next[key === oldKey ? newKey : key] = value;
+		}
+		onChange(next);
+	}
+
+	function updateValue(key: string, value: string) {
+		onChange({ ...entries, [key]: value });
+	}
+
+	function remove(key: string) {
+		const next = { ...entries };
+		delete next[key];
+		onChange(next);
+	}
+
+	function add() {
+		onChange({ ...entries, "": "" });
+	}
+
+	return (
+		<div className="space-y-1.5">
+			{pairs.map(([key, value], index) => (
+				<div key={index} className="flex gap-2">
+					<input
+						type="text"
+						value={key}
+						onChange={(event) => updateKey(key, event.target.value)}
+						placeholder="KEY"
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
+						className="w-1/3 px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+					/>
+					<input
+						type="text"
+						value={value}
+						onChange={(event) => updateValue(key, event.target.value)}
+						placeholder="value"
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
+						className="flex-1 px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+					/>
+					<button
+						onClick={() => remove(key)}
+						className="text-danger text-xs hover:underline shrink-0 px-2"
+					>
+						×
+					</button>
+				</div>
+			))}
+			<button onClick={add} className="text-accent text-xs hover:underline">
+				+ {addLabel}
+			</button>
+		</div>
+	);
+}

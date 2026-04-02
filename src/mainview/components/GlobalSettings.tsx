@@ -1,17 +1,49 @@
-import { useState, useEffect, useRef } from "react";
-import { useT, useLocale, ALL_LOCALES, LOCALE_LABELS } from "../i18n";
-import type { Locale } from "../i18n";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	useLocale,
+	useT,
+} from "../i18n";
 import { randomUUID } from "../uuid";
-import type { AgentCheckResult, CodingAgent, AgentConfiguration, ExternalApp, GlobalSettings as GlobalSettingsType, PermissionMode, EffortLevel, TerminalKeymapPreset } from "../../shared/types";
+import type {
+	CodingAgent,
+	ExternalApp,
+	GlobalSettings as GlobalSettingsType,
+	TerminalKeymapPreset,
+} from "../../shared/types";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
-import { getZoom, adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_CHANGED_EVENT } from "../zoom";
+import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
-import { ListEditor } from "./ListEditor";
 import { trackEvent } from "../analytics";
+import AgentSettingsSection from "./global-settings/AgentSettingsSection";
+import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
+import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
+import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
+import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
+import {
+	DEFAULT_GLOBAL_SETTINGS,
+	normalizeExternalApps,
+	resolveTheme,
+	toStoredDiffViewMode,
+	toStoredTaskOpenMode,
+	type Theme,
+} from "./global-settings/utils";
 
-type Theme = "dark" | "light" | "system";
+type GlobalSettingsUpdater = (
+	prev: GlobalSettingsType,
+) => GlobalSettingsType;
+
+interface PersistOptions {
+	onLocalUpdate?: (next: GlobalSettingsType) => void;
+}
+
+interface SettingChangeOptions extends PersistOptions {
+	tracking?: {
+		setting: string;
+		value: string;
+	};
+}
 
 function GlobalSettings() {
 	const t = useT();
@@ -20,1675 +52,383 @@ function GlobalSettings() {
 	const [theme, setTheme] = useState<Theme>(
 		() => (localStorage.getItem("dev3-theme") as Theme) || "dark",
 	);
-
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
 	const [cliInstallStatus, setCliInstallStatus] = useState<string | null>(null);
-	const [keymapPreset, setKeymapPresetState] = useState<TerminalKeymapPreset>(() => getKeymapPreset());
+	const [keymapPreset, setKeymapPresetState] = useState<TerminalKeymapPreset>(
+		() => getKeymapPreset(),
+	);
+	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(
+		DEFAULT_GLOBAL_SETTINGS,
+	);
+	const [tipsResetDone, setTipsResetDone] = useState(false);
+	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
+
+	const resetTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const globalSettingsRef = useRef<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
+
+	const setGlobalSettingsState = useCallback((next: GlobalSettingsType) => {
+		globalSettingsRef.current = next;
+		setGlobalSettings(next);
+	}, []);
+
+	const applyGlobalSettingsLocally = useCallback(
+		(updater: GlobalSettingsUpdater) => {
+			const next = updater(globalSettingsRef.current);
+			setGlobalSettingsState(next);
+			return next;
+		},
+		[setGlobalSettingsState],
+	);
+
+	const persistGlobalSettings = useCallback(
+		(updater: GlobalSettingsUpdater, options: PersistOptions = {}) => {
+			const next = applyGlobalSettingsLocally(updater);
+			options.onLocalUpdate?.(next);
+			api.request.saveGlobalSettings(next).catch(() => {});
+			return next;
+		},
+		[applyGlobalSettingsLocally],
+	);
+
+	const persistGlobalSettingsPatch = useCallback(
+		(patch: Partial<GlobalSettingsType>, options?: PersistOptions) =>
+			persistGlobalSettings((prev) => ({ ...prev, ...patch }), options),
+		[persistGlobalSettings],
+	);
+
+	const persistSettingChange = useCallback(
+		(patch: Partial<GlobalSettingsType>, options: SettingChangeOptions = {}) => {
+			persistGlobalSettingsPatch(patch, options);
+			if (options.tracking) {
+				trackEvent("settings_changed", options.tracking);
+			}
+		},
+		[persistGlobalSettingsPatch],
+	);
 
 	useEffect(() => {
-		function onZoomChanged(e: Event) {
-			setZoomLevel((e as CustomEvent).detail);
+		function onZoomChanged(event: Event) {
+			setZoomLevel((event as CustomEvent<number>).detail);
 		}
+
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
 
-	const [agents, setAgents] = useState<CodingAgent[]>([]);
-	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
-	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
-	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
-	const [agentCheckLoading, setAgentCheckLoading] = useState(false);
-	const [agentCustomPaths, setAgentCustomPaths] = useState<Record<string, string>>({});
-	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
-	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
-
-	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
-		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-default",
-		taskDropPosition: "top",
-		updateChannel: "stable",
-	});
-
-	function loadAgentAvailability() {
-		setAgentCheckLoading(true);
-		api.request.checkAgentAvailability()
-			.then(setAgentAvailability)
-			.catch(() => {})
-			.finally(() => setAgentCheckLoading(false));
-	}
-
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
-		loadAgentAvailability();
-		api.request.getGlobalSettings().then((s) => {
-			setGlobalSettings(s);
-			if (s.terminalKeymap) {
-				setKeymapPresetState(s.terminalKeymap);
-				setKeymapPreset(s.terminalKeymap);
+		api.request.getGlobalSettings().then((settings) => {
+			setGlobalSettingsState(settings);
+			if (settings.terminalKeymap) {
+				setKeymapPresetState(settings.terminalKeymap);
+				setKeymapPreset(settings.terminalKeymap);
 			}
-			// Sync task open mode to localStorage so TaskCard can read it without prop drilling
-			if (s.taskOpenMode === "fullscreen") {
+			if (settings.taskOpenMode === "fullscreen") {
 				localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			} else {
 				localStorage.removeItem("dev3-task-open-mode");
 			}
 		}).catch(() => {});
+	}, [setGlobalSettingsState]);
+
+	useEffect(() => {
+		api.request.checkCaffeinateAvailable()
+			.then((result) => setCaffeinateAvailable(result.available))
+			.catch(() => {});
 	}, []);
-
-	const selectedDefaultAgent = agents.find((a) => a.id === globalSettings.defaultAgentId);
-	const defaultAgentConfigs: AgentConfiguration[] = selectedDefaultAgent?.configurations || [];
-
-	function resolveTheme(th: Theme): "dark" | "light" {
-		if (th === "system") {
-			return window.matchMedia("(prefers-color-scheme: dark)").matches
-				? "dark"
-				: "light";
-		}
-		return th;
-	}
-
-	function applyTheme(th: Theme) {
-		setTheme(th);
-		const resolved = resolveTheme(th);
-		document.documentElement.dataset.theme = resolved;
-		localStorage.setItem("dev3-theme", th);
-		api.request.setTmuxTheme({ theme: resolved }).catch(() => {});
-		trackEvent("theme_changed", { theme: th });
-	}
-
-	function handleDropPositionChange(pos: "top" | "bottom") {
-		const updated = { ...globalSettings, taskDropPosition: pos };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-		trackEvent("settings_changed", { setting: "task_drop_position", value: pos });
-	}
-
-	function handleUpdateChannelChange(channel: "stable" | "canary") {
-		const updated = { ...globalSettings, updateChannel: channel };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-		trackEvent("settings_changed", { setting: "update_channel", value: channel });
-	}
-
-	function handleKeymapChange(preset: TerminalKeymapPreset) {
-		setKeymapPresetState(preset);
-		setKeymapPreset(preset);
-		const updated = { ...globalSettings, terminalKeymap: preset };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-	}
-
-	function handleSoundToggle(enabled: boolean) {
-		const updated = { ...globalSettings, playSoundOnTaskComplete: enabled };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-	}
-
-	const [tipsResetDone, setTipsResetDone] = useState(false);
-	const resetTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
 	useEffect(() => {
 		return () => clearTimeout(resetTimerRef.current);
 	}, []);
 
-	function handleTipsDisabledToggle(disabled: boolean) {
-		const updated = { ...globalSettings, tipsDisabled: disabled };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-	}
+	const applyThemeChange = useCallback((nextTheme: Theme) => {
+		setTheme(nextTheme);
+		const prefersDark = window.matchMedia(
+			"(prefers-color-scheme: dark)",
+		).matches;
+		const resolvedTheme = resolveTheme(nextTheme, prefersDark);
+		document.documentElement.dataset.theme = resolvedTheme;
+		localStorage.setItem("dev3-theme", nextTheme);
+		api.request.setTmuxTheme({ theme: resolvedTheme }).catch(() => {});
+		trackEvent("theme_changed", { theme: nextTheme });
+	}, []);
 
-	function handleTipsReset() {
+	const handleTaskDropPositionChange = useCallback(
+		(position: "top" | "bottom") => {
+			persistSettingChange(
+				{ taskDropPosition: position },
+				{
+					tracking: {
+						setting: "task_drop_position",
+						value: position,
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
+	const handleUpdateChannelChange = useCallback(
+		(channel: "stable" | "canary") => {
+			persistSettingChange(
+				{ updateChannel: channel },
+				{
+					tracking: {
+						setting: "update_channel",
+						value: channel,
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
+	const handleKeymapChange = useCallback(
+		(preset: TerminalKeymapPreset) => {
+			setKeymapPresetState(preset);
+			setKeymapPreset(preset);
+			persistSettingChange({ terminalKeymap: preset });
+		},
+		[persistSettingChange],
+	);
+
+	const handleSoundToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ playSoundOnTaskComplete: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleTipsDisabledToggle = useCallback(
+		(disabled: boolean) => {
+			persistSettingChange({ tipsDisabled: disabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleTipsReset = useCallback(() => {
 		api.request.resetTipState().then(() => {
 			setTipsResetDone(true);
 			clearTimeout(resetTimerRef.current);
-			resetTimerRef.current = setTimeout(() => setTipsResetDone(false), 3000);
+			resetTimerRef.current = setTimeout(
+				() => setTipsResetDone(false),
+				3000,
+			);
 		}).catch(() => {});
-	}
-
-	function handleTaskOpenModeChange(mode: "split" | "fullscreen") {
-		const updated = { ...globalSettings, taskOpenMode: mode === "fullscreen" ? "fullscreen" as const : undefined };
-		setGlobalSettings(updated);
-		if (mode === "fullscreen") {
-			localStorage.setItem("dev3-task-open-mode", "fullscreen");
-		} else {
-			localStorage.removeItem("dev3-task-open-mode");
-		}
-		api.request.saveGlobalSettings(updated).catch(() => {});
-		trackEvent("settings_changed", { setting: "task_open_mode", value: mode });
-	}
-
-	function handleDefaultDiffViewModeChange(mode: "split" | "unified") {
-		const updated = { ...globalSettings, defaultDiffViewMode: mode === "unified" ? "unified" as const : undefined };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-		trackEvent("settings_changed", { setting: "default_diff_view_mode", value: mode });
-	}
-
-	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
-
-	useEffect(() => {
-		api.request.checkCaffeinateAvailable().then((r) => setCaffeinateAvailable(r.available)).catch(() => {});
 	}, []);
 
-	function handlePreventSleepToggle(enabled: boolean) {
-		const updated = { ...globalSettings, preventSleepWhileRunning: enabled };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-	}
+	const handleTaskOpenModeChange = useCallback(
+		(mode: "split" | "fullscreen") => {
+			persistSettingChange(
+				{ taskOpenMode: toStoredTaskOpenMode(mode) },
+				{
+					onLocalUpdate: () => {
+						if (mode === "fullscreen") {
+							localStorage.setItem("dev3-task-open-mode", "fullscreen");
+						} else {
+							localStorage.removeItem("dev3-task-open-mode");
+						}
+					},
+					tracking: {
+						setting: "task_open_mode",
+						value: mode,
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
 
-	/** Filter out apps with empty fields before persisting to disk. */
-	function saveExternalApps(apps: ExternalApp[]) {
-		const valid = apps.filter((a) => a.name.trim() && a.macAppName.trim());
-		const updated = { ...globalSettings, externalApps: valid.length > 0 ? valid : undefined };
-		api.request.saveGlobalSettings(updated).catch(() => {});
-		invalidateAvailableApps();
-	}
+	const handleDefaultDiffViewModeChange = useCallback(
+		(mode: "split" | "unified") => {
+			persistSettingChange(
+				{ defaultDiffViewMode: toStoredDiffViewMode(mode) },
+				{
+					tracking: {
+						setting: "default_diff_view_mode",
+						value: mode,
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
+	const handlePreventSleepToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ preventSleepWhileRunning: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const saveExternalApps = useCallback(
+		(apps: ExternalApp[]) => {
+			persistGlobalSettings(
+				(prev) => ({
+					...prev,
+					externalApps: normalizeExternalApps(apps),
+				}),
+				{
+					onLocalUpdate: () => invalidateAvailableApps(),
+				},
+			);
+		},
+		[persistGlobalSettings],
+	);
 
 	const debouncedSaveExternalApps = useDebouncedCallback(saveExternalApps, 500);
 
-	function handleAddExternalApp() {
+	const handleAddExternalApp = useCallback(() => {
 		const newApp: ExternalApp = {
 			id: randomUUID(),
 			name: "",
 			macAppName: "",
 		};
-		const apps = [...(globalSettings.externalApps ?? []), newApp];
-		setGlobalSettings({ ...globalSettings, externalApps: apps });
-		// Don't persist yet — fields are empty, save will happen on input
-	}
+		applyGlobalSettingsLocally((prev) => ({
+			...prev,
+			externalApps: [...(prev.externalApps ?? []), newApp],
+		}));
+	}, [applyGlobalSettingsLocally]);
 
-	function handleUpdateExternalApp(appId: string, patch: Partial<ExternalApp>) {
-		const apps = (globalSettings.externalApps ?? []).map((a) =>
-			a.id === appId ? { ...a, ...patch } : a,
-		);
-		setGlobalSettings({ ...globalSettings, externalApps: apps });
-		debouncedSaveExternalApps(apps);
-	}
+	const handleUpdateExternalApp = useCallback(
+		(appId: string, patch: Partial<ExternalApp>) => {
+			const apps = (globalSettingsRef.current.externalApps ?? []).map((app) =>
+				app.id === appId ? { ...app, ...patch } : app,
+			);
+			applyGlobalSettingsLocally((prev) => ({
+				...prev,
+				externalApps: apps,
+			}));
+			debouncedSaveExternalApps(apps);
+		},
+		[applyGlobalSettingsLocally, debouncedSaveExternalApps],
+	);
 
-	function handleDeleteExternalApp(appId: string) {
-		const apps = (globalSettings.externalApps ?? []).filter((a) => a.id !== appId);
-		const updated = { ...globalSettings, externalApps: apps.length > 0 ? apps : undefined };
-		setGlobalSettings(updated);
-		saveExternalApps(apps);
-	}
+	const handleDeleteExternalApp = useCallback(
+		(appId: string) => {
+			const apps = (globalSettingsRef.current.externalApps ?? []).filter(
+				(app) => app.id !== appId,
+			);
+			persistGlobalSettings(
+				(prev) => ({
+					...prev,
+					externalApps: normalizeExternalApps(apps),
+				}),
+				{
+					onLocalUpdate: () => invalidateAvailableApps(),
+				},
+			);
+		},
+		[persistGlobalSettings],
+	);
 
-	function handleDefaultAgentChange(agentId: string) {
-		const agent = agents.find((a) => a.id === agentId);
-		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
-		const updated = { ...globalSettings, defaultAgentId: agentId, defaultConfigId: configId };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-	}
+	const handlePickCloneBaseDirectory = useCallback(async () => {
+		try {
+			const folder = await api.request.pickFolder();
+			if (!folder) return;
+			persistSettingChange({ cloneBaseDirectory: folder });
+		} catch (error) {
+			console.error("[GlobalSettings] pickFolder failed:", error);
+		}
+	}, [persistSettingChange]);
 
-	function handleDefaultConfigChange(configId: string) {
-		const updated = { ...globalSettings, defaultConfigId: configId };
-		setGlobalSettings(updated);
-		api.request.saveGlobalSettings(updated).catch(() => {});
-	}
+	const handleDefaultAgentChange = useCallback(
+		(agentId: string) => {
+			const agent = agents.find((item) => item.id === agentId);
+			const configId =
+				agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? "";
+			persistSettingChange({
+				defaultAgentId: agentId,
+				defaultConfigId: configId,
+			});
+		},
+		[agents, persistSettingChange],
+	);
 
-	async function persistAgents(updated: CodingAgent[]) {
+	const handleDefaultConfigChange = useCallback(
+		(configId: string) => {
+			persistSettingChange({ defaultConfigId: configId });
+		},
+		[persistSettingChange],
+	);
+
+	const persistAgents = useCallback(async (updated: CodingAgent[]) => {
 		setAgents(updated);
 		try {
 			await api.request.saveAgents({ agents: updated });
 		} catch {
-			// Best-effort save — UI state is already updated
+			// Best-effort save; UI state is already updated.
 		}
-	}
+	}, []);
 
-	function updateAgent(agentId: string, patch: Partial<CodingAgent>) {
-		const updated = agents.map((a) =>
-			a.id === agentId ? { ...a, ...patch } : a,
-		);
-		persistAgents(updated);
-	}
+	const handleLocaleChange = useCallback((nextLocale: "en" | "ru" | "es") => {
+		setLocale(nextLocale);
+		trackEvent("locale_changed", { locale: nextLocale });
+	}, [setLocale]);
 
-	function updateConfig(
-		agentId: string,
-		configId: string,
-		patch: Partial<AgentConfiguration>,
-	) {
-		const updated = agents.map((a) => {
-			if (a.id !== agentId) return a;
-			return {
-				...a,
-				configurations: a.configurations.map((c) =>
-					c.id === configId ? { ...c, ...patch } : c,
-				),
-			};
-		});
-		persistAgents(updated);
-	}
-
-	function addConfig(agentId: string) {
-		const newConfig: AgentConfiguration = {
-			id: randomUUID(),
-			name: "New Config",
-		};
-		const updated = agents.map((a) => {
-			if (a.id !== agentId) return a;
-			return { ...a, configurations: [...a.configurations, newConfig] };
-		});
-		persistAgents(updated);
-		setExpandedConfigId(newConfig.id);
-	}
-
-	function deleteConfig(agentId: string, configId: string) {
-		const updated = agents.map((a) => {
-			if (a.id !== agentId) return a;
-			const filtered = a.configurations.filter((c) => c.id !== configId);
-			const newDefault =
-				a.defaultConfigId === configId
-					? filtered[0]?.id
-					: a.defaultConfigId;
-			return { ...a, configurations: filtered, defaultConfigId: newDefault };
-		});
-		persistAgents(updated);
-		if (expandedConfigId === configId) setExpandedConfigId(null);
-	}
-
-	function addAgent() {
-		const id = randomUUID();
-		const configId = randomUUID();
-		const agent: CodingAgent = {
-			id,
-			name: "New Agent",
-			baseCommand: "",
-			configurations: [{ id: configId, name: "Default" }],
-			defaultConfigId: configId,
-		};
-		const updated = [...agents, agent];
-		persistAgents(updated);
-		setExpandedAgentId(id);
-		setExpandedConfigId(null);
-	}
-
-	function deleteAgent(agentId: string) {
-		const updated = agents.filter((a) => a.id !== agentId);
-		persistAgents(updated);
-		if (expandedAgentId === agentId) {
-			setExpandedAgentId(null);
-			setExpandedConfigId(null);
+	const handleInstallDev3Cli = useCallback(async () => {
+		try {
+			setCliInstallStatus(null);
+			const { installedFrom } = await api.request.installDev3Cli();
+			setCliInstallStatus(installedFrom);
+		} catch (error) {
+			setCliInstallStatus(`Error: ${error}`);
 		}
-	}
+	}, []);
 
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-8">
-					{/* Theme */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-3">
-							{t("settings.theme")}
-						</label>
-						<div className="flex gap-3">
-							<ThemeCard
-								name={t("settings.themeDark")}
-								description={t("settings.themeDarkDesc")}
-								active={theme === "dark"}
-								onClick={() => applyTheme("dark")}
-								preview={{
-									bg: "#171924",
-									raised: "#1e2133",
-									text: "#eceef8",
-									accent: "#5e9eff",
-								}}
-							/>
-							<ThemeCard
-								name={t("settings.themeLight")}
-								description={t("settings.themeLightDesc")}
-								active={theme === "light"}
-								onClick={() => applyTheme("light")}
-								preview={{
-									bg: "#f5f6fa",
-									raised: "#ffffff",
-									text: "#1a1d2e",
-									accent: "#5e9eff",
-								}}
-							/>
-							<ThemeCard
-								name={t("settings.themeSystem")}
-								description={t("settings.themeSystemDesc")}
-								active={theme === "system"}
-								onClick={() => applyTheme("system")}
-								preview={{
-									bg: "linear-gradient(135deg, #171924 50%, #f5f6fa 50%)",
-									raised: "#1e2133",
-									text: "#eceef8",
-									accent: "#5e9eff",
-								}}
-							/>
-						</div>
-					</div>
-
-					{/* Zoom */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.zoom")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.zoomDesc")}
-						</p>
-						<div className="flex items-center gap-3">
-							<button
-								onClick={() => adjustZoom(-ZOOM_STEP)}
-								disabled={zoomLevel <= MIN_ZOOM}
-								className="w-10 h-10 flex items-center justify-center rounded-lg bg-raised border border-edge text-fg text-lg font-bold hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-							>
-								−
-							</button>
-							<div className="flex-1 text-center">
-								<span className="text-fg text-lg font-semibold tabular-nums">
-									{Math.round(zoomLevel * 100)}%
-								</span>
-							</div>
-							<button
-								onClick={() => adjustZoom(ZOOM_STEP)}
-								disabled={zoomLevel >= MAX_ZOOM}
-								className="w-10 h-10 flex items-center justify-center rounded-lg bg-raised border border-edge text-fg text-lg font-bold hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-							>
-								+
-							</button>
-							<button
-								onClick={() => applyZoom(DEFAULT_ZOOM)}
-								disabled={zoomLevel === DEFAULT_ZOOM}
-								className="px-3 h-10 rounded-lg bg-raised border border-edge text-fg-2 text-sm hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-							>
-								{t("settings.zoomReset")}
-							</button>
-						</div>
-					</div>
-
-					{/* Task Drop Position */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.taskDropPosition")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.taskDropPositionDesc")}
-						</p>
-						<div className="flex gap-3">
-							<DropPositionCard
-								label={t("settings.dropToTop")}
-								description={t("settings.dropToTopDesc")}
-								active={globalSettings.taskDropPosition === "top"}
-								onClick={() => handleDropPositionChange("top")}
-								icon="↑"
-							/>
-							<DropPositionCard
-								label={t("settings.dropToBottom")}
-								description={t("settings.dropToBottomDesc")}
-								active={globalSettings.taskDropPosition === "bottom"}
-								onClick={() => handleDropPositionChange("bottom")}
-								icon="↓"
-							/>
-						</div>
-					</div>
-
-					{/* Terminal Keymap */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.terminalKeymap")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.terminalKeymapDesc")}
-						</p>
-						<button
-							onClick={() => handleKeymapChange(keymapPreset === "iterm2" ? "default" : "iterm2")}
-							className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
-								keymapPreset === "iterm2"
-									? "border-accent shadow-lg shadow-accent/10"
-									: "border-edge hover:border-edge-active"
-							}`}
-						>
-							<div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-								keymapPreset === "iterm2"
-									? "border-accent bg-accent"
-									: "border-edge-active"
-							}`}>
-								{keymapPreset === "iterm2" && (
-									<svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-										<path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-									</svg>
-								)}
-							</div>
-							<div>
-								<div className="text-fg text-sm font-semibold">{t("settings.keymapIterm2")}</div>
-								<div className="text-fg-3 text-xs mt-0.5">{t("settings.keymapIterm2Desc")}</div>
-							</div>
-						</button>
-					</div>
-
-					{/* Task Complete Sound */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.taskCompleteSound")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.taskCompleteSoundDesc")}
-						</p>
-						<label className="inline-flex items-center gap-3 cursor-pointer select-none">
-							<div
-								role="switch"
-								aria-checked={globalSettings.playSoundOnTaskComplete !== false}
-								tabIndex={0}
-								className={`relative w-11 h-6 rounded-full transition-colors ${globalSettings.playSoundOnTaskComplete !== false ? "bg-accent" : "bg-raised border border-edge"}`}
-								onClick={() => handleSoundToggle(globalSettings.playSoundOnTaskComplete === false)}
-								onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSoundToggle(globalSettings.playSoundOnTaskComplete === false); } }}
-							>
-								<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.playSoundOnTaskComplete !== false ? "translate-x-5" : ""}`} />
-							</div>
-							<span className="text-fg text-sm">
-								{globalSettings.playSoundOnTaskComplete !== false ? "On" : "Off"}
-							</span>
-						</label>
-					</div>
-
-					{/* Prevent Sleep */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.preventSleep")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.preventSleepDesc")}
-						</p>
-						<label className="inline-flex items-center gap-3 cursor-pointer select-none">
-							<div
-								role="switch"
-								aria-checked={globalSettings.preventSleepWhileRunning !== false && caffeinateAvailable}
-								tabIndex={0}
-								className={`relative w-11 h-6 rounded-full transition-colors ${!caffeinateAvailable ? "bg-raised border border-edge opacity-50 cursor-not-allowed" : (globalSettings.preventSleepWhileRunning !== false ? "bg-accent" : "bg-raised border border-edge")}`}
-								onClick={() => { if (caffeinateAvailable) handlePreventSleepToggle(globalSettings.preventSleepWhileRunning === false); }}
-								onKeyDown={(e) => { if (caffeinateAvailable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); handlePreventSleepToggle(globalSettings.preventSleepWhileRunning === false); } }}
-							>
-								<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.preventSleepWhileRunning !== false && caffeinateAvailable ? "translate-x-5" : ""}`} />
-							</div>
-							<span className="text-fg text-sm">
-								{globalSettings.preventSleepWhileRunning !== false && caffeinateAvailable ? "On" : "Off"}
-							</span>
-						</label>
-						{!caffeinateAvailable && (
-							<p className="text-fg-muted text-xs mt-2">
-								{t("settings.preventSleepNotAvailable")}
-							</p>
-						)}
-					</div>
-
-					{/* Task Open Mode */}
-				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
-						{t("settings.taskOpenMode")}
-					</label>
-					<p className="text-fg-3 text-sm mb-3">
-						{t("settings.taskOpenModeDesc")}
-					</p>
-					<div className="flex gap-3">
-						{(["split", "fullscreen"] as const).map((mode) => (
-							<button
-								key={mode}
-								onClick={() => handleTaskOpenModeChange(mode)}
-								className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-									(globalSettings.taskOpenMode ?? "split") === mode
-										? "border-accent bg-accent/10 text-accent"
-										: "border-edge bg-raised text-fg hover:border-edge-active"
-								}`}
-							>
-								{mode === "split" ? t("settings.taskOpenModeSplit") : t("settings.taskOpenModeFullscreen")}
-							</button>
-						))}
-					</div>
-				</div>
-				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
-						{t("settings.defaultDiffViewMode")}
-					</label>
-					<p className="text-fg-3 text-sm mb-3">
-						{t("settings.defaultDiffViewModeDesc")}
-					</p>
-					<div className="flex gap-3">
-						{(["split", "unified"] as const).map((mode) => (
-							<button
-								key={mode}
-								onClick={() => handleDefaultDiffViewModeChange(mode)}
-								className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-									(globalSettings.defaultDiffViewMode ?? "split") === mode
-										? "border-accent bg-accent/10 text-accent"
-										: "border-edge bg-raised text-fg hover:border-edge-active"
-								}`}
-							>
-								{mode === "split" ? t("settings.defaultDiffViewModeSplit") : t("settings.defaultDiffViewModeUnified")}
-							</button>
-						))}
-					</div>
-				</div>
-				{/* Tips */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-3">
-							{t("settings.tipsSection")}
-						</label>
-						<div className="flex items-center gap-4">
-							<label className="inline-flex items-center gap-3 cursor-pointer select-none">
-								<div
-									role="switch"
-									aria-checked={globalSettings.tipsDisabled === true}
-									tabIndex={0}
-									className={`relative w-11 h-6 rounded-full transition-colors ${globalSettings.tipsDisabled ? "bg-accent" : "bg-raised border border-edge"}`}
-									onClick={() => handleTipsDisabledToggle(!globalSettings.tipsDisabled)}
-									onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTipsDisabledToggle(!globalSettings.tipsDisabled); } }}
-								>
-									<div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${globalSettings.tipsDisabled ? "translate-x-5" : ""}`} />
-								</div>
-								<span className="text-fg text-sm">
-									{t("settings.tipsDisabled")}
-								</span>
-							</label>
-							<button
-								onClick={handleTipsReset}
-								className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30"
-							>
-								{tipsResetDone ? t("settings.tipsResetDone") : t("settings.tipsReset")}
-							</button>
-						</div>
-					</div>
-
-					{/* Update Channel */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.updateChannel")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.updateChannelDesc")}
-						</p>
-						<select
-							value={globalSettings.updateChannel}
-							onChange={(e) => handleUpdateChannelChange(e.target.value as "stable" | "canary")}
-							disabled
-							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none cursor-not-allowed opacity-50"
-						>
-							<option value="stable">Stable</option>
-							<option value="canary">Canary</option>
-						</select>
-					</div>
-
-					{/* Clone Base Directory */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.cloneBaseDir")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.cloneBaseDirDesc")}
-						</p>
-						<div className="flex gap-2">
-							<div className="flex-1 px-4 py-3 bg-raised border border-edge rounded-xl text-sm font-mono truncate">
-								{globalSettings.cloneBaseDirectory ? (
-									<span className="text-fg">{globalSettings.cloneBaseDirectory}</span>
-								) : (
-									<span className="text-fg-muted">{t("settings.cloneBaseDirNotSet")}</span>
-								)}
-							</div>
-							<button
-								onClick={async () => {
-									let folder: string | null;
-									try {
-										folder = await api.request.pickFolder();
-									} catch (err) {
-										console.error("[GlobalSettings] pickFolder failed:", err);
-										return;
-									}
-									if (!folder) return;
-									const updated = { ...globalSettings, cloneBaseDirectory: folder };
-									setGlobalSettings(updated);
-									api.request.saveGlobalSettings(updated).catch(() => {});
-								}}
-								className="px-4 py-3 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
-							>
-								{t("settings.browse")}
-							</button>
-						</div>
-					</div>
-
-					{/* External Apps ("Open in...") */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.externalApps")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.externalAppsDesc")}
-						</p>
-						<div className="space-y-2 mb-3">
-							{(globalSettings.externalApps ?? []).map((app) => (
-								<div
-									key={app.id}
-									className="flex items-center gap-2 bg-raised border border-edge rounded-xl px-4 py-3"
-								>
-									<div className="flex-1 space-y-2">
-										<input
-											type="text"
-											value={app.name}
-											onChange={(e) => handleUpdateExternalApp(app.id, { name: e.target.value })}
-											placeholder={t("settings.externalAppName")}
-											className="w-full px-3 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-										/>
-										<input
-											type="text"
-											value={app.macAppName}
-											onChange={(e) => handleUpdateExternalApp(app.id, { macAppName: e.target.value })}
-											placeholder={t("settings.externalAppMacName")}
-											autoCapitalize="off"
-											autoCorrect="off"
-											spellCheck={false}
-											className="w-full px-3 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-										/>
-									</div>
-									<button
-										onClick={() => handleDeleteExternalApp(app.id)}
-										className="text-danger text-xs hover:underline shrink-0 px-2"
-									>
-										×
-									</button>
-								</div>
-							))}
-						</div>
-						<button
-							onClick={handleAddExternalApp}
-							className="px-4 py-2 text-accent text-sm font-semibold hover:bg-accent/10 rounded-lg transition-colors"
-						>
-							+ {t("settings.addExternalApp")}
-						</button>
-					</div>
-
-					{/* Default Agent */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.defaultAgent")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.defaultAgentDesc")}
-						</p>
-						<select
-							value={globalSettings.defaultAgentId}
-							onChange={(e) => handleDefaultAgentChange(e.target.value)}
-							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-						>
-							{agents.map((agent) => (
-								<option key={agent.id} value={agent.id}>
-									{agent.name}
-								</option>
-							))}
-						</select>
-
-						{defaultAgentConfigs.length > 0 && (
-							<div className="mt-4">
-								<label className="block text-fg text-sm font-semibold mb-2">
-									{t("settings.defaultConfig")}
-								</label>
-								<p className="text-fg-3 text-sm mb-3">
-									{t("settings.defaultConfigDesc")}
-								</p>
-								<select
-									value={globalSettings.defaultConfigId}
-									onChange={(e) => handleDefaultConfigChange(e.target.value)}
-									className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-								>
-									{defaultAgentConfigs.map((config) => (
-										<option key={config.id} value={config.id}>
-											{config.name}
-											{config.model ? ` (${config.model})` : ""}
-										</option>
-									))}
-								</select>
-								{(() => {
-									const selectedConfig = defaultAgentConfigs.find(
-										(c) => c.id === globalSettings.defaultConfigId,
-									) ?? defaultAgentConfigs[0];
-									if (!selectedConfig) return null;
-									return (
-										<ConfigPreviewCard
-											config={selectedConfig}
-											agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
-											t={t}
-										/>
-									);
-								})()}
-							</div>
-						)}
-					</div>
-
-					{/* Coding Agents */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-3">
-							{t("settings.agents")}
-						</label>
-
-						<div className="space-y-2 mb-3">
-							{agents.map((agent) => {
-								const isExpanded = expandedAgentId === agent.id;
-								const availability = agentAvailability.find((a) => a.agentId === agent.id);
-								return (
-									<div
-										key={agent.id}
-										className="bg-raised border border-edge rounded-xl overflow-hidden"
-									>
-										{/* Agent header */}
-										<button
-											onClick={() => {
-												setExpandedAgentId(isExpanded ? null : agent.id);
-												setExpandedConfigId(null);
-											}}
-											className="w-full flex items-center gap-3 px-4 py-3 hover:bg-raised-hover transition-colors text-left"
-										>
-											<span className="text-fg-3 text-xs">
-												{isExpanded ? "▼" : "▶"}
-											</span>
-											<span className="text-fg text-sm font-medium flex-1">
-												{agent.name}
-											</span>
-											<span className="text-fg-3 text-xs font-mono">
-												{agent.baseCommand}
-											</span>
-											{availability && (
-												<span
-													className={`text-xs px-1.5 py-0.5 rounded ${
-														availability.installed
-															? "bg-success/15 text-success"
-															: "bg-danger/15 text-danger"
-													}`}
-												>
-													{availability.installed
-														? t("settings.agentInstalled")
-														: t("settings.agentNotInstalled")}
-												</span>
-											)}
-											<span className="text-fg-muted text-xs">
-												{agent.configurations.length} config{agent.configurations.length !== 1 ? "s" : ""}
-											</span>
-											{agent.isDefault && (
-												<span className="text-fg-muted text-xs px-2 py-0.5 bg-elevated rounded-md">
-													{t("settings.defaultBadge")}
-												</span>
-											)}
-										</button>
-
-										{/* Expanded agent editor */}
-										{isExpanded && (
-											<div className="border-t border-edge px-4 py-4 space-y-4">
-												{/* Agent availability status */}
-												{availability && (
-													<div className={`p-3 rounded-lg ${availability.installed ? "bg-success/5 border border-success/20" : "bg-danger/5 border border-danger/20"}`}>
-														{availability.installed ? (
-															<div className="flex items-center gap-2">
-																<span className="text-success text-sm">&#10003;</span>
-																<span className="text-fg-2 text-xs">{t("settings.agentInstalled")}</span>
-																{availability.resolvedPath && (
-																	<span className="text-fg-muted text-xs font-mono truncate">{availability.resolvedPath}</span>
-																)}
-															</div>
-														) : (
-															<div className="space-y-2">
-																<div className="flex items-center gap-2">
-																	<span className="text-danger text-sm">&#10007;</span>
-																	<span className="text-fg-2 text-xs">{t("settings.agentNotInstalledHint")}</span>
-																</div>
-																{availability.installCommand && (
-																	<div>
-																		<p className="text-fg-3 text-xs mb-1">{t("settings.agentInstallHint")}</p>
-																		<div className="flex items-center gap-1.5">
-																			<code className="text-warning bg-warning/10 px-2 py-1 rounded text-xs font-mono">
-																				{availability.installCommand}
-																			</code>
-																			<button
-																				type="button"
-																				onClick={(e) => {
-																					e.stopPropagation();
-																					navigator.clipboard.writeText(availability.installCommand!);
-																					setAgentCopiedId(agent.id);
-																					setTimeout(() => setAgentCopiedId((prev) => (prev === agent.id ? null : prev)), 2000);
-																				}}
-																				className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
-																				title="Copy"
-																			>
-																				{agentCopiedId === agent.id ? (
-																					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-																						<polyline points="20 6 9 17 4 12" />
-																					</svg>
-																				) : (
-																					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-																						<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-																						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-																					</svg>
-																				)}
-																			</button>
-																		</div>
-																	</div>
-																)}
-																<p className="text-fg-muted text-xs">{t("settings.agentLoginReminder")}</p>
-																{/* Custom path input */}
-																<div className="pt-2 border-t border-edge/50">
-																	<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
-																	{availability.customPathError && (
-																		<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
-																	)}
-																	<div className="flex items-center gap-1.5">
-																		<input
-																			type="text"
-																			value={agentCustomPaths[agent.id] ?? ""}
-																			onChange={(e) => setAgentCustomPaths((prev) => ({ ...prev, [agent.id]: e.target.value }))}
-																			onClick={(e) => e.stopPropagation()}
-																			placeholder={`/path/to/${agent.baseCommand}`}
-																			className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${availability.customPathError ? "border-danger" : "border-edge"}`}
-																		/>
-																		<button
-																			type="button"
-																			onClick={async (e) => {
-																				e.stopPropagation();
-																				const path = agentCustomPaths[agent.id]?.trim();
-																				if (!path) return;
-																				setAgentSavingId(agent.id);
-																				try {
-																					await api.request.setAgentBinaryPath({ agentId: agent.id, path });
-																					loadAgentAvailability();
-																				} catch (err) {
-																					console.error("Failed to save agent binary path:", err);
-																				}
-																				setAgentSavingId(null);
-																			}}
-																			disabled={!agentCustomPaths[agent.id]?.trim() || agentSavingId === agent.id}
-																			className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
-																		>
-																			{t("requirements.setPath")}
-																		</button>
-																	</div>
-																</div>
-															</div>
-														)}
-													</div>
-												)}
-
-												{/* Agent name */}
-												<div>
-													<label className="block text-fg-2 text-xs mb-1">
-														{t("settings.agentName")}
-													</label>
-													<input
-														type="text"
-														value={agent.name}
-														onChange={(e) =>
-															updateAgent(agent.id, { name: e.target.value })
-														}
-														className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-													/>
-												</div>
-
-												{/* Base command */}
-												<div>
-													<label className="block text-fg-2 text-xs mb-1">
-														{t("settings.agentBaseCommand")}
-													</label>
-													<input
-														type="text"
-														value={agent.baseCommand}
-														onChange={(e) =>
-															updateAgent(agent.id, {
-																baseCommand: e.target.value,
-															})
-														}
-														placeholder="claude"
-														autoCapitalize="off"
-														autoCorrect="off"
-														spellCheck={false}
-														className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-													/>
-												</div>
-
-												{/* Configurations */}
-												<div>
-													<label className="block text-fg-2 text-xs font-semibold mb-2">
-														{t("settings.configurations")}
-													</label>
-													<div className="space-y-2">
-														{agent.configurations.map((config) => {
-															const isConfigExpanded =
-																expandedConfigId === config.id;
-															return (
-																<ConfigEditor
-																	key={config.id}
-																	config={config}
-																	agentBaseCommand={agent.baseCommand}
-																	isExpanded={isConfigExpanded}
-																	canDelete={agent.configurations.length > 1}
-																	onToggle={() =>
-																		setExpandedConfigId(
-																			isConfigExpanded ? null : config.id,
-																		)
-																	}
-																	onChange={(patch) =>
-																		updateConfig(agent.id, config.id, patch)
-																	}
-																	onDelete={() =>
-																		deleteConfig(agent.id, config.id)
-																	}
-																	t={t}
-																/>
-															);
-														})}
-													</div>
-													<button
-														onClick={() => addConfig(agent.id)}
-														className="mt-2 px-3 py-1.5 text-accent text-xs font-semibold hover:bg-accent/10 rounded-lg transition-colors"
-													>
-														+ {t("settings.addConfig")}
-													</button>
-												</div>
-
-												{/* Delete agent */}
-												{agent.isDefault ? (
-													<p className="text-fg-muted text-xs italic">
-														{t("settings.cantDeleteDefault")}
-													</p>
-												) : (
-													<button
-														onClick={() => deleteAgent(agent.id)}
-														className="text-danger text-xs hover:underline"
-													>
-														{t("settings.deleteAgent")}
-													</button>
-												)}
-											</div>
-										)}
-									</div>
-								);
-							})}
-						</div>
-
-						<div className="flex items-center gap-3">
-							<button
-								onClick={addAgent}
-								className="px-4 py-2 text-accent text-sm font-semibold hover:bg-accent/10 rounded-lg transition-colors"
-							>
-								+ {t("settings.addAgent")}
-							</button>
-							<button
-								onClick={loadAgentAvailability}
-								disabled={agentCheckLoading}
-								className="px-4 py-2 text-fg-3 text-sm hover:text-fg hover:bg-elevated rounded-lg transition-colors disabled:opacity-50"
-							>
-								{agentCheckLoading ? (
-									<span className="flex items-center gap-1.5">
-										<span className="w-2.5 h-2.5 rounded-full border-2 border-fg-muted/30 border-t-fg-muted animate-spin" />
-										{t("settings.recheckAgents")}
-									</span>
-								) : (
-									t("settings.recheckAgents")
-								)}
-							</button>
-						</div>
-					</div>
-
-					{/* Language */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-3">
-							{t("settings.language")}
-						</label>
-						<div className="flex gap-3">
-							{ALL_LOCALES.map((loc) => (
-								<LanguageCard
-									key={loc}
-									locale={loc}
-									label={LOCALE_LABELS[loc]}
-									active={locale === loc}
-									onClick={() => {
-										setLocale(loc);
-										trackEvent("locale_changed", { locale: loc });
-									}}
-								/>
-							))}
-						</div>
-					</div>
-
-					{/* Developer tools */}
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-3">
-							{t("settings.devTools")}
-						</label>
-						<div className="flex items-center gap-3">
-							<button
-								onClick={async () => {
-									try {
-										setCliInstallStatus(null);
-										const { installedFrom } = await api.request.installDev3Cli();
-										setCliInstallStatus(installedFrom);
-									} catch (err) {
-										setCliInstallStatus(`Error: ${err}`);
-									}
-								}}
-								className="px-4 py-2 bg-raised hover:bg-raised-hover text-fg text-sm rounded-lg transition-colors border border-edge"
-							>
-								{t("settings.installDev3Cli")}
-							</button>
-							{cliInstallStatus && (
-								<span className="text-fg-muted text-xs truncate max-w-md" title={cliInstallStatus}>
-									→ {cliInstallStatus}
-								</span>
-							)}
-						</div>
-						<p className="text-fg-muted text-xs mt-1">
-							{t("settings.installDev3CliDesc")}
-						</p>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-// ---- Config Preview Card (shown below Default Configuration dropdown) ----
-
-function ConfigPreviewCard({
-	config,
-	agentBaseCommand,
-	t,
-}: {
-	config: AgentConfiguration;
-	agentBaseCommand: string;
-	t: ReturnType<typeof useT>;
-}) {
-	const tags: { label: string; value: string }[] = [];
-	const cmdName = (config.baseCommandOverride || agentBaseCommand || "").split("/").pop() ?? "";
-	const isCodex = cmdName === "codex";
-
-	if (config.model) {
-		tags.push({ label: t("settings.configModel"), value: config.model });
-	}
-	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
-		const modeLabels: Record<string, string> = {
-			plan: t("settings.permPlan"),
-			auto: t("settings.permAuto"),
-			acceptEdits: t("settings.permAcceptEdits"),
-			dontAsk: t("settings.permDontAsk"),
-			bypassPermissions: t("settings.permBypass"),
-		};
-		tags.push({
-			label: t("settings.configPermissionMode"),
-			value: modeLabels[config.permissionMode] ?? config.permissionMode,
-		});
-	}
-	if (!isCodex && config.effort) {
-		const effortLabels: Record<string, string> = {
-			low: t("settings.effortLow"),
-			medium: t("settings.effortMedium"),
-			high: t("settings.effortHigh"),
-		};
-		tags.push({
-			label: t("settings.configEffort"),
-			value: effortLabels[config.effort] ?? config.effort,
-		});
-	}
-	if (!isCodex && config.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
-		tags.push({
-			label: t("settings.configMaxBudget"),
-			value: `$${config.maxBudgetUsd}`,
-		});
-	}
-
-	const { command, envLine } = buildCommandPreview(agentBaseCommand, config);
-
-	return (
-		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
-			{tags.length > 0 && (
-				<div className="flex flex-wrap gap-2">
-					{tags.map((tag) => (
-						<span
-							key={tag.label}
-							className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-raised rounded-lg text-xs"
-						>
-							<span className="text-fg-3">{tag.label}:</span>
-							<span className="text-fg font-medium">{tag.value}</span>
-						</span>
-					))}
-				</div>
-			)}
-			<CommandPreview command={command} envLine={envLine} />
-		</div>
-	);
-}
-
-// ---- Config Editor ----
-
-function buildCommandPreview(
-	agentBaseCommand: string,
-	config: AgentConfiguration,
-): { command: string; envLine: string | null } {
-	const baseCmd = config.baseCommandOverride || agentBaseCommand || "???";
-	const parts: string[] = [baseCmd];
-
-	if (config.model) {
-		parts.push("--model", config.model);
-	}
-
-	const cmdName = baseCmd.split("/").pop() ?? "";
-	const isCursor = cmdName === "agent";
-	const isCodex = cmdName === "codex";
-
-	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
-		if (isCursor) {
-			if (config.permissionMode === "plan") {
-				parts.push("--mode", "plan");
-			} else if (config.permissionMode === "bypassPermissions") {
-				parts.push("--force");
-			}
-		} else {
-			parts.push("--permission-mode", config.permissionMode);
-		}
-	}
-
-	if (config.effort && !isCursor && !isCodex) {
-		parts.push("--effort", config.effort);
-	}
-
-	if (config.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !isCursor && !isCodex) {
-		parts.push("--max-budget-usd", String(config.maxBudgetUsd));
-	}
-
-	// Mirror --append-system-prompt injection for Claude-based agents
-	if (cmdName === "claude") {
-		parts.push("--append-system-prompt", "'…dev3 prompt…'");
-	}
-
-	if (config.additionalArgs) {
-		for (const arg of config.additionalArgs) {
-			if (arg) parts.push(arg);
-		}
-	}
-
-	// Build prompt placeholder
-	let prompt = "{{TASK_DESCRIPTION}}";
-	if (config.appendPrompt) {
-		prompt += "\\n\\n" + config.appendPrompt;
-	}
-	if (isCursor) {
-		prompt += "\\n\\n…dev3 prompt…";
-	}
-	parts.push(`'${prompt}'`);
-
-	// Env vars line
-	const envPairs = Object.entries(config.envVars || {}).filter(
-		([k]) => k,
-	);
-	const envLine =
-		envPairs.length > 0
-			? envPairs.map(([k, v]) => `${k}=${v}`).join(" ")
-			: null;
-
-	return { command: parts.join(" "), envLine };
-}
-
-function CommandPreview({
-	command,
-	envLine,
-}: {
-	command: string;
-	envLine: string | null;
-}) {
-	// Highlight {{VAR}} patterns
-	const parts = command.split(/(\{\{\w+\}\})/g);
-
-	return (
-		<div className="bg-base border border-edge rounded-lg p-3 font-mono text-xs leading-relaxed overflow-x-auto">
-			{envLine && (
-				<div className="text-fg-3 mb-1">
-					<span className="text-fg-muted">env: </span>
-					{envLine}
-				</div>
-			)}
-			<div className="text-fg-2">
-				<span className="text-fg-muted">$ </span>
-				{parts.map((part, i) =>
-					/^\{\{\w+\}\}$/.test(part) ? (
-						<span key={i} className="text-accent font-semibold">
-							{part}
-						</span>
-					) : (
-						<span key={i}>{part}</span>
-					),
-				)}
-			</div>
-		</div>
-	);
-}
-
-function ConfigEditor({
-	config,
-	agentBaseCommand,
-	isExpanded,
-	canDelete,
-	onToggle,
-	onChange,
-	onDelete,
-	t,
-}: {
-	config: AgentConfiguration;
-	agentBaseCommand: string;
-	isExpanded: boolean;
-	canDelete: boolean;
-	onToggle: () => void;
-	onChange: (patch: Partial<AgentConfiguration>) => void;
-	onDelete: () => void;
-	t: (key: any, vars?: Record<string, string>) => string;
-}) {
-	const preview = buildCommandPreview(agentBaseCommand, config);
-
-	return (
-		<div className="bg-elevated border border-edge rounded-lg overflow-hidden">
-			<button
-				onClick={onToggle}
-				className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated-hover transition-colors text-left"
-			>
-				<span className="text-fg-3 text-xs">{isExpanded ? "▼" : "▶"}</span>
-				<span className="text-fg text-sm flex-1">{config.name}</span>
-				{config.model && (
-					<span className="text-accent text-xs font-mono px-1.5 py-0.5 bg-accent/10 rounded">
-						{config.model}
-					</span>
-				)}
-			</button>
-
-			{isExpanded && (
-				<div className="border-t border-edge px-3 py-3 space-y-3">
-					{/* Command Preview — top of config */}
-					<div>
-						<label className="block text-fg-2 text-xs font-semibold mb-1.5">
-							{t("settings.commandPreview")}
-						</label>
-						<CommandPreview
-							command={preview.command}
-							envLine={preview.envLine}
-						/>
-					</div>
-
-					{/* Config name */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configName")}
-						</label>
-						<input
-							type="text"
-							value={config.name}
-							onChange={(e) => onChange({ name: e.target.value })}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-						/>
-					</div>
-
-					{/* Model */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configModel")}
-						</label>
-						<input
-							type="text"
-							value={config.model || ""}
-							onChange={(e) =>
-								onChange({ model: e.target.value || undefined })
-							}
-							placeholder={agentBaseCommand === "codex" ? "gpt-5.4, o3, etc." : agentBaseCommand === "gemini" ? "gemini-2.5-pro, etc." : "opus, sonnet, etc."}
-							autoCapitalize="off"
-							autoCorrect="off"
-							spellCheck={false}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-						/>
-					</div>
-
-					{/* Permission mode */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configPermissionMode")}
-						</label>
-						<select
-							value={config.permissionMode || "default"}
-							onChange={(e) =>
-								onChange({
-									permissionMode:
-										(e.target.value as PermissionMode) === "default"
-											? undefined
-											: (e.target.value as PermissionMode),
-								})
-							}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-						>
-							<option value="default">{t("settings.permDefault")}</option>
-							<option value="plan">{t("settings.permPlan")}</option>
-							<option value="auto">{t("settings.permAuto")}</option>
-							<option value="acceptEdits">{t("settings.permAcceptEdits")}</option>
-							<option value="dontAsk">{t("settings.permDontAsk")}</option>
-							<option value="bypassPermissions">{t("settings.permBypass")}</option>
-						</select>
-					</div>
-
-					{/* Effort level */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configEffort")}
-						</label>
-						<select
-							value={config.effort || ""}
-							onChange={(e) =>
-								onChange({
-									effort: (e.target.value as EffortLevel) || undefined,
-								})
-							}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-						>
-							<option value="">{t("settings.effortDefault")}</option>
-							<option value="low">{t("settings.effortLow")}</option>
-							<option value="medium">{t("settings.effortMedium")}</option>
-							<option value="high">{t("settings.effortHigh")}</option>
-						</select>
-					</div>
-
-					{/* Max budget */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configMaxBudget")}
-						</label>
-						<input
-							type="number"
-							min={0}
-							step={0.5}
-							value={config.maxBudgetUsd ?? ""}
-							onChange={(e) =>
-								onChange({
-									maxBudgetUsd: e.target.value
-										? Number(e.target.value)
-										: undefined,
-								})
-							}
-							placeholder="0"
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-						/>
-						<p className="text-fg-muted text-xs mt-1">
-							{t("settings.configMaxBudgetHint")}
-						</p>
-					</div>
-
-					{/* Append prompt */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configAppendPrompt")}
-						</label>
-						<textarea
-							value={config.appendPrompt || ""}
-							onChange={(e) =>
-								onChange({ appendPrompt: e.target.value || undefined })
-							}
-							rows={3}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-						/>
-						<p className="text-fg-muted text-xs mt-1">
-							{t("settings.configAppendPromptHint")}
-						</p>
-					</div>
-
-					{/* Additional args */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configAdditionalArgs")}
-						</label>
-						<ListEditor
-							items={config.additionalArgs || []}
-							onChange={(items) =>
-								onChange({
-									additionalArgs: items.length > 0 ? items : undefined,
-								})
-							}
-							placeholder="--flag"
-							addLabel={t("settings.configAddArg")}
-						/>
-					</div>
-
-					{/* Env vars */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configEnvVars")}
-						</label>
-						<KeyValueEditor
-							entries={config.envVars || {}}
-							onChange={(entries) =>
-								onChange({
-									envVars:
-										Object.keys(entries).length > 0 ? entries : undefined,
-								})
-							}
-							addLabel={t("settings.configAddEnvVar")}
-						/>
-					</div>
-
-					{/* Base command override */}
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configBaseCommandOverride")}
-						</label>
-						<input
-							type="text"
-							value={config.baseCommandOverride || ""}
-							onChange={(e) =>
-								onChange({
-									baseCommandOverride: e.target.value || undefined,
-								})
-							}
-							placeholder=""
-							autoCapitalize="off"
-							autoCorrect="off"
-							spellCheck={false}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-						/>
-					</div>
-
-					{/* Delete config */}
-					{canDelete && (
-						<button
-							onClick={onDelete}
-							className="text-danger text-xs hover:underline"
-						>
-							{t("settings.deleteConfig")}
-						</button>
-					)}
-				</div>
-			)}
-		</div>
-	);
-}
-
-// ---- Key-Value Editor (for envVars) ----
-
-function KeyValueEditor({
-	entries,
-	onChange,
-	addLabel,
-}: {
-	entries: Record<string, string>;
-	onChange: (entries: Record<string, string>) => void;
-	addLabel: string;
-}) {
-	const pairs = Object.entries(entries);
-
-	function updateKey(oldKey: string, newKey: string) {
-		const result: Record<string, string> = {};
-		for (const [k, v] of pairs) {
-			result[k === oldKey ? newKey : k] = v;
-		}
-		onChange(result);
-	}
-
-	function updateValue(key: string, value: string) {
-		onChange({ ...entries, [key]: value });
-	}
-
-	function remove(key: string) {
-		const next = { ...entries };
-		delete next[key];
-		onChange(next);
-	}
-
-	function add() {
-		onChange({ ...entries, "": "" });
-	}
-
-	return (
-		<div className="space-y-1.5">
-			{pairs.map(([key, value], i) => (
-				<div key={i} className="flex gap-2">
-					<input
-						type="text"
-						value={key}
-						onChange={(e) => updateKey(key, e.target.value)}
-						placeholder="KEY"
-						autoCapitalize="off"
-						autoCorrect="off"
-						spellCheck={false}
-						className="w-1/3 px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6">
+					<AppearanceSettingsSection
+						t={t}
+						locale={locale}
+						theme={theme}
+						zoomLevel={zoomLevel}
+						onThemeChange={applyThemeChange}
+						onLocaleChange={handleLocaleChange}
 					/>
-					<input
-						type="text"
-						value={value}
-						onChange={(e) => updateValue(key, e.target.value)}
-						placeholder="value"
-						autoCapitalize="off"
-						autoCorrect="off"
-						spellCheck={false}
-						className="flex-1 px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+					<BehaviorSettingsSection
+						t={t}
+						globalSettings={globalSettings}
+						caffeinateAvailable={caffeinateAvailable}
+						keymapPreset={keymapPreset}
+						tipsResetDone={tipsResetDone}
+						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
+						onKeymapChange={handleKeymapChange}
+						onPreventSleepToggle={handlePreventSleepToggle}
+						onSoundToggle={handleSoundToggle}
+						onTaskDropPositionChange={handleTaskDropPositionChange}
+						onTaskOpenModeChange={handleTaskOpenModeChange}
+						onTipsDisabledToggle={handleTipsDisabledToggle}
+						onTipsReset={handleTipsReset}
 					/>
-					<button
-						onClick={() => remove(key)}
-						className="text-danger text-xs hover:underline shrink-0 px-2"
-					>
-						×
-					</button>
-				</div>
-			))}
-			<button onClick={add} className="text-accent text-xs hover:underline">
-				+ {addLabel}
-			</button>
-		</div>
-	);
-}
-
-// ---- Drop Position Card ----
-
-function DropPositionCard({
-	label,
-	description,
-	active,
-	onClick,
-	icon,
-}: {
-	label: string;
-	description: string;
-	active: boolean;
-	onClick: () => void;
-	icon: string;
-}) {
-	return (
-		<button
-			onClick={onClick}
-			className={`flex-1 p-4 rounded-xl border-2 transition-all text-left ${
-				active
-					? "border-accent shadow-lg shadow-accent/10"
-					: "border-edge hover:border-edge-active"
-			}`}
-		>
-			<div className="text-2xl mb-2 font-mono text-fg-2 font-bold">{icon}</div>
-			<div className="text-fg text-sm font-semibold">{label}</div>
-			<div className="text-fg-3 text-xs mt-0.5">{description}</div>
-		</button>
-	);
-}
-
-// ---- Theme & Language Cards ----
-
-function ThemeCard({
-	name,
-	description,
-	active,
-	onClick,
-	preview,
-}: {
-	name: string;
-	description: string;
-	active: boolean;
-	onClick: () => void;
-	preview: { bg: string; raised: string; text: string; accent: string };
-}) {
-	return (
-		<button
-			onClick={onClick}
-			className={`flex-1 p-4 rounded-xl border-2 transition-all text-left ${
-				active
-					? "border-accent shadow-lg shadow-accent/10"
-					: "border-edge hover:border-edge-active"
-			}`}
-		>
-			{/* Mini preview */}
-			<div
-				className="w-full h-20 rounded-lg mb-3 p-3 flex flex-col justify-between"
-				style={{ background: preview.bg }}
-			>
-				<div className="flex items-center gap-2">
-					<div
-						className="w-2 h-2 rounded-full"
-						style={{ background: preview.accent }}
+					<WorkspaceSettingsSection
+						t={t}
+						globalSettings={globalSettings}
+						onAddExternalApp={handleAddExternalApp}
+						onDeleteExternalApp={handleDeleteExternalApp}
+						onPickCloneBaseDirectory={handlePickCloneBaseDirectory}
+						onUpdateChannelChange={handleUpdateChannelChange}
+						onUpdateExternalApp={handleUpdateExternalApp}
 					/>
-					<div
-						className="h-1.5 w-12 rounded-full opacity-60"
-						style={{ background: preview.text }}
+					<AgentSettingsSection
+						t={t}
+						agents={agents}
+						globalSettings={globalSettings}
+						onAgentsChange={persistAgents}
+						onDefaultAgentChange={handleDefaultAgentChange}
+						onDefaultConfigChange={handleDefaultConfigChange}
 					/>
-				</div>
-				<div className="flex gap-1.5">
-					<div
-						className="h-6 flex-1 rounded"
-						style={{ background: preview.raised }}
-					/>
-					<div
-						className="h-6 flex-1 rounded"
-						style={{ background: preview.raised }}
+					<DeveloperToolsSection
+						t={t}
+						cliInstallStatus={cliInstallStatus}
+						onInstallDev3Cli={handleInstallDev3Cli}
 					/>
 				</div>
 			</div>
-
-			<div className="text-fg text-sm font-semibold">{name}</div>
-			<div className="text-fg-3 text-xs mt-0.5">{description}</div>
-		</button>
-	);
-}
-
-function LanguageCard({
-	locale,
-	label,
-	active,
-	onClick,
-}: {
-	locale: Locale;
-	label: string;
-	active: boolean;
-	onClick: () => void;
-}) {
-	const flags: Record<Locale, string> = {
-		en: "EN",
-		ru: "RU",
-		es: "ES",
-	};
-
-	return (
-		<button
-			onClick={onClick}
-			className={`flex-1 p-4 rounded-xl border-2 transition-all text-left ${
-				active
-					? "border-accent shadow-lg shadow-accent/10"
-					: "border-edge hover:border-edge-active"
-			}`}
-		>
-			<div className="text-2xl mb-2 font-mono text-fg-2 font-bold">
-				{flags[locale]}
-			</div>
-			<div className="text-fg text-sm font-semibold">{label}</div>
-		</button>
+		</div>
 	);
 }
 
