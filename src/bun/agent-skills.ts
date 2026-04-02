@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createLogger } from "./logger";
 import { ensureCodexConfigFile } from "./codex-config";
@@ -202,7 +202,6 @@ const CODEX_SKILL_DIR = ".codex/skills/dev3";
 const GENERIC_SKILL_DIRS = [
 	".cursor/skills/dev3",
 	".agents/skills/dev3",
-	".gemini/skills/dev3",
 	".opencode/skills/dev3",
 	".config/opencode/skills/dev3",
 ];
@@ -364,9 +363,19 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".cursor/skills/dev3-project-config",
 	".agents/skills/dev3-project-config",
 	".codex/skills/dev3-project-config",
-	".gemini/skills/dev3-project-config",
 	".opencode/skills/dev3-project-config",
 	".config/opencode/skills/dev3-project-config",
+];
+
+const LEGACY_GEMINI_SKILL_DUPLICATES = [
+	{
+		agentsSkillFile: ".agents/skills/dev3/SKILL.md",
+		geminiSkillDir: ".gemini/skills/dev3",
+	},
+	{
+		agentsSkillFile: ".agents/skills/dev3-project-config/SKILL.md",
+		geminiSkillDir: ".gemini/skills/dev3-project-config",
+	},
 ];
 
 // ---- ~/.agents/AGENTS.md rule block ----
@@ -467,6 +476,30 @@ function ensureClaudePermission(): void {
 	}
 }
 
+function cleanupLegacyGeminiSkillDuplicates(home: string): void {
+	for (const entry of LEGACY_GEMINI_SKILL_DUPLICATES) {
+		const agentsSkillFile = `${home}/${entry.agentsSkillFile}`;
+		const geminiSkillDir = `${home}/${entry.geminiSkillDir}`;
+
+		if (!existsSync(agentsSkillFile) || !existsSync(geminiSkillDir)) {
+			continue;
+		}
+
+		try {
+			rmSync(geminiSkillDir, { recursive: true, force: true });
+			log.info("Removed legacy Gemini skill duplicate", {
+				path: geminiSkillDir,
+				replacedBy: agentsSkillFile,
+			});
+		} catch (err) {
+			log.warn("Failed to remove legacy Gemini skill duplicate (non-fatal)", {
+				path: geminiSkillDir,
+				error: String(err),
+			});
+		}
+	}
+}
+
 /**
  * Install the dev3 skill into all supported AI agent directories
  * and update ~/.agents/AGENTS.md.
@@ -549,6 +582,7 @@ export function installAgentSkills(): void {
 		}
 	}
 
+	cleanupLegacyGeminiSkillDuplicates(home);
 	installAgentsMd();
 	ensureClaudePermission();
 	ensureCodexConfigFile(home);

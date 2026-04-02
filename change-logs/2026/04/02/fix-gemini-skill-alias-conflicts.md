@@ -1,0 +1,1 @@
+Stop installing managed `dev3` and `dev3-project-config` skills into `~/.gemini/skills` now that Gemini CLI already loads the shared `~/.agents/skills` alias first. Startup and `dev3 install-skills` also remove stale Gemini-specific copies of those two managed skills so existing users stop seeing duplicate skill conflict warnings.

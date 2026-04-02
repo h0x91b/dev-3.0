@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-03-29
+Last updated: 2026-04-02
 
 ## Agents
 
@@ -11,7 +11,7 @@ Last updated: 2026-03-29
 | Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/` |
 | Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/` |
 | Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/` |
-| Gemini CLI | `gemini` | `~/.gemini/skills/dev3/`, `~/.gemini/skills/dev3-project-config/` |
+| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/` |
 | OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/` |
 
 ## Feature Matrix
@@ -69,6 +69,8 @@ The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Two 
 ### dev3-project-config (project configuration)
 
 A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/config.local.json`. Covers the schema, merge priority, when to create/modify config files, and CLI commands (`dev3 config show`, `dev3 config export`). Same content for all agents (no variant differences).
+
+For Gemini CLI specifically, dev-3.0 installs these managed skills only via the shared `~/.agents/skills/` alias. Gemini also discovers `~/.gemini/skills/`, but duplicating the same skill name in both user-scope directories triggers same-tier conflict warnings and the alias already has precedence.
 
 ## Additional Integrations
 

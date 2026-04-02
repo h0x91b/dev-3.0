@@ -6,7 +6,6 @@ const SKILL_PATHS = [
 	".cursor/skills/dev3/SKILL.md",
 	".agents/skills/dev3/SKILL.md",
 	".codex/skills/dev3/SKILL.md",
-	".gemini/skills/dev3/SKILL.md",
 	".opencode/skills/dev3/SKILL.md",
 	".config/opencode/skills/dev3/SKILL.md",
 ];

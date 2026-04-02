@@ -35,8 +35,8 @@ describe("install-skills", () => {
 		expect(stdoutOutput).toContain(".cursor/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain(".agents/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain(".codex/skills/dev3/SKILL.md");
-		expect(stdoutOutput).toContain(".gemini/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain(".opencode/skills/dev3/SKILL.md");
+		expect(stdoutOutput).not.toContain(".gemini/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain("AGENTS.md");
 		expect(stdoutOutput).toContain("settings.json");
 		expect(stdoutOutput).toContain("config.toml");
