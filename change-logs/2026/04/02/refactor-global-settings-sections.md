@@ -1,0 +1,1 @@
+Refactored Global Settings into domain-specific section components with a shared persistence flow for global setting updates. Extracted pure helpers for settings normalization and command preview generation, and added focused tests to cover the new seams.

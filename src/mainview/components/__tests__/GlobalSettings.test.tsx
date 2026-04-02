@@ -111,6 +111,9 @@ describe("GlobalSettings", () => {
 			renderGlobalSettings();
 			await waitForLoad();
 
+			expect(screen.getByText("Appearance & Language")).toBeInTheDocument();
+			expect(screen.getByText("Behavior & Terminal")).toBeInTheDocument();
+			expect(screen.getByText("Workspace & Integrations")).toBeInTheDocument();
 			expect(screen.getByText("Dark")).toBeInTheDocument();
 			expect(screen.getByText("Light")).toBeInTheDocument();
 			expect(screen.getByText("System")).toBeInTheDocument();
