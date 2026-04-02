@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch } from "react";
-import type { PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api, isElectrobun } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
@@ -49,6 +49,7 @@ function ProjectView({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 	const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readSidebarMode);
+	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 
 	const toggleSidebarMode = useCallback((mode: SidebarMode) => {
@@ -68,6 +69,10 @@ function ProjectView({
 			}
 		})();
 	}, [projectId, dispatch]);
+
+	useEffect(() => {
+		api.request.getAgents().then(setAgents).catch(() => {});
+	}, []);
 
 	if (!project) {
 		return (
@@ -100,6 +105,7 @@ function ProjectView({
 						tasks={tasks}
 						activeTaskId={activeTaskId}
 						navigate={navigate}
+						agents={agents}
 						bellCounts={bellCounts}
 					/>
 					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
@@ -125,6 +131,7 @@ function ProjectView({
 				activeTaskId={activeTaskId}
 				dispatch={dispatch}
 				navigate={navigate}
+				agents={agents}
 				bellCounts={bellCounts}
 				taskPorts={taskPorts}
 				onSwitchToBoard={() => toggleSidebarMode("board")}

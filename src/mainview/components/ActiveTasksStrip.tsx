@@ -1,13 +1,18 @@
-import type { Project, Task } from "../../shared/types";
+import type { CodingAgent, Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import type { Route } from "../state";
+import { useMemo } from "react";
+import AgentLauncherBadge from "./AgentLauncherBadge";
+import VariantDots from "./VariantDots";
+import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 
 interface ActiveTasksStripProps {
 	project: Project;
 	tasks: Task[];
 	activeTaskId: string;
 	navigate: (route: Route) => void;
+	agents: CodingAgent[];
 	bellCounts: Map<string, number>;
 }
 
@@ -20,9 +25,23 @@ function ActiveTasksStrip({
 	tasks,
 	activeTaskId,
 	navigate,
+	agents,
 	bellCounts,
 }: ActiveTasksStripProps) {
 	const statusColors = useStatusColors();
+	const siblingMap = useMemo(() => {
+		const map = new Map<string, Task[]>();
+		for (const task of tasks) {
+			if (!task.groupId) continue;
+			const existing = map.get(task.groupId);
+			if (existing) {
+				existing.push(task);
+			} else {
+				map.set(task.groupId, [task]);
+			}
+		}
+		return map;
+	}, [tasks]);
 
 	const activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 
@@ -46,24 +65,39 @@ function ActiveTasksStrip({
 				const isActive = task.id === activeTaskId;
 				const bellCount = bellCounts.get(task.id) ?? 0;
 				const title = getTaskTitle(task);
+				const { agent, configLabel } = getTaskAgentMeta(task, agents);
+				const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
+				const summary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 
 				return (
 					<button
 						key={task.id}
 						onClick={() => handleTaskClick(task)}
-						className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-[0.625rem] leading-tight max-w-[180px] transition-colors ${
+						className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-[0.625rem] leading-tight max-w-[220px] transition-colors ${
 							isActive
 								? "bg-accent/15 text-accent"
 								: "text-fg-2 hover:bg-elevated-hover"
 						}`}
 					>
-						<div
-							className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-							style={{ background: statusColors[task.status] }}
-						/>
-						<span className="truncate">
-							#{task.seq} {title}
+						{agent ? (
+							<AgentLauncherBadge agent={agent} size={14} />
+						) : (
+							<div
+								className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+								style={{ background: statusColors[task.status] }}
+							/>
+						)}
+						<span className="truncate" title={summary || title}>
+							{summary || `#${task.seq} ${title}`}
 						</span>
+						{task.variantIndex !== null && (
+							<VariantDots
+								groupMembers={groupMembers}
+								currentTaskId={task.id}
+								statusColors={statusColors}
+								testId={`variant-indicator-${task.id}`}
+							/>
+						)}
 						{bellCount > 0 && (
 							<span className="flex-shrink-0 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-red-500 text-white text-[0.5rem] font-bold leading-none">
 								{bellCount > 9 ? "9+" : bellCount}
