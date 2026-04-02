@@ -1,0 +1,1 @@
+Fixed PATH resolution for binary lookups (tmux, gh, git). Bun.which() was reading the OS-level PATH instead of the shell-resolved PATH, causing binaries outside /usr/bin to not be found in macOS .app bundles. The fix explicitly passes process.env.PATH to Bun.which().
