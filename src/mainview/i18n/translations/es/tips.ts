@@ -157,7 +157,7 @@ const tips = {
 	"tip.customColumnAgents.title": "Agentes en columnas",
 	"tip.customColumnAgents.body": "Cualquier columna personalizada puede lanzar un agente automáticamente cuando entra una tarea. Configúralo en Ajustes del proyecto.",
 	"tip.retryTaskAttempts.title": "Explora más soluciones",
-	"tip.retryTaskAttempts.body": "¿El enfoque actual no convence? Haz clic en + Variante para lanzar intentos en paralelo y elegir el mejor.",
+	"tip.retryTaskAttempts.body": "¿El enfoque actual no convence? Haz clic en + Variante para lanzar variantes en paralelo y elegir la mejor.",
 	"tip.renameBuiltinColumns.title": "Renombrar columnas",
 	"tip.renameBuiltinColumns.body": "Haz clic en el icono de lápiz en el encabezado de una columna para renombrarla. Los cambios se guardan por proyecto.",
 	"tip.agentInstallStatus.title": "Verificación de instalación",

@@ -186,7 +186,7 @@ describe("TaskCard", () => {
 				configId: "claude-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Attempt 1")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Variant 1")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 			expect(screen.getByText("(Default · sonnet)")).toBeInTheDocument();
 		});
@@ -202,7 +202,7 @@ describe("TaskCard", () => {
 				configId: "codex-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Attempt 2")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Variant 2")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Codex" })).toBeInTheDocument();
 			expect(screen.getByText("(Default)")).toBeInTheDocument();
 		});
@@ -218,7 +218,7 @@ describe("TaskCard", () => {
 				configId: "whatever",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Attempt 3")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Variant 3")).toBeInTheDocument();
 		});
 
 		it("shows agent name without config when configId does not match", () => {
@@ -232,7 +232,7 @@ describe("TaskCard", () => {
 				configId: "nonexistent-config",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Attempt 1")).toBeInTheDocument();
+			expect(screen.getByText("#5 · Variant 1")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 		});
 
@@ -268,7 +268,7 @@ describe("TaskCard", () => {
 					/>
 				</I18nProvider>,
 			);
-			expect(screen.getByText("#2 · Attempt 1 · Custom")).toBeInTheDocument();
+			expect(screen.getByText("#2 · Variant 1 · Custom")).toBeInTheDocument();
 			expect(screen.getByText("(First · fast)")).toBeInTheDocument();
 		});
 	});

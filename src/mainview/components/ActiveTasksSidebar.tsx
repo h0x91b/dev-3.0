@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import { useState, useRef, useEffect, useMemo, type Dispatch } from "react";
+import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
@@ -9,6 +9,9 @@ import { getStatusLabel } from "../utils/statusLabel";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import LabelChip from "./LabelChip";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
+import AgentLauncherBadge from "./AgentLauncherBadge";
+import VariantDots from "./VariantDots";
+import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 
 interface ActiveTasksSidebarProps {
 	project: Project;
@@ -16,6 +19,7 @@ interface ActiveTasksSidebarProps {
 	activeTaskId?: string;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
+	agents: CodingAgent[];
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
 	onSwitchToBoard: () => void;
@@ -35,6 +39,7 @@ function ActiveTasksSidebar({
 	tasks,
 	activeTaskId,
 	navigate,
+	agents,
 	bellCounts,
 	taskPorts,
 	onSwitchToBoard,
@@ -61,6 +66,20 @@ function ActiveTasksSidebar({
 	if (searchQuery.trim()) {
 		activeTasks = activeTasks.filter((task) => matchesSearchQuery(task, searchQuery));
 	}
+
+	const siblingMap = useMemo(() => {
+		const map = new Map<string, Task[]>();
+		for (const task of tasks) {
+			if (!task.groupId) continue;
+			const existing = map.get(task.groupId);
+			if (existing) {
+				existing.push(task);
+			} else {
+				map.set(task.groupId, [task]);
+			}
+		}
+		return map;
+	}, [tasks]);
 
 	// Group by status in display order
 	const grouped = STATUS_ORDER
@@ -174,10 +193,13 @@ function ActiveTasksSidebar({
 								const isActive = task.id === activeTaskId;
 								const bellCount = bellCounts.get(task.id) ?? 0;
 								const displayTitle = getTaskTitle(task);
+								const { agent, configLabel } = getTaskAgentMeta(task, agents);
 								const taskLabelIds = task.labelIds ?? [];
 								const assignedLabels = taskLabelIds
 									.map((id) => projectLabels.find((l) => l.id === id))
 									.filter(Boolean) as typeof projectLabels;
+								const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
+								const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 
 								return (
 									<div key={task.id}>
@@ -207,54 +229,73 @@ function ActiveTasksSidebar({
 												</div>
 											)}
 
-											{/* Seq number */}
-											<div className="text-[0.5625rem] text-fg-muted font-mono mb-0.5">
-												#{task.seq}
-											</div>
-
-											{/* Title */}
-											<div className={`text-xs leading-snug break-words ${
-												isActive ? "text-fg font-medium" : "text-fg-2"
-											}`}>
-												{displayTitle}
-											</div>
-
-											{/* Labels */}
-											{assignedLabels.length > 0 && (
-												<div className="flex flex-wrap gap-0.5 mt-1">
-													{assignedLabels.map((label) => (
-														<LabelChip
-															key={label.id}
-															label={label}
-															size="xs"
-														/>
-													))}
-												</div>
-											)}
-
-											{/* Port indicators */}
-											{(() => {
-												const ports = taskPorts.get(task.id);
-												if (!ports || ports.length === 0) return null;
-												return (
-													<div className="flex flex-wrap gap-1 mt-1">
-														{ports.map((p) => (
-															<span
-																key={p.port}
-																className="inline-flex items-center gap-1 text-[0.5625rem] font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
-																title={`${p.processName} (PID ${p.pid})`}
-																onClick={(e) => {
-																	e.stopPropagation();
-																	window.open(`http://localhost:${p.port}`, "_blank");
-																}}
-															>
-																<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
-																:{p.port}
-															</span>
-														))}
+												<div className="mb-1 flex items-center gap-1.5 min-w-0">
+													{agent && <AgentLauncherBadge agent={agent} size={14} />}
+													<div
+														className={`min-w-0 flex-1 truncate text-[0.625rem] font-medium ${
+															isActive ? "text-fg" : "text-fg-2"
+														}`}
+														title={agentSummary || undefined}
+													>
+														{agentSummary || `#${task.seq}`}
 													</div>
-												);
-											})()}
+													{task.variantIndex !== null && (
+														<VariantDots
+															groupMembers={groupMembers}
+															currentTaskId={task.id}
+															statusColors={statusColors}
+															testId={`variant-indicator-${task.id}`}
+														/>
+													)}
+												</div>
+
+												{/* Title */}
+												<div className={`text-xs leading-snug break-words ${
+													isActive ? "text-fg font-medium" : "text-fg-2"
+												}`}>
+													{displayTitle}
+												</div>
+
+												<div className="mt-1 flex items-center gap-1 min-w-0">
+													<div className="text-[0.5625rem] text-fg-muted font-mono shrink-0">
+														#{task.seq}
+													</div>
+													{assignedLabels.length > 0 && (
+														<div className="flex flex-wrap gap-0.5 min-w-0">
+															{assignedLabels.map((label) => (
+																<LabelChip
+																	key={label.id}
+																	label={label}
+																	size="xs"
+																/>
+															))}
+														</div>
+													)}
+												</div>
+
+												{/* Port indicators */}
+												{(() => {
+													const ports = taskPorts.get(task.id);
+													if (!ports || ports.length === 0) return null;
+													return (
+														<div className="flex flex-wrap gap-1 mt-1">
+															{ports.map((p) => (
+																<span
+																	key={p.port}
+																	className="inline-flex items-center gap-1 text-[0.5625rem] font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
+																	title={`${p.processName} (PID ${p.pid})`}
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		window.open(`http://localhost:${p.port}`, "_blank");
+																	}}
+																>
+																	<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+																	:{p.port}
+																</span>
+															))}
+														</div>
+													);
+												})()}
 										</button>
 									</div>
 								);

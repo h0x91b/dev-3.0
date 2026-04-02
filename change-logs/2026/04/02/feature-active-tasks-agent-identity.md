@@ -1,0 +1,1 @@
+Active Tasks now shows each parallel variant by agent and compact config summary instead of relying on duplicated task titles alone. It also reuses the compact variant dot indicator so parallel runs of the same task stay easy to distinguish in both the sidebar and the browser strip. User-facing labels now consistently call these parallel runs "variants" instead of "attempts".

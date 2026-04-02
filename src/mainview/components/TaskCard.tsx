@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect, useLayoutEffect, type ComponentType, type Dispatch } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import { Claude, Codex, Cursor, Gemini, OpenCode } from "@lobehub/icons/es/icons";
 import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -20,46 +19,7 @@ import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import TaskDetailModal from "./TaskDetailModal";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
-
-type AgentLauncherIconComponent = ComponentType<any>;
-
-function resolveAgentLauncherIcon(agent: CodingAgent): AgentLauncherIconComponent | null {
-	const agentName = agent.name.toLowerCase();
-
-	if (agent.id === "builtin-claude" || agent.baseCommand === "claude" || agentName.includes("claude")) {
-		return Claude.Color;
-	}
-	if (agent.id === "builtin-codex" || agent.baseCommand === "codex" || agentName.includes("codex")) {
-		return Codex.Color;
-	}
-	if (agent.id === "builtin-gemini" || agent.baseCommand === "gemini" || agentName.includes("gemini")) {
-		return Gemini.Color;
-	}
-	if (agent.id === "builtin-cursor" || agentName.includes("cursor")) {
-		return Cursor.Avatar;
-	}
-	if (agent.id === "builtin-opencode" || agent.baseCommand === "opencode" || agentName.includes("opencode")) {
-		return OpenCode.Avatar;
-	}
-
-	return null;
-}
-
-function AgentLauncherBadge({ agent }: { agent: CodingAgent }) {
-	const Icon = resolveAgentLauncherIcon(agent);
-	if (!Icon) return null;
-
-	return (
-		<span
-			className="inline-flex items-center justify-center shrink-0"
-			role="img"
-			aria-label={agent.name}
-			title={agent.name}
-		>
-			<Icon size={18} className="block shrink-0" aria-hidden />
-		</span>
-	);
-}
+import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
 
 interface TaskCardProps {
 	task: Task;

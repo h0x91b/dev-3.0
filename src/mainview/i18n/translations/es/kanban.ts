@@ -50,7 +50,7 @@ const kanban = {
 	"task.cancel": "Cancelar",
 	"task.confirmCancel": "¿Cancelar tarea \"{title}\"?",
 	"task.variant": "#{n}",
-	"task.attempt": "Intento {n}",
+	"task.attempt": "Variante {n}",
 	"task.editSave": "Guardar",
 	"task.editCancel": "Cancelar",
 	"task.failedEdit": "Error al actualizar tarea: {error}",
