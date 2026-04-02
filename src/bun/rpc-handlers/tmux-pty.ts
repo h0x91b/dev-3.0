@@ -447,6 +447,9 @@ async function runDevServer(params: { taskId: string; projectId: string }): Prom
 			`  echo "Process exited with code $EXIT_CODE. Press any key to close."`,
 			`  read -n 1 -s`,
 			`fi`,
+			`# Detach the outer viewer pane before this pane closes so inner tmux redraws`,
+			`# without a watching client — prevents escape sequence corruption in outer tmux.`,
+			`tmux detach-client 2>/dev/null || true`,
 		].join("\n") + "\n";
 		await Bun.write(devScriptPath, wrappedScript);
 
@@ -471,9 +474,13 @@ async function runDevServer(params: { taskId: string; projectId: string }): Prom
 		const tmuxKill = socket
 			? `tmux -L "${socket}" kill-session -t "${devSession}" 2>/dev/null`
 			: `tmux kill-session -t "${devSession}" 2>/dev/null`;
+		// Re-attach loop: after a deliberate detach (e.g. wrappedScript called
+		// tmux detach-client before its pane closed), re-attach if the inner
+		// session still exists (e.g. a frontend pane is still running).
+		// The HUP trap lets kill-pane from stopDevServer exit cleanly.
 		const attachCmd = socket
-			? `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux -L "${socket}" attach-session -t "${devSession}"'`
-			: `bash -c 'trap "${tmuxKill}" EXIT; TMUX= tmux attach-session -t "${devSession}"'`;
+			? `bash -c 'trap "${tmuxKill}" EXIT; trap "exit" HUP; while TMUX= tmux -L "${socket}" has-session -t "${devSession}" 2>/dev/null; do TMUX= tmux -L "${socket}" attach-session -t "${devSession}"; done'`
+			: `bash -c 'trap "${tmuxKill}" EXIT; trap "exit" HUP; while TMUX= tmux has-session -t "${devSession}" 2>/dev/null; do TMUX= tmux attach-session -t "${devSession}"; done'`;
 		const viewerProc = spawn(pty.tmuxArgs(socket,
 			"split-window", "-h",
 			"-t", taskSession,
