@@ -83,8 +83,8 @@ describe("SiblingPopover", () => {
 			],
 		});
 
-		expect(screen.getByText(/Attempt 1/)).toBeInTheDocument();
-		expect(screen.getByText(/Attempt 2/)).toBeInTheDocument();
+		expect(screen.getByText(/Variant 1/)).toBeInTheDocument();
+		expect(screen.getByText(/Variant 2/)).toBeInTheDocument();
 		expect(screen.getByText("Siblings")).toBeInTheDocument();
 	});
 
@@ -97,7 +97,7 @@ describe("SiblingPopover", () => {
 			onClose,
 		});
 
-		fireEvent.click(screen.getByText(/Attempt 1/));
+		fireEvent.click(screen.getByText(/Variant 1/));
 
 		expect(navigate).toHaveBeenCalledWith({
 			screen: "project",
@@ -116,7 +116,7 @@ describe("SiblingPopover", () => {
 			onClose,
 		});
 
-		fireEvent.click(screen.getByText(/Attempt 1/));
+		fireEvent.click(screen.getByText(/Variant 1/));
 
 		expect(navigate).not.toHaveBeenCalled();
 		expect(onClose).toHaveBeenCalled();

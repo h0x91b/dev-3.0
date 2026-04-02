@@ -82,7 +82,7 @@ describe("TaskCard — seq display", () => {
 		expect(screen.getByText("#7")).toBeInTheDocument();
 	});
 
-	it("variant task shows #N · Attempt M · Agent format", () => {
+	it("variant task shows #N · Variant M · Agent format", () => {
 		renderCard(makeTask({
 			seq: 3,
 			status: "in-progress",
@@ -93,7 +93,7 @@ describe("TaskCard — seq display", () => {
 			configId: "claude-default",
 			groupId: "g1",
 		}));
-		expect(screen.getByText("#3 · Attempt 2")).toBeInTheDocument();
+		expect(screen.getByText("#3 · Variant 2")).toBeInTheDocument();
 		expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 		expect(screen.getByText("(Default · sonnet)")).toBeInTheDocument();
 	});
