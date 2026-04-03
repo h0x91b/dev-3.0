@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
-import type { ColumnAgentConfig, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
+import type { ColumnAgentConfig, DevServerStatus, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
-import { getPortsForTask } from "../port-scanner";
+import { getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
 import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
 import { spawn, spawnSync } from "../spawn";
@@ -28,21 +28,29 @@ async function isDevServerRunning(taskId: string, socket: string): Promise<boole
 	return exitCode === 0;
 }
 
-async function killDevServerViewerPane(taskId: string, taskSession: string, devSession: string, socket: string): Promise<void> {
+async function findDevServerViewerPaneId(taskId: string, taskSession: string, devSession: string, socket: string): Promise<string | null> {
 	let viewerPaneId = devViewerPaneIds.get(taskId);
-	if (!viewerPaneId) {
-		const listProc = spawn(pty.tmuxArgs(socket,
-			"list-panes", "-t", taskSession,
-			"-F", "#{pane_id} #{pane_start_command}",
-		), { stdout: "pipe", stderr: "pipe" });
-		const listOutput = await new Response(listProc.stdout).text();
-		await listProc.exited;
-		for (const line of listOutput.trim().split("\n")) {
-			if (!line.includes(devSession)) continue;
-			viewerPaneId = line.split(" ")[0];
-			break;
-		}
+	if (viewerPaneId) {
+		return viewerPaneId;
 	}
+
+	const listProc = spawn(pty.tmuxArgs(socket,
+		"list-panes", "-t", taskSession,
+		"-F", "#{pane_id} #{pane_start_command}",
+	), { stdout: "pipe", stderr: "pipe" });
+	const listOutput = await new Response(listProc.stdout).text();
+	await listProc.exited;
+	for (const line of listOutput.trim().split("\n")) {
+		if (!line.includes(devSession)) continue;
+		viewerPaneId = line.split(" ")[0];
+		break;
+	}
+
+	return viewerPaneId ?? null;
+}
+
+async function killDevServerViewerPane(taskId: string, taskSession: string, devSession: string, socket: string): Promise<void> {
+	const viewerPaneId = await findDevServerViewerPaneId(taskId, taskSession, devSession, socket);
 	if (!viewerPaneId) return;
 
 	const killPane = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", viewerPaneId), { stdout: "pipe", stderr: "pipe" });
@@ -58,6 +66,34 @@ export async function killDevServerSession(taskId: string, socket: string): Prom
 	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 	await kill.exited;
 	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
+}
+
+async function buildDevServerStatus(task: Task, projectId: string, hasDevScript: boolean, socket?: string): Promise<DevServerStatus> {
+	const resolvedSocket = socket ?? task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const taskSessionName = `dev3-${task.id.slice(0, 8)}`;
+	const devSessionName = devServerSessionName(task.id);
+	const running = await isDevServerRunning(task.id, resolvedSocket);
+	const viewerPaneId = running
+		? await findDevServerViewerPaneId(task.id, taskSessionName, devSessionName, resolvedSocket)
+		: null;
+	const panePids = running ? getSessionPanePids(resolvedSocket, devSessionName) : [];
+	const ports = running ? scanTaskPorts(resolvedSocket, taskSessionName) : [];
+	const resourceUsage = running ? getResourceUsage(task.id) : undefined;
+
+	return {
+		projectId,
+		taskId: task.id,
+		running,
+		hasDevScript,
+		worktreePath: task.worktreePath ?? null,
+		tmuxSocket: resolvedSocket,
+		taskSessionName,
+		devSessionName,
+		viewerPaneId,
+		panePids,
+		ports,
+		resourceUsage,
+	};
 }
 
 async function setTmuxSessionPortEnv(taskId: string, socket: string): Promise<void> {
@@ -412,7 +448,7 @@ export function cleanupTaskTmuxState(taskId: string): void {
 	devViewerPaneIds.delete(taskId);
 }
 
-async function runDevServer(params: { taskId: string; projectId: string }): Promise<void> {
+export async function runDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
 	log.info("→ runDevServer", params);
 	try {
 		const project = await data.getProject(params.projectId);
@@ -500,6 +536,7 @@ async function runDevServer(params: { taskId: string; projectId: string }): Prom
 		}
 
 		log.info("← runDevServer done", { devSession, viewerPaneId });
+		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("runDevServer FAILED", {
 			taskId: params.taskId.slice(0, 8),
@@ -524,16 +561,18 @@ async function checkDevServer(params: { taskId: string; projectId: string }): Pr
 	}
 }
 
-async function stopDevServer(params: { taskId: string; projectId: string }): Promise<void> {
+export async function stopDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
 	log.info("→ stopDevServer", params);
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
+		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killDevServerSession(task.id, socket);
 		const taskSession = `dev3-${task.id.slice(0, 8)}`;
 		spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited.catch(() => {});
 		log.info("← stopDevServer done");
+		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("stopDevServer FAILED", {
 			taskId: params.taskId.slice(0, 8),
@@ -541,6 +580,16 @@ async function stopDevServer(params: { taskId: string; projectId: string }): Pro
 		});
 		throw err;
 	}
+}
+
+export async function getDevServerStatus(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
+	log.info("→ getDevServerStatus", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
+	const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim());
+	log.info("← getDevServerStatus", { running: status.running, ports: status.ports.length });
+	return status;
 }
 
 async function openFileBrowser(params: { taskId: string; projectId: string }): Promise<{ notInstalled: true; installCommand: string; linuxHint?: boolean } | void> {
@@ -1054,6 +1103,7 @@ export const tmuxPtyHandlers = {
 	runDevServer,
 	checkDevServer,
 	stopDevServer,
+	getDevServerStatus,
 	openFileBrowser,
 	getTerminalPreview,
 	checkWorktreeExists,

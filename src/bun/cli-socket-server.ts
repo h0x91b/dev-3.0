@@ -5,6 +5,7 @@ import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
 import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage, getPushMessageLocal, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
+import { getDevServerStatus, runDevServer, stopDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
@@ -74,6 +75,23 @@ async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Pro
 		}
 	}
 	return null;
+}
+
+async function resolveTaskFromParams(params: Record<string, unknown>): Promise<{ project: Project; task: Task }> {
+	const taskId = params.taskId as string;
+	if (!taskId) throw new Error("taskId is required");
+
+	if (params.projectId) {
+		const project = await data.getProject(params.projectId as string);
+		const tasks = await data.loadTasks(project);
+		const task = findByIdPrefix(tasks, taskId, "task");
+		if (!task) throw new Error(`Task not found: ${taskId}`);
+		return { project, task };
+	}
+
+	const found = await resolveTaskAcrossProjects(taskId);
+	if (!found) throw new Error(`Task not found: ${taskId}`);
+	return found;
 }
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -493,6 +511,26 @@ const handlers: Record<string, Handler> = {
 		await triggerColumnAgentIfNeeded(builtinStatus, project, updated);
 
 		return updated;
+	},
+
+	"devServer.start": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		return runDevServer({ taskId: task.id, projectId: project.id });
+	},
+
+	"devServer.stop": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		return stopDevServer({ taskId: task.id, projectId: project.id });
+	},
+
+	"devServer.restart": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		return runDevServer({ taskId: task.id, projectId: project.id });
+	},
+
+	"devServer.status": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		return getDevServerStatus({ taskId: task.id, projectId: project.id });
 	},
 
 	"config.export": async (params) => {

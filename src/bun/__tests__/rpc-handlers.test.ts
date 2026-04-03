@@ -3251,6 +3251,38 @@ describe("handlers.runDevServer", () => {
 		expect(calls.some((a) => a.includes("split-window") && a.some((s) => s.includes("attach-session")))).toBe(true);
 	});
 
+	it("returns session and process details after start", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) })
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) })
+			.mockReturnValueOnce({ stdout: "%17\n", stderr: new Response(""), exited: Promise.resolve(0) })
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) {
+				return { exitCode: 0, stdout: Buffer.from("81231\n"), stderr: Buffer.from("") };
+			}
+			if (args.includes("list-panes") && args.includes("dev3-abcd1234")) {
+				return { exitCode: 0, stdout: Buffer.from("81230\n"), stderr: Buffer.from("") };
+			}
+			if (args[0] === "lsof") {
+				return { exitCode: 0, stdout: Buffer.from("p81231\ncbun\nn*:5173\n"), stderr: Buffer.from("") };
+			}
+			return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+		});
+
+		const result = await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		expect(result.running).toBe(true);
+		expect(result.devSessionName).toBe("dev3-dev-abcd1234");
+		expect(result.viewerPaneId).toBe("%17");
+		expect(result.panePids).toEqual([81231]);
+		expect(result.ports).toEqual([{ port: 5173, pid: 81231, processName: "bun" }]);
+	});
+
 	it("kills existing dev session before starting a new one", async () => {
 		const project = makeProject({ devScript: "bun run dev" });
 		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
@@ -3398,13 +3430,18 @@ describe("handlers.stopDevServer", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		mockSpawn.mockReturnValue({ stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) });
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // list-panes fallback
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // kill-session
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // set-option
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }); // has-session after stop
 
-		await handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
+		const result = await handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
 
 		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
 		expect(calls.some((a) => a.includes("set-option") && a.includes("pane-border-status") && a.includes("off"))).toBe(true);
+		expect(result.running).toBe(false);
 	});
 
 	it("throws when kill-session fails", async () => {
@@ -3418,7 +3455,7 @@ describe("handlers.stopDevServer", () => {
 		// kill-session exit code is ignored (best-effort), so it should not throw
 		await expect(
 			handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" }),
-		).resolves.toBeUndefined();
+		).resolves.toMatchObject({ running: false, taskId: task.id });
 	});
 
 	it("throws when data lookup fails", async () => {

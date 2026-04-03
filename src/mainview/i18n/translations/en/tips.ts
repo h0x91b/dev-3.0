@@ -102,6 +102,8 @@ const tips = {
 	"tip.tmuxSessionManager.body": "The header badge shows active dev3 tmux sessions — click it to attach, copy commands, or force-kill stale sessions.",
 	"tip.cliTool.title": "Manage tasks from terminal",
 	"tip.cliTool.body": "Run `dev3` in any worktree to list, create, or update tasks — agents can use it too to manage their own work.",
+	"tip.cliDevServer.title": "Run dev servers",
+	"tip.cliDevServer.body": "Use `dev3 dev-server start` in a worktree to launch its dev server, then stop or restart it from the terminal.",
 	"tip.diffSnapshots.title": "Your work is auto-snapshotted",
 	"tip.diffSnapshots.body": "Dev3 saves a git diff snapshot on every branch refresh so you can recover changes even if a worktree is wiped.",
 	"tip.taskCompleteSound.title": "Audio cue on task done",

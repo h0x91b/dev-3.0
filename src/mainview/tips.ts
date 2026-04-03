@@ -312,6 +312,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0A9E}", // nf-md-terminal
 	},
 	{
+		id: "cli-dev-server",
+		titleKey: "tip.cliDevServer.title",
+		bodyKey: "tip.cliDevServer.body",
+		icon: "\u{F0A9E}", // nf-md-terminal
+	},
+	{
 		id: "diff-snapshots",
 		titleKey: "tip.diffSnapshots.title",
 		bodyKey: "tip.diffSnapshots.body",

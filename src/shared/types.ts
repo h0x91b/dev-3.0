@@ -675,6 +675,23 @@ export interface ResourceUsage {
 	rss: number;
 }
 
+// ---- Task dev server ----
+
+export interface DevServerStatus {
+	projectId: string;
+	taskId: string;
+	running: boolean;
+	hasDevScript: boolean;
+	worktreePath: string | null;
+	tmuxSocket: string;
+	taskSessionName: string;
+	devSessionName: string;
+	viewerPaneId: string | null;
+	panePids: number[];
+	ports: PortInfo[];
+	resourceUsage?: ResourceUsage;
+}
+
 // ---- Tmux sessions ----
 
 export interface TmuxSessionInfo {
@@ -924,7 +941,7 @@ export type AppRPCSchema = {
 			};
 			runDevServer: {
 				params: { taskId: string; projectId: string };
-				response: void;
+				response: DevServerStatus;
 			};
 			checkDevServer: {
 				params: { taskId: string; projectId: string };
@@ -932,7 +949,11 @@ export type AppRPCSchema = {
 			};
 			stopDevServer: {
 				params: { taskId: string; projectId: string };
-				response: void;
+				response: DevServerStatus;
+			};
+			getDevServerStatus: {
+				params: { taskId: string; projectId: string };
+				response: DevServerStatus;
 			};
 			openFileBrowser: {
 				params: { taskId: string; projectId: string };

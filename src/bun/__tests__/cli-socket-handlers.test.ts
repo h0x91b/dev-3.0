@@ -22,6 +22,12 @@ vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 }));
 
+vi.mock("../rpc-handlers/tmux-pty", () => ({
+	runDevServer: vi.fn(),
+	stopDevServer: vi.fn(),
+	getDevServerStatus: vi.fn(),
+}));
+
 vi.mock("../rpc-handlers", () => {
 	const ACTIVE = ["in-progress", "user-questions", "review-by-user", "review-by-ai"];
 	return {
@@ -70,6 +76,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import { activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage } from "../rpc-handlers";
+import { runDevServer, stopDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
@@ -314,6 +321,59 @@ describe("task.show", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
+	});
+});
+
+describe("devServer.*", () => {
+	it("starts a dev server for a task in the current project", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
+		const status = { taskId: task.id, running: true, devSessionName: "dev3-dev-task-abc1" };
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(runDevServer).mockResolvedValue(status as any);
+
+		const resp = await handleRequest(makeRequest("devServer.start", {
+			projectId: "proj-1",
+			taskId: "task-abc1",
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(runDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+		expect(resp.data).toEqual(status);
+	});
+
+	it("stops a dev server by resolving task across projects", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(stopDevServer).mockResolvedValue({ taskId: task.id, running: false } as any);
+
+		const resp = await handleRequest(makeRequest("devServer.stop", {
+			taskId: "task-abc1",
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(stopDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+	});
+
+	it("returns current dev server status", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const status = { taskId: task.id, running: false, ports: [] };
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getDevServerStatus).mockResolvedValue(status as any);
+
+		const resp = await handleRequest(makeRequest("devServer.status", {
+			projectId: "proj-1",
+			taskId: task.id,
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(getDevServerStatus).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+		expect(resp.data).toEqual(status);
 	});
 });
 

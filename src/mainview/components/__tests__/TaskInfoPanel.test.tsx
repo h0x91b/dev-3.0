@@ -2,7 +2,7 @@ import { render, screen, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskInfoPanel from "../TaskInfoPanel";
 import { I18nProvider } from "../../i18n";
-import type { Task, Project, BranchStatus, Label } from "../../../shared/types";
+import type { Task, Project, BranchStatus, DevServerStatus, Label } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
@@ -99,6 +99,20 @@ const defaultBranchStatus: BranchStatus = {
 	diffFileNames: [],
 	prNumber: null,
 	prUrl: null,
+};
+
+const defaultDevServerStatus: DevServerStatus = {
+	projectId: "p1",
+	taskId: "t1",
+	running: true,
+	hasDevScript: true,
+	worktreePath: "/tmp/wt/t1",
+	tmuxSocket: "dev3",
+	taskSessionName: "dev3-t1",
+	devSessionName: "dev3-dev-t1",
+	viewerPaneId: "%17",
+	panePids: [12345],
+	ports: [],
 };
 
 function renderPanel(
@@ -746,7 +760,7 @@ describe("TaskInfoPanel", () => {
 		it("calls runDevServer when clicked and no server is running", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
-			mockedApi.request.runDevServer.mockResolvedValue(undefined);
+			mockedApi.request.runDevServer.mockResolvedValue(defaultDevServerStatus);
 
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
@@ -788,7 +802,7 @@ describe("TaskInfoPanel", () => {
 		it("restarts dev server from running menu", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
-			mockedApi.request.runDevServer.mockResolvedValue(undefined);
+			mockedApi.request.runDevServer.mockResolvedValue(defaultDevServerStatus);
 
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
@@ -809,7 +823,7 @@ describe("TaskInfoPanel", () => {
 		it("stops dev server from running menu", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
-			mockedApi.request.stopDevServer.mockResolvedValue(undefined);
+			mockedApi.request.stopDevServer.mockResolvedValue({ ...defaultDevServerStatus, running: false, viewerPaneId: null, panePids: [] });
 
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });

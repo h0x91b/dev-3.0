@@ -102,6 +102,8 @@ const tips = {
 	"tip.tmuxSessionManager.body": "El badge del encabezado muestra sesiones tmux dev3 activas — haz clic para conectarte, copiar comandos o forzar el cierre.",
 	"tip.cliTool.title": "Gestiona tareas desde la terminal",
 	"tip.cliTool.body": "Ejecuta `dev3` en cualquier worktree para listar, crear o actualizar tareas — los agentes también pueden usarlo para gestionar su trabajo.",
+	"tip.cliDevServer.title": "Servidor dev desde CLI",
+	"tip.cliDevServer.body": "Usa `dev3 dev-server start` en un worktree para lanzar su servidor dev, y luego detenerlo o reiniciarlo desde la terminal.",
 	"tip.diffSnapshots.title": "Tu trabajo se guarda automáticamente",
 	"tip.diffSnapshots.body": "Dev3 guarda un snapshot de git diff en cada actualización de rama para que puedas recuperar cambios aunque se borre el worktree.",
 	"tip.taskCompleteSound.title": "Sonido al completar una tarea",
