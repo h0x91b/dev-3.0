@@ -31,6 +31,14 @@ describe("dev3 skill content", () => {
 		expect(getClaudeSkillContent()).toContain("attach it to the current task immediately.");
 		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
 	});
+
+	it("adds conservative dev-server control guidance across agent variants", () => {
+		expect(getCodexSkillContent()).toContain("## Dev Server Control");
+		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` is low-risk");
+		expect(getCodexSkillContent()).toContain("Do not use them by default.");
+		expect(getClaudeSkillContent()).toContain("Before doing so, briefly tell the user what you are about to do.");
+		expect(getGenericSkillContent()).toContain("If you started the dev server only for verification, stop it afterwards");
+	});
 });
 
 describe("dev3-project-config skill content", () => {

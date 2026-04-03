@@ -78,6 +78,25 @@ const SKILL_NOTES = `
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
 `;
 
+const SKILL_DEV_SERVER_CONTROL = `
+## Dev Server Control
+
+\`dev3 dev-server status\` is low-risk and may be used when relevant.
+
+\`dev3 dev-server start\`, \`restart\`, and \`stop\` have visible side effects.
+Do not use them by default.
+
+Use them only when:
+- the user explicitly asked for dev-server control
+- the task is about \`devScript\`, ports, or dev-server behavior
+- you need the dev server running to verify the change
+
+Before doing so, briefly tell the user what you are about to do.
+
+Prefer \`status\` before \`start\` to avoid unnecessary restarts.
+If you started the dev server only for verification, stop it afterwards unless the user asked to keep it running.
+`;
+
 const SKILL_PROJECT_CONFIG_REDIRECT = `
 ## Project configuration (.dev3/config.json)
 
@@ -124,9 +143,9 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 `;
 
 // Composed bodies for each agent type
-const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT;
-const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT;
+const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
