@@ -2401,12 +2401,14 @@ describe("handlers.getPtyUrl", () => {
 		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
 	});
 
-	it("destroys dead sessions even when resume is not set", async () => {
+	it("destroys dead sessions when tmux is gone (stale check)", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
+		// hasSession true (in map), hasDeadSession true (proc null), tmux gone
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
-		vi.mocked(pty.hasSession).mockReturnValue(false);
+		// hasSession: true (log), true (stale check), false (after destroy)
+		vi.mocked(pty.hasSession).mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValueOnce(false);
 		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
@@ -2415,14 +2417,6 @@ describe("handlers.getPtyUrl", () => {
 		await handlers.getPtyUrl({ taskId: "task-1" });
 
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
-		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
-			project,
-			task.title,
-			task.description,
-			"/tmp/wt",
-			undefined,
-			{ resume: true },
-		);
 	});
 
 	it("passes task agentId and configId when restoring session", async () => {

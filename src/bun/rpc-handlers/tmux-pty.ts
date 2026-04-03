@@ -1231,20 +1231,29 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
+	let resolvedBaseCmd = "";
+
+	// Pre-assign a session ID for Claude so we can recover this pane later
+	const freshSessionId = crypto.randomUUID();
+	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId };
 
 	if (params.agentId) {
-		const resolved = await agents.resolveCommandForAgent(params.agentId, params.configId, ctx);
+		const resolved = await agents.resolveCommandForAgent(params.agentId, params.configId, ctx, cmdOptions);
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
+		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 	} else {
 		const resolved = await agents.resolveCommandForProject(
 			project,
 			task.title,
 			task.description,
 			task.worktreePath,
+			undefined,
+			cmdOptions,
 		);
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
+		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 	}
 
 	const env: Record<string, string> = buildAgentEnv(extraEnv, task.id);
@@ -1267,6 +1276,23 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	if (exitCode !== 0) {
 		log.error("spawnAgentInTask failed", { exitCode, stderr: stderr.trim() });
 		throw new Error(`Failed to spawn agent: ${stderr.trim() || "unknown error"}`);
+	}
+
+	// Append this pane to sessionState for recovery
+	const paneEntry = {
+		agentCmd: resolvedBaseCmd,
+		sessionId: agents.isClaudeCommand(resolvedBaseCmd) ? freshSessionId : null,
+		agentId: params.agentId,
+		configId: params.configId,
+	};
+	const existingPanes = task.sessionState?.panes ?? [];
+	try {
+		await data.updateTask(project, task.id, {
+			sessionState: { panes: [...existingPanes, paneEntry] },
+		});
+		log.info("Appended pane to sessionState", { taskId: params.taskId.slice(0, 8), paneCount: existingPanes.length + 1 });
+	} catch (err) {
+		log.error("Failed to append pane to sessionState (non-fatal)", { error: String(err) });
 	}
 
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });

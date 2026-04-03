@@ -390,7 +390,7 @@ describe("TaskTerminal", () => {
 	describe("ExtraKeyBar visibility", () => {
 		it("does not show ExtraKeyBar on non-touch desktop browser", async () => {
 			setTouchDevice(false);
-			mockedApi.request.getPtyUrl.mockResolvedValue("ws://localhost:1234");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
 
 			await act(async () => {
 				renderTerminal();
@@ -409,7 +409,7 @@ describe("TaskTerminal", () => {
 
 		it("shows ExtraKeyBar on touch device (mobile)", async () => {
 			setTouchDevice(true);
-			mockedApi.request.getPtyUrl.mockResolvedValue("ws://localhost:1234");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
 
 			await act(async () => {
 				renderTerminal();
