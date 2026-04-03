@@ -11,6 +11,7 @@ import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
 import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
+import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
 
 export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
@@ -319,6 +320,7 @@ async function setAgentBinaryPath(params: { agentId: string; path: string }): Pr
 
 async function setTmuxTheme(params: { theme: "dark" | "light" }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
+	setCurrentUiTheme(params.theme);
 	pty.applyTmuxTheme(params.theme);
 }
 

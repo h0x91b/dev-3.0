@@ -1,0 +1,1 @@
+Dev3 now injects Codex theme flags at launch time instead of writing one-off values into the user's `~/.codex/config.toml`. Codex sessions launched from dev3 follow the current app theme automatically, using `github` for light mode and `dracula` for dark mode.

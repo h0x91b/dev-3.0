@@ -7,6 +7,7 @@ import { createLogger } from "./logger";
 import { ensureCodexConfig } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
+import { getCodexThemeForCurrentUiTheme } from "./theme-state";
 
 const log = createLogger("agents");
 
@@ -338,6 +339,10 @@ export function resolveAgentCommand(
 
 	if (config?.additionalArgs) {
 		args.push(...config.additionalArgs);
+	}
+
+	if (codexAgent) {
+		args.push("-c", shellEscape(`tui.theme="${getCodexThemeForCurrentUiTheme()}"`));
 	}
 
 	// When resuming, skip the prompt — we don't want to inject a new

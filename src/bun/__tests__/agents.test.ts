@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { resolveAgentCommand, supportsResume, isOpenCodeCommand, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
+import { setCurrentUiTheme } from "../theme-state";
 
 const makeAgent = (overrides?: Partial<CodingAgent>): CodingAgent => ({
 	id: "test-agent",
@@ -25,6 +26,10 @@ const makeCtx = (overrides?: Partial<TemplateContext>): TemplateContext => ({
 	projectPath: "/path/to/project",
 	worktreePath: "/path/to/worktree",
 	...overrides,
+});
+
+beforeEach(() => {
+	setCurrentUiTheme("dark");
 });
 
 describe("isOpenCodeCommand", () => {
@@ -159,6 +164,30 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("Fresh Codex sessions use hooks");
 		expect(cmd).toContain("shell=\"/bin/bash\"");
 		expect(cmd).toContain("user-questions");
+	});
+
+	it("Codex: uses dracula theme when dev3 UI theme is dark", () => {
+		setCurrentUiTheme("dark");
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
+	});
+
+	it("Codex: uses github theme when dev3 UI theme is light", () => {
+		setCurrentUiTheme("light");
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain(`-c 'tui.theme="github"'`);
 	});
 
 	// ---- Gemini ----
