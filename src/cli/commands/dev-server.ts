@@ -15,6 +15,11 @@ function formatAssignedPorts(status: DevServerStatus): string {
 	return status.assignedPorts.map((port, index) => `DEV3_PORT${index}=${port}`).join(", ");
 }
 
+function formatDetectedPorts(status: DevServerStatus): string {
+	if (status.ports.length === 0) return "(none detected)";
+	return status.ports.map((port) => `${port.port} (${port.processName} pid ${port.pid})`).join(", ");
+}
+
 function formatPids(status: DevServerStatus): string {
 	if (status.panePids.length === 0) return "(none)";
 	return status.panePids.join(", ");
@@ -47,6 +52,7 @@ function printStatusDetails(status: DevServerStatus): void {
 		["Worktree:", status.worktreePath ?? "(none)"],
 		["Pane PIDs:", formatPids(status)],
 		["Assigned Ports:", formatAssignedPorts(status)],
+		["Detected Ports:", formatDetectedPorts(status)],
 	];
 
 	if (status.resourceUsage) {

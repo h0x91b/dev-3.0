@@ -82,6 +82,7 @@ describe("dev-server status", () => {
 		expect(stdoutOutput).toContain("dev3-dev-aaaaaaaa");
 		expect(stdoutOutput).toContain("DEV3_PORT0=50001");
 		expect(stdoutOutput).toContain("DEV3_PORT2=55937");
+		expect(stdoutOutput).toContain("5173 (bun pid 81298)");
 	});
 
 	it("uses explicit task ID when provided", async () => {
@@ -128,6 +129,7 @@ describe("dev-server start/stop/restart", () => {
 		});
 		expect(stdoutOutput).toContain("Stopped dev server");
 		expect(stdoutOutput).toContain("stopped");
+		expect(stdoutOutput).toContain("(none detected)");
 	});
 
 	it("restarts the dev server", async () => {
