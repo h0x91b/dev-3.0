@@ -3256,6 +3256,8 @@ describe("handlers.runDevServer", () => {
 		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
+		const portPool = await import("../port-pool");
+		vi.spyOn(portPool, "getPortAssignments").mockReturnValue([50001, 55930, 55937]);
 		mockSpawn
 			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) })
 			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) })
@@ -3280,7 +3282,49 @@ describe("handlers.runDevServer", () => {
 		expect(result.devSessionName).toBe("dev3-dev-abcd1234");
 		expect(result.viewerPaneId).toBe("%17");
 		expect(result.panePids).toEqual([81231]);
+		expect(result.assignedPorts).toEqual([50001, 55930, 55937]);
 		expect(result.ports).toEqual([{ port: 5173, pid: 81231, processName: "bun" }]);
+	});
+
+	it("reports assigned task ports separately from detected listeners", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		const portPool = await import("../port-pool");
+		vi.spyOn(portPool, "getPortAssignments").mockReturnValue([50001, 55930, 55937]);
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }) // has-session -> not running
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // new-session
+			.mockReturnValueOnce({ stdout: "%17\n", stderr: new Response(""), exited: Promise.resolve(0) }) // split-window
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session in buildDevServerStatus
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) {
+				return { exitCode: 0, stdout: Buffer.from("81231\n"), stderr: Buffer.from("") };
+			}
+			if (args.includes("list-panes") && args.includes("dev3-abcd1234")) {
+				return { exitCode: 0, stdout: Buffer.from("71230\n"), stderr: Buffer.from("") };
+			}
+			return { exitCode: 1, stdout: Buffer.from(""), stderr: Buffer.from("") };
+		});
+		const portScanner = await import("../port-scanner");
+		vi.spyOn(portScanner, "getPortsForTask").mockReturnValue([
+			{ port: 50001, pid: 81232, processName: "bun" },
+			{ port: 55930, pid: 81232, processName: "bun" },
+			{ port: 55937, pid: 81232, processName: "bun" },
+			{ port: 56206, pid: 62042, processName: "bun" },
+		]);
+
+		const result = await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
+
+		expect(result.assignedPorts).toEqual([50001, 55930, 55937]);
+		expect(result.ports).toEqual([
+			{ port: 50001, pid: 81232, processName: "bun" },
+			{ port: 55930, pid: 81232, processName: "bun" },
+			{ port: 55937, pid: 81232, processName: "bun" },
+			{ port: 56206, pid: 62042, processName: "bun" },
+		]);
 	});
 
 	it("kills existing dev session before starting a new one", async () => {

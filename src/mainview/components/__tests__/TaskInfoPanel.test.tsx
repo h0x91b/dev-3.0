@@ -112,6 +112,7 @@ const defaultDevServerStatus: DevServerStatus = {
 	devSessionName: "dev3-dev-t1",
 	viewerPaneId: "%17",
 	panePids: [12345],
+	assignedPorts: [],
 	ports: [],
 };
 

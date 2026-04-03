@@ -36,6 +36,7 @@ const STATUS: DevServerStatus = {
 	devSessionName: "dev3-dev-aaaaaaaa",
 	viewerPaneId: "%17",
 	panePids: [81231],
+	assignedPorts: [50001, 55930, 55937],
 	ports: [{ port: 5173, pid: 81298, processName: "bun" }],
 	resourceUsage: { cpu: 3.1, rss: 104857600 },
 };
@@ -79,7 +80,8 @@ describe("dev-server status", () => {
 		});
 		expect(stdoutOutput).toContain("Dev server is running");
 		expect(stdoutOutput).toContain("dev3-dev-aaaaaaaa");
-		expect(stdoutOutput).toContain("5173 (bun pid 81298)");
+		expect(stdoutOutput).toContain("DEV3_PORT0=50001");
+		expect(stdoutOutput).toContain("DEV3_PORT2=55937");
 	});
 
 	it("uses explicit task ID when provided", async () => {
@@ -108,7 +110,15 @@ describe("dev-server start/stop/restart", () => {
 	});
 
 	it("stops the dev server with an explicit --project override", async () => {
-		mockSend.mockResolvedValue(okResp({ ...STATUS, running: false, viewerPaneId: null, panePids: [], ports: [], resourceUsage: undefined }));
+		mockSend.mockResolvedValue(okResp({
+			...STATUS,
+			running: false,
+			viewerPaneId: null,
+			panePids: [],
+			assignedPorts: [],
+			ports: [],
+			resourceUsage: undefined,
+		}));
 
 		await handleDevServer("stop", { positional: ["aaaaaaaa"], flags: { project: "other-proj" } }, SOCKET, CTX);
 

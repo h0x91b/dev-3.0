@@ -73,11 +73,17 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	const taskSessionName = `dev3-${task.id.slice(0, 8)}`;
 	const devSessionName = devServerSessionName(task.id);
 	const running = await isDevServerRunning(task.id, resolvedSocket);
+	const assignedPorts = portPool.getPortAssignments(task.id);
 	const viewerPaneId = running
 		? await findDevServerViewerPaneId(task.id, taskSessionName, devSessionName, resolvedSocket)
 		: null;
 	const panePids = running ? getSessionPanePids(resolvedSocket, devSessionName) : [];
-	const ports = running ? scanTaskPorts(resolvedSocket, taskSessionName) : [];
+	const ports = running
+		? (() => {
+			const cached = getPortsForTask(task.id);
+			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSessionName);
+		})()
+		: [];
 	const resourceUsage = running ? getResourceUsage(task.id) : undefined;
 
 	return {
@@ -91,6 +97,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		devSessionName,
 		viewerPaneId,
 		panePids,
+		assignedPorts,
 		ports,
 		resourceUsage,
 	};

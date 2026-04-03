@@ -1,1 +1,1 @@
-Add `dev3 dev-server start|stop|restart|status` so the CLI can control the same task dev server flow as the UI button. The command now prints stable session, pane, PID, port, and worktree details after each action.
+Add `dev3 dev-server start|stop|restart|status` so the CLI can control the same task dev server flow as the UI button. The command now prints stable session, pane, PID, assigned `DEV3_PORT*`, and worktree details after each action instead of guessing from unrelated listeners.

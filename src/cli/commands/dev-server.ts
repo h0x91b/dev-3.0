@@ -10,9 +10,9 @@ function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | u
 	return expandShortId(raw, context);
 }
 
-function formatPorts(status: DevServerStatus): string {
-	if (status.ports.length === 0) return "(none detected)";
-	return status.ports.map((port) => `${port.port} (${port.processName} pid ${port.pid})`).join(", ");
+function formatAssignedPorts(status: DevServerStatus): string {
+	if (status.assignedPorts.length === 0) return "(none allocated)";
+	return status.assignedPorts.map((port, index) => `DEV3_PORT${index}=${port}`).join(", ");
 }
 
 function formatPids(status: DevServerStatus): string {
@@ -46,7 +46,7 @@ function printStatusDetails(status: DevServerStatus): void {
 		["Socket:", status.tmuxSocket],
 		["Worktree:", status.worktreePath ?? "(none)"],
 		["Pane PIDs:", formatPids(status)],
-		["Ports:", formatPorts(status)],
+		["Assigned Ports:", formatAssignedPorts(status)],
 	];
 
 	if (status.resourceUsage) {

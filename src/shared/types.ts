@@ -688,6 +688,7 @@ export interface DevServerStatus {
 	devSessionName: string;
 	viewerPaneId: string | null;
 	panePids: number[];
+	assignedPorts: number[];
 	ports: PortInfo[];
 	resourceUsage?: ResourceUsage;
 }
