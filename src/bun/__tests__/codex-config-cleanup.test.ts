@@ -109,6 +109,8 @@ trust_level = "trusted"
 			// New dev3 profile added
 			expect(result).toContain("[permissions.dev3.network]");
 			expect(result).toContain("[profiles.dev3]");
+			expect(result).toContain("[profiles.dev3-light]");
+			expect(result).toContain("[profiles.dev3-dark]");
 			// Everything else preserved
 			expect(result).toContain('model = "gpt-5.4"');
 			expect(result).toContain("[profiles.ro]");

@@ -171,11 +171,12 @@ describe("resolveAgentCommand — resume", () => {
 
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
+		expect(cmd).toContain("-p dev3-dark");
+		expect(cmd).not.toContain("-p dev3 ");
 	});
 
 	it("Codex: uses github theme when dev3 UI theme is light", () => {
@@ -183,11 +184,25 @@ describe("resolveAgentCommand — resume", () => {
 
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
-			makeConfig({ model: undefined }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		expect(cmd).toContain(`-c 'tui.theme="github"'`);
+		expect(cmd).toContain("-p dev3-light");
+		expect(cmd).not.toContain("-p dev3 ");
+	});
+
+	it("Codex: leaves custom profile names untouched", () => {
+		setCurrentUiTheme("light");
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "my-custom-profile"] }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("-p my-custom-profile");
+		expect(cmd).not.toContain("-p dev3-light");
 	});
 
 	// ---- Gemini ----
