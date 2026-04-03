@@ -7,6 +7,7 @@ import { createLogger } from "./logger";
 import { ensureCodexConfig } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
+import { getCodexProfileForCurrentUiTheme } from "./theme-state";
 
 const log = createLogger("agents");
 
@@ -256,6 +257,16 @@ export function shellEscape(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+function applyCodexThemeProfile(args: string[]): void {
+	const themedProfile = getCodexProfileForCurrentUiTheme();
+	for (let i = 0; i < args.length - 1; i++) {
+		if ((args[i] === "-p" || args[i] === "--profile") && args[i + 1] === "dev3") {
+			args[i + 1] = themedProfile;
+			return;
+		}
+	}
+}
+
 export interface CommandOptions {
 	/** When true, resume the previous session instead of starting a new one.
 	 *  Supported agents: Claude (--continue), Codex (resume --last),
@@ -338,6 +349,10 @@ export function resolveAgentCommand(
 
 	if (config?.additionalArgs) {
 		args.push(...config.additionalArgs);
+	}
+
+	if (codexAgent) {
+		applyCodexThemeProfile(args);
 	}
 
 	// When resuming, skip the prompt — we don't want to inject a new

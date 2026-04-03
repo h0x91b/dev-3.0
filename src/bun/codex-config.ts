@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { load } from "js-toml";
 import { createLogger } from "./logger";
+import { DEV3_CODEX_DARK_PROFILE, DEV3_CODEX_LIGHT_PROFILE } from "./theme-state";
 
 const log = createLogger("codex-config");
 
@@ -33,7 +34,7 @@ interface CodexConfig {
  * 1. The dev3 worktree project trusted
  * 2. A generic [permissions.workspace] fallback profile + default_permissions
  * 3. A dedicated [permissions.dev3] permission profile with filesystem + network access
- * 4. A dedicated [profiles.dev3] config profile for dev3 launches
+ * 4. Dedicated [profiles.dev3*] config profiles for dev3 launches
  *
  * Preserves the user's `default_permissions` when already set. If missing,
  * creates a generic `workspace` permission profile and sets it as the default
@@ -198,17 +199,18 @@ export function ensureCodexConfig(
 		config = upsertRootLine(config, "default_permissions", '"workspace"');
 	}
 
-	// --- 4. Ensure [profiles.dev3] config profile ---
-	const dev3Profile = parsed.profiles?.[DEV3_CODEX_PROFILE];
-	if (dev3Profile == null) {
-		const block = [
-			"",
-			`[profiles.${DEV3_CODEX_PROFILE}]`,
-			'web_search = "live"',
-			"",
-		].join("\n");
-		config = appendBlock(config, block);
-	}
+	// --- 4. Ensure [profiles.dev3*] config profiles ---
+	config = ensureProfileSettings(config, DEV3_CODEX_PROFILE, {
+		web_search: '"live"',
+	});
+	config = ensureProfileSettings(config, DEV3_CODEX_LIGHT_PROFILE, {
+		web_search: '"live"',
+		"tui.theme": '"github"',
+	});
+	config = ensureProfileSettings(config, DEV3_CODEX_DARK_PROFILE, {
+		web_search: '"live"',
+		"tui.theme": '"dracula"',
+	});
 
 	// --- 5. Ensure [features] codex_hooks = true ---
 	const codexHooksEnabled = parsed.features?.codex_hooks === true;
@@ -358,6 +360,24 @@ function upsertSectionLine(
 		}
 		return `${header}${key} = ${value}\n${body}`;
 	});
+}
+
+function ensureProfileSettings(
+	config: string,
+	profileName: string,
+	settings: Record<string, string>,
+): string {
+	const sectionHeader = `[profiles.${profileName}]`;
+	if (!config.includes(sectionHeader)) {
+		const lines = Object.entries(settings).map(([key, value]) => `${key} = ${value}`);
+		return appendBlock(config, `\n${sectionHeader}\n${lines.join("\n")}\n`);
+	}
+
+	for (const [key, value] of Object.entries(settings)) {
+		config = upsertSectionLine(config, sectionHeader, key, value);
+	}
+
+	return config;
 }
 
 /**

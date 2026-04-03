@@ -1,0 +1,1 @@
+Dev3 now manages dedicated Codex config profiles for themed launches instead of passing one-off `tui.theme` CLI overrides. Codex sessions launched from dev3 switch between `profiles.dev3-light` and `profiles.dev3-dark` automatically, using `github` for light mode and `dracula` for dark mode.

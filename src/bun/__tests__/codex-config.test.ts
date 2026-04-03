@@ -6,7 +6,7 @@ describe("ensureCodexConfig", () => {
 	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
 
 	describe("when config does not exist", () => {
-		it("creates config with project trust, workspace default permissions, permissions.dev3, and profiles.dev3", () => {
+		it("creates config with project trust, workspace default permissions, permissions.dev3, and themed dev3 profiles", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain('trust_level = "trusted"');
@@ -28,6 +28,10 @@ describe("ensureCodexConfig", () => {
 			// Config profile
 			expect(result).toContain("[profiles.dev3]");
 			expect(result).toContain('web_search = "live"');
+			expect(result).toContain("[profiles.dev3-light]");
+			expect(result).toContain('tui.theme = "github"');
+			expect(result).toContain("[profiles.dev3-dark]");
+			expect(result).toContain('tui.theme = "dracula"');
 			expect(result).toContain("[features]");
 			expect(result).toContain("codex_hooks = true");
 		});
@@ -128,6 +132,14 @@ allow_unix_sockets = ["${SOCKETS_PATH}"]
 [profiles.dev3]
 web_search = "live"
 
+[profiles.dev3-light]
+web_search = "live"
+tui.theme = "github"
+
+[profiles.dev3-dark]
+web_search = "live"
+tui.theme = "dracula"
+
 [features]
 codex_hooks = true
 `;
@@ -138,8 +150,33 @@ codex_hooks = true
 			expect(netMatches).toHaveLength(1);
 			const profileMatches = result.match(/\[profiles\.dev3\]/g);
 			expect(profileMatches).toHaveLength(1);
+			const lightProfileMatches = result.match(/\[profiles\.dev3-light\]/g);
+			expect(lightProfileMatches).toHaveLength(1);
+			const darkProfileMatches = result.match(/\[profiles\.dev3-dark\]/g);
+			expect(darkProfileMatches).toHaveLength(1);
 			const featuresMatches = result.match(/\[features\]/g);
 			expect(featuresMatches).toHaveLength(1);
+		});
+	});
+
+	describe("when themed dev3 profiles exist with stale values", () => {
+		it("updates them to the managed theme ids", () => {
+			const existing = `[profiles.dev3-light]
+web_search = "disabled"
+tui.theme = "old-light"
+
+[profiles.dev3-dark]
+tui.theme = "old-dark"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+
+			expect(result).toContain("[profiles.dev3-light]");
+			expect(result).toContain('web_search = "live"');
+			expect(result).toContain('tui.theme = "github"');
+			expect(result).toContain("[profiles.dev3-dark]");
+			expect(result).toContain('tui.theme = "dracula"');
+			expect(result).not.toContain('tui.theme = "old-light"');
+			expect(result).not.toContain('tui.theme = "old-dark"');
 		});
 	});
 
@@ -247,6 +284,8 @@ trust_level = "trusted"
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain("[permissions.dev3.network]");
 			expect(result).toContain("[profiles.dev3]");
+			expect(result).toContain("[profiles.dev3-light]");
+			expect(result).toContain("[profiles.dev3-dark]");
 		});
 
 		it("handles config with only whitespace", () => {
