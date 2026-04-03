@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 const HOME = process.env.HOME || "/tmp";
@@ -159,13 +159,29 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
 function discoverSocketIn(socketsDir: string): string | null {
 	if (!existsSync(socketsDir)) return null;
 
-	const candidates: string[] = [];
-	for (const file of readdirSync(socketsDir)) {
-		if (!file.endsWith(".sock")) continue;
-		const pid = parseInt(file.replace(".sock", ""), 10);
-		if (isNaN(pid)) continue;
+	const entries = readdirSync(socketsDir)
+		.filter((file) => file.endsWith(".sock"))
+		.map((file) => {
+			const pid = parseInt(file.replace(".sock", ""), 10);
+			if (isNaN(pid)) return null;
+			const socketPath = `${socketsDir}/${file}`;
+			let mtimeMs = 0;
+			try {
+				mtimeMs = statSync(socketPath).mtimeMs;
+			} catch {
+				mtimeMs = 0;
+			}
+			return { pid, socketPath, mtimeMs };
+		})
+		.filter((entry): entry is { pid: number; socketPath: string; mtimeMs: number } => entry !== null)
+		.sort((a, b) => {
+			if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
+			return b.pid - a.pid;
+		});
 
-		const socketPath = `${socketsDir}/${file}`;
+	const candidates: string[] = [];
+	for (const entry of entries) {
+		const { pid, socketPath } = entry;
 		try {
 			process.kill(pid, 0); // Check if alive
 			return socketPath;
