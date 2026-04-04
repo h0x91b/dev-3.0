@@ -146,7 +146,7 @@ export function applyTmuxTheme(theme: "dark" | "light"): void {
 }
 
 // Default tmux socket name — all dev3 sessions live here.
-export const DEFAULT_TMUX_SOCKET = "dev4";
+export const DEFAULT_TMUX_SOCKET = "dev3";
 
 // Resolved tmux binary path. Defaults to "tmux" (relies on PATH).
 // Updated by setTmuxBinary() after requirements check finds a custom or fallback path.

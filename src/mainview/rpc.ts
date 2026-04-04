@@ -315,6 +315,18 @@ function initBrowserApi(): ApiShape {
 			return { url: `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}` };
 		},
 
+		async resumeTask(params: { taskId: string }): Promise<string> {
+			await rpcRequest("resumeTask", params);
+			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
+			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
+		},
+
+		async restartTask(params: { taskId: string }): Promise<string> {
+			await rpcRequest("restartTask", params);
+			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
+			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
+		},
+
 		async hideApp(): Promise<void> {
 			// No-op in browser
 		},
