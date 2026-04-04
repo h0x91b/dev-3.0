@@ -299,7 +299,7 @@ export function buildResumeCommand(agentCmd: string, sessionId?: string): string
 		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
 	}
 	if (isOpenCodeCommand(agentCmd)) {
-		return `${agentCmd} --continue`;
+		return sessionId ? `${agentCmd} --session ${sessionId}` : `${agentCmd} --continue`;
 	}
 	return null;
 }
@@ -344,7 +344,11 @@ export function resolveAgentCommand(
 				args.push("--continue");
 			}
 		} else if (isOpenCodeCommand(baseCmd)) {
-			args.push("--continue");
+			if (sid) {
+				args.push("--session", sid);
+			} else {
+				args.push("--continue");
+			}
 		} else if (isGeminiCommand(baseCmd)) {
 			if (sid) {
 				args.push("--resume", sid);
@@ -355,8 +359,8 @@ export function resolveAgentCommand(
 		// Codex: handled below when building the final command
 	}
 
-	// For agents that support pre-assigned session IDs, inject --session-id on fresh launches
-	// so we can do targeted --resume later. Claude and Cursor Agent both support this.
+	// For agents that support pre-assigned session IDs, inject the ID on fresh launches
+	// so we can do targeted resume later.
 	if (!shouldResume && supportsPreAssignedSessionId(baseCmd) && options?.sessionId) {
 		if (isCursorCommand(baseCmd)) {
 			args.push("--resume", options.sessionId);

@@ -529,9 +529,12 @@ describe("buildResumeCommand", () => {
 		expect(buildResumeCommand("agent")).toBe("agent --continue");
 	});
 
-	it("OpenCode: --continue (no targeted resume)", () => {
+	it("OpenCode: --session <id> with sessionId", () => {
+		expect(buildResumeCommand("opencode", "sid-6")).toBe("opencode --session sid-6");
+	});
+
+	it("OpenCode: --continue without sessionId", () => {
 		expect(buildResumeCommand("opencode")).toBe("opencode --continue");
-		expect(buildResumeCommand("opencode", "sid-ignored")).toBe("opencode --continue");
 	});
 
 	it("unsupported agent returns null", () => {
