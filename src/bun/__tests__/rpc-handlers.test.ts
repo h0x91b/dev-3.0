@@ -78,7 +78,6 @@ vi.mock("../pty-server", () => ({
 	getSessionType: vi.fn(() => null),
 	capturePane: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
-	listPaneIds: vi.fn(() => []),
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
@@ -210,7 +209,6 @@ const {
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
-	handlePaneExited,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -4815,110 +4813,3 @@ describe("toggleTaskWatch", () => {
 	});
 });
 
-describe("handlePaneExited — reconciliation", () => {
-	const project = makeProject();
-
-	beforeEach(() => {
-		vi.mocked(data.loadProjects).mockReset();
-		vi.mocked(data.getTask).mockReset();
-		vi.mocked(data.updateTask).mockReset();
-		vi.mocked(pty.listPaneIds).mockReset();
-		vi.mocked(data.loadProjects).mockResolvedValue([project]);
-		vi.mocked(data.updateTask).mockResolvedValue({} as any);
-	});
-
-	it("removes entry whose paneId is no longer alive", async () => {
-		const task = makeTask({
-			sessionState: {
-				panes: [
-					{ paneId: "%0", agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" },
-					{ paneId: "%1", agentCmd: "claude", sessionId: "s2", agentId: "a", configId: "c" },
-				],
-			},
-		});
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(pty.listPaneIds).mockReturnValue(["%0"]); // %1 is dead
-
-		await handlePaneExited("task-1", "%1");
-
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
-			sessionState: { panes: [{ paneId: "%0", agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" }] },
-		});
-	});
-
-	it("assigns paneId to null entry when exactly one unmatched live pane (setup pane exits)", async () => {
-		const task = makeTask({
-			sessionState: {
-				panes: [
-					{ paneId: null, agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" },
-				],
-			},
-		});
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(pty.listPaneIds).mockReturnValue(["%1"]); // setup %0 exited, agent %1 alive
-
-		await handlePaneExited("task-1", "%0");
-
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
-			sessionState: { panes: [{ paneId: "%1", agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" }] },
-		});
-	});
-
-	it("removes null entries when no live panes remain", async () => {
-		const task = makeTask({
-			sessionState: {
-				panes: [
-					{ paneId: null, agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" },
-				],
-			},
-		});
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(pty.listPaneIds).mockReturnValue([]); // session gone
-
-		await handlePaneExited("task-1", "%1");
-
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
-			sessionState: { panes: [] },
-		});
-	});
-
-	it("does not update when exited pane is unmanaged and topology unchanged", async () => {
-		const task = makeTask({
-			sessionState: {
-				panes: [
-					{ paneId: "%1", agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" },
-				],
-			},
-		});
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(pty.listPaneIds).mockReturnValue(["%1"]); // unmanaged pane %2 exited, %1 still alive
-
-		await handlePaneExited("task-1", "%2");
-
-		expect(data.updateTask).not.toHaveBeenCalled();
-	});
-
-	it("handles setup + extra agent: assigns null entry and keeps known paneId entry", async () => {
-		const task = makeTask({
-			sessionState: {
-				panes: [
-					{ paneId: null, agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" },
-					{ paneId: "%2", agentCmd: "claude", sessionId: "s2", agentId: "a", configId: "c" },
-				],
-			},
-		});
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(pty.listPaneIds).mockReturnValue(["%1", "%2"]); // setup %0 exited, agent %1 + extra %2 alive
-
-		await handlePaneExited("task-1", "%0");
-
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
-			sessionState: {
-				panes: [
-					{ paneId: "%1", agentCmd: "claude", sessionId: "s1", agentId: "a", configId: "c" },
-					{ paneId: "%2", agentCmd: "claude", sessionId: "s2", agentId: "a", configId: "c" },
-				],
-			},
-		});
-	});
-});
