@@ -13,6 +13,7 @@ const terminal = {
 	"terminal.recoveryDesc": "El terminal se desconectó pero la sesión del agente se puede recuperar.",
 	"terminal.resumeSession": "Reanudar sesión",
 	"terminal.startFresh": "Empezar de nuevo",
+	"terminal.startFreshDesc": "Se iniciará una nueva sesión con la descripción de la tarea.",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-div",

@@ -13,6 +13,7 @@ const terminal = {
 	"terminal.recoveryDesc": "Терминал был отключён, но сессию агента можно восстановить.",
 	"terminal.resumeSession": "Возобновить сессию",
 	"terminal.startFresh": "Начать заново",
+	"terminal.startFreshDesc": "Будет запущена новая сессия с описанием задачи.",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",

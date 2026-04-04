@@ -185,21 +185,24 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<p className="text-fg-3 text-sm">
 						{t("terminal.recoveryDesc")}
 					</p>
-					<div className="flex gap-3 pt-2">
-						<button
-							onClick={handleResumeSession}
-							disabled={restarting}
-							className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
-						>
-							{restarting ? t("terminal.connecting") : t("terminal.resumeSession")}
-						</button>
-						<button
-							onClick={handleStartFresh}
-							disabled={restarting}
-							className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
-						>
-							{t("terminal.startFresh")}
-						</button>
+					<div className="space-y-3 pt-2">
+						<div className="flex gap-3">
+							<button
+								onClick={handleResumeSession}
+								disabled={restarting}
+								className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+							>
+								{restarting ? t("terminal.connecting") : t("terminal.resumeSession")}
+							</button>
+							<button
+								onClick={handleStartFresh}
+								disabled={restarting}
+								className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
+							>
+								{t("terminal.startFresh")}
+							</button>
+						</div>
+						<p className="text-fg-muted text-xs">{t("terminal.startFreshDesc")}</p>
 					</div>
 				</div>
 			</div>

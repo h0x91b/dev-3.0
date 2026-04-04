@@ -999,7 +999,7 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 	log.debug("→ listTmuxSessions");
 
 	const format = "#{session_name}|#{pane_current_path}|#{session_windows}|#{session_created}";
-	const proc = spawn(pty.tmuxArgs("dev3", "list-sessions", "-F", format), { stdout: "pipe", stderr: "pipe" });
+	const proc = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "list-sessions", "-F", format), { stdout: "pipe", stderr: "pipe" });
 	const output = await new Response(proc.stdout).text();
 	const exitCode = await proc.exited;
 
@@ -1131,7 +1131,7 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 		throw new Error("Can only kill dev3-* sessions");
 	}
 	const proc = spawn(
-		pty.tmuxArgs("dev3", "kill-session", "-t", params.sessionName),
+		pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", params.sessionName),
 		{ stdout: "pipe", stderr: "pipe" },
 	);
 	const stderr = await new Response(proc.stderr).text();
@@ -1144,7 +1144,7 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 
 	if (!params.sessionName.startsWith("dev3-dev-")) {
 		const devSession = `dev3-dev-${params.sessionName.slice("dev3-".length)}`;
-		const devKill = spawn(pty.tmuxArgs("dev3", "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+		const devKill = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 		await devKill.exited;
 		log.info("killTmuxSession: killed dev server session (best-effort)", { devSession });
 	}
