@@ -298,6 +298,9 @@ export function buildResumeCommand(agentCmd: string, sessionId?: string): string
 	if (isCursorCommand(agentCmd)) {
 		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
 	}
+	if (isOpenCodeCommand(agentCmd)) {
+		return `${agentCmd} --continue`;
+	}
 	return null;
 }
 
