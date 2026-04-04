@@ -146,7 +146,7 @@ export function applyTmuxTheme(theme: "dark" | "light"): void {
 }
 
 // Default tmux socket name — all dev3 sessions live here.
-export const DEFAULT_TMUX_SOCKET = "dev3";
+export const DEFAULT_TMUX_SOCKET = "dev4";
 
 // Resolved tmux binary path. Defaults to "tmux" (relies on PATH).
 // Updated by setTmuxBinary() after requirements check finds a custom or fallback path.
@@ -518,11 +518,13 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 
 	// Set pane-exited hook — when any pane in this session exits, notify the app
 	// via HTTP so the dead pane entry can be removed from sessionState.
+	// pane-exited is a window-level hook (-w flag required).
 	// #{pane_id} is expanded by tmux at hook fire time.
-	// || true prevents tmux errors if the app isn't running (e.g. during shutdown).
+	// Single quotes around the URL prevent shell interpretation of &.
+	// || true prevents errors if the app isn't running (e.g. during shutdown).
 	try {
-		spawnSync(tmuxArgs(socket, "set-hook", "-t", tmuxSessionName, "pane-exited",
-			`run-shell "curl -s http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}\\&pane=#{pane_id} || true"`,
+		spawnSync(tmuxArgs(socket, "set-hook", "-wt", tmuxSessionName, "pane-exited",
+			`run-shell "curl -s 'http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}&pane=#{pane_id}' || true"`,
 		));
 	} catch (err) {
 		log.warn("Failed to set pane-exited hook (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
