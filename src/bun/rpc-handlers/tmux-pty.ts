@@ -1171,6 +1171,18 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
 
+	// For killPane, capture the active pane ID before killing — kill-pane
+	// does NOT trigger tmux's pane-exited hook, so we must clean up sessionState here.
+	let killedPaneId: string | null = null;
+	if (params.action === "killPane") {
+		try {
+			const idResult = spawnSync(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"));
+			if (idResult.exitCode === 0) {
+				killedPaneId = new TextDecoder().decode(idResult.stdout).trim() || null;
+			}
+		} catch { /* best effort */ }
+	}
+
 	let args: string[];
 	switch (params.action) {
 		case "splitH":
@@ -1222,6 +1234,14 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 		log.error("tmuxAction failed", { action: params.action, exitCode, stderr: stderr.trim() });
 		throw new Error(`tmux ${params.action} failed: ${stderr.trim() || "unknown error"}`);
 	}
+
+	// Remove killed pane from sessionState
+	if (params.action === "killPane" && killedPaneId) {
+		handlePaneExited(params.taskId, killedPaneId).catch((err) => {
+			log.warn("Failed to clean up killed pane from sessionState", { error: String(err) });
+		});
+	}
+
 	log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 }
 
