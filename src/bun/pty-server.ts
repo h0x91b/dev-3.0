@@ -519,12 +519,13 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 	// Set pane-exited hook — when any pane in this session exits, notify the app
 	// via HTTP so the dead pane entry can be removed from sessionState.
 	// pane-exited is a window-level hook (-w flag required).
-	// #{pane_id} is expanded by tmux at hook fire time.
+	// #{hook_pane} expands to the pane that triggered the hook (the exited one).
+	// #{pane_id} would give the *active* pane instead — wrong target.
 	// Single quotes around the URL prevent shell interpretation of &.
 	// || true prevents errors if the app isn't running (e.g. during shutdown).
 	try {
 		spawnSync(tmuxArgs(socket, "set-hook", "-wt", tmuxSessionName, "pane-exited",
-			`run-shell "curl -s 'http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}&pane=#{pane_id}' || true"`,
+			`run-shell "curl -s 'http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}' || true"`,
 		));
 	} catch (err) {
 		log.warn("Failed to set pane-exited hook (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
