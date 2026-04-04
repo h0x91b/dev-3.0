@@ -304,11 +304,15 @@ function initBrowserApi(): ApiShape {
 			}
 		},
 
-		async getPtyUrl(params: { taskId: string; resume?: boolean }): Promise<string> {
-			// Call the server to ensure PTY session is initialized (result unused — we build our own WS URL)
-			await rpcRequest("getPtyUrl", params);
+		async getPtyUrl(params: { taskId: string; resume?: boolean }) {
+			const result = await rpcRequest("getPtyUrl", params);
+			// If the server signals a recoverable session, pass it through
+			if (result && typeof result === "object" && "recoverable" in result) {
+				return result;
+			}
+			// Otherwise build our own WS URL for the browser transport
 			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
-			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
+			return { url: `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}` };
 		},
 
 		async hideApp(): Promise<void> {

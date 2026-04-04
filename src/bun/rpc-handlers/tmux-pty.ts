@@ -194,21 +194,20 @@ export async function launchTaskPty(
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
 		if (!skipSessionPersist) {
-			const effectiveSessionId = resume ? sessionId : (agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null);
-			if (effectiveSessionId || agents.supportsPreAssignedSessionId(resolvedBaseCmd)) {
-				const paneEntry = {
-					agentCmd: resolvedBaseCmd,
-					sessionId: effectiveSessionId ?? freshSessionId,
-					agentId: agentId ?? task.agentId,
-					configId: configId ?? task.configId,
-				};
-				const sessionState = { panes: [paneEntry] };
-				try {
-					await data.updateTask(project, task.id, { sessionState });
-					log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
-				} catch (err) {
-					log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
-				}
+			const effectiveSessionId = resume ? sessionId
+				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null);
+			const paneEntry = {
+				agentCmd: resolvedBaseCmd,
+				sessionId: effectiveSessionId ?? null,
+				agentId: agentId ?? task.agentId,
+				configId: configId ?? task.configId,
+			};
+			const sessionState = { panes: [paneEntry] };
+			try {
+				await data.updateTask(project, task.id, { sessionState });
+				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
+			} catch (err) {
+				log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 			}
 		}
 
