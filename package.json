@@ -17,7 +17,7 @@
 		"test:full": "concurrently --group --names mainview,bun \"vitest run\" \"vitest run --config vitest.config.bun.ts\"",
 		"test:bun": "vitest run --config vitest.config.bun.ts",
 		"test:cli": "vitest run --config vitest.config.cli.ts",
-		"test:pane-e2e": "bun src/bun/__tests__/pane-exit-e2e.ts",
+		"test:pane-e2e": "bun --preload ./src/bun/__tests__/pane-exit-e2e-preload.ts src/bun/__tests__/pane-exit-e2e.ts",
 		"test:watch": "vitest",
 		"bump": "bun run scripts/bump.ts"
 	},

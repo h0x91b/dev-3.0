@@ -1,32 +1,66 @@
 #!/usr/bin/env bun
 /**
- * E2E test: verifies pane-exit reconciliation with real tmux.
+ * E2E test: verifies pane-exit reconciliation through the real launchTaskPty flow.
  *
- * Creates a tmux session using the same startup script structure that
- * launchTaskPty generates (setup pane + agent pane in parallel mode),
- * then verifies that when the setup pane exits, handlePaneExited
- * correctly reconciles the sessionState via the real pane-exited hook.
+ * Uses real tmux, real launchTaskPty (startup script generation, createSession,
+ * configureTmux with pane-exited hook), and real handlePaneExited reconciliation.
+ * Only data, agents, and settings are mocked (via preload).
  *
- * Run: bun src/bun/__tests__/pane-exit-e2e.ts
+ * Run: bun run test:pane-e2e
  */
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+// electrobun + data + agents are stubbed via --preload (see pane-exit-e2e-preload.ts)
+import { spawnSync as nodeSpawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { PaneSessionEntry } from "../../shared/types";
+import type { Project, Task, PaneSessionEntry } from "../../shared/types";
+import * as pty from "../pty-server";
+import { launchTaskPty, handlePaneExited } from "../rpc-handlers/tmux-pty";
 
 // ── Config ──────────────────────────────────────────────────────────
 
 const TEST_SOCKET = `dev3-e2e-${process.pid}`;
 const TASK_ID = `e2e-${Date.now()}-0000-0000-000000000000`;
-const TMUX_SESSION = `dev3-${TASK_ID.slice(0, 8)}`;
+const PROJECT_ID = `proj-e2e-${Date.now()}`;
 const WORK_DIR = mkdtempSync(join(tmpdir(), "dev3-e2e-"));
 
-// ── Helpers ─────────────────────────────────────────────────────────
+// ── Set up shared state with mocked data module ─────────────────────
 
-function tmux(...args: string[]) {
-	return spawnSync("tmux", ["-L", TEST_SOCKET, ...args], { encoding: "utf-8", timeout: 5000 });
-}
+const project: Project = {
+	id: PROJECT_ID,
+	name: "E2E Test",
+	path: WORK_DIR,
+	setupScript: "echo setup-done",
+	setupScriptLaunchMode: "parallel",
+	devScript: "",
+	cleanupScript: "",
+	defaultBaseBranch: "main",
+	createdAt: new Date().toISOString(),
+} as Project;
+
+const task: Task = {
+	id: TASK_ID,
+	seq: 1,
+	projectId: PROJECT_ID,
+	title: "E2E pane test",
+	description: "",
+	status: "in-progress",
+	baseBranch: "main",
+	worktreePath: WORK_DIR,
+	branchName: "test",
+	groupId: null,
+	variantIndex: null,
+	agentId: null,
+	configId: null,
+	tmuxSocket: TEST_SOCKET,
+	createdAt: new Date().toISOString(),
+} as Task;
+
+// Wire the mocked data module to our test fixtures
+(globalThis as any).__e2eProject = project;
+(globalThis as any).__e2eTask = task;
+
+// ── Helpers ─────────────────────────────────────────────────────────
 
 function assert(condition: boolean, msg: string): void {
 	if (!condition) {
@@ -37,7 +71,8 @@ function assert(condition: boolean, msg: string): void {
 }
 
 function cleanup(): void {
-	try { tmux("kill-server"); } catch { /* ignore */ }
+	try { pty.destroySession(TASK_ID, TEST_SOCKET); } catch { /* ignore */ }
+	try { nodeSpawnSync("tmux", ["-L", TEST_SOCKET, "kill-server"]); } catch { /* ignore */ }
 }
 
 async function waitFor(fn: () => boolean, timeoutMs = 10_000, intervalMs = 100): Promise<void> {
@@ -49,157 +84,68 @@ async function waitFor(fn: () => boolean, timeoutMs = 10_000, intervalMs = 100):
 	throw new Error(`waitFor timed out after ${timeoutMs}ms`);
 }
 
-function listPanes(): string[] {
-	const r = tmux("list-panes", "-t", TMUX_SESSION, "-F", "#{pane_id}");
-	if (r.status !== 0) return [];
-	return r.stdout.trim().split("\n").filter(Boolean);
+function getSessionState(): { panes: PaneSessionEntry[] } | null {
+	return (globalThis as any).__e2eSessionState;
 }
 
-// ── Build the same startup script that launchTaskPty creates ────────
-// This replicates src/bun/rpc-handlers/tmux-pty.ts lines 332-368
-// (the isSetupWrapper / parallel mode path).
+// ── Wire pane-exited callback (normally done in index.ts) ───────────
 
-const setupScript = "echo setup-done";
-const agentCmd = "exec sleep 999"; // stand-in for the real agent
-
-const prefix = `/tmp/dev3-${TASK_ID}`;
-const setupPath = `${prefix}-setup.sh`;
-const cmdPath = `${prefix}-cmd.sh`;
-const startupPath = `${prefix}-startup.sh`;
-
-writeFileSync(setupPath, setupScript + "\n");
-writeFileSync(cmdPath, `#!/bin/bash\n${agentCmd}\n`);
-
-const splitCmd = `tmux split-window -v -c "${WORK_DIR}" "bash '${cmdPath}'"`;
-const startupLines = [
-	"#!/bin/bash",
-	splitCmd, // parallel mode: split first
-	`bash -x "${setupPath}"`,
-	"S=$?",
-	`if [ $S -ne 0 ]; then`,
-	`  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' "$S"`,
-	"  exec bash",
-	"fi",
-	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
-	"printf '\\033[2mClosing in 15s — press any key to close now\\033[0m\\n'",
-	"read -t 15 -n 1 -s",
-	"exit 0",
-].join("\n");
-writeFileSync(startupPath, startupLines + "\n");
-
-const runScript = `#!/bin/bash\nbash "${startupPath}"\n`;
-const runScriptPath = `${prefix}-run.sh`;
-writeFileSync(runScriptPath, runScript);
-
-// ── Simulated sessionState (what launchTaskPty persists) ────────────
-
-let sessionState: { panes: PaneSessionEntry[] } = {
-	panes: [{
-		paneId: null, // not eagerly assigned — this is the key behavior
-		agentCmd: "sleep",
-		sessionId: null,
-		agentId: null,
-		configId: null,
-	}],
-};
-
-// ── Start the PTY HTTP server for the pane-exited hook ──────────────
-
-let reconciled = false;
-
-const server = Bun.serve({
-	port: 0,
-	fetch(req) {
-		const url = new URL(req.url, "http://localhost");
-		if (url.pathname === "/pane-exited") {
-			const paneId = url.searchParams.get("pane");
-			console.log(`  hook fired: pane=${paneId}`);
-
-			// Reconcile — same logic as handlePaneExited
-			const livePaneIds = new Set(listPanes());
-			let surviving = sessionState.panes.filter(p => !p.paneId || livePaneIds.has(p.paneId));
-			const matchedIds = new Set(surviving.filter(p => p.paneId).map(p => p.paneId!));
-			const unmatchedLive = [...livePaneIds].filter(id => !matchedIds.has(id));
-			const nullEntries = surviving.filter(p => !p.paneId);
-
-			if (nullEntries.length === 1 && unmatchedLive.length === 1) {
-				surviving = surviving.map(p => !p.paneId ? { ...p, paneId: unmatchedLive[0] } : p);
-				console.log(`  reconciled: assigned paneId=${unmatchedLive[0]}`);
-			} else if (unmatchedLive.length === 0 && nullEntries.length > 0) {
-				surviving = surviving.filter(p => !!p.paneId);
-			}
-
-			sessionState = { panes: surviving };
-			reconciled = true;
-			return new Response("ok");
-		}
-		return new Response("not found", { status: 404 });
-	},
+pty.setOnPaneExited((taskId, paneId) => {
+	handlePaneExited(taskId, paneId);
 });
 
-const HTTP_PORT = server.port;
-
-// ── Create tmux session and configure hook ──────────────────────────
+// ── Test ────────────────────────────────────────────────────────────
 
 async function main() {
-	console.log("=== pane-exit reconciliation e2e ===");
-	console.log(`socket=${TEST_SOCKET} session=${TMUX_SESSION} port=${HTTP_PORT}`);
+	console.log("=== pane-exit reconciliation e2e (real launchTaskPty) ===");
+	console.log(`socket=${TEST_SOCKET} task=${TASK_ID.slice(0, 8)}`);
 
 	try {
-		// Create tmux session with the startup script
-		const create = tmux("-f", "/dev/null", "new-session", "-d", "-s", TMUX_SESSION,
-			"-c", WORK_DIR, `bash "${runScriptPath}"`);
-		assert(create.status === 0, `tmux new-session failed: ${create.stderr}`);
+		// Launch with setup script — this is the REAL launchTaskPty code path
+		await launchTaskPty(project, task, WORK_DIR, null, null, true, false);
 
-		// Wait for tmux session to settle (split-window in script needs time)
-		await new Promise(r => setTimeout(r, 500));
+		// Wait for tmux session to be ready (configureTmux runs at 200ms)
+		await new Promise(r => setTimeout(r, 600));
 
-		// Set the pane-exited hook (same as configureTmux does)
-		const hookCmd = `run-shell "curl -s 'http://localhost:${HTTP_PORT}/pane-exited?session=${TMUX_SESSION}&pane=#{hook_pane}' || true"`;
-		tmux("set-hook", "-wt", TMUX_SESSION, "pane-exited", hookCmd);
-
-		// Verify hook is set
-		const hooks = tmux("show-hooks", "-wt", TMUX_SESSION);
-		assert(hooks.stdout.includes("pane-exited"), "pane-exited hook not set");
-
-		// Verify two panes exist
-		const panesBefore = listPanes();
+		// Verify two panes exist: setup pane + agent pane
+		const panesBefore = pty.listPaneIds(TASK_ID, TEST_SOCKET);
 		console.log(`panes after launch: ${JSON.stringify(panesBefore)}`);
 		assert(panesBefore.length === 2, `expected 2 panes, got ${panesBefore.length}`);
 
-		// Verify sessionState starts with paneId: null
-		assert(sessionState.panes[0].paneId == null, "panes[0].paneId should start as null");
+		// Verify sessionState has panes[0] with paneId: null
+		const stateBefore = getSessionState();
+		assert(stateBefore !== null, "sessionState should be set");
+		assert(stateBefore!.panes[0].paneId == null,
+			`panes[0].paneId should be null, got ${stateBefore!.panes[0].paneId}`);
+		console.log("sessionState after launch: panes[0].paneId = null (correct)");
 
-		// Send a keystroke to all panes — triggers `read -n 1` in setup pane
+		// Send a keystroke to trigger `read -n 1` in the setup pane (exits immediately)
 		for (const paneId of panesBefore) {
-			tmux("send-keys", "-t", paneId, "x");
+			nodeSpawnSync("tmux", ["-L", TEST_SOCKET, "send-keys", "-t", paneId, "x"]);
 		}
 
-		// Wait for reconciliation
-		await waitFor(() => reconciled && sessionState.panes[0]?.paneId != null, 10_000);
+		// Wait for reconciliation: panes[0].paneId should become non-null
+		await waitFor(() => getSessionState()?.panes?.[0]?.paneId != null);
 
-		// Verify result
-		const finalPanes = sessionState.panes;
-		console.log(`reconciled panes: ${JSON.stringify(finalPanes.map(p => p.paneId))}`);
+		const reconciled = getSessionState()!.panes;
+		console.log(`reconciled: ${JSON.stringify(reconciled.map(p => p.paneId))}`);
 
-		assert(finalPanes.length === 1, `expected 1 pane after reconciliation, got ${finalPanes.length}`);
-		assert(finalPanes[0].paneId != null, "panes[0].paneId should be assigned");
+		assert(reconciled.length === 1, `expected 1 pane, got ${reconciled.length}`);
+		assert(reconciled[0].paneId != null, "paneId should be assigned");
 
-		// Assigned paneId should be a live pane
-		const liveAfter = listPanes();
-		assert(liveAfter.includes(finalPanes[0].paneId!),
-			`reconciled paneId ${finalPanes[0].paneId} not in live panes ${JSON.stringify(liveAfter)}`);
+		// The assigned paneId should be a live pane
+		const liveAfter = pty.listPaneIds(TASK_ID, TEST_SOCKET);
+		assert(liveAfter.includes(reconciled[0].paneId!),
+			`paneId ${reconciled[0].paneId} not in live ${JSON.stringify(liveAfter)}`);
 
-		console.log(`\nPASS — panes[0].paneId=${finalPanes[0].paneId} (correctly assigned to surviving agent pane)`);
+		console.log(`\nPASS — panes[0].paneId=${reconciled[0].paneId} (correct surviving agent pane)`);
 	} catch (err) {
 		console.error(`\nFAIL — ${err}`);
 		cleanup();
-		server.stop();
 		process.exit(1);
 	}
 
 	cleanup();
-	server.stop();
 	process.exit(0);
 }
 

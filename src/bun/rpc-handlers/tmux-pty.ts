@@ -11,7 +11,7 @@ import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
 import { spawn, spawnSync } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
-import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared";
+import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
