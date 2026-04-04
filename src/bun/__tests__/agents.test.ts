@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, buildResumeCommand, isOpenCodeCommand, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
 
@@ -445,7 +445,31 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--last");
 	});
 
-	it("does not inject --session-id for non-Claude agents", () => {
+	it("Cursor Agent: injects --resume <id> for fresh launch (creates new thread)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "agent" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ sessionId: "abc-123" },
+		);
+
+		expect(cmd).toContain("--resume abc-123");
+		expect(cmd).not.toContain("--session-id");
+	});
+
+	it("Cursor Agent: uses --resume <id> when both resume and sessionId", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "agent" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ resume: true, sessionId: "abc-123" },
+		);
+
+		expect(cmd).toContain("--resume abc-123");
+		expect(cmd).not.toContain("--continue");
+	});
+
+	it("does not inject session id for unsupported agents", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
@@ -454,6 +478,21 @@ describe("resolveAgentCommand — sessionId", () => {
 		);
 
 		expect(cmd).not.toContain("--session-id");
+		expect(cmd).not.toContain("--resume");
+	});
+});
+
+describe("supportsPreAssignedSessionId", () => {
+	it.each([
+		["claude", true],
+		["agent", true],
+		["/usr/local/bin/claude", true],
+		["codex", false],
+		["gemini", false],
+		["bash", false],
+		["opencode", false],
+	])("%s → %s", (cmd, expected) => {
+		expect(supportsPreAssignedSessionId(cmd)).toBe(expected);
 	});
 });
 
@@ -482,8 +521,11 @@ describe("buildResumeCommand", () => {
 		expect(buildResumeCommand("gemini")).toBe("gemini --resume latest");
 	});
 
-	it("Cursor Agent: --continue (ignores sessionId)", () => {
-		expect(buildResumeCommand("agent", "sid-4")).toBe("agent --continue");
+	it("Cursor Agent: --resume <id> with sessionId", () => {
+		expect(buildResumeCommand("agent", "sid-4")).toBe("agent --resume sid-4");
+	});
+
+	it("Cursor Agent: --continue without sessionId", () => {
 		expect(buildResumeCommand("agent")).toBe("agent --continue");
 	});
 

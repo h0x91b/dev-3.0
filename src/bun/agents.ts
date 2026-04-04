@@ -296,7 +296,7 @@ export function buildResumeCommand(agentCmd: string, sessionId?: string): string
 		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --resume latest`;
 	}
 	if (isCursorCommand(agentCmd)) {
-		return `${agentCmd} --continue`;
+		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
 	}
 	return null;
 }
@@ -304,6 +304,12 @@ export function buildResumeCommand(agentCmd: string, sessionId?: string): string
 /** Returns true when the agent CLI supports session resumption. */
 export function supportsResume(baseCmd: string): boolean {
 	return isClaudeCommand(baseCmd) || isCodexCommand(baseCmd) || isGeminiCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd);
+}
+
+/** Returns true when the agent supports pre-assigned session IDs at launch time.
+ *  These agents can accept a UUID on first launch and resume it later by ID. */
+export function supportsPreAssignedSessionId(baseCmd: string): boolean {
+	return isClaudeCommand(baseCmd) || isCursorCommand(baseCmd);
 }
 
 export function resolveAgentCommand(
@@ -327,7 +333,14 @@ export function resolveAgentCommand(
 			} else {
 				args.push("--continue");
 			}
-		} else if (isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd)) {
+		} else if (isCursorCommand(baseCmd)) {
+			// Cursor Agent: --resume <id> for targeted resume, --continue as fallback
+			if (sid) {
+				args.push("--resume", sid);
+			} else {
+				args.push("--continue");
+			}
+		} else if (isOpenCodeCommand(baseCmd)) {
 			args.push("--continue");
 		} else if (isGeminiCommand(baseCmd)) {
 			if (sid) {
@@ -339,10 +352,14 @@ export function resolveAgentCommand(
 		// Codex: handled below when building the final command
 	}
 
-	// For fresh Claude sessions, pre-assign a session ID so we can resume later
-	// without needing to observe file mtimes or scan for session files.
-	if (!shouldResume && isClaudeCommand(baseCmd) && options?.sessionId) {
-		args.push("--session-id", options.sessionId);
+	// For agents that support pre-assigned session IDs, inject --session-id on fresh launches
+	// so we can do targeted --resume later. Claude and Cursor Agent both support this.
+	if (!shouldResume && supportsPreAssignedSessionId(baseCmd) && options?.sessionId) {
+		if (isCursorCommand(baseCmd)) {
+			args.push("--resume", options.sessionId);
+		} else {
+			args.push("--session-id", options.sessionId);
+		}
 	}
 
 	if (config?.model) {

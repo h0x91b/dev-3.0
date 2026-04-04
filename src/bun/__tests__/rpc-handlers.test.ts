@@ -91,6 +91,7 @@ vi.mock("../agents", () => ({
 	isClaudeCommand: vi.fn(() => false),
 	isCodexCommand: vi.fn((cmd: string) => cmd === "codex"),
 	isGeminiCommand: vi.fn(() => false),
+	supportsPreAssignedSessionId: vi.fn(() => false),
 	resolveCommandForAgent: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	resolveCommandForProject: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	getAllAgents: vi.fn(() => []),

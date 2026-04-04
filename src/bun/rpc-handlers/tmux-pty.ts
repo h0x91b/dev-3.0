@@ -194,8 +194,8 @@ export async function launchTaskPty(
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
 		if (!skipSessionPersist) {
-			const effectiveSessionId = resume ? sessionId : (agents.isClaudeCommand(resolvedBaseCmd) ? freshSessionId : null);
-			if (effectiveSessionId || agents.isClaudeCommand(resolvedBaseCmd)) {
+			const effectiveSessionId = resume ? sessionId : (agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null);
+			if (effectiveSessionId || agents.supportsPreAssignedSessionId(resolvedBaseCmd)) {
 				const paneEntry = {
 					agentCmd: resolvedBaseCmd,
 					sessionId: effectiveSessionId ?? freshSessionId,
@@ -1281,7 +1281,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// Append this pane to sessionState for recovery
 	const paneEntry = {
 		agentCmd: resolvedBaseCmd,
-		sessionId: agents.isClaudeCommand(resolvedBaseCmd) ? freshSessionId : null,
+		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
 		agentId: params.agentId,
 		configId: params.configId,
 	};
