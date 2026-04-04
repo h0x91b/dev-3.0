@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, handleSessionReady } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -166,7 +166,7 @@ const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnSessionReady, getActiveSessionIds, getPtyPort } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 
@@ -433,13 +433,6 @@ setOnIdle((sessionKey) => {
 setOnPaneExited((taskId, paneId) => {
 	handlePaneExited(taskId, paneId).catch((err) => {
 		log.error("handlePaneExited unhandled error", { error: String(err) });
-	});
-});
-
-// Wire session-ready notifications — store the first pane ID in sessionState
-setOnSessionReady((taskId, firstPaneId) => {
-	handleSessionReady(taskId, firstPaneId).catch((err) => {
-		log.error("handleSessionReady unhandled error", { error: String(err) });
 	});
 });
 

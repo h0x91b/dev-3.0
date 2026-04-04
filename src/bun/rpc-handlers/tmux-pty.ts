@@ -1339,41 +1339,55 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 }
 
 /**
- * Called when a tmux pane exits. Removes the matching pane entry from sessionState.
+ * Called when a tmux pane exits. Reconciles sessionState against live panes
+ * rather than matching by exact paneId — this handles setup panes, unmanaged
+ * panes, and entries that never got a paneId assigned.
+ *
+ * Algorithm:
+ * 1. Remove entries whose paneId is set and not in the live pane set.
+ * 2. If exactly one entry has paneId=null and exactly one live pane is
+ *    unmatched, assign it (the setup pane exited, leaving the real agent).
+ * 3. If no live panes remain and null-paneId entries exist, remove them too.
  */
-export async function handlePaneExited(taskId: string, paneId: string): Promise<void> {
+export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
 	try {
 		const { task, project } = await findTaskAcrossProjects(taskId);
 		if (!task || !project) return;
 		const panes = task.sessionState?.panes ?? [];
-		const filtered = panes.filter(p => p.paneId !== paneId);
-		if (filtered.length === panes.length) {
-			log.debug("Pane exited but no matching paneId in sessionState", { taskId: taskId.slice(0, 8), paneId });
-			return;
-		}
-		await data.updateTask(project, task.id, { sessionState: { panes: filtered } });
-		log.info("Removed exited pane from sessionState", { taskId: taskId.slice(0, 8), paneId, remaining: filtered.length });
-	} catch (err) {
-		log.warn("handlePaneExited failed (non-fatal)", { taskId: taskId.slice(0, 8), paneId, error: String(err) });
-	}
-}
+		if (!panes.length) return;
 
-/**
- * Called when a tmux session is ready. Stores the first pane ID in sessionState.
- */
-export async function handleSessionReady(taskId: string, firstPaneId: string): Promise<void> {
-	try {
-		const { task, project } = await findTaskAcrossProjects(taskId);
-		if (!task || !project) return;
-		const panes = task.sessionState?.panes;
-		if (!panes?.length) return;
-		if (panes[0].paneId === firstPaneId) return; // already set
-		const updatedPanes = [...panes];
-		updatedPanes[0] = { ...updatedPanes[0], paneId: firstPaneId };
-		await data.updateTask(project, task.id, { sessionState: { panes: updatedPanes } });
-		log.info("Stored first pane ID in sessionState", { taskId: taskId.slice(0, 8), paneId: firstPaneId });
+		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const livePaneIds = new Set(pty.listPaneIds(taskId, socket));
+
+		// Step 1: remove entries with a known paneId that is no longer alive
+		let surviving = panes.filter(p => !p.paneId || livePaneIds.has(p.paneId));
+
+		// Step 2: try to assign paneId to null entries via 1:1 matching
+		const matchedIds = new Set(surviving.filter(p => p.paneId).map(p => p.paneId!));
+		const unmatchedLive = [...livePaneIds].filter(id => !matchedIds.has(id));
+		const nullEntries = surviving.filter(p => !p.paneId);
+
+		if (nullEntries.length === 1 && unmatchedLive.length === 1) {
+			// High confidence: the one unmatched live pane is the one null entry's agent
+			nullEntries[0] = { ...nullEntries[0], paneId: unmatchedLive[0] };
+			surviving = surviving.map(p => !p.paneId ? nullEntries[0] : p);
+			log.info("Reconciled paneId for unmatched entry", { taskId: taskId.slice(0, 8), paneId: unmatchedLive[0] });
+		} else if (unmatchedLive.length === 0 && nullEntries.length > 0) {
+			// No live panes left to match — these agents are dead
+			surviving = surviving.filter(p => !!p.paneId);
+		}
+
+		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
+			await data.updateTask(project, task.id, { sessionState: { panes: surviving } });
+			log.info("Reconciled sessionState after pane exit", {
+				taskId: taskId.slice(0, 8),
+				before: panes.length,
+				after: surviving.length,
+				livePanes: [...livePaneIds],
+			});
+		}
 	} catch (err) {
-		log.warn("handleSessionReady failed (non-fatal)", { taskId: taskId.slice(0, 8), error: String(err) });
+		log.warn("handlePaneExited failed (non-fatal)", { taskId: taskId.slice(0, 8), error: String(err) });
 	}
 }
 

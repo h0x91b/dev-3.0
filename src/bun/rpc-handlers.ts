@@ -32,7 +32,6 @@ export {
 	launchTaskPty,
 	launchColumnAgent,
 	handlePaneExited,
-	handleSessionReady,
 } from "./rpc-handlers/tmux-pty";
 
 import { appHandlers } from "./rpc-handlers/app-handlers";

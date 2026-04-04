@@ -211,7 +211,6 @@ let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
 let onIdleCallback: ((taskId: string) => void) | null = null;
 let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
-let onSessionReadyCallback: ((taskId: string, firstPaneId: string) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
 	onPtyDiedCallback = fn;
@@ -229,9 +228,6 @@ export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): v
 	onPaneExitedCallback = fn;
 }
 
-export function setOnSessionReady(fn: (taskId: string, firstPaneId: string) => void): void {
-	onSessionReadyCallback = fn;
-}
 
 /** Compute the tmux session name for a given session key and type. */
 function computeTmuxSessionName(key: string, type: PtySessionType): string {
@@ -420,20 +416,19 @@ export function splitAndRunCommand(taskId: string, socket: string, command: stri
 }
 
 /**
- * Query the first pane ID in a tmux session.
- * Returns the pane ID (e.g. "%0") or null on failure.
+ * List all pane IDs in a tmux session.
+ * Returns an array of pane IDs (e.g. ["%0", "%5"]), or empty on failure / session gone.
  */
-export function getFirstPaneId(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): string | null {
+export function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): string[] {
 	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
 	try {
 		const result = spawnSync(
 			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"),
 		);
-		if (result.exitCode !== 0) return null;
-		const firstLine = new TextDecoder().decode(result.stdout).trim().split("\n")[0];
-		return firstLine || null;
+		if (result.exitCode !== 0) return [];
+		return new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
 	} catch {
-		return null;
+		return [];
 	}
 }
 
@@ -704,13 +699,6 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				setupProjectLayout(session);
 			}
 
-			// Report the first pane ID so callers can store it in sessionState
-			if (session.sessionType === "task" && onSessionReadyCallback) {
-				const firstPaneId = getFirstPaneId(session.taskId, session.tmuxSocket);
-				if (firstPaneId) {
-					onSessionReadyCallback(session.taskId, firstPaneId);
-				}
-			}
 		} catch (err) {
 			log.error("configureTmux failed", {
 				taskId: shortId(session.taskId),
