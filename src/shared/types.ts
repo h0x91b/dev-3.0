@@ -562,6 +562,8 @@ export interface Task {
 
 /** Per-pane session info for recovery. */
 export interface PaneSessionEntry {
+	/** tmux pane ID (e.g. "%0", "%5") — stable within a tmux server lifetime, unique across sessions. */
+	paneId?: string | null;
 	/** The resolved agent base command (e.g. "claude", "/usr/local/bin/codex"). */
 	agentCmd: string;
 	/** Pre-assigned session ID (Claude --session-id). Null for agents that don't support it. */

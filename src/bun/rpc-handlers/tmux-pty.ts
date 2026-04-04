@@ -881,6 +881,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 				projectPath: project.path,
 				worktreePath: task.worktreePath,
 			};
+			const paneIdUpdates: Array<{ index: number; paneId: string }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
@@ -898,10 +899,24 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					const scriptPath = `/tmp/dev3-${params.taskId}-resume-pane-${i}.sh`;
 					await Bun.write(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
-					const paneId = pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
-					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId, command: resumeCmd.slice(0, 100) });
+					const newPaneId = pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId });
+					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
 					log.warn("Failed to resume extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, error: String(err) });
+				}
+			}
+			// Update pane IDs in sessionState (pane IDs change across tmux server restarts)
+			if (paneIdUpdates.length > 0) {
+				try {
+					const freshTask = await data.getTask(project, params.taskId);
+					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
+					for (const { index, paneId } of paneIdUpdates) {
+						if (updatedPanes[index]) updatedPanes[index] = { ...updatedPanes[index], paneId };
+					}
+					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
+				} catch (err) {
+					log.warn("Failed to update pane IDs after resume (non-fatal)", { error: String(err) });
 				}
 			}
 		}
@@ -1267,9 +1282,12 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
-	const args = pty.tmuxArgs(socket, "split-window", "-h", "-c", task.worktreePath, "-t", tmuxSession, `bash "${scriptPath}"`);
+	const args = pty.tmuxArgs(socket, "split-window", "-h", "-P", "-F", "#{pane_id}", "-c", task.worktreePath, "-t", tmuxSession, `bash "${scriptPath}"`);
 	const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
-	const stderr = await new Response(proc.stderr).text();
+	const [stdout, stderr] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	]);
 	const exitCode = await proc.exited;
 
 	if (exitCode !== 0) {
@@ -1277,8 +1295,11 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		throw new Error(`Failed to spawn agent: ${stderr.trim() || "unknown error"}`);
 	}
 
+	const newPaneId = stdout.trim() || null;
+
 	// Append this pane to sessionState for recovery
 	const paneEntry = {
+		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
 		agentId: params.agentId,
@@ -1295,6 +1316,45 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	}
 
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
+}
+
+/**
+ * Called when a tmux pane exits. Removes the matching pane entry from sessionState.
+ */
+export async function handlePaneExited(taskId: string, paneId: string): Promise<void> {
+	try {
+		const { task, project } = await findTaskAcrossProjects(taskId);
+		if (!task || !project) return;
+		const panes = task.sessionState?.panes ?? [];
+		const filtered = panes.filter(p => p.paneId !== paneId);
+		if (filtered.length === panes.length) {
+			log.debug("Pane exited but no matching paneId in sessionState", { taskId: taskId.slice(0, 8), paneId });
+			return;
+		}
+		await data.updateTask(project, task.id, { sessionState: { panes: filtered } });
+		log.info("Removed exited pane from sessionState", { taskId: taskId.slice(0, 8), paneId, remaining: filtered.length });
+	} catch (err) {
+		log.warn("handlePaneExited failed (non-fatal)", { taskId: taskId.slice(0, 8), paneId, error: String(err) });
+	}
+}
+
+/**
+ * Called when a tmux session is ready. Stores the first pane ID in sessionState.
+ */
+export async function handleSessionReady(taskId: string, firstPaneId: string): Promise<void> {
+	try {
+		const { task, project } = await findTaskAcrossProjects(taskId);
+		if (!task || !project) return;
+		const panes = task.sessionState?.panes;
+		if (!panes?.length) return;
+		if (panes[0].paneId === firstPaneId) return; // already set
+		const updatedPanes = [...panes];
+		updatedPanes[0] = { ...updatedPanes[0], paneId: firstPaneId };
+		await data.updateTask(project, task.id, { sessionState: { panes: updatedPanes } });
+		log.info("Stored first pane ID in sessionState", { taskId: taskId.slice(0, 8), paneId: firstPaneId });
+	} catch (err) {
+		log.warn("handleSessionReady failed (non-fatal)", { taskId: taskId.slice(0, 8), error: String(err) });
+	}
 }
 
 export const tmuxPtyHandlers = {

@@ -210,6 +210,8 @@ const sessions = new Map<string, PtySession>();
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
 let onIdleCallback: ((taskId: string) => void) | null = null;
+let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
+let onSessionReadyCallback: ((taskId: string, firstPaneId: string) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
 	onPtyDiedCallback = fn;
@@ -221,6 +223,14 @@ export function setOnBell(fn: (taskId: string) => void): void {
 
 export function setOnIdle(fn: (taskId: string) => void): void {
 	onIdleCallback = fn;
+}
+
+export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): void {
+	onPaneExitedCallback = fn;
+}
+
+export function setOnSessionReady(fn: (taskId: string, firstPaneId: string) => void): void {
+	onSessionReadyCallback = fn;
 }
 
 /** Compute the tmux session name for a given session key and type. */
@@ -410,6 +420,24 @@ export function splitAndRunCommand(taskId: string, socket: string, command: stri
 }
 
 /**
+ * Query the first pane ID in a tmux session.
+ * Returns the pane ID (e.g. "%0") or null on failure.
+ */
+export function getFirstPaneId(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): string | null {
+	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
+	try {
+		const result = spawnSync(
+			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"),
+		);
+		if (result.exitCode !== 0) return null;
+		const firstLine = new TextDecoder().decode(result.stdout).trim().split("\n")[0];
+		return firstLine || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Check if a tmux session exists on the given socket.
  */
 export function tmuxSessionExists(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): boolean {
@@ -487,6 +515,19 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 	// Re-source the config in case the tmux server was already running
 	// (the -f flag on new-session only applies when starting a fresh server)
 	spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
+
+	// Set pane-exited hook — when any pane in this session exits, notify the app
+	// via HTTP so the dead pane entry can be removed from sessionState.
+	// #{pane_id} is expanded by tmux at hook fire time.
+	// || true prevents tmux errors if the app isn't running (e.g. during shutdown).
+	try {
+		spawnSync(tmuxArgs(socket, "set-hook", "-t", tmuxSessionName, "pane-exited",
+			`run-shell "curl -s http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}\\&pane=#{pane_id} || true"`,
+		));
+	} catch (err) {
+		log.warn("Failed to set pane-exited hook (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
+	}
+
 	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
 }
 
@@ -659,6 +700,14 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			if (session.sessionType === "project") {
 				setupProjectLayout(session);
 			}
+
+			// Report the first pane ID so callers can store it in sessionState
+			if (session.sessionType === "task" && onSessionReadyCallback) {
+				const firstPaneId = getFirstPaneId(session.taskId, session.tmuxSocket);
+				if (firstPaneId) {
+					onSessionReadyCallback(session.taskId, firstPaneId);
+				}
+			}
 		} catch (err) {
 			log.error("configureTmux failed", {
 				taskId: shortId(session.taskId),
@@ -689,12 +738,38 @@ setInterval(() => {
 	}
 }, IDLE_CHECK_INTERVAL_MS);
 
+/** Reverse lookup: find the taskId that owns a given tmux session name. */
+function findTaskIdByTmuxSession(tmuxSessionName: string): string | null {
+	for (const session of sessions.values()) {
+		if (session.tmuxSessionName === tmuxSessionName) return session.taskId;
+	}
+	return null;
+}
+
 const ptyServer = Bun.serve({
 	port: 0,
 	fetch(req, server) {
 		try {
+			const url = new URL(req.url, "http://localhost");
+
+			// Handle pane-exited notifications from tmux hook
+			if (url.pathname === "/pane-exited") {
+				const sessionName = url.searchParams.get("session");
+				const paneId = url.searchParams.get("pane");
+				if (sessionName && paneId) {
+					const taskId = findTaskIdByTmuxSession(sessionName);
+					if (taskId) {
+						log.info("Pane exited", { taskId: shortId(taskId), paneId, sessionName });
+						onPaneExitedCallback?.(taskId, paneId);
+					} else {
+						log.debug("Pane exited for unknown session", { sessionName, paneId });
+					}
+				}
+				return new Response("ok");
+			}
+
 			log.debug("PTY server fetch", { url: req.url });
-			if (server.upgrade(req, { data: { url: new URL(req.url) } } as any)) return;
+			if (server.upgrade(req, { data: { url } } as any)) return;
 			return new Response("PTY WebSocket server", { status: 200 });
 		} catch (err) {
 			log.error("PTY server fetch handler error", {

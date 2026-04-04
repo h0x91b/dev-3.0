@@ -1,0 +1,1 @@
+Closed tmux panes are now automatically removed from session recovery state via a tmux pane-exited hook. When a pane exits (user Ctrl+D, agent finishes, killPane), the app receives a callback and removes the dead pane entry from sessionState, preventing recovery from recreating stale panes.
