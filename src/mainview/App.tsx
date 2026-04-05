@@ -20,6 +20,7 @@ import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBan
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
+import { shownMergeDialogTasks } from "./components/task-info-panel/useTaskBranchStatus";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
@@ -284,6 +285,8 @@ function App() {
 				taskTitle: string;
 				branchName: string;
 			};
+			if (shownMergeDialogTasks.has(taskId)) return;
+			shownMergeDialogTasks.add(taskId);
 			let shouldComplete = false;
 			try {
 				shouldComplete = await api.request.showConfirm({

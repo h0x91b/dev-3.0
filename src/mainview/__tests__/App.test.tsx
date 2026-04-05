@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { I18nProvider } from "../i18n";
+import { shownMergeDialogTasks } from "../components/task-info-panel/useTaskBranchStatus";
 
 vi.mock("../rpc", () => ({
 	api: {
@@ -12,6 +13,8 @@ vi.mock("../rpc", () => ({
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
+			showConfirm: vi.fn().mockResolvedValue(false),
+			moveTask: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -71,6 +74,7 @@ vi.mock("../components/ProjectTerminal", () => ({
 
 import { api } from "../rpc";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
+const mockedShowConfirm = vi.mocked(api.request.showConfirm);
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
 const mockedApplyZoom = vi.mocked(applyZoom);
@@ -89,9 +93,11 @@ async function renderApp() {
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		shownMergeDialogTasks.clear();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
+		mockedShowConfirm.mockResolvedValue(false);
 	});
 
 	describe("quit (Cmd+Q / Ctrl+Q)", () => {
@@ -371,6 +377,50 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(screen.getByText("Session Expired")).toBeInTheDocument();
 			});
+		});
+	});
+
+	describe("branchMerged deduplication", () => {
+		const mergedPayload = {
+			taskId: "task-abc",
+			projectId: "proj-1",
+			taskTitle: "My Feature",
+			branchName: "feat/my-feature",
+		};
+
+		it("shows the confirm dialog on the first rpc:branchMerged event", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: mergedPayload }));
+			});
+			await waitFor(() => expect(mockedShowConfirm).toHaveBeenCalledTimes(1));
+		});
+
+		it("does not show the dialog a second time for the same task", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: mergedPayload }));
+			});
+			await waitFor(() => expect(mockedShowConfirm).toHaveBeenCalledTimes(1));
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: mergedPayload }));
+			});
+			// Still only 1 call — the second event was suppressed
+			expect(mockedShowConfirm).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not show the dialog again after the user cancels", async () => {
+			mockedShowConfirm.mockResolvedValue(false); // user clicks Cancel
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: mergedPayload }));
+			});
+			await waitFor(() => expect(mockedShowConfirm).toHaveBeenCalledTimes(1));
+			// Fire again — should be suppressed
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: mergedPayload }));
+			});
+			expect(mockedShowConfirm).toHaveBeenCalledTimes(1);
 		});
 	});
 });

@@ -1,0 +1,1 @@
+The "branch merged" confirm dialog is now shown at most once per task. A module-level set shared between `App.tsx` and `useTaskBranchStatus` deduplicates across both the push-event path and the 15-second polling path. Cancelling the dialog permanently suppresses it for that task — it will not reappear on re-mounts or subsequent events.

@@ -5,6 +5,11 @@ import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { trackEvent } from "../../analytics";
 
+// Module-level set tracking tasks whose merge dialog has already been shown
+// (regardless of the user's choice). Persists across re-mounts so that
+// cancel is respected and duplicate dialogs are suppressed.
+export const shownMergeDialogTasks = new Set<string>();
+
 interface UseTaskBranchStatusParams {
 	task: Task;
 	project: Project;
@@ -28,7 +33,6 @@ export function useTaskBranchStatus({
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const pushThenCreatePRRef = useRef(false);
-	const mergeDialogShownRef = useRef(false);
 	const fetchStatusRef = useRef<(() => Promise<void>) | null>(null);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -76,7 +80,6 @@ export function useTaskBranchStatus({
 			return;
 		}
 
-		mergeDialogShownRef.current = false;
 		let cancelled = false;
 		let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -94,9 +97,9 @@ export function useTaskBranchStatus({
 					if (
 						status.mergedByContent &&
 						task.status === "review-by-user" &&
-						!mergeDialogShownRef.current
+						!shownMergeDialogTasks.has(task.id)
 					) {
-						mergeDialogShownRef.current = true;
+						shownMergeDialogTasks.add(task.id);
 						const shouldComplete = await api.request.showConfirm({
 							title: t("app.branchMergedTitle"),
 							message: t("app.branchMergedMessage", {
