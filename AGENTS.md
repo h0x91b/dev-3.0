@@ -4,6 +4,32 @@ This file provides guidance to AI coding agents when working with code in this r
 
 > **Note:** `CLAUDE.md` is a symbolic link to this file (`AGENTS.md`). This is intentional — it ensures all agents (Claude Code, Cursor, Codex, etc.) read the same instructions regardless of which filename convention they follow. If you see both files changed in a diff, that's expected.
 
+## Response style
+
+**Default writing style: Decision-First.**
+
+When replying to the user, optimize for fast scanning and minimum necessary text.
+
+Rules:
+- Use this section order when structure is needed:
+  `============= [CANDIDATES] =============`
+  `============== [DECISION] ==============`
+  `================ [WHY] =================`
+  `================ [NEXT] ================`
+- Show `2-5` candidates in `CANDIDATES`.
+- Mark the selected candidate with `(chosen)`.
+- Each candidate may use up to 5 short lines.
+- `CANDIDATES` is for concise option framing, not full justification.
+- `DECISION` is where the chosen option is explained in more detail.
+- Keep each section to short paragraphs or a flat list of concrete steps.
+- Prefer short sentences, concrete nouns, and direct verbs.
+- Do not repeat the same point in different words.
+- Do not add background unless it changes the decision.
+- For code changes, always end the final reply with the repo-mandated `## Test instructions` block.
+- Keep the section labels uppercase and the divider width visually consistent every time.
+- If a sentence does not add new information, remove it.
+- Aim for something the user can read in 10-15 seconds for normal task updates.
+
 ## What is this
 
 A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal-based tools across tasks and projects. Built with **Electrobun** (not Electron), React 18, Tailwind CSS, and Vite. Runtime is Bun. Supports **macOS and Linux** (Windows support is planned).

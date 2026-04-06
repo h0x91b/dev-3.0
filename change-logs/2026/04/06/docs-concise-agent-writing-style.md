@@ -1,0 +1,1 @@
+Updated the top-level AGENTS.md response-style rule to a Decision-First format. The default now uses ordered `CANDIDATES`, `DECISION`, `WHY`, and `NEXT` sections with equal-width ASCII dividers, plus the repo-mandated `## Test instructions` block for code changes.
