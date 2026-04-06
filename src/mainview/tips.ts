@@ -368,6 +368,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0259}", // nf-md-console
 	},
 	{
+		id: "cleanup-script-status",
+		titleKey: "tip.cleanupScriptStatus.title",
+		bodyKey: "tip.cleanupScriptStatus.body",
+		icon: "\u{F0259}", // nf-md-console
+	},
+	{
 		id: "custom-task-title",
 		titleKey: "tip.customTaskTitle.title",
 		bodyKey: "tip.customTaskTitle.body",

@@ -141,7 +141,7 @@ const settings = {
 		"Runs when starting the dev server for this project",
 	"projectSettings.cleanupScript": "Cleanup Script",
 	"projectSettings.cleanupScriptDesc":
-		"Runs when a task is moved to Cancelled (or Archived in the future)",
+		"Runs before the worktree is removed after a task is marked Completed or Cancelled",
 	"projectSettings.clonePaths": "Clone Paths (Copy-on-Write)",
 	"projectSettings.clonePathsDesc": "Directories and files to clone from the root project into each worktree using Copy-on-Write (instant, no disk space duplication on APFS/btrfs). Falls back to regular copy on unsupported filesystems.",
 	"projectSettings.addClonePath": "Add Path",

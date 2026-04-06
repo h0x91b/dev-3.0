@@ -258,7 +258,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    |-------|-----------------|
    | \`setupScript\` | Package manager install command. Detect from lockfile: \`bun.lockb\` → \`bun install\`, \`pnpm-lock.yaml\` → \`pnpm install\`, \`yarn.lock\` → \`yarn\`, \`package-lock.json\` → \`npm install\`. For Python: \`pip install -e .\` or \`poetry install\`. For Rust: \`cargo build\`. Chain multiple steps with \`&&\` if needed. |
    | \`devScript\` | The dev server command. Check \`package.json\` scripts for \`dev\`, \`start\`, \`serve\`. Use the full command: \`bun run dev\`, \`npm run dev\`, etc. If no dev server exists, leave empty. |
-   | \`cleanupScript\` | Clean build artifacts and caches. E.g., \`rm -rf node_modules/.cache dist .next\`. Tailor to what the project actually generates. If unsure, leave empty. |
+   | \`cleanupScript\` | Teardown hook that runs before the task worktree is removed after \`completed\` or \`cancelled\`. Useful for copy-back, exports, and cache cleanup. Inside the script you can branch on \`$DEV3_TASK_STATUS\`, \`$DEV3_TASK_FROM_STATUS\`, and \`$DEV3_TASK_TO_STATUS\`. |
    | \`clonePaths\` | Heavy directories that should be CoW-cloned into new worktrees instead of re-downloaded. Common: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Only include dirs that actually exist in the project. |
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`defaultCompareRefMode\` | Default diff comparison target. Use \`"remote"\` for \`origin/<baseBranch>\` (recommended default) or \`"local"\` for the local base branch. |
@@ -318,7 +318,7 @@ EOF
 |-------|------|-------------|
 | \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.) |
 | \`devScript\` | string | Dev server command (powers the "Dev Server" button in the UI) |
-| \`cleanupScript\` | string | Runs when a task is cancelled or archived |
+| \`cleanupScript\` | string | Runs before the task worktree is removed after \`completed\` or \`cancelled\` |
 | \`clonePaths\` | string[] | Dirs to CoW-clone into worktrees (faster than re-downloading) |
 | \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
 | \`defaultCompareRefMode\` | \`"remote" \| "local"\` | Default diff comparison target (\`origin/<baseBranch>\` vs local base branch) |

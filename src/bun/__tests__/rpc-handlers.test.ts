@@ -210,6 +210,7 @@ const {
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
 	emitTaskSound,
+	runCleanupScript,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -314,6 +315,49 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([]);
 
 		await expect(handleBellAutoStatus("unknown-task")).resolves.toBeUndefined();
+	});
+});
+
+describe("runCleanupScript", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockSpawn.mockReturnValue({
+			stdout: new Response(""),
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+	});
+
+	it("passes lifecycle env vars to the cleanup shell", async () => {
+		const project = makeProject({ path: "/tmp/project-root", name: "Alpha Project", cleanupScript: "echo cleanup" });
+		const task = makeTask({
+			id: "task-123",
+			title: "Ship it",
+			worktreePath: "/tmp/test-worktree",
+			status: "in-progress",
+		});
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		await runCleanupScript(task, project, {
+			fromStatus: "in-progress",
+			toStatus: "completed",
+		});
+
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
+			cwd: "/tmp/test-worktree",
+			env: expect.objectContaining({
+				TERM: "xterm-256color",
+				DEV3_TASK_TITLE: "Ship it",
+				DEV3_TASK_ID: "task-123",
+				DEV3_PROJECT_NAME: "Alpha Project",
+				DEV3_PROJECT_PATH: "/tmp/project-root",
+				DEV3_WORKTREE_PATH: "/tmp/test-worktree",
+				DEV3_TASK_STATUS: "completed",
+				DEV3_TASK_FROM_STATUS: "in-progress",
+				DEV3_TASK_TO_STATUS: "completed",
+			}),
+		});
 	});
 });
 
@@ -4830,4 +4874,3 @@ describe("toggleTaskWatch", () => {
 		expect(result.watched).toBe(false);
 	});
 });
-

@@ -1016,7 +1016,10 @@ describe("task.move", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(pty.destroySession).toHaveBeenCalledWith(task.id, undefined);
-		expect(runCleanupScript).toHaveBeenCalledWith(task, project);
+		expect(runCleanupScript).toHaveBeenCalledWith(task, project, {
+			fromStatus: "in-progress",
+			toStatus: "completed",
+		});
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
 			status: "completed",
@@ -1070,7 +1073,10 @@ describe("task.move", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(pty.destroySession).toHaveBeenCalled();
-		expect(runCleanupScript).toHaveBeenCalled();
+		expect(runCleanupScript).toHaveBeenCalledWith(task, project, {
+			fromStatus: "in-progress",
+			toStatus: "cancelled",
+		});
 		expect(git.removeWorktree).toHaveBeenCalled();
 	});
 

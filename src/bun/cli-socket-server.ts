@@ -489,7 +489,12 @@ const handlers: Record<string, Handler> = {
 		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
 			emitTaskSound(builtinStatus as "completed" | "cancelled");
 			try { pty.destroySession(task.id, task.tmuxSocket ?? undefined); } catch {}
-			try { await runCleanupScript(task, project); } catch {}
+			try {
+				await runCleanupScript(task, project, {
+					fromStatus: oldStatus,
+					toStatus: builtinStatus,
+				});
+			} catch {}
 			try { await git.removeWorktree(project, task); } catch {}
 
 			const updated = await data.updateTask(project, task.id, {
