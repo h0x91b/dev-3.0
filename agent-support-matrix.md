@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-04-02
+Last updated: 2026-04-06
 
 ## Agents
 
@@ -54,7 +54,7 @@ Injected into `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[feat
 | `SessionStart` | → `in-progress` | Marks startup/resume turns as active |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working |
 | `PreToolUse` (`Bash`) | → `in-progress` | Agent is about to run a shell command |
-| `Stop` | → `review-by-user` | Agent finished its turn |
+| `Stop` | → `review-by-user` | Agent finished its turn; dev3 suppresses normal CLI stdout and returns minimal JSON for Codex |
 
 ## Skill Differences
 

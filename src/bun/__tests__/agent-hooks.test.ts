@@ -11,7 +11,10 @@ import {
 	writeCodexHooks,
 } from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
-import { DEV3_BASH_PERMISSION } from "../../shared/agent-hooks";
+import {
+	CODEX_STOP_HOOK_SUCCESS_JSON,
+	DEV3_BASH_PERMISSION,
+} from "../../shared/agent-hooks";
 
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
@@ -274,8 +277,22 @@ describe("buildCodexHooks", () => {
 		expect(hooks.Stop).toHaveLength(2);
 		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
 		expect(hooks.Stop[0].hooks[0].command).toContain("--codex-stop-hook");
+		expect(hooks.Stop[0].hooks[0].command).toContain(">/dev/null");
+		expect(hooks.Stop[0].hooks[0].command).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
 		expect(hooks.Stop[1].hooks[0].command).toContain("--codex-stop-hook");
+		expect(hooks.Stop[1].hooks[0].command).toContain(">/dev/null");
+		expect(hooks.Stop[1].hooks[0].command).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
+	});
+
+	it("Stop hook wraps Codex move commands with a JSON success envelope", () => {
+		const hooks = buildCodexHooks();
+		const cmd = hooks.Stop[0].hooks[0].command;
+
+		expect(cmd).toContain("--status review-by-user --if-status in-progress");
+		expect(cmd).toContain("--codex-stop-hook");
+		expect(cmd).toContain(">/dev/null");
+		expect(cmd).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 	});
 });
 

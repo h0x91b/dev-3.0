@@ -8,6 +8,7 @@ import type { TaskStatus } from "./types";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
+export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
 
 export interface HookEntry {
 	type: string;
@@ -45,12 +46,18 @@ function buildMoveCommand(
 	return parts.join(" ");
 }
 
+function wrapCodexStopHookCommand(command: string): string {
+	return `${command} >/dev/null && printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`;
+}
+
 function buildStopGroups(
 	stopTarget: TaskStatus,
 	options?: { codexStopHook?: boolean },
 ): MatcherGroup[] {
-	const move = (status: string, extra?: string) =>
-		buildMoveCommand(status, extra, options);
+	const move = (status: string, extra?: string) => {
+		const command = buildMoveCommand(status, extra, options);
+		return options?.codexStopHook ? wrapCodexStopHookCommand(command) : command;
+	};
 
 	const stopGroups: MatcherGroup[] = [
 		{

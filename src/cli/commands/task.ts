@@ -1,6 +1,6 @@
 import type { Task, TaskStatus } from "../../shared/types";
 import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
-import { CODEX_STOP_HOOK_FLAG } from "../../shared/agent-hooks";
+import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -167,7 +167,8 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const task = resp.data as Task;
 	if (codexStopHook) {
-		// Codex Stop hooks treat any non-empty stdout as JSON, so stay silent here.
+		// Codex Stop hooks may require a JSON object even on success.
+		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
 		return;
 	}
 	const displayStatus = task.customColumnId

@@ -1,0 +1,1 @@
+Make Codex Stop hooks return an explicit `{}` success envelope instead of relying on empty stdout, and wrap the generated hook command so normal CLI output cannot leak into Codex's JSON parser. This keeps normal `dev3 task move` output unchanged for humans while making old and new Codex hook paths more robust.
