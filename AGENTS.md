@@ -17,6 +17,7 @@ Rules:
 - Prefer short sentences, concrete nouns, and direct verbs.
 - Do not repeat the same point in different words.
 - Do not add background unless it changes the decision.
+- For code changes, always end the final reply with a short `## Test instructions` block.
 - If a sentence does not add new information, remove it.
 - Aim for something the user can read in 10-15 seconds for normal task updates.
 
