@@ -1,5 +1,6 @@
 import type { Task, TaskStatus } from "../../shared/types";
 import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
+import { CODEX_STOP_HOOK_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -153,6 +154,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const ifStatus = args.flags["if-status"];
 	const ifStatusNot = args.flags["if-status-not"];
+	const codexStopHook = args.flags[CODEX_STOP_HOOK_FLAG.slice(2)] === "true";
 
 	const params: Record<string, unknown> = { taskId, newStatus };
 	if (ifStatus) params.ifStatus = ifStatus;
@@ -164,6 +166,10 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	if (!resp.ok) exitError(resp.error || "Failed to move task");
 
 	const task = resp.data as Task;
+	if (codexStopHook) {
+		// Codex Stop hooks treat any non-empty stdout as JSON, so stay silent here.
+		return;
+	}
 	const displayStatus = task.customColumnId
 		? `custom column ${task.customColumnId.slice(0, 8)}`
 		: (STATUS_LABELS[task.status] || task.status);
