@@ -12,12 +12,17 @@ When replying to the user, optimize for fast scanning and minimum necessary text
 
 Rules:
 - Start with the answer or decision, not with setup or filler.
-- Use at most 3 short sections when structure helps: `Decision:`, `Why:`, `Next:`.
+- Use fixed ASCII section dividers for scan-friendly structure when sections are present:
+  `========== [DECISION] ==========`
+  `========== [WHY] ==========`
+  `========== [NEXT] ==========`
+  `========== [TEST INSTRUCTIONS] ==========`
 - Keep each section to 1-2 short paragraphs or a flat list of concrete steps.
 - Prefer short sentences, concrete nouns, and direct verbs.
 - Do not repeat the same point in different words.
 - Do not add background unless it changes the decision.
 - For code changes, always end the final reply with a short `## Test instructions` block.
+- Keep the section labels uppercase and the divider format identical every time.
 - If a sentence does not add new information, remove it.
 - Aim for something the user can read in 10-15 seconds for normal task updates.
 
