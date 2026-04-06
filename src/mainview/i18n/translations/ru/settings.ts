@@ -141,7 +141,7 @@ const settings = {
 		"Запускается при старте dev-сервера для этого проекта",
 	"projectSettings.cleanupScript": "Скрипт очистки",
 	"projectSettings.cleanupScriptDesc":
-		"Запускается при переводе таски в статус Cancelled (или Archived в будущем)",
+		"Запускается перед удалением worktree, когда задача помечена как Completed или Cancelled",
 	"projectSettings.clonePaths": "Clone-пути (Copy-on-Write)",
 	"projectSettings.clonePathsDesc": "Директории и файлы, которые клонируются из корневого проекта в каждый worktree через Copy-on-Write (мгновенно, без дублирования на APFS/btrfs). На неподдерживаемых ФС делается обычная копия.",
 	"projectSettings.addClonePath": "Добавить путь",

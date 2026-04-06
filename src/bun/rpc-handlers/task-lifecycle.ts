@@ -93,7 +93,35 @@ export async function isTaskInProgress(taskId: string): Promise<boolean> {
 
 const DEFAULT_CLEANUP_SCRIPT = 'echo "Task finished"';
 
-export async function runCleanupScript(task: Task, project: Project): Promise<void> {
+type CleanupTransition = {
+	fromStatus: TaskStatus;
+	toStatus: Extract<TaskStatus, "completed" | "cancelled">;
+};
+
+function buildCleanupScriptEnv(
+	task: Task,
+	project: Project,
+	transition: CleanupTransition,
+): Record<string, string> {
+	return {
+		TERM: "xterm-256color",
+		HOME: process.env.HOME || "/",
+		DEV3_TASK_TITLE: task.title,
+		DEV3_TASK_ID: task.id,
+		DEV3_PROJECT_NAME: project.name,
+		DEV3_PROJECT_PATH: project.path,
+		DEV3_WORKTREE_PATH: task.worktreePath || "",
+		DEV3_TASK_STATUS: transition.toStatus,
+		DEV3_TASK_FROM_STATUS: transition.fromStatus,
+		DEV3_TASK_TO_STATUS: transition.toStatus,
+	};
+}
+
+export async function runCleanupScript(
+	task: Task,
+	project: Project,
+	transition: CleanupTransition,
+): Promise<void> {
 	if (!task.worktreePath) return;
 
 	if (!existsSync(task.worktreePath)) {
@@ -119,7 +147,7 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 		cleanupArgs,
 		{
 			terminal: { cols: 220, rows: 50, data: () => {} },
-			env: { TERM: "xterm-256color", HOME: process.env.HOME || "/" },
+			env: buildCleanupScriptEnv(task, project, transition),
 			cwd: task.worktreePath,
 		},
 	);
@@ -292,7 +320,10 @@ async function moveTask(params: { taskId: string; projectId: string; newStatus: 
 
 			try {
 				log.info("Running cleanup script before removing worktree", { taskId: task.id });
-				await runCleanupScript(task, project);
+				await runCleanupScript(task, project, {
+					fromStatus: oldStatus,
+					toStatus: newStatus,
+				});
 			} catch (err) {
 				log.error("Cleanup script failed, continuing with task move", {
 					taskId: task.id,

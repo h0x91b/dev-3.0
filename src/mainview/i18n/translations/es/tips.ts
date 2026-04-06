@@ -120,6 +120,8 @@ const tips = {
 	"tip.languageSwitching.body": "Abre los ajustes globales para cambiar entre inglés, ruso y español — tu elección se recuerda entre sesiones.",
 	"tip.setupScriptPanes.title": "El setup puede bloquear el inicio",
 	"tip.setupScriptPanes.body": "En Config del proyecto -> Script de configuración, elige si el agente arranca ya o espera al setup.",
+	"tip.cleanupScriptStatus.title": "Cleanup ve el estado",
+	"tip.cleanupScriptStatus.body": "Usa $DEV3_TASK_STATUS en Cleanup Script para separar pasos de completed y cancelled.",
 	"tip.customTaskTitle.title": "Renombra cualquier tarea",
 	"tip.customTaskTitle.body": "El título se genera automáticamente a partir de las primeras palabras de la descripción para no llenar dos campos. Pero siempre puedes hacer clic en el título para personalizarlo.",
 	"tip.spawnExtraAgent.title": "Varios agentes en una tarea",

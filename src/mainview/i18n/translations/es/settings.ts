@@ -141,7 +141,7 @@ const settings = {
 		"Se ejecuta al iniciar el servidor de desarrollo de este proyecto",
 	"projectSettings.cleanupScript": "Script de limpieza",
 	"projectSettings.cleanupScriptDesc":
-		"Se ejecuta cuando una tarea se mueve a Cancelled (o Archived en el futuro)",
+		"Se ejecuta antes de eliminar el worktree cuando una tarea se marca como Completed o Cancelled",
 	"projectSettings.clonePaths": "Rutas de clonación (Copy-on-Write)",
 	"projectSettings.clonePathsDesc": "Directorios y archivos que se clonan del proyecto raíz a cada worktree usando Copy-on-Write (instantáneo, sin duplicar espacio en APFS/btrfs). En sistemas de archivos no compatibles se hace una copia normal.",
 	"projectSettings.addClonePath": "Agregar ruta",

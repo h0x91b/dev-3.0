@@ -120,6 +120,8 @@ const tips = {
 	"tip.languageSwitching.body": "Open global settings to switch between English, Russian, and Spanish — your choice is remembered across sessions.",
 	"tip.setupScriptPanes.title": "Setup can block startup",
 	"tip.setupScriptPanes.body": "In Project Config -> Setup Script, choose whether the agent launches immediately or waits for setup to finish.",
+	"tip.cleanupScriptStatus.title": "Cleanup sees task status",
+	"tip.cleanupScriptStatus.body": "Use $DEV3_TASK_STATUS in Cleanup Script to branch between completed and cancelled teardown steps.",
 	"tip.customTaskTitle.title": "Rename any task",
 	"tip.customTaskTitle.body": "Task titles are auto-generated from the first words of the description so you don't fill two fields. But you can always click the title to set a custom name.",
 	"tip.spawnExtraAgent.title": "Run multiple agents on one task",
