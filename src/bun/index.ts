@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -166,7 +166,7 @@ const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle, getActiveSessionIds, getPtyPort } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 
@@ -426,6 +426,13 @@ setOnIdle((sessionKey) => {
 		}
 	}).catch((err) => {
 		log.error("isTaskInProgress failed in idle handler", { error: String(err) });
+	});
+});
+
+// Wire pane-exited notifications — remove dead pane entries from sessionState
+setOnPaneExited((taskId, paneId) => {
+	handlePaneExited(taskId, paneId).catch((err) => {
+		log.error("handlePaneExited unhandled error", { error: String(err) });
 	});
 });
 

@@ -9,6 +9,11 @@ const terminal = {
 	"terminal.sessionEnded": "Terminal session ended",
 	"terminal.sessionEndedDesc": "The terminal process has exited. The worktree and all files are still intact.",
 	"terminal.resumeAgentSession": "Resume Session",
+	"terminal.recoveryTitle": "Previous agent session found",
+	"terminal.recoveryDesc": "The terminal was disconnected but the agent session can be recovered.",
+	"terminal.resumeSession": "Resume Session",
+	"terminal.startFresh": "Start Fresh",
+	"terminal.startFreshDesc": "A new session will be started with the task description.",
 
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-split",

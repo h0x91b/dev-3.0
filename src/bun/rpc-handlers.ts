@@ -31,6 +31,7 @@ export { resolveOperationalProjectConfig } from "./rpc-handlers/settings-config"
 export {
 	launchTaskPty,
 	launchColumnAgent,
+	handlePaneExited,
 } from "./rpc-handlers/tmux-pty";
 
 import { appHandlers } from "./rpc-handlers/app-handlers";

@@ -210,6 +210,7 @@ const sessions = new Map<string, PtySession>();
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
 let onIdleCallback: ((taskId: string) => void) | null = null;
+let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
 	onPtyDiedCallback = fn;
@@ -222,6 +223,11 @@ export function setOnBell(fn: (taskId: string) => void): void {
 export function setOnIdle(fn: (taskId: string) => void): void {
 	onIdleCallback = fn;
 }
+
+export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): void {
+	onPaneExitedCallback = fn;
+}
+
 
 /** Compute the tmux session name for a given session key and type. */
 function computeTmuxSessionName(key: string, type: PtySessionType): string {
@@ -384,6 +390,61 @@ function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
+// ── Pane helpers ─────────────────────────────────────────────────────
+
+/**
+ * Create an additional pane in an existing tmux session by splitting, and run a command in it.
+ * Returns the new pane ID, or null on failure.
+ */
+export function splitAndRunCommand(taskId: string, socket: string, command: string, cwd: string): string | null {
+	const tmuxSessionName = `dev3-${shortId(taskId)}`;
+	try {
+		const result = spawnSync(
+			tmuxArgs(socket, "split-window", "-v", "-t", tmuxSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", command),
+		);
+		if (result.exitCode !== 0) {
+			log.warn("splitAndRunCommand failed", { taskId: shortId(taskId), exitCode: result.exitCode });
+			return null;
+		}
+		const paneId = new TextDecoder().decode(result.stdout).trim();
+		spawnSync(tmuxArgs(socket, "select-layout", "-t", tmuxSessionName, "tiled"));
+		return paneId || null;
+	} catch (err) {
+		log.warn("splitAndRunCommand error", { taskId: shortId(taskId), error: String(err) });
+		return null;
+	}
+}
+
+/**
+ * List all pane IDs in a tmux session.
+ * Returns an array of pane IDs (e.g. ["%0", "%5"]), or empty on failure / session gone.
+ */
+export function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): string[] {
+	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
+	try {
+		const result = spawnSync(
+			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"),
+		);
+		if (result.exitCode !== 0) return [];
+		return new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Check if a tmux session exists on the given socket.
+ */
+export function tmuxSessionExists(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): boolean {
+	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
+	try {
+		const result = spawnSync(tmuxArgs(socket, "has-session", "-t", tmuxSessionName));
+		return result.exitCode === 0;
+	} catch {
+		return false;
+	}
+}
+
 const OSC52_RE = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/g;
 // Matches any OSC sequence terminated by BEL or ST — used to strip them
 // before checking for standalone BEL (\x07)
@@ -449,6 +510,22 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 	// Re-source the config in case the tmux server was already running
 	// (the -f flag on new-session only applies when starting a fresh server)
 	spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
+
+	// Set pane-exited hook — when any pane in this session exits, notify the app
+	// via HTTP so the dead pane entry can be removed from sessionState.
+	// pane-exited is a window-level hook (-w flag required).
+	// #{hook_pane} expands to the pane that triggered the hook (the exited one).
+	// #{pane_id} would give the *active* pane instead — wrong target.
+	// Single quotes around the URL prevent shell interpretation of &.
+	// || true prevents errors if the app isn't running (e.g. during shutdown).
+	try {
+		spawnSync(tmuxArgs(socket, "set-hook", "-wt", tmuxSessionName, "pane-exited",
+			`run-shell "curl -s 'http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}' || true"`,
+		));
+	} catch (err) {
+		log.warn("Failed to set pane-exited hook (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
+	}
+
 	log.info("tmux config applied", { tmuxSession: tmuxSessionName, configPath: TMUX_CONF_PATH });
 }
 
@@ -621,6 +698,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			if (session.sessionType === "project") {
 				setupProjectLayout(session);
 			}
+
 		} catch (err) {
 			log.error("configureTmux failed", {
 				taskId: shortId(session.taskId),
@@ -651,12 +729,38 @@ setInterval(() => {
 	}
 }, IDLE_CHECK_INTERVAL_MS);
 
+/** Reverse lookup: find the taskId that owns a given tmux session name. */
+function findTaskIdByTmuxSession(tmuxSessionName: string): string | null {
+	for (const session of sessions.values()) {
+		if (session.tmuxSessionName === tmuxSessionName) return session.taskId;
+	}
+	return null;
+}
+
 const ptyServer = Bun.serve({
 	port: 0,
 	fetch(req, server) {
 		try {
+			const url = new URL(req.url, "http://localhost");
+
+			// Handle pane-exited notifications from tmux hook
+			if (url.pathname === "/pane-exited") {
+				const sessionName = url.searchParams.get("session");
+				const paneId = url.searchParams.get("pane");
+				if (sessionName && paneId) {
+					const taskId = findTaskIdByTmuxSession(sessionName);
+					if (taskId) {
+						log.info("Pane exited", { taskId: shortId(taskId), paneId, sessionName });
+						onPaneExitedCallback?.(taskId, paneId);
+					} else {
+						log.debug("Pane exited for unknown session", { sessionName, paneId });
+					}
+				}
+				return new Response("ok");
+			}
+
 			log.debug("PTY server fetch", { url: req.url });
-			if (server.upgrade(req, { data: { url: new URL(req.url) } } as any)) return;
+			if (server.upgrade(req, { data: { url } } as any)) return;
 			return new Response("PTY WebSocket server", { status: 200 });
 		} catch (err) {
 			log.error("PTY server fetch handler error", {

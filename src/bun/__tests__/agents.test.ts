@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, isOpenCodeCommand, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
 
@@ -380,5 +380,169 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("resume --last");
 		// Unsupported agent still gets the prompt (no resume behavior)
 		expect(cmd).toContain("Some task");
+	});
+});
+
+describe("resolveAgentCommand — sessionId", () => {
+	it("Claude: injects --session-id for fresh launch", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig(),
+			makeCtx(),
+			{ sessionId: "abc-123" },
+		);
+
+		expect(cmd).toContain("--session-id abc-123");
+		expect(cmd).not.toContain("--resume");
+	});
+
+	it("Claude: uses --resume <id> when both resume and sessionId", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig(),
+			makeCtx(),
+			{ resume: true, sessionId: "abc-123" },
+		);
+
+		expect(cmd).toContain("--resume abc-123");
+		expect(cmd).not.toContain("--session-id");
+		expect(cmd).not.toContain("--continue");
+	});
+
+	it("Claude: falls back to --continue when resume without sessionId", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig(),
+			makeCtx(),
+			{ resume: true },
+		);
+
+		expect(cmd).toContain("--continue");
+		expect(cmd).not.toContain("--session-id");
+	});
+
+	it("Gemini: uses --resume <id> when both resume and sessionId", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "gemini" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ resume: true, sessionId: "gem-456" },
+		);
+
+		expect(cmd).toContain("--resume gem-456");
+		expect(cmd).not.toContain("latest");
+	});
+
+	it("Codex: uses session id in resume subcommand", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ resume: true, sessionId: "cdx-789" },
+		);
+
+		expect(cmd).toMatch(/^codex resume cdx-789/);
+		expect(cmd).not.toContain("--last");
+	});
+
+	it("Cursor Agent: injects --resume <id> for fresh launch (creates new thread)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "agent" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ sessionId: "abc-123" },
+		);
+
+		expect(cmd).toContain("--resume abc-123");
+		expect(cmd).not.toContain("--session-id");
+	});
+
+	it("Cursor Agent: uses --resume <id> when both resume and sessionId", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "agent" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ resume: true, sessionId: "abc-123" },
+		);
+
+		expect(cmd).toContain("--resume abc-123");
+		expect(cmd).not.toContain("--continue");
+	});
+
+	it("does not inject session id for unsupported agents", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ sessionId: "abc-123" },
+		);
+
+		expect(cmd).not.toContain("--session-id");
+		expect(cmd).not.toContain("--resume");
+	});
+});
+
+describe("supportsPreAssignedSessionId", () => {
+	it.each([
+		["claude", true],
+		["agent", true],
+		["/usr/local/bin/claude", true],
+		["codex", false],
+		["gemini", false],
+		["bash", false],
+		["opencode", false],
+	])("%s → %s", (cmd, expected) => {
+		expect(supportsPreAssignedSessionId(cmd)).toBe(expected);
+	});
+});
+
+describe("buildResumeCommand", () => {
+	it("Claude: --resume <id> with sessionId", () => {
+		expect(buildResumeCommand("claude", "sid-1")).toBe("claude --resume sid-1");
+	});
+
+	it("Claude: --continue without sessionId", () => {
+		expect(buildResumeCommand("claude")).toBe("claude --continue");
+	});
+
+	it("Codex: resume <id> with sessionId", () => {
+		expect(buildResumeCommand("codex", "sid-2")).toBe("codex resume sid-2");
+	});
+
+	it("Codex: resume --last without sessionId", () => {
+		expect(buildResumeCommand("codex")).toBe("codex resume --last");
+	});
+
+	it("Gemini: --resume <id> with sessionId", () => {
+		expect(buildResumeCommand("gemini", "sid-3")).toBe("gemini --resume sid-3");
+	});
+
+	it("Gemini: --resume latest without sessionId", () => {
+		expect(buildResumeCommand("gemini")).toBe("gemini --resume latest");
+	});
+
+	it("Cursor Agent: --resume <id> with sessionId", () => {
+		expect(buildResumeCommand("agent", "sid-4")).toBe("agent --resume sid-4");
+	});
+
+	it("Cursor Agent: --continue without sessionId", () => {
+		expect(buildResumeCommand("agent")).toBe("agent --continue");
+	});
+
+	it("OpenCode: --session <id> with sessionId", () => {
+		expect(buildResumeCommand("opencode", "sid-6")).toBe("opencode --session sid-6");
+	});
+
+	it("OpenCode: --continue without sessionId", () => {
+		expect(buildResumeCommand("opencode")).toBe("opencode --continue");
+	});
+
+	it("unsupported agent returns null", () => {
+		expect(buildResumeCommand("aider")).toBeNull();
+		expect(buildResumeCommand("bash")).toBeNull();
+	});
+
+	it("works with full paths", () => {
+		expect(buildResumeCommand("/usr/local/bin/claude", "sid-5")).toBe("/usr/local/bin/claude --resume sid-5");
 	});
 });

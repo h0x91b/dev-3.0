@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch } from "react";
-import type { Task, Project } from "../../shared/types";
+import type { Task, Project, TaskSessionState } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -33,6 +33,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
+	const [recoverable, setRecoverable] = useState<TaskSessionState | null>(null);
 	const [restarting, setRestarting] = useState(false);
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -58,10 +59,15 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		(async () => {
 			console.log("[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
 			try {
-				const url = await api.request.getPtyUrl({ taskId });
+				const result = await api.request.getPtyUrl({ taskId });
 				if (cancelled) return;
-				console.log("[TaskTerminal] Got PTY URL:", url);
-				setPtyUrl(url);
+				if ("recoverable" in result) {
+					console.log("[TaskTerminal] Recoverable session detected", result.sessionState);
+					setRecoverable(result.sessionState);
+				} else {
+					console.log("[TaskTerminal] Got PTY URL:", result.url);
+					setPtyUrl(result.url);
+				}
 			} catch (err) {
 				if (cancelled) return;
 				console.error("[TaskTerminal] getPtyUrl FAILED:", err);
@@ -122,15 +128,85 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	async function handleRestart() {
 		setRestarting(true);
 		try {
-			const url = await api.request.getPtyUrl({ taskId, resume: true });
-			setPtyUrl(url);
-			setError(null);
+			const result = await api.request.getPtyUrl({ taskId, resume: true });
+			if ("url" in result) {
+				setPtyUrl(result.url);
+				setError(null);
+			} else if ("recoverable" in result) {
+				setRecoverable(result.sessionState);
+				setError(null);
+			}
 		} catch (err) {
 			console.error("[TaskTerminal] Restart failed:", err);
 			await classifyAndSetError();
 		} finally {
 			setRestarting(false);
 		}
+	}
+
+	async function handleResumeSession() {
+		setRestarting(true);
+		setRecoverable(null);
+		try {
+			const url = await api.request.resumeTask({ taskId });
+			setPtyUrl(url);
+			trackEvent("session_recovered", { action: "resume" });
+		} catch (err) {
+			console.error("[TaskTerminal] Resume session failed:", err);
+			await classifyAndSetError();
+		} finally {
+			setRestarting(false);
+		}
+	}
+
+	async function handleStartFresh() {
+		setRestarting(true);
+		setRecoverable(null);
+		try {
+			const url = await api.request.restartTask({ taskId });
+			setPtyUrl(url);
+			trackEvent("session_recovered", { action: "fresh" });
+		} catch (err) {
+			console.error("[TaskTerminal] Start fresh failed:", err);
+			await classifyAndSetError();
+		} finally {
+			setRestarting(false);
+		}
+	}
+
+	if (recoverable) {
+		return (
+			<div className="flex items-center justify-center h-full">
+				<div className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4">
+					<div className="flex items-center gap-2 font-medium text-fg">
+						<span className="text-lg">{"\u{F0645}"}</span>
+						<span>{t("terminal.recoveryTitle")}</span>
+					</div>
+					<p className="text-fg-3 text-sm">
+						{t("terminal.recoveryDesc")}
+					</p>
+					<div className="space-y-3 pt-2">
+						<div className="flex gap-3">
+							<button
+								onClick={handleResumeSession}
+								disabled={restarting}
+								className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+							>
+								{restarting ? t("terminal.connecting") : t("terminal.resumeSession")}
+							</button>
+							<button
+								onClick={handleStartFresh}
+								disabled={restarting}
+								className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
+							>
+								{t("terminal.startFresh")}
+							</button>
+						</div>
+						<p className="text-fg-muted text-xs">{t("terminal.startFreshDesc")}</p>
+					</div>
+				</div>
+			</div>
+		);
 	}
 
 	if (error) {

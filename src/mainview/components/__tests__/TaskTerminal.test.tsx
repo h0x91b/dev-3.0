@@ -9,6 +9,8 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			getPtyUrl: vi.fn(),
+			resumeTask: vi.fn(),
+			restartTask: vi.fn(),
 			moveTask: vi.fn(),
 			checkWorktreeExists: vi.fn(),
 			getResolvedProject: vi.fn().mockResolvedValue({}),
@@ -26,7 +28,6 @@ vi.mock("../../analytics", () => ({
 
 vi.mock("../../TerminalView", () => ({
 	default: ({ ptyUrl, onReady }: { ptyUrl: string; onReady?: (h: unknown) => void }) => {
-		// Call onReady so termHandle is set (needed for ExtraKeyBar tests)
 		if (onReady) {
 			setTimeout(() => onReady({ sendInput: vi.fn(), focus: vi.fn() }), 0);
 		}
@@ -242,6 +243,96 @@ describe("TaskTerminal", () => {
 		});
 	});
 
+	describe("Session recovery prompt", () => {
+		it("shows recovery prompt when getPtyUrl returns recoverable", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Previous agent session found")).toBeInTheDocument();
+				expect(screen.getByText("Resume Session")).toBeInTheDocument();
+				expect(screen.getByText("Start Fresh")).toBeInTheDocument();
+			});
+		});
+
+		it("calls resumeTask when clicking Resume Session", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await user.click(screen.getByText("Resume Session"));
+			});
+
+			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+		});
+
+		it("calls restartTask when clicking Start Fresh", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:9999?session=t1");
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Start Fresh")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await user.click(screen.getByText("Start Fresh"));
+			});
+
+			expect(mockedApi.request.restartTask).toHaveBeenCalledWith({ taskId: "t1" });
+		});
+
+		it("renders terminal after successful resume", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Resume Session")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await user.click(screen.getByText("Resume Session"));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+			});
+		});
+	});
+
 	describe("Resume Session button", () => {
 		it("shows Resume Session button on session-ended error", async () => {
 			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
@@ -299,7 +390,7 @@ describe("TaskTerminal", () => {
 	describe("ExtraKeyBar visibility", () => {
 		it("does not show ExtraKeyBar on non-touch desktop browser", async () => {
 			setTouchDevice(false);
-			mockedApi.request.getPtyUrl.mockResolvedValue("ws://localhost:1234");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
 
 			await act(async () => {
 				renderTerminal();
@@ -318,7 +409,7 @@ describe("TaskTerminal", () => {
 
 		it("shows ExtraKeyBar on touch device (mobile)", async () => {
 			setTouchDevice(true);
-			mockedApi.request.getPtyUrl.mockResolvedValue("ws://localhost:1234");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
 
 			await act(async () => {
 				renderTerminal();

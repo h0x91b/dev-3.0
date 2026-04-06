@@ -1,0 +1,1 @@
+Agent sessions now survive app restarts, tmux crashes, and quit/relaunch cycles. Session IDs are pre-assigned at launch time via Claude's --session-id flag and persisted to the task JSON immediately. When you reopen a task whose tmux session is gone but has a stored session ID, you'll see a "Resume or Start Fresh" prompt instead of a blank terminal.

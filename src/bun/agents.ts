@@ -272,14 +272,47 @@ export interface CommandOptions {
 	 *  Supported agents: Claude (--continue), Codex (resume --last),
 	 *  Gemini (--resume latest), Cursor Agent (--continue). */
 	resume?: boolean;
+	/** Specific session ID to resume or pre-assign. When resuming, agents that
+	 *  support targeted resume (e.g. Claude --resume <id>) use this instead of
+	 *  --continue. For fresh launches, Claude uses --session-id <id>. */
+	sessionId?: string;
 	/** When true, skip injecting the DEV3_SYSTEM_PROMPT via --append-system-prompt.
 	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
 	skipSystemPrompt?: boolean;
 }
 
+/**
+ * Build a minimal resume command for a given agent command name and session ID.
+ * Used for resuming sessions after tmux death / app restart.
+ */
+export function buildResumeCommand(agentCmd: string, sessionId?: string): string | null {
+	if (isClaudeCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
+	}
+	if (isCodexCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} resume ${sessionId}` : `${agentCmd} resume --last`;
+	}
+	if (isGeminiCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --resume latest`;
+	}
+	if (isCursorCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
+	}
+	if (isOpenCodeCommand(agentCmd)) {
+		return sessionId ? `${agentCmd} --session ${sessionId}` : `${agentCmd} --continue`;
+	}
+	return null;
+}
+
 /** Returns true when the agent CLI supports session resumption. */
 export function supportsResume(baseCmd: string): boolean {
 	return isClaudeCommand(baseCmd) || isCodexCommand(baseCmd) || isGeminiCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd);
+}
+
+/** Returns true when the agent supports pre-assigned session IDs at launch time.
+ *  These agents can accept a UUID on first launch and resume it later by ID. */
+export function supportsPreAssignedSessionId(baseCmd: string): boolean {
+	return isClaudeCommand(baseCmd) || isCursorCommand(baseCmd);
 }
 
 export function resolveAgentCommand(
@@ -295,12 +328,45 @@ export function resolveAgentCommand(
 
 	// Resume flags per agent (Codex uses a subcommand, handled at the end)
 	if (shouldResume) {
-		if (isClaudeCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd)) {
-			args.push("--continue");
+		const sid = options?.sessionId;
+		if (isClaudeCommand(baseCmd)) {
+			// Prefer --resume <id> for targeted resume; fall back to --continue
+			if (sid) {
+				args.push("--resume", sid);
+			} else {
+				args.push("--continue");
+			}
+		} else if (isCursorCommand(baseCmd)) {
+			// Cursor Agent: --resume <id> for targeted resume, --continue as fallback
+			if (sid) {
+				args.push("--resume", sid);
+			} else {
+				args.push("--continue");
+			}
+		} else if (isOpenCodeCommand(baseCmd)) {
+			if (sid) {
+				args.push("--session", sid);
+			} else {
+				args.push("--continue");
+			}
 		} else if (isGeminiCommand(baseCmd)) {
-			args.push("--resume", "latest");
+			if (sid) {
+				args.push("--resume", sid);
+			} else {
+				args.push("--resume", "latest");
+			}
 		}
 		// Codex: handled below when building the final command
+	}
+
+	// For agents that support pre-assigned session IDs, inject the ID on fresh launches
+	// so we can do targeted resume later.
+	if (!shouldResume && supportsPreAssignedSessionId(baseCmd) && options?.sessionId) {
+		if (isCursorCommand(baseCmd)) {
+			args.push("--resume", options.sessionId);
+		} else {
+			args.push("--session-id", options.sessionId);
+		}
 	}
 
 	if (config?.model) {
@@ -386,9 +452,10 @@ export function resolveAgentCommand(
 		}
 	}
 
-	// Codex uses a subcommand for resume: `codex resume --last [args]`
+	// Codex uses a subcommand for resume: `codex resume [--last | <id>] [args]`
 	if (shouldResume && isCodexCommand(baseCmd)) {
-		return [baseCmd, "resume", "--last", ...args].join(" ");
+		const sid = options?.sessionId;
+		return [baseCmd, "resume", sid ?? "--last", ...args].join(" ");
 	}
 
 	return [baseCmd, ...args].join(" ");
