@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { TaskStatus } from "./types";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
+export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 
 export interface HookEntry {
 	type: string;
@@ -33,9 +34,23 @@ export interface MatcherGroup {
 
 type HookMap = Record<string, MatcherGroup[]>;
 
-function buildStopGroups(stopTarget: TaskStatus): MatcherGroup[] {
+function buildMoveCommand(
+	status: string,
+	extra?: string,
+	options?: { codexStopHook?: boolean },
+): string {
+	const parts = [`${DEV3_CLI} task move --status ${status}`];
+	if (extra) parts.push(extra);
+	if (options?.codexStopHook) parts.push(CODEX_STOP_HOOK_FLAG);
+	return parts.join(" ");
+}
+
+function buildStopGroups(
+	stopTarget: TaskStatus,
+	options?: { codexStopHook?: boolean },
+): MatcherGroup[] {
 	const move = (status: string, extra?: string) =>
-		`${DEV3_CLI} task move --status ${status}${extra ? ` ${extra}` : ""}`;
+		buildMoveCommand(status, extra, options);
 
 	const stopGroups: MatcherGroup[] = [
 		{
@@ -73,7 +88,7 @@ export function buildClaudeHooks(
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const move = (status: string, extra?: string) =>
-		`${DEV3_CLI} task move --status ${status}${extra ? ` ${extra}` : ""}`;
+		buildMoveCommand(status, extra);
 
 	// Working hook: move to in-progress, but NOT when in review-by-ai
 	// (the review agent shares the same hooks file and must not flip status).
@@ -108,7 +123,7 @@ export function buildCodexHooks(
 	options?: { stopTarget?: TaskStatus },
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
-	const workingCmd = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai`;
+	const workingCmd = buildMoveCommand("in-progress", "--if-status-not review-by-ai");
 
 	return {
 		SessionStart: [
@@ -126,7 +141,7 @@ export function buildCodexHooks(
 				hooks: [{ type: "command", command: workingCmd }],
 			},
 		],
-		Stop: buildStopGroups(stopTarget),
+		Stop: buildStopGroups(stopTarget, { codexStopHook: true }),
 	};
 }
 

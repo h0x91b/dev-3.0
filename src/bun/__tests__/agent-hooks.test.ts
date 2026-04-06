@@ -76,6 +76,7 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain("--status review-by-user");
 		expect(cmd).toContain("--if-status in-progress");
+		expect(cmd).not.toContain("--codex-stop-hook");
 	});
 
 	it("Stop hook with review-by-ai stopTarget creates two matcher groups (primary + review)", () => {
@@ -272,7 +273,9 @@ describe("buildCodexHooks", () => {
 
 		expect(hooks.Stop).toHaveLength(2);
 		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
+		expect(hooks.Stop[0].hooks[0].command).toContain("--codex-stop-hook");
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+		expect(hooks.Stop[1].hooks[0].command).toContain("--codex-stop-hook");
 	});
 });
 

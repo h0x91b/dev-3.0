@@ -406,6 +406,24 @@ describe("task move", () => {
 
 		expect(stdoutOutput).toMatch(/→.*AI Review/);
 	});
+
+	it("suppresses human-readable stdout for Codex stop hooks", async () => {
+		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "review-by-user", "codex-stop-hook": "true" }),
+			SOCKET,
+			null,
+		);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
+			taskId: "aaaaaaaa",
+			newStatus: "review-by-user",
+		});
+		expect(stdoutOutput).toBe("");
+	});
 });
 
 // ─── --id flag support ───────────────────────────────────────────────────────

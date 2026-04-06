@@ -1,0 +1,1 @@
+Made generated Codex Stop hooks call `dev3 task move` with a Codex-specific flag that suppresses human-readable stdout, so Codex no longer rejects the hook output as invalid JSON. Added regression tests for hook generation and CLI move output.
