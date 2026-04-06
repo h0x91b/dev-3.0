@@ -34,7 +34,7 @@ vi.mock("../rpc-handlers", () => {
 		isActive: vi.fn((status: string) => ACTIVE.includes(status)),
 		activateTask: vi.fn(),
 		runCleanupScript: vi.fn(),
-		playTaskCompleteSound: vi.fn(),
+		emitTaskSound: vi.fn(),
 		getPushMessage: vi.fn(() => null),
 		triggerColumnAgentIfNeeded: vi.fn(),
 		notifyWatchedTaskStatusChange: vi.fn(),
@@ -75,7 +75,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage } from "../rpc-handlers";
+import { activateTask, runCleanupScript, emitTaskSound, getPushMessage } from "../rpc-handlers";
 import { runDevServer, stopDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
@@ -1026,7 +1026,7 @@ describe("task.move", () => {
 		}, { dropPosition: "top" });
 	});
 
-	it("active → completed: plays sound before cleanup starts", async () => {
+	it("active → completed: emits renderer sound before cleanup starts", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
 		const updated = { ...task, status: "completed" as const, worktreePath: null, branchName: null };
@@ -1045,7 +1045,7 @@ describe("task.move", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(vi.mocked(playTaskCompleteSound).mock.invocationCallOrder[0]).toBeLessThan(
+		expect(vi.mocked(emitTaskSound).mock.invocationCallOrder[0]).toBeLessThan(
 			vi.mocked(runCleanupScript).mock.invocationCallOrder[0],
 		);
 	});

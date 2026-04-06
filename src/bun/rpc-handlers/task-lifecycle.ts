@@ -1,6 +1,4 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { PATHS } from "electrobun/bun";
+import { existsSync } from "node:fs";
 import type { ColumnAgentConfig, CustomColumn, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -9,10 +7,9 @@ import * as pty from "../pty-server";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
-import { loadSettings, loadSettingsSync } from "../settings";
 import { DEV3_HOME } from "../paths";
+import { loadSettings, loadSettingsSync } from "../settings";
 import { spawn } from "../spawn";
-import { BUNDLED_SOUNDS } from "../sound-bundled";
 import { getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -95,7 +92,6 @@ export async function isTaskInProgress(taskId: string): Promise<boolean> {
 }
 
 const DEFAULT_CLEANUP_SCRIPT = 'echo "Task finished"';
-const SOUND_CACHE_DIR = join(DEV3_HOME, "cache", "sounds");
 
 export async function runCleanupScript(task: Task, project: Project): Promise<void> {
 	if (!task.worktreePath) return;
@@ -133,56 +129,10 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 	log.info("Cleanup session finished", { session: sessionName });
 }
 
-export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
+export function emitTaskSound(status: "completed" | "cancelled"): void {
 	const settings = loadSettingsSync();
 	if (settings.playSoundOnTaskComplete === false) return;
-
-	const filename = status === "completed" ? "task-completed.mp3" : "task-cancelled.mp3";
-	const volume = status === "completed" ? "0.3" : "0.7";
-	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", filename);
-	const devPath = typeof import.meta.dir === "string"
-		? join(import.meta.dir, "..", "assets", "sounds", filename)
-		: null;
-	const soundPath = existsSync(prodPath)
-		? prodPath
-		: devPath && existsSync(devPath)
-			? devPath
-			: materializeBundledSound(filename);
-
-	if (!soundPath) {
-		log.warn("Task complete sound file not found", { prodPath, devPath, status });
-		return;
-	}
-
-	try {
-		spawn(["afplay", "-v", volume, soundPath], {
-			env: { HOME: process.env.HOME || "/" },
-		});
-	} catch (err) {
-		log.warn("Failed to play task complete sound", { error: String(err) });
-	}
-}
-
-function materializeBundledSound(filename: string): string | null {
-	const base64 = BUNDLED_SOUNDS[filename];
-	if (!base64) return null;
-
-	const cachedPath = join(SOUND_CACHE_DIR, filename);
-
-	try {
-		const bytes = Buffer.from(base64, "base64");
-		const cachedSize = existsSync(cachedPath) ? statSync(cachedPath).size : -1;
-
-		if (cachedSize !== bytes.length) {
-			mkdirSync(SOUND_CACHE_DIR, { recursive: true });
-			writeFileSync(cachedPath, bytes);
-		}
-
-		return cachedPath;
-	} catch (err) {
-		log.warn("Failed to materialize bundled task sound", { filename, error: String(err) });
-		return null;
-	}
+	getPushMessage()?.("taskSound", { status });
 }
 
 export async function triggerColumnAgentIfNeeded(
@@ -317,7 +267,7 @@ async function moveTask(params: { taskId: string; projectId: string; newStatus: 
 	if (newStatus === "completed" || newStatus === "cancelled") {
 		cleanupTaskState(task.id);
 		portPool.releasePorts(task.id);
-		playTaskCompleteSound(newStatus as "completed" | "cancelled");
+		emitTaskSound(newStatus as "completed" | "cancelled");
 		if (params.force) {
 			log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
 		} else if (isActive(oldStatus) || task.worktreePath) {

@@ -20,11 +20,6 @@ vi.mock("../changelog-bundled", () => ({
 	get BUNDLED_CHANGELOG() { return mockBundledChangelog; },
 }));
 
-const mockBundledSounds: Record<string, string> = {};
-vi.mock("../sound-bundled", () => ({
-	get BUNDLED_SOUNDS() { return mockBundledSounds; },
-}));
-
 vi.mock("../data", () => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
@@ -159,10 +154,8 @@ vi.mock("../spawn", () => ({
 // Mock node:fs for existsSync and readdirSync
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
-	mkdirSync: vi.fn(),
 	readdirSync: vi.fn(() => []),
 	statSync: vi.fn(() => ({ isDirectory: () => true, size: 0 })),
-	writeFileSync: vi.fn(),
 }));
 
 const mockObjcGetClass = vi.fn(() => "NSApplication_ptr");
@@ -190,7 +183,7 @@ import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 // Import handlers and pure helper functions after all mocks are set up
 const {
@@ -216,7 +209,7 @@ const {
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
-	playTaskCompleteSound,
+	emitTaskSound,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -284,9 +277,6 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockReset();
 		vi.mocked(data.updateTask).mockReset();
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
-		for (const key of Object.keys(mockBundledSounds)) delete mockBundledSounds[key];
-		vi.mocked(mkdirSync).mockClear();
-		vi.mocked(writeFileSync).mockClear();
 	});
 
 	it("moves in-progress task to user-questions", async () => {
@@ -1203,49 +1193,46 @@ describe("handlers.moveTask", () => {
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 	});
 
-	it("in-progress → completed: plays sound before cleanup finishes", async () => {
+	it("in-progress → completed: emits renderer sound before cleanup finishes", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+		const push = vi.fn();
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 		vi.mocked(existsSync).mockReturnValue(true);
 		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
-		mockSpawn.mockImplementation(() => {
-			return { stdout: "", stderr: new Response(""), exited: Promise.resolve(0) };
-		});
+		setPushMessage(push);
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 
-		const spawnCalls = mockSpawn.mock.calls.map(([args]) => args as string[]);
-		const afplayCall = spawnCalls.findIndex((args) => args[0] === "afplay");
-		const cleanupCall = spawnCalls.findIndex((args) => args.includes("new-session"));
-		expect(afplayCall).toBeGreaterThanOrEqual(0);
-		expect(cleanupCall).toBeGreaterThanOrEqual(0);
-		expect(afplayCall).toBeLessThan(cleanupCall);
+		expect(push.mock.invocationCallOrder[0]).toBeLessThan(
+			vi.mocked(git.removeWorktree).mock.invocationCallOrder[0],
+		);
+		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed" });
 		expect(result.status).toBe("completed");
 	});
 
-	it("playTaskCompleteSound: materializes bundled audio when packaged filesystem assets are inaccessible", () => {
-		const bundledBytes = Buffer.from("fake-mp3-data", "utf-8");
-
+	it("emitTaskSound: pushes a renderer event when sound setting is enabled", () => {
+		const push = vi.fn();
 		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
-		vi.mocked(existsSync).mockReturnValue(false);
-		mockBundledSounds["task-completed.mp3"] = bundledBytes.toString("base64");
+		setPushMessage(push);
 
-		playTaskCompleteSound("completed");
+		emitTaskSound("completed");
 
-		expect(mkdirSync).toHaveBeenCalledWith("/tmp/test-dev3/cache/sounds", { recursive: true });
-		expect(writeFileSync).toHaveBeenCalledWith(
-			"/tmp/test-dev3/cache/sounds/task-completed.mp3",
-			bundledBytes,
-		);
-		expect(mockSpawn).toHaveBeenCalledWith(
-			["afplay", "-v", "0.3", "/tmp/test-dev3/cache/sounds/task-completed.mp3"],
-			{ env: { HOME: process.env.HOME || "/" } },
-		);
+		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed" });
+	});
+
+	it("emitTaskSound: stays silent when the setting is disabled", () => {
+		const push = vi.fn();
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false } as any);
+		setPushMessage(push);
+
+		emitTaskSound("cancelled");
+
+		expect(push).not.toHaveBeenCalledWith("taskSound", expect.anything());
 	});
 
 	it("in-progress → cancelled: same cleanup as completed", async () => {
