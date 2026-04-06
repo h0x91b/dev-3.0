@@ -20,6 +20,11 @@ vi.mock("../changelog-bundled", () => ({
 	get BUNDLED_CHANGELOG() { return mockBundledChangelog; },
 }));
 
+const mockBundledSounds: Record<string, string> = {};
+vi.mock("../sound-bundled", () => ({
+	get BUNDLED_SOUNDS() { return mockBundledSounds; },
+}));
+
 vi.mock("../data", () => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
@@ -154,8 +159,10 @@ vi.mock("../spawn", () => ({
 // Mock node:fs for existsSync and readdirSync
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => true),
+	mkdirSync: vi.fn(),
 	readdirSync: vi.fn(() => []),
-	statSync: vi.fn(() => ({ isDirectory: () => true })),
+	statSync: vi.fn(() => ({ isDirectory: () => true, size: 0 })),
+	writeFileSync: vi.fn(),
 }));
 
 const mockObjcGetClass = vi.fn(() => "NSApplication_ptr");
@@ -183,7 +190,7 @@ import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 
 // Import handlers and pure helper functions after all mocks are set up
 const {
@@ -209,6 +216,7 @@ const {
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
+	playTaskCompleteSound,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -276,6 +284,9 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockReset();
 		vi.mocked(data.updateTask).mockReset();
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		for (const key of Object.keys(mockBundledSounds)) delete mockBundledSounds[key];
+		vi.mocked(mkdirSync).mockClear();
+		vi.mocked(writeFileSync).mockClear();
 	});
 
 	it("moves in-progress task to user-questions", async () => {
@@ -1215,6 +1226,26 @@ describe("handlers.moveTask", () => {
 		expect(cleanupCall).toBeGreaterThanOrEqual(0);
 		expect(afplayCall).toBeLessThan(cleanupCall);
 		expect(result.status).toBe("completed");
+	});
+
+	it("playTaskCompleteSound: materializes bundled audio when packaged filesystem assets are inaccessible", () => {
+		const bundledBytes = Buffer.from("fake-mp3-data", "utf-8");
+
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
+		vi.mocked(existsSync).mockReturnValue(false);
+		mockBundledSounds["task-completed.mp3"] = bundledBytes.toString("base64");
+
+		playTaskCompleteSound("completed");
+
+		expect(mkdirSync).toHaveBeenCalledWith("/tmp/test-dev3/cache/sounds", { recursive: true });
+		expect(writeFileSync).toHaveBeenCalledWith(
+			"/tmp/test-dev3/cache/sounds/task-completed.mp3",
+			bundledBytes,
+		);
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["afplay", "-v", "0.3", "/tmp/test-dev3/cache/sounds/task-completed.mp3"],
+			{ env: { HOME: process.env.HOME || "/" } },
+		);
 	});
 
 	it("in-progress → cancelled: same cleanup as completed", async () => {

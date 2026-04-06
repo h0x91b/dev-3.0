@@ -1,0 +1,1 @@
+Fixed task completion and cancellation sounds in packaged app builds. The Bun main process now falls back to embedded MP3 data when Electrobun's bundled resources are not readable as normal filesystem paths, so `afplay` still gets a real file to play.
