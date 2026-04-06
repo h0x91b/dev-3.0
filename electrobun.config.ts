@@ -16,6 +16,8 @@ export default {
 			codesign: false,
 			notarize: false,
 			entitlements: {
+				"com.apple.security.device.audio-input":
+					"Required for voice dictation in AI coding assistants",
 				"com.apple.security.files.desktop.read-write":
 					"dev-3.0 manages git worktrees and terminals for projects on your Desktop.",
 				"com.apple.security.files.downloads.read-write":
