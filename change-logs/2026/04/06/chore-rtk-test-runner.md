@@ -1,0 +1,1 @@
+Use RTK (Rust Token Killer) as the vitest runner when available, falling back to bunx otherwise. Applies to all test scripts: `test`, `test:full`, `test:bun`, `test:cli`. This reduces test output noise by ~90% during local development while keeping CI behavior unchanged.
