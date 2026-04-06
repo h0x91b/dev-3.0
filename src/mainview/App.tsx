@@ -20,6 +20,7 @@ import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBan
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
+import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
@@ -60,6 +61,10 @@ function App() {
 		function onAuthFailed() { setAuthFailed(true); }
 		window.addEventListener("rpc:authFailed", onAuthFailed);
 		return () => window.removeEventListener("rpc:authFailed", onAuthFailed);
+	}, []);
+
+	useEffect(() => {
+		initTaskSoundPlayback();
 	}, []);
 
 	const checkRequirements = useCallback(async () => {
@@ -245,6 +250,15 @@ function App() {
 		window.addEventListener("rpc:projectUpdated", onProjectUpdated);
 		return () => window.removeEventListener("rpc:projectUpdated", onProjectUpdated);
 	}, [dispatch]);
+
+	useEffect(() => {
+		function onTaskSound(e: Event) {
+			const { status } = (e as CustomEvent).detail;
+			void playTaskSound(status);
+		}
+		window.addEventListener("rpc:taskSound", onTaskSound);
+		return () => window.removeEventListener("rpc:taskSound", onTaskSound);
+	}, []);
 
 	useEffect(() => {
 		function onTerminalBell(e: Event) {

@@ -33,6 +33,11 @@ vi.mock("../zoom", () => ({
 	MAX_ZOOM: 2.0,
 }));
 
+vi.mock("../task-sounds", () => ({
+	initTaskSoundPlayback: vi.fn(),
+	playTaskSound: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock child screens so they don't trigger their own API calls
 vi.mock("../components/Dashboard", () => ({
 	default: () => <div data-testid="dashboard-screen" />,
@@ -70,6 +75,7 @@ vi.mock("../components/ProjectTerminal", () => ({
 }));
 
 import { api } from "../rpc";
+import { initTaskSoundPlayback, playTaskSound } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
@@ -161,6 +167,11 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("Add Project modal", () => {
+		it("initializes task sound playback on mount", async () => {
+			await renderApp();
+			expect(initTaskSoundPlayback).toHaveBeenCalled();
+		});
+
 		it("opens when rpc:openAddProjectModal fires", async () => {
 			await renderApp();
 			await act(async () => {
@@ -176,6 +187,14 @@ describe("App keyboard shortcuts", () => {
 			});
 			await userEvent.click(await screen.findByText("Close Add Project"));
 			expect(screen.queryByTestId("add-project-modal")).not.toBeInTheDocument();
+		});
+
+		it("plays task sounds when rpc:taskSound fires", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed" } }));
+			});
+			expect(playTaskSound).toHaveBeenCalledWith("completed");
 		});
 	});
 

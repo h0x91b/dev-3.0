@@ -1,6 +1,4 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { PATHS } from "electrobun/bun";
 import type { ColumnAgentConfig, CustomColumn, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -9,8 +7,8 @@ import * as pty from "../pty-server";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
-import { loadSettings, loadSettingsSync } from "../settings";
 import { DEV3_HOME } from "../paths";
+import { loadSettings, loadSettingsSync } from "../settings";
 import { spawn } from "../spawn";
 import { getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
@@ -131,30 +129,10 @@ export async function runCleanupScript(task: Task, project: Project): Promise<vo
 	log.info("Cleanup session finished", { session: sessionName });
 }
 
-export function playTaskCompleteSound(status: "completed" | "cancelled"): void {
+export function emitTaskSound(status: "completed" | "cancelled"): void {
 	const settings = loadSettingsSync();
 	if (settings.playSoundOnTaskComplete === false) return;
-
-	const filename = status === "completed" ? "task-completed.mp3" : "task-cancelled.mp3";
-	const volume = status === "completed" ? "0.3" : "0.7";
-	const prodPath = join(PATHS.VIEWS_FOLDER, "..", "sounds", filename);
-	const devPath = typeof import.meta.dir === "string"
-		? join(import.meta.dir, "..", "assets", "sounds", filename)
-		: null;
-	const soundPath = existsSync(prodPath) ? prodPath : devPath && existsSync(devPath) ? devPath : null;
-
-	if (!soundPath) {
-		log.warn("Task complete sound file not found", { prodPath, devPath, status });
-		return;
-	}
-
-	try {
-		spawn(["afplay", "-v", volume, soundPath], {
-			env: { HOME: process.env.HOME || "/" },
-		});
-	} catch (err) {
-		log.warn("Failed to play task complete sound", { error: String(err) });
-	}
+	getPushMessage()?.("taskSound", { status });
 }
 
 export async function triggerColumnAgentIfNeeded(
@@ -289,7 +267,7 @@ async function moveTask(params: { taskId: string; projectId: string; newStatus: 
 	if (newStatus === "completed" || newStatus === "cancelled") {
 		cleanupTaskState(task.id);
 		portPool.releasePorts(task.id);
-		playTaskCompleteSound(newStatus as "completed" | "cancelled");
+		emitTaskSound(newStatus as "completed" | "cancelled");
 		if (params.force) {
 			log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
 		} else if (isActive(oldStatus) || task.worktreePath) {

@@ -24,7 +24,7 @@ export {
 	handleBellAutoStatus,
 	isTaskInProgress,
 	runCleanupScript,
-	playTaskCompleteSound,
+	emitTaskSound,
 	triggerColumnAgentIfNeeded,
 } from "./rpc-handlers/task-lifecycle";
 export { resolveOperationalProjectConfig } from "./rpc-handlers/settings-config";

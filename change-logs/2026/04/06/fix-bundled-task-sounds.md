@@ -1,0 +1,1 @@
+Rebuilt task completion and cancellation sounds around renderer-side playback instead of Bun shelling out to `afplay`. Status transitions now emit a lightweight RPC event, and the React app preloads the bundled MP3 assets directly so packaged builds no longer depend on filesystem-only resource paths or cached fallback files.

@@ -6,6 +6,7 @@ import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	taskUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: payload })),
 	projectUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:projectUpdated", { detail: payload })),
+	taskSound: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: payload })),
 	ptyDied: (payload) => window.dispatchEvent(new CustomEvent("rpc:ptyDied", { detail: payload })),
 	projectPtyDied: (payload) => window.dispatchEvent(new CustomEvent("rpc:projectPtyDied", { detail: payload })),
 	terminalBell: (payload) => window.dispatchEvent(new CustomEvent("rpc:terminalBell", { detail: payload })),

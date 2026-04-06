@@ -4,7 +4,7 @@ import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransition
 import * as data from "./data";
 import * as git from "./git";
 import * as pty from "./pty-server";
-import { isActive, activateTask, runCleanupScript, playTaskCompleteSound, getPushMessage, getPushMessageLocal, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
+import { isActive, activateTask, runCleanupScript, emitTaskSound, getPushMessage, getPushMessageLocal, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
@@ -487,7 +487,7 @@ const handlers: Record<string, Handler> = {
 
 		// active → completed/cancelled: destroy PTY, cleanup, remove worktree
 		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
-			playTaskCompleteSound(builtinStatus as "completed" | "cancelled");
+			emitTaskSound(builtinStatus as "completed" | "cancelled");
 			try { pty.destroySession(task.id, task.tmuxSocket ?? undefined); } catch {}
 			try { await runCleanupScript(task, project); } catch {}
 			try { await git.removeWorktree(project, task); } catch {}
