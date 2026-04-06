@@ -1,1 +1,1 @@
-Added a top-level AGENTS.md rule for a concise default response style. The guidance now tells agents to lead with the decision, use fixed `========== [SECTION] ==========` ASCII dividers, avoid filler, and still end code-change replies with a short `## Test instructions` block.
+Updated the top-level AGENTS.md response-style rule to a Decision-First format. The default now uses ordered `CANDIDATES`, `DECISION`, `WHY`, and `NEXT` sections with equal-width ASCII dividers, plus the repo-mandated `## Test instructions` block for code changes.

@@ -6,23 +6,27 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Response style
 
-**Default writing style: Concise.**
+**Default writing style: Decision-First.**
 
 When replying to the user, optimize for fast scanning and minimum necessary text.
 
 Rules:
-- Start with the answer or decision, not with setup or filler.
-- Use fixed ASCII section dividers for scan-friendly structure when sections are present:
-  `========== [DECISION] ==========`
-  `========== [WHY] ==========`
-  `========== [NEXT] ==========`
-  `========== [TEST INSTRUCTIONS] ==========`
-- Keep each section to 1-2 short paragraphs or a flat list of concrete steps.
+- Use this section order when structure is needed:
+  `============= [CANDIDATES] =============`
+  `============== [DECISION] ==============`
+  `================ [WHY] =================`
+  `================ [NEXT] ================`
+- Show `2-5` candidates in `CANDIDATES`.
+- Mark the selected candidate with `(chosen)`.
+- Each candidate may use up to 5 short lines.
+- `CANDIDATES` is for concise option framing, not full justification.
+- `DECISION` is where the chosen option is explained in more detail.
+- Keep each section to short paragraphs or a flat list of concrete steps.
 - Prefer short sentences, concrete nouns, and direct verbs.
 - Do not repeat the same point in different words.
 - Do not add background unless it changes the decision.
-- For code changes, always end the final reply with a short `## Test instructions` block.
-- Keep the section labels uppercase and the divider format identical every time.
+- For code changes, always end the final reply with the repo-mandated `## Test instructions` block.
+- Keep the section labels uppercase and the divider width visually consistent every time.
 - If a sentence does not add new information, remove it.
 - Aim for something the user can read in 10-15 seconds for normal task updates.
 
