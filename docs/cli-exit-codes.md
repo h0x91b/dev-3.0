@@ -1,0 +1,17 @@
+# CLI Exit Codes
+
+Public `dev3` CLI exit codes are defined in `src/shared/cli-exit-codes.ts`.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| `0` | `CLI_EXIT_CODE_SUCCESS` | Command completed successfully, or exited intentionally without an error (`--help`, `--version`). |
+| `1` | `CLI_EXIT_CODE_COMMAND_FAILED` | A handled command failure occurred after parsing succeeded. |
+| `2` | `CLI_EXIT_CODE_APP_NOT_RUNNING` | The desktop app or CLI socket was unavailable for a command that requires it. |
+| `3` | `CLI_EXIT_CODE_USAGE_ERROR` | The CLI invocation was invalid: bad command, bad subcommand, or missing required args. |
+| `4` | `CLI_EXIT_CODE_INTERNAL_ERROR` | An unexpected internal CLI failure escaped normal command handling. |
+
+Rules:
+
+- Every non-zero public `dev3` CLI exit code must be unique.
+- Add or change codes only in `src/shared/cli-exit-codes.ts`.
+- Keep this file and `src/cli/__tests__/exit-codes.test.ts` in sync with the registry.

@@ -1,5 +1,5 @@
 import { sendRequest } from "../socket-client";
-import { printTable, exitError } from "../output";
+import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import type { CliContext } from "../context";
 
@@ -47,5 +47,5 @@ export async function handleConfig(
 		return;
 	}
 
-	exitError(`Unknown subcommand: config ${subcommand}`, "Available: config show, config export", 3);
+	exitUsage(`Unknown subcommand: config ${subcommand}\nAvailable: config show, config export`);
 }

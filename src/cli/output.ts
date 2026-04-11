@@ -1,3 +1,10 @@
+import {
+	CLI_EXIT_CODE_APP_NOT_RUNNING,
+	CLI_EXIT_CODE_COMMAND_FAILED,
+	CLI_EXIT_CODE_INTERNAL_ERROR,
+	CLI_EXIT_CODE_USAGE_ERROR,
+} from "../shared/cli-exit-codes";
+
 /**
  * Print a table with column headers and rows.
  * Auto-sizes columns based on content width.
@@ -27,7 +34,7 @@ export function printDetail(fields: Array<[string, string]>): void {
 	}
 }
 
-export function exitError(message: string, detail?: string, code = 1): never {
+export function exitError(message: string, detail?: string, code = CLI_EXIT_CODE_COMMAND_FAILED): never {
 	process.stderr.write(`error: ${message}\n`);
 	if (detail) {
 		for (const line of detail.split("\n")) {
@@ -41,10 +48,14 @@ export function exitAppNotRunning(): never {
 	exitError(
 		"app not running",
 		"The dev3.0 desktop app must be running to use the CLI.\nStart the app and try again.",
-		2,
+		CLI_EXIT_CODE_APP_NOT_RUNNING,
 	);
 }
 
 export function exitUsage(message: string): never {
-	exitError(message, undefined, 3);
+	exitError(message, undefined, CLI_EXIT_CODE_USAGE_ERROR);
+}
+
+export function exitInternalError(message: string): never {
+	exitError(message, undefined, CLI_EXIT_CODE_INTERNAL_ERROR);
 }

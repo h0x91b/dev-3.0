@@ -176,6 +176,16 @@ bun run build:prod
 
 Use `bun run lint` for the repository's TypeScript/type-check validation step before committing.
 
+## CLI exit codes
+
+Public `dev3` CLI exit codes are a documented contract.
+
+Rules:
+- Define them only in `src/shared/cli-exit-codes.ts`.
+- Keep every non-zero code unique.
+- Do not inline non-zero exit numbers in `src/cli/`.
+- Update `docs/cli-exit-codes.md` and `src/cli/__tests__/exit-codes.test.ts` whenever a code is added or changed.
+
 ## Architecture
 
 Two-process model:

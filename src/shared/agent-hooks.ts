@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskStatus } from "./types";
+import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
@@ -46,8 +47,12 @@ function buildMoveCommand(
 	return parts.join(" ");
 }
 
+function wrapCodexAppOfflineFallback(command: string): string {
+	return `${command} || [ $? -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]`;
+}
+
 function wrapCodexStopHookCommand(command: string): string {
-	return `${command} >/dev/null && printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`;
+	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else hook_exit_code=$?; if [ "$hook_exit_code" -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$hook_exit_code"; fi; fi`;
 }
 
 function buildStopGroups(
@@ -130,7 +135,9 @@ export function buildCodexHooks(
 	options?: { stopTarget?: TaskStatus },
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
-	const workingCmd = buildMoveCommand("in-progress", "--if-status-not review-by-ai");
+	const workingCmd = wrapCodexAppOfflineFallback(
+		buildMoveCommand("in-progress", "--if-status-not review-by-ai"),
+	);
 
 	return {
 		SessionStart: [

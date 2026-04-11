@@ -67,5 +67,5 @@ export async function handleTasks(
 		return;
 	}
 
-	exitError(`Unknown subcommand: tasks ${subcommand}`, "Available: tasks list", 3);
+	exitUsage(`Unknown subcommand: tasks ${subcommand}\nAvailable: tasks list`);
 }

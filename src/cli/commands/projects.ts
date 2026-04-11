@@ -1,6 +1,6 @@
 import type { Project } from "../../shared/types";
 import { sendRequest } from "../socket-client";
-import { printTable, exitError } from "../output";
+import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 
 export async function handleProjects(subcommand: string | undefined, _args: ParsedArgs, socketPath: string): Promise<void> {
@@ -21,5 +21,5 @@ export async function handleProjects(subcommand: string | undefined, _args: Pars
 		return;
 	}
 
-	exitError(`Unknown subcommand: projects ${subcommand}`, "Available: projects list", 3);
+	exitUsage(`Unknown subcommand: projects ${subcommand}\nAvailable: projects list`);
 }
