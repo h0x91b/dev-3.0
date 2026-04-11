@@ -37,12 +37,20 @@ type DiffRenderSource =
 	| { kind: "git"; buildArgs: (entry: ParsedNameStatusEntry) => string[] }
 	| { kind: "file" };
 
+function withGitFilenameEncoding(cmd: string[]): string[] {
+	if (cmd[0] !== "git") {
+		return cmd;
+	}
+	return ["git", "-c", "core.quotepath=false", ...cmd.slice(1)];
+}
+
 export async function run(
 	cmd: string[],
 	cwd: string,
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-	log.debug(`exec: ${cmd.join(" ")}`, { cwd });
-	const proc = spawn(cmd, {
+	const finalCmd = withGitFilenameEncoding(cmd);
+	log.debug(`exec: ${finalCmd.join(" ")}`, { cwd });
+	const proc = spawn(finalCmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
@@ -54,7 +62,7 @@ export async function run(
 	const code = await proc.exited;
 	const result = { ok: code === 0, stdout: stdout.trim(), stderr: stderr.trim() };
 	if (!result.ok) {
-		log.warn(`Command failed (exit ${code}): ${cmd.join(" ")}`, {
+		log.warn(`Command failed (exit ${code}): ${finalCmd.join(" ")}`, {
 			stderr: result.stderr,
 		});
 	}
@@ -65,8 +73,9 @@ async function runBinary(
 	cmd: string[],
 	cwd: string,
 ): Promise<BinaryRunResult> {
-	log.debug(`exec(binary): ${cmd.join(" ")}`, { cwd });
-	const proc = spawn(cmd, {
+	const finalCmd = withGitFilenameEncoding(cmd);
+	log.debug(`exec(binary): ${finalCmd.join(" ")}`, { cwd });
+	const proc = spawn(finalCmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
@@ -82,7 +91,7 @@ async function runBinary(
 		stderr: stderr.trim(),
 	};
 	if (!result.ok) {
-		log.warn(`Binary command failed (exit ${code}): ${cmd.join(" ")}`, {
+		log.warn(`Binary command failed (exit ${code}): ${finalCmd.join(" ")}`, {
 			stderr: result.stderr,
 		});
 	}
@@ -93,8 +102,9 @@ async function runWithCode(
 	cmd: string[],
 	cwd: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-	log.debug(`exec(code): ${cmd.join(" ")}`, { cwd });
-	const proc = spawn(cmd, {
+	const finalCmd = withGitFilenameEncoding(cmd);
+	log.debug(`exec(code): ${finalCmd.join(" ")}`, { cwd });
+	const proc = spawn(finalCmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
