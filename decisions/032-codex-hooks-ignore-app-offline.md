@@ -6,11 +6,11 @@ dev3-generated Codex hooks call `~/.dev3.0/bin/dev3 task move ...` from repo-loc
 
 ## Investigation
 
-Changing `exitAppNotRunning()` globally would make normal human CLI usage report success for a real failure, which is the wrong contract outside hooks. The bug is specific to generated Codex hook commands, so the fix needs to live in [src/shared/agent-hooks.ts](src/shared/agent-hooks.ts), not in the general CLI exit path in [src/cli/output.ts](src/cli/output.ts).
+Changing `exitAppNotRunning()` globally would make normal human CLI usage report success for a real failure, which is the wrong contract outside hooks. The bug is specific to generated Codex hook commands, so the fix needs to live in [src/shared/agent-hooks.ts](src/shared/agent-hooks.ts), not in the general CLI exit path in [src/cli/output.ts](src/cli/output.ts). During verification we also found the first Stop wrapper revision used `status=$?`, which crashes under zsh because `status` is a read-only special parameter there.
 
 ## Decision
 
-Codex `SessionStart`, `UserPromptSubmit`, and `PreToolUse` hooks now wrap `dev3 task move` with a shell fallback that only treats exit code `2` as success. The `Stop` hook keeps returning `{}` JSON, but now does so both on normal success and on the same app-offline exit code while still re-throwing any other failure status.
+Codex `SessionStart`, `UserPromptSubmit`, and `PreToolUse` hooks now wrap `dev3 task move` with a shell fallback that only treats exit code `2` as success. The `Stop` hook keeps returning `{}` JSON, but now does so both on normal success and on the same app-offline exit code while still re-throwing any other failure status, using a neutral shell variable name (`hook_exit_code`) that works in zsh.
 
 ## Risks
 

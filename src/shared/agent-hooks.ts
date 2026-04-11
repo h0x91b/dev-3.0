@@ -52,7 +52,7 @@ function wrapCodexAppOfflineFallback(command: string): string {
 }
 
 function wrapCodexStopHookCommand(command: string): string {
-	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else status=$?; if [ "$status" -eq ${APP_NOT_RUNNING_EXIT_CODE} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$status"; fi; fi`;
+	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else hook_exit_code=$?; if [ "$hook_exit_code" -eq ${APP_NOT_RUNNING_EXIT_CODE} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$hook_exit_code"; fi; fi`;
 }
 
 function buildStopGroups(

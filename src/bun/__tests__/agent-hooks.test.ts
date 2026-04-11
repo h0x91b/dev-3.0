@@ -292,14 +292,14 @@ describe("buildCodexHooks", () => {
 		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
 		expect(hooks.Stop[0].hooks[0].command).toContain("--codex-stop-hook");
 		expect(hooks.Stop[0].hooks[0].command).toContain(">/dev/null");
-		expect(hooks.Stop[0].hooks[0].command).toContain('status=$?');
-		expect(hooks.Stop[0].hooks[0].command).toContain('[ "$status" -eq 2 ]');
+		expect(hooks.Stop[0].hooks[0].command).toContain('hook_exit_code=$?');
+		expect(hooks.Stop[0].hooks[0].command).toContain('[ "$hook_exit_code" -eq 2 ]');
 		expect(hooks.Stop[0].hooks[0].command).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
 		expect(hooks.Stop[1].hooks[0].command).toContain("--codex-stop-hook");
 		expect(hooks.Stop[1].hooks[0].command).toContain(">/dev/null");
-		expect(hooks.Stop[1].hooks[0].command).toContain('status=$?');
-		expect(hooks.Stop[1].hooks[0].command).toContain('[ "$status" -eq 2 ]');
+		expect(hooks.Stop[1].hooks[0].command).toContain('hook_exit_code=$?');
+		expect(hooks.Stop[1].hooks[0].command).toContain('[ "$hook_exit_code" -eq 2 ]');
 		expect(hooks.Stop[1].hooks[0].command).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 	});
 
@@ -310,8 +310,9 @@ describe("buildCodexHooks", () => {
 		expect(cmd).toContain("--status review-by-user --if-status in-progress");
 		expect(cmd).toContain("--codex-stop-hook");
 		expect(cmd).toContain(">/dev/null");
-		expect(cmd).toContain('status=$?');
-		expect(cmd).toContain('[ "$status" -eq 2 ]');
+		expect(cmd).toContain('hook_exit_code=$?');
+		expect(cmd).toContain('[ "$hook_exit_code" -eq 2 ]');
+		expect(cmd).not.toContain('status=$?');
 		expect(cmd).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 		expect(cmd).not.toContain("|| true");
 	});
