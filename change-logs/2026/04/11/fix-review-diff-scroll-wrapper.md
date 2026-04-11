@@ -1,0 +1,1 @@
+Fix the inline review diff viewer to rely on the library's own horizontal scroll container instead of wrapping it in a second overflow layer. Add a regression test so the extra wrapper does not come back and break diff rendering in WebKit-based views.
