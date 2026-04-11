@@ -3,7 +3,9 @@ import type { ElectrobunConfig } from "electrobun";
 export default {
 	app: {
 		name: "dev-3.0",
-		identifier: "dev3.electrobun.dev",
+		identifier: process.env.DEV3_CDP_PORT
+			? `dev3.electrobun.dev.${process.env.DEV3_CDP_PORT}`
+			: "dev3.electrobun.dev",
 		version: "1.6.2",
 	},
 	release: {
@@ -11,10 +13,19 @@ export default {
 	},
 	build: {
 		mac: {
-			bundleCEF: false,
+			bundleCEF: !!process.env.DEV3_CDP_PORT,
 			icons: "icon.iconset",
 			codesign: false,
 			notarize: false,
+			...(process.env.DEV3_CDP_PORT
+				? {
+						defaultRenderer: "cef" as const,
+						chromiumFlags: {
+							"remote-debugging-port":
+								process.env.DEV3_CDP_PORT || "9222",
+						},
+					}
+				: {}),
 			entitlements: {
 				"com.apple.security.device.audio-input":
 					"Required for voice dictation in AI coding assistants",

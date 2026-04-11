@@ -1,11 +1,12 @@
 {
   "setupScript": "echo setup\nbun install",
-  "devScript": "bun run dev",
+  "devScript": "if [ -f .dev3_cdp ]; then DEV3_CDP_PORT=${DEV3_PORT0} bun run dev; else if [ -f build/dev-macos-arm64/dev-3.0-dev.app/Contents/Resources/build.json ] && grep -q '\"defaultRenderer\":\"cef\"' build/dev-macos-arm64/dev-3.0-dev.app/Contents/Resources/build.json; then echo '[dev3] Stale CEF build detected without .dev3_cdp — removing app bundle' && rm -rf build/dev-macos-arm64/dev-3.0-dev.app; fi && DEV3_RPC_PORT=${DEV3_PORT0:-19191} bun run dev; fi",
   "clonePaths": [
     "node_modules",
     "build",
     "dist"
   ],
+  "portCount": 1,
   "builtinColumnAgents": {
     "review-by-ai": {
       "agentId": "builtin-claude",

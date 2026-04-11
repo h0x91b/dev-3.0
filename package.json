@@ -9,7 +9,7 @@
 		"watch": "concurrently --kill-others \"bun run hmr\" \"bun run scripts/watch-main.ts\"",
 		"hmr": "vite --port 5173",
 		"build": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build",
-		"build:prod": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build --channel prod",
+		"build:prod": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && DEV3_PROD=1 vite build && bun run build:cli && electrobun build --channel prod",
 		"build:cli": "bun build src/cli/main.ts --compile --outfile dist/dev3",
 		"start": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && bun run build:cli && electrobun build && electrobun dev",
 		"lint": "bun scripts/lint.ts",

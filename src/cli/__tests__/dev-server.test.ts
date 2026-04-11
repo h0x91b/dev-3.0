@@ -143,6 +143,7 @@ describe("dev-server start/stop/restart", () => {
 		});
 		expect(stdoutOutput).toContain("Restarted dev server");
 	});
+
 });
 
 describe("dev-server errors", () => {

@@ -6,6 +6,7 @@ export default defineConfig({
 	root: "src/mainview",
 	define: {
 		"globalThis.__DEV3_BROWSER_RPC_PORT": JSON.stringify(19191),
+		"globalThis.__DEV3_AUTOMATION": JSON.stringify(process.env.DEV3_PROD !== "1"),
 	},
 	build: {
 		outDir: "../../dist",

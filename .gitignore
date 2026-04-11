@@ -11,3 +11,4 @@ changelog.json
 
 # dev-3.0 local config
 .dev3/config.local.json
+.dev3_cdp

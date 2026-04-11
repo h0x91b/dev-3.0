@@ -214,6 +214,42 @@ describe("MIME types", () => {
 });
 
 // ================================================================
+// Localhost dev bypass for auth
+// ================================================================
+
+// Reimplements isLocalhostDevBypass logic from remote-access-server.ts
+function isLocalhostDevBypass(hostname: string, hasRpcPort: boolean): boolean {
+	if (!hasRpcPort) return false;
+	return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+describe("localhost dev auth bypass", () => {
+	it("bypasses auth for localhost when DEV3_RPC_PORT is set", () => {
+		expect(isLocalhostDevBypass("localhost", true)).toBe(true);
+	});
+
+	it("bypasses auth for 127.0.0.1 when DEV3_RPC_PORT is set", () => {
+		expect(isLocalhostDevBypass("127.0.0.1", true)).toBe(true);
+	});
+
+	it("bypasses auth for ::1 when DEV3_RPC_PORT is set", () => {
+		expect(isLocalhostDevBypass("::1", true)).toBe(true);
+	});
+
+	it("does NOT bypass auth for localhost when DEV3_RPC_PORT is unset", () => {
+		expect(isLocalhostDevBypass("localhost", false)).toBe(false);
+	});
+
+	it("does NOT bypass auth for remote hosts even when DEV3_RPC_PORT is set", () => {
+		expect(isLocalhostDevBypass("192.168.1.100", true)).toBe(false);
+	});
+
+	it("does NOT bypass auth for remote hosts when DEV3_RPC_PORT is unset", () => {
+		expect(isLocalhostDevBypass("10.0.0.5", false)).toBe(false);
+	});
+});
+
+// ================================================================
 // uploadImageBase64 size limit
 // ================================================================
 

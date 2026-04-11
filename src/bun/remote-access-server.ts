@@ -1,8 +1,9 @@
 /**
  * Remote Access Server.
  *
- * A single HTTP + WebSocket server on 0.0.0.0:random that serves the full UI
- * to any browser on the local network. Replaces the previous browser-rpc-server.
+ * A single HTTP + WebSocket server that serves the full UI to any browser on
+ * the local network. Listens on DEV3_RPC_PORT if set (fixed, for agent-browser
+ * testing), otherwise on a random port. Replaces the previous browser-rpc-server.
  *
  * Features:
  *   - Static file serving (built Vite assets from dist/)
@@ -30,7 +31,15 @@ function extractToken(req: Request): string | null {
 	return url.searchParams.get("token") ?? null;
 }
 
+/** Allow unauthenticated localhost connections when DEV3_RPC_PORT is set (dev mode). */
+function isLocalhostDevBypass(req: Request): boolean {
+	if (!process.env.DEV3_RPC_PORT) return false;
+	const host = new URL(req.url).hostname;
+	return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
 async function isSessionAuthenticated(req: Request): Promise<boolean> {
+	if (isLocalhostDevBypass(req)) return true;
 	const token = extractToken(req);
 	if (!token) return false;
 	return verifySessionToken(token);
@@ -207,7 +216,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 	const server = Bun.serve<WsData>({
 		hostname: "0.0.0.0",
-		port: 0, // random
+		port: parseInt(process.env.DEV3_RPC_PORT || "0", 10), // fixed when set, random otherwise
 		async fetch(req, server) {
 			const url = new URL(req.url);
 			const ua = req.headers.get("user-agent")?.slice(0, 80) ?? "unknown";

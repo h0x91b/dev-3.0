@@ -382,6 +382,22 @@ function App() {
 		};
 	}, []);
 
+	// Automation bridge for UI testing (dev3-ui-control).
+	// __DEV3_AUTOMATION is true in dev/staging builds, false in prod (DEV3_PROD=1).
+	// Vite replaces the global at build time so the block is tree-shaken in prod.
+	useEffect(() => {
+		if (!(globalThis as any).__DEV3_AUTOMATION) return;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		(window as any).__dev3 = {
+			navigate: (route: Route) => navigate(route),
+			getState: () => state,
+		};
+		return () => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			delete (window as any).__dev3;
+		};
+	}, [navigate, state]);
+
 	// Listen for Cmd+, (Settings menu item)
 	useEffect(() => {
 		function onNavigateToSettings() {
