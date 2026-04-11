@@ -653,6 +653,38 @@ describe("TaskCard", () => {
 
 			expect(screen.getByTestId("task-detail-modal")).toBeInTheDocument();
 		});
+
+		it("keeps description accessible while preparing", async () => {
+			const user = userEvent.setup();
+			renderCard(makeTask({
+				status: "todo",
+				preparing: true,
+				title: "Short title",
+				description: "This is a much longer description that differs from title",
+			}));
+
+			await user.click(screen.getByText("Show full description"));
+
+			expect(screen.getByTestId("task-detail-modal")).toBeInTheDocument();
+		});
+
+		it("keeps run action disabled while preparing", async () => {
+			const user = userEvent.setup();
+			const onLaunchVariants = vi.fn();
+			renderCard(makeTask({
+				status: "todo",
+				preparing: true,
+				title: "Short title",
+				description: "This is a much longer description that differs from title",
+			}), { onLaunchVariants });
+
+			const runButton = screen.getByRole("button", { name: "Run" });
+			expect(runButton).toBeDisabled();
+
+			await user.click(screen.getByText("Show full description"));
+
+			expect(onLaunchVariants).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("bell badge", () => {

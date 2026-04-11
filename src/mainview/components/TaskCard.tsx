@@ -389,7 +389,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${isCompleting ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60 pointer-events-none" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
+			} ${isCompleting ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
 			style={{ borderLeftColor: isCompleting ? "#888" : color }}
 			onClick={handleClick}
 		>
@@ -402,9 +402,20 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 			{/* Preparing spinner overlay — worktree is being created */}
 			{isPreparing && (
-				<div className="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-xl bg-base/40">
-					<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
-					<span className="text-xs text-fg-2 font-medium">{t("task.preparing")}</span>
+				<div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-base/40">
+					<div className="flex items-center gap-2">
+						<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+						<span className="text-xs text-fg-2 font-medium">{t("task.preparing")}</span>
+					</div>
+					{hasLongDescription && (
+						<button
+							onClick={handleShowDescription}
+							className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
+							title={t("task.showDescription")}
+						>
+							{t("task.showDescription")}
+						</button>
+					)}
 				</div>
 			)}
 
