@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { printTable, printDetail, exitError, exitAppNotRunning, exitUsage } from "../output";
+import { printTable, printDetail, exitError, exitAppNotRunning, exitInternalError, exitUsage } from "../output";
+import {
+	CLI_EXIT_CODE_APP_NOT_RUNNING,
+	CLI_EXIT_CODE_COMMAND_FAILED,
+	CLI_EXIT_CODE_INTERNAL_ERROR,
+	CLI_EXIT_CODE_USAGE_ERROR,
+} from "../../shared/cli-exit-codes";
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -115,10 +121,10 @@ describe("printDetail", () => {
 });
 
 describe("exitError", () => {
-	it("writes error to stderr and exits with code 1 by default", () => {
-		expect(() => exitError("something broke")).toThrow("EXIT_1");
+	it("writes error to stderr and exits with the default command-failed code", () => {
+		expect(() => exitError("something broke")).toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
 		expect(stderrOutput).toContain("error: something broke");
-		expect(exitSpy).toHaveBeenCalledWith(1);
+		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_COMMAND_FAILED);
 	});
 
 	it("exits with custom code", () => {
@@ -135,17 +141,25 @@ describe("exitError", () => {
 });
 
 describe("exitAppNotRunning", () => {
-	it("exits with code 2 and app-not-running message", () => {
-		expect(() => exitAppNotRunning()).toThrow("EXIT_2");
+	it("exits with the app-not-running code and message", () => {
+		expect(() => exitAppNotRunning()).toThrow(`EXIT_${CLI_EXIT_CODE_APP_NOT_RUNNING}`);
 		expect(stderrOutput).toContain("app not running");
-		expect(exitSpy).toHaveBeenCalledWith(2);
+		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_APP_NOT_RUNNING);
 	});
 });
 
 describe("exitUsage", () => {
-	it("exits with code 3", () => {
-		expect(() => exitUsage("bad command")).toThrow("EXIT_3");
+	it("exits with the usage code", () => {
+		expect(() => exitUsage("bad command")).toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(stderrOutput).toContain("error: bad command");
-		expect(exitSpy).toHaveBeenCalledWith(3);
+		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
+	});
+});
+
+describe("exitInternalError", () => {
+	it("exits with the internal-error code", () => {
+		expect(() => exitInternalError("boom")).toThrow(`EXIT_${CLI_EXIT_CODE_INTERNAL_ERROR}`);
+		expect(stderrOutput).toContain("error: boom");
+		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_INTERNAL_ERROR);
 	});
 });

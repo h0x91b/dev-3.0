@@ -5,11 +5,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskStatus } from "./types";
+import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
-const APP_NOT_RUNNING_EXIT_CODE = 2;
 
 export interface HookEntry {
 	type: string;
@@ -48,11 +48,11 @@ function buildMoveCommand(
 }
 
 function wrapCodexAppOfflineFallback(command: string): string {
-	return `${command} || [ $? -eq ${APP_NOT_RUNNING_EXIT_CODE} ]`;
+	return `${command} || [ $? -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]`;
 }
 
 function wrapCodexStopHookCommand(command: string): string {
-	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else hook_exit_code=$?; if [ "$hook_exit_code" -eq ${APP_NOT_RUNNING_EXIT_CODE} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$hook_exit_code"; fi; fi`;
+	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else hook_exit_code=$?; if [ "$hook_exit_code" -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$hook_exit_code"; fi; fi`;
 }
 
 function buildStopGroups(

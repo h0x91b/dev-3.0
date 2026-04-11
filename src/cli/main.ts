@@ -1,6 +1,6 @@
 import { parseArgs, resolveFileArgs } from "./args";
 import { detectContext, resolveSocketPath } from "./context";
-import { exitAppNotRunning, exitUsage } from "./output";
+import { exitAppNotRunning, exitInternalError, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
 import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
@@ -12,6 +12,7 @@ import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
+import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 
 const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
@@ -56,12 +57,12 @@ async function main(): Promise<void> {
 
 	if (rawArgs.length === 0 || rawArgs.includes("--help") || rawArgs.includes("-h")) {
 		process.stdout.write(HELP);
-		process.exit(0);
+		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}
 
 	if (rawArgs.includes("--version") || rawArgs.includes("-v")) {
 		process.stdout.write(`dev3 v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
-		process.exit(0);
+		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}
 
 	const command = rawArgs[0];
@@ -116,6 +117,5 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-	process.stderr.write(`error: ${err.message || String(err)}\n`);
-	process.exit(1);
+	exitInternalError(err instanceof Error ? err.message : String(err));
 });
