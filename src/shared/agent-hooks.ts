@@ -9,6 +9,7 @@ import type { TaskStatus } from "./types";
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
+const APP_NOT_RUNNING_EXIT_CODE = 2;
 
 export interface HookEntry {
 	type: string;
@@ -46,8 +47,12 @@ function buildMoveCommand(
 	return parts.join(" ");
 }
 
+function wrapCodexAppOfflineFallback(command: string): string {
+	return `${command} || [ $? -eq ${APP_NOT_RUNNING_EXIT_CODE} ]`;
+}
+
 function wrapCodexStopHookCommand(command: string): string {
-	return `${command} >/dev/null && printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`;
+	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else status=$?; if [ "$status" -eq ${APP_NOT_RUNNING_EXIT_CODE} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$status"; fi; fi`;
 }
 
 function buildStopGroups(
@@ -130,7 +135,9 @@ export function buildCodexHooks(
 	options?: { stopTarget?: TaskStatus },
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
-	const workingCmd = buildMoveCommand("in-progress", "--if-status-not review-by-ai");
+	const workingCmd = wrapCodexAppOfflineFallback(
+		buildMoveCommand("in-progress", "--if-status-not review-by-ai"),
+	);
 
 	return {
 		SessionStart: [

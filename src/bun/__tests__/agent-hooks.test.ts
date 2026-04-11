@@ -258,6 +258,7 @@ describe("buildCodexHooks", () => {
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain("--status in-progress");
 		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("|| [ $? -eq 2 ]");
 	});
 
 	it("PreToolUse hook is scoped to Bash and moves to in-progress", () => {
@@ -269,6 +270,19 @@ describe("buildCodexHooks", () => {
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain("--status in-progress");
 		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("|| [ $? -eq 2 ]");
+		expect(cmd).not.toContain("|| true");
+	});
+
+	it("UserPromptSubmit hook also ignores app-not-running without swallowing other failures", () => {
+		const hooks = buildCodexHooks();
+		const cmd = hooks.UserPromptSubmit[0].hooks[0].command;
+
+		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("|| [ $? -eq 2 ]");
+		expect(cmd).not.toContain("|| true");
 	});
 
 	it("Stop hook with review-by-ai stopTarget creates two matcher groups", () => {
@@ -278,21 +292,28 @@ describe("buildCodexHooks", () => {
 		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
 		expect(hooks.Stop[0].hooks[0].command).toContain("--codex-stop-hook");
 		expect(hooks.Stop[0].hooks[0].command).toContain(">/dev/null");
+		expect(hooks.Stop[0].hooks[0].command).toContain('status=$?');
+		expect(hooks.Stop[0].hooks[0].command).toContain('[ "$status" -eq 2 ]');
 		expect(hooks.Stop[0].hooks[0].command).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
 		expect(hooks.Stop[1].hooks[0].command).toContain("--codex-stop-hook");
 		expect(hooks.Stop[1].hooks[0].command).toContain(">/dev/null");
+		expect(hooks.Stop[1].hooks[0].command).toContain('status=$?');
+		expect(hooks.Stop[1].hooks[0].command).toContain('[ "$status" -eq 2 ]');
 		expect(hooks.Stop[1].hooks[0].command).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
 	});
 
-	it("Stop hook wraps Codex move commands with a JSON success envelope", () => {
+	it("Stop hook wraps Codex move commands with a JSON success envelope and app-offline fallback", () => {
 		const hooks = buildCodexHooks();
 		const cmd = hooks.Stop[0].hooks[0].command;
 
 		expect(cmd).toContain("--status review-by-user --if-status in-progress");
 		expect(cmd).toContain("--codex-stop-hook");
 		expect(cmd).toContain(">/dev/null");
+		expect(cmd).toContain('status=$?');
+		expect(cmd).toContain('[ "$status" -eq 2 ]');
 		expect(cmd).toContain(`printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'`);
+		expect(cmd).not.toContain("|| true");
 	});
 });
 
