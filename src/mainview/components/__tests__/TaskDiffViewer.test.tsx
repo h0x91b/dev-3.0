@@ -57,41 +57,43 @@ vi.mock("@git-diff-view/react", async () => {
 			];
 
 			return (
-				<div data-testid="mock-diff">
-					mode:{diffViewMode} theme:{diffViewTheme}
-					{diffViewAddWidget && (
-						<button
-							type="button"
-							aria-label="Open inline comment composer"
-							onClick={() => {
-								setWidget({ lineNumber: nextWidgetLineNumber, side: SplitSide.new });
-								setNextWidgetLineNumber((current) => current + 1);
-							}}
-						>
-							+
-						</button>
-					)}
-					{widget && renderWidgetLine && (
-						<div data-testid="mock-widget">
-							{renderWidgetLine({
-								diffFile: {},
-								side: widget.side,
-								lineNumber: widget.lineNumber,
-								onClose: () => setWidget(null),
-							})}
-						</div>
-					)}
-					{threadEntries.map((entry) => (
-						<div key={entry.key} data-testid="mock-extend">
-							{renderExtendLine?.({
-								diffFile: {},
-								side: entry.side,
-								lineNumber: entry.lineNumber,
-								data: entry.data,
-								onUpdate: () => {},
-							})}
-						</div>
-					))}
+				<div className="diff-table-scroll-container overflow-x-auto" data-testid="mock-diff-scroll">
+					<div data-testid="mock-diff">
+						mode:{diffViewMode} theme:{diffViewTheme}
+						{diffViewAddWidget && (
+							<button
+								type="button"
+								aria-label="Open inline comment composer"
+								onClick={() => {
+									setWidget({ lineNumber: nextWidgetLineNumber, side: SplitSide.new });
+									setNextWidgetLineNumber((current) => current + 1);
+								}}
+							>
+								+
+							</button>
+						)}
+						{widget && renderWidgetLine && (
+							<div data-testid="mock-widget">
+								{renderWidgetLine({
+									diffFile: {},
+									side: widget.side,
+									lineNumber: widget.lineNumber,
+									onClose: () => setWidget(null),
+								})}
+							</div>
+						)}
+						{threadEntries.map((entry) => (
+							<div key={entry.key} data-testid="mock-extend">
+								{renderExtendLine?.({
+									diffFile: {},
+									side: entry.side,
+									lineNumber: entry.lineNumber,
+									data: entry.data,
+									onUpdate: () => {},
+								})}
+							</div>
+						))}
+					</div>
 				</div>
 			);
 		},
@@ -287,6 +289,27 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
 		});
+	});
+
+	it("does not add a second horizontal scroll wrapper around the diff view", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		const firstDiff = screen.getAllByTestId("mock-diff")[0];
+		expect(firstDiff.parentElement).toHaveAttribute("data-testid", "mock-diff-scroll");
+		expect(firstDiff.parentElement?.parentElement).not.toHaveClass("overflow-x-auto");
 	});
 
 	it("switches diff source modes inside the viewer", async () => {

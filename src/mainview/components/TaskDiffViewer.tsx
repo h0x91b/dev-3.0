@@ -932,50 +932,48 @@ function TaskDiffFileSection({
 				buildError ? (
 					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
 				) : diffFile ? (
-					<div className="overflow-x-auto">
-						<DiffView
-							diffFile={diffFile}
-							diffViewTheme={resolvedTheme}
-							diffViewMode={diffMode}
-							diffViewWrap={false}
-							diffViewHighlight={false}
-							diffViewAddWidget
-							extendData={comments}
-							renderWidgetLine={({ lineNumber, side, onClose }: { lineNumber: number; side: number; onClose: () => void }) => (
-								<InlineCommentComposer
-									filePath={file.displayPath}
-									side={getInlineCommentSideKey(side, diffLib.SplitSide)}
-									lineNumber={lineNumber}
-									onCancel={onClose}
-									onSubmit={(body) => {
-										onAddComment({
-											fileId: file.id,
-											side: getInlineCommentSideKey(side, diffLib.SplitSide),
-											lineNumber,
-											body,
-										});
-										onClose();
-									}}
-								/>
-							)}
-							renderExtendLine={({ data, lineNumber, side }: { data: InlineDiffCommentThread; lineNumber: number; side: number }) => (
-								<InlineCommentThreadView
-									thread={data}
-									side={getInlineCommentSideKey(side, diffLib.SplitSide)}
-									lineNumber={lineNumber}
-									registerCommentRef={registerCommentRef}
-									editingCommentId={editingCommentId}
-									editingCommentDraft={editingCommentDraft}
-									onEditDraftChange={onEditDraftChange}
-									onStartEdit={onStartEditComment}
-									onCancelEdit={onCancelEditComment}
-									onSaveEdit={onSaveEditComment}
-									onDeleteComment={onDeleteComment}
-								/>
-							)}
-							className="diff-tailwindcss-wrapper"
-						/>
-					</div>
+					<DiffView
+						diffFile={diffFile}
+						diffViewTheme={resolvedTheme}
+						diffViewMode={diffMode}
+						diffViewWrap={false}
+						diffViewHighlight={false}
+						diffViewAddWidget
+						extendData={comments}
+						renderWidgetLine={({ lineNumber, side, onClose }: { lineNumber: number; side: number; onClose: () => void }) => (
+							<InlineCommentComposer
+								filePath={file.displayPath}
+								side={getInlineCommentSideKey(side, diffLib.SplitSide)}
+								lineNumber={lineNumber}
+								onCancel={onClose}
+								onSubmit={(body) => {
+									onAddComment({
+										fileId: file.id,
+										side: getInlineCommentSideKey(side, diffLib.SplitSide),
+										lineNumber,
+										body,
+									});
+									onClose();
+								}}
+							/>
+						)}
+						renderExtendLine={({ data, lineNumber, side }: { data: InlineDiffCommentThread; lineNumber: number; side: number }) => (
+							<InlineCommentThreadView
+								thread={data}
+								side={getInlineCommentSideKey(side, diffLib.SplitSide)}
+								lineNumber={lineNumber}
+								registerCommentRef={registerCommentRef}
+								editingCommentId={editingCommentId}
+								editingCommentDraft={editingCommentDraft}
+								onEditDraftChange={onEditDraftChange}
+								onStartEdit={onStartEditComment}
+								onCancelEdit={onCancelEditComment}
+								onSaveEdit={onSaveEditComment}
+								onDeleteComment={onDeleteComment}
+							/>
+						)}
+						className="diff-tailwindcss-wrapper"
+					/>
 				) : (
 					<div className="p-4 space-y-3 animate-pulse">
 						<div className="h-4 w-36 rounded bg-elevated" />
