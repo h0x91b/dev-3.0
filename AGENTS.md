@@ -38,6 +38,8 @@ Key idea: each project is a git repo, each task gets its own **git worktree** + 
 
 **Full product concept, design details, and implementation status tracker:** see [`concept.md`](concept.md).
 
+**Design system specification (colors, typography, components, glass morphism, themes):** see [`DESIGN.md`](DESIGN.md). Follow it when generating any UI code.
+
 ## Language policy
 
 **All code-related content MUST be in English — no exceptions.**
