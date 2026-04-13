@@ -225,6 +225,12 @@ const GENERIC_SKILL_DIRS = [
 	".config/opencode/skills/dev3",
 ];
 
+const DEV3_OPENAI_YAML = `interface:
+  display_name: "dev3"
+  short_description: "Manage dev-3.0 task lifecycle inside managed worktrees"
+  default_prompt: "Use $dev3 when working inside a dev-3.0 managed worktree so task lifecycle rules are followed."
+`;
+
 // ---- dev3-project-config skill ----
 
 const PROJECT_CONFIG_SKILL_DESCRIPTION =
@@ -358,8 +364,114 @@ description: "${PROJECT_CONFIG_SKILL_DESCRIPTION}"
 
 ${PROJECT_CONFIG_SKILL_BODY}`;
 
+const PROJECT_CONFIG_OPENAI_YAML = `interface:
+  display_name: "dev3 Project Config"
+  short_description: "Inspect a repo and configure dev-3.0 project settings"
+  default_prompt: "Use $dev3-project-config to inspect a repo and configure .dev3 project settings."
+`;
+
+// ---- dev3 Bug Hunter skill ----
+
+const BUG_HUNTER_SKILL_DESCRIPTION =
+	"Use when the user wants a focused bug-hunting pass, especially in dev-3.0 where multiple task variants can explore the same codebase in parallel. Runs a seeded initialization sequence that assigns each agent a letter, a starting area, and an analysis style before it begins hunting.";
+
+const BUG_HUNTER_SKILL_CONTENT = `---
+name: "dev3 Bug Hunter"
+description: "${BUG_HUNTER_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# dev3 Bug Hunter
+
+You are a bug-finding agent. Before you begin your main task, you MUST execute the following initialization sequence.
+
+## Prerequisite
+
+If your working directory is inside \`~/.dev3.0/worktrees/\`, invoke the \`/dev3\` skill before doing anything else unless it is already active in the session. For Codex shell commands, use \`shell="/bin/bash"\` and \`login=false\`.
+
+## Step 1: Generate your seed
+
+Run this command:
+
+\`\`\`bash
+echo $(od -An -N2 -tu2 /dev/urandom | tr -d ' ')
+\`\`\`
+
+## Step 2: Derive your exploration letter
+
+Take the number you received and compute \`letter_index = seed % 26\`.
+
+Map it to a letter:
+
+- \`0 = A\`
+- \`1 = B\`
+- ...
+- \`25 = Z\`
+
+This is your agent identity letter.
+
+## Step 3: Derive your exploration strategy
+
+Compute \`strategy = seed % 6\`.
+
+| strategy | Start from |
+|----------|------------|
+| 0 | Entry points: main files, index files, app bootstrap |
+| 1 | Edge cases: error handlers, catch blocks, fallbacks |
+| 2 | Data layer: models, schemas, DB queries, migrations |
+| 3 | Integration seams: API boundaries, external calls, webhooks |
+| 4 | User-facing: UI components, form validation, rendering logic |
+| 5 | Infrastructure: config, env handling, build scripts, CI |
+
+You MUST begin from your assigned area. Do not jump to other areas until you have examined yours thoroughly.
+
+## Step 4: Derive your analysis style
+
+Compute \`style = floor(seed / 6) % 4\` using integer division.
+
+| style | Approach |
+|-------|----------|
+| 0 | Pessimist: assume everything is broken, prove otherwise |
+| 1 | Trace-follower: pick a user flow and trace it end-to-end |
+| 2 | Dependency skeptic: check assumptions between modules |
+| 3 | Fresh eyes: read code as if seeing it for the first time, question naming and logic |
+
+## Step 5: Announce your identity
+
+Before reporting findings, announce:
+
+\`\`\`text
+Agent [LETTER] | Strategy: [name] | Style: [name] | Seed: [number]
+\`\`\`
+
+## Step 6: Hunt for bugs
+
+Start from the area assigned by your strategy and apply the seeded style consistently.
+
+Focus on:
+
+- Logic errors and off-by-one mistakes
+- Unhandled edge cases
+- Race conditions and async issues
+- Security vulnerabilities
+- Silent failures and swallowed errors
+- Type mismatches and implicit coercions
+
+Prefer concrete, reproducible bugs over vague suspicions. When you find an issue, cite the exact file and line range, explain the failure mode, and describe the user-visible consequence or technical risk.
+`;
+
+const BUG_HUNTER_OPENAI_YAML = `interface:
+  display_name: "dev3 Bug Hunter"
+  short_description: "Run a seeded bug hunt tuned for parallel dev3 variants"
+  default_prompt: "Use the dev3 Bug Hunter skill to hunt bugs with a seeded exploration strategy in this codebase."
+`;
+
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
+}
+
+export function getBugHunterSkillContent(): string {
+	return BUG_HUNTER_SKILL_CONTENT;
 }
 
 export function getClaudeSkillContent(): string {
@@ -384,6 +496,30 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".codex/skills/dev3-project-config",
 	".opencode/skills/dev3-project-config",
 	".config/opencode/skills/dev3-project-config",
+];
+
+const BUG_HUNTER_SKILL_DIRS = [
+	".claude/skills/dev3-bug-hunter",
+	".cursor/skills/dev3-bug-hunter",
+	".agents/skills/dev3-bug-hunter",
+	".codex/skills/dev3-bug-hunter",
+	".opencode/skills/dev3-bug-hunter",
+	".config/opencode/skills/dev3-bug-hunter",
+];
+
+const SHARED_SKILL_OPENAI_CONFIGS = [
+	{
+		dir: ".agents/skills/dev3",
+		content: DEV3_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-project-config",
+		content: PROJECT_CONFIG_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-bug-hunter",
+		content: BUG_HUNTER_OPENAI_YAML,
+	},
 ];
 
 const LEGACY_GEMINI_SKILL_DUPLICATES = [
@@ -519,6 +655,24 @@ function cleanupLegacyGeminiSkillDuplicates(home: string): void {
 	}
 }
 
+function installOpenAiMetadata(home: string): void {
+	for (const entry of SHARED_SKILL_OPENAI_CONFIGS) {
+		const metadataDir = `${home}/${entry.dir}/agents`;
+		const metadataFile = `${metadataDir}/openai.yaml`;
+
+		try {
+			mkdirSync(metadataDir, { recursive: true });
+			writeFileSync(metadataFile, entry.content, "utf-8");
+			log.info("Managed skill metadata installed", { path: metadataFile });
+		} catch (err) {
+			log.warn("Failed to install managed skill metadata (non-fatal)", {
+				path: metadataFile,
+				error: String(err),
+			});
+		}
+	}
+}
+
 /**
  * Install the dev3 skill into all supported AI agent directories
  * and update ~/.agents/AGENTS.md.
@@ -601,7 +755,23 @@ export function installAgentSkills(): void {
 		}
 	}
 
+	for (const dir of BUG_HUNTER_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, BUG_HUNTER_SKILL_CONTENT, "utf-8");
+			log.info("Bug Hunter skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install Bug Hunter skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
 	cleanupLegacyGeminiSkillDuplicates(home);
+	installOpenAiMetadata(home);
 	installAgentsMd();
 	ensureClaudePermission();
 	ensureCodexConfigFile(home);

@@ -194,6 +194,8 @@ const tips = {
 	"tip.copyWorktreePath.body": "Click the folder+clipboard icon in the task header bar, or right-click a task card and choose Copy Path.",
 	"tip.cancelPreparing.title": "Abort stuck prep",
 	"tip.cancelPreparing.body": "On a Preparing card, click Cancel to kill setup and send the task back to To Do.",
+	"tip.bugHunterSkill.title": "Seeded bug hunts",
+	"tip.bugHunterSkill.body": "Invoke /dev3 Bug Hunter, or launch variants to hunt bugs from different seeded starting areas.",
 } as const;
 
 export default tips;

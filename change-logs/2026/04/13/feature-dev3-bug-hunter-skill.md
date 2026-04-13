@@ -1,0 +1,1 @@
+Added a managed `dev3 Bug Hunter` skill that installs for all supported agents and gives each bug-hunting run a seeded starting area plus analysis style. The shared `~/.agents/skills` copies now also get managed `agents/openai.yaml` metadata so `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` stay visible in the skill UI after reinstall.

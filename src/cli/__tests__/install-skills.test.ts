@@ -32,11 +32,17 @@ describe("install-skills", () => {
 		expect(mockInstall).toHaveBeenCalledOnce();
 		expect(stdoutOutput).toContain("Installed agent skills:");
 		expect(stdoutOutput).toContain(".claude/skills/dev3/SKILL.md");
+		expect(stdoutOutput).toContain(".claude/skills/dev3-bug-hunter/SKILL.md");
 		expect(stdoutOutput).toContain(".cursor/skills/dev3/SKILL.md");
+		expect(stdoutOutput).toContain(".cursor/skills/dev3-project-config/SKILL.md");
 		expect(stdoutOutput).toContain(".agents/skills/dev3/SKILL.md");
+		expect(stdoutOutput).toContain(".agents/skills/dev3-bug-hunter/SKILL.md");
 		expect(stdoutOutput).toContain(".codex/skills/dev3/SKILL.md");
+		expect(stdoutOutput).toContain(".codex/skills/dev3-project-config/SKILL.md");
 		expect(stdoutOutput).toContain(".opencode/skills/dev3/SKILL.md");
+		expect(stdoutOutput).toContain(".config/opencode/skills/dev3-bug-hunter/SKILL.md");
 		expect(stdoutOutput).not.toContain(".gemini/skills/dev3/SKILL.md");
+		expect(stdoutOutput).toContain("~/.agents/skills/*/agents/openai.yaml");
 		expect(stdoutOutput).toContain("AGENTS.md");
 		expect(stdoutOutput).toContain("settings.json");
 		expect(stdoutOutput).toContain("config.toml");

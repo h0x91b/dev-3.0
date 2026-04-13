@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	getBugHunterSkillContent,
 	getClaudeSkillContent,
 	getCodexSkillContent,
 	getGenericSkillContent,
@@ -82,5 +83,27 @@ describe("dev3-project-config skill content", () => {
 		expect(getProjectConfigSkillContent()).toContain(
 			"If `portCount > 0`, also smoke-test the mapping:",
 		);
+	});
+});
+
+describe("dev3 Bug Hunter skill content", () => {
+	it("keeps the seeded initialization sequence intact", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain('name: "dev3 Bug Hunter"');
+		expect(skill).toContain("echo $(od -An -N2 -tu2 /dev/urandom | tr -d ' ')");
+		expect(skill).toContain("letter_index = seed % 26");
+		expect(skill).toContain("strategy = seed % 6");
+		expect(skill).toContain("style = floor(seed / 6) % 4");
+		expect(skill).toContain("Agent [LETTER] | Strategy: [name] | Style: [name] | Seed: [number]");
+	});
+
+	it("forces bug hunts to start from the assigned strategy area", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain("You MUST begin from your assigned area.");
+		expect(skill).toContain("Do not jump to other areas until you have examined yours thoroughly.");
+		expect(skill).toContain("Logic errors and off-by-one mistakes");
+		expect(skill).toContain("Silent failures and swallowed errors");
 	});
 });

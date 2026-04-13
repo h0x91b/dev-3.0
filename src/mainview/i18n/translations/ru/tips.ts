@@ -194,6 +194,8 @@ const tips = {
 	"tip.copyWorktreePath.body": "Нажмите иконку папки с буфером обмена в заголовке задачи, или правый клик по карточке → Copy Path.",
 	"tip.cancelPreparing.title": "Прервать подготовку",
 	"tip.cancelPreparing.body": "На карточке Preparing нажмите Cancel, чтобы прибить setup и вернуть задачу в To Do.",
+	"tip.bugHunterSkill.title": "Сидированный поиск багов",
+	"tip.bugHunterSkill.body": "Вызовите /dev3 Bug Hunter или запустите варианты, чтобы искать баги из разных seeded стартовых зон.",
 };
 
 export default tips;
