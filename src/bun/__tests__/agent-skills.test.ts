@@ -112,8 +112,22 @@ describe("dev3 Bug Hunter skill content", () => {
 
 		expect(skill).toContain("This skill is review-only.");
 		expect(skill).toContain("Do NOT modify code, apply patches, create commits, or rewrite files.");
+		expect(skill).toContain(
+			"You MAY create dev3 tasks only after the user explicitly approves task creation for findings.",
+		);
 		expect(skill).toContain("| Severity | File | Lines | Summary | Why it breaks | Reproduction hint |");
 		expect(skill).toContain("Severity` must be one of: `critical`, `high`, `medium`");
-		expect(skill).toContain("I can write reproduction tests for the strongest finding if you want a validation pass.");
+		expect(skill).toContain(
+			"Do you want me to create dev3 tasks for the critical and medium findings, one task per finding?",
+		);
+		expect(skill).toContain(
+			"I can write reproduction tests for the strongest finding if you want a validation pass.",
+		);
+		expect(skill).toContain("Create one dev3 task per `critical` or `medium` finding.");
+		expect(skill).toContain("Validate whether the bug is real.");
+		expect(skill).toContain("Reproduce it with a failing test or another reliable repro.");
+		expect(skill).toContain(
+			"I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.",
+		);
 	});
 });

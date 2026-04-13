@@ -392,6 +392,7 @@ This skill is review-only.
 - Do NOT modify code, apply patches, create commits, or rewrite files.
 - Do NOT silently fix anything yourself.
 - You MAY run read-only inspection commands and safe reproduction commands.
+- You MAY create dev3 tasks only after the user explicitly approves task creation for findings.
 - If a bug looks real but is not yet proven, say so plainly and describe the missing proof.
 
 ## Prerequisite
@@ -495,11 +496,41 @@ If you found no solid bugs, write \`No confirmed bugs found.\`
 
 List 3-6 bullets describing which files, flows, or seams you inspected first and what strategy/style led you there.
 
-### Validation offer
+### Next step offer
 
-End with exactly one sentence:
+- If there is at least one \`critical\` or \`medium\` finding, end with exactly this question:
+
+\`Do you want me to create dev3 tasks for the critical and medium findings, one task per finding?\`
+
+- Otherwise, end with exactly this sentence:
 
 \`I can write reproduction tests for the strongest finding if you want a validation pass.\`
+
+## If the user approves dev3 task creation
+
+Create one dev3 task per \`critical\` or \`medium\` finding. Do not batch multiple bugs into one task.
+
+Each task must:
+
+- Use a concise title that names the bug.
+- Start the description with the bug summary, location, severity, failure mode, and the evidence you found.
+- State clearly that the first step is validation, not fixing.
+- Require this execution order:
+  1. Validate whether the bug is real.
+  2. Reproduce it with a failing test or another reliable repro.
+  3. Fix it only after the reproduction is proven.
+  4. Re-run the repro to confirm the fix.
+
+The task description must explicitly say:
+
+- If the bug cannot be reproduced, stop and do not attempt a fix.
+- Report back to the user with this exact sentence:
+
+\`\`\`text
+I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.
+\`\`\`
+
+When you create these follow-up tasks in dev3, include enough detail that a separate agent can execute them without re-reading the original bug-hunt report.
 `;
 
 const BUG_HUNTER_OPENAI_YAML = `interface:
