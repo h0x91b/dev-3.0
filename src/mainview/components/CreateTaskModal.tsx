@@ -482,6 +482,12 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 									})}
 								</p>
 								<p className="text-fg-3 text-sm">
+									{t("createTask.branchChoiceBaseHint", {
+										baseBranch,
+										baseRef: `origin/${baseBranch}`,
+									})}
+								</p>
+								<p className="text-fg-3 text-sm">
 									{t("createTask.branchChoiceRisk")}
 								</p>
 								{projectCurrentBranch?.isDirty && (

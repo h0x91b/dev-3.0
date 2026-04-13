@@ -546,8 +546,22 @@ describe("CreateTaskModal", () => {
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
-			expect(screen.getByText("Main repo has uncommitted changes.")).toBeInTheDocument();
+			expect(screen.getByText("Main repo has uncommitted Git changes. Those uncommitted changes stay here and do not move into the new task.")).toBeInTheDocument();
 		});
+	});
+
+	it("clarifies that base branch means the project base branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Continue login work");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(screen.getByText("Here, base branch means the project base branch, using origin/main when available.")).toBeInTheDocument();
+		});
+		expect(screen.getByText("Use project base branch: main")).toBeInTheDocument();
 	});
 
 	it("keeps the base branch as default after explicit confirmation", async () => {
@@ -557,7 +571,7 @@ describe("CreateTaskModal", () => {
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "New task");
 		await userEvent.click(screen.getByText("Save"));
-		await userEvent.click(screen.getByText("Use base branch: main"));
+		await userEvent.click(screen.getByText("Use project base branch: main"));
 
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
