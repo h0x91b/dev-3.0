@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
@@ -716,6 +716,51 @@ describe("GlobalSettings", () => {
 			await user.type(textareas[0], "extra prompt");
 
 			expect(mockedApi.request.saveAgents).toHaveBeenCalled();
+		});
+
+		it("serializes config saves so the latest base command override wins", async () => {
+			setupMocks();
+			const pending: Array<{
+				resolve: () => void;
+				payload: { agents: CodingAgent[] };
+			}> = [];
+			let persistedAgents: CodingAgent[] | null = null;
+
+			mockedApi.request.saveAgents.mockImplementation(
+				(payload: { agents: CodingAgent[] }) =>
+					new Promise<void>((resolve) => {
+						pending.push({
+							payload,
+							resolve: () => {
+								persistedAgents = payload.agents;
+								resolve();
+							},
+						});
+					}) as any,
+			);
+
+			const user = await expandFirstConfig();
+			const overrideLabel = screen.getByText("Base Command Override");
+			const overrideInput = overrideLabel.closest("div")!.querySelector("input")!;
+
+			await user.type(overrideInput, "xy");
+
+			expect(mockedApi.request.saveAgents).toHaveBeenCalledTimes(1);
+			expect(pending).toHaveLength(1);
+
+			pending[0].resolve();
+
+			await waitFor(() => {
+				expect(mockedApi.request.saveAgents).toHaveBeenCalledTimes(2);
+			});
+			expect(pending).toHaveLength(2);
+
+			pending[1].resolve();
+
+			await waitFor(() => {
+				const claude = persistedAgents?.find((agent) => agent.id === "agent-1");
+				expect(claude?.configurations[0]?.baseCommandOverride).toBe("xy");
+			});
 		});
 	});
 

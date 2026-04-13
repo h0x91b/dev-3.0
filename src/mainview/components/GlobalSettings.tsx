@@ -66,6 +66,8 @@ function GlobalSettings() {
 
 	const resetTimerRef = useRef<ReturnType<typeof setTimeout>>();
 	const globalSettingsRef = useRef<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
+	const pendingAgentsSaveRef = useRef<CodingAgent[] | null>(null);
+	const agentsSaveInFlightRef = useRef(false);
 
 	const setGlobalSettingsState = useCallback((next: GlobalSettingsType) => {
 		globalSettingsRef.current = next;
@@ -353,14 +355,32 @@ function GlobalSettings() {
 		[persistSettingChange],
 	);
 
-	const persistAgents = useCallback(async (updated: CodingAgent[]) => {
-		setAgents(updated);
+	const flushPendingAgentsSave = useCallback(async () => {
+		if (agentsSaveInFlightRef.current) {
+			return;
+		}
+
+		agentsSaveInFlightRef.current = true;
 		try {
-			await api.request.saveAgents({ agents: updated });
-		} catch {
-			// Best-effort save; UI state is already updated.
+			while (pendingAgentsSaveRef.current) {
+				const next = pendingAgentsSaveRef.current;
+				pendingAgentsSaveRef.current = null;
+				try {
+					await api.request.saveAgents({ agents: next });
+				} catch {
+					// Best-effort save; keep local UI state and continue with the newest pending payload.
+				}
+			}
+		} finally {
+			agentsSaveInFlightRef.current = false;
 		}
 	}, []);
+
+	const persistAgents = useCallback((updated: CodingAgent[]) => {
+		setAgents(updated);
+		pendingAgentsSaveRef.current = updated;
+		void flushPendingAgentsSave();
+	}, [flushPendingAgentsSave]);
 
 	const handleLocaleChange = useCallback((nextLocale: "en" | "ru" | "es") => {
 		setLocale(nextLocale);

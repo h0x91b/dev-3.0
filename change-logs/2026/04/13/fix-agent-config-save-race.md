@@ -1,0 +1,1 @@
+Fixed a race in Global Settings agent config editing where overlapping save requests could persist an older payload after a newer one. Agent edits now serialize writes and keep only the latest pending state, so new tasks launch with the command you actually saved.
