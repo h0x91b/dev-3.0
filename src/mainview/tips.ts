@@ -405,12 +405,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.modalQuickDismiss.body",
 		icon: "\u{F12B7}", // nf-md-keyboard_esc
 	},
-	// Batch 13: auto-fill branch
+	// Batch 13: branch start choice
 	{
-		id: "auto-fill-branch",
+		id: "branch-start-choice",
 		titleKey: "tip.autoFillBranch.title",
 		bodyKey: "tip.autoFillBranch.body",
-		icon: "\u{F062C}", // nf-md-source_branch
+		icon: "\u{F0F09}", // nf-md-alert_circle_outline
 	},
 	{
 		id: "task-open-mode",

@@ -494,30 +494,10 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	// ---- Auto-fill branch from project's current branch ----
+	// ---- Current branch choice guardrail ----
 
-	it("auto-fills branch when project is on a non-base branch", async () => {
+	it("does not auto-fill branch when project is on a non-base branch", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
-		renderModal();
-
-		await waitFor(() => {
-			expect(screen.getByText("feat/login")).toBeInTheDocument();
-		});
-	});
-
-	it("does not auto-fill branch when project is on the base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
-		renderModal();
-
-		// Wait a tick for the effect to settle
-		await waitFor(() => {
-			expect(mockedApi.request.getProjectCurrentBranch).toHaveBeenCalled();
-		});
-		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
-	});
-
-	it("does not auto-fill branch when getProjectCurrentBranch fails", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockRejectedValue(new Error("fail"));
 		renderModal();
 
 		await waitFor(() => {
@@ -526,25 +506,84 @@ describe("CreateTaskModal", () => {
 		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
 	});
 
-	it("auto-filled branch is passed to createTask", async () => {
+	it("asks whether to use the current branch or the base branch", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
-		const dispatch = vi.fn();
-		const onClose = vi.fn();
-		renderModal({ dispatch, onClose });
-
-		await waitFor(() => {
-			expect(screen.getByText("feat/login")).toBeInTheDocument();
-		});
+		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "Continue login work");
 		await userEvent.click(screen.getByText("Save"));
 
 		await waitFor(() => {
+			expect(screen.getByText("Start task from which branch?")).toBeInTheDocument();
+		});
+		expect(mockedApi.request.createTask).not.toHaveBeenCalled();
+	});
+
+	it("uses the current branch after explicit confirmation", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		renderModal({ dispatch: vi.fn() });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Continue login work");
+		await userEvent.click(screen.getByText("Save"));
+		await userEvent.click(screen.getByText("Use current branch: feat/login"));
+
+		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
 				projectId: "p1",
 				description: "Continue login work",
 				existingBranch: "feat/login",
+			});
+		});
+	});
+
+	it("keeps the base branch as default after explicit confirmation", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "New task");
+		await userEvent.click(screen.getByText("Save"));
+		await userEvent.click(screen.getByText("Use base branch: main"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "New task",
+			});
+		});
+	});
+
+	it("does not ask when project is already on the base branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "New task");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "New task",
+			});
+		});
+		expect(screen.queryByText("Start task from which branch?")).not.toBeInTheDocument();
+	});
+
+	it("does not ask when current branch lookup fails", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockRejectedValue(new Error("fail"));
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "New task");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "New task",
 			});
 		});
 	});

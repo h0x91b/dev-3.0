@@ -1,0 +1,1 @@
+Task creation now defaults to the configured base branch even when the main repo is checked out elsewhere. When the repo is on a different branch, the create-task modal now asks whether to start from the current branch or the base branch and explains the risk of carrying over unrelated work.
