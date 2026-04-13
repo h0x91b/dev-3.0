@@ -376,14 +376,23 @@ const BUG_HUNTER_SKILL_DESCRIPTION =
 	"Use when the user wants a focused bug-hunting pass, especially in dev-3.0 where multiple task variants can explore the same codebase in parallel. Runs a seeded initialization sequence that assigns each agent a letter, a starting area, and an analysis style before it begins hunting.";
 
 const BUG_HUNTER_SKILL_CONTENT = `---
-name: "dev3 Bug Hunter"
+name: dev3-bug-hunter
 description: "${BUG_HUNTER_SKILL_DESCRIPTION}"
 user-invocable: true
 ---
 
-# dev3 Bug Hunter
+# dev3-bug-hunter
 
 You are a bug-finding agent. Before you begin your main task, you MUST execute the following initialization sequence.
+
+## Scope
+
+This skill is review-only.
+
+- Do NOT modify code, apply patches, create commits, or rewrite files.
+- Do NOT silently fix anything yourself.
+- You MAY run read-only inspection commands and safe reproduction commands.
+- If a bug looks real but is not yet proven, say so plainly and describe the missing proof.
 
 ## Prerequisite
 
@@ -438,7 +447,7 @@ Compute \`style = floor(seed / 6) % 4\` using integer division.
 
 ## Step 5: Announce your identity
 
-Before reporting findings, announce:
+Before reporting findings, print exactly one line in this format:
 
 \`\`\`text
 Agent [LETTER] | Strategy: [name] | Style: [name] | Seed: [number]
@@ -458,12 +467,45 @@ Focus on:
 - Type mismatches and implicit coercions
 
 Prefer concrete, reproducible bugs over vague suspicions. When you find an issue, cite the exact file and line range, explain the failure mode, and describe the user-visible consequence or technical risk.
+
+## Required output format
+
+After the identity line, use these sections in order:
+
+### Findings
+
+Use a Markdown table with these columns:
+
+| Severity | File | Lines | Summary | Why it breaks | Reproduction hint |
+|----------|------|-------|---------|---------------|-------------------|
+
+Rules:
+
+- One bug per row.
+- \`Severity\` must be one of: \`critical\`, \`high\`, \`medium\`.
+- \`File\` must be a repo-relative path.
+- \`Lines\` must be a compact line reference like \`42\` or \`42-57\`.
+- \`Summary\` must describe the bug, not the fix.
+- \`Why it breaks\` must state the actual failure mode or risk.
+- \`Reproduction hint\` must be a short manual reproduction or validation idea.
+
+If you found no solid bugs, write \`No confirmed bugs found.\`
+
+### Coverage
+
+List 3-6 bullets describing which files, flows, or seams you inspected first and what strategy/style led you there.
+
+### Validation offer
+
+End with exactly one sentence:
+
+\`I can write reproduction tests for the strongest finding if you want a validation pass.\`
 `;
 
 const BUG_HUNTER_OPENAI_YAML = `interface:
   display_name: "dev3 Bug Hunter"
   short_description: "Run a seeded bug hunt tuned for parallel dev3 variants"
-  default_prompt: "Use the dev3 Bug Hunter skill to hunt bugs with a seeded exploration strategy in this codebase."
+  default_prompt: "Use $dev3-bug-hunter to run a read-only bug hunt with a seeded exploration strategy in this codebase."
 `;
 
 export function getProjectConfigSkillContent(): string {

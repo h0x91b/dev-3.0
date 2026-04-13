@@ -195,7 +195,7 @@ const tips = {
 	"tip.cancelPreparing.title": "Прервать подготовку",
 	"tip.cancelPreparing.body": "На карточке Preparing нажмите Cancel, чтобы прибить setup и вернуть задачу в To Do.",
 	"tip.bugHunterSkill.title": "Сидированный поиск багов",
-	"tip.bugHunterSkill.body": "Вызовите /dev3 Bug Hunter или запустите варианты, чтобы искать баги из разных seeded стартовых зон.",
+	"tip.bugHunterSkill.body": "Используйте skill dev3-bug-hunter и запускайте 3-5 вариантов, чтобы каждый шёл в свою seeded стартовую зону.",
 };
 
 export default tips;

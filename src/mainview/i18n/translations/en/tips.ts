@@ -195,7 +195,7 @@ const tips = {
 	"tip.cancelPreparing.title": "Abort stuck prep",
 	"tip.cancelPreparing.body": "On a Preparing card, click Cancel to kill setup and send the task back to To Do.",
 	"tip.bugHunterSkill.title": "Seeded bug hunts",
-	"tip.bugHunterSkill.body": "Invoke /dev3 Bug Hunter, or launch variants to hunt bugs from different seeded starting areas.",
+	"tip.bugHunterSkill.body": "Use the dev3-bug-hunter skill and launch 3-5 variants so each run hunts bugs from a different seeded starting area.",
 } as const;
 
 export default tips;

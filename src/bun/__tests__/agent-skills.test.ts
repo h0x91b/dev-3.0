@@ -90,7 +90,7 @@ describe("dev3 Bug Hunter skill content", () => {
 	it("keeps the seeded initialization sequence intact", () => {
 		const skill = getBugHunterSkillContent();
 
-		expect(skill).toContain('name: "dev3 Bug Hunter"');
+		expect(skill).toContain("name: dev3-bug-hunter");
 		expect(skill).toContain("echo $(od -An -N2 -tu2 /dev/urandom | tr -d ' ')");
 		expect(skill).toContain("letter_index = seed % 26");
 		expect(skill).toContain("strategy = seed % 6");
@@ -105,5 +105,15 @@ describe("dev3 Bug Hunter skill content", () => {
 		expect(skill).toContain("Do not jump to other areas until you have examined yours thoroughly.");
 		expect(skill).toContain("Logic errors and off-by-one mistakes");
 		expect(skill).toContain("Silent failures and swallowed errors");
+	});
+
+	it("stays read-only and requires a uniform findings format", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain("This skill is review-only.");
+		expect(skill).toContain("Do NOT modify code, apply patches, create commits, or rewrite files.");
+		expect(skill).toContain("| Severity | File | Lines | Summary | Why it breaks | Reproduction hint |");
+		expect(skill).toContain("Severity` must be one of: `critical`, `high`, `medium`");
+		expect(skill).toContain("I can write reproduction tests for the strongest finding if you want a validation pass.");
 	});
 });

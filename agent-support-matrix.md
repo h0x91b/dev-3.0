@@ -70,9 +70,9 @@ The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Two 
 
 A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/config.local.json`. Covers the schema, merge priority, when to create/modify config files, and CLI commands (`dev3 config show`, `dev3 config export`). Same content for all agents (no variant differences).
 
-### dev3 Bug Hunter (seeded bug-finding)
+### dev3-bug-hunter (displayed as "dev3 Bug Hunter")
 
-A user-invocable skill that turns the agent into a seeded bug hunter. It generates a random seed, derives an identity letter, chooses a starting area plus analysis style, and then forces the hunt to begin from that assigned area before branching out. Same content for all agents.
+A user-invocable skill that turns the agent into a seeded bug hunter. It generates a random seed, derives an identity letter, chooses a starting area plus analysis style, and then forces the hunt to begin from that assigned area before branching out. The skill is read-only, uses a fixed findings table format, and ends with a reproduction-test offer. Same content for all agents.
 
 For Gemini CLI specifically, dev-3.0 installs these managed skills only via the shared `~/.agents/skills/` alias. Gemini also discovers `~/.gemini/skills/`, but duplicating the same skill name in both user-scope directories triggers same-tier conflict warnings and the alias already has precedence.
 
