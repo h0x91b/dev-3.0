@@ -47,6 +47,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const loadProjectCurrentBranch = useCallback(async (): Promise<ProjectCurrentBranchInfo | null> => {
 		try {
 			const result = await api.request.getProjectCurrentBranch({ projectId: project.id });
+			if (!result.isBaseBranch && result.branch) {
+				setSelectedBranch((prev) => prev ?? result.branch);
+			}
 			setProjectCurrentBranch(result);
 			return result;
 		} catch {
@@ -205,13 +208,16 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		const trimmed = description.trim();
 		if (!trimmed || creating || (mode === "run" && !onCreateAndRun)) return;
 
-		if (!selectedBranch) {
-			const branchInfo = checkedProjectCurrentBranch ? projectCurrentBranch : await loadProjectCurrentBranch();
-			if (branchInfo?.branch && !branchInfo.isBaseBranch) {
-				setPendingBranchChoice(branchInfo.branch);
-				setPendingSubmitMode(mode);
-				return;
-			}
+		const branchInfo = checkedProjectCurrentBranch ? projectCurrentBranch : await loadProjectCurrentBranch();
+		if (
+			selectedBranch
+			&& branchInfo?.branch
+			&& !branchInfo.isBaseBranch
+			&& selectedBranch === branchInfo.branch
+		) {
+			setPendingBranchChoice(branchInfo.branch);
+			setPendingSubmitMode(mode);
+			return;
 		}
 
 		await createTaskWithBranch(selectedBranch, mode);

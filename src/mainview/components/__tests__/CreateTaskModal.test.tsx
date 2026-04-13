@@ -496,14 +496,13 @@ describe("CreateTaskModal", () => {
 
 	// ---- Current branch choice guardrail ----
 
-	it("does not auto-fill branch when project is on a non-base branch", async () => {
+	it("auto-fills branch when project is on a non-base branch", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
 		renderModal();
 
 		await waitFor(() => {
-			expect(mockedApi.request.getProjectCurrentBranch).toHaveBeenCalled();
+			expect(screen.getByText("feat/login")).toBeInTheDocument();
 		});
-		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
 	});
 
 	it("asks whether to use the current branch or the base branch", async () => {
@@ -558,6 +557,31 @@ describe("CreateTaskModal", () => {
 	it("does not ask when project is already on the base branch", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true });
 		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "New task");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "New task",
+			});
+		});
+		expect(screen.queryByText("Start task from which branch?")).not.toBeInTheDocument();
+	});
+
+	it("does not ask after clearing the auto-filled branch", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false });
+		renderModal();
+
+		await waitFor(() => {
+			expect(screen.getByText("feat/login")).toBeInTheDocument();
+		});
+
+		const clearButton = screen.getByText("feat/login").parentElement?.querySelector("button");
+		expect(clearButton).toBeTruthy();
+		await userEvent.click(clearButton!);
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "New task");
