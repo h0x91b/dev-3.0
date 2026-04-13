@@ -8,6 +8,15 @@ import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
 import { DEV3_HOME } from "../paths";
+import {
+	assertTaskPreparationActive,
+	forgetTaskPreparation,
+	getTaskPreparationSnapshot,
+	isTaskPreparationActive,
+	markTaskPreparationCancelled,
+	TaskPreparationCancelledError,
+	withTaskPreparation,
+} from "../preparation-runtime";
 import { loadSettings, loadSettingsSync } from "../settings";
 import { spawn } from "../spawn";
 import { getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
@@ -34,6 +43,255 @@ async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<voi
 			// Best effort — do not crash background preparation cleanup.
 		}
 	}
+}
+
+function preparingResetUpdates(): Partial<Task> {
+	return {
+		status: "todo",
+		preparing: false,
+		worktreePath: null,
+		branchName: null,
+		customColumnId: null,
+	};
+}
+
+async function killTrackedPreparationProcesses(taskId: string, pids: number[]): Promise<void> {
+	for (const pid of pids) {
+		try {
+			log.warn("Killing preparation process", {
+				taskId: taskId.slice(0, 8),
+				pid,
+				signal: "SIGKILL",
+			});
+			const proc = spawn(["kill", "-9", String(pid)], { stdout: "pipe", stderr: "pipe" });
+			const code = await proc.exited;
+			if (code !== 0) {
+				log.warn("kill -9 exited non-zero for preparation process", {
+					taskId: taskId.slice(0, 8),
+					pid,
+					code,
+				});
+			}
+		} catch (err) {
+			log.warn("kill -9 failed for preparation process", {
+				taskId: taskId.slice(0, 8),
+				pid,
+				error: String(err),
+			});
+		}
+	}
+}
+
+async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<Task> {
+	cleanupTaskState(task.id);
+	portPool.releasePorts(task.id);
+
+	try {
+		pty.destroySession(task.id, task.tmuxSocket ?? undefined);
+	} catch (err) {
+		log.warn("destroySession failed while cancelling preparation", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+		});
+	}
+
+	killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
+		log.warn("killDevServerSession failed while cancelling preparation", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+		});
+	});
+
+	const cleanupTask: Task = {
+		...task,
+		worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
+	};
+
+	try {
+		await git.removeWorktree(project, cleanupTask);
+	} catch (err) {
+		log.warn("removeWorktree failed while cancelling preparation", {
+			taskId: task.id.slice(0, 8),
+			worktreePath: cleanupTask.worktreePath,
+			error: String(err),
+		});
+	}
+
+	const updated = await data.updateTask(project, task.id, preparingResetUpdates());
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	return updated;
+}
+
+async function measurePreparationStep<T>(
+	task: Task,
+	runId: string,
+	step: string,
+	fn: () => Promise<T>,
+	extra?: Record<string, unknown>,
+): Promise<T> {
+	assertTaskPreparationActive(task.id, runId);
+	const startedAt = performance.now();
+	log.info("Preparing step started", {
+		taskId: task.id.slice(0, 8),
+		runId,
+		step,
+		...(extra ?? {}),
+	});
+	try {
+		const result = await fn();
+		const durationMs = Math.round(performance.now() - startedAt);
+		log.info("Preparing step finished", {
+			taskId: task.id.slice(0, 8),
+			runId,
+			step,
+			durationMs,
+			...(extra ?? {}),
+		});
+		assertTaskPreparationActive(task.id, runId);
+		return result;
+	} catch (err) {
+		const durationMs = Math.round(performance.now() - startedAt);
+		const logFn = err instanceof TaskPreparationCancelledError ? log.warn : log.error;
+		logFn("Preparing step failed", {
+			taskId: task.id.slice(0, 8),
+			runId,
+			step,
+			durationMs,
+			error: String(err),
+			...(extra ?? {}),
+		});
+		throw err;
+	}
+}
+
+async function prepareTaskInBackground(
+	project: Project,
+	task: Task,
+	options: {
+		label: string;
+		agentId: string | null;
+		configId: string | null;
+		existingBranch?: string;
+		variantBranchName?: string;
+	},
+): Promise<void> {
+	await withTaskPreparation(task.id, options.label, async (runId) => {
+		try {
+			const resolvedProject = await measurePreparationStep(
+				task,
+				runId,
+				"resolveProjectConfig",
+				() => repoConfig.resolveProjectConfig(project),
+			);
+			const wt = await measurePreparationStep(
+				task,
+				runId,
+				"createWorktree",
+				() => git.createWorktree(
+					resolvedProject,
+					task,
+					options.existingBranch ?? undefined,
+					options.variantBranchName,
+				),
+				{
+					existingBranch: options.existingBranch ?? null,
+					variantBranchName: options.variantBranchName ?? null,
+				},
+			);
+			const resolved = await measurePreparationStep(
+				task,
+				runId,
+				"resolveOperationalProjectConfig",
+				() => resolveOperationalProjectConfig(resolvedProject, wt.worktreePath),
+				{ worktreePath: wt.worktreePath },
+			);
+
+			if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
+				await measurePreparationStep(
+					task,
+					runId,
+					"applySparseCheckout",
+					() => git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths!),
+					{ pathCount: resolved.sparseCheckoutPaths.length },
+				);
+			} else {
+				log.info("Preparing step skipped", {
+					taskId: task.id.slice(0, 8),
+					runId,
+					step: "applySparseCheckout",
+					enabled: resolved.sparseCheckoutEnabled,
+					pathCount: resolved.sparseCheckoutPaths?.length ?? 0,
+				});
+			}
+
+			await measurePreparationStep(
+				task,
+				runId,
+				"runCowClones",
+				() => runCowClones(resolved, wt.worktreePath),
+			);
+			await measurePreparationStep(
+				task,
+				runId,
+				"launchTaskPty",
+				() => launchTaskPty(
+					resolved,
+					task,
+					wt.worktreePath,
+					options.agentId,
+					options.configId,
+					true,
+				),
+			);
+
+			assertTaskPreparationActive(task.id, runId);
+			const updated = await data.updateTask(project, task.id, {
+				worktreePath: wt.worktreePath,
+				branchName: wt.branchName,
+				preparing: false,
+			});
+
+			if (!isTaskPreparationActive(task.id, runId)) {
+				log.warn("Preparation completed after cancellation; reverting task", {
+					taskId: task.id.slice(0, 8),
+					runId,
+				});
+				await revertPreparingTaskToTodo(project, task);
+				return;
+			}
+
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("Task preparation ready", {
+				taskId: task.id.slice(0, 8),
+				runId,
+				worktreePath: wt.worktreePath,
+			});
+		} catch (err) {
+			if (err instanceof TaskPreparationCancelledError) {
+				log.warn("Task preparation stopped after cancellation", {
+					taskId: task.id.slice(0, 8),
+					runId,
+					label: options.label,
+				});
+				return;
+			}
+
+			log.error("Failed to prepare task", {
+				taskId: task.id,
+				runId,
+				label: options.label,
+				error: String(err),
+			});
+			try {
+				if (isTaskPreparationActive(task.id, runId)) {
+					const updated = await data.updateTask(project, task.id, { preparing: false });
+					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				}
+			} catch {
+				// Best effort — the original error is already logged.
+			}
+		}
+	});
 }
 
 export async function activateTask(
@@ -366,6 +624,33 @@ async function moveTask(params: { taskId: string; projectId: string; newStatus: 
 	return updated;
 }
 
+async function cancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
+	log.info("→ cancelTaskPreparation", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const snapshot = getTaskPreparationSnapshot(task.id);
+
+	if (task.preparing !== true && !snapshot) {
+		log.info("cancelTaskPreparation skipped — task is not preparing", {
+			taskId: task.id.slice(0, 8),
+		});
+		return task;
+	}
+
+	const { runId, pids } = markTaskPreparationCancelled(task.id);
+	const killList = pids.length > 0 ? pids : (snapshot?.pids ?? []);
+	await killTrackedPreparationProcesses(task.id, killList);
+	const updated = await revertPreparingTaskToTodo(project, task);
+	if (runId) {
+		forgetTaskPreparation(task.id, runId);
+	}
+	log.info("← cancelTaskPreparation done", {
+		taskId: task.id.slice(0, 8),
+		killed: killList.length,
+	});
+	return updated;
+}
+
 async function reorderTask(params: { taskId: string; projectId: string; targetIndex: number }): Promise<Task[]> {
 	log.info("→ reorderTask", params);
 	const project = await data.getProject(params.projectId);
@@ -452,36 +737,19 @@ async function spawnVariants(params: {
 	if (needsWorktree) {
 		(async () => {
 			try {
-				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
-					try {
-						const variantBranchName = (isMultiVariant && srcBranch)
-							? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
-							: undefined;
-						const wt = await git.createWorktree(resolvedProject, task, task.existingBranch ?? undefined, variantBranchName);
-						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
-						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
-							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
-						}
-						await runCowClones(resolved, wt.worktreePath);
-						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
-
-						const updated = await data.updateTask(project, task.id, {
-							worktreePath: wt.worktreePath,
-							branchName: wt.branchName,
-							preparing: false,
-						});
-						getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-						log.info("Variant ready", { taskId: task.id, worktreePath: wt.worktreePath });
-					} catch (err) {
-						log.error("Failed to prepare variant", { taskId: task.id, error: String(err) });
-						try {
-							const updated = await data.updateTask(project, task.id, { preparing: false });
-							getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-						} catch {}
-					}
+					const variantBranchName = (isMultiVariant && srcBranch)
+						? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+						: undefined;
+					await prepareTaskInBackground(project, task, {
+						label: "variant",
+						agentId: variant.agentId,
+						configId: variant.configId,
+						existingBranch: task.existingBranch ?? undefined,
+						variantBranchName,
+					});
 				}
 			} catch (err) {
 				log.error("Failed to start variant preparation", { projectId: project.id, error: String(err) });
@@ -552,33 +820,14 @@ async function addAttempts(params: {
 	if (needsWorktree) {
 		(async () => {
 			try {
-				const resolvedProject = await repoConfig.resolveProjectConfig(project);
 				for (let i = 0; i < resultTasks.length; i++) {
 					const task = resultTasks[i];
 					const variant = params.variants[i];
-					try {
-						const wt = await git.createWorktree(resolvedProject, task);
-						const resolved = await resolveOperationalProjectConfig(resolvedProject, wt.worktreePath);
-						if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
-							await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
-						}
-						await runCowClones(resolved, wt.worktreePath);
-						await launchTaskPty(resolved, task, wt.worktreePath, variant.agentId, variant.configId, true);
-
-						const updated = await data.updateTask(project, task.id, {
-							worktreePath: wt.worktreePath,
-							branchName: wt.branchName,
-							preparing: false,
-						});
-						getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-						log.info("Attempt ready", { taskId: task.id, worktreePath: wt.worktreePath });
-					} catch (err) {
-						log.error("Failed to prepare attempt", { taskId: task.id, error: String(err) });
-						try {
-							const updated = await data.updateTask(project, task.id, { preparing: false });
-							getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-						} catch {}
-					}
+					await prepareTaskInBackground(project, task, {
+						label: "attempt",
+						agentId: variant.agentId,
+						configId: variant.configId,
+					});
 				}
 			} catch (err) {
 				log.error("Failed to start attempt preparation", { projectId: project.id, error: String(err) });
@@ -631,6 +880,7 @@ export const taskLifecycleHandlers = {
 	getAllProjectTasks,
 	createTask,
 	moveTask,
+	cancelTaskPreparation,
 	reorderTask,
 	deleteTask,
 	spawnVariants,

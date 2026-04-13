@@ -12,12 +12,21 @@
  * RULE: Never use Bun.spawn / Bun.spawnSync directly — always use these.
  */
 
+import { registerCurrentPreparationSpawn, unregisterPreparationSpawn } from "./preparation-runtime";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function spawn(cmd: string[], opts?: any) {
-	return Bun.spawn(cmd, {
+	const proc = Bun.spawn(cmd, {
 		...opts,
 		env: { ...process.env, ...(opts?.env ?? {}) },
 	});
+	const ctx = registerCurrentPreparationSpawn(proc.pid, cmd);
+	if (ctx && proc.pid) {
+		proc.exited.finally(() => {
+			unregisterPreparationSpawn(ctx.taskId, proc.pid);
+		});
+	}
+	return proc;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

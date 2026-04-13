@@ -45,6 +45,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
+	const [cancellingPreparation, setCancellingPreparation] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 	const [menuVisible, setMenuVisible] = useState(false);
@@ -78,7 +79,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [ctxMenuPos, setCtxMenuPos] = useState({ top: 0, left: 0 });
 
 	const isPreparing = task.preparing === true;
-	const isDisabled = moving || isMovingProp || isPreparing;
+	const isDisabled = moving || isMovingProp || isPreparing || cancellingPreparation;
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
@@ -282,6 +283,24 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		}
 	}
 
+	async function handleCancelPreparation(e: React.MouseEvent) {
+		e.stopPropagation();
+		if (cancellingPreparation) return;
+		setCancellingPreparation(true);
+		try {
+			const updated = await api.request.cancelTaskPreparation({
+				taskId: task.id,
+				projectId: project.id,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			alert(t("task.failedMove", { error: String(err) }));
+			setCancellingPreparation(false);
+			return;
+		}
+		setCancellingPreparation(false);
+	}
+
 	/** X button handler: cancel (from todo) or delete (from cancelled), with confirmation */
 	async function handleDismiss(e: React.MouseEvent) {
 		e.stopPropagation();
@@ -407,6 +426,14 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
 						<span className="text-xs text-fg-2 font-medium">{t("task.preparing")}</span>
 					</div>
+					<button
+						onClick={handleCancelPreparation}
+						disabled={cancellingPreparation}
+						className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-[0.6875rem] text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
+						title={t("task.cancel")}
+					>
+						{t("task.cancel")}
+					</button>
 					{hasLongDescription && (
 						<button
 							onClick={handleShowDescription}

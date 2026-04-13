@@ -909,6 +909,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean };
 				response: Task;
 			};
+			cancelTaskPreparation: {
+				params: { taskId: string; projectId: string };
+				response: Task;
+			};
 			reorderTask: {
 				params: { taskId: string; projectId: string; targetIndex: number };
 				response: Task[];
