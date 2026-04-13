@@ -1,0 +1,1 @@
+Applied a WKWebView-specific inline diff workaround so split/unified views do not visually drift into fake rows after mode switches or horizontal scrolling. The viewer now remounts on diff payload changes and uses WebKit-safe diff table styling.

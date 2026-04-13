@@ -50,3 +50,21 @@
 	background: rgb(var(--surface-base));
 	border-color: rgb(var(--border-default));
 }
+
+/* WKWebView sometimes mispaints git-diff-view rows when sticky cells live
+   inside collapsed tables. Keep zero spacing, but switch the diff tables to
+   separate borders and isolate the scroll layer so WebKit repaints rows
+   consistently after mode switches and horizontal scrolling. */
+.diff-tailwindcss-wrapper .diff-table,
+.diff-tailwindcss-wrapper .unified-diff-table,
+.diff-tailwindcss-wrapper .old-diff-table,
+.diff-tailwindcss-wrapper .new-diff-table {
+	border-collapse: separate !important;
+	border-spacing: 0;
+}
+
+.diff-tailwindcss-wrapper .diff-table-scroll-container,
+.diff-tailwindcss-wrapper .diff-view-wrapper {
+	transform: translateZ(0);
+	backface-visibility: hidden;
+}

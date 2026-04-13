@@ -871,6 +871,7 @@ function TaskDiffFileSection({
 
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
+	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${hashText(file.hunks?.join("\n") ?? `${file.oldContent}\u0000${file.newContent}`)}`;
 
 	return (
 		<div
@@ -933,6 +934,7 @@ function TaskDiffFileSection({
 					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
 				) : diffFile ? (
 					<DiffView
+						key={diffRenderKey}
 						diffFile={diffFile}
 						diffViewTheme={resolvedTheme}
 						diffViewMode={diffMode}
