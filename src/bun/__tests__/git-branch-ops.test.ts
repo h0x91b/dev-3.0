@@ -55,6 +55,7 @@ vi.mock("../spawn", () => ({
 
 import {
 	getCurrentBranch,
+	isWorktreeDirty,
 	getUnpushedCount,
 	getBranchStatus,
 	canRebaseCleanly,
@@ -98,6 +99,34 @@ describe("getCurrentBranch", () => {
 		queueResponse(128, "", "fatal: not a git repository");
 		const result = await getCurrentBranch("/not-a-repo");
 		expect(result).toBeNull();
+	});
+});
+
+// ─── isWorktreeDirty ────────────────────────────────────────────────────────
+
+describe("isWorktreeDirty", () => {
+	it("returns false for clean working tree", async () => {
+		queueResponse(0, "");
+		const result = await isWorktreeDirty("/repo");
+		expect(result).toBe(false);
+	});
+
+	it("returns true when tracked changes exist", async () => {
+		queueResponse(0, " M src/app.ts\n");
+		const result = await isWorktreeDirty("/repo");
+		expect(result).toBe(true);
+	});
+
+	it("returns true when only untracked files exist", async () => {
+		queueResponse(0, "?? scratch.txt\n");
+		const result = await isWorktreeDirty("/repo");
+		expect(result).toBe(true);
+	});
+
+	it("returns false when git status fails", async () => {
+		queueResponse(128, "", "fatal: not a git repository");
+		const result = await isWorktreeDirty("/repo");
+		expect(result).toBe(false);
 	});
 });
 

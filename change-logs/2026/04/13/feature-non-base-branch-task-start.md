@@ -1,0 +1,1 @@
+Task creation now keeps the current non-base branch visible in the branch picker so users can see what context they are about to inherit. When that branch is selected, the create-task modal now asks for explicit confirmation before starting from it, explains the risk of carrying over unrelated work, and also flags when the main repo itself is dirty.

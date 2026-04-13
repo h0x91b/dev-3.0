@@ -673,11 +673,14 @@ async function fetchBranches(params: { projectId: string; forkRef?: string }): P
 	return git.listBranches(project.path);
 }
 
-async function getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean }> {
+async function getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean }> {
 	const project = await data.getProject(params.projectId);
-	const branch = await git.getCurrentBranch(project.path);
+	const [branch, isDirty] = await Promise.all([
+		git.getCurrentBranch(project.path),
+		git.isWorktreeDirty(project.path),
+	]);
 	const isBaseBranch = !branch || branch === project.defaultBaseBranch;
-	return { branch, isBaseBranch };
+	return { branch, isBaseBranch, isDirty };
 }
 
 async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {

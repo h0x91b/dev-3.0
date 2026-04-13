@@ -12,6 +12,12 @@ import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
 import BranchSelector from "./BranchSelector";
 
+interface ProjectCurrentBranchInfo {
+	branch: string | null;
+	isBaseBranch: boolean;
+	isDirty: boolean;
+}
+
 interface CreateTaskModalProps {
 	project: Project;
 	dispatch: Dispatch<AppAction>;
@@ -28,11 +34,32 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [customTitle, setCustomTitle] = useState<string | null>(null);
 	const [editingTitle, setEditingTitle] = useState(false);
 	const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+	const [projectCurrentBranch, setProjectCurrentBranch] = useState<ProjectCurrentBranchInfo | null>(null);
+	const [checkedProjectCurrentBranch, setCheckedProjectCurrentBranch] = useState(false);
+	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
+	const [pendingSubmitMode, setPendingSubmitMode] = useState<"save" | "run" | null>(null);
 	const [reviewMode, setReviewMode] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const keepEditingRef = useRef<HTMLButtonElement>(null);
 	const projectLabels = project.labels ?? [];
+	const baseBranch = project.defaultBaseBranch || "main";
+
+	const loadProjectCurrentBranch = useCallback(async (): Promise<ProjectCurrentBranchInfo | null> => {
+		try {
+			const result = await api.request.getProjectCurrentBranch({ projectId: project.id });
+			if (!result.isBaseBranch && result.branch) {
+				setSelectedBranch((prev) => prev ?? result.branch);
+			}
+			setProjectCurrentBranch(result);
+			return result;
+		} catch {
+			setProjectCurrentBranch(null);
+			return null;
+		} finally {
+			setCheckedProjectCurrentBranch(true);
+		}
+	}, [project.id]);
 
 	const insertPathAtCursor = useCallback((path: string) => {
 		setDescription((prev) => {
@@ -96,17 +123,15 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	useEffect(() => {
 		textareaRef.current?.focus();
-		// Auto-fill branch if project's main worktree is on a non-base branch
-		api.request.getProjectCurrentBranch({ projectId: project.id }).then((result) => {
-			if (!result.isBaseBranch && result.branch) {
-				setSelectedBranch(result.branch);
-			}
-		}).catch(() => {
-			// silently fail — auto-fill is optional
-		});
-	}, [project.id]);
+		void loadProjectCurrentBranch();
+	}, [loadProjectCurrentBranch]);
 
 	function handleRequestClose() {
+		if (pendingBranchChoice) {
+			setPendingBranchChoice(null);
+			setPendingSubmitMode(null);
+			return;
+		}
 		if (description.trim()) {
 			setConfirmDiscard(true);
 		} else {
@@ -124,7 +149,10 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				e.stopImmediatePropagation();
-				if (confirmDiscard) {
+				if (pendingBranchChoice) {
+					setPendingBranchChoice(null);
+					setPendingSubmitMode(null);
+				} else if (confirmDiscard) {
 					setConfirmDiscard(false);
 				} else {
 					handleRequestClose();
@@ -135,9 +163,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		window.addEventListener("keydown", handleKey, true);
 		return () => window.removeEventListener("keydown", handleKey, true);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [description, onClose, confirmDiscard]);
+	}, [description, onClose, confirmDiscard, pendingBranchChoice]);
 
-	async function handleCreate() {
+	async function createTaskWithBranch(branch: string | null, mode: "save" | "run") {
 		const trimmed = description.trim();
 		if (!trimmed || creating) return;
 		setCreating(true);
@@ -145,7 +173,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			let task = await api.request.createTask({
 				projectId: project.id,
 				description: trimmed,
-				...(selectedBranch ? { existingBranch: selectedBranch } : {}),
+				...(branch ? { existingBranch: branch } : {}),
 			});
 			if (customTitle) {
 				task = await api.request.renameTask({
@@ -162,45 +190,58 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				});
 			}
 			dispatch({ type: "addTask", task });
-			trackEvent("task_created", { project_id: project.id });
-			onClose();
+			trackEvent("task_created", {
+				project_id: project.id,
+				...(mode === "run" ? { source: "create_and_run" } : {}),
+			});
+			if (mode === "run" && onCreateAndRun) {
+				onCreateAndRun(task);
+			} else {
+				onClose();
+			}
 		} catch (err) {
 			alert(t("kanban.failedCreate", { error: String(err) }));
 			setCreating(false);
 		}
 	}
 
-	async function handleCreateAndRun() {
+	async function handleSubmit(mode: "save" | "run") {
 		const trimmed = description.trim();
-		if (!trimmed || creating || !onCreateAndRun) return;
-		setCreating(true);
-		try {
-			let task = await api.request.createTask({
-				projectId: project.id,
-				description: trimmed,
-				...(selectedBranch ? { existingBranch: selectedBranch } : {}),
-			});
-			if (customTitle) {
-				task = await api.request.renameTask({
-					taskId: task.id,
-					projectId: project.id,
-					customTitle,
-				});
-			}
-			if (selectedLabelIds.length > 0) {
-				task = await api.request.setTaskLabels({
-					taskId: task.id,
-					projectId: project.id,
-					labelIds: selectedLabelIds,
-				});
-			}
-			dispatch({ type: "addTask", task });
-			trackEvent("task_created", { project_id: project.id, source: "create_and_run" });
-			onCreateAndRun(task);
-		} catch (err) {
-			alert(t("kanban.failedCreate", { error: String(err) }));
-			setCreating(false);
+		if (!trimmed || creating || (mode === "run" && !onCreateAndRun)) return;
+
+		const branchInfo = checkedProjectCurrentBranch ? projectCurrentBranch : await loadProjectCurrentBranch();
+		if (
+			selectedBranch
+			&& branchInfo?.branch
+			&& !branchInfo.isBaseBranch
+			&& selectedBranch === branchInfo.branch
+		) {
+			setPendingBranchChoice(branchInfo.branch);
+			setPendingSubmitMode(mode);
+			return;
 		}
+
+		await createTaskWithBranch(selectedBranch, mode);
+	}
+
+	async function handleCreate() {
+		await handleSubmit("save");
+	}
+
+	async function handleCreateAndRun() {
+		await handleSubmit("run");
+	}
+
+	function dismissBranchChoice() {
+		setPendingBranchChoice(null);
+		setPendingSubmitMode(null);
+	}
+
+	function handleBranchChoice(branch: string | null) {
+		const mode = pendingSubmitMode;
+		dismissBranchChoice();
+		if (!mode) return;
+		void createTaskWithBranch(branch, mode);
 	}
 
 	function toggleLabel(label: Label) {
@@ -215,7 +256,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			onClick={handleRequestClose}
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+			<div className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
 				<div className="flex items-center justify-between">
 					<h2 className="text-fg text-lg font-semibold">
 						{t("createTask.title")}
@@ -427,6 +468,60 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						</>
 					)}
 				</div>
+				{pendingBranchChoice && (
+					<div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/70 p-4">
+						<div className="w-full max-w-md rounded-2xl border border-edge bg-overlay p-5 shadow-2xl space-y-4">
+							<div className="space-y-2">
+								<h3 className="text-fg text-base font-semibold">
+									{t("createTask.branchChoiceTitle")}
+								</h3>
+								<p className="text-fg-2 text-sm">
+									{t("createTask.branchChoiceBody", {
+										currentBranch: pendingBranchChoice,
+										baseBranch,
+									})}
+								</p>
+								<p className="text-fg-3 text-sm">
+									{t("createTask.branchChoiceBaseHint", {
+										baseBranch,
+										baseRef: `origin/${baseBranch}`,
+									})}
+								</p>
+								<p className="text-fg-3 text-sm">
+									{t("createTask.branchChoiceRisk")}
+								</p>
+								{projectCurrentBranch?.isDirty && (
+									<p className="text-danger text-sm">
+										{t("createTask.branchChoiceDirty")}
+									</p>
+								)}
+							</div>
+							<div className="flex flex-wrap justify-end gap-2">
+								<button
+									type="button"
+									onClick={dismissBranchChoice}
+									className="px-3 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg"
+								>
+									{t("createTask.keepEditing")}
+								</button>
+								<button
+									type="button"
+									onClick={() => handleBranchChoice(null)}
+									className="px-3 py-1.5 bg-elevated border border-edge-active text-fg text-sm font-medium rounded-lg hover:bg-elevated-hover transition-colors"
+								>
+									{t("createTask.branchChoiceBase", { baseBranch })}
+								</button>
+								<button
+									type="button"
+									onClick={() => handleBranchChoice(pendingBranchChoice)}
+									className="px-3 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors"
+								>
+									{t("createTask.branchChoiceCurrent", { currentBranch: pendingBranchChoice })}
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);

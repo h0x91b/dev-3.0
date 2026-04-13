@@ -52,6 +52,7 @@ vi.mock("../git", () => ({
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
+	isWorktreeDirty: vi.fn(),
 	listBranches: vi.fn(),
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
@@ -1134,6 +1135,23 @@ describe("handlers.fetchBranches", () => {
 		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path);
 		expect(git.listBranches).toHaveBeenCalledWith(project.path);
 		expect(result).toEqual(branches);
+	});
+});
+
+describe("handlers.getProjectCurrentBranch", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("returns branch, base-branch state, and dirty state", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(true);
+
+		const result = await handlers.getProjectCurrentBranch({ projectId: "proj-1" });
+
+		expect(result).toEqual({ branch: "feat/login", isBaseBranch: false, isDirty: true });
+		expect(git.getCurrentBranch).toHaveBeenCalledWith(project.path);
+		expect(git.isWorktreeDirty).toHaveBeenCalledWith(project.path);
 	});
 });
 

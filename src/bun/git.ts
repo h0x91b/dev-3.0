@@ -784,6 +784,12 @@ export async function getCurrentBranch(worktreePath: string): Promise<string | n
 	return result.stdout;
 }
 
+export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
+	const result = await run(["git", "status", "--porcelain"], worktreePath);
+	if (!result.ok) return false;
+	return result.stdout.trim().length > 0;
+}
+
 // Per-project fetch deduplication: reuse in-flight fetch promises and enforce
 // a cooldown to prevent lock contention when multiple callers (polling, git
 // operation completion, merge detection) trigger concurrent fetches.
