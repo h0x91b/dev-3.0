@@ -120,15 +120,14 @@ describe("loadTasks — seq backfill", () => {
 		expect(result[2].seq).not.toBe(result[0].seq);
 	});
 
-	it("persists backfilled seq to disk", async () => {
+	it("keeps backfilled seq in memory during loadTasks without writing to disk", async () => {
 		const tasks = [makeRawTask({ id: "a" })];
 		seedTasks(tasks);
 
-		await loadTasks(testProject);
-
-		// File should be updated
+		const loaded = await loadTasks(testProject);
 		const saved = readSavedTasks();
-		expect(saved[0].seq).toBe(1);
+		expect(loaded[0].seq).toBe(1);
+		expect(saved[0].seq).toBeUndefined();
 	});
 
 	it("second load returns same seq values (no re-backfill)", async () => {

@@ -1,0 +1,1 @@
+Stopped `loadProjects()` and `loadTasks()` from writing schema backfills during unlocked reads, and limited migration persistence to locked mutators. Added regression tests that reproduce the reader-vs-writer race and verify stale migration writes cannot clobber concurrent project or task updates.
