@@ -115,8 +115,14 @@ describe("dev3 Bug Hunter skill content", () => {
 		expect(skill).toContain(
 			"You MAY create dev3 tasks only after the user explicitly approves task creation for findings.",
 		);
-		expect(skill).toContain("| Severity | File | Lines | Summary | Why it breaks | Reproduction hint |");
+		expect(skill).toContain("Use a compact ASCII table in plain text. Do NOT use Markdown tables for findings.");
+		expect(skill).toContain("| ID | Severity | Location                      | Summary");
+		expect(skill).toContain("Keep the full table within roughly 100 characters wide.");
+		expect(skill).toContain("ID` must be `F1`, `F2`, `F3`, ...");
 		expect(skill).toContain("Severity` must be one of: `critical`, `high`, `medium`");
+		expect(skill).toContain("### Finding details");
+		expect(skill).toContain("[F1] Short bug title");
+		expect(skill).toContain("Do not hide critical detail inside the summary table.");
 		expect(skill).toContain(
 			"Do you want me to create dev3 tasks for the critical and medium findings, one task per finding?",
 		);

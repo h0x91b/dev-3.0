@@ -473,24 +473,48 @@ Prefer concrete, reproducible bugs over vague suspicions. When you find an issue
 
 After the identity line, use these sections in order:
 
-### Findings
+### Findings summary
 
-Use a Markdown table with these columns:
+Use a compact ASCII table in plain text. Do NOT use Markdown tables for findings.
 
-| Severity | File | Lines | Summary | Why it breaks | Reproduction hint |
-|----------|------|-------|---------|---------------|-------------------|
+Use this exact column layout:
+
+\`\`\`text
++----+----------+-------------------------------+------------------------------------------+
+| ID | Severity | Location                      | Summary                                  |
++----+----------+-------------------------------+------------------------------------------+
+| F1 | medium   | src/path/file.ts:42-57       | Short bug title                          |
++----+----------+-------------------------------+------------------------------------------+
+\`\`\`
 
 Rules:
 
+- Keep the full table within roughly 100 characters wide.
 - One bug per row.
+- \`ID\` must be \`F1\`, \`F2\`, \`F3\`, ...
 - \`Severity\` must be one of: \`critical\`, \`high\`, \`medium\`.
-- \`File\` must be a repo-relative path.
-- \`Lines\` must be a compact line reference like \`42\` or \`42-57\`.
-- \`Summary\` must describe the bug, not the fix.
-- \`Why it breaks\` must state the actual failure mode or risk.
-- \`Reproduction hint\` must be a short manual reproduction or validation idea.
+- \`Location\` must be a repo-relative path plus line reference like \`src/x.ts:42-57\`.
+- \`Summary\` must be short and scannable. Put the full explanation in the detail section, not in the table.
 
 If you found no solid bugs, write \`No confirmed bugs found.\`
+
+### Finding details
+
+After the ASCII summary table, add one detail block per finding in this format:
+
+\`\`\`text
+[F1] Short bug title
+Severity: medium
+Location: src/path/file.ts:42-57
+Why it breaks: ...
+Reproduction hint: ...
+\`\`\`
+
+Rules:
+
+- \`Why it breaks\` must state the actual failure mode or technical risk.
+- \`Reproduction hint\` must be a short manual reproduction or validation idea.
+- Do not hide critical detail inside the summary table.
 
 ### Coverage
 
