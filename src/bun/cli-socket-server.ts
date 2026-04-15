@@ -2,9 +2,7 @@ import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
-import * as git from "./git";
-import * as pty from "./pty-server";
-import { isActive, activateTask, runCleanupScript, emitTaskSound, getPushMessage, getPushMessageLocal, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
+import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
@@ -487,29 +485,14 @@ const handlers: Record<string, Handler> = {
 			return updated;
 		}
 
-		// active → completed/cancelled: destroy PTY, cleanup, remove worktree
 		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
-			emitTaskSound(builtinStatus as "completed" | "cancelled");
-			try { pty.destroySession(task.id, task.tmuxSocket ?? undefined); } catch {}
-			try {
-				await runCleanupScript(task, project, {
-					fromStatus: oldStatus,
-					toStatus: builtinStatus,
-				});
-			} catch {}
-			try { await git.removeWorktree(project, task); } catch {}
-
-			const updated = await data.updateTask(project, task.id, {
-				status: builtinStatus,
-				worktreePath: null,
-				branchName: null,
-				customColumnId: null,
-			}, moveOpts);
-			if (updated.status === builtinStatus && !updated.customColumnId) {
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-				notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
-			}
-			return updated;
+			return moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: builtinStatus,
+				ifStatus,
+				ifStatusNot,
+			});
 		}
 
 		// active → active or status-only change

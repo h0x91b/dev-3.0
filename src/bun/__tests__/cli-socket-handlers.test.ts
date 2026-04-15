@@ -33,6 +33,7 @@ vi.mock("../rpc-handlers", () => {
 	return {
 		isActive: vi.fn((status: string) => ACTIVE.includes(status)),
 		activateTask: vi.fn(),
+		moveTask: vi.fn(),
 		runCleanupScript: vi.fn(),
 		emitTaskSound: vi.fn(),
 		getPushMessage: vi.fn(() => null),
@@ -75,7 +76,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, runCleanupScript, emitTaskSound, getPushMessage } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage } from "../rpc-handlers";
 import { runDevServer, stopDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
@@ -831,6 +832,36 @@ describe("note.delete", () => {
 });
 
 describe("task.move", () => {
+	function mockDestructiveMoveTask(): void {
+		vi.mocked(moveTask).mockImplementation(async ({ taskId, projectId, newStatus }: any) => {
+			const project = await data.getProject(projectId);
+			const tasks = await data.loadTasks(project);
+			const task = tasks.find((candidate) => candidate.id === taskId);
+			if (!task) throw new Error(`Task not found: ${taskId}`);
+
+			emitTaskSound(newStatus as "completed" | "cancelled");
+			try {
+				pty.destroySession(task.id, task.tmuxSocket ?? undefined);
+			} catch {}
+			try {
+				await runCleanupScript(task, project, {
+					fromStatus: task.status,
+					toStatus: newStatus,
+				});
+			} catch {}
+			try {
+				await git.removeWorktree(project, task);
+			} catch {}
+
+			return data.updateTask(project, task.id, {
+				status: newStatus,
+				worktreePath: null,
+				branchName: null,
+				customColumnId: null,
+			}, { dropPosition: "top" });
+		});
+	}
+
 	it("errors when taskId is missing", async () => {
 		const resp = await handleRequest(makeRequest("task.move", { newStatus: "todo" }));
 		expect(resp.ok).toBe(false);
@@ -1071,6 +1102,7 @@ describe("task.move", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+		mockDestructiveMoveTask();
 
 		const resp = await handleRequest(
 			makeRequest("task.move", {
@@ -1104,6 +1136,7 @@ describe("task.move", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(null);
+		mockDestructiveMoveTask();
 
 		const resp = await handleRequest(
 			makeRequest("task.move", {
@@ -1128,6 +1161,7 @@ describe("task.move", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(null);
+		mockDestructiveMoveTask();
 
 		const resp = await handleRequest(
 			makeRequest("task.move", {
@@ -1164,6 +1198,7 @@ describe("task.move", () => {
 			branchName: null,
 		});
 		vi.mocked(getPushMessage).mockReturnValue(null);
+		mockDestructiveMoveTask();
 
 		const resp = await handleRequest(
 			makeRequest("task.move", {

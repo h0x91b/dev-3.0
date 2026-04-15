@@ -556,14 +556,25 @@ async function createTask(params: { projectId: string; description: string; stat
 	return task;
 }
 
-async function moveTask(params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean }): Promise<Task> {
+export async function moveTask(params: {
+	taskId: string;
+	projectId: string;
+	newStatus: TaskStatus;
+	force?: boolean;
+	ifStatus?: string;
+	ifStatusNot?: string;
+}): Promise<Task> {
 	log.info("→ moveTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	const oldStatus = task.status;
 	const newStatus = params.newStatus;
 	const settings = await loadSettings();
-	const dropOpts = { dropPosition: settings.taskDropPosition } as const;
+	const guardOpts = {
+		...(params.ifStatus ? { ifStatus: params.ifStatus } : {}),
+		...(params.ifStatusNot ? { ifStatusNot: params.ifStatusNot } : {}),
+	};
+	const dropOpts = { dropPosition: settings.taskDropPosition, ...guardOpts } as const;
 
 	log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
 

@@ -23,6 +23,7 @@ export {
 	activateTask,
 	handleBellAutoStatus,
 	isTaskInProgress,
+	moveTask,
 	runCleanupScript,
 	emitTaskSound,
 	triggerColumnAgentIfNeeded,

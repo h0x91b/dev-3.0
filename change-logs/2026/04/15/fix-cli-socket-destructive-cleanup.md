@@ -1,0 +1,1 @@
+Routed destructive CLI socket `task.move` transitions through the shared task lifecycle handler so task state cleanup, port release, and dev-server teardown stay aligned with the canonical RPC path. Added a focused regression test that fails unless the socket move path delegates cleanup through the shared `moveTask` flow.
