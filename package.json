@@ -10,7 +10,7 @@
 		"hmr": "vite --port 5173",
 		"build": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build",
 		"build:prod": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build --channel prod",
-		"build:cli": "bun build src/cli/main.ts --compile --outfile dist/dev3 && bun run build:server",
+		"build:cli": "bun build src/cli/main.ts --compile --outfile dist/dev3 && bun run build:server && bash scripts/sign-cli-binaries.sh",
 		"build:server": "bun build src/bun/headless-bootstrap.ts --compile --outfile dist/dev3-server",
 		"build:server:linux-x64": "bun build src/bun/headless-bootstrap.ts --compile --target=bun-linux-x64 --outfile dist/dev3-server-linux-x64",
 		"build:server:linux-arm64": "bun build src/bun/headless-bootstrap.ts --compile --target=bun-linux-arm64 --outfile dist/dev3-server-linux-arm64",
