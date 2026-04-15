@@ -135,17 +135,20 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 
 	// Prod mode — compiled `dev3` spawns its sibling `dev3-server`.
 	const serverBin = locateServerBinary();
-	if (serverBin) {
-		const child = spawn(serverBin, [], { stdio: "inherit", env: childEnv });
-		child.on("exit", (code) => process.exit(code ?? 0));
-		// Forward signals so Ctrl-C in the CLI reaches the server cleanly.
-		process.on("SIGINT", () => child.kill("SIGINT"));
-		process.on("SIGTERM", () => child.kill("SIGTERM"));
-		return;
+	if (!serverBin) {
+		const expected = resolve(dirname(process.execPath), "dev3-server");
+		exitError(
+			"dev3-server binary not found",
+			`Expected alongside the CLI at: ${expected}\n` +
+				`\n` +
+				`This usually means the installed dev-3.0 app predates the \`dev3 remote\`\n` +
+				`feature. Launch the dev-3.0 GUI app once — it refreshes both dev3 and\n` +
+				`dev3-server into ~/.dev3.0/bin/ on every start — then retry \`dev3 remote\`.`,
+		);
 	}
-
-	// Prod binary without sibling — shouldn't happen in a normal install, but
-	// fall back to source as a last resort (will fail: compiled binary can't
-	// execute .ts files, runViaBun will error cleanly).
-	runViaBun(childEnv);
+	const child = spawn(serverBin, [], { stdio: "inherit", env: childEnv });
+	child.on("exit", (code) => process.exit(code ?? 0));
+	// Forward signals so Ctrl-C in the CLI reaches the server cleanly.
+	process.on("SIGINT", () => child.kill("SIGINT"));
+	process.on("SIGTERM", () => child.kill("SIGTERM"));
 }
