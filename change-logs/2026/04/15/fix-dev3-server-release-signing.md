@@ -1,0 +1,1 @@
+Fixed the macOS release signing flow so both bundled CLI binaries, `dev3` and `dev3-server`, are signed with the Developer ID certificate before notarization. Added a regression test covering the release-signing mode of `scripts/sign-cli-binaries.sh`.
