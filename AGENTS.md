@@ -76,6 +76,7 @@ Agents in this project typically run inside a **git worktree**, not the main wor
 
 - **Commit immediately after making changes — in English only.** Do not wait for the user to ask — commit as soon as a logical unit of work is done. Do NOT `git push` automatically — let the user decide when to push.
 - **Always commit `.claude/` directory changes.** The `.claude/` directory (e.g., `settings.local.json`) is modified automatically during agent sessions via UI interactions. These changes are part of your session — always include them in your commits.
+- **CRITICAL: never let Git open an editor.** Always pass messages inline (`git commit -m "..."`, `git tag -m "..."`) and prefer non-interactive continue commands. For operations that normally open an editor, force no-editor mode explicitly (for example `GIT_EDITOR=true git rebase --continue`, `git merge --continue --no-edit`, `git cherry-pick --continue --no-edit`). If a command would open an editor window, stop and choose a non-interactive form instead.
 
 ### GitHub CLI (`gh`)
 
