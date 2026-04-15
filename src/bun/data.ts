@@ -59,7 +59,7 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 		}
 		if (needsSave) {
 			log.info("Migrated legacy 'say' cleanup scripts, saving projects");
-			await Bun.write(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+			await rawSaveProjects(projects);
 		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
 		return projects;
