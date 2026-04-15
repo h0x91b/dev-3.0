@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import type { ExternalApp } from "../shared/types";
+import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 
@@ -60,7 +61,12 @@ export async function loadSettings(): Promise<GlobalSettings> {
 
 export async function saveSettings(settings: GlobalSettings): Promise<void> {
 	log.info("Saving global settings", { settings });
-	await Bun.write(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+	await withFileLock(SETTINGS_FILE, async () => {
+		mkdirSync(DEV3_HOME, { recursive: true });
+		const tempFile = `${SETTINGS_FILE}.tmp`;
+		await Bun.write(tempFile, JSON.stringify(settings, null, 2));
+		renameSync(tempFile, SETTINGS_FILE);
+	});
 	log.info("Global settings saved");
 }
 

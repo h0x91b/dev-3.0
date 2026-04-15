@@ -1,0 +1,1 @@
+Hardened global settings persistence with a file lock, parent directory creation, and atomic temp-file rename to prevent corrupted `settings.json` writes. Added backend tests covering interrupted writes and first-write directory creation.
