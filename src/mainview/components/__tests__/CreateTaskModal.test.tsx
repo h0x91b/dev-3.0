@@ -639,6 +639,31 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
+	it("still asks on a fast Save click while branch lookup is in-flight", async () => {
+		// Reproduce the race: user clicks Save before getProjectCurrentBranch
+		// resolves. The closed-over `selectedBranch` is still null (auto-fill
+		// hasn't committed yet); the confirmation must still fire instead of
+		// silently creating from the base branch.
+		let resolveBranch: (value: { branch: string | null; isBaseBranch: boolean; isDirty: boolean }) => void = () => {};
+		const branchPromise = new Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean }>((resolve) => {
+			resolveBranch = resolve;
+		});
+		mockedApi.request.getProjectCurrentBranch.mockReturnValue(branchPromise);
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Racey task");
+		await userEvent.click(screen.getByText("Save"));
+
+		// Now let the lookup complete with a non-base branch.
+		resolveBranch({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+
+		await waitFor(() => {
+			expect(screen.getByText("Start task from which branch?")).toBeInTheDocument();
+		});
+		expect(mockedApi.request.createTask).not.toHaveBeenCalled();
+	});
+
 	it("Fetch button calls fetchBranches and updates list", async () => {
 		mockedApi.request.listBranches.mockResolvedValue([]);
 		mockedApi.request.fetchBranches.mockResolvedValue([

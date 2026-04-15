@@ -209,19 +209,32 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		const trimmed = description.trim();
 		if (!trimmed || creating || (mode === "run" && !onCreateAndRun)) return;
 
-		const branchInfo = checkedProjectCurrentBranch ? projectCurrentBranch : await loadProjectCurrentBranch();
+		// Race guard: if the initial getProjectCurrentBranch() lookup is still
+		// in-flight when the user clicks Save, the user has not yet had a
+		// chance to see the auto-fill or to clear/change the picker. In that
+		// case, treat the just-loaded non-base branch as the effective
+		// selection — otherwise the stale null `selectedBranch` from the
+		// pre-auto-fill render would cause the branch-choice confirmation to
+		// be silently skipped on a fast first Save click.
+		const wasAlreadyChecked = checkedProjectCurrentBranch;
+		const branchInfo = wasAlreadyChecked ? projectCurrentBranch : await loadProjectCurrentBranch();
+		const effectiveBranch =
+			!wasAlreadyChecked && branchInfo && !branchInfo.isBaseBranch && branchInfo.branch
+				? branchInfo.branch
+				: selectedBranch;
+
 		if (
-			selectedBranch
+			effectiveBranch
 			&& branchInfo?.branch
 			&& !branchInfo.isBaseBranch
-			&& selectedBranch === branchInfo.branch
+			&& effectiveBranch === branchInfo.branch
 		) {
 			setPendingBranchChoice(branchInfo.branch);
 			setPendingSubmitMode(mode);
 			return;
 		}
 
-		await createTaskWithBranch(selectedBranch, mode);
+		await createTaskWithBranch(effectiveBranch, mode);
 	}
 
 	async function handleCreate() {
