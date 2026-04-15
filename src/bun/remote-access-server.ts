@@ -53,24 +53,52 @@ const MIME_TYPES: Record<string, string> = {
 	".map": "application/json",
 };
 
-function getStaticRoot(): string {
-	// Production: Electrobun bundles assets into PATHS.VIEWS_FOLDER/mainview/
-	const prodRoot = resolve(PATHS.VIEWS_FOLDER, "mainview");
-	if (existsSync(join(prodRoot, "index.html"))) return prodRoot;
+// Lazily resolved + cached. We cannot resolve at module-eval time because in
+// headless mode `PATHS.VIEWS_FOLDER` reads `process.env.DEV3_VIEWS_DIR`, which
+// `headless-entry` only sets after this module has already been imported.
+// Resolving on first request lets the env settle first; once we hit a real
+// directory we cache it forever.
+let cachedStaticRoot: string | null = null;
 
-	// Dev: Vite builds to dist/ in the project root
-	const devRoot = resolve(import.meta.dir, "..", "..", "dist");
-	if (existsSync(join(devRoot, "index.html"))) return devRoot;
+function resolveStaticRoot(): string {
+	// Two valid layouts:
+	//   Electrobun bundle:  PATHS.VIEWS_FOLDER/mainview/index.html
+	//   Flat Vite output:   PATHS.VIEWS_FOLDER/index.html (e.g. headless dist/)
+	// Plus a dev fallback resolved relative to this source file.
+	const viewsFolder = PATHS.VIEWS_FOLDER || "";
+	const candidates: string[] = [];
+	if (viewsFolder) {
+		candidates.push(resolve(viewsFolder, "mainview"));
+		candidates.push(viewsFolder);
+	}
+	// Dev: bun run src/cli/main.ts remote → resolve from src/bun/ → repo's dist/
+	candidates.push(resolve(import.meta.dir, "..", "..", "dist"));
 
-	log.warn("No static assets found", { prodRoot, devRoot });
-	return devRoot; // return anyway, will 404
+	for (const candidate of candidates) {
+		if (existsSync(join(candidate, "index.html"))) return candidate;
+	}
+
+	log.warn("No static assets found yet", { candidates });
+	return candidates[candidates.length - 1]; // returned for the 404, not cached
 }
 
-const staticRoot = getStaticRoot();
-log.info("Static root for remote access", { staticRoot });
+function getStaticRoot(): string {
+	if (cachedStaticRoot && existsSync(join(cachedStaticRoot, "index.html"))) {
+		return cachedStaticRoot;
+	}
+	const root = resolveStaticRoot();
+	if (existsSync(join(root, "index.html"))) {
+		if (cachedStaticRoot !== root) {
+			log.info("Static root for remote access", { staticRoot: root });
+			cachedStaticRoot = root;
+		}
+	}
+	return root;
+}
 
 /** Exported for testing. */
 export async function serveStatic(pathname: string): Promise<Response | null> {
+	const staticRoot = getStaticRoot();
 	let filePath = resolve(staticRoot, "." + pathname);
 
 	// Reject any path that escapes the static root (path traversal)
