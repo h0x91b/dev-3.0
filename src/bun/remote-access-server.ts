@@ -261,8 +261,14 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 						return new Response("Missing token", { status: 400 });
 					}
 					// Static code path — fixed code, no replay protection, dev only.
+					// When active, the JWT exchange path is disabled entirely: only
+					// the static code is accepted so that a stale QR JWT cannot bypass it.
 					const staticCode = getStaticCode();
-					if (staticCode && body.token === staticCode) {
+					if (staticCode) {
+						if (body.token !== staticCode) {
+							log.warn("Auth exchange: invalid static code", { ip: clientIp, ua });
+							return new Response("Invalid or expired token", { status: 401 });
+						}
 						const sessionToken = await createSessionToken();
 						log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
 						qrConsumedCallback?.();
