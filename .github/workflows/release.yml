@@ -96,13 +96,6 @@ jobs:
           bun scripts/generate-changelog.ts
           bunx vite build
           bun run build:cli
-          if [ -n "$ELECTROBUN_DEVELOPER_ID" ] && [ -f dist/dev3 ]; then
-            echo "Signing dist/dev3 with Developer ID..."
-            codesign --force --verbose --timestamp \
-              --sign "$ELECTROBUN_DEVELOPER_ID" \
-              --options runtime \
-              dist/dev3
-          fi
           bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
 
       - name: Debug build output
@@ -201,13 +194,6 @@ jobs:
           bun scripts/generate-changelog.ts
           bunx vite build
           bun run build:cli
-          if [ -n "$ELECTROBUN_DEVELOPER_ID" ] && [ -f dist/dev3 ]; then
-            echo "Signing dist/dev3 with Developer ID..."
-            codesign --force --verbose --timestamp \
-              --sign "$ELECTROBUN_DEVELOPER_ID" \
-              --options runtime \
-              dist/dev3
-          fi
           bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
 
       - name: Debug build output
