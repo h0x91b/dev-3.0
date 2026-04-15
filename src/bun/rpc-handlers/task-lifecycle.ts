@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import type { ColumnAgentConfig, CustomColumn, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, titleFromDescription } from "../../shared/types";
+import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -14,6 +14,7 @@ import {
 	getTaskPreparationSnapshot,
 	isTaskPreparationActive,
 	markTaskPreparationCancelled,
+	reportCurrentPreparationStage,
 	TaskPreparationCancelledError,
 	withTaskPreparation,
 } from "../preparation-runtime";
@@ -37,7 +38,7 @@ async function runCowClones(project: Project, worktreePath: string): Promise<voi
 async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<void> {
 	for (const task of tasks) {
 		try {
-			const updated = await data.updateTask(project, task.id, { preparing: false });
+			const updated = await data.updateTask(project, task.id, clearPreparingState());
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		} catch {
 			// Best effort — do not crash background preparation cleanup.
@@ -49,10 +50,35 @@ function preparingResetUpdates(): Partial<Task> {
 	return {
 		status: "todo",
 		preparing: false,
+		preparingStage: null,
+		preparingProgress: null,
 		worktreePath: null,
 		branchName: null,
 		customColumnId: null,
 	};
+}
+
+const INITIAL_PREPARING_STAGE: PreparingStage = "resolving-config";
+
+function clearPreparingState(): Pick<Task, "preparing" | "preparingStage" | "preparingProgress"> {
+	return {
+		preparing: false,
+		preparingStage: null,
+		preparingProgress: null,
+	};
+}
+
+function preparingStageUpdates(stage: PreparingStage): Pick<Task, "preparing" | "preparingStage" | "preparingProgress"> {
+	return {
+		preparing: true,
+		preparingStage: stage,
+		preparingProgress: getPreparingStageProgress(stage),
+	};
+}
+
+async function pushPreparingStage(project: Project, taskId: string, stage: PreparingStage): Promise<void> {
+	const updated = await data.updateTask(project, taskId, preparingStageUpdates(stage));
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 }
 
 async function killTrackedPreparationProcesses(taskId: string, pids: number[]): Promise<void> {
@@ -110,8 +136,8 @@ async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<
 	try {
 		await git.removeWorktree(project, cleanupTask);
 	} catch (err) {
-		log.warn("removeWorktree failed while cancelling preparation", {
-			taskId: task.id.slice(0, 8),
+			log.warn("removeWorktree failed while cancelling preparation", {
+				taskId: task.id.slice(0, 8),
 			worktreePath: cleanupTask.worktreePath,
 			error: String(err),
 		});
@@ -127,9 +153,13 @@ async function measurePreparationStep<T>(
 	runId: string,
 	step: string,
 	fn: () => Promise<T>,
+	stage?: PreparingStage,
 	extra?: Record<string, unknown>,
 ): Promise<T> {
 	assertTaskPreparationActive(task.id, runId);
+	if (stage) {
+		await reportCurrentPreparationStage(stage);
+	}
 	const startedAt = performance.now();
 	log.info("Preparing step started", {
 		taskId: task.id.slice(0, 8),
@@ -182,6 +212,7 @@ async function prepareTaskInBackground(
 				runId,
 				"resolveProjectConfig",
 				() => repoConfig.resolveProjectConfig(project),
+				"resolving-config",
 			);
 			const wt = await measurePreparationStep(
 				task,
@@ -193,6 +224,7 @@ async function prepareTaskInBackground(
 					options.existingBranch ?? undefined,
 					options.variantBranchName,
 				),
+				"creating-worktree",
 				{
 					existingBranch: options.existingBranch ?? null,
 					variantBranchName: options.variantBranchName ?? null,
@@ -203,6 +235,7 @@ async function prepareTaskInBackground(
 				runId,
 				"resolveOperationalProjectConfig",
 				() => resolveOperationalProjectConfig(resolvedProject, wt.worktreePath),
+				"resolving-config",
 				{ worktreePath: wt.worktreePath },
 			);
 
@@ -212,6 +245,7 @@ async function prepareTaskInBackground(
 					runId,
 					"applySparseCheckout",
 					() => git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths!),
+					"applying-sparse-checkout",
 					{ pathCount: resolved.sparseCheckoutPaths.length },
 				);
 			} else {
@@ -229,6 +263,7 @@ async function prepareTaskInBackground(
 				runId,
 				"runCowClones",
 				() => runCowClones(resolved, wt.worktreePath),
+				"cloning-shared-paths",
 			);
 			await measurePreparationStep(
 				task,
@@ -242,13 +277,14 @@ async function prepareTaskInBackground(
 					options.configId,
 					true,
 				),
+				"launching-pty",
 			);
 
 			assertTaskPreparationActive(task.id, runId);
 			const updated = await data.updateTask(project, task.id, {
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
-				preparing: false,
+				...clearPreparingState(),
 			});
 
 			if (!isTaskPreparationActive(task.id, runId)) {
@@ -284,14 +320,14 @@ async function prepareTaskInBackground(
 			});
 			try {
 				if (isTaskPreparationActive(task.id, runId)) {
-					const updated = await data.updateTask(project, task.id, { preparing: false });
+					const updated = await data.updateTask(project, task.id, clearPreparingState());
 					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 				}
 			} catch {
 				// Best effort — the original error is already logged.
 			}
 		}
-	});
+	}, (stage) => pushPreparingStage(project, task.id, stage));
 }
 
 export async function activateTask(
@@ -719,11 +755,16 @@ async function spawnVariants(params: {
 				seq: sharedSeq,
 				existingBranch: srcBranch,
 				preparing: needsWorktree,
+				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
+				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				watched: sourceTask.watched,
 			},
 		);
 
-		resultTasks.push(task);
+		resultTasks.push(needsWorktree ? {
+			...task,
+			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
+		} : task);
 	}
 
 	await data.deleteTask(project, params.taskId);
@@ -806,11 +847,16 @@ async function addAttempts(params: {
 				configId: variant.configId,
 				seq: sharedSeq,
 				preparing: needsWorktree,
+				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
+				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				watched: sourceTask.watched,
 			},
 		);
 
-		resultTasks.push(task);
+		resultTasks.push(needsWorktree ? {
+			...task,
+			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
+		} : task);
 	}
 
 	const updatedSource = await data.getTask(project, sourceTask.id);

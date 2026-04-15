@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
+import type { CodingAgent, PortInfo, PreparingStage, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -40,6 +40,15 @@ interface TaskCardProps {
 	siblingMap?: Map<string, Task[]>;
 	prInfo?: { number: number; url: string };
 }
+
+const PREPARING_STAGE_LABELS = {
+	"resolving-config": "task.preparingStage.resolvingConfig",
+	"fetching-origin": "task.preparingStage.fetchingOrigin",
+	"creating-worktree": "task.preparingStage.creatingWorktree",
+	"applying-sparse-checkout": "task.preparingStage.applyingSparseCheckout",
+	"cloning-shared-paths": "task.preparingStage.cloningSharedPaths",
+	"launching-pty": "task.preparingStage.launchingPty",
+} as const satisfies Record<PreparingStage, string>;
 
 function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
 	const t = useT();
@@ -317,6 +326,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	const isCompleted = task.status === "completed";
+	const preparingStage = task.preparingStage ?? "resolving-config";
+	const preparingProgress = Math.max(
+		4,
+		Math.min(
+			100,
+			typeof task.preparingProgress === "number"
+				? task.preparingProgress
+				: getPreparingStageProgress(preparingStage),
+		),
+	);
+	const preparingStageLabel = t(PREPARING_STAGE_LABELS[preparingStage]);
 
 	function handleClick() {
 		if (isDisabled) return;
@@ -419,30 +439,53 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				</div>
 			)}
 
-			{/* Preparing spinner overlay — worktree is being created */}
+			{/* Preparing overlay — show compact stage progress while setup work runs */}
 			{isPreparing && (
-				<div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-base/40">
-					<div className="flex items-center gap-2">
-						<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
-						<span className="text-xs text-fg-2 font-medium">{t("task.preparing")}</span>
-					</div>
-					<button
-						onClick={handleCancelPreparation}
-						disabled={cancellingPreparation}
-						className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-[0.6875rem] text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
-						title={t("task.cancel")}
-					>
-						{t("task.cancel")}
-					</button>
-					{hasLongDescription && (
-						<button
-							onClick={handleShowDescription}
-							className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
-							title={t("task.showDescription")}
+				<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-base/45 px-3 backdrop-blur-[2px]">
+					<div className="w-full max-w-[15.5rem] rounded-xl border border-edge bg-overlay/95 px-3 py-2.5 shadow-xl shadow-black/30">
+						<div className="flex items-center gap-2">
+							<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+							<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3">
+								{t("task.preparing")}
+							</span>
+						</div>
+						<div className="mt-1.5 truncate text-sm font-medium text-fg">
+							{preparingStageLabel}
+						</div>
+						<div
+							className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-fg/10"
+							role="progressbar"
+							aria-label={t("task.preparing")}
+							aria-valuemin={0}
+							aria-valuemax={100}
+							aria-valuenow={preparingProgress}
+							aria-valuetext={preparingStageLabel}
 						>
-							{t("task.showDescription")}
-						</button>
-					)}
+							<div
+								className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+								style={{ width: `${preparingProgress}%` }}
+							/>
+						</div>
+						<div className="mt-2 flex items-center justify-end gap-2">
+							{hasLongDescription && (
+								<button
+									onClick={handleShowDescription}
+									className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
+									title={t("task.showDescription")}
+								>
+									{t("task.showDescription")}
+								</button>
+							)}
+							<button
+								onClick={handleCancelPreparation}
+								disabled={cancellingPreparation}
+								className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-[0.6875rem] text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
+								title={t("task.cancel")}
+							>
+								{t("task.cancel")}
+							</button>
+						</div>
+					</div>
 				</div>
 			)}
 

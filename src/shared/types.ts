@@ -554,10 +554,35 @@ export interface Task {
 	customColumnId?: string | null;
 	/** True while the worktree is being created (heavy I/O in progress). */
 	preparing?: boolean;
+	/** Current preparation stage shown while the task is still being set up. */
+	preparingStage?: PreparingStage | null;
+	/** Compact 0-100 progress value for the current preparation stage. */
+	preparingProgress?: number | null;
 	/** When true, native macOS notifications fire on status changes. */
 	watched?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */
 	sessionState?: TaskSessionState | null;
+}
+
+export type PreparingStage =
+	| "resolving-config"
+	| "fetching-origin"
+	| "creating-worktree"
+	| "applying-sparse-checkout"
+	| "cloning-shared-paths"
+	| "launching-pty";
+
+export const PREPARING_STAGE_PROGRESS: Record<PreparingStage, number> = {
+	"resolving-config": 8,
+	"fetching-origin": 24,
+	"creating-worktree": 48,
+	"applying-sparse-checkout": 62,
+	"cloning-shared-paths": 82,
+	"launching-pty": 94,
+};
+
+export function getPreparingStageProgress(stage: PreparingStage): number {
+	return PREPARING_STAGE_PROGRESS[stage];
 }
 
 /** Per-pane session info for recovery. */

@@ -281,7 +281,18 @@ export async function addTask(
 	project: Project,
 	description: string,
 	status: TaskStatus = "todo",
-	extras?: { groupId?: string; variantIndex?: number; agentId?: string | null; configId?: string | null; seq?: number; existingBranch?: string; preparing?: boolean; watched?: boolean },
+	extras?: {
+		groupId?: string;
+		variantIndex?: number;
+		agentId?: string | null;
+		configId?: string | null;
+		seq?: number;
+		existingBranch?: string;
+		preparing?: boolean;
+		preparingStage?: Task["preparingStage"];
+		preparingProgress?: Task["preparingProgress"];
+		watched?: boolean;
+	},
 ): Promise<Task> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
@@ -309,6 +320,8 @@ export async function addTask(
 			labelIds: [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
 			...(extras?.preparing ? { preparing: true } : {}),
+			...(extras?.preparingStage ? { preparingStage: extras.preparingStage } : {}),
+			...(typeof extras?.preparingProgress === "number" ? { preparingProgress: extras.preparingProgress } : {}),
 			...(extras?.watched ? { watched: true } : {}),
 		};
 		tasks.push(task);
