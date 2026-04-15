@@ -1,8 +1,7 @@
-import { unlink } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskStatus, TipState } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
-import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 import { detectClonePaths } from "./cow-clone";
 import { withFileLock } from "./file-lock";
@@ -11,6 +10,7 @@ import { projectSlug } from "./git";
 const log = createLogger("data");
 
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
+type ProjectUpdates = Partial<Pick<Project, "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels">>;
 
 function tasksFile(project: Project): string {
 	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
@@ -18,8 +18,7 @@ function tasksFile(project: Project): string {
 
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
-	const proc = spawn(["mkdir", "-p", dir]);
-	await proc.exited;
+	await mkdir(dir, { recursive: true });
 }
 
 // ---- Projects (raw internal helpers — no locking) ----
@@ -27,12 +26,7 @@ async function ensureDir(filePath: string): Promise<void> {
 async function rawLoadAllProjects(): Promise<Project[]> {
 	log.debug("Loading all projects", { file: PROJECTS_FILE });
 	try {
-		const file = Bun.file(PROJECTS_FILE);
-		if (!(await file.exists())) {
-			log.info("No projects file yet, returning empty list");
-			return [];
-		}
-		const projects: Project[] = await file.json();
+		const projects = JSON.parse(await readFile(PROJECTS_FILE, "utf8")) as Project[];
 		// Backfill labels for projects created before this field existed
 		let needsSave = false;
 		for (const project of projects) {
@@ -65,11 +59,15 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 		}
 		if (needsSave) {
 			log.info("Migrated legacy 'say' cleanup scripts, saving projects");
-			await Bun.write(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+			await rawSaveProjects(projects);
 		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
 		return projects;
-	} catch (err) {
+	} catch (err: any) {
+		if (err.code === "ENOENT") {
+			log.info("No projects file yet, returning empty list");
+			return [];
+		}
 		log.error("Failed to load projects", { error: String(err) });
 		return [];
 	}
@@ -78,7 +76,7 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 async function rawSaveProjects(projects: Project[]): Promise<void> {
 	log.debug("Saving projects", { count: projects.length, file: PROJECTS_FILE });
 	await ensureDir(PROJECTS_FILE);
-	await Bun.write(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+	await writeFile(PROJECTS_FILE, JSON.stringify(projects, null, 2));
 	log.info(`Saved ${projects.length} project(s)`);
 }
 
@@ -162,7 +160,7 @@ export async function removeProject(projectId: string): Promise<void> {
 
 export async function updateProject(
 	projectId: string,
-	updates: Partial<Pick<Project, "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels">>,
+	updates: ProjectUpdates,
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project", { projectId, updates });
@@ -172,6 +170,22 @@ export async function updateProject(
 		projects[idx] = { ...projects[idx], ...updates };
 		await rawSaveProjects(projects);
 		return projects[idx];
+	});
+}
+
+export async function updateProjectWith<T>(
+	projectId: string,
+	mutator: (project: Project) => Promise<{ updates: ProjectUpdates; result: T }> | { updates: ProjectUpdates; result: T },
+): Promise<{ project: Project; result: T }> {
+	return withFileLock(PROJECTS_FILE, async () => {
+		log.info("Updating project with mutator", { projectId });
+		const projects = await rawLoadAllProjects();
+		const idx = projects.findIndex((p) => p.id === projectId);
+		if (idx === -1) throw new Error(`Project not found: ${projectId}`);
+		const { updates, result } = await mutator(projects[idx]);
+		projects[idx] = { ...projects[idx], ...updates };
+		await rawSaveProjects(projects);
+		return { project: projects[idx], result };
 	});
 }
 
@@ -197,12 +211,7 @@ async function rawLoadTasks(project: Project): Promise<Task[]> {
 	const file = tasksFile(project);
 	log.debug("Loading tasks", { projectId: project.id, file });
 	try {
-		const f = Bun.file(file);
-		if (!(await f.exists())) {
-			log.info("No tasks file yet", { projectId: project.id });
-			return [];
-		}
-		const tasks: Task[] = await f.json();
+		const tasks = JSON.parse(await readFile(file, "utf8")) as Task[];
 		// Backfill fields for tasks created before they existed
 		for (const task of tasks) {
 			if ((task as any).description === undefined) {
@@ -246,7 +255,11 @@ async function rawLoadTasks(project: Project): Promise<Task[]> {
 
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
 		return tasks;
-	} catch (err) {
+	} catch (err: any) {
+		if (err.code === "ENOENT") {
+			log.info("No tasks file yet", { projectId: project.id });
+			return [];
+		}
 		log.error("Failed to load tasks", { projectId: project.id, error: String(err) });
 		return [];
 	}
@@ -259,7 +272,7 @@ async function rawSaveTasks(
 	const file = tasksFile(project);
 	log.debug("Saving tasks", { projectId: project.id, count: tasks.length });
 	await ensureDir(file);
-	await Bun.write(file, JSON.stringify(tasks, null, 2));
+	await writeFile(file, JSON.stringify(tasks, null, 2));
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
 }
 
@@ -334,58 +347,32 @@ export async function updateTask(
 		const tasks = await rawLoadTasks(project);
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
-		const currentTask = tasks[idx];
-		const allowedStatuses = options?.ifStatus
-			?.split(",")
-			.map((status) => status.trim())
-			.filter(Boolean);
-		if (allowedStatuses && !allowedStatuses.includes(currentTask.status)) {
-			return currentTask;
-		}
-		const blockedStatuses = options?.ifStatusNot
-			?.split(",")
-			.map((status) => status.trim())
-			.filter(Boolean);
-		if (blockedStatuses && blockedStatuses.includes(currentTask.status)) {
-			return currentTask;
-		}
-		const now = new Date().toISOString();
-		const statusChanged = updates.status && updates.status !== currentTask.status;
-
-		if (statusChanged) {
-			const newStatus = updates.status!;
-			const dropPosition = options?.dropPosition;
-
-			tasks[idx] = { ...tasks[idx], ...updates, movedAt: now, columnOrder: undefined, updatedAt: now };
-
-			if (dropPosition) {
-				const columnTasks = tasks
-					.filter((t) => t.status === newStatus && t.id !== taskId)
-					.sort((a, b) => {
-						if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
-							return a.columnOrder - b.columnOrder;
-						}
-						if (a.columnOrder !== undefined) return -1;
-						if (b.columnOrder !== undefined) return 1;
-						return a.createdAt < b.createdAt ? -1 : 1;
-					});
-
-				if (dropPosition === "top") {
-					columnTasks.unshift(tasks[idx]);
-				} else {
-					columnTasks.push(tasks[idx]);
-				}
-
-				for (let i = 0; i < columnTasks.length; i++) {
-					columnTasks[i].columnOrder = i;
-				}
-			}
-		} else {
-			tasks[idx] = { ...tasks[idx], ...updates, updatedAt: now };
-		}
-
+		const updatedTask = applyTaskUpdate(tasks, idx, updates, options);
 		await rawSaveTasks(project, tasks);
-		return tasks[idx];
+		return updatedTask;
+	});
+}
+
+export async function updateTaskWith<T>(
+	project: Project,
+	taskId: string,
+	mutator: (task: Task) => Promise<{ updates: Partial<Task>; result: T }> | { updates: Partial<Task>; result: T },
+	options?: {
+		dropPosition?: "top" | "bottom";
+		ifStatus?: string;
+		ifStatusNot?: string;
+	},
+): Promise<{ task: Task; result: T }> {
+	const file = tasksFile(project);
+	return withFileLock(file, async () => {
+		log.info("Updating task with mutator", { projectId: project.id, taskId });
+		const tasks = await rawLoadTasks(project);
+		const idx = tasks.findIndex((t) => t.id === taskId);
+		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
+		const { updates, result } = await mutator(tasks[idx]);
+		const task = applyTaskUpdate(tasks, idx, updates, options);
+		await rawSaveTasks(project, tasks);
+		return { task, result };
 	});
 }
 
@@ -412,6 +399,69 @@ export async function getTask(
 	return task;
 }
 
+function applyTaskUpdate(
+	tasks: Task[],
+	idx: number,
+	updates: Partial<Task>,
+	options?: {
+		dropPosition?: "top" | "bottom";
+		ifStatus?: string;
+		ifStatusNot?: string;
+	},
+): Task {
+	const currentTask = tasks[idx];
+	const allowedStatuses = options?.ifStatus
+		?.split(",")
+		.map((status) => status.trim())
+		.filter(Boolean);
+	if (allowedStatuses && !allowedStatuses.includes(currentTask.status)) {
+		return currentTask;
+	}
+	const blockedStatuses = options?.ifStatusNot
+		?.split(",")
+		.map((status) => status.trim())
+		.filter(Boolean);
+	if (blockedStatuses && blockedStatuses.includes(currentTask.status)) {
+		return currentTask;
+	}
+	const now = new Date().toISOString();
+	const statusChanged = updates.status && updates.status !== currentTask.status;
+
+	if (statusChanged) {
+		const newStatus = updates.status!;
+		const dropPosition = options?.dropPosition;
+
+		tasks[idx] = { ...tasks[idx], ...updates, movedAt: now, columnOrder: undefined, updatedAt: now };
+
+		if (dropPosition) {
+			const columnTasks = tasks
+				.filter((t) => t.status === newStatus && t.id !== tasks[idx].id)
+				.sort((a, b) => {
+					if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
+						return a.columnOrder - b.columnOrder;
+					}
+					if (a.columnOrder !== undefined) return -1;
+					if (b.columnOrder !== undefined) return 1;
+					return a.createdAt < b.createdAt ? -1 : 1;
+				});
+
+			if (dropPosition === "top") {
+				columnTasks.unshift(tasks[idx]);
+			} else {
+				columnTasks.push(tasks[idx]);
+			}
+
+			for (let i = 0; i < columnTasks.length; i++) {
+				columnTasks[i].columnOrder = i;
+			}
+		}
+	} else {
+		tasks[idx] = { ...tasks[idx], ...updates, updatedAt: now };
+	}
+
+	return tasks[idx];
+}
+
 // ---- Preferences ----
 
 const PREFERENCES_FILE = `${DEV3_HOME}/preferences.json`;
@@ -422,17 +472,16 @@ interface Preferences {
 
 async function rawLoadPreferences(): Promise<Preferences> {
 	try {
-		const file = Bun.file(PREFERENCES_FILE);
-		if (!(await file.exists())) return {};
-		return await file.json();
-	} catch {
+		return JSON.parse(await readFile(PREFERENCES_FILE, "utf8")) as Preferences;
+	} catch (err: any) {
+		if (err.code === "ENOENT") return {};
 		return {};
 	}
 }
 
 async function rawSavePreferences(prefs: Preferences): Promise<void> {
 	await ensureDir(PREFERENCES_FILE);
-	await Bun.write(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
+	await writeFile(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
 }
 
 export async function getLastPickedFolder(): Promise<string | undefined> {

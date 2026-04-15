@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import type { Project } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -11,7 +12,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test",
+	DEV3_HOME: "/tmp/dev3-test-projects",
 }));
 
 vi.mock("../cow-clone", () => ({
@@ -22,25 +23,14 @@ vi.mock("../file-lock", () => ({
 	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
 }));
 
-let mockFileStore: Record<string, string> = {};
-
 beforeEach(() => {
-	mockFileStore = {};
-	(globalThis as any).Bun = {
-		file: (path: string) => ({
-			exists: async () => path in mockFileStore,
-			json: async () => JSON.parse(mockFileStore[path]),
-		}),
-		write: async (path: string, content: string) => {
-			mockFileStore[path] = content;
-		},
-		spawn: (_cmd: string[]) => ({ exited: Promise.resolve(0) }),
-	};
+	rmSync("/tmp/dev3-test-projects", { recursive: true, force: true });
+	mkdirSync("/tmp/dev3-test-projects", { recursive: true });
 });
 
 import { addProject, loadProjects, updateProject } from "../data";
 
-const PROJECTS_FILE = "/tmp/dev3-test/projects.json";
+const PROJECTS_FILE = "/tmp/dev3-test-projects/projects.json";
 
 describe("addProject — duplicate prevention", () => {
 	it("returns existing project when adding same path twice", async () => {
@@ -78,7 +68,7 @@ describe("addProject — duplicate prevention", () => {
 				deleted: true,
 			},
 		];
-		mockFileStore[PROJECTS_FILE] = JSON.stringify(existing);
+		writeFileSync(PROJECTS_FILE, JSON.stringify(existing));
 
 		const result = await addProject("/tmp/deleted-repo", "New Name");
 

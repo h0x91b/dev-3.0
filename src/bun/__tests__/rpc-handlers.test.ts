@@ -31,8 +31,10 @@ vi.mock("../data", () => ({
 	deleteTask: vi.fn(),
 	removeProject: vi.fn(),
 	updateProject: vi.fn(),
+	updateProjectWith: vi.fn(),
 	getLastPickedFolder: vi.fn(),
 	setLastPickedFolder: vi.fn(),
+	updateTaskWith: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -2928,22 +2930,24 @@ describe("handlers.createLabel", () => {
 
 	it("creates a label with auto-picked color", async () => {
 		const project = makeProject({ labels: [] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const label = await handlers.createLabel({ projectId: "proj-1", name: " My Label " });
 		expect(label.name).toBe("My Label");
 		expect(label.id).toBeTruthy();
 		expect(label.color).toBeTruthy();
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
-			labels: [expect.objectContaining({ name: "My Label" })],
-		});
+		expect(data.updateProjectWith).toHaveBeenCalledTimes(1);
 	});
 
 	it("uses provided color when specified", async () => {
 		const project = makeProject({ labels: [] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const label = await handlers.createLabel({ projectId: "proj-1", name: "Bug", color: "#ff0000" });
 		expect(label.color).toBe("#ff0000");
@@ -2953,8 +2957,10 @@ describe("handlers.createLabel", () => {
 		const project = makeProject({
 			labels: [{ id: "l1", name: "L1", color: "#ef4444" }],
 		});
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const label = await handlers.createLabel({ projectId: "proj-1", name: "L2" });
 		expect(label.color).not.toBe("#ef4444");
@@ -2972,8 +2978,10 @@ describe("handlers.updateLabel", () => {
 		const project = makeProject({
 			labels: [{ id: "l1", name: "Old", color: "#ef4444" }],
 		});
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const result = await handlers.updateLabel({ projectId: "proj-1", labelId: "l1", name: " New " });
 		expect(result.name).toBe("New");
@@ -2984,8 +2992,10 @@ describe("handlers.updateLabel", () => {
 		const project = makeProject({
 			labels: [{ id: "l1", name: "Bug", color: "#ef4444" }],
 		});
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const result = await handlers.updateLabel({ projectId: "proj-1", labelId: "l1", color: "#00ff00" });
 		expect(result.color).toBe("#00ff00");
@@ -2993,7 +3003,7 @@ describe("handlers.updateLabel", () => {
 
 	it("throws when label not found", async () => {
 		const project = makeProject({ labels: [] });
-		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => mutator(project) as any);
 
 		await expect(
 			handlers.updateLabel({ projectId: "proj-1", labelId: "nonexistent" }),
@@ -3022,19 +3032,23 @@ describe("handlers.deleteLabel", () => {
 		];
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
-		vi.mocked(data.updateTask).mockResolvedValue(tasks[0]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, taskId, mutator) => {
+			const task = tasks.find((candidate) => candidate.id === taskId)!;
+			const { updates, result } = await mutator(task);
+			Object.assign(task, updates);
+			return { task, result };
+		});
 
 		await handlers.deleteLabel({ projectId: "proj-1", labelId: "l1" });
 
-		// Should only update the label list (without l1)
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
-			labels: [{ id: "l2", name: "Feature", color: "#3b82f6" }],
-		});
-		// Should only update task t1 which had l1
-		expect(data.updateTask).toHaveBeenCalledTimes(1);
-		expect(data.updateTask).toHaveBeenCalledWith(project, "t1", { labelIds: ["l2"] });
+		expect(data.updateProjectWith).toHaveBeenCalledTimes(1);
+		expect(data.updateTaskWith).toHaveBeenCalledTimes(1);
+		expect(tasks[0].labelIds).toEqual(["l2"]);
 	});
 });
 
@@ -3067,33 +3081,29 @@ describe("handlers.addTaskNote", () => {
 	it("adds a note with default source 'user'", async () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [] });
-		const updated = makeTask({ notes: [{ id: "n1", content: "Hello", source: "user", createdAt: "", updatedAt: "" }] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
 
 		const result = await handlers.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "Hello" });
 		expect(result.notes).toHaveLength(1);
-
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0];
-		const notesArg = updateCall[2].notes as any[];
-		expect(notesArg).toHaveLength(1);
-		expect(notesArg[0].content).toBe("Hello");
-		expect(notesArg[0].source).toBe("user");
+		expect(result.notes?.[0].content).toBe("Hello");
+		expect(result.notes?.[0].source).toBe("user");
 	});
 
 	it("adds a note with explicit source 'ai'", async () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(makeTask());
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
 
-		await handlers.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "AI note", source: "ai" });
-
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0];
-		const notesArg = updateCall[2].notes as any[];
-		expect(notesArg[0].source).toBe("ai");
+		const result = await handlers.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "AI note", source: "ai" });
+		expect(result.notes?.[0].source).toBe("ai");
 	});
 
 	it("appends to existing notes", async () => {
@@ -3101,16 +3111,15 @@ describe("handlers.addTaskNote", () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [existingNote] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(makeTask());
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
 
-		await handlers.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "New" });
-
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0];
-		const notesArg = updateCall[2].notes as any[];
-		expect(notesArg).toHaveLength(2);
-		expect(notesArg[0].content).toBe("Old");
-		expect(notesArg[1].content).toBe("New");
+		const result = await handlers.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "New" });
+		expect(result.notes).toHaveLength(2);
+		expect(result.notes?.[0].content).toBe("Old");
+		expect(result.notes?.[1].content).toBe("New");
 	});
 });
 
@@ -3122,15 +3131,14 @@ describe("handlers.updateTaskNote", () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [note] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(makeTask());
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
 
-		await handlers.updateTaskNote({ taskId: "task-1", projectId: "proj-1", noteId: "n1", content: "Updated" });
-
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0];
-		const notesArg = updateCall[2].notes as any[];
-		expect(notesArg[0].content).toBe("Updated");
-		expect(notesArg[0].id).toBe("n1");
+		const result = await handlers.updateTaskNote({ taskId: "task-1", projectId: "proj-1", noteId: "n1", content: "Updated" });
+		expect(result.notes?.[0].content).toBe("Updated");
+		expect(result.notes?.[0].id).toBe("n1");
 	});
 
 	it("does not modify other notes", async () => {
@@ -3139,15 +3147,14 @@ describe("handlers.updateTaskNote", () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [note1, note2] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(makeTask());
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
 
-		await handlers.updateTaskNote({ taskId: "task-1", projectId: "proj-1", noteId: "n1", content: "Changed" });
-
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0];
-		const notesArg = updateCall[2].notes as any[];
-		expect(notesArg[0].content).toBe("Changed");
-		expect(notesArg[1].content).toBe("Note 2"); // unchanged
+		const result = await handlers.updateTaskNote({ taskId: "task-1", projectId: "proj-1", noteId: "n1", content: "Changed" });
+		expect(result.notes?.[0].content).toBe("Changed");
+		expect(result.notes?.[1].content).toBe("Note 2");
 	});
 });
 
@@ -3160,15 +3167,14 @@ describe("handlers.deleteTaskNote", () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [note1, note2] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(makeTask());
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
 
-		await handlers.deleteTaskNote({ taskId: "task-1", projectId: "proj-1", noteId: "n2" });
-
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0];
-		const notesArg = updateCall[2].notes as any[];
-		expect(notesArg).toHaveLength(1);
-		expect(notesArg[0].id).toBe("n1");
+		const result = await handlers.deleteTaskNote({ taskId: "task-1", projectId: "proj-1", noteId: "n2" });
+		expect(result.notes).toHaveLength(1);
+		expect(result.notes?.[0].id).toBe("n1");
 	});
 });
 
@@ -4114,38 +4120,34 @@ describe("reorderColumns", () => {
 	it("reorders custom columns and stores full columnOrder", async () => {
 		const project = makeProject({ customColumns: [colA, colB, colC] });
 		const newOrder = ["todo", "in-progress", "col-ccc", "col-aaa", "col-bbb", "completed"];
-		const updatedProject = { ...project, customColumns: [colC, colA, colB], columnOrder: newOrder };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(updatedProject);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const result = await handlers.reorderColumns({
 			projectId: "proj-1",
 			columnOrder: newOrder,
 		});
 
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
-			customColumns: [colC, colA, colB],
-			columnOrder: newOrder,
-		});
+		expect(data.updateProjectWith).toHaveBeenCalledTimes(1);
 		expect(result.customColumns).toEqual([colC, colA, colB]);
 	});
 
 	it("ignores unknown IDs in columnOrder for custom column extraction", async () => {
 		const project = makeProject({ customColumns: [colA, colB] });
 		const newOrder = ["todo", "col-bbb", "col-aaa", "col-unknown", "completed"];
-		const updatedProject = { ...project, customColumns: [colB, colA], columnOrder: newOrder };
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(updatedProject);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		await handlers.reorderColumns({
 			projectId: "proj-1",
 			columnOrder: newOrder,
 		});
 
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
-			customColumns: [colB, colA],
-			columnOrder: newOrder,
-		});
+		expect(data.updateProjectWith).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -4509,47 +4511,47 @@ describe("renameBuiltinColumn", () => {
 
 	it("sets a custom label for a built-in status", async () => {
 		const project = makeProject();
-		const updated = { ...project, customStatusLabels: { todo: "Backlog" } };
-		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
-		vi.mocked(data.updateProject).mockResolvedValue(updated);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
 		const result = await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "Backlog" });
 
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { todo: "Backlog" } });
 		expect(result.customStatusLabels).toEqual({ todo: "Backlog" });
 	});
 
 	it("clears a custom label when name is null", async () => {
 		const project = makeProject({ customStatusLabels: { todo: "Backlog" } });
-		const updated = { ...project, customStatusLabels: undefined };
-		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
-		vi.mocked(data.updateProject).mockResolvedValue(updated);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
-		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: null });
-
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: undefined });
+		const result = await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: null });
+		expect(result.customStatusLabels).toBeUndefined();
 	});
 
 	it("clears a custom label when name is empty string", async () => {
 		const project = makeProject({ customStatusLabels: { todo: "Backlog", "in-progress": "Doing" } });
-		const updated = { ...project, customStatusLabels: { "in-progress": "Doing" } };
-		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
-		vi.mocked(data.updateProject).mockResolvedValue(updated);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
-		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "" });
-
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { "in-progress": "Doing" } });
+		const result = await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "" });
+		expect(result.customStatusLabels).toEqual({ "in-progress": "Doing" });
 	});
 
 	it("trims whitespace from the custom name", async () => {
 		const project = makeProject();
-		const updated = { ...project, customStatusLabels: { todo: "Backlog" } };
-		vi.mocked(data.getProject).mockResolvedValueOnce(project).mockResolvedValueOnce(updated);
-		vi.mocked(data.updateProject).mockResolvedValue(updated);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
 
-		await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "  Backlog  " });
-
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", { customStatusLabels: { todo: "Backlog" } });
+		const result = await handlers.renameBuiltinColumn({ projectId: "proj-1", status: "todo", name: "  Backlog  " });
+		expect(result.customStatusLabels).toEqual({ todo: "Backlog" });
 	});
 });
 

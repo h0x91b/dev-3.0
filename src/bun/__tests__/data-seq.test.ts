@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Project, Task } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -11,31 +13,16 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test",
+	DEV3_HOME: "/tmp/dev3-test-seq",
 }));
 
 vi.mock("../file-lock", () => ({
 	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
 }));
 
-// Track what's written to disk
-let mockFileStore: Record<string, string> = {};
-
-// We need to mock the Bun global, not a module
-
 beforeEach(() => {
-	mockFileStore = {};
-	// Patch globalThis.Bun for the data module
-	(globalThis as any).Bun = {
-		file: (path: string) => ({
-			exists: async () => path in mockFileStore,
-			json: async () => JSON.parse(mockFileStore[path]),
-		}),
-		write: async (path: string, content: string) => {
-			mockFileStore[path] = content;
-		},
-		spawn: (_cmd: string[]) => ({ exited: Promise.resolve(0) }),
-	};
+	rmSync("/tmp/dev3-test-seq", { recursive: true, force: true });
+	mkdirSync("/tmp/dev3-test-seq", { recursive: true });
 });
 
 import { loadTasks, addTask, updateTask } from "../data";
@@ -52,7 +39,16 @@ const testProject: Project = {
 };
 
 function tasksFilePath(): string {
-	return "/tmp/dev3-test/data/tmp-test-project/tasks.json";
+	return "/tmp/dev3-test-seq/data/tmp-test-project/tasks.json";
+}
+
+function seedTasks(tasks: unknown[]): void {
+	mkdirSync(dirname(tasksFilePath()), { recursive: true });
+	writeFileSync(tasksFilePath(), JSON.stringify(tasks));
+}
+
+function readSavedTasks(): Task[] {
+	return JSON.parse(readFileSync(tasksFilePath(), "utf8"));
 }
 
 function makeRawTask(overrides: Partial<Task> & { id: string }): Record<string, unknown> {
@@ -85,7 +81,7 @@ describe("loadTasks — seq backfill", () => {
 			makeRawTask({ id: "b" }),
 			makeRawTask({ id: "c" }),
 		];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const result = await loadTasks(testProject);
 
@@ -100,7 +96,7 @@ describe("loadTasks — seq backfill", () => {
 			makeRawTask({ id: "a", seq: 5 } as any),
 			makeRawTask({ id: "b" }), // no seq
 		];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const result = await loadTasks(testProject);
 
@@ -114,7 +110,7 @@ describe("loadTasks — seq backfill", () => {
 			makeRawTask({ id: "b", groupId: "g1", variantIndex: 2 }),
 			makeRawTask({ id: "c" }),
 		];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const result = await loadTasks(testProject);
 
@@ -126,12 +122,12 @@ describe("loadTasks — seq backfill", () => {
 
 	it("persists backfilled seq to disk", async () => {
 		const tasks = [makeRawTask({ id: "a" })];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		await loadTasks(testProject);
 
 		// File should be updated
-		const saved = JSON.parse(mockFileStore[tasksFilePath()]);
+		const saved = readSavedTasks();
 		expect(saved[0].seq).toBe(1);
 	});
 
@@ -140,7 +136,7 @@ describe("loadTasks — seq backfill", () => {
 			makeRawTask({ id: "a" }),
 			makeRawTask({ id: "b" }),
 		];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const first = await loadTasks(testProject);
 		const second = await loadTasks(testProject);
@@ -156,7 +152,7 @@ describe("loadTasks — seq backfill", () => {
 			makeRawTask({ id: "c", seq: 1 } as any),
 			makeRawTask({ id: "d" }), // no seq
 		];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const result = await loadTasks(testProject);
 
@@ -167,7 +163,7 @@ describe("loadTasks — seq backfill", () => {
 	});
 
 	it("handles empty task list (no crash)", async () => {
-		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+		seedTasks([]);
 
 		const result = await loadTasks(testProject);
 		expect(result).toHaveLength(0);
@@ -188,7 +184,7 @@ describe("addTask — seq assignment", () => {
 	it("new task gets auto-incremented seq", async () => {
 		// Seed with one existing task
 		const existing = [{ ...makeRawTask({ id: "a" }), seq: 3 }];
-		mockFileStore[tasksFilePath()] = JSON.stringify(existing);
+		seedTasks(existing);
 
 		const task = await addTask(testProject, "New task");
 
@@ -196,7 +192,7 @@ describe("addTask — seq assignment", () => {
 	});
 
 	it("explicit seq in extras is respected", async () => {
-		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+		seedTasks([]);
 
 		const task = await addTask(testProject, "New task", "todo", { seq: 42 });
 
@@ -211,7 +207,7 @@ describe("addTask — seq assignment", () => {
 	});
 
 	it("multiple sequential addTask calls produce unique seq values", async () => {
-		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+		seedTasks([]);
 
 		const t1 = await addTask(testProject, "Task 1");
 		const t2 = await addTask(testProject, "Task 2");
@@ -223,7 +219,7 @@ describe("addTask — seq assignment", () => {
 	});
 
 	it("addTask persists existingBranch and loadTasks reads it back", async () => {
-		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+		seedTasks([]);
 
 		const task = await addTask(testProject, "Continue on branch", "todo", { existingBranch: "feature/login" });
 		expect(task.existingBranch).toBe("feature/login");
@@ -234,7 +230,7 @@ describe("addTask — seq assignment", () => {
 	});
 
 	it("addTask without existingBranch does not set the field", async () => {
-		mockFileStore[tasksFilePath()] = JSON.stringify([]);
+		seedTasks([]);
 
 		const task = await addTask(testProject, "Normal task");
 		expect(task.existingBranch).toBeUndefined();
@@ -249,7 +245,7 @@ describe("addTask — seq assignment", () => {
 			makeRawTask({ id: "a" }),
 			makeRawTask({ id: "b" }),
 		];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		// loadTasks triggers backfill: a=1, b=2
 		await loadTasks(testProject);
@@ -267,7 +263,7 @@ describe("addTask — seq assignment", () => {
 describe("updateTask — clears columnOrder on status change", () => {
 	it("clears columnOrder when status changes", async () => {
 		const tasks = [{ ...makeRawTask({ id: "t1", status: "in-progress" as const }), seq: 1, columnOrder: 3, labelIds: [] }];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const updated = await updateTask(testProject, "t1", { status: "completed" });
 
@@ -277,7 +273,7 @@ describe("updateTask — clears columnOrder on status change", () => {
 
 	it("preserves columnOrder when status does not change", async () => {
 		const tasks = [{ ...makeRawTask({ id: "t1", status: "in-progress" as const }), seq: 1, columnOrder: 3, labelIds: [] }];
-		mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+		seedTasks(tasks);
 
 		const updated = await updateTask(testProject, "t1", { title: "Updated title" });
 
