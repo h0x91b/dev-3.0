@@ -72,6 +72,7 @@ function tasksFilePath(): string {
 
 function makeTask(overrides: Partial<Task> & { id: string; seq?: number }): Task {
 	return {
+		seq: 1,
 		projectId: "proj-1",
 		title: "Task",
 		description: "desc",
