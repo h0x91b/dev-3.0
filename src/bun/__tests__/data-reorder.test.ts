@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -11,27 +13,16 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test",
+	DEV3_HOME: "/tmp/dev3-test-reorder",
 }));
 
 vi.mock("../file-lock", () => ({
 	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
 }));
 
-let mockFileStore: Record<string, string> = {};
-
 beforeEach(() => {
-	mockFileStore = {};
-	(globalThis as any).Bun = {
-		file: (path: string) => ({
-			exists: async () => path in mockFileStore,
-			json: async () => JSON.parse(mockFileStore[path]),
-		}),
-		write: async (path: string, content: string) => {
-			mockFileStore[path] = content;
-		},
-		spawn: (_cmd: string[]) => ({ exited: Promise.resolve(0) }),
-	};
+	rmSync("/tmp/dev3-test-reorder", { recursive: true, force: true });
+	mkdirSync("/tmp/dev3-test-reorder", { recursive: true });
 });
 
 import { loadTasks, addTask, updateTask, reorderTasksInColumn } from "../data";
@@ -48,7 +39,7 @@ const testProject: Project = {
 };
 
 function tasksFilePath(): string {
-	return "/tmp/dev3-test/data/tmp-test-project/tasks.json";
+	return "/tmp/dev3-test-reorder/data/tmp-test-project/tasks.json";
 }
 
 function makeTask(overrides: Partial<Task> & { id: string; seq: number }): Task {
@@ -72,11 +63,12 @@ function makeTask(overrides: Partial<Task> & { id: string; seq: number }): Task 
 }
 
 function seedTasks(tasks: Task[]): void {
-	mockFileStore[tasksFilePath()] = JSON.stringify(tasks);
+	mkdirSync(dirname(tasksFilePath()), { recursive: true });
+	writeFileSync(tasksFilePath(), JSON.stringify(tasks));
 }
 
 function readSavedTasks(): Task[] {
-	return JSON.parse(mockFileStore[tasksFilePath()]);
+	return JSON.parse(readFileSync(tasksFilePath(), "utf8"));
 }
 
 // ============================================================
@@ -645,7 +637,7 @@ describe("columnOrder serialization — undefined handling", () => {
 		// Move to different status without dropPosition → clears columnOrder
 		await updateTask(testProject, "A", { status: "in-progress" });
 
-		const raw = mockFileStore[tasksFilePath()];
+		const raw = readFileSync(tasksFilePath(), "utf8");
 		const parsed = JSON.parse(raw);
 
 		// The key should not be present (JSON.stringify omits undefined)
@@ -660,7 +652,7 @@ describe("columnOrder serialization — undefined handling", () => {
 
 		await updateTask(testProject, "A", { status: "in-progress" }, { dropPosition: "top" });
 
-		const raw = mockFileStore[tasksFilePath()];
+		const raw = readFileSync(tasksFilePath(), "utf8");
 		const parsed = JSON.parse(raw);
 
 		expect(parsed[0].columnOrder).toBe(0);
@@ -686,7 +678,8 @@ describe("columnOrder serialization — undefined handling", () => {
 			updatedAt: "2025-01-01T00:00:00Z",
 			labelIds: [],
 		}];
-		mockFileStore[tasksFilePath()] = JSON.stringify(raw);
+		mkdirSync(dirname(tasksFilePath()), { recursive: true });
+		writeFileSync(tasksFilePath(), JSON.stringify(raw));
 
 		const loaded = await loadTasks(testProject);
 		expect(loaded[0].columnOrder).toBeUndefined();
