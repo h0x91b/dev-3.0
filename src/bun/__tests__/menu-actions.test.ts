@@ -9,6 +9,14 @@ vi.mock("electrobun/bun", () => ({
 	Utils: {
 		openPath: openPathMock,
 	},
+	PATHS: { VIEWS_FOLDER: "" },
+	Updater: {
+		localInfo: {
+			version: vi.fn().mockResolvedValue("0.0.0-test"),
+			hash: vi.fn().mockResolvedValue("deadbeef"),
+			channel: vi.fn().mockResolvedValue("dev"),
+		},
+	},
 }));
 
 vi.mock("../logger", () => ({

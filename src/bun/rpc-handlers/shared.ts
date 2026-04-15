@@ -17,7 +17,7 @@ export {
 // ── Electrobun/native-dependent exports ─────────────────────────────
 
 import { extname } from "node:path";
-import { Utils } from "electrobun/bun";
+import { Utils } from "../electrobun-platform";
 import { dlopen, FFIType } from "bun:ffi";
 import type { RequirementCheckResult, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";

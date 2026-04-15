@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { PATHS } from "electrobun/bun";
+import { PATHS } from "../electrobun-platform";
 import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, Project, ProjectSettingsUpdate, RequirementCheckResult } from "../../shared/types";
 import * as data from "../data";
 import * as agents from "../agents";

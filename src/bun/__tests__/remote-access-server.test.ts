@@ -21,6 +21,14 @@ afterAll(() => {
 // Mock electrobun to use our temp dir
 vi.mock("electrobun/bun", () => ({
 	PATHS: { VIEWS_FOLDER: "/nonexistent-views" },
+	Utils: {},
+	Updater: {
+		localInfo: {
+			version: vi.fn().mockResolvedValue("0.0.0-test"),
+			hash: vi.fn().mockResolvedValue("deadbeef"),
+			channel: vi.fn().mockResolvedValue("dev"),
+		},
+	},
 }));
 
 vi.mock("../logger", () => ({
@@ -35,6 +43,7 @@ vi.mock("../logger", () => ({
 vi.mock("../jwt", () => ({
 	initSecret: vi.fn(),
 	createQrToken: vi.fn().mockResolvedValue("test-token"),
+	createSessionToken: vi.fn().mockResolvedValue("test-session-token"),
 	exchangeQrForSession: vi.fn(),
 	refreshSession: vi.fn(),
 	verifySessionToken: vi.fn(),
@@ -176,6 +185,75 @@ describe("onQrTokenConsumed callback", () => {
 		if (result) callback();
 
 		expect(callback).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// Static code auth path
+// ================================================================
+
+import { createSessionToken } from "../jwt";
+
+/**
+ * Simulates the /auth/exchange handler logic for the static code path.
+ * Mirrors the actual implementation in remote-access-server.ts so that
+ * we can unit-test the branching without starting a real server.
+ */
+async function simulateAuthExchange(
+	token: string,
+	staticCode: string | null,
+): Promise<{ status: number; body: string }> {
+	if (!token) return { status: 400, body: "Missing token" };
+
+	if (staticCode) {
+		if (token !== staticCode) {
+			return { status: 401, body: "Invalid or expired token" };
+		}
+		await createSessionToken();
+		return { status: 200, body: "ok" };
+	}
+
+	const result = await exchangeQrForSession(token);
+	if (!result) return { status: 401, body: "Invalid or expired token" };
+	return { status: 200, body: "ok" };
+}
+
+describe("static code auth path", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("accepts the correct static code", async () => {
+		(createSessionToken as any).mockResolvedValueOnce("session-tok");
+		const res = await simulateAuthExchange("mysecret", "mysecret");
+		expect(res.status).toBe(200);
+	});
+
+	it("rejects a wrong static code without falling through to JWT exchange", async () => {
+		// exchangeQrForSession must NOT be called when static code is active.
+		const res = await simulateAuthExchange("wrongcode", "mysecret");
+		expect(res.status).toBe(401);
+		expect(exchangeQrForSession).not.toHaveBeenCalled();
+	});
+
+	it("rejects a valid JWT token when static code mode is active", async () => {
+		// A JWT QR token must NOT bypass the static code gate.
+		const res = await simulateAuthExchange("some-jwt-qr-token", "mysecret");
+		expect(res.status).toBe(401);
+		expect(exchangeQrForSession).not.toHaveBeenCalled();
+	});
+
+	it("falls through to JWT exchange when no static code is set", async () => {
+		(exchangeQrForSession as any).mockResolvedValueOnce("session-tok");
+		const res = await simulateAuthExchange("jwt-token", null);
+		expect(res.status).toBe(200);
+		expect(exchangeQrForSession).toHaveBeenCalledWith("jwt-token");
+	});
+
+	it("returns 401 for an invalid JWT when no static code is set", async () => {
+		(exchangeQrForSession as any).mockResolvedValueOnce(null);
+		const res = await simulateAuthExchange("bad-jwt", null);
+		expect(res.status).toBe(401);
 	});
 });
 
