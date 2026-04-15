@@ -2,6 +2,7 @@ import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, Tas
 export { extractRepoName } from "../shared/types";
 import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
+import { reportCurrentPreparationStage } from "./preparation-runtime";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 import * as github from "./github";
@@ -555,6 +556,7 @@ export async function createWorktree(
 	existingBranch?: string,
 	variantBranchName?: string,
 ): Promise<{ worktreePath: string; branchName: string }> {
+	await reportCurrentPreparationStage("creating-worktree");
 	const startedAt = performance.now();
 	const wtPath = worktreePath(project, task);
 	const tDir = taskDir(project, task);
@@ -859,6 +861,7 @@ const fetchLastSuccess = new Map<string, number>();
 const FETCH_COOLDOWN_MS = 5_000;
 
 export async function fetchOrigin(projectPath: string): Promise<boolean> {
+	await reportCurrentPreparationStage("fetching-origin");
 	const now = Date.now();
 	const lastSuccess = fetchLastSuccess.get(projectPath) ?? 0;
 
