@@ -23,7 +23,9 @@ async function ensureDir(filePath: string): Promise<void> {
 
 // ---- Projects (raw internal helpers — no locking) ----
 
-async function rawLoadAllProjects(): Promise<Project[]> {
+async function rawLoadAllProjects(
+	persistMigrations = false,
+): Promise<Project[]> {
 	log.debug("Loading all projects", { file: PROJECTS_FILE });
 	try {
 		const projects = JSON.parse(await readFile(PROJECTS_FILE, "utf8")) as Project[];
@@ -57,7 +59,7 @@ async function rawLoadAllProjects(): Promise<Project[]> {
 				needsSave = true;
 			}
 		}
-		if (needsSave) {
+		if (needsSave && persistMigrations) {
 			log.info("Migrated legacy 'say' cleanup scripts, saving projects");
 			await rawSaveProjects(projects);
 		}
@@ -98,7 +100,7 @@ export async function addProject(
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Adding project", { name, path });
-		const projects = await rawLoadAllProjects();
+		const projects = await rawLoadAllProjects(true);
 		const normalizedPath = path.replace(/\/+$/, "");
 
 		const existingIdx = projects.findIndex(
@@ -147,7 +149,7 @@ export async function addProject(
 export async function removeProject(projectId: string): Promise<void> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Soft-deleting project", { projectId });
-		const projects = await rawLoadAllProjects();
+		const projects = await rawLoadAllProjects(true);
 		const idx = projects.findIndex((p) => p.id === projectId);
 		if (idx === -1) {
 			log.warn("Project not found for soft-delete", { projectId });
@@ -164,7 +166,7 @@ export async function updateProject(
 ): Promise<Project> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project", { projectId, updates });
-		const projects = await rawLoadAllProjects();
+		const projects = await rawLoadAllProjects(true);
 		const idx = projects.findIndex((p) => p.id === projectId);
 		if (idx === -1) throw new Error(`Project not found: ${projectId}`);
 		projects[idx] = { ...projects[idx], ...updates };
@@ -179,7 +181,7 @@ export async function updateProjectWith<T>(
 ): Promise<{ project: Project; result: T }> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project with mutator", { projectId });
-		const projects = await rawLoadAllProjects();
+		const projects = await rawLoadAllProjects(true);
 		const idx = projects.findIndex((p) => p.id === projectId);
 		if (idx === -1) throw new Error(`Project not found: ${projectId}`);
 		const { updates, result } = await mutator(projects[idx]);
@@ -207,7 +209,10 @@ function nextSeq(tasks: Task[]): number {
 	return max + 1;
 }
 
-async function rawLoadTasks(project: Project): Promise<Task[]> {
+async function rawLoadTasks(
+	project: Project,
+	persistMigrations = false,
+): Promise<Task[]> {
 	const file = tasksFile(project);
 	log.debug("Loading tasks", { projectId: project.id, file });
 	try {
@@ -249,8 +254,10 @@ async function rawLoadTasks(project: Project): Promise<Task[]> {
 				}
 			}
 
-			log.info("Backfilled seq for tasks", { projectId: project.id });
-			await rawSaveTasks(project, tasks);
+			if (persistMigrations) {
+				log.info("Backfilled seq for tasks", { projectId: project.id });
+				await rawSaveTasks(project, tasks);
+			}
 		}
 
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
@@ -311,7 +318,7 @@ export async function addTask(
 	return withFileLock(file, async () => {
 		const title = titleFromDescription(description);
 		log.info("Creating task", { projectId: project.id, title, status });
-		const tasks = await rawLoadTasks(project);
+		const tasks = await rawLoadTasks(project, true);
 		const now = new Date().toISOString();
 		const task: Task = {
 			id: crypto.randomUUID(),
@@ -357,7 +364,7 @@ export async function updateTask(
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
 		log.info("Updating task", { taskId, updates });
-		const tasks = await rawLoadTasks(project);
+		const tasks = await rawLoadTasks(project, true);
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
 		const updatedTask = applyTaskUpdate(tasks, idx, updates, options);
@@ -379,7 +386,7 @@ export async function updateTaskWith<T>(
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
 		log.info("Updating task with mutator", { projectId: project.id, taskId });
-		const tasks = await rawLoadTasks(project);
+		const tasks = await rawLoadTasks(project, true);
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
 		const { updates, result } = await mutator(tasks[idx]);
@@ -396,7 +403,7 @@ export async function deleteTask(
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
 		log.info("Deleting task", { taskId, projectId: project.id });
-		const tasks = await rawLoadTasks(project);
+		const tasks = await rawLoadTasks(project, true);
 		const filtered = tasks.filter((t) => t.id !== taskId);
 		await rawSaveTasks(project, filtered);
 	});
@@ -523,7 +530,7 @@ export async function reorderTasksInColumn(
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
 		log.info("Reordering task in column", { taskId, targetIndex, projectId: project.id });
-		const tasks = await rawLoadTasks(project);
+		const tasks = await rawLoadTasks(project, true);
 		const task = tasks.find((t) => t.id === taskId);
 		if (!task) throw new Error(`Task not found: ${taskId}`);
 

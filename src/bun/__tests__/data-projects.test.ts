@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Project } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -102,5 +102,29 @@ describe("updateProject", () => {
 
 		const all = await loadProjects();
 		expect(all[0].autoReviewEnabled).toBe(true);
+	});
+});
+
+describe("loadProjects migration reads", () => {
+	it("normalizes legacy cleanupScript in memory without writing during read", async () => {
+		writeFileSync(PROJECTS_FILE, JSON.stringify([
+			{
+				id: "legacy-proj",
+				name: "Legacy",
+				path: "/tmp/legacy",
+				setupScript: "",
+				devScript: "",
+				cleanupScript: "say old-default",
+				defaultBaseBranch: "main",
+				createdAt: "2025-01-01T00:00:00Z",
+				labels: [],
+			},
+		]));
+
+		const loaded = await loadProjects();
+
+		expect(loaded[0].cleanupScript).toBe("");
+		const saved = JSON.parse(readFileSync(PROJECTS_FILE, "utf8"));
+		expect(saved[0].cleanupScript).toBe("say old-default");
 	});
 });
