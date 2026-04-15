@@ -1,0 +1,1 @@
+Prevented `addProject`/`updateProject` and task mutators from overwriting persisted state after a JSON parse failure in `projects.json` or `tasks.json`. Added regression tests that reproduce the previous destructive overwrite path and verify mutators now throw a typed read error instead of saving over corrupted files.
