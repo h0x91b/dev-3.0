@@ -874,6 +874,72 @@ describe("task.move", () => {
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
+	it("allows only one concurrent --if-status move to win", async () => {
+		const project = makeProject();
+		let storedTask = makeTask({ status: "in-progress" });
+		let loadCount = 0;
+		let releaseLoads!: () => void;
+		const loadsReady = new Promise<void>((resolve) => {
+			releaseLoads = resolve;
+		});
+		let updateQueue = Promise.resolve();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockImplementation(async () => {
+			loadCount += 1;
+			if (loadCount === 2) {
+				releaseLoads();
+			}
+			await loadsReady;
+			return [{ ...storedTask }];
+		});
+		vi.mocked(data.updateTask).mockImplementation(async (_project, _taskId, updates, options: any) => {
+			const run = async () => {
+				const allowedStatuses = typeof options?.ifStatus === "string"
+					? options.ifStatus.split(",")
+					: null;
+				const blockedStatuses = typeof options?.ifStatusNot === "string"
+					? options.ifStatusNot.split(",")
+					: null;
+				if (allowedStatuses && !allowedStatuses.includes(storedTask.status)) {
+					return { ...storedTask };
+				}
+				if (blockedStatuses && blockedStatuses.includes(storedTask.status)) {
+					return { ...storedTask };
+				}
+				storedTask = { ...storedTask, ...updates };
+				return { ...storedTask };
+			};
+			const result = updateQueue.then(run);
+			updateQueue = result.then(() => undefined, () => undefined);
+			return result;
+		});
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const [moveToReview, moveToQuestions] = await Promise.all([
+			handleRequest(makeRequest("task.move", {
+				taskId: storedTask.id,
+				projectId: project.id,
+				newStatus: "review-by-ai",
+				ifStatus: "in-progress",
+			})),
+			handleRequest(makeRequest("task.move", {
+				taskId: storedTask.id,
+				projectId: project.id,
+				newStatus: "user-questions",
+				ifStatus: "in-progress",
+			})),
+		]);
+
+		expect(moveToReview.ok).toBe(true);
+		expect(moveToQuestions.ok).toBe(true);
+		expect(new Set([
+			(moveToReview.data as Task).status,
+			(moveToQuestions.data as Task).status,
+		])).toEqual(new Set([storedTask.status]));
+		expect(["review-by-ai", "user-questions"]).toContain(storedTask.status);
+	});
+
 	it("errors on disallowed transition (todo cannot go to review-by-user)", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo" });

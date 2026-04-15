@@ -322,7 +322,11 @@ export async function updateTask(
 	project: Project,
 	taskId: string,
 	updates: Partial<Task>,
-	options?: { dropPosition?: "top" | "bottom" },
+	options?: {
+		dropPosition?: "top" | "bottom";
+		ifStatus?: string;
+		ifStatusNot?: string;
+	},
 ): Promise<Task> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
@@ -330,8 +334,23 @@ export async function updateTask(
 		const tasks = await rawLoadTasks(project);
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
+		const currentTask = tasks[idx];
+		const allowedStatuses = options?.ifStatus
+			?.split(",")
+			.map((status) => status.trim())
+			.filter(Boolean);
+		if (allowedStatuses && !allowedStatuses.includes(currentTask.status)) {
+			return currentTask;
+		}
+		const blockedStatuses = options?.ifStatusNot
+			?.split(",")
+			.map((status) => status.trim())
+			.filter(Boolean);
+		if (blockedStatuses && blockedStatuses.includes(currentTask.status)) {
+			return currentTask;
+		}
 		const now = new Date().toISOString();
-		const statusChanged = updates.status && updates.status !== tasks[idx].status;
+		const statusChanged = updates.status && updates.status !== currentTask.status;
 
 		if (statusChanged) {
 			const newStatus = updates.status!;

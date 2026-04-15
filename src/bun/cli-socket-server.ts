@@ -402,16 +402,12 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		// Conditional move guards — silent no-op when condition is not met.
-		// Both flags support comma-separated values (e.g. "review-by-ai,review-by-user").
 		const ifStatus = params.ifStatus as string | undefined;
-		if (ifStatus && !ifStatus.split(",").includes(task.status)) {
-			return task;
-		}
 		const ifStatusNot = params.ifStatusNot as string | undefined;
-		if (ifStatusNot && ifStatusNot.split(",").includes(task.status)) {
-			return task;
-		}
+		const guardOpts = {
+			...(ifStatus ? { ifStatus } : {}),
+			...(ifStatusNot ? { ifStatusNot } : {}),
+		};
 
 		// Check if this is a custom column ID
 		const customColumns = project.customColumns ?? [];
@@ -426,18 +422,22 @@ const handlers: Record<string, Handler> = {
 					worktreePath: wt.worktreePath,
 					branchName: wt.branchName,
 					customColumnId: customColumn.id,
-				}, { dropPosition: settings.taskDropPosition });
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				}, { dropPosition: settings.taskDropPosition, ...guardOpts });
+				if (updated.status === "in-progress" && updated.customColumnId === customColumn.id) {
+					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				}
 				// Trigger column agent if configured
-				if (customColumn.agentConfig && updated.worktreePath) {
+				if (customColumn.agentConfig && updated.worktreePath && updated.customColumnId === customColumn.id) {
 					await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn });
 				}
 				return updated;
 			}
-			const updated = await data.updateTask(project, task.id, { customColumnId: customColumn.id });
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			const updated = await data.updateTask(project, task.id, { customColumnId: customColumn.id }, guardOpts);
+			if (updated.customColumnId === customColumn.id) {
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			}
 			// Trigger column agent if configured
-			if (customColumn.agentConfig && updated.worktreePath) {
+			if (customColumn.agentConfig && updated.worktreePath && updated.customColumnId === customColumn.id) {
 				await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn });
 			}
 			return updated;
@@ -467,7 +467,7 @@ const handlers: Record<string, Handler> = {
 			}
 		}
 		const settings = await loadSettings();
-		const dropOpts = { dropPosition: settings.taskDropPosition } as const;
+		const moveOpts = { dropPosition: settings.taskDropPosition, ...guardOpts } as const;
 
 		// inactive → active: create worktree + PTY
 		if (!isActive(oldStatus) && isActive(builtinStatus)) {
@@ -479,9 +479,11 @@ const handlers: Record<string, Handler> = {
 				worktreePath: wt.worktreePath,
 				branchName: wt.branchName,
 				customColumnId: null,
-			}, dropOpts);
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
+			}, moveOpts);
+			if (updated.status === builtinStatus && !updated.customColumnId) {
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
+			}
 			return updated;
 		}
 
@@ -502,18 +504,22 @@ const handlers: Record<string, Handler> = {
 				worktreePath: null,
 				branchName: null,
 				customColumnId: null,
-			}, dropOpts);
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
+			}, moveOpts);
+			if (updated.status === builtinStatus && !updated.customColumnId) {
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+				notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
+			}
 			return updated;
 		}
 
 		// active → active or status-only change
-		const updated = await data.updateTask(project, task.id, { status: builtinStatus, customColumnId: null }, dropOpts);
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
+		const updated = await data.updateTask(project, task.id, { status: builtinStatus, customColumnId: null }, moveOpts);
+		if (updated.status === builtinStatus && !updated.customColumnId) {
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
 
-		await triggerColumnAgentIfNeeded(builtinStatus, project, updated);
+			await triggerColumnAgentIfNeeded(builtinStatus, project, updated);
+		}
 
 		return updated;
 	},

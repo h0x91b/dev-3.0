@@ -254,6 +254,37 @@ describe("concurrent updateTask on different tasks — no lost updates", () => {
 	});
 });
 
+describe("concurrent conditional updateTask on the same task", () => {
+	it("allows only one compare-and-set status transition to win", async () => {
+		const existing = [
+			makeTask({ id: "task-race", seq: 1, status: "in-progress" }),
+		];
+		mockFileStore[tasksFilePath()] = JSON.stringify(existing);
+
+		const [moveToReview, moveToQuestions] = await Promise.all([
+			updateTask(
+				testProject,
+				"task-race",
+				{ status: "review-by-ai" },
+				{ ifStatus: "in-progress" },
+			),
+			updateTask(
+				testProject,
+				"task-race",
+				{ status: "user-questions" },
+				{ ifStatus: "in-progress" },
+			),
+		]);
+
+		const tasks = await loadTasks(testProject);
+		expect(tasks).toHaveLength(1);
+		expect(new Set([moveToReview.status, moveToQuestions.status])).toEqual(
+			new Set([tasks[0].status]),
+		);
+		expect(["review-by-ai", "user-questions"]).toContain(tasks[0].status);
+	});
+});
+
 // ============================================================
 // Concurrent project operations
 // ============================================================

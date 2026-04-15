@@ -1,0 +1,1 @@
+Moved `task move --if-status/--if-status-not` compare-and-set checks into `data.updateTask()` so the guard now runs under the per-task file lock. Added regression coverage for concurrent `task.move` requests and direct concurrent `updateTask()` calls on the same task.
