@@ -1276,6 +1276,10 @@ export type AppRPCSchema = {
 			navigateToViewportLab: {};
 			terminalSoftReset: {};
 			terminalHardReset: {};
+			zoomIn: {};
+			zoomOut: {};
+			zoomReset: {};
+			qrTokenConsumed: {};
 			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
 		};
 	}>;

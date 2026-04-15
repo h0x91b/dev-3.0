@@ -321,7 +321,11 @@ setTimeout(() => {
 // Wire push messages to renderer (Electrobun + browser clients)
 setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
-	(mainWindow.webview.rpc as any).send[name]?.(payload);
+	if (name === "qrTokenConsumed") {
+		mainWindow.webview.rpc?.send("qrTokenConsumed", {});
+	} else {
+		(mainWindow.webview.rpc as any).send[name]?.(payload);
+	}
 	pushToBrowserClients(name, payload);
 });
 
@@ -487,13 +491,13 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			buttons: ["OK"],
 		});
 	} else if (e.data.action === "open-settings") {
-		(mainWindow.webview.rpc as any).send.navigateToSettings?.({});
+		mainWindow.webview.rpc?.send("navigateToSettings", {});
 	} else if (e.data.action === "open-add-project") {
-		(mainWindow.webview.rpc as any).send.openAddProjectModal?.({});
+		mainWindow.webview.rpc?.send("openAddProjectModal", {});
 	} else if (e.data.action === "gauge-demo") {
-		(mainWindow.webview.rpc as any).send.navigateToGaugeDemo?.({});
+		mainWindow.webview.rpc?.send("navigateToGaugeDemo", {});
 	} else if (e.data.action === "viewport-lab") {
-		(mainWindow.webview.rpc as any).send.navigateToViewportLab?.({});
+		mainWindow.webview.rpc?.send("navigateToViewportLab", {});
 	} else if (e.data.action === "check-for-updates") {
 		try {
 			const settings = await loadSettings();
@@ -566,25 +570,25 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			});
 		}
 	} else if (e.data.action === "terminal-soft-reset") {
-		(mainWindow.webview.rpc as any).send.terminalSoftReset?.({});
+		mainWindow.webview.rpc?.send("terminalSoftReset", {});
 	} else if (e.data.action === "terminal-hard-reset") {
-		(mainWindow.webview.rpc as any).send.terminalHardReset?.({});
+		mainWindow.webview.rpc?.send("terminalHardReset", {});
 	} else if (e.data.action === "toggle-devtools") {
 		mainWindow.webview.openDevTools();
 	} else if (e.data.action === "open-logs-directory") {
 		openLogsDirectory();
 	} else if (e.data.action === "zoom-in") {
-		(mainWindow.webview.rpc as any).send.zoomIn?.({});
+		mainWindow.webview.rpc?.send("zoomIn", {});
 	} else if (e.data.action === "zoom-out") {
-		(mainWindow.webview.rpc as any).send.zoomOut?.({});
+		mainWindow.webview.rpc?.send("zoomOut", {});
 	} else if (e.data.action === "zoom-reset") {
-		(mainWindow.webview.rpc as any).send.zoomReset?.({});
+		mainWindow.webview.rpc?.send("zoomReset", {});
 	} else if (e.data.action === "show-remote-qr") {
 		try {
 			const qrDataUrl = await generateQrDataUrl();
 			const accessUrl = await getAccessUrl();
 			const { isCloudflaredAvailable, getTunnelState } = await import("./cloudflare-tunnel");
-			(mainWindow.webview.rpc as any).send.showRemoteAccessQR?.({ qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable() });
+			mainWindow.webview.rpc?.send("showRemoteAccessQR", { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable() });
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}
