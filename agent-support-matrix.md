@@ -2,17 +2,17 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-04-06
+Last updated: 2026-04-13
 
 ## Agents
 
 | Agent | CLI binary | Skill directories |
 |-------|-----------|-------------------|
-| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/` |
-| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/` |
-| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/` |
-| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/` |
-| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/` |
+| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/`, `~/.claude/skills/dev3-bug-hunter/` |
+| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/`, `~/.cursor/skills/dev3-bug-hunter/` |
+| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/`, `~/.codex/skills/dev3-bug-hunter/` |
+| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-bug-hunter/` |
+| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/`, `~/.opencode/skills/dev3-bug-hunter/`, `~/.config/opencode/skills/dev3-bug-hunter/` |
 
 ## Feature Matrix
 
@@ -70,6 +70,10 @@ The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Two 
 
 A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/config.local.json`. Covers the schema, merge priority, when to create/modify config files, and CLI commands (`dev3 config show`, `dev3 config export`). Same content for all agents (no variant differences).
 
+### dev3-bug-hunter (displayed as "dev3 Bug Hunter")
+
+A user-invocable skill that turns the agent into a seeded bug hunter. It generates a random seed, derives an identity letter, chooses a starting area plus analysis style, and then forces the hunt to begin from that assigned area before branching out. The skill is read-only, uses a terminal-friendly findings format with a compact ASCII summary table plus detail sections, asks whether `critical` and `medium` findings should become separate dev3 tasks, and requires those follow-up tasks to validate and reproduce the bug before any fix is attempted. Same content for all agents.
+
 For Gemini CLI specifically, dev-3.0 installs these managed skills only via the shared `~/.agents/skills/` alias. Gemini also discovers `~/.gemini/skills/`, but duplicating the same skill name in both user-scope directories triggers same-tier conflict warnings and the alias already has precedence.
 
 ## Additional Integrations
@@ -77,6 +81,7 @@ For Gemini CLI specifically, dev-3.0 installs these managed skills only via the 
 | Integration | Agents | Details |
 |-------------|--------|---------|
 | `~/.agents/AGENTS.md` | All (fallback) | Appended rule block for agents that read `AGENTS.md` |
+| `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds `Bash(~/.dev3.0/bin/dev3 *)` permission |
 | `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables `codex_hooks` |
 | `<worktree>/.codex/hooks.json` | Codex | Auto-installs SessionStart/UserPromptSubmit/PreToolUse(Bash)/Stop lifecycle hooks |

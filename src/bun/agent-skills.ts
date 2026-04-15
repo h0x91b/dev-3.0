@@ -225,6 +225,12 @@ const GENERIC_SKILL_DIRS = [
 	".config/opencode/skills/dev3",
 ];
 
+const DEV3_OPENAI_YAML = `interface:
+  display_name: "dev3"
+  short_description: "Manage dev-3.0 task lifecycle inside managed worktrees"
+  default_prompt: "Use $dev3 when working inside a dev-3.0 managed worktree so task lifecycle rules are followed."
+`;
+
 // ---- dev3-project-config skill ----
 
 const PROJECT_CONFIG_SKILL_DESCRIPTION =
@@ -358,8 +364,211 @@ description: "${PROJECT_CONFIG_SKILL_DESCRIPTION}"
 
 ${PROJECT_CONFIG_SKILL_BODY}`;
 
+const PROJECT_CONFIG_OPENAI_YAML = `interface:
+  display_name: "dev3 Project Config"
+  short_description: "Inspect a repo and configure dev-3.0 project settings"
+  default_prompt: "Use $dev3-project-config to inspect a repo and configure .dev3 project settings."
+`;
+
+// ---- dev3 Bug Hunter skill ----
+
+const BUG_HUNTER_SKILL_DESCRIPTION =
+	"Use when the user wants a focused bug-hunting pass, especially in dev-3.0 where multiple task variants can explore the same codebase in parallel. Runs a seeded initialization sequence that assigns each agent a letter, a starting area, and an analysis style before it begins hunting.";
+
+const BUG_HUNTER_SKILL_CONTENT = `---
+name: dev3-bug-hunter
+description: "${BUG_HUNTER_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# dev3-bug-hunter
+
+You are a bug-finding agent. Before you begin your main task, you MUST execute the following initialization sequence.
+
+## Scope
+
+This skill is review-only.
+
+- Do NOT modify code, apply patches, create commits, or rewrite files.
+- Do NOT silently fix anything yourself.
+- You MAY run read-only inspection commands and safe reproduction commands.
+- You MAY create dev3 tasks only after the user explicitly approves task creation for findings.
+- If a bug looks real but is not yet proven, say so plainly and describe the missing proof.
+
+## Prerequisite
+
+If your working directory is inside \`~/.dev3.0/worktrees/\`, invoke the \`/dev3\` skill before doing anything else unless it is already active in the session. For Codex shell commands, use \`shell="/bin/bash"\` and \`login=false\`.
+
+## Step 1: Generate your seed
+
+Run this command:
+
+\`\`\`bash
+echo $(od -An -N2 -tu2 /dev/urandom | tr -d ' ')
+\`\`\`
+
+## Step 2: Derive your exploration letter
+
+Take the number you received and compute \`letter_index = seed % 26\`.
+
+Map it to a letter:
+
+- \`0 = A\`
+- \`1 = B\`
+- ...
+- \`25 = Z\`
+
+This is your agent identity letter.
+
+## Step 3: Derive your exploration strategy
+
+Compute \`strategy = seed % 6\`.
+
+| strategy | Start from |
+|----------|------------|
+| 0 | Entry points: main files, index files, app bootstrap |
+| 1 | Edge cases: error handlers, catch blocks, fallbacks |
+| 2 | Data layer: models, schemas, DB queries, migrations |
+| 3 | Integration seams: API boundaries, external calls, webhooks |
+| 4 | User-facing: UI components, form validation, rendering logic |
+| 5 | Infrastructure: config, env handling, build scripts, CI |
+
+You MUST begin from your assigned area. Do not jump to other areas until you have examined yours thoroughly.
+
+## Step 4: Derive your analysis style
+
+Compute \`style = floor(seed / 6) % 4\` using integer division.
+
+| style | Approach |
+|-------|----------|
+| 0 | Pessimist: assume everything is broken, prove otherwise |
+| 1 | Trace-follower: pick a user flow and trace it end-to-end |
+| 2 | Dependency skeptic: check assumptions between modules |
+| 3 | Fresh eyes: read code as if seeing it for the first time, question naming and logic |
+
+## Step 5: Announce your identity
+
+Before reporting findings, print exactly one line in this format:
+
+\`\`\`text
+Agent [LETTER] | Strategy: [name] | Style: [name] | Seed: [number]
+\`\`\`
+
+## Step 6: Hunt for bugs
+
+Start from the area assigned by your strategy and apply the seeded style consistently.
+
+Focus on:
+
+- Logic errors and off-by-one mistakes
+- Unhandled edge cases
+- Race conditions and async issues
+- Security vulnerabilities
+- Silent failures and swallowed errors
+- Type mismatches and implicit coercions
+
+Prefer concrete, reproducible bugs over vague suspicions. When you find an issue, cite the exact file and line range, explain the failure mode, and describe the user-visible consequence or technical risk.
+
+## Required output format
+
+After the identity line, use these sections in order:
+
+### Findings summary
+
+Use a compact ASCII table in plain text. Do NOT use Markdown tables for findings.
+
+Use this exact column layout:
+
+\`\`\`text
++----+----------+-------------------------------+------------------------------------------+
+| ID | Severity | Location                      | Summary                                  |
++----+----------+-------------------------------+------------------------------------------+
+| F1 | medium   | src/path/file.ts:42-57       | Short bug title                          |
++----+----------+-------------------------------+------------------------------------------+
+\`\`\`
+
+Rules:
+
+- Keep the full table within roughly 100 characters wide.
+- One bug per row.
+- \`ID\` must be \`F1\`, \`F2\`, \`F3\`, ...
+- \`Severity\` must be one of: \`critical\`, \`high\`, \`medium\`.
+- \`Location\` must be a repo-relative path plus line reference like \`src/x.ts:42-57\`.
+- \`Summary\` must be short and scannable. Put the full explanation in the detail section, not in the table.
+
+If you found no solid bugs, write \`No confirmed bugs found.\`
+
+### Finding details
+
+After the ASCII summary table, add one detail block per finding in this format:
+
+\`\`\`text
+[F1] Short bug title
+Severity: medium
+Location: src/path/file.ts:42-57
+Why it breaks: ...
+Reproduction hint: ...
+\`\`\`
+
+Rules:
+
+- \`Why it breaks\` must state the actual failure mode or technical risk.
+- \`Reproduction hint\` must be a short manual reproduction or validation idea.
+- Do not hide critical detail inside the summary table.
+
+### Coverage
+
+List 3-6 bullets describing which files, flows, or seams you inspected first and what strategy/style led you there.
+
+### Next step offer
+
+- If there is at least one \`critical\` or \`medium\` finding, end with exactly this question:
+
+\`Do you want me to create dev3 tasks for the critical and medium findings, one task per finding?\`
+
+- Otherwise, end with exactly this sentence:
+
+\`I can write reproduction tests for the strongest finding if you want a validation pass.\`
+
+## If the user approves dev3 task creation
+
+Create one dev3 task per \`critical\` or \`medium\` finding. Do not batch multiple bugs into one task.
+
+Each task must:
+
+- Use a concise title that names the bug.
+- Start the description with the bug summary, location, severity, failure mode, and the evidence you found.
+- State clearly that the first step is validation, not fixing.
+- Require this execution order:
+  1. Validate whether the bug is real.
+  2. Reproduce it with a failing test or another reliable repro.
+  3. Fix it only after the reproduction is proven.
+  4. Re-run the repro to confirm the fix.
+
+The task description must explicitly say:
+
+- If the bug cannot be reproduced, stop and do not attempt a fix.
+- Report back to the user with this exact sentence:
+
+\`\`\`text
+I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.
+\`\`\`
+
+When you create these follow-up tasks in dev3, include enough detail that a separate agent can execute them without re-reading the original bug-hunt report.
+`;
+
+const BUG_HUNTER_OPENAI_YAML = `interface:
+  display_name: "dev3 Bug Hunter"
+  short_description: "Run a seeded bug hunt tuned for parallel dev3 variants"
+  default_prompt: "Use $dev3-bug-hunter to run a read-only bug hunt with a seeded exploration strategy in this codebase."
+`;
+
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
+}
+
+export function getBugHunterSkillContent(): string {
+	return BUG_HUNTER_SKILL_CONTENT;
 }
 
 export function getClaudeSkillContent(): string {
@@ -384,6 +593,30 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".codex/skills/dev3-project-config",
 	".opencode/skills/dev3-project-config",
 	".config/opencode/skills/dev3-project-config",
+];
+
+const BUG_HUNTER_SKILL_DIRS = [
+	".claude/skills/dev3-bug-hunter",
+	".cursor/skills/dev3-bug-hunter",
+	".agents/skills/dev3-bug-hunter",
+	".codex/skills/dev3-bug-hunter",
+	".opencode/skills/dev3-bug-hunter",
+	".config/opencode/skills/dev3-bug-hunter",
+];
+
+const SHARED_SKILL_OPENAI_CONFIGS = [
+	{
+		dir: ".agents/skills/dev3",
+		content: DEV3_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-project-config",
+		content: PROJECT_CONFIG_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-bug-hunter",
+		content: BUG_HUNTER_OPENAI_YAML,
+	},
 ];
 
 const LEGACY_GEMINI_SKILL_DUPLICATES = [
@@ -519,6 +752,24 @@ function cleanupLegacyGeminiSkillDuplicates(home: string): void {
 	}
 }
 
+function installOpenAiMetadata(home: string): void {
+	for (const entry of SHARED_SKILL_OPENAI_CONFIGS) {
+		const metadataDir = `${home}/${entry.dir}/agents`;
+		const metadataFile = `${metadataDir}/openai.yaml`;
+
+		try {
+			mkdirSync(metadataDir, { recursive: true });
+			writeFileSync(metadataFile, entry.content, "utf-8");
+			log.info("Managed skill metadata installed", { path: metadataFile });
+		} catch (err) {
+			log.warn("Failed to install managed skill metadata (non-fatal)", {
+				path: metadataFile,
+				error: String(err),
+			});
+		}
+	}
+}
+
 /**
  * Install the dev3 skill into all supported AI agent directories
  * and update ~/.agents/AGENTS.md.
@@ -601,7 +852,23 @@ export function installAgentSkills(): void {
 		}
 	}
 
+	for (const dir of BUG_HUNTER_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, BUG_HUNTER_SKILL_CONTENT, "utf-8");
+			log.info("Bug Hunter skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install Bug Hunter skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
 	cleanupLegacyGeminiSkillDuplicates(home);
+	installOpenAiMetadata(home);
 	installAgentsMd();
 	ensureClaudePermission();
 	ensureCodexConfigFile(home);

@@ -606,6 +606,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cancelPreparing.body",
 		icon: "\u{F0159}", // nf-md-cancel
 	},
+	// Batch 28: bug hunter skill
+	{
+		id: "bug-hunter-skill",
+		titleKey: "tip.bugHunterSkill.title",
+		bodyKey: "tip.bugHunterSkill.body",
+		icon: "\uF188", // nf-fa-bug
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

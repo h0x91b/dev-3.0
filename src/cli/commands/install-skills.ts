@@ -3,11 +3,23 @@ import { setMinLevel } from "../../bun/logger";
 
 const SKILL_PATHS = [
 	".claude/skills/dev3/SKILL.md",
+	".claude/skills/dev3-project-config/SKILL.md",
+	".claude/skills/dev3-bug-hunter/SKILL.md",
 	".cursor/skills/dev3/SKILL.md",
+	".cursor/skills/dev3-project-config/SKILL.md",
+	".cursor/skills/dev3-bug-hunter/SKILL.md",
 	".agents/skills/dev3/SKILL.md",
+	".agents/skills/dev3-project-config/SKILL.md",
+	".agents/skills/dev3-bug-hunter/SKILL.md",
 	".codex/skills/dev3/SKILL.md",
+	".codex/skills/dev3-project-config/SKILL.md",
+	".codex/skills/dev3-bug-hunter/SKILL.md",
 	".opencode/skills/dev3/SKILL.md",
+	".opencode/skills/dev3-project-config/SKILL.md",
+	".opencode/skills/dev3-bug-hunter/SKILL.md",
 	".config/opencode/skills/dev3/SKILL.md",
+	".config/opencode/skills/dev3-project-config/SKILL.md",
+	".config/opencode/skills/dev3-bug-hunter/SKILL.md",
 ];
 
 export async function handleInstallSkills(): Promise<void> {
@@ -18,6 +30,7 @@ export async function handleInstallSkills(): Promise<void> {
 	for (const rel of SKILL_PATHS) {
 		process.stdout.write(`  ~/${rel}\n`);
 	}
+	process.stdout.write(`  ~/.agents/skills/*/agents/openai.yaml (managed skill metadata)\n`);
 	process.stdout.write(`  ~/.agents/AGENTS.md (dev3 block)\n`);
 	process.stdout.write(`  ~/.claude/settings.json (Bash permission)\n`);
 	process.stdout.write(`  ~/.codex/config.toml (trust + socket access + codex_hooks)\n`);

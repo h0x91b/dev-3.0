@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	getBugHunterSkillContent,
 	getClaudeSkillContent,
 	getCodexSkillContent,
 	getGenericSkillContent,
@@ -81,6 +82,58 @@ describe("dev3-project-config skill content", () => {
 	it("requires a smoke test when ports are mapped", () => {
 		expect(getProjectConfigSkillContent()).toContain(
 			"If `portCount > 0`, also smoke-test the mapping:",
+		);
+	});
+});
+
+describe("dev3 Bug Hunter skill content", () => {
+	it("keeps the seeded initialization sequence intact", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain("name: dev3-bug-hunter");
+		expect(skill).toContain("echo $(od -An -N2 -tu2 /dev/urandom | tr -d ' ')");
+		expect(skill).toContain("letter_index = seed % 26");
+		expect(skill).toContain("strategy = seed % 6");
+		expect(skill).toContain("style = floor(seed / 6) % 4");
+		expect(skill).toContain("Agent [LETTER] | Strategy: [name] | Style: [name] | Seed: [number]");
+	});
+
+	it("forces bug hunts to start from the assigned strategy area", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain("You MUST begin from your assigned area.");
+		expect(skill).toContain("Do not jump to other areas until you have examined yours thoroughly.");
+		expect(skill).toContain("Logic errors and off-by-one mistakes");
+		expect(skill).toContain("Silent failures and swallowed errors");
+	});
+
+	it("stays read-only and requires a uniform findings format", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain("This skill is review-only.");
+		expect(skill).toContain("Do NOT modify code, apply patches, create commits, or rewrite files.");
+		expect(skill).toContain(
+			"You MAY create dev3 tasks only after the user explicitly approves task creation for findings.",
+		);
+		expect(skill).toContain("Use a compact ASCII table in plain text. Do NOT use Markdown tables for findings.");
+		expect(skill).toContain("| ID | Severity | Location                      | Summary");
+		expect(skill).toContain("Keep the full table within roughly 100 characters wide.");
+		expect(skill).toContain("ID` must be `F1`, `F2`, `F3`, ...");
+		expect(skill).toContain("Severity` must be one of: `critical`, `high`, `medium`");
+		expect(skill).toContain("### Finding details");
+		expect(skill).toContain("[F1] Short bug title");
+		expect(skill).toContain("Do not hide critical detail inside the summary table.");
+		expect(skill).toContain(
+			"Do you want me to create dev3 tasks for the critical and medium findings, one task per finding?",
+		);
+		expect(skill).toContain(
+			"I can write reproduction tests for the strongest finding if you want a validation pass.",
+		);
+		expect(skill).toContain("Create one dev3 task per `critical` or `medium` finding.");
+		expect(skill).toContain("Validate whether the bug is real.");
+		expect(skill).toContain("Reproduce it with a failing test or another reliable repro.");
+		expect(skill).toContain(
+			"I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.",
 		);
 	});
 });
