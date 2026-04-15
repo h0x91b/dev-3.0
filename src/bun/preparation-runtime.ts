@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { PreparingStage } from "../shared/types";
 import { createLogger } from "./logger";
 
 const log = createLogger("preparing");
@@ -21,6 +22,8 @@ type PreparationEntry = {
 type PreparationContext = {
 	taskId: string;
 	runId: string;
+	currentStage: PreparingStage | null;
+	reportStage?: (stage: PreparingStage) => Promise<void> | void;
 };
 
 const activePreparations = new Map<string, PreparationEntry>();
@@ -79,10 +82,11 @@ export async function withTaskPreparation<T>(
 	taskId: string,
 	label: string,
 	fn: (runId: string) => Promise<T>,
+	reportStage?: (stage: PreparingStage) => Promise<void> | void,
 ): Promise<T> {
 	const { runId } = createTaskPreparation(taskId, label);
 	try {
-		return await preparationContext.run({ taskId, runId }, () => fn(runId));
+		return await preparationContext.run({ taskId, runId, currentStage: null, reportStage }, () => fn(runId));
 	} finally {
 		finishTaskPreparation(taskId, runId);
 	}
@@ -144,6 +148,13 @@ export function registerCurrentPreparationSpawn(pid: number | undefined, cmd: st
 	if (!ctx) return null;
 	registerPreparationSpawn(ctx.taskId, pid, cmd);
 	return ctx;
+}
+
+export async function reportCurrentPreparationStage(stage: PreparingStage): Promise<void> {
+	const ctx = preparationContext.getStore();
+	if (!ctx || ctx.currentStage === stage) return;
+	ctx.currentStage = stage;
+	await ctx.reportStage?.(stage);
 }
 
 export function getTaskPreparationSnapshot(taskId: string): { runId: string; pids: number[]; cancelled: boolean; label: string } | null {

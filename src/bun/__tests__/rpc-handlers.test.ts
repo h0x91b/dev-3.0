@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { GlobalSettings, Project, Task } from "../../shared/types";
+import { getPreparingStageProgress } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -1704,6 +1705,8 @@ describe("handlers.spawnVariants", () => {
 		expect(result).toHaveLength(2);
 		expect(data.addTask).toHaveBeenCalledTimes(2);
 		expect(result[0].preparing).toBe(true);
+		expect(result[0].preparingStage).toBe("resolving-config");
+		expect(result[0].preparingProgress).toBe(getPreparingStageProgress("resolving-config"));
 
 		// Phase 2: background worktree creation runs asynchronously
 		await vi.waitFor(() => {
@@ -1760,11 +1763,25 @@ describe("handlers.spawnVariants", () => {
 			project,
 			sourceTask.description,
 			"in-progress",
-			expect.objectContaining({ existingBranch: "feature/login", preparing: true }),
+			expect.objectContaining({
+				existingBranch: "feature/login",
+				preparing: true,
+				preparingStage: "resolving-config",
+				preparingProgress: getPreparingStageProgress("resolving-config"),
+			}),
 		);
 		// Background: single variant uses existing branch directly, no variantBranchName
 		await vi.waitFor(() => {
-			expect(git.createWorktree).toHaveBeenCalledWith(project, variantTask, "feature/login", undefined);
+			expect(git.createWorktree).toHaveBeenCalledWith(
+				project,
+				expect.objectContaining({
+					...variantTask,
+					preparingStage: "resolving-config",
+					preparingProgress: getPreparingStageProgress("resolving-config"),
+				}),
+				"feature/login",
+				undefined,
+			);
 		});
 	});
 
@@ -1793,8 +1810,18 @@ describe("handlers.spawnVariants", () => {
 		// Both variants store existingBranch for reference
 		const addTaskCalls = vi.mocked(data.addTask).mock.calls;
 		expect(addTaskCalls).toHaveLength(2);
-		expect(addTaskCalls[0][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login", preparing: true }));
-		expect(addTaskCalls[1][3]).toEqual(expect.objectContaining({ existingBranch: "feature/login", preparing: true }));
+		expect(addTaskCalls[0][3]).toEqual(expect.objectContaining({
+			existingBranch: "feature/login",
+			preparing: true,
+			preparingStage: "resolving-config",
+			preparingProgress: getPreparingStageProgress("resolving-config"),
+		}));
+		expect(addTaskCalls[1][3]).toEqual(expect.objectContaining({
+			existingBranch: "feature/login",
+			preparing: true,
+			preparingStage: "resolving-config",
+			preparingProgress: getPreparingStageProgress("resolving-config"),
+		}));
 
 		// Wait for background worktree creation
 		await vi.waitFor(() => {
@@ -1854,7 +1881,7 @@ describe("handlers.spawnVariants", () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
 		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
-		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false });
+		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false, preparingStage: null, preparingProgress: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
@@ -1870,7 +1897,11 @@ describe("handlers.spawnVariants", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", { preparing: false });
+			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", {
+				preparing: false,
+				preparingStage: null,
+				preparingProgress: null,
+			});
 		});
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
@@ -1880,7 +1911,7 @@ describe("handlers.spawnVariants", () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
 		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
-		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false });
+		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false, preparingStage: null, preparingProgress: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
@@ -1899,7 +1930,11 @@ describe("handlers.spawnVariants", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", { preparing: false });
+			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", {
+				preparing: false,
+				preparingStage: null,
+				preparingProgress: null,
+			});
 		});
 	});
 
@@ -1959,6 +1994,8 @@ describe("handlers.addAttempts", () => {
 			groupId: "group-1",
 			variantIndex: 2,
 			preparing: false,
+			preparingStage: null,
+			preparingProgress: null,
 		});
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -1977,7 +2014,11 @@ describe("handlers.addAttempts", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", { preparing: false });
+			expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", {
+				preparing: false,
+				preparingStage: null,
+				preparingProgress: null,
+			});
 		});
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
@@ -2013,12 +2054,14 @@ describe("handlers.addAttempts", () => {
 			.mockRejectedValueOnce(new Error("wt boom"))
 			.mockResolvedValueOnce({ worktreePath: "/tmp/attempt-3", branchName: "dev3/a3" });
 		vi.mocked(data.updateTask)
-			.mockResolvedValueOnce({ ...firstAttempt, preparing: false })
+			.mockResolvedValueOnce({ ...firstAttempt, preparing: false, preparingStage: null, preparingProgress: null })
 			.mockResolvedValueOnce({
 				...secondAttempt,
 				worktreePath: "/tmp/attempt-3",
 				branchName: "dev3/a3",
 				preparing: false,
+				preparingStage: null,
+				preparingProgress: null,
 			});
 
 		await handlers.addAttempts({
@@ -2033,11 +2076,17 @@ describe("handlers.addAttempts", () => {
 		await vi.waitFor(() => {
 			expect(git.createWorktree).toHaveBeenCalledTimes(2);
 		});
-		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", { preparing: false });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", {
+			preparing: false,
+			preparingStage: null,
+			preparingProgress: null,
+		});
 		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-3", {
 			worktreePath: "/tmp/attempt-3",
 			branchName: "dev3/a3",
 			preparing: false,
+			preparingStage: null,
+			preparingProgress: null,
 		});
 	});
 });
@@ -2091,6 +2140,8 @@ describe("handlers.cancelTaskPreparation", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
 			status: "todo",
 			preparing: false,
+			preparingStage: null,
+			preparingProgress: null,
 			worktreePath: null,
 			branchName: null,
 			customColumnId: null,

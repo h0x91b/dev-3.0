@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, Label, Project, Task, TaskStatus } from "../../../shared/types";
+import { getPreparingStageProgress } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -687,12 +688,31 @@ describe("TaskCard", () => {
 			expect(onLaunchVariants).not.toHaveBeenCalled();
 		});
 
+		it("shows compact progress bar with current preparing stage", () => {
+			renderCard(makeTask({
+				status: "in-progress",
+				preparing: true,
+				preparingStage: "fetching-origin",
+				preparingProgress: getPreparingStageProgress("fetching-origin"),
+				worktreePath: null,
+				branchName: null,
+			}));
+
+			expect(screen.getByText("Fetching origin")).toBeInTheDocument();
+			expect(screen.getByRole("progressbar", { name: "Preparing…" })).toHaveAttribute(
+				"aria-valuenow",
+				String(getPreparingStageProgress("fetching-origin")),
+			);
+		});
+
 		it("shows cancel action while preparing and reverts task to todo", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const preparingTask = makeTask({
 				status: "in-progress",
 				preparing: true,
+				preparingStage: "launching-pty",
+				preparingProgress: getPreparingStageProgress("launching-pty"),
 				worktreePath: null,
 				branchName: null,
 				title: "Short title",
@@ -702,6 +722,8 @@ describe("TaskCard", () => {
 				...preparingTask,
 				status: "todo" as TaskStatus,
 				preparing: false,
+				preparingStage: null,
+				preparingProgress: null,
 			};
 			mockedApi.request.cancelTaskPreparation.mockResolvedValue(updatedTask);
 
