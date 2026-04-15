@@ -40,27 +40,34 @@ Examples:
 `;
 
 /**
+ * True when the CLI runs via `bun run ...` (dev mode) rather than as a compiled
+ * `dev3` binary. In dev mode we must NEVER spawn `dist/dev3-server`:
+ *   (a) on macOS the unsigned compiled binary is killed by Gatekeeper with
+ *       SIGKILL and no output (observed: signal=SIGKILL, exit code=null),
+ *   (b) `dist/dev3-server` may be a stale artifact from a previous build that
+ *       no longer matches the current source — running it would silently
+ *       execute old code while the developer thinks they're testing HEAD.
+ * Always re-run source through Bun instead (see runViaBun).
+ */
+function isRunningViaBun(): boolean {
+	const exec = process.execPath;
+	return exec.endsWith("/bun") || exec.endsWith("\\bun.exe");
+}
+
+/**
  * Locate the `dev3-server` binary that sits alongside the CLI.
  *
- * Layout we expect (in priority order):
+ * Layout we expect:
  *   <bin>/dev3           ← CLI  (this process)
  *   <bin>/dev3-server    ← headless server (spawned)
  *
- * Fallbacks for dev: the repo root's `dist/dev3-server`, or CWD/dist/dev3-server.
+ * Only meaningful in prod — from the compiled `dev3`. Dev mode bypasses this
+ * entirely via `runViaBun`; see isRunningViaBun.
  */
 function locateServerBinary(): string | null {
-	const candidates: string[] = [];
-	// process.execPath points at the current executable; for a compiled Bun
-	// binary it's the binary itself, for `bun run` it's Bun.
 	const cliDir = dirname(process.execPath);
-	candidates.push(resolve(cliDir, "dev3-server"));
-	candidates.push(resolve(process.cwd(), "dist", "dev3-server"));
-	// Dev: if we're running from source, fall back to running headless-entry
-	// through Bun itself (see runViaBun below).
-	for (const p of candidates) {
-		if (existsSync(p)) return p;
-	}
-	return null;
+	const sibling = resolve(cliDir, "dev3-server");
+	return existsSync(sibling) ? sibling : null;
 }
 
 /**
@@ -83,6 +90,9 @@ function runViaBun(env: NodeJS.ProcessEnv): void {
 	}
 	const child = spawn(bunBin, ["run", entry], { stdio: "inherit", env });
 	child.on("exit", (code) => process.exit(code ?? 0));
+	// Forward signals so Ctrl-C in the CLI reaches the server cleanly.
+	process.on("SIGINT", () => child.kill("SIGINT"));
+	process.on("SIGTERM", () => child.kill("SIGTERM"));
 }
 
 export async function handleRemote(subcommand: string | undefined, args: ParsedArgs): Promise<void> {
@@ -116,6 +126,14 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		childEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];
 	}
 
+	// Dev mode (bun run src/cli/main.ts) — always re-run source through Bun.
+	// See isRunningViaBun for why we never touch dist/dev3-server here.
+	if (isRunningViaBun()) {
+		runViaBun(childEnv);
+		return;
+	}
+
+	// Prod mode — compiled `dev3` spawns its sibling `dev3-server`.
 	const serverBin = locateServerBinary();
 	if (serverBin) {
 		const child = spawn(serverBin, [], { stdio: "inherit", env: childEnv });
@@ -126,6 +144,8 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		return;
 	}
 
-	// Dev fallback: no compiled server next to us — try running source.
+	// Prod binary without sibling — shouldn't happen in a normal install, but
+	// fall back to source as a last resort (will fail: compiled binary can't
+	// execute .ts files, runViaBun will error cleanly).
 	runViaBun(childEnv);
 }

@@ -1,0 +1,5 @@
+Added `dev3 remote` — run dev-3.0 headless and serve the full React UI to any browser over HTTP + WebSocket. Prints an ASCII QR signed with a short-lived JWT token (auto-refreshed every 25s, matching the GUI modal), plus LAN, SSH port-forward, and optional Cloudflare tunnel (`--tunnel`) connection hints.
+
+Split into two binaries: `dist/dev3` (CLI, no electrobun) and `dist/dev3-server` (headless entry). A platform shim (`src/bun/electrobun-platform.ts`) conditionally re-exports `Utils` / `PATHS` / `Updater` so headless mode never imports `electrobun/bun` (whose FFI `dlopen` exits the process and whose top-level awaits break non-GUI bundles). Set `DEV3_HEADLESS=1` via `headless-bootstrap.ts` before ES imports hoist, and the shim short-circuits to stubs.
+
+In dev mode (`bun run src/cli/main.ts remote`) always re-run source through Bun rather than spawning `dist/dev3-server`: unsigned compiled binaries are killed by macOS Gatekeeper with SIGKILL and no output, and a stale `dist/` would silently run code that no longer matches the current source. The sibling-spawn path is kept for the compiled prod `dev3`.
