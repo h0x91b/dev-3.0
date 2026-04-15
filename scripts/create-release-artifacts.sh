@@ -151,8 +151,15 @@ fi
 echo "Electrobun artifacts not found, recovering from build dir..."
 TAR_ZST="${BUILD_DIR}/${TAR_NAME}.zst"
 TAR="${BUILD_DIR}/${TAR_NAME}"
+PARTIAL_APP_ZIP="${BUILD_DIR}/${APP_BUNDLE}.zip"
 
 if [ ! -f "$TAR_ZST" ] && [ ! -f "$TAR" ]; then
+  if [ "$OS" = "macos" ] && [ -f "$PARTIAL_APP_ZIP" ]; then
+    echo "::error::Found ${PARTIAL_APP_ZIP} but no ${TAR_NAME}(.zst). Electrobun likely failed after packaging the app, for example during notarization. Check the earlier electrobun output for the real error."
+    find "${BUILD_DIR}" -maxdepth 2 -type f 2>/dev/null || true
+    exit 1
+  fi
+
   echo "::error::Neither tar.zst nor tar found — build failed before tarring"
   find ./build -maxdepth 3 -type f 2>/dev/null || true
   exit 1

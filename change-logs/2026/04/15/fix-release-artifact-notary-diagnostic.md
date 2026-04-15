@@ -1,0 +1,1 @@
+Improved the release artifact recovery script so macOS CI failures that leave only `dev-3.0.app.zip` now report a likely post-packaging/notarization failure instead of the misleading "build failed before tarring" message. Added a regression test for the partial macOS artifact case.
