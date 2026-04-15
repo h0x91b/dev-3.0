@@ -55,6 +55,9 @@ describe("saveSettings", () => {
 	});
 
 	it("creates the settings directory before writing the file", async () => {
+		// Remove the directory so saveSettings must create it from scratch
+		rmSync(TEST_HOME, { recursive: true, force: true });
+
 		vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
 			writeFileSync(String(target), String(data), "utf-8");
 			return 0;
