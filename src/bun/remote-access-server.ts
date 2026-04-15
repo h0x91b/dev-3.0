@@ -16,7 +16,7 @@ import { existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
-import { PATHS } from "electrobun/bun";
+import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { initSecret, createQrToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
 import { getTunnelUrl } from "./cloudflare-tunnel";

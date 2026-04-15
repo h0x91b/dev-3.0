@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { PATHS, Utils } from "electrobun/bun";
+import { PATHS, Utils } from "../electrobun-platform";
 import type { ChangelogEntry, ExternalApp, Project, TipState } from "../../shared/types";
 import { DEFAULT_EXTERNAL_APPS, extractRepoName } from "../../shared/types";
 import * as data from "../data";

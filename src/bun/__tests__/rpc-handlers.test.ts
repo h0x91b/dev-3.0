@@ -14,6 +14,17 @@ vi.mock("electrobun/bun", () => ({
 		openFileDialog: vi.fn(),
 		quit: vi.fn(),
 	},
+	Updater: {
+		localInfo: {
+			version: vi.fn().mockResolvedValue("0.0.0-test"),
+			hash: vi.fn().mockResolvedValue("deadbeef"),
+			channel: vi.fn().mockResolvedValue("dev"),
+		},
+		checkForUpdate: vi.fn(),
+		downloadUpdate: vi.fn(),
+		updateInfo: vi.fn().mockReturnValue(null),
+		applyUpdate: vi.fn(),
+	},
 }));
 
 const mockBundledChangelog: any[] = [];

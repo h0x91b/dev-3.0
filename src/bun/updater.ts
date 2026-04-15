@@ -1,4 +1,4 @@
-import { Updater } from "electrobun/bun";
+import { Updater } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isNewerVersion } from "../shared/version";
 

@@ -21,6 +21,14 @@ afterAll(() => {
 // Mock electrobun to use our temp dir
 vi.mock("electrobun/bun", () => ({
 	PATHS: { VIEWS_FOLDER: "/nonexistent-views" },
+	Utils: {},
+	Updater: {
+		localInfo: {
+			version: vi.fn().mockResolvedValue("0.0.0-test"),
+			hash: vi.fn().mockResolvedValue("deadbeef"),
+			channel: vi.fn().mockResolvedValue("dev"),
+		},
+	},
 }));
 
 vi.mock("../logger", () => ({

@@ -1,4 +1,4 @@
-import { Utils } from "electrobun/bun";
+import { Utils } from "./electrobun-platform";
 import { createLogger, getLogPath } from "./logger";
 
 const log = createLogger("menu-actions");
