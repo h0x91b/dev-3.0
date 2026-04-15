@@ -600,6 +600,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.copyWorktreePath.body",
 		icon: "\u{F0198}", // nf-md-content_copy
 	},
+	{
+		id: "cancel-preparing",
+		titleKey: "tip.cancelPreparing.title",
+		bodyKey: "tip.cancelPreparing.body",
+		icon: "\u{F0159}", // nf-md-cancel
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

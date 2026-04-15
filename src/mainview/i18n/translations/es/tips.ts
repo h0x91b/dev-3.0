@@ -192,6 +192,8 @@ const tips = {
 	"tip.preventSleep.body": "Activa Evitar suspensión en Ajustes para que tu Mac no duerma mientras los agentes trabajan.",
 	"tip.copyWorktreePath.title": "Copiar ruta del worktree",
 	"tip.copyWorktreePath.body": "Haz clic en el icono de carpeta+portapapeles en la barra de la tarea, o clic derecho en la tarjeta → Copy Path.",
+	"tip.cancelPreparing.title": "Aborta la preparación",
+	"tip.cancelPreparing.body": "En una tarjeta Preparing, pulsa Cancel para matar el setup y devolver la tarea a To Do.",
 };
 
 export default tips;

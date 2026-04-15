@@ -184,6 +184,7 @@ import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
 import { existsSync } from "node:fs";
+import { createTaskPreparation, registerPreparationSpawn } from "../preparation-runtime";
 
 // Import handlers and pure helper functions after all mocks are set up
 const {
@@ -2036,6 +2037,66 @@ describe("handlers.addAttempts", () => {
 			branchName: "dev3/a3",
 			preparing: false,
 		});
+	});
+});
+
+describe("handlers.cancelTaskPreparation", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("kills tracked preparation processes and moves the task back to todo", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "variant-1",
+			status: "in-progress",
+			preparing: true,
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+		});
+		const revertedTask = makeTask({
+			...task,
+			status: "todo",
+			preparing: false,
+			worktreePath: null,
+			branchName: null,
+			customColumnId: null,
+		});
+
+		createTaskPreparation(task.id, "test");
+		registerPreparationSpawn(task.id, 111, ["git", "fetch", "origin"]);
+		registerPreparationSpawn(task.id, 222, ["cp", "-R", "src", "dst"]);
+
+		mockSpawn.mockReturnValue({
+			pid: 999,
+			stdout: new Response(""),
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(revertedTask);
+		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.taskDir).mockReturnValue("/tmp/test-dev3/worktrees/tmp-test-project/variant-1");
+
+		const result = await handlers.cancelTaskPreparation({
+			taskId: task.id,
+			projectId: project.id,
+		});
+
+		expect(result).toEqual(revertedTask);
+		expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "111"], expect.anything());
+		expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "222"], expect.anything());
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			status: "todo",
+			preparing: false,
+			worktreePath: null,
+			branchName: null,
+			customColumnId: null,
+		});
+		expect(git.removeWorktree).toHaveBeenCalledWith(project, expect.objectContaining({
+			id: task.id,
+			worktreePath: "/tmp/test-dev3/worktrees/tmp-test-project/variant-1/worktree",
+		}));
 	});
 });
 

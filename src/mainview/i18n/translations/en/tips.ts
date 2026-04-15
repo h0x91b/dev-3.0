@@ -192,6 +192,8 @@ const tips = {
 	"tip.preventSleep.body": "Enable Prevent Sleep in Settings to keep your Mac awake while agents work.",
 	"tip.copyWorktreePath.title": "Copy worktree path",
 	"tip.copyWorktreePath.body": "Click the folder+clipboard icon in the task header bar, or right-click a task card and choose Copy Path.",
+	"tip.cancelPreparing.title": "Abort stuck prep",
+	"tip.cancelPreparing.body": "On a Preparing card, click Cancel to kill setup and send the task back to To Do.",
 } as const;
 
 export default tips;

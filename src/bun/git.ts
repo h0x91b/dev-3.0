@@ -69,6 +69,31 @@ export async function run(
 	return result;
 }
 
+async function measureGitStep<T>(
+	step: string,
+	meta: Record<string, unknown>,
+	fn: () => Promise<T>,
+): Promise<T> {
+	const startedAt = performance.now();
+	try {
+		const result = await fn();
+		log.info("Git step finished", {
+			step,
+			durationMs: Math.round(performance.now() - startedAt),
+			...meta,
+		});
+		return result;
+	} catch (err) {
+		log.warn("Git step failed", {
+			step,
+			durationMs: Math.round(performance.now() - startedAt),
+			error: String(err),
+			...meta,
+		});
+		throw err;
+	}
+}
+
 async function runBinary(
 	cmd: string[],
 	cwd: string,
@@ -530,6 +555,7 @@ export async function createWorktree(
 	existingBranch?: string,
 	variantBranchName?: string,
 ): Promise<{ worktreePath: string; branchName: string }> {
+	const startedAt = performance.now();
 	const wtPath = worktreePath(project, task);
 	const tDir = taskDir(project, task);
 
@@ -544,9 +570,13 @@ export async function createWorktree(
 			wtPath, variantBranchName, base: resolvedBase, taskId: task.id,
 		});
 
-		const result = await run(
-			["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase],
-			project.path,
+		const result = await measureGitStep(
+			"createWorktree.variant.worktreeAdd",
+			{ taskId: task.id.slice(0, 8), wtPath, variantBranchName, base: resolvedBase },
+			() => run(
+				["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase],
+				project.path,
+			),
 		);
 
 		if (!result.ok) {
@@ -554,7 +584,11 @@ export async function createWorktree(
 			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
 
-		log.info("Variant worktree created", { wtPath, branch: variantBranchName });
+		log.info("Variant worktree created", {
+			wtPath,
+			branch: variantBranchName,
+			durationMs: Math.round(performance.now() - startedAt),
+		});
 		return { worktreePath: wtPath, branchName: variantBranchName };
 	}
 
@@ -574,9 +608,13 @@ export async function createWorktree(
 			wtPath, existingBranch, resolvedBranch, isRemoteRef, taskId: task.id,
 		});
 
-		const result = await run(
-			["git", "worktree", "add", wtPath, resolvedBranch],
-			project.path,
+		const result = await measureGitStep(
+			"createWorktree.existing.worktreeAdd",
+			{ taskId: task.id.slice(0, 8), wtPath, resolvedBranch, isRemoteRef },
+			() => run(
+				["git", "worktree", "add", wtPath, resolvedBranch],
+				project.path,
+			),
 		);
 
 		if (!result.ok) {
@@ -585,9 +623,13 @@ export async function createWorktree(
 			if (isRemoteRef && !isAlreadyCheckedOut) {
 				// Remote branch without a local tracking branch yet — create one
 				log.info("Retrying with tracking branch creation", { existingBranch });
-				const trackResult = await run(
-					["git", "worktree", "add", "--track", "-b", resolvedBranch, wtPath, existingBranch],
-					project.path,
+				const trackResult = await measureGitStep(
+					"createWorktree.existing.trackRemoteBranch",
+					{ taskId: task.id.slice(0, 8), wtPath, resolvedBranch, existingBranch },
+					() => run(
+						["git", "worktree", "add", "--track", "-b", resolvedBranch, wtPath, existingBranch],
+						project.path,
+					),
 				);
 				if (!trackResult.ok) {
 					log.error("Failed to create worktree from existing branch", { stderr: trackResult.stderr, taskId: task.id });
@@ -603,9 +645,13 @@ export async function createWorktree(
 				log.info("Branch already checked out, creating task branch based on it", {
 					existingBranch: resolvedBranch, taskBranch, taskId: task.id,
 				});
-				const fallbackResult = await run(
-					["git", "worktree", "add", "-b", taskBranch, wtPath, resolvedBranch],
-					project.path,
+				const fallbackResult = await measureGitStep(
+					"createWorktree.existing.fallbackBranch",
+					{ taskId: task.id.slice(0, 8), wtPath, taskBranch, resolvedBranch },
+					() => run(
+						["git", "worktree", "add", "-b", taskBranch, wtPath, resolvedBranch],
+						project.path,
+					),
 				);
 				if (!fallbackResult.ok) {
 					log.error("Failed to create worktree from existing branch (fallback)", { stderr: fallbackResult.stderr, taskId: task.id });
@@ -624,7 +670,12 @@ export async function createWorktree(
 					);
 					log.info("Set remote tracking branch for fallback task branch", { taskBranch, remoteRef });
 				}
-				log.info("Worktree created with task branch based on existing", { wtPath, branch: taskBranch, base: resolvedBranch });
+				log.info("Worktree created with task branch based on existing", {
+					wtPath,
+					branch: taskBranch,
+					base: resolvedBranch,
+					durationMs: Math.round(performance.now() - startedAt),
+				});
 				return { worktreePath: wtPath, branchName: taskBranch };
 			}
 
@@ -632,7 +683,11 @@ export async function createWorktree(
 			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
 
-		log.info("Worktree created from existing branch", { wtPath, branch: resolvedBranch });
+		log.info("Worktree created from existing branch", {
+			wtPath,
+			branch: resolvedBranch,
+			durationMs: Math.round(performance.now() - startedAt),
+		});
 		return { worktreePath: wtPath, branchName: resolvedBranch };
 	}
 
@@ -642,7 +697,11 @@ export async function createWorktree(
 
 	// Fetch origin so the worktree starts from the latest remote commit,
 	// not a potentially stale local branch.
-	const fetched = await fetchOrigin(project.path);
+	const fetched = await measureGitStep(
+		"createWorktree.fetchOrigin",
+		{ taskId: task.id.slice(0, 8), projectPath: project.path },
+		() => fetchOrigin(project.path),
+	);
 	const remoteBase = `origin/${baseBranch}`;
 	const refCheckResult = fetched
 		? await run(["git", "rev-parse", "--verify", remoteBase], project.path)
@@ -663,9 +722,13 @@ export async function createWorktree(
 
 	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 
-	const result = await run(
-		["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
-		project.path,
+	const result = await measureGitStep(
+		"createWorktree.default.worktreeAdd",
+		{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
+		() => run(
+			["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
+			project.path,
+		),
 	);
 
 	if (!result.ok) {
@@ -673,7 +736,11 @@ export async function createWorktree(
 		throw new Error(`Failed to create worktree: ${result.stderr}`);
 	}
 
-	log.info("Worktree created", { wtPath, branch });
+	log.info("Worktree created", {
+		wtPath,
+		branch,
+		durationMs: Math.round(performance.now() - startedAt),
+	});
 
 	return { worktreePath: wtPath, branchName: branch };
 }
@@ -809,12 +876,21 @@ export async function fetchOrigin(projectPath: string): Promise<boolean> {
 	}
 
 	const promise = (async () => {
+		const startedAt = performance.now();
 		log.debug("Fetching origin", { projectPath });
 		const result = await run(["git", "fetch", "origin", "--quiet"], projectPath);
 		if (result.ok) {
 			fetchLastSuccess.set(projectPath, Date.now());
+			log.info("fetchOrigin finished", {
+				projectPath,
+				durationMs: Math.round(performance.now() - startedAt),
+			});
 		} else {
-			log.warn("fetchOrigin failed", { projectPath, stderr: result.stderr });
+			log.warn("fetchOrigin failed", {
+				projectPath,
+				stderr: result.stderr,
+				durationMs: Math.round(performance.now() - startedAt),
+			});
 		}
 		return result.ok;
 	})();

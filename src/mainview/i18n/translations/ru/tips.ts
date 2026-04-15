@@ -192,6 +192,8 @@ const tips = {
 	"tip.preventSleep.body": "Включите «Не давать уснуть» в настройках, чтобы Mac не засыпал пока работают агенты.",
 	"tip.copyWorktreePath.title": "Копирование пути worktree",
 	"tip.copyWorktreePath.body": "Нажмите иконку папки с буфером обмена в заголовке задачи, или правый клик по карточке → Copy Path.",
+	"tip.cancelPreparing.title": "Прервать подготовку",
+	"tip.cancelPreparing.body": "На карточке Preparing нажмите Cancel, чтобы прибить setup и вернуть задачу в To Do.",
 };
 
 export default tips;

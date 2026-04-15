@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			moveTask: vi.fn(),
+			cancelTaskPreparation: vi.fn(),
 			moveTaskToCustomColumn: vi.fn(),
 			deleteTask: vi.fn(),
 			showConfirm: vi.fn(),
@@ -684,6 +685,35 @@ describe("TaskCard", () => {
 			await user.click(screen.getByText("Show full description"));
 
 			expect(onLaunchVariants).not.toHaveBeenCalled();
+		});
+
+		it("shows cancel action while preparing and reverts task to todo", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const preparingTask = makeTask({
+				status: "in-progress",
+				preparing: true,
+				worktreePath: null,
+				branchName: null,
+				title: "Short title",
+				description: "Long description different from title",
+			});
+			const updatedTask = {
+				...preparingTask,
+				status: "todo" as TaskStatus,
+				preparing: false,
+			};
+			mockedApi.request.cancelTaskPreparation.mockResolvedValue(updatedTask);
+
+			renderCard(preparingTask, { dispatch });
+
+			await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+			expect(mockedApi.request.cancelTaskPreparation).toHaveBeenCalledWith({
+				taskId: preparingTask.id,
+				projectId: project.id,
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
 		});
 	});
 
