@@ -26,6 +26,12 @@ Flags:
       Override the directory served as static assets (defaults to the
       dist/ next to the binary, or the current working directory's ./dist).
 
+  --static-code=<value>
+      Use a fixed access code instead of a rotating short-lived JWT.
+      The QR/URL token will be exactly <value>; auto-refresh is disabled.
+      For local dev only — do NOT expose a static code on the public
+      internet. Minimum length: 4 characters.
+
 Connection options shown on startup:
   ① Public tunnel URL (if --tunnel)
   ② LAN — scan the QR from any device on the same network
@@ -111,7 +117,7 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 	}
 
 	for (const key of Object.keys(args.flags)) {
-		if (key !== "tunnel" && key !== "views-dir" && key !== "help" && key !== "h") {
+		if (key !== "tunnel" && key !== "views-dir" && key !== "static-code" && key !== "help" && key !== "h") {
 			exitUsage(`Unknown flag: --${key}\nRun "dev3 remote --help" for usage.`);
 		}
 	}
@@ -124,6 +130,15 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 	}
 	if (args.flags["views-dir"] && args.flags["views-dir"] !== "true") {
 		childEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];
+	}
+	if (args.flags["static-code"] && args.flags["static-code"] !== "true") {
+		const code = args.flags["static-code"];
+		if (code.length < 4) {
+			exitUsage(`--static-code must be at least 4 characters (got "${code}")`);
+		}
+		childEnv.DEV3_REMOTE_STATIC_CODE = code;
+	} else if (args.flags["static-code"] === "true") {
+		exitUsage(`--static-code requires a value: --static-code=<your-code>`);
 	}
 
 	// Dev mode (bun run src/cli/main.ts) — always re-run source through Bun.

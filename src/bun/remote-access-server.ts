@@ -18,7 +18,7 @@ import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
-import { initSecret, createQrToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
+import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
 import { getTunnelUrl } from "./cloudflare-tunnel";
 
 const log = createLogger("remote-access");
@@ -260,6 +260,14 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 						log.warn("Auth exchange: missing token", { ip: clientIp, ua });
 						return new Response("Missing token", { status: 400 });
 					}
+					// Static code path — fixed code, no replay protection, dev only.
+					const staticCode = getStaticCode();
+					if (staticCode && body.token === staticCode) {
+						const sessionToken = await createSessionToken();
+						log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
+						qrConsumedCallback?.();
+						return Response.json({ token: sessionToken });
+					}
 					const sessionToken = await exchangeQrForSession(body.token);
 					if (!sessionToken) {
 						log.warn("Auth exchange: invalid/expired QR token", { ip: clientIp, ua });
@@ -400,8 +408,18 @@ function getLocalIp(): string {
 	return "localhost";
 }
 
+/**
+ * True when `dev3 remote --static-code=<value>` is in effect. In that mode the
+ * URL token is the fixed user-supplied code (not a rolling JWT), the auth
+ * exchange accepts it as a magic word, and the QR auto-refresher is skipped.
+ * Intended for local dev only — there is no replay protection.
+ */
+export function getStaticCode(): string | null {
+	return process.env.DEV3_REMOTE_STATIC_CODE || null;
+}
+
 export async function getAccessUrl(): Promise<string> {
-	const token = await createQrToken();
+	const token = getStaticCode() ?? await createQrToken();
 	const tunnel = getTunnelUrl();
 	if (tunnel) return `${tunnel}/?token=${token}`;
 	const ip = getLocalIp();

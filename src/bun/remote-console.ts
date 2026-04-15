@@ -43,6 +43,8 @@ interface BannerOptions {
 	tunnelUrl: string | null;
 	tunnelRequested: boolean;
 	accessUrl: string;
+	/** Set when `--static-code=<value>` is in effect. Disables QR refresh + URL caveat. */
+	staticCode?: string | null;
 }
 
 /**
@@ -50,7 +52,7 @@ interface BannerOptions {
  * Call once at startup, after the remote-access server is listening.
  */
 export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
-	const { port, tunnelUrl, tunnelRequested, accessUrl } = opts;
+	const { port, tunnelUrl, tunnelRequested, accessUrl, staticCode } = opts;
 
 	// Terminal-rendered QR. `small: true` halves the vertical size by using
 	// half-blocks (▀/▄) — stays readable by phone cameras.
@@ -62,8 +64,17 @@ export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
 	console.log("╚════════════════════════════════════════════════════════════════╝");
 	console.log("");
 	console.log(qrAscii);
-	console.log("  URL (includes one-time QR token, regenerated every 25s):");
+	if (staticCode) {
+		console.log("  URL (static code — no rotation, dev only):");
+	} else {
+		console.log("  URL (includes one-time QR token, regenerated every 25s):");
+	}
 	console.log(`  ${accessUrl}`);
+	if (staticCode) {
+		console.log("");
+		console.log(`  Static access code: ${staticCode}`);
+		console.log("  ⚠ Replay protection is disabled — do NOT expose on the public internet.");
+	}
 	console.log("");
 
 	printConnectionTips({ port, tunnelUrl, tunnelRequested });

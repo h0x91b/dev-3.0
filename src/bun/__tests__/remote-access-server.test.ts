@@ -43,6 +43,7 @@ vi.mock("../logger", () => ({
 vi.mock("../jwt", () => ({
 	initSecret: vi.fn(),
 	createQrToken: vi.fn().mockResolvedValue("test-token"),
+	createSessionToken: vi.fn().mockResolvedValue("test-session-token"),
 	exchangeQrForSession: vi.fn(),
 	refreshSession: vi.fn(),
 	verifySessionToken: vi.fn(),

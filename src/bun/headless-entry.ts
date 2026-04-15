@@ -157,13 +157,19 @@ if (wantTunnel) {
 }
 
 // ── Banner + QR + auto-refresh ──
+const staticCode = process.env.DEV3_REMOTE_STATIC_CODE || null;
 await renderHeadlessBanner({
 	port: getServerPort(),
 	tunnelUrl: getTunnelUrl(),
 	tunnelRequested: wantTunnel,
 	accessUrl: await getAccessUrl(),
+	staticCode,
 });
-startQrAutoRefresh(() => getAccessUrl());
+// Skip the rolling JWT refresh when a static code is in effect — the URL is
+// stable, so there is nothing to refresh.
+if (!staticCode) {
+	startQrAutoRefresh(() => getAccessUrl());
+}
 
 // ── Background pollers ──
 startMergeDetectionPoller();
