@@ -292,7 +292,7 @@ function initBrowserApi(): ApiShape {
 						const base64 = btoa(
 							new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ""),
 						);
-						return rpcRequest("uploadImageBase64", {
+						return rpcRequest("uploadFileBase64", {
 							projectId: params.projectId,
 							base64,
 							mimeType: imageType,

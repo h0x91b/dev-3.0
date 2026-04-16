@@ -4,7 +4,7 @@ import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
-import { uploadDroppedImage } from "./utils/uploadDroppedImage";
+import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -852,30 +852,23 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		const files = Array.from(e.dataTransfer.files);
 		if (files.length === 0) return;
 
-		// WKWebView doesn't expose native file paths — resolve via Spotlight in main process.
 		const paths = await Promise.all(
 			files.map(async (f) => {
 				try {
-					const resolved = await api.request.resolveFilename({
-						filename: f.name,
-						size: f.size,
-						lastModified: f.lastModified,
-					});
-					const uploadedPath = resolved ? null : await uploadDroppedImage(projectId, f);
-					const p = resolved ?? uploadedPath ?? f.name;
-					return p.replace(/ /g, "\\ ");
+					const uploadedPath = await uploadDroppedFile(projectId, f);
+					return uploadedPath ? uploadedPath.replace(/ /g, "\\ ") : null;
 				} catch (err) {
-					console.error(`[TerminalView] resolveFilename failed for "${f.name}":`, err);
-					try {
-						const uploadedPath = await uploadDroppedImage(projectId, f);
-						return (uploadedPath ?? f.name).replace(/ /g, "\\ ");
-					} catch {
-						return f.name.replace(/ /g, "\\ ");
-					}
+					console.error(`[TerminalView] file upload failed for "${f.name}":`, err);
+					return null;
 				}
 			}),
 		);
-		const text = paths.join(" ");
+		const text = paths.filter((path): path is string => Boolean(path)).join(" ");
+
+		if (!text) {
+			try { termRef.current?.focus(); } catch { /* disposed */ }
+			return;
+		}
 
 		if (wsRef.current?.readyState === WebSocket.OPEN) {
 			wsRef.current.send(text);

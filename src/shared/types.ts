@@ -997,10 +997,6 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
-			resolveFilename: {
-				params: { filename: string; size: number; lastModified: number };
-				response: string | null;
-			};
 			runDevServer: {
 				params: { taskId: string; projectId: string };
 				response: DevServerStatus;
@@ -1232,6 +1228,10 @@ export type AppRPCSchema = {
 			checkCaffeinateAvailable: {
 				params: void;
 				response: { available: boolean };
+			};
+			uploadFileBase64: {
+				params: { projectId: string; base64: string; filename?: string; mimeType?: string };
+				response: { path: string } | null;
 			};
 			uploadImageBase64: {
 				params: { projectId: string; base64: string; filename?: string; mimeType?: string };

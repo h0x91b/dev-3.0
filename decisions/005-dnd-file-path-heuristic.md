@@ -1,5 +1,7 @@
 # 005 — Drag-and-drop file path resolution is heuristic
 
+> Superseded on 2026-04-16 by [decision 036](036-worktree-uploaded-dnd-files.md). Dropped files are now uploaded into the task worktree instead of resolving host-system paths.
+
 ## Context
 
 The terminal supports drag-and-drop: user drops a file onto the terminal, and the app pastes the full file path. However, WKWebView (Electrobun's renderer) does not expose native file paths in drag-and-drop events — the browser File API only provides `file.name`, `file.size`, and `file.lastModified`.
