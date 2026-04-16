@@ -75,8 +75,6 @@ set -g pane-border-lines double
 
 # Clipboard support
 set -s set-clipboard on
-bind -T copy-mode MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
 
 # Bell pass-through
 set -g visual-bell off
@@ -211,6 +209,7 @@ let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
 let onIdleCallback: ((taskId: string) => void) | null = null;
 let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
+let onOsc52CopyCallback: ((payload: { taskId: string; text: string; len: number }) => void) | null = null;
 
 export function setOnPtyDied(fn: (taskId: string) => void): void {
 	onPtyDiedCallback = fn;
@@ -226,6 +225,10 @@ export function setOnIdle(fn: (taskId: string) => void): void {
 
 export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): void {
 	onPaneExitedCallback = fn;
+}
+
+export function setOnOsc52Copy(fn: (payload: { taskId: string; text: string; len: number }) => void): void {
+	onOsc52CopyCallback = fn;
 }
 
 
@@ -450,16 +453,16 @@ const OSC52_RE = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/g;
 // before checking for standalone BEL (\x07)
 const OSC_ANY_RE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
-function handleOsc52(data: string): string {
+function handleOsc52(data: string, taskId: string): string {
 	return data.replace(OSC52_RE, (_match, b64: string) => {
 		if (b64 && b64 !== "?") {
 			try {
 				const text = Buffer.from(b64, "base64").toString("utf-8");
-				const proc = spawn(["pbcopy"], { stdin: "pipe" });
-				const pbcopyStdin = proc.stdin as unknown as import("bun").FileSink;
-				pbcopyStdin.write(text);
-				pbcopyStdin.end();
-				log.info("OSC 52: copied to clipboard", { len: text.length });
+				onOsc52CopyCallback?.({ taskId, text, len: text.length });
+				log.info("OSC 52: forwarded clipboard payload to client", {
+					taskId: shortId(taskId),
+					len: text.length,
+				});
 			} catch {
 				// ignore
 			}
@@ -623,7 +626,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 							session.lastOutputTime = Date.now();
 							session.idleNotified = false;
 							checkForBell(str, session.taskId);
-							const cleaned = handleOsc52(str);
+							const cleaned = handleOsc52(str, session.taskId);
 							if (cleaned && session.clients.size > 0) {
 								enqueuePtyData(session, cleaned);
 							}

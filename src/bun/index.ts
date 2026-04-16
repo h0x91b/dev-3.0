@@ -180,7 +180,7 @@ const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, getActiveSessionIds, getPtyPort } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 
@@ -445,6 +445,18 @@ setOnIdle((sessionKey) => {
 	}).catch((err) => {
 		log.error("isTaskInProgress failed in idle handler", { error: String(err) });
 	});
+});
+
+setOnOsc52Copy((payload) => {
+	try {
+		(mainWindow.webview.rpc as any).send.osc52Clipboard?.(payload);
+		pushToBrowserClients("osc52Clipboard", payload);
+	} catch (err) {
+		log.error("Failed to forward OSC 52 clipboard payload", {
+			taskId: payload.taskId.slice(0, 8),
+			error: String(err),
+		});
+	}
 });
 
 // Wire pane-exited notifications — remove dead pane entries from sessionState

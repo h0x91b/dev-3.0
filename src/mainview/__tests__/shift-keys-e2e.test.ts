@@ -75,8 +75,6 @@ set -g status-right-length 150
 
 # Clipboard support
 set -s set-clipboard on
-bind -T copy-mode MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel "pbcopy"
 
 # Bell pass-through
 set -g visual-bell off
