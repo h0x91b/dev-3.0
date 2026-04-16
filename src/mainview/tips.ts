@@ -535,6 +535,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffCompareDefault.body",
 		icon: "\u{F04CB}", // nf-md-source_compare
 	},
+	{
+		id: "derived-task-local-compare",
+		titleKey: "tip.derivedTaskLocalCompare.title",
+		bodyKey: "tip.derivedTaskLocalCompare.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+	},
 	// Batch 23: project terminal
 	{
 		id: "project-terminal",

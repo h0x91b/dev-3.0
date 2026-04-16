@@ -472,7 +472,11 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	await git.fetchOrigin(project.path);
-	const status = await git.getBranchStatus(task.worktreePath, `origin/${baseBranch}`);
+	// For task-specific base branches (not the project default), compare against the local branch —
+	// consistent with what the UI displays. For the project default, check against the remote.
+	const projectBaseBranch = project.defaultBaseBranch || "main";
+	const rebaseCheckRef = baseBranch !== projectBaseBranch ? baseBranch : `origin/${baseBranch}`;
+	const status = await git.getBranchStatus(task.worktreePath, rebaseCheckRef);
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
@@ -481,12 +485,42 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
 	const escapedPath = project.path.replace(/'/g, "'\\''");
+	const escapedBaseBranch = baseBranch.replace(/'/g, "'\\''");
+	const escapedRemoteBaseBranch = `origin/${baseBranch}`.replace(/'/g, "'\\''");
 	const escapedTitle = task.title.replace(/'/g, "'\\''");
 
 	const script = [
 		`#!/bin/bash`,
 		`cd '${escapedPath}'`,
-		`echo "Squash-merging ${branchForMerge} into $(git branch --show-current)..."`,
+		`TARGET_BRANCH='${escapedBaseBranch}'`,
+		`TARGET_REMOTE='${escapedRemoteBaseBranch}'`,
+		`CURRENT_BRANCH=$(git branch --show-current)`,
+		`if [ "$CURRENT_BRANCH" != "$TARGET_BRANCH" ]; then`,
+		`  echo "Switching project branch to ${baseBranch}..."`,
+		`  if git rev-parse --verify "$TARGET_BRANCH" >/dev/null 2>&1; then`,
+		`    set -x`,
+		`    git checkout "$TARGET_BRANCH"`,
+		`    CHECKOUT_CODE=$?`,
+		`    set +x`,
+		`  elif git rev-parse --verify "$TARGET_REMOTE" >/dev/null 2>&1; then`,
+		`    set -x`,
+		`    git checkout --track -b "$TARGET_BRANCH" "$TARGET_REMOTE"`,
+		`    CHECKOUT_CODE=$?`,
+		`    set +x`,
+		`  else`,
+		`    echo "Base branch ${baseBranch} does not exist locally or on origin."`,
+		`    CHECKOUT_CODE=1`,
+		`  fi`,
+		`  if [ $CHECKOUT_CODE -ne 0 ]; then`,
+		`    echo $CHECKOUT_CODE > "${scriptPath}.exit"`,
+		`    echo ""`,
+		`    printf '\\033[1;31m✗ Checkout failed (exit %s)\\033[0m\\n' "$CHECKOUT_CODE"`,
+		`    echo "Press any key to close."`,
+		`    read -n 1 -s`,
+		`    exit $CHECKOUT_CODE`,
+		`  fi`,
+		`fi`,
+		`echo "Squash-merging ${branchForMerge} into $TARGET_BRANCH..."`,
 		`set -x`,
 		`git merge --squash ${branchForMerge}`,
 		`MERGE_CODE=$?`,

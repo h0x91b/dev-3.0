@@ -2007,6 +2007,132 @@ describe("handlers.spawnVariants", () => {
 describe("handlers.addAttempts", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+	it("inherits existingBranch from the source task into added attempts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			existingBranch: "feature/login",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			existingBranch: "feature/login",
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({
+			...attemptTask,
+			worktreePath: "/tmp/attempt-2",
+			branchName: "feature/login",
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({
+				existingBranch: "feature/login",
+				preparing: true,
+				preparingStage: "resolving-config",
+				preparingProgress: getPreparingStageProgress("resolving-config"),
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledWith(
+				project,
+				expect.objectContaining({
+					...attemptTask,
+					preparingStage: "resolving-config",
+					preparingProgress: getPreparingStageProgress("resolving-config"),
+				}),
+				"feature/login",
+				undefined,
+			);
+		});
+	});
+
+	it("falls back to source task baseBranch when existingBranch is missing", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			baseBranch: "feature/login",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			existingBranch: "feature/login",
+			baseBranch: "feature/login",
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({
+			...attemptTask,
+			worktreePath: "/tmp/attempt-2",
+			branchName: "feature/login",
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({
+				existingBranch: "feature/login",
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledWith(
+				project,
+				expect.objectContaining({
+					...attemptTask,
+					preparingStage: "resolving-config",
+					preparingProgress: getPreparingStageProgress("resolving-config"),
+				}),
+				"feature/login",
+				undefined,
+			);
+		});
+	});
+
 	it("clears preparing when project config resolution fails before attempt setup starts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
@@ -3367,6 +3493,65 @@ describe("handlers.mergeTask", () => {
 		await expect(
 			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Branch is not rebased");
+	});
+
+	it("uses local branch ref for rebase check on task-specific base branches", async () => {
+		const project = makeProject();
+		const task = makeTask({ branchName: "dev3/t", worktreePath: "/tmp/wt", baseBranch: "feature/abc" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 2 });
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow("Branch is not rebased");
+
+		expect(git.getBranchStatus).toHaveBeenCalledWith(task.worktreePath, "feature/abc");
+	});
+
+	it("writes a merge script that targets the task base branch", async () => {
+		const project = makeProject({ path: "/tmp/project-root" });
+		const task = makeTask({
+			id: "task-1",
+			title: "Merge task",
+			baseBranch: "feature/abc",
+			branchName: "dev3/t",
+			worktreePath: "/tmp/wt",
+		});
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const intervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as any);
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as any);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 } as any);
+		mockSpawn.mockReturnValue({
+			stdout: new Response("%42\n"),
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		try {
+			await handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" });
+
+			const mergeScriptCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-git-merge.sh"));
+			const script = String(mergeScriptCall?.[1] ?? "");
+			const checkoutIndex = script.indexOf('git checkout "$TARGET_BRANCH"');
+			const mergeIndex = script.indexOf("git merge --squash dev3/t");
+
+			expect(script).toContain(`TARGET_BRANCH='feature/abc'`);
+			expect(script).toContain(`TARGET_REMOTE='origin/feature/abc'`);
+			expect(checkoutIndex).toBeGreaterThanOrEqual(0);
+			expect(mergeIndex).toBeGreaterThanOrEqual(0);
+			expect(checkoutIndex).toBeLessThan(mergeIndex);
+		} finally {
+			timeoutSpy.mockRestore();
+			intervalSpy.mockRestore();
+			writeSpy.mockRestore();
+		}
 	});
 });
 

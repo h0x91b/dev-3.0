@@ -29,6 +29,13 @@ function tasksFile(project: Project): string {
 	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
 }
 
+function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
+	const normalizedExistingBranch = existingBranch?.trim()
+		.replace(/^refs\/remotes\//, "")
+		.replace(/^origin\//, "");
+	return normalizedExistingBranch || project.defaultBaseBranch;
+}
+
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
 	await mkdir(dir, { recursive: true });
@@ -355,7 +362,7 @@ export async function addTask(
 			title,
 			description,
 			status,
-			baseBranch: project.defaultBaseBranch,
+			baseBranch: deriveTaskBaseBranch(project, extras?.existingBranch),
 			worktreePath: null,
 			branchName: null,
 			groupId: extras?.groupId ?? null,

@@ -556,6 +556,19 @@ async function createTask(params: { projectId: string; description: string; stat
 	return task;
 }
 
+function getSourceTaskBranch(task: Task, project: Project): string | undefined {
+	if (task.existingBranch) {
+		return task.existingBranch;
+	}
+
+	const projectBaseBranch = project.defaultBaseBranch || "main";
+	if (task.baseBranch && task.baseBranch !== projectBaseBranch) {
+		return task.baseBranch;
+	}
+
+	return undefined;
+}
+
 export async function moveTask(params: {
 	taskId: string;
 	projectId: string;
@@ -747,7 +760,7 @@ async function spawnVariants(params: {
 	const groupId = crypto.randomUUID();
 	const sharedSeq = sourceTask.seq;
 	const resultTasks: Task[] = [];
-	const srcBranch = sourceTask.existingBranch ?? undefined;
+	const srcBranch = getSourceTaskBranch(sourceTask, project);
 	const isMultiVariant = params.variants.length > 1;
 	const needsWorktree = isActive(params.targetStatus);
 
@@ -842,6 +855,7 @@ async function addAttempts(params: {
 	const resultTasks: Task[] = [];
 	const targetStatus: TaskStatus = "in-progress";
 	const needsWorktree = isActive(targetStatus);
+	const srcBranch = getSourceTaskBranch(sourceTask, project);
 
 	for (let i = 0; i < params.variants.length; i++) {
 		const variant = params.variants[i];
@@ -857,6 +871,7 @@ async function addAttempts(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				seq: sharedSeq,
+				existingBranch: srcBranch,
 				preparing: needsWorktree,
 				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
@@ -877,15 +892,16 @@ async function addAttempts(params: {
 	if (needsWorktree) {
 		(async () => {
 			try {
-				for (let i = 0; i < resultTasks.length; i++) {
-					const task = resultTasks[i];
-					const variant = params.variants[i];
-					await prepareTaskInBackground(project, task, {
-						label: "attempt",
-						agentId: variant.agentId,
-						configId: variant.configId,
-					});
-				}
+					for (let i = 0; i < resultTasks.length; i++) {
+						const task = resultTasks[i];
+						const variant = params.variants[i];
+						await prepareTaskInBackground(project, task, {
+							label: "attempt",
+							agentId: variant.agentId,
+							configId: variant.configId,
+							existingBranch: task.existingBranch ?? srcBranch,
+						});
+					}
 			} catch (err) {
 				log.error("Failed to start attempt preparation", { projectId: project.id, error: String(err) });
 				await clearPreparingTasks(project, resultTasks);
