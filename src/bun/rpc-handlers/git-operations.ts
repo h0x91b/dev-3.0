@@ -472,7 +472,11 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	await git.fetchOrigin(project.path);
-	const status = await git.getBranchStatus(task.worktreePath, `origin/${baseBranch}`);
+	// For task-specific base branches (not the project default), compare against the local branch —
+	// consistent with what the UI displays. For the project default, check against the remote.
+	const projectBaseBranch = project.defaultBaseBranch || "main";
+	const rebaseCheckRef = baseBranch !== projectBaseBranch ? baseBranch : `origin/${baseBranch}`;
+	const status = await git.getBranchStatus(task.worktreePath, rebaseCheckRef);
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;

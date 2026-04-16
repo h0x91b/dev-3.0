@@ -3495,6 +3495,21 @@ describe("handlers.mergeTask", () => {
 		).rejects.toThrow("Branch is not rebased");
 	});
 
+	it("uses local branch ref for rebase check on task-specific base branches", async () => {
+		const project = makeProject();
+		const task = makeTask({ branchName: "dev3/t", worktreePath: "/tmp/wt", baseBranch: "feature/abc" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 2 });
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow("Branch is not rebased");
+
+		expect(git.getBranchStatus).toHaveBeenCalledWith(task.worktreePath, "feature/abc");
+	});
+
 	it("writes a merge script that targets the task base branch", async () => {
 		const project = makeProject({ path: "/tmp/project-root" });
 		const task = makeTask({
