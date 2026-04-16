@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
-import { api } from "../rpc";
-import { uploadDroppedImage } from "../utils/uploadDroppedImage";
+import { useT } from "../i18n";
+import { dispatchErrorToast } from "../components/ErrorToast";
+import { uploadDroppedFile } from "../utils/uploadDroppedFile";
 
 export function useFileDrop(
 	projectId: string,
@@ -12,6 +13,7 @@ export function useFileDrop(
 	handleDrop: (e: React.DragEvent) => void;
 	isDragging: boolean;
 } {
+	const t = useT();
 	const [isDragging, setIsDragging] = useState(false);
 	const dragCounter = useRef(0);
 
@@ -44,29 +46,14 @@ export function useFileDrop(
 			if (!files.length) return;
 
 			void Promise.all(files.map(async (file) => {
-				if (projectId && file.type.startsWith("image/")) {
-					try {
-						const uploadedPath = await uploadDroppedImage(projectId, file);
-						if (uploadedPath) {
-							onFileDropped(uploadedPath);
-							return;
-						}
-					} catch (err) {
-						console.error(`[useFileDrop] image upload failed for "${file.name}":`, err);
-					}
-				}
-
 				try {
-					const resolvedPath = await api.request.resolveFilename({
-						filename: file.name,
-						size: file.size,
-						lastModified: file.lastModified,
-					});
-					if (resolvedPath) {
-						onFileDropped(resolvedPath);
+					const uploadedPath = await uploadDroppedFile(projectId, file);
+					if (uploadedPath) {
+						onFileDropped(uploadedPath);
 					}
 				} catch (err) {
-					console.error(`[useFileDrop] resolveFilename failed for "${file.name}":`, err);
+					console.error(`[useFileDrop] file upload failed for "${file.name}":`, err);
+					dispatchErrorToast(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
 				}
 			}));
 		},

@@ -13,13 +13,19 @@ async function fileToBase64(file: File): Promise<string> {
 	return btoa(chunks.join(""));
 }
 
-export async function uploadDroppedImage(projectId: string, file: File): Promise<string | null> {
-	if (!projectId || !file.type.startsWith("image/")) {
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
+export async function uploadDroppedFile(projectId: string, file: File): Promise<string | null> {
+	if (!projectId) {
 		return null;
 	}
 
+	if (file.size > MAX_FILE_SIZE) {
+		throw new Error(`File too large (max 100 MB)`);
+	}
+
 	const base64 = await fileToBase64(file);
-	const uploaded = await api.request.uploadImageBase64({
+	const uploaded = await api.request.uploadFileBase64({
 		projectId,
 		base64,
 		filename: file.name,

@@ -87,6 +87,7 @@ const terminal = {
 	"projectTerminal.backToBoard": "Назад к доске",
 	"projectTerminal.shortcutHint": "\u2318`",
 	"projectTerminal.tooltipWithShortcut": "Терминал проекта (\u2318`)",
+	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
 };
 
 export default terminal;

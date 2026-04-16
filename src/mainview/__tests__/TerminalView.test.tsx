@@ -1,5 +1,6 @@
 import { render, act, waitFor } from "@testing-library/react";
 import TerminalView from "../TerminalView";
+import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
 
@@ -61,7 +62,7 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
-	api: { request: { resolveFilename: vi.fn(), uploadImageBase64: vi.fn(), tmuxAction: vi.fn() } },
+	api: { request: { uploadFileBase64: vi.fn(), tmuxAction: vi.fn() } },
 }));
 
 vi.mock("../zoom", () => ({
@@ -154,7 +155,7 @@ beforeEach(() => {
 async function renderAndSetup() {
 	let result!: ReturnType<typeof render>;
 	await act(async () => {
-		result = render(<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" />);
+		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" /></I18nProvider>);
 		// Flush the microtask queue so the fonts.load() .then() runs → setup()
 		await Promise.resolve();
 		await Promise.resolve();
@@ -294,8 +295,7 @@ describe("TerminalView – focus-on-type", () => {
 // ── Terminal keymap shortcuts ─────────────────────────────────────────────────
 
 const mockedTmuxAction = vi.mocked(api.request.tmuxAction);
-const mockedResolveFilename = vi.mocked(api.request.resolveFilename);
-const mockedUploadImageBase64 = vi.mocked(api.request.uploadImageBase64);
+const mockedUploadFileBase64 = vi.mocked(api.request.uploadFileBase64);
 
 /** Focus a child element inside the terminal container so the keymap guard passes. */
 function focusInsideTerminal(): HTMLElement {
@@ -332,8 +332,7 @@ describe("TerminalView – keymap shortcuts", () => {
 		localStorage.clear();
 		mockedTmuxAction.mockClear();
 		mockedTmuxAction.mockResolvedValue(undefined as any);
-		mockedResolveFilename.mockReset();
-		mockedUploadImageBase64.mockReset();
+		mockedUploadFileBase64.mockReset();
 		lastWebSocket = null;
 	});
 
@@ -416,29 +415,28 @@ describe("TerminalView – keymap shortcuts", () => {
 });
 
 describe("TerminalView – drag-and-drop", () => {
-	it("uploads dropped images when resolveFilename cannot find the original path", async () => {
-		mockedResolveFilename.mockResolvedValue(null);
-		mockedUploadImageBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.jpg" } as any);
+	it("uploads dropped files and pastes the returned worktree path", async () => {
+		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/notes.txt" } as any);
 
 		await renderAndSetup();
 		const terminal = document.querySelector("[data-terminal='true']")!;
-		const file = new File(["abc"], "Screenshot 2026-03-28 at 7.13.32.jpg", {
-			type: "image/jpeg",
+		const file = new File(["notes"], "notes.txt", {
+			type: "text/plain",
 			lastModified: 1711600000000,
 		});
 
 		dispatchDrop(terminal, [file]);
 
 		await waitFor(() => {
-			expect(mockedUploadImageBase64).toHaveBeenCalledWith({
+			expect(mockedUploadFileBase64).toHaveBeenCalledWith({
 				projectId: "p1",
-				base64: "YWJj",
-				filename: "Screenshot 2026-03-28 at 7.13.32.jpg",
-				mimeType: "image/jpeg",
+				base64: "bm90ZXM=",
+				filename: "notes.txt",
+				mimeType: "text/plain",
 			});
 		});
 		await waitFor(() => {
-			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploaded-drop.jpg");
+			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploads/notes.txt");
 		});
 	});
 });

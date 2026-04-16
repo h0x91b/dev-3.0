@@ -1,0 +1,1 @@
+Dropped files now upload their content into the task worktree uploads directory and use the returned server path instead of trying to resolve a host-system filename. This removes the macOS Spotlight dependency from drag-and-drop and makes the flow work the same in local and remote sessions.

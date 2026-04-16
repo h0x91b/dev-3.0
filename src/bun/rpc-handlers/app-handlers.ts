@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
@@ -11,7 +11,7 @@ import { loadSettings } from "../settings";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
-import { spawn, spawnSync } from "../spawn";
+import { spawn } from "../spawn";
 import { getUploadedImageExtension, hideAppNative, log, logRendererError } from "./shared";
 
 async function quitApp(): Promise<void> {
@@ -143,57 +143,6 @@ async function detectClonePaths(params: { projectId: string }): Promise<string[]
 	return paths;
 }
 
-async function resolveFilename(params: { filename: string; size: number; lastModified: number }): Promise<string | null> {
-	const home = homedir();
-	const searchDirs = [
-		`${home}/Desktop`,
-		`${home}/Downloads`,
-		`${home}/Documents`,
-		`${home}/Projects`,
-		`${home}/src`,
-		`${home}/dev`,
-		`${home}/work`,
-		`${home}/code`,
-		"/tmp",
-	].filter((dir) => {
-		try { return statSync(dir).isDirectory(); } catch { return false; }
-	});
-
-	const query = `kMDItemFSName == "${params.filename}"`;
-	const candidates: string[] = [];
-	for (const dir of searchDirs) {
-		const proc = spawnSync(["mdfind", "-onlyin", dir, query]);
-		const out = proc.stdout.toString().trim();
-		if (out) candidates.push(...out.split("\n"));
-	}
-	if (candidates.length === 0) return null;
-	if (candidates.length === 1) return candidates[0];
-
-	const sizeMatches: string[] = [];
-	for (const path of candidates) {
-		try {
-			const file = Bun.file(path);
-			if (file.size === params.size) {
-				sizeMatches.push(path);
-			}
-		} catch {}
-	}
-
-	if (sizeMatches.length === 1) return sizeMatches[0];
-
-	const pool = sizeMatches.length > 0 ? sizeMatches : candidates;
-	for (const path of pool) {
-		try {
-			const file = Bun.file(path);
-			if (file.lastModified === params.lastModified) {
-				return path;
-			}
-		} catch {}
-	}
-
-	return sizeMatches[0] ?? candidates[0];
-}
-
 async function getChangelogs(): Promise<ChangelogEntry[]> {
 	log.info("-> getChangelogs");
 
@@ -282,9 +231,36 @@ async function getChangelogs(): Promise<ChangelogEntry[]> {
 	return entries;
 }
 
-async function saveUploadedImage(
+function sanitizeUploadedFilename(filename?: string): string | null {
+	if (!filename) return null;
+	const baseName = filename.split(/[/\\]/).pop()?.trim() ?? "";
+	const sanitized = baseName.replace(/[\0-\x1f\x7f]/g, "");
+	if (!sanitized) return null;
+	// Prefix "upload-<13digits>-<4hex>-" is ~26 ASCII bytes; NAME_MAX is 255 bytes.
+	// Cap the suffix at 200 bytes to stay well within the limit on any OS/encoding.
+	const MAX_BYTES = 200;
+	if (Buffer.byteLength(sanitized, "utf8") <= MAX_BYTES) return sanitized;
+	const buf = Buffer.from(sanitized, "utf8");
+	// Walk back from the cut point to avoid slicing a multibyte UTF-8 sequence.
+	let end = MAX_BYTES;
+	while (end > 0 && (buf[end]! & 0xc0) === 0x80) end--;
+	return buf.subarray(0, end).toString("utf8") || null;
+}
+
+function buildUploadedFilename(opts?: { filename?: string; mimeType?: string }): string {
+	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
+	const prefix = `upload-${Date.now()}-${hex}`;
+	const safeName = sanitizeUploadedFilename(opts?.filename);
+	if (safeName) {
+		return `${prefix}-${safeName}`;
+	}
+
+	return `${prefix}${getUploadedImageExtension(undefined, opts?.mimeType)}`;
+}
+
+async function saveUploadedFile(
 	projectId: string,
-	imageData: Buffer | Uint8Array,
+	fileData: Buffer | Uint8Array,
 	opts?: { filename?: string; mimeType?: string },
 ): Promise<{ path: string }> {
 	const project = await data.getProject(projectId);
@@ -292,12 +268,10 @@ async function saveUploadedImage(
 	const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
 	const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
 	await mkdirProc.exited;
-	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
-	const extension = getUploadedImageExtension(opts?.filename, opts?.mimeType);
-	const filename = `img-${Date.now()}-${hex}${extension}`;
+	const filename = buildUploadedFilename(opts);
 	const fullPath = `${uploadsDir}/${filename}`;
-	await Bun.write(fullPath, imageData);
-	log.info("Image saved", { path: fullPath, size: imageData.length });
+	await Bun.write(fullPath, fileData);
+	log.info("Uploaded file saved", { path: fullPath, size: fileData.length });
 	return { path: fullPath };
 }
 
@@ -313,22 +287,30 @@ async function pasteClipboardImage(params: { projectId: string }): Promise<{ pat
 		log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
 		return null;
 	}
-	return saveUploadedImage(params.projectId, pngData);
+	return saveUploadedFile(params.projectId, pngData, { mimeType: "image/png" });
 }
 
 async function uploadImageBase64(params: { projectId: string; base64: string; filename?: string; mimeType?: string }): Promise<{ path: string } | null> {
-	const MAX_BASE64_SIZE = 10 * 1024 * 1024;
-	if (params.base64.length > MAX_BASE64_SIZE) {
-		log.warn("← uploadImageBase64: payload too large", { len: params.base64.length });
-		throw new Error("Image too large (max 10 MB)");
+	return uploadFileBase64(params);
+}
+
+async function uploadFileBase64(params: { projectId: string; base64: string; filename?: string; mimeType?: string }): Promise<{ path: string } | null> {
+	log.info("→ uploadFileBase64", {
+		projectId: params.projectId.slice(0, 8),
+		len: params.base64.length,
+		filename: params.filename,
+	});
+	const fileData = Buffer.from(params.base64, "base64");
+	const MAX_FILE_SIZE = 100 * 1024 * 1024;
+	if (fileData.length > MAX_FILE_SIZE) {
+		log.warn("← uploadFileBase64: payload too large", { len: fileData.length });
+		throw new Error("File too large (max 100 MB)");
 	}
-	log.info("→ uploadImageBase64", { projectId: params.projectId.slice(0, 8), len: params.base64.length });
-	const pngData = Buffer.from(params.base64, "base64");
-	if (pngData.length === 0) {
-		log.warn("← uploadImageBase64: empty image data");
+	if (fileData.length === 0) {
+		log.warn("← uploadFileBase64: empty file data");
 		return null;
 	}
-	return saveUploadedImage(params.projectId, pngData, {
+	return saveUploadedFile(params.projectId, fileData, {
 		filename: params.filename,
 		mimeType: params.mimeType,
 	});
@@ -444,9 +426,9 @@ export const appHandlers = {
 	cloneAndAddProject,
 	removeProject,
 	detectClonePaths,
-	resolveFilename,
 	getChangelogs,
 	pasteClipboardImage,
+	uploadFileBase64,
 	uploadImageBase64,
 	readImageBase64,
 	openImageFile,

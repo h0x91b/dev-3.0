@@ -14,8 +14,8 @@ vi.mock("../../rpc", () => ({
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
 			getProjectCurrentBranch: vi.fn(),
+			uploadFileBase64: vi.fn(),
 			uploadImageBase64: vi.fn(),
-			resolveFilename: vi.fn(),
 			readImageBase64: vi.fn(),
 		},
 	},
@@ -101,8 +101,8 @@ describe("CreateTaskModal", () => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false });
+		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 		mockedApi.request.uploadImageBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
-		mockedApi.request.resolveFilename.mockResolvedValue("/tmp/fallback-path.txt");
 		mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,abc" });
 	});
 
@@ -352,7 +352,7 @@ describe("CreateTaskModal", () => {
 		dispatchDrop(textarea.parentElement!, [file]);
 
 		await waitFor(() => {
-			expect(mockedApi.request.uploadImageBase64).toHaveBeenCalledWith({
+			expect(mockedApi.request.uploadFileBase64).toHaveBeenCalledWith({
 				projectId: "p1",
 				base64: "YWJj",
 				filename: "drop.jpg",
@@ -362,10 +362,11 @@ describe("CreateTaskModal", () => {
 		await waitFor(() => {
 			expect(textarea.value).toBe("/tmp/uploaded-drop.png\n");
 		});
-		expect(mockedApi.request.resolveFilename).not.toHaveBeenCalled();
+		expect(mockedApi.request.uploadImageBase64).not.toHaveBeenCalled();
 	});
 
-	it("falls back to resolveFilename for non-image drops", async () => {
+	it("uploads non-image drops and inserts the saved path", async () => {
+		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-notes.txt" });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
@@ -374,16 +375,16 @@ describe("CreateTaskModal", () => {
 		dispatchDrop(textarea.parentElement!, [file]);
 
 		await waitFor(() => {
-			expect(mockedApi.request.resolveFilename).toHaveBeenCalledWith({
+			expect(mockedApi.request.uploadFileBase64).toHaveBeenCalledWith({
+				projectId: "p1",
+				base64: "bm90ZXM=",
 				filename: "notes.txt",
-				size: 5,
-				lastModified: 1712222222222,
+				mimeType: "text/plain",
 			});
 		});
 		await waitFor(() => {
-			expect(textarea.value).toBe("/tmp/fallback-path.txt\n");
+			expect(textarea.value).toBe("/tmp/uploaded-notes.txt\n");
 		});
-		expect(mockedApi.request.uploadImageBase64).not.toHaveBeenCalled();
 	});
 
 	// ---- Branch selector ----
