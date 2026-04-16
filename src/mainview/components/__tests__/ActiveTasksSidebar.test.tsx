@@ -17,7 +17,7 @@ const claudeAgent: CodingAgent = {
 	baseCommand: "claude",
 	isDefault: true,
 	configurations: [
-		{ id: "claude-bypass", name: "Bypass (Opus)", model: "opus[1m]" },
+		{ id: "claude-bypass", name: "Bypass (By Default)" },
 	],
 	defaultConfigId: "claude-bypass",
 };
@@ -93,7 +93,7 @@ describe("ActiveTasksSidebar", () => {
 
 		expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 		expect(screen.getByRole("img", { name: "Codex" })).toBeInTheDocument();
-		expect(screen.getByText("Claude · Opus · Bypass")).toBeInTheDocument();
+		expect(screen.getByText("Claude · By Default · Bypass")).toBeInTheDocument();
 		expect(screen.getByText("Codex · GPT-5.4 Heavy Bypass")).toBeInTheDocument();
 		expect(screen.getByTestId("variant-indicator-t1")).toBeInTheDocument();
 		expect(screen.getAllByText("#494")).toHaveLength(2);

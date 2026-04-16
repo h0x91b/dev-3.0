@@ -11,7 +11,7 @@ const claudeAgent: CodingAgent = {
 	isDefault: true,
 	configurations: [
 		{ id: "claude-default", name: "Default", model: "sonnet" },
-		{ id: "claude-plan", name: "Plan (Opus)", model: "opus" },
+		{ id: "claude-plan", name: "Plan (By Default)" },
 	],
 	defaultConfigId: "claude-default",
 };

@@ -1,0 +1,1 @@
+Updated the built-in Claude Opus presets to use the CLI default model instead of forcing `opus[1m]`, so new sessions pick up Anthropic's current default Opus 4.7 model automatically. Renamed the affected preset labels from `Opus` to `By Default` and bumped preset versions so stored defaults migrate cleanly.
