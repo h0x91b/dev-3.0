@@ -150,6 +150,7 @@ describe("GlobalSettings", () => {
 
 			expect(document.documentElement.dataset.theme).toBe("dark");
 			expect(localStorage.getItem("dev3-theme")).toBe("dark");
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenCalledWith({ theme: "dark", preference: "dark" });
 		});
 
 		it("applies light theme", async () => {
@@ -162,6 +163,7 @@ describe("GlobalSettings", () => {
 
 			expect(document.documentElement.dataset.theme).toBe("light");
 			expect(localStorage.getItem("dev3-theme")).toBe("light");
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenCalledWith({ theme: "light", preference: "light" });
 		});
 
 		it("applies system theme based on prefers-color-scheme", async () => {
@@ -183,6 +185,7 @@ describe("GlobalSettings", () => {
 
 			expect(document.documentElement.dataset.theme).toBe("dark");
 			expect(localStorage.getItem("dev3-theme")).toBe("system");
+			expect(mockedApi.request.setTmuxTheme).toHaveBeenCalledWith({ theme: "dark", preference: "system" });
 		});
 	});
 

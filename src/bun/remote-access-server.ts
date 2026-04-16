@@ -20,6 +20,8 @@ import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
 import { getTunnelUrl } from "./cloudflare-tunnel";
+import { loadSettingsSync } from "./settings";
+import { getCurrentUiTheme } from "./theme-state";
 
 const log = createLogger("remote-access");
 
@@ -128,12 +130,40 @@ export async function serveStatic(pathname: string): Promise<Response | null> {
 	const contentType = MIME_TYPES[ext] || "application/octet-stream";
 	const file = Bun.file(filePath);
 
+	if (contentType.startsWith("text/html")) {
+		const html = await file.text();
+		return new Response(injectInitialThemeBootstrap(html), {
+			headers: {
+				"Content-Type": contentType,
+				"Cache-Control": "no-cache, no-store, must-revalidate",
+			},
+		});
+	}
+
 	return new Response(file, {
 		headers: {
 			"Content-Type": contentType,
 			"Cache-Control": "no-cache, no-store, must-revalidate",
 		},
 	});
+}
+
+function getInitialThemeBootstrap(): { preference: "dark" | "light" | "system"; resolved: "dark" | "light" } {
+	const settings = loadSettingsSync();
+	const resolved = settings.resolvedTheme ?? getCurrentUiTheme();
+	const preference = settings.theme ?? resolved;
+	return { preference, resolved };
+}
+
+export function injectInitialThemeBootstrap(html: string): string {
+	const { preference, resolved } = getInitialThemeBootstrap();
+	const script =
+		`<script>window.__DEV3_INITIAL_THEME__=${JSON.stringify(preference)};` +
+		`window.__DEV3_INITIAL_RESOLVED_THEME__=${JSON.stringify(resolved)};</script>`;
+
+	return html.includes("</head>")
+		? html.replace("</head>", `${script}</head>`)
+		: `${script}${html}`;
 }
 
 // ── PTY proxy ───────────────────────────────────────────────────────

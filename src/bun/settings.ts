@@ -13,6 +13,8 @@ export interface GlobalSettings {
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
+	theme?: "dark" | "light" | "system";
+	resolvedTheme?: "dark" | "light";
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>;
 	agentBinaryPaths?: Record<string, string>;
@@ -43,6 +45,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			defaultConfigId: data.defaultConfigId ?? DEFAULT_SETTINGS.defaultConfigId,
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
+			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
+			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
 			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
@@ -81,6 +85,8 @@ export function loadSettingsSync(): GlobalSettings {
 			defaultConfigId: data.defaultConfigId ?? DEFAULT_SETTINGS.defaultConfigId,
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
+			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
+			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
 			agentBinaryPaths: data.agentBinaryPaths ?? undefined,

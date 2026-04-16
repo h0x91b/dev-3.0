@@ -359,6 +359,8 @@ export interface GlobalSettings {
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
 	updateChannel: "stable" | "canary";
+	theme?: "dark" | "light" | "system";
+	resolvedTheme?: "dark" | "light";
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId → resolved binary path
@@ -1224,7 +1226,7 @@ export type AppRPCSchema = {
 				response: PRInfo[];
 			};
 			setTmuxTheme: {
-				params: { theme: "dark" | "light" };
+				params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" };
 				response: void;
 			};
 			checkCaffeinateAvailable: {
