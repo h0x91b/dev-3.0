@@ -33,7 +33,8 @@ window.addEventListener("unhandledrejection", (event) => {
 
 // Apply saved theme before React mounts & keep in sync with OS
 const systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
-const injectedThemeState = getWindowInjectedThemeState();
+// Consumed once on first call so OS-change reruns don't override the user's manual choice.
+let injectedThemeState = getWindowInjectedThemeState();
 
 function applySavedTheme() {
 	const { preference, resolved } = getInitialThemeState({
@@ -41,6 +42,7 @@ function applySavedTheme() {
 		prefersDark: systemThemeMq.matches,
 		...injectedThemeState,
 	});
+	injectedThemeState = {};
 	document.documentElement.dataset.theme = resolved;
 	localStorage.setItem("dev3-theme", preference);
 	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
