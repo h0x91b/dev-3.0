@@ -20,6 +20,7 @@ import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBan
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
+import { ErrorToast } from "./components/ErrorToast";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
@@ -774,6 +775,7 @@ function App() {
 					</div>
 				</div>
 			)}
+			<ErrorToast />
 		</div>
 	);
 
