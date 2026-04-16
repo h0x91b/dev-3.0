@@ -172,6 +172,8 @@ const tips = {
 	"tip.worktreeConfig.body": "Each worktree can have its own .dev3/config.json. Click the gear icon in the task panel to edit it.",
 	"tip.diffCompareDefault.title": "Pick your diff baseline",
 	"tip.diffCompareDefault.body": "In Project Settings, choose whether branch status and Show Diff compare against origin/<base> or your local base branch.",
+	"tip.derivedTaskLocalCompare.title": "Derived tasks stay local",
+	"tip.derivedTaskLocalCompare.body": "Tasks created from another branch compare and diff against that local branch by default.",
 	"tip.projectTerminal.title": "Project Terminal",
 	"tip.projectTerminal.body": "Need a quick shell at the repo root? Click the Terminal button in the header or press \u2318` to toggle it from any project screen.",
 	"tip.projectTerminalDashboard.title": "Terminal from Dashboard",

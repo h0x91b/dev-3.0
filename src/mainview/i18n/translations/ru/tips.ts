@@ -172,6 +172,8 @@ const tips = {
 	"tip.worktreeConfig.body": "У каждого worktree свой .dev3/config.json. Нажмите шестерёнку в панели задачи для редактирования.",
 	"tip.diffCompareDefault.title": "Выберите базу для diff",
 	"tip.diffCompareDefault.body": "В Project Settings можно выбрать, сравнивать ли статус ветки и Show Diff с origin/<base> или с локальной базовой веткой.",
+	"tip.derivedTaskLocalCompare.title": "Наследованные задачи локальны",
+	"tip.derivedTaskLocalCompare.body": "Задачи, созданные из другой ветки, по умолчанию сравниваются и показывают diff с этой локальной веткой.",
 	"tip.projectTerminal.title": "Терминал проекта",
 	"tip.projectTerminal.body": "Нужен быстрый shell в корне репо? Нажми кнопку Terminal в шапке или \u2318` для переключения с любого экрана проекта.",
 	"tip.projectTerminalDashboard.title": "Терминал с дашборда",

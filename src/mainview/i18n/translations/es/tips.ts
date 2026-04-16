@@ -172,6 +172,8 @@ const tips = {
 	"tip.worktreeConfig.body": "Cada worktree puede tener su propio .dev3/config.json. Haz clic en el engranaje en el panel de tareas para editarlo.",
 	"tip.diffCompareDefault.title": "Elige la base del diff",
 	"tip.diffCompareDefault.body": "En Ajustes del proyecto puedes elegir si el estado de rama y Show Diff comparan contra origin/<base> o la rama base local.",
+	"tip.derivedTaskLocalCompare.title": "Las tareas derivadas son locales",
+	"tip.derivedTaskLocalCompare.body": "Las tareas creadas desde otra rama comparan y muestran diff contra esa rama local por defecto.",
 	"tip.projectTerminal.title": "Terminal del proyecto",
 	"tip.projectTerminal.body": "¿Necesitas un shell rápido en la raíz del repo? Haz clic en el botón Terminal en el encabezado o presiona \u2318` para alternarlo desde cualquier pantalla del proyecto.",
 	"tip.projectTerminalDashboard.title": "Terminal desde el Dashboard",
