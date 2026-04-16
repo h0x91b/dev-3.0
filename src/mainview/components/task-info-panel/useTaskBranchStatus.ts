@@ -17,22 +17,13 @@ function getDefaultTaskCompareRef(taskBaseBranch: string, project: Project): str
 	const projectBaseBranch = project.defaultBaseBranch || "main";
 	const projectDefaultCompareRef = project.defaultCompareRef;
 
-	if (!projectDefaultCompareRef) {
-		return project.defaultCompareRefMode === "local" ? taskBaseBranch : "";
-	}
-
-	if (taskBaseBranch === projectBaseBranch) {
-		return projectDefaultCompareRef;
-	}
-
-	if (projectDefaultCompareRef === projectBaseBranch) {
+	if (taskBaseBranch !== projectBaseBranch) {
 		return taskBaseBranch;
 	}
 
-	if (projectDefaultCompareRef === `origin/${projectBaseBranch}`) {
-		return "";
+	if (!projectDefaultCompareRef) {
+		return project.defaultCompareRefMode === "local" ? taskBaseBranch : "";
 	}
-
 	return projectDefaultCompareRef;
 }
 

@@ -999,18 +999,18 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByText(/commits? behind/)).not.toBeInTheDocument();
 		});
 
-		it("uses task baseBranch as comparison branch", async () => {
-			mockedApi.request.getBranchStatus.mockResolvedValue({
-				...defaultBranchStatus,
-				ahead: 1,
-			});
+			it("uses task baseBranch as comparison branch", async () => {
+				mockedApi.request.getBranchStatus.mockResolvedValue({
+					...defaultBranchStatus,
+					ahead: 1,
+				});
 
 			await act(async () => {
 				renderPanel(makeTask({ baseBranch: "develop" }));
 			});
 
-			expect(screen.getAllByText(/vs origin\/develop/).length).toBeGreaterThanOrEqual(1);
-		});
+				expect(screen.getAllByText(/vs develop/).length).toBeGreaterThanOrEqual(1);
+			});
 	});
 
 	describe("git action buttons", () => {
@@ -1236,7 +1236,7 @@ describe("TaskInfoPanel", () => {
 				});
 			});
 
-			it("maps remote project compare defaults onto a task-specific base branch", async () => {
+			it("uses a local compare ref for task-specific base branches even when the project default is remote", async () => {
 				const remoteCompareProject = {
 					...project,
 					defaultBaseBranch: "main",
@@ -1249,12 +1249,12 @@ describe("TaskInfoPanel", () => {
 					});
 				});
 
-				expect(screen.getAllByText(/vs origin\/feat-uber-extra/).length).toBeGreaterThanOrEqual(1);
+				expect(screen.getAllByText(/vs feat-uber-extra/).length).toBeGreaterThanOrEqual(1);
 				await waitFor(() => {
 					expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
 						taskId: "t1",
 						projectId: "p1",
-						compareRef: undefined,
+						compareRef: "feat-uber-extra",
 					});
 				});
 			});
