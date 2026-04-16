@@ -295,17 +295,17 @@ async function uploadImageBase64(params: { projectId: string; base64: string; fi
 }
 
 async function uploadFileBase64(params: { projectId: string; base64: string; filename?: string; mimeType?: string }): Promise<{ path: string } | null> {
-	const MAX_BASE64_SIZE = 10 * 1024 * 1024;
-	if (params.base64.length > MAX_BASE64_SIZE) {
-		log.warn("← uploadFileBase64: payload too large", { len: params.base64.length });
-		throw new Error("File too large (max 10 MB)");
-	}
 	log.info("→ uploadFileBase64", {
 		projectId: params.projectId.slice(0, 8),
 		len: params.base64.length,
 		filename: params.filename,
 	});
 	const fileData = Buffer.from(params.base64, "base64");
+	const MAX_FILE_SIZE = 100 * 1024 * 1024;
+	if (fileData.length > MAX_FILE_SIZE) {
+		log.warn("← uploadFileBase64: payload too large", { len: fileData.length });
+		throw new Error("File too large (max 100 MB)");
+	}
 	if (fileData.length === 0) {
 		log.warn("← uploadFileBase64: empty file data");
 		return null;
