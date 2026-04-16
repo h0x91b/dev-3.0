@@ -83,6 +83,7 @@ const terminal = {
 	"projectTerminal.backToBoard": "Back to Board",
 	"projectTerminal.shortcutHint": "\u2318`",
 	"projectTerminal.tooltipWithShortcut": "Project Terminal (\u2318`)",
+	"fileDrop.uploadFailed": "File upload failed: {error}",
 } as const;
 
 export default terminal;

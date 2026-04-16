@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useT } from "../i18n";
 import { uploadDroppedFile } from "../utils/uploadDroppedFile";
 
 export function useFileDrop(
@@ -11,6 +12,7 @@ export function useFileDrop(
 	handleDrop: (e: React.DragEvent) => void;
 	isDragging: boolean;
 } {
+	const t = useT();
 	const [isDragging, setIsDragging] = useState(false);
 	const dragCounter = useRef(0);
 
@@ -50,6 +52,7 @@ export function useFileDrop(
 					}
 				} catch (err) {
 					console.error(`[useFileDrop] file upload failed for "${file.name}":`, err);
+					alert(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
 				}
 			}));
 		},

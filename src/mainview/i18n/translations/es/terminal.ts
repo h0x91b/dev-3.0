@@ -83,6 +83,7 @@ const terminal = {
 	"projectTerminal.backToBoard": "Volver al tablero",
 	"projectTerminal.shortcutHint": "\u2318`",
 	"projectTerminal.tooltipWithShortcut": "Terminal del proyecto (\u2318`)",
+	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
 };
 
 export default terminal;

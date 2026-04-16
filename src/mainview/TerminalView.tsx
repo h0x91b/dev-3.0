@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
+import { useT } from "./i18n";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
@@ -67,6 +68,7 @@ interface TerminalViewProps {
 }
 
 function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps) {
+	const t = useT();
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -859,6 +861,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					return uploadedPath ? uploadedPath.replace(/ /g, "\\ ") : null;
 				} catch (err) {
 					console.error(`[TerminalView] file upload failed for "${f.name}":`, err);
+					alert(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
 					return null;
 				}
 			}),
