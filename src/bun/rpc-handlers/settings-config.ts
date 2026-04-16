@@ -318,8 +318,14 @@ async function setAgentBinaryPath(params: { agentId: string; path: string }): Pr
 	log.info("<- setAgentBinaryPath saved");
 }
 
-async function setTmuxTheme(params: { theme: "dark" | "light" }): Promise<void> {
+async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
+	const settings = await loadSettings();
+	await saveSettings({
+		...settings,
+		...(params.preference !== undefined ? { theme: params.preference } : {}),
+		resolvedTheme: params.theme,
+	});
 	setCurrentUiTheme(params.theme);
 	pty.applyTmuxTheme(params.theme);
 }

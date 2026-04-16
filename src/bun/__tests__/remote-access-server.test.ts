@@ -53,6 +53,17 @@ vi.mock("../cloudflare-tunnel", () => ({
 	getTunnelUrl: vi.fn().mockReturnValue(null),
 }));
 
+vi.mock("../settings", () => ({
+	loadSettingsSync: vi.fn(() => ({
+		theme: "light",
+		resolvedTheme: "light",
+	})),
+}));
+
+vi.mock("../theme-state", () => ({
+	getCurrentUiTheme: vi.fn(() => "dark"),
+}));
+
 vi.mock("qrcode", () => ({
 	default: { toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,test") },
 }));
@@ -123,6 +134,16 @@ describe("serveStatic path traversal protection", () => {
 // ================================================================
 
 import { exchangeQrForSession, refreshSession, verifySessionToken } from "../jwt";
+import { injectInitialThemeBootstrap } from "../remote-access-server";
+
+describe("injectInitialThemeBootstrap", () => {
+	it("injects the persisted theme state into the initial HTML", () => {
+		const html = injectInitialThemeBootstrap("<html><head></head><body></body></html>");
+
+		expect(html).toContain('window.__DEV3_INITIAL_THEME__="light"');
+		expect(html).toContain('window.__DEV3_INITIAL_RESOLVED_THEME__="light"');
+	});
+});
 
 describe("auth endpoint logic", () => {
 	it("exchangeQrForSession returns session token for valid QR token", async () => {
@@ -308,4 +329,3 @@ describe("uploadImageBase64 size limit", () => {
 		expect(smallPayload.length).toBeLessThan(MAX_BASE64_SIZE);
 	});
 });
-

@@ -1,0 +1,1 @@
+Persist the resolved UI theme and the selected theme preference when tmux theme changes, then inject that state into remote HTML bootstrap. Remote clients now reuse the last user-selected light or dark mode instead of falling back to a fresh browser default.

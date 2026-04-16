@@ -92,6 +92,7 @@ vi.mock("../pty-server", () => ({
 	getSessionTmuxName: vi.fn((key: string) => `dev3-${key.slice(0, 8)}`),
 	getSessionType: vi.fn(() => null),
 	capturePane: vi.fn(),
+	applyTmuxTheme: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
@@ -980,6 +981,27 @@ describe("handlers.saveGlobalSettings", () => {
 		const settings = { updateChannel: "stable" } as GlobalSettings;
 		await handlers.saveGlobalSettings(settings);
 		expect(saveSettings).toHaveBeenCalledWith(settings);
+	});
+});
+
+describe("handlers.setTmuxTheme", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("persists the theme preference and resolved theme before applying tmux theme", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		} as GlobalSettings);
+
+		await handlers.setTmuxTheme({ theme: "light", preference: "system" });
+
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			theme: "system",
+			resolvedTheme: "light",
+		}));
+		expect(pty.applyTmuxTheme).toHaveBeenCalledWith("light");
 	});
 });
 

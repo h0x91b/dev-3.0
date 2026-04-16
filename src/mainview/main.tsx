@@ -9,6 +9,7 @@ import { MobileProvider } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
 import { api } from "./rpc";
 import { bootstrapZoom } from "./zoom";
+import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page.
@@ -32,13 +33,17 @@ window.addEventListener("unhandledrejection", (event) => {
 
 // Apply saved theme before React mounts & keep in sync with OS
 const systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
+const injectedThemeState = getWindowInjectedThemeState();
 
 function applySavedTheme() {
-	const saved = localStorage.getItem("dev3-theme") || "dark";
-	const resolved: "dark" | "light" =
-		saved === "system" ? (systemThemeMq.matches ? "dark" : "light") : (saved as "dark" | "light");
+	const { preference, resolved } = getInitialThemeState({
+		localStorageTheme: localStorage.getItem("dev3-theme"),
+		prefersDark: systemThemeMq.matches,
+		...injectedThemeState,
+	});
 	document.documentElement.dataset.theme = resolved;
-	api.request.setTmuxTheme({ theme: resolved }).catch(() => {});
+	localStorage.setItem("dev3-theme", preference);
+	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
 }
 
 applySavedTheme();

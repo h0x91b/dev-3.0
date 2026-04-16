@@ -13,6 +13,7 @@ import type {
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
+import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-bootstrap";
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { trackEvent } from "../analytics";
@@ -48,9 +49,15 @@ interface SettingChangeOptions extends PersistOptions {
 function GlobalSettings() {
 	const t = useT();
 	const [locale, setLocale] = useLocale();
+	const injectedThemeState = getWindowInjectedThemeState();
 
 	const [theme, setTheme] = useState<Theme>(
-		() => (localStorage.getItem("dev3-theme") as Theme) || "dark",
+		() =>
+			getInitialThemeState({
+				localStorageTheme: localStorage.getItem("dev3-theme"),
+				prefersDark: window.matchMedia("(prefers-color-scheme: dark)").matches,
+				...injectedThemeState,
+			}).preference,
 	);
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
 	const [cliInstallStatus, setCliInstallStatus] = useState<string | null>(null);
@@ -152,7 +159,7 @@ function GlobalSettings() {
 		const resolvedTheme = resolveTheme(nextTheme, prefersDark);
 		document.documentElement.dataset.theme = resolvedTheme;
 		localStorage.setItem("dev3-theme", nextTheme);
-		api.request.setTmuxTheme({ theme: resolvedTheme }).catch(() => {});
+		api.request.setTmuxTheme({ theme: resolvedTheme, preference: nextTheme }).catch(() => {});
 		trackEvent("theme_changed", { theme: nextTheme });
 	}, []);
 
