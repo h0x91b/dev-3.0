@@ -1,0 +1,1 @@
+Moved OSC 52 clipboard handling from the PTY server to the renderer by forwarding decoded payloads over RPC and writing them with navigator.clipboard on the client. Removed the tmux pbcopy copy-pipe bindings so remote access and Linux terminals no longer depend on server-side macOS clipboard tooling.

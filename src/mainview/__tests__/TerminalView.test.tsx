@@ -137,6 +137,12 @@ beforeEach(() => {
 		configurable: true,
 		value: { load: vi.fn().mockReturnValue(Promise.resolve([])) },
 	});
+	Object.defineProperty(navigator, "clipboard", {
+		configurable: true,
+		value: {
+			writeText: vi.fn().mockResolvedValue(undefined),
+		},
+	});
 });
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -434,6 +440,38 @@ describe("TerminalView – drag-and-drop", () => {
 		await waitFor(() => {
 			expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploaded-drop.jpg");
 		});
+	});
+});
+
+describe("TerminalView – OSC 52 clipboard", () => {
+	it("writes OSC 52 payloads for the active terminal to navigator.clipboard", async () => {
+		await renderAndSetup();
+		const writeText = vi.mocked(navigator.clipboard.writeText);
+
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent("rpc:osc52Clipboard", {
+					detail: { taskId: "t1", text: "copied from osc52", len: 17 },
+				}),
+			);
+		});
+
+		expect(writeText).toHaveBeenCalledWith("copied from osc52");
+	});
+
+	it("ignores OSC 52 payloads for other terminals", async () => {
+		await renderAndSetup();
+		const writeText = vi.mocked(navigator.clipboard.writeText);
+
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent("rpc:osc52Clipboard", {
+					detail: { taskId: "someone-else", text: "nope", len: 4 },
+				}),
+			);
+		});
+
+		expect(writeText).not.toHaveBeenCalled();
 	});
 });
 

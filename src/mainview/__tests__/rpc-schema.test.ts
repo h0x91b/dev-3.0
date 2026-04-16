@@ -11,5 +11,6 @@ describe("AppRPCSchema webview messages", () => {
 		expect(sharedTypesSource).toContain("zoomOut: {};");
 		expect(sharedTypesSource).toContain("zoomReset: {};");
 		expect(sharedTypesSource).toContain("qrTokenConsumed: {};");
+		expect(sharedTypesSource).toContain("osc52Clipboard: { taskId: string; text: string; len: number };");
 	});
 });

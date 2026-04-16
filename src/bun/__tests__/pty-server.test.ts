@@ -43,6 +43,7 @@ import {
 	getPtyPort,
 	setOnPtyDied,
 	setOnBell,
+	setOnOsc52Copy,
 	TMUX_CONF_PATH,
 } from "../pty-server";
 
@@ -88,6 +89,7 @@ afterEach(() => {
 	activeSessions.length = 0;
 	setOnPtyDied(() => {});
 	setOnBell(() => {});
+	setOnOsc52Copy(() => {});
 });
 
 // ================================================================
@@ -630,37 +632,40 @@ describe("pty-server", () => {
 			expect(bellCb).toHaveBeenCalledWith(id);
 		});
 
-		it("handles OSC 52 clipboard data and calls pbcopy", () => {
+		it("emits OSC 52 clipboard data to the client instead of spawning pbcopy", () => {
 			const id = track("task-osc52-01");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			const osc52Cb = vi.fn();
+			setOnOsc52Copy(osc52Cb);
 
 			const testText = "Hello clipboard";
 			const b64 = Buffer.from(testText).toString("base64");
 			const osc52Seq = `\x1b]52;c;${b64}\x07`;
 
-			// Reset spawn mock to track pbcopy call
 			mockSpawn.mockClear();
-			const mockStdin = { write: vi.fn(), end: vi.fn() };
-			mockSpawn.mockReturnValue({ pid: 999, stdin: mockStdin } as any);
 
 			capturedDataCb!(null, osc52Seq);
 
-			expect(mockSpawn).toHaveBeenCalledWith(
-				["pbcopy"],
-				expect.objectContaining({ stdin: "pipe" }),
-			);
+			expect(osc52Cb).toHaveBeenCalledWith({
+				taskId: id,
+				text: testText,
+				len: testText.length,
+			});
+			expect(mockSpawn).not.toHaveBeenCalled();
 		});
 
 		it("ignores OSC 52 query (b64 is '?')", () => {
 			const id = track("task-osc52-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			const osc52Cb = vi.fn();
+			setOnOsc52Copy(osc52Cb);
 
 			mockSpawn.mockClear();
 
 			// OSC 52 query: base64 content is "?"
 			capturedDataCb!(null, "\x1b]52;c;?\x07");
 
-			// pbcopy should NOT be called
+			expect(osc52Cb).not.toHaveBeenCalled();
 			expect(mockSpawn).not.toHaveBeenCalled();
 		});
 

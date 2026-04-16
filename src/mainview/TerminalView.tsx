@@ -139,6 +139,17 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 	}, []);
 
 	useEffect(() => {
+		function handleOsc52Clipboard(event: Event) {
+			const detail = (event as CustomEvent<{ taskId?: string; text?: string }>).detail;
+			if (detail?.taskId !== taskId || typeof detail.text !== "string") return;
+			navigator.clipboard?.writeText(detail.text).catch(() => {});
+		}
+
+		window.addEventListener("rpc:osc52Clipboard", handleOsc52Clipboard);
+		return () => window.removeEventListener("rpc:osc52Clipboard", handleOsc52Clipboard);
+	}, [taskId]);
+
+	useEffect(() => {
 		let disposed = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;

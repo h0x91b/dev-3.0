@@ -1281,6 +1281,7 @@ export type AppRPCSchema = {
 			zoomIn: {};
 			zoomOut: {};
 			zoomReset: {};
+			osc52Clipboard: { taskId: string; text: string; len: number };
 			qrTokenConsumed: {};
 			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
 		};

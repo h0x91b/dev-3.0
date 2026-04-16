@@ -24,6 +24,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	zoomIn: () => adjustZoom(ZOOM_STEP),
 	zoomOut: () => adjustZoom(-ZOOM_STEP),
 	zoomReset: () => applyZoom(DEFAULT_ZOOM),
+	osc52Clipboard: (payload) => window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: payload })),
 	showRemoteAccessQR: (payload) => window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: payload })),
 	qrTokenConsumed: () => window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed")),
 };

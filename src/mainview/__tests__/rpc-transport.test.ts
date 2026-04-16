@@ -37,9 +37,11 @@ describe("Electrobun RPC transport", () => {
 		delete (window as any).__electrobunWebviewId;
 	});
 
-	it("registers desktop-only message handlers for zoom and QR token consumption", async () => {
+	it("registers desktop-only message handlers for zoom, OSC 52 clipboard, and QR token consumption", async () => {
 		const qrTokenConsumedListener = vi.fn();
+		const osc52ClipboardListener = vi.fn();
 		window.addEventListener("rpc:qrTokenConsumed", qrTokenConsumedListener);
+		window.addEventListener("rpc:osc52Clipboard", osc52ClipboardListener);
 
 		await import("../rpc");
 
@@ -49,13 +51,19 @@ describe("Electrobun RPC transport", () => {
 		rpcConfig.handlers.messages.zoomIn({});
 		rpcConfig.handlers.messages.zoomOut({});
 		rpcConfig.handlers.messages.zoomReset({});
+		rpcConfig.handlers.messages.osc52Clipboard({ taskId: "task-1", text: "copied", len: 6 });
 		rpcConfig.handlers.messages.qrTokenConsumed({});
 
 		expect(adjustZoomMock).toHaveBeenNthCalledWith(1, 0.1);
 		expect(adjustZoomMock).toHaveBeenNthCalledWith(2, -0.1);
 		expect(applyZoomMock).toHaveBeenCalledWith(1);
+		expect(osc52ClipboardListener).toHaveBeenCalledTimes(1);
+		expect(osc52ClipboardListener.mock.calls[0]?.[0]).toMatchObject({
+			detail: { taskId: "task-1", text: "copied", len: 6 },
+		});
 		expect(qrTokenConsumedListener).toHaveBeenCalledTimes(1);
 
 		window.removeEventListener("rpc:qrTokenConsumed", qrTokenConsumedListener);
+		window.removeEventListener("rpc:osc52Clipboard", osc52ClipboardListener);
 	});
 });
