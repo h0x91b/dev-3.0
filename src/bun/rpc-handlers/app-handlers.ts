@@ -235,7 +235,16 @@ function sanitizeUploadedFilename(filename?: string): string | null {
 	if (!filename) return null;
 	const baseName = filename.split(/[/\\]/).pop()?.trim() ?? "";
 	const sanitized = baseName.replace(/[\0-\x1f\x7f]/g, "");
-	return sanitized || null;
+	if (!sanitized) return null;
+	// Prefix "upload-<13digits>-<4hex>-" is ~26 ASCII bytes; NAME_MAX is 255 bytes.
+	// Cap the suffix at 200 bytes to stay well within the limit on any OS/encoding.
+	const MAX_BYTES = 200;
+	if (Buffer.byteLength(sanitized, "utf8") <= MAX_BYTES) return sanitized;
+	const buf = Buffer.from(sanitized, "utf8");
+	// Walk back from the cut point to avoid slicing a multibyte UTF-8 sequence.
+	let end = MAX_BYTES;
+	while (end > 0 && (buf[end]! & 0xc0) === 0x80) end--;
+	return buf.subarray(0, end).toString("utf8") || null;
 }
 
 function buildUploadedFilename(opts?: { filename?: string; mimeType?: string }): string {

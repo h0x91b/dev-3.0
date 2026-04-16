@@ -415,6 +415,24 @@ describe("uploadFileBase64", () => {
 		const [path] = (globalThis as any).Bun.write.mock.calls[0];
 		expect(path).toMatch(/^\/tmp\/test-dev3\/worktrees\/tmp-project-root\/uploads\/upload-\d+-[0-9a-f]{4}\.png$/);
 	});
+
+	it("truncates filenames that would exceed NAME_MAX", async () => {
+		// 250-char ASCII name — combined with the ~26-char prefix would exceed 255-byte NAME_MAX
+		const longName = `${"a".repeat(240)}.txt`;
+		await handlers.uploadFileBase64({
+			projectId: "proj-1",
+			base64: "YQ==",
+			filename: longName,
+		});
+
+		const [path] = (globalThis as any).Bun.write.mock.calls[0];
+		const basename = path.split("/").pop() as string;
+		// The full filename (prefix + suffix) must be under 255 bytes
+		expect(Buffer.byteLength(basename, "utf8")).toBeLessThanOrEqual(255);
+		// The suffix itself must be at most 200 bytes
+		const suffix = basename.replace(/^upload-\d+-[0-9a-f]{4}-/, "");
+		expect(Buffer.byteLength(suffix, "utf8")).toBeLessThanOrEqual(200);
+	});
 });
 
 describe("setPushMessage / getPushMessage", () => {
