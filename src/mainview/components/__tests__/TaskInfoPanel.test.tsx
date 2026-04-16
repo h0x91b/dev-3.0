@@ -1214,11 +1214,11 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("uses the project's default comparison ref when configured", async () => {
-			const localCompareProject = {
-				...project,
-				defaultBaseBranch: "master",
-				defaultCompareRef: "master",
+			it("uses the project's default comparison ref when configured", async () => {
+				const localCompareProject = {
+					...project,
+					defaultBaseBranch: "master",
+					defaultCompareRef: "master",
 			} as Project & { defaultCompareRef: "master" };
 
 			await act(async () => {
@@ -1232,14 +1232,60 @@ describe("TaskInfoPanel", () => {
 					taskId: "t1",
 					projectId: "p1",
 					compareRef: "master",
+					});
 				});
 			});
-		});
 
-		it("shows alert on rebase failure", async () => {
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
-			mockedApi.request.getBranchStatus.mockResolvedValue({
+			it("maps remote project compare defaults onto a task-specific base branch", async () => {
+				const remoteCompareProject = {
+					...project,
+					defaultBaseBranch: "main",
+					defaultCompareRef: "origin/main",
+				} as Project & { defaultCompareRef: "origin/main" };
+
+				await act(async () => {
+					renderPanel(makeTask({ baseBranch: "feat-uber-extra" }), {
+						project: remoteCompareProject as Project,
+					});
+				});
+
+				expect(screen.getAllByText(/vs origin\/feat-uber-extra/).length).toBeGreaterThanOrEqual(1);
+				await waitFor(() => {
+					expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
+						taskId: "t1",
+						projectId: "p1",
+						compareRef: undefined,
+					});
+				});
+			});
+
+			it("maps local project compare defaults onto a task-specific base branch", async () => {
+				const localCompareProject = {
+					...project,
+					defaultBaseBranch: "main",
+					defaultCompareRef: "main",
+				} as Project & { defaultCompareRef: "main" };
+
+				await act(async () => {
+					renderPanel(makeTask({ baseBranch: "feat-uber-extra" }), {
+						project: localCompareProject as Project,
+					});
+				});
+
+				expect(screen.getAllByText(/vs feat-uber-extra/).length).toBeGreaterThanOrEqual(1);
+				await waitFor(() => {
+					expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
+						taskId: "t1",
+						projectId: "p1",
+						compareRef: "feat-uber-extra",
+					});
+				});
+			});
+
+			it("shows alert on rebase failure", async () => {
+				const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+				const alertSpy = vi.fn(); window.alert = alertSpy;
+				mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				behind: 2,
 				canRebase: true,

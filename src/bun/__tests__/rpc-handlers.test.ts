@@ -2007,6 +2007,132 @@ describe("handlers.spawnVariants", () => {
 describe("handlers.addAttempts", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+	it("inherits existingBranch from the source task into added attempts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			existingBranch: "feature/login",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			existingBranch: "feature/login",
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({
+			...attemptTask,
+			worktreePath: "/tmp/attempt-2",
+			branchName: "feature/login",
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({
+				existingBranch: "feature/login",
+				preparing: true,
+				preparingStage: "resolving-config",
+				preparingProgress: getPreparingStageProgress("resolving-config"),
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledWith(
+				project,
+				expect.objectContaining({
+					...attemptTask,
+					preparingStage: "resolving-config",
+					preparingProgress: getPreparingStageProgress("resolving-config"),
+				}),
+				"feature/login",
+				undefined,
+			);
+		});
+	});
+
+	it("falls back to source task baseBranch when existingBranch is missing", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			baseBranch: "feature/login",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			existingBranch: "feature/login",
+			baseBranch: "feature/login",
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({
+			...attemptTask,
+			worktreePath: "/tmp/attempt-2",
+			branchName: "feature/login",
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "feature/login" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({
+				existingBranch: "feature/login",
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(git.createWorktree).toHaveBeenCalledWith(
+				project,
+				expect.objectContaining({
+					...attemptTask,
+					preparingStage: "resolving-config",
+					preparingProgress: getPreparingStageProgress("resolving-config"),
+				}),
+				"feature/login",
+				undefined,
+			);
+		});
+	});
+
 	it("clears preparing when project config resolution fails before attempt setup starts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });

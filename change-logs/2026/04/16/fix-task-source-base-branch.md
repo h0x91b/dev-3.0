@@ -1,2 +1,2 @@
-New tasks created from an existing branch now store that source branch as their task base branch, so Task compare, rebase, and PR defaults follow the branch they were spawned from instead of the project default.
-Merge scripts now switch the project repository to the task base branch before squash-merging, and regression tests cover both behaviors.
+New tasks created from an existing branch now store that source branch as their task base branch, so Task compare, rebase, and PR defaults follow the branch they were spawned from instead of the project default. Task compare defaults now map the project's local/remote mode onto each task's own base branch instead of forcing `origin/main`.
+Merge scripts now switch the project repository to the task base branch before squash-merging, and newly added variants or attempts inherit the source task branch so branch-derived tasks keep the right compare and merge target.

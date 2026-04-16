@@ -13,6 +13,29 @@ interface UseTaskBranchStatusParams {
 	isTaskActive: boolean;
 }
 
+function getDefaultTaskCompareRef(taskBaseBranch: string, project: Project): string {
+	const projectBaseBranch = project.defaultBaseBranch || "main";
+	const projectDefaultCompareRef = project.defaultCompareRef;
+
+	if (!projectDefaultCompareRef) {
+		return project.defaultCompareRefMode === "local" ? taskBaseBranch : "";
+	}
+
+	if (taskBaseBranch === projectBaseBranch) {
+		return projectDefaultCompareRef;
+	}
+
+	if (projectDefaultCompareRef === projectBaseBranch) {
+		return taskBaseBranch;
+	}
+
+	if (projectDefaultCompareRef === `origin/${projectBaseBranch}`) {
+		return "";
+	}
+
+	return projectDefaultCompareRef;
+}
+
 export function useTaskBranchStatus({
 	task,
 	project,
@@ -32,8 +55,7 @@ export function useTaskBranchStatus({
 	const fetchStatusRef = useRef<(() => Promise<void>) | null>(null);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	const defaultCompareRef = project.defaultCompareRef
-		?? (project.defaultCompareRefMode === "local" ? baseBranch : "");
+	const defaultCompareRef = getDefaultTaskCompareRef(baseBranch, project);
 	const [compareRef, setCompareRef] = useState(defaultCompareRef);
 
 	useEffect(() => {
