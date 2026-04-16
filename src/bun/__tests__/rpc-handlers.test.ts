@@ -3368,6 +3368,50 @@ describe("handlers.mergeTask", () => {
 			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Branch is not rebased");
 	});
+
+	it("writes a merge script that targets the task base branch", async () => {
+		const project = makeProject({ path: "/tmp/project-root" });
+		const task = makeTask({
+			id: "task-1",
+			title: "Merge task",
+			baseBranch: "feature/abc",
+			branchName: "dev3/t",
+			worktreePath: "/tmp/wt",
+		});
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const intervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as any);
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as any);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 } as any);
+		mockSpawn.mockReturnValue({
+			stdout: new Response("%42\n"),
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		try {
+			await handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" });
+
+			const mergeScriptCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-git-merge.sh"));
+			const script = String(mergeScriptCall?.[1] ?? "");
+			const checkoutIndex = script.indexOf('git checkout "$TARGET_BRANCH"');
+			const mergeIndex = script.indexOf("git merge --squash dev3/t");
+
+			expect(script).toContain(`TARGET_BRANCH='feature/abc'`);
+			expect(script).toContain(`TARGET_REMOTE='origin/feature/abc'`);
+			expect(checkoutIndex).toBeGreaterThanOrEqual(0);
+			expect(mergeIndex).toBeGreaterThanOrEqual(0);
+			expect(checkoutIndex).toBeLessThan(mergeIndex);
+		} finally {
+			timeoutSpy.mockRestore();
+			intervalSpy.mockRestore();
+			writeSpy.mockRestore();
+		}
+	});
 });
 
 // ================================================================

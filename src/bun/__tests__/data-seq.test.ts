@@ -222,10 +222,21 @@ describe("addTask — seq assignment", () => {
 
 		const task = await addTask(testProject, "Continue on branch", "todo", { existingBranch: "feature/login" });
 		expect(task.existingBranch).toBe("feature/login");
+		expect(task.baseBranch).toBe("feature/login");
 
 		// Read back from disk
 		const loaded = await loadTasks(testProject);
 		expect(loaded[0].existingBranch).toBe("feature/login");
+		expect(loaded[0].baseBranch).toBe("feature/login");
+	});
+
+	it("normalizes origin/ branch refs into task baseBranch", async () => {
+		seedTasks([]);
+
+		const task = await addTask(testProject, "Continue on remote branch", "todo", { existingBranch: "origin/feature/login" });
+
+		expect(task.existingBranch).toBe("origin/feature/login");
+		expect(task.baseBranch).toBe("feature/login");
 	});
 
 	it("addTask without existingBranch does not set the field", async () => {
