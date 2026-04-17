@@ -1,0 +1,1 @@
+Refreshed AGENTS.md: fixed stale RPC handlers path (now a barrel over `src/bun/rpc-handlers/*.ts`), replaced the outdated mdfind-based drag-and-drop section with the current worktree-upload flow (decision 036), explicitly disallowed HMR/watch/bump commands for AI agents, and removed the obsolete "Recent large-scale changes" section.

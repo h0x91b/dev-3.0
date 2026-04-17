@@ -177,6 +177,8 @@ bun run build
 bun run build:prod
 ```
 
+**HMR / Vite watch workflow is NOT used in this project.** Do not run `bun run watch`, `bun run hmr`, or any `vite --watch` flow. The only supported dev loop is `bun run dev`. Also, **never run `bun run bump`** — versioning is owned by the user, not AI agents.
+
 Use `bun run lint` for the repository's TypeScript/type-check validation step before committing.
 
 ## CLI exit codes
@@ -200,7 +202,7 @@ Two-process model:
 
 The renderer and main process communicate via **Electrobun's built-in RPC** (IPC bridge). The schema is defined in `src/shared/types.ts` as `AppRPCSchema` with two channels: `bun` (main process) and `webview` (renderer).
 
-- **Request/response:** Components call `api.request.METHOD(params)` (returns a Promise, 2-minute timeout). Handlers are registered in `src/bun/rpc-handlers.ts`.
+- **Request/response:** Components call `api.request.METHOD(params)` (returns a Promise, 2-minute timeout). Handlers live in `src/bun/rpc-handlers/*.ts`, split by domain (`app-handlers`, `settings-config`, `task-lifecycle`, `git-operations`, `tmux-pty`, `notes-labels`, `remote-access`). The root `src/bun/rpc-handlers.ts` is a barrel re-exporter that merges them into a single `handlers` object.
 - **Push messages:** The main process sends unsolicited updates via `pushMessage?.("eventName", payload)`. The renderer dispatches these as `CustomEvent`s (e.g., `rpc:taskUpdated`), which components listen to with `window.addEventListener()`.
 
 ### State management
@@ -219,11 +221,9 @@ The main process checks if the Vite dev server is running on `localhost:5173`. I
 
 Vite builds `src/mainview/` → `dist/`. Electrobun copies `dist/` contents into `views/mainview/` for packaging. Config in `electrobun.config.ts`.
 
-### Drag-and-drop file paths (heuristic)
+### Drag-and-drop files (uploaded into worktree)
 
-WKWebView (used by Electrobun) does **not** expose native file paths in drag-and-drop events. The renderer only gets `file.name`, `file.size`, and `file.lastModified` from the browser File API — no real path.
-
-To work around this, `resolveFilename` in `src/bun/rpc-handlers.ts` uses **macOS Spotlight (`mdfind`)** to search for the file by name, then verifies candidates by size and lastModified. This is a **best-effort heuristic**, not a guaranteed resolution. See [decision 005](decisions/005-dnd-file-path-heuristic.md) for details.
+WKWebView does not expose native host file paths in drag-and-drop events. Instead of guessing the path, dropped files are **uploaded into the task worktree** (up to 100 MB per file) and pasted as worktree-relative paths. See [decision 036](decisions/036-worktree-uploaded-dnd-files.md) for details.
 
 ### Process spawning (`Bun.spawn`)
 
@@ -462,10 +462,6 @@ Local documentation for key dependencies lives in `vendor-docs/`:
 | `vendor-docs/bun/` | Pointer to Bun's `llms.txt` | Fetch `https://bun.com/docs/llms-full.txt` for full docs in one request, or see `vendor-docs/bun/README.md` for all links |
 
 **Before writing code that touches a dependency, check `vendor-docs/` first.** Read the relevant local docs or fetch remote ones as instructed. Do not guess APIs from memory — verify against the docs.
-
-## Recent large-scale changes
-
-**Memory leak audit (March 2026):** PRs #294, #295, #296 touched many files across `src/bun/rpc-handlers.ts`, `src/bun/git.ts`, `src/mainview/components/`, `src/mainview/hooks/`, `src/cli/socket-client.ts`, and `src/mainview/analytics.ts`. If you encounter a regression or unexpected behavior in any of these areas, **read [`decisions/015-memory-leak-fixes-side-effects.md`](decisions/015-memory-leak-fixes-side-effects.md) first** — it documents every change and its potential side effects.
 
 ## Landing page (GitHub Pages)
 
