@@ -30,17 +30,80 @@ function basename(p: string): string {
 	return tail || p;
 }
 
-function buildBreadcrumbs(path: string): Array<{ label: string; path: string }> {
+function buildBreadcrumbs(path: string): Array<{ label: string; path: string; isRoot: boolean }> {
 	if (!path) return [];
-	if (path === "/") return [{ label: "/", path: "/" }];
+	const root = { label: "/", path: "/", isRoot: true };
+	if (path === "/") return [root];
 	const parts = path.split("/").filter(Boolean);
-	const crumbs: Array<{ label: string; path: string }> = [{ label: "/", path: "/" }];
+	const crumbs = [root];
 	let acc = "";
 	for (const part of parts) {
 		acc += "/" + part;
-		crumbs.push({ label: part, path: acc });
+		crumbs.push({ label: part, path: acc, isRoot: false });
 	}
 	return crumbs;
+}
+
+// ── Inline SVG icons (Lucide-style, 20×20 viewBox). Using SVG instead of
+//    Nerd Font glyphs so icons render consistently across all transports
+//    (desktop + remote browser) without depending on custom font loading.
+// ──────────────────────────────────────────────────────────────────────
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+	return (
+		<svg
+			viewBox="0 0 20 20"
+			width="14"
+			height="14"
+			className="flex-shrink-0 text-fg-muted"
+			style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 120ms" }}
+			aria-hidden="true"
+		>
+			<path d="M7 5l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+		</svg>
+	);
+}
+
+function ChevronPlaceholder() {
+	return <span aria-hidden="true" className="inline-block w-[14px] flex-shrink-0" />;
+}
+
+function FolderIcon({ open }: { open: boolean }) {
+	return (
+		<svg viewBox="0 0 20 20" width="16" height="16" className="flex-shrink-0" aria-hidden="true">
+			{open ? (
+				<path
+					d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.6a1.5 1.5 0 0 1 1.06.44l.94.94a1.5 1.5 0 0 0 1.06.44H16a1.5 1.5 0 0 1 1.5 1.5v.37H4.6a1.5 1.5 0 0 0-1.45 1.1L2 14V5.5Zm1.6 3.87a.7.7 0 0 0-.68.51l-1.15 4.4A1 1 0 0 0 3.24 15.5h12.5a1 1 0 0 0 .97-.73l1.22-4.41a.7.7 0 0 0-.68-.89H4.1Z"
+					fill="#f6c653"
+					stroke="#c48f1d"
+					strokeWidth="0.4"
+				/>
+			) : (
+				<path
+					d="M4 4a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 4 16h12a1.5 1.5 0 0 0 1.5-1.5V7.5A1.5 1.5 0 0 0 16 6H10.4a.5.5 0 0 1-.36-.15l-.98-.98A1.5 1.5 0 0 0 8 4.44L7.6 4H4Z"
+					fill="#f6c653"
+					stroke="#c48f1d"
+					strokeWidth="0.4"
+				/>
+			)}
+		</svg>
+	);
+}
+
+function HomeIcon() {
+	return (
+		<svg viewBox="0 0 20 20" width="14" height="14" className="flex-shrink-0" aria-hidden="true">
+			<path d="M10 3.2 3 8.5V16a1 1 0 0 0 1 1h3.5v-4.5h5V17H16a1 1 0 0 0 1-1V8.5L10 3.2Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+		</svg>
+	);
+}
+
+function HardDriveIcon() {
+	return (
+		<svg viewBox="0 0 20 20" width="14" height="14" className="flex-shrink-0" aria-hidden="true">
+			<path d="M3 12h14M3 12 5 6h10l2 6M3 12v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+			<circle cx="14" cy="14.5" r="0.9" fill="currentColor" />
+		</svg>
+	);
 }
 
 /**
@@ -164,41 +227,46 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			}}
 			data-testid="folder-picker-backdrop"
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[40rem] max-w-[92vw] flex flex-col overflow-hidden">
+			<div className="bg-overlay border border-edge rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] w-[40rem] max-w-[92vw] flex flex-col overflow-hidden">
 				{/* Header */}
-				<div className="px-5 py-4 border-b border-edge flex items-center justify-between">
-					<h2 className="text-fg text-base font-semibold">
+				<div className="px-5 py-3.5 border-b border-edge flex items-center justify-between gap-3">
+					<h2 className="text-fg text-base font-semibold truncate">
 						{options.title ?? t("folderPicker.title")}
 					</h2>
-					<div className="flex items-center gap-1">
+					<div className="flex items-center gap-1 flex-shrink-0">
 						<button
 							type="button"
 							onClick={() => home && void navigateTo(home)}
 							disabled={!home}
-							className="px-2.5 py-1 text-xs rounded-md text-fg-3 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
-							title={home}
+							className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md text-fg-2 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
+							title={home || undefined}
 						>
+							<HomeIcon />
 							{t("folderPicker.home")}
 						</button>
 						<button
 							type="button"
 							onClick={() => void navigateTo("/")}
-							className="px-2.5 py-1 text-xs rounded-md text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+							className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							title="/"
 						>
+							<HardDriveIcon />
 							{t("folderPicker.rootFs")}
 						</button>
 					</div>
 				</div>
 
-				{/* Breadcrumbs */}
-				<div className="px-5 py-2 border-b border-edge flex items-center gap-1 overflow-x-auto text-xs font-mono">
+				{/* Breadcrumbs — no "/" before the root crumb, separators only BETWEEN crumbs. */}
+				<div className="px-5 py-2 border-b border-edge flex items-center gap-1 overflow-x-auto text-xs">
 					{breadcrumbs.map((crumb, idx) => (
 						<div key={crumb.path} className="flex items-center gap-1 flex-shrink-0">
-							{idx > 0 && <span className="text-fg-muted">/</span>}
+							{idx > 0 && <span className="text-fg-muted select-none">/</span>}
 							<button
 								type="button"
 								onClick={() => void navigateTo(crumb.path)}
-								className="px-1.5 py-0.5 rounded hover:bg-elevated text-fg-2 hover:text-fg transition-colors"
+								className={`px-1.5 py-0.5 rounded hover:bg-elevated transition-colors ${
+									idx === breadcrumbs.length - 1 ? "text-fg font-medium" : "text-fg-3 hover:text-fg"
+								}`}
 							>
 								{crumb.label}
 							</button>
@@ -207,7 +275,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				</div>
 
 				{/* Manual path input */}
-				<form onSubmit={handleManualSubmit} className="px-5 py-2 border-b border-edge">
+				<form onSubmit={handleManualSubmit} className="px-5 py-2.5 border-b border-edge">
 					<input
 						type="text"
 						value={manualPath}
@@ -217,7 +285,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 						spellCheck={false}
 						autoCorrect="off"
 						autoCapitalize="off"
-						className="w-full px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm font-mono outline-none focus:border-accent/50 transition-colors"
+						className="w-full px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors"
 					/>
 				</form>
 
@@ -317,7 +385,7 @@ function FolderTree({ rootPath, listingsRef, onSelect, onNavigate }: FolderTreeP
 	}, [onNavigate]);
 
 	return (
-		<div {...tree.getContainerProps()} className="outline-none" role="tree">
+		<div {...tree.getContainerProps()} className="outline-none flex flex-col gap-0.5" role="tree">
 			{tree.getItems().map((item) => {
 				const data = item.getItemData();
 				const level = item.getItemMeta().level;
@@ -335,27 +403,19 @@ function FolderTree({ rootPath, listingsRef, onSelect, onNavigate }: FolderTreeP
 							onSelect(data.path);
 						}}
 						onDoubleClick={() => handleDoubleClick(item)}
-						style={{ paddingLeft: `${0.5 + level * 1}rem` }}
-						className={`w-full flex items-center gap-1.5 text-left px-2 py-1 rounded-md text-sm transition-colors ${
+						style={{ paddingLeft: `${0.5 + level * 0.85}rem` }}
+						className={`w-full flex items-center gap-2 text-left pr-2 py-1.5 rounded-md text-[13px] transition-colors ${
 							selected
-								? "bg-accent/20 text-fg"
+								? "bg-accent/20 text-fg ring-1 ring-inset ring-accent/30"
 								: "text-fg-2 hover:bg-elevated hover:text-fg"
 						}`}
 					>
-						<span
-							className="inline-flex items-center justify-center w-4 h-4 text-fg-muted flex-shrink-0"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{data.isDir ? (expanded ? "\u{F0374}" : "\u{F0370}") : "\u{F15B}"}
-						</span>
-						<span
-							className="inline-flex items-center justify-center w-4 h-4 flex-shrink-0"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", color: data.isDir ? "#f9c74f" : "var(--fg-3)" }}
-						>
-							{data.isDir ? (expanded ? "\u{F115}" : "\u{F114}") : "\u{F15B}"}
-						</span>
-						<span className="truncate font-mono">{data.name}</span>
-						{loading && <span className="text-fg-muted text-xs">…</span>}
+						{data.isDir ? <ChevronIcon expanded={expanded} /> : <ChevronPlaceholder />}
+						<FolderIcon open={expanded && data.isDir} />
+						<span className="truncate">{data.name}</span>
+						{loading && (
+							<span className="ml-1 inline-block w-2.5 h-2.5 rounded-full bg-accent/50 animate-pulse flex-shrink-0" aria-label="loading" />
+						)}
 					</button>
 				);
 			})}
