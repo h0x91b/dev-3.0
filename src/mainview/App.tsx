@@ -353,6 +353,24 @@ function App() {
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
 	}, []);
 
+	// Notify user when a column-agent launch fails (custom columns have no automatic fallback)
+	useEffect(() => {
+		function onColumnAgentFailed(e: Event) {
+			const { columnName, error } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				columnName: string;
+				error: string;
+			};
+			// Simple alert — the task is parked in the target column with no running agent.
+			// Use alert() to make the failure impossible to miss; the user can then relaunch
+			// the agent by moving the task out and back in, or fix the column config.
+			alert(`Column agent failed to launch for "${columnName}":\n${error}`);
+		}
+		window.addEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
+		return () => window.removeEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
+	}, []);
+
 	// Listen for update download progress (minimum 5s display time)
 	useEffect(() => {
 		const MIN_DISPLAY_MS = 5_000;

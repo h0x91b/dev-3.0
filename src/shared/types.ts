@@ -1285,6 +1285,8 @@ export type AppRPCSchema = {
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			updateDownloadProgress: { status: string; progress?: number };
+			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */
+			columnAgentFailed: { taskId: string; projectId: string; columnName: string; error: string };
 		};
 	}>;
 	webview: RPCSchema<{

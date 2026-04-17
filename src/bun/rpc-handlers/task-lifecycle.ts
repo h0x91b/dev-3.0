@@ -346,6 +346,9 @@ export async function activateTask(
 		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
 	}
 	await runCowClones(resolved, wt.worktreePath);
+	// On reopen (completed/cancelled → active), we intentionally blank the description
+	// so the agent starts in a clean session instead of replaying the original prompt.
+	// Original intent: commit a2b87778 ("Skip task prompt when reopening from completed/cancelled").
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
@@ -504,7 +507,17 @@ export async function triggerColumnAgentIfNeeded(
 			} catch (fallbackErr) {
 				log.error("Failed to fall back to review-by-user", { taskId: task.id, error: String(fallbackErr) });
 			}
+			return;
 		}
+		// Custom columns (and any other non-built-in status) have no automatic
+		// fallback — the task would otherwise sit silently with no running agent.
+		// Surface the failure to the user so they can re-launch or fix the config.
+		getPushMessage()?.("columnAgentFailed", {
+			taskId: task.id,
+			projectId: project.id,
+			columnName: paneTitle || String(newStatus),
+			error: String(err),
+		});
 	}
 }
 
