@@ -1678,6 +1678,82 @@ describe("resolveOperationalProjectConfig", () => {
 		expect((resolved as any).setupScriptLaunchMode).toBe("blocking");
 		expect(resolved.defaultBaseBranch).toBe("release");
 	});
+
+	it("falls back to worktree-resolved scripts when project-level scripts are empty", async () => {
+		// Reproduces bug: new project has .dev3/config.json with devScript only in the
+		// feature-branch worktree (not yet merged to main). project.path has no
+		// .dev3/config.json, so projectResolved.devScript is "" (DEFAULTS). The operational
+		// resolver must NOT shadow the worktree value with this empty string, otherwise the
+		// dev-server button is green (worktree has devScript) but start fails with
+		// "No dev script configured".
+		const projectResolved = makeProject({
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+		});
+		const worktreeResolved = makeProject({
+			setupScript: "bun install",
+			devScript: "PORT=${DEV3_PORT0:-8080} bun run dev",
+			cleanupScript: "rm -rf node_modules",
+		});
+
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(projectResolved)
+			.mockResolvedValueOnce(worktreeResolved);
+
+		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
+
+		expect(resolved.setupScript).toBe("bun install");
+		expect(resolved.devScript).toBe("PORT=${DEV3_PORT0:-8080} bun run dev");
+		expect(resolved.cleanupScript).toBe("rm -rf node_modules");
+	});
+
+	it("falls back to worktree scripts when project-level scripts are whitespace-only", async () => {
+		const projectResolved = makeProject({
+			setupScript: "   ",
+			devScript: "\n\t ",
+			cleanupScript: "",
+		});
+		const worktreeResolved = makeProject({
+			setupScript: "bun install",
+			devScript: "bun run dev",
+			cleanupScript: "echo cleanup",
+		});
+
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(projectResolved)
+			.mockResolvedValueOnce(worktreeResolved);
+
+		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
+
+		expect(resolved.setupScript).toBe("bun install");
+		expect(resolved.devScript).toBe("bun run dev");
+		expect(resolved.cleanupScript).toBe("echo cleanup");
+	});
+
+	it("mixes project and worktree scripts per-field when project only defines some", async () => {
+		const projectResolved = makeProject({
+			setupScript: "project setup",
+			devScript: "",
+			cleanupScript: "project cleanup",
+		});
+		const worktreeResolved = makeProject({
+			setupScript: "worktree setup",
+			devScript: "worktree dev",
+			cleanupScript: "worktree cleanup",
+		});
+
+		vi.mocked(repoConfig.resolveProjectConfig)
+			.mockResolvedValueOnce(projectResolved)
+			.mockResolvedValueOnce(worktreeResolved);
+
+		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
+
+		// Project wins for setupScript and cleanupScript (both set); worktree fills devScript.
+		expect(resolved.setupScript).toBe("project setup");
+		expect(resolved.devScript).toBe("worktree dev");
+		expect(resolved.cleanupScript).toBe("project cleanup");
+	});
 });
 
 describe("activateTask", () => {
