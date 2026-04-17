@@ -13,7 +13,7 @@ import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpd
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { resolveShellEnv } from "./shell-env";
+import { getShellRcFile, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { stopTunnel } from "./cloudflare-tunnel";
@@ -111,18 +111,22 @@ log.info("Log files", { dir: getLogPath() });
 	// This makes `dev3` available in all terminals, not just worktree tmux sessions.
 	const shell = process.env.SHELL || "/bin/zsh";
 	const home = process.env.HOME || "/tmp";
-	const rcFile = shell.endsWith("bash") ? `${home}/.bashrc` : `${home}/.zshrc`;
 	const marker = ".dev3.0/bin";
-	try {
-		const content = fExists(rcFile) ? fRead(rcFile, "utf-8") : "";
-		if (!content.includes(marker)) {
-			fAppend(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
-			log.info("Shell profile updated with dev3 PATH", { rcFile });
-		} else {
-			log.info("Shell profile already contains dev3 PATH", { rcFile });
+	const rcFile = getShellRcFile(shell, home);
+	if (!rcFile) {
+		log.warn("Skipping shell profile PATH update for unsupported shell", { shell });
+	} else {
+		try {
+			const content = fExists(rcFile) ? fRead(rcFile, "utf-8") : "";
+			if (!content.includes(marker)) {
+				fAppend(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
+				log.info("Shell profile updated with dev3 PATH", { rcFile });
+			} else {
+				log.info("Shell profile already contains dev3 PATH", { rcFile });
+			}
+		} catch (err) {
+			log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
 		}
-	} catch (err) {
-		log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
 	}
 }
 

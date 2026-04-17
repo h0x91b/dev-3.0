@@ -67,3 +67,75 @@ describe("Electrobun RPC transport", () => {
 		window.removeEventListener("rpc:osc52Clipboard", osc52ClipboardListener);
 	});
 });
+
+describe("Browser RPC transport", () => {
+	beforeEach(() => {
+		vi.resetModules();
+		vi.clearAllMocks();
+		vi.unstubAllGlobals();
+		delete (window as any).__electrobunWebviewId;
+		document.documentElement.classList.remove("browser-mode");
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		document.documentElement.classList.remove("browser-mode");
+	});
+
+	it("rejects in-flight requests immediately when the browser websocket closes", async () => {
+		const sockets: MockWebSocket[] = [];
+
+		class MockWebSocket {
+			static CONNECTING = 0;
+			static OPEN = 1;
+			static CLOSING = 2;
+			static CLOSED = 3;
+
+			readyState = MockWebSocket.CONNECTING;
+			readonly send = vi.fn();
+			private readonly listeners = new Map<string, Array<(event: any) => void>>();
+
+			constructor(public readonly url: string) {
+				sockets.push(this);
+			}
+
+			addEventListener(type: string, listener: (event: any) => void) {
+				const current = this.listeners.get(type) ?? [];
+				current.push(listener);
+				this.listeners.set(type, current);
+			}
+
+			dispatch(type: string, event: any = {}) {
+				for (const listener of this.listeners.get(type) ?? []) {
+					listener(event);
+				}
+			}
+		}
+
+		vi.stubGlobal("WebSocket", MockWebSocket);
+
+		const { api } = await import("../rpc");
+		const socket = sockets[0];
+		expect(socket).toBeDefined();
+		expect(document.documentElement.classList.contains("browser-mode")).toBe(true);
+
+		socket.dispatch("open");
+		socket.readyState = MockWebSocket.OPEN;
+
+		let rejection: unknown = null;
+		void (api.request as any).getAvailableApps().catch((err: unknown) => {
+			rejection = err;
+		});
+
+		await Promise.resolve();
+		expect(socket.send).toHaveBeenCalledTimes(1);
+
+		socket.readyState = MockWebSocket.CLOSED;
+		socket.dispatch("close", { code: 1006, reason: "network gone" });
+
+		await Promise.resolve();
+		expect(rejection).toBeInstanceOf(Error);
+		expect((rejection as Error).message).toContain("RPC connection closed");
+	});
+});
