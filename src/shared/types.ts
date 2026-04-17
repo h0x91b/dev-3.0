@@ -802,6 +802,24 @@ export interface CliResponse {
 }
 
 
+// ---- Folder picker ----
+
+export interface FolderEntry {
+	name: string;
+	path: string;
+	isDir: boolean;
+}
+
+export interface FolderListing {
+	path: string;
+	parent: string | null;
+	home: string;
+	entries: FolderEntry[];
+	/** Present when the requested path could not be read. `entries` is empty then. */
+	error?: string;
+}
+
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
@@ -811,9 +829,9 @@ export type AppRPCSchema = {
 				params: void;
 				response: Project[];
 			};
-			pickFolder: {
-				params: void;
-				response: string | null;
+			listDirectory: {
+				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };
+				response: FolderListing;
 			};
 			createCustomColumn: {
 				params: { projectId: string; name: string; color?: string };

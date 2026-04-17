@@ -198,6 +198,8 @@ const tips = {
 	"tip.cancelPreparing.body": "En una tarjeta Preparing, pulsa Cancel para matar el setup y devolver la tarea a To Do.",
 	"tip.bugHunterSkill.title": "Caza de bugs con seed",
 	"tip.bugHunterSkill.body": "Usa la skill dev3-bug-hunter y lanza 3-5 variantes para que cada ejecución empiece en una zona seeded distinta.",
+	"tip.folderPickerPastePath.title": "Pega una ruta en el picker",
+	"tip.folderPickerPastePath.body": "El selector de carpetas tiene un campo arriba — pega una ruta absoluta y pulsa Enter para saltar allí al instante.",
 };
 
 export default tips;

@@ -54,6 +54,16 @@ const common = {
 	"ghWarning.dismiss": "Got it",
 	"ghWarning.dontShowAgain": "Don't show this again",
 
+	// Folder picker (custom modal — works in both desktop and remote/browser modes)
+	"folderPicker.title": "Select a folder",
+	"folderPicker.home": "Home",
+	"folderPicker.rootFs": "/",
+	"folderPicker.loading": "Loading…",
+	"folderPicker.pathPlaceholder": "Type or paste a path, press Enter",
+	"folderPicker.selected": "Selected",
+	"folderPicker.select": "Select",
+	"folderPicker.cancel": "Cancel",
+
 	// Unsaved changes guard
 	"unsavedChanges.title": "Unsaved Changes",
 	"unsavedChanges.message": "You have unsaved changes in project settings. What would you like to do?",

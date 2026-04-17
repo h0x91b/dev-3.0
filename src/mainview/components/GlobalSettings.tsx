@@ -13,6 +13,7 @@ import type {
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
+import { openFolderPicker } from "../folder-picker";
 import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-bootstrap";
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
@@ -334,11 +335,11 @@ function GlobalSettings() {
 
 	const handlePickCloneBaseDirectory = useCallback(async () => {
 		try {
-			const folder = await api.request.pickFolder();
+			const folder = await openFolderPicker();
 			if (!folder) return;
 			persistSettingChange({ cloneBaseDirectory: folder });
 		} catch (error) {
-			console.error("[GlobalSettings] pickFolder failed:", error);
+			console.error("[GlobalSettings] openFolderPicker failed:", error);
 		}
 	}, [persistSettingChange]);
 

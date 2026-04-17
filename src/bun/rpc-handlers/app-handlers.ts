@@ -1,8 +1,8 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
-import type { ChangelogEntry, ExternalApp, Project, TipState } from "../../shared/types";
+import type { ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, TipState } from "../../shared/types";
 import { DEFAULT_EXTERNAL_APPS, extractRepoName } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -47,25 +47,92 @@ async function getProjects(): Promise<Project[]> {
 	return projects;
 }
 
-async function pickFolder(): Promise<string | null> {
-	log.info("→ pickFolder (opening native dialog)");
+/**
+ * Normalize a requested directory path for the folder picker.
+ *
+ * Rules:
+ *   - `null`, `undefined`, or empty → home directory
+ *   - Leading `~` or `~/...` → expanded against home
+ *   - Relative paths → resolved against home (defensive; picker should only
+ *     ever send absolute paths back to us)
+ */
+function normalizeRequestedPath(requested: string | null | undefined): string {
+	if (!requested || requested.trim() === "") return homedir();
+	let p = requested.trim();
+	if (p === "~") return homedir();
+	if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
+	if (!isAbsolute(p)) p = resolvePath(homedir(), p);
+	return resolvePath(p);
+}
+
+/**
+ * List the contents of a directory for the custom folder picker.
+ *
+ * Called from both the Electrobun and browser transports — replaces the old
+ * native `openFileDialog` which cannot work in headless/remote mode.
+ */
+async function listDirectory(params?: { path?: string | null; includeFiles?: boolean; showHidden?: boolean }): Promise<FolderListing> {
+	const requestedPath = normalizeRequestedPath(params?.path);
+	const includeFiles = params?.includeFiles === true;
+	const showHidden = params?.showHidden === true;
+	const home = homedir();
+	log.info("→ listDirectory", { path: requestedPath, includeFiles, showHidden });
+
+	const parentOf = (p: string): string | null => {
+		const parent = dirname(p);
+		return parent === p ? null : parent;
+	};
+
+	if (!existsSync(requestedPath)) {
+		log.warn("listDirectory: path does not exist", { path: requestedPath });
+		return {
+			path: requestedPath,
+			parent: parentOf(requestedPath),
+			home,
+			entries: [],
+			error: "Path does not exist",
+		};
+	}
+
 	try {
-		const startingFolder = homedir();
-		log.info("pickFolder starting from", { startingFolder });
-
-		const paths = await Utils.openFileDialog({
-			startingFolder,
-			canChooseFiles: false,
-			canChooseDirectory: true,
-			allowsMultipleSelection: false,
+		const names = readdirSync(requestedPath);
+		const entries: FolderEntry[] = [];
+		for (const name of names) {
+			if (!showHidden && name.startsWith(".")) continue;
+			const fullPath = join(requestedPath, name);
+			let isDir: boolean;
+			try {
+				// `statSync` follows symlinks — we want to list the target type so
+				// directory symlinks still behave like directories for picking.
+				isDir = statSync(fullPath).isDirectory();
+			} catch {
+				// Permission denied, broken symlink, etc. Skip silently.
+				continue;
+			}
+			if (!includeFiles && !isDir) continue;
+			entries.push({ name, path: fullPath, isDir });
+		}
+		// Directories first, then files, alphabetical (case-insensitive).
+		entries.sort((a, b) => {
+			if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+			return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 		});
-		log.info("← pickFolder", { paths });
-		if (!paths || paths.length === 0) return null;
-
-		return paths[0];
+		log.info("← listDirectory", { path: requestedPath, count: entries.length });
+		return {
+			path: requestedPath,
+			parent: parentOf(requestedPath),
+			home,
+			entries,
+		};
 	} catch (err) {
-		log.error("pickFolder failed", { error: String(err) });
-		throw err;
+		log.error("listDirectory failed", { path: requestedPath, error: String(err) });
+		return {
+			path: requestedPath,
+			parent: parentOf(requestedPath),
+			home,
+			entries: [],
+			error: String(err),
+		};
 	}
 }
 
@@ -421,7 +488,7 @@ export const appHandlers = {
 	hideApp,
 	showConfirm,
 	getProjects,
-	pickFolder,
+	listDirectory,
 	addProject: addProjectImpl,
 	cloneAndAddProject,
 	removeProject,

@@ -7,7 +7,6 @@ import type { AppAction } from "../../state";
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
-			pickFolder: vi.fn(),
 			addProject: vi.fn(),
 			cloneAndAddProject: vi.fn(),
 			getGlobalSettings: vi.fn(() =>
@@ -23,9 +22,15 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+vi.mock("../../folder-picker", () => ({
+	openFolderPicker: vi.fn(),
+}));
+
 import { api } from "../../rpc";
+import { openFolderPicker } from "../../folder-picker";
 
 const mockedApi = vi.mocked(api, true);
+const mockedOpenFolderPicker = vi.mocked(openFolderPicker);
 
 function renderModal(
 	dispatch?: React.Dispatch<AppAction>,
@@ -75,12 +80,12 @@ describe("AddProjectModal", () => {
 		expect(screen.getByPlaceholderText("https://github.com/user/repo.git")).toBeInTheDocument();
 	});
 
-	it("calls pickFolder and addProject from Local tab", async () => {
+	it("opens folder picker and calls addProject from Local tab", async () => {
 		const user = userEvent.setup();
 		const dispatch = vi.fn();
 		const onClose = vi.fn();
 
-		mockedApi.request.pickFolder.mockResolvedValue("/new/path");
+		mockedOpenFolderPicker.mockResolvedValue("/new/path");
 		mockedApi.request.addProject.mockResolvedValue({
 			ok: true as const,
 			project: { ...mockProject, path: "/new/path", name: "path" },
@@ -89,7 +94,7 @@ describe("AddProjectModal", () => {
 		renderModal(dispatch, onClose);
 		await user.click(screen.getByText("Browse..."));
 
-		expect(mockedApi.request.pickFolder).toHaveBeenCalled();
+		expect(mockedOpenFolderPicker).toHaveBeenCalled();
 		expect(mockedApi.request.addProject).toHaveBeenCalledWith({
 			path: "/new/path",
 			name: "path",
@@ -101,11 +106,11 @@ describe("AddProjectModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("does nothing when pickFolder returns null", async () => {
+	it("does nothing when folder picker is cancelled", async () => {
 		const user = userEvent.setup();
 		const dispatch = vi.fn();
 
-		mockedApi.request.pickFolder.mockResolvedValue(null);
+		mockedOpenFolderPicker.mockResolvedValue(null);
 
 		renderModal(dispatch);
 		await user.click(screen.getByText("Browse..."));
@@ -237,7 +242,7 @@ describe("AddProjectModal", () => {
 	it("Browse button is disabled while addProject is pending", async () => {
 		const user = userEvent.setup();
 		let resolveAddProject!: (v: any) => void;
-		mockedApi.request.pickFolder.mockResolvedValue("/new/path");
+		mockedOpenFolderPicker.mockResolvedValue("/new/path");
 		mockedApi.request.addProject.mockImplementation(
 			() => new Promise((resolve) => { resolveAddProject = resolve; }),
 		);
@@ -245,7 +250,7 @@ describe("AddProjectModal", () => {
 		renderModal();
 		await user.click(screen.getByText("Browse..."));
 
-		// After pickFolder resolves but addProject is still pending
+		// After folder picker resolves but addProject is still pending
 		const btn = screen.getByRole("button", { name: "Adding..." });
 		expect(btn).toBeDisabled();
 

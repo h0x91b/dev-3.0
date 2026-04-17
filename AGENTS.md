@@ -422,7 +422,7 @@ Components that import `api` from `rpc.ts` need the Electrobun native module moc
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
-			pickFolder: vi.fn(),
+			listDirectory: vi.fn(),
 			addProject: vi.fn(),
 			// ... add methods your test needs
 		},

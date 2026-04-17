@@ -199,7 +199,7 @@ import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { createTaskPreparation, registerPreparationSpawn } from "../preparation-runtime";
 
 // Import handlers and pure helper functions after all mocks are set up
@@ -3091,36 +3091,75 @@ describe("handlers.showConfirm", () => {
 });
 
 // ================================================================
-// handlers.pickFolder
+// handlers.listDirectory
 // ================================================================
 
-describe("handlers.pickFolder", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("returns the selected path", async () => {
-		vi.mocked(Utils.openFileDialog).mockResolvedValue(["/Users/test/project"] as any);
-		const result = await handlers.pickFolder();
-		expect(result).toBe("/Users/test/project");
+describe("handlers.listDirectory", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(readdirSync).mockReturnValue([] as any);
+		vi.mocked(statSync).mockReturnValue({ isDirectory: () => true, size: 0 } as any);
 	});
 
-	it("always starts from home directory", async () => {
-		vi.mocked(Utils.openFileDialog).mockResolvedValue(["/some/path"] as any);
-		await handlers.pickFolder();
-		const call = vi.mocked(Utils.openFileDialog).mock.calls[0][0] as any;
-		expect(call.startingFolder).toBeTruthy();
-		expect(typeof call.startingFolder).toBe("string");
+	it("defaults to the home directory when no path is provided", async () => {
+		const result = await handlers.listDirectory();
+		expect(result.path.length).toBeGreaterThan(0);
+		expect(result.home.length).toBeGreaterThan(0);
+		expect(result.path).toBe(result.home);
 	});
 
-	it("returns null when dialog is cancelled (empty array)", async () => {
-		vi.mocked(Utils.openFileDialog).mockResolvedValue([] as any);
-		const result = await handlers.pickFolder();
-		expect(result).toBeNull();
+	it("filters out hidden entries by default and returns directories first", async () => {
+		vi.mocked(readdirSync).mockReturnValue([".hidden", "zeta.txt", "alpha", "Beta"] as any);
+		vi.mocked(statSync).mockImplementation((p: any) => {
+			const name = String(p).split("/").pop();
+			return { isDirectory: () => name === "alpha" || name === "Beta", size: 0 } as any;
+		});
+		const result = await handlers.listDirectory({ path: "/tmp/test" });
+		expect(result.entries.map((e) => e.name)).toEqual(["alpha", "Beta"]);
+		expect(result.entries.every((e) => e.isDir)).toBe(true);
 	});
 
-	it("returns null when dialog returns null", async () => {
-		vi.mocked(Utils.openFileDialog).mockResolvedValue(null as any);
-		const result = await handlers.pickFolder();
-		expect(result).toBeNull();
+	it("includes hidden entries when showHidden is true", async () => {
+		vi.mocked(readdirSync).mockReturnValue([".hidden", "visible"] as any);
+		const result = await handlers.listDirectory({ path: "/tmp/test", showHidden: true });
+		expect(result.entries.map((e) => e.name)).toContain(".hidden");
+	});
+
+	it("includes files when includeFiles is true", async () => {
+		vi.mocked(readdirSync).mockReturnValue(["dir", "file.txt"] as any);
+		vi.mocked(statSync).mockImplementation((p: any) => {
+			const name = String(p).split("/").pop();
+			return { isDirectory: () => name === "dir", size: 0 } as any;
+		});
+		const result = await handlers.listDirectory({ path: "/tmp/test", includeFiles: true });
+		expect(result.entries.map((e) => ({ name: e.name, isDir: e.isDir }))).toEqual([
+			{ name: "dir", isDir: true },
+			{ name: "file.txt", isDir: false },
+		]);
+	});
+
+	it("returns a null parent for the filesystem root", async () => {
+		const result = await handlers.listDirectory({ path: "/" });
+		expect(result.path).toBe("/");
+		expect(result.parent).toBeNull();
+	});
+
+	it("returns an error (not a throw) when the requested path does not exist", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		const result = await handlers.listDirectory({ path: "/no/such/place" });
+		expect(result.entries).toEqual([]);
+		expect(result.error).toBeTruthy();
+	});
+
+	it("skips entries where statSync throws (permission denied / broken symlinks)", async () => {
+		vi.mocked(readdirSync).mockReturnValue(["ok", "denied"] as any);
+		vi.mocked(statSync).mockImplementation((p: any) => {
+			if (String(p).endsWith("/denied")) throw new Error("EACCES");
+			return { isDirectory: () => true, size: 0 } as any;
+		});
+		const result = await handlers.listDirectory({ path: "/tmp/test" });
+		expect(result.entries.map((e) => e.name)).toEqual(["ok"]);
 	});
 });
 

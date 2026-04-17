@@ -4,6 +4,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
+import { openFolderPicker } from "../folder-picker";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -51,7 +52,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		if (browsing) return;
 		setBrowsing(true);
 		try {
-			const folder = await api.request.pickFolder();
+			const folder = await openFolderPicker();
 			if (!folder) return;
 
 			const name = folder.split("/").pop() || folder;
@@ -74,9 +75,9 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	async function handlePickBaseDir() {
 		let folder: string | null;
 		try {
-			folder = await api.request.pickFolder();
+			folder = await openFolderPicker({ initialPath: cloneBaseDir });
 		} catch (err) {
-			console.error("[AddProjectModal] pickFolder failed:", err);
+			console.error("[AddProjectModal] openFolderPicker failed:", err);
 			return;
 		}
 		if (!folder) return;

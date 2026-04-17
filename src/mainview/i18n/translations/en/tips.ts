@@ -198,6 +198,8 @@ const tips = {
 	"tip.cancelPreparing.body": "On a Preparing card, click Cancel to kill setup and send the task back to To Do.",
 	"tip.bugHunterSkill.title": "Seeded bug hunts",
 	"tip.bugHunterSkill.body": "Use the dev3-bug-hunter skill and launch 3-5 variants so each run hunts bugs from a different seeded starting area.",
+	"tip.folderPickerPastePath.title": "Paste a path in the picker",
+	"tip.folderPickerPastePath.body": "The folder picker has a path input at the top — paste an absolute path, hit Enter, and it jumps there instantly.",
 } as const;
 
 export default tips;

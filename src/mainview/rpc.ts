@@ -272,11 +272,6 @@ function initBrowserApi(): ApiShape {
 
 	// ── Browser-side overrides for native-only methods ──────────────
 	const browserOverrides: Record<string, (params: any) => Promise<any>> = {
-		async pickFolder(): Promise<string | null> {
-			const path = prompt("Enter folder path:");
-			return path?.trim() || null;
-		},
-
 		async showConfirm(params: { title: string; message: string }): Promise<boolean> {
 			return confirm(`${params.title}\n\n${params.message}`);
 		},

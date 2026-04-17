@@ -198,6 +198,8 @@ const tips = {
 	"tip.cancelPreparing.body": "На карточке Preparing нажмите Cancel, чтобы прибить setup и вернуть задачу в To Do.",
 	"tip.bugHunterSkill.title": "Сидированный поиск багов",
 	"tip.bugHunterSkill.body": "Используйте skill dev3-bug-hunter и запускайте 3-5 вариантов, чтобы каждый шёл в свою seeded стартовую зону.",
+	"tip.folderPickerPastePath.title": "Вставка пути в пикер",
+	"tip.folderPickerPastePath.body": "В пикере папок сверху есть поле ввода — вставьте абсолютный путь и нажмите Enter, чтобы сразу прыгнуть туда.",
 };
 
 export default tips;

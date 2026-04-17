@@ -619,6 +619,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.bugHunterSkill.body",
 		icon: "\uF188", // nf-fa-bug
 	},
+	// Batch 29: custom folder picker
+	{
+		id: "folder-picker-paste-path",
+		titleKey: "tip.folderPickerPastePath.title",
+		bodyKey: "tip.folderPickerPastePath.body",
+		icon: "\u{F0770}", // nf-md-folder_open
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
