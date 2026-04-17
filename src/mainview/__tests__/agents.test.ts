@@ -120,7 +120,7 @@ describe("mergeWithDefaults", () => {
 
 		// Original config is first (name reset by version bump)
 		expect(claude.configurations[0].id).toBe("claude-default");
-		expect(claude.configurations[0].name).toBe("Default (By Default)");
+		expect(claude.configurations[0].name).toBe("Default (Opus 4.7)");
 
 		// All new defaults appended
 		for (const expected of expectedNewConfigs) {
@@ -154,7 +154,7 @@ describe("mergeWithDefaults", () => {
 				name: "Claude",
 				baseCommand: "claude",
 				configurations: [
-					{ id: "claude-default", name: "My Custom Name", model: "haiku", version: 3 },
+					{ id: "claude-default", name: "My Custom Name", model: "haiku", version: 4 },
 					{ id: "user-custom-cfg", name: "My Extra Config" },
 				],
 				defaultConfigId: "claude-default",

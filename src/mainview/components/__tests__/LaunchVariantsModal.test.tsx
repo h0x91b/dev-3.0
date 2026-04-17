@@ -32,8 +32,8 @@ const claudeAgent: CodingAgent = {
 	isDefault: true,
 	configurations: [
 		{ id: "claude-default", name: "Default", model: "sonnet" },
-		{ id: "claude-plan", name: "Plan (By Default)" },
-		{ id: "claude-bypass", name: "Bypass (By Default)" },
+		{ id: "claude-plan", name: "Plan (Opus 4.7)" },
+		{ id: "claude-bypass", name: "Bypass (Opus 4.7)" },
 	],
 	defaultConfigId: "claude-default",
 };
@@ -237,7 +237,7 @@ describe("LaunchVariantsModal", () => {
 			renderModal(project, { globalSettings: gs });
 
 			const configBtn = getConfigButtons()[0];
-			expect(getSelectedText(configBtn)).toBe("Plan (By Default)");
+			expect(getSelectedText(configBtn)).toBe("Plan (Opus 4.7)");
 		});
 
 		it("falls back to first config when agent has no defaultConfigId and global config is null", () => {
@@ -284,8 +284,8 @@ describe("LaunchVariantsModal", () => {
 			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options).toHaveLength(3);
 			expect(options[0]).toBe("Default");
-			expect(options[1]).toBe("Plan (By Default)");
-			expect(options[2]).toBe("Bypass (By Default)");
+			expect(options[1]).toBe("Plan (Opus 4.7)");
+			expect(options[2]).toBe("Bypass (Opus 4.7)");
 		});
 
 		it("shows curated configurations for Codex", async () => {
