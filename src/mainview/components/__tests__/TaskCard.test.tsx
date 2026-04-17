@@ -70,7 +70,7 @@ const claudeAgent: CodingAgent = {
 	isDefault: true,
 	configurations: [
 		{ id: "claude-default", name: "Default", model: "sonnet" },
-		{ id: "claude-plan", name: "Plan (By Default)" },
+		{ id: "claude-plan", name: "Plan (Opus 4.7)" },
 	],
 	defaultConfigId: "claude-default",
 };
