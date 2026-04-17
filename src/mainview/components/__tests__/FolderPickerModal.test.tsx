@@ -41,6 +41,7 @@ function renderHost() {
 describe("FolderPickerHost", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		localStorage.removeItem("dev3-folder-picker-recent");
 	});
 
 	it("stays invisible until a picker request arrives", () => {
@@ -96,5 +97,69 @@ describe("FolderPickerHost", () => {
 		openFolderPicker({ initialPath: "/no/access" });
 
 		expect(await screen.findByText(/EACCES/)).toBeInTheDocument();
+	});
+
+	it("renders sidebar shortcuts for Home + Desktop/Documents/Downloads when they exist", async () => {
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test", [
+				{ name: "Desktop", isDir: true },
+				{ name: "Documents", isDir: true },
+				{ name: "Downloads", isDir: true },
+				{ name: "other", isDir: true },
+			]),
+		);
+
+		renderHost();
+		openFolderPicker();
+
+		await screen.findByTestId("folder-picker-backdrop");
+		expect(await screen.findByText("Home")).toBeInTheDocument();
+		expect(screen.getByText("Desktop")).toBeInTheDocument();
+		expect(screen.getByText("Documents")).toBeInTheDocument();
+		expect(screen.getByText("Downloads")).toBeInTheDocument();
+		// Root shortcut is always present
+		expect(screen.getByText("Root")).toBeInTheDocument();
+	});
+
+	it("saves the selected path to recent, and shows it in the sidebar next time", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test/projects", [{ name: "web", isDir: true }]),
+		);
+
+		renderHost();
+		const picked = openFolderPicker({ initialPath: "/Users/test/projects" });
+		await screen.findByTestId("folder-picker-backdrop");
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		await user.click(screen.getByText("Select"));
+		await picked;
+
+		const stored = JSON.parse(localStorage.getItem("dev3-folder-picker-recent") ?? "[]");
+		expect(stored).toEqual(["/Users/test/projects"]);
+	});
+
+	it("filter input hides non-matching rows in the loaded tree", async () => {
+		const user = userEvent.setup();
+		// Use names that aren't also sidebar shortcuts so `getByText` finds
+		// them exactly once — the tree row.
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test", [
+				{ name: "aardvark", isDir: true },
+				{ name: "zebra-notes", isDir: true },
+				{ name: "midnight", isDir: true },
+			]),
+		);
+
+		renderHost();
+		openFolderPicker();
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await screen.findByText("aardvark");
+		const filterInput = screen.getByPlaceholderText("Filter folders…");
+		await user.type(filterInput, "zeb");
+
+		expect(screen.getByText("zebra-notes")).toBeInTheDocument();
+		expect(screen.queryByText("aardvark")).not.toBeInTheDocument();
+		expect(screen.queryByText("midnight")).not.toBeInTheDocument();
 	});
 });
