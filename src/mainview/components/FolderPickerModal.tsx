@@ -44,66 +44,54 @@ function buildBreadcrumbs(path: string): Array<{ label: string; path: string; is
 	return crumbs;
 }
 
-// ── Inline SVG icons (Lucide-style, 20×20 viewBox). Using SVG instead of
-//    Nerd Font glyphs so icons render consistently across all transports
-//    (desktop + remote browser) without depending on custom font loading.
-// ──────────────────────────────────────────────────────────────────────
-function ChevronIcon({ expanded }: { expanded: boolean }) {
+// ── Nerd Font glyphs ───────────────────────────────────────────────
+// The app bundles JetBrainsMono Nerd Font Mono (see index.css @font-face).
+// Codepoints come from https://www.nerdfonts.com/cheat-sheet — always use
+// ES6 `\u{XXXXX}` for anything above U+FFFF (see CLAUDE.md font note).
+const NF = {
+	chevronRight: "\u{F0142}",   // nf-md-chevron_right
+	chevronDown: "\u{F0140}",    // nf-md-chevron_down
+	folderClosed: "\u{F024B}",   // nf-md-folder
+	folderOpen: "\u{F0770}",     // nf-md-folder_open
+	home: "\u{F02DC}",           // nf-md-home
+	hardDisk: "\u{F02C9}",       // nf-md-harddisk
+	loading: "\u{F0772}",        // nf-md-loading (spinner arc)
+} as const;
+
+const NF_FONT = "'JetBrainsMono Nerd Font Mono'";
+
+interface GlyphProps {
+	glyph: string;
+	size?: string;          // e.g. "1rem", "1.125rem"
+	color?: string;         // CSS color; falls back to currentColor
+	className?: string;
+	title?: string;
+	spin?: boolean;
+}
+
+function Glyph({ glyph, size = "1rem", color, className = "", title, spin }: GlyphProps) {
 	return (
-		<svg
-			viewBox="0 0 20 20"
-			width="14"
-			height="14"
-			className="flex-shrink-0 text-fg-muted"
-			style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 120ms" }}
-			aria-hidden="true"
+		<span
+			className={`inline-flex items-center justify-center leading-none flex-shrink-0 ${spin ? "animate-spin" : ""} ${className}`}
+			style={{ fontFamily: NF_FONT, fontSize: size, width: size, height: size, color }}
+			aria-hidden={title ? undefined : true}
+			title={title}
 		>
-			<path d="M7 5l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-		</svg>
+			{glyph}
+		</span>
 	);
+}
+
+function ChevronGlyph({ expanded }: { expanded: boolean }) {
+	return <Glyph glyph={expanded ? NF.chevronDown : NF.chevronRight} size="0.95rem" className="text-fg-muted" />;
 }
 
 function ChevronPlaceholder() {
-	return <span aria-hidden="true" className="inline-block w-[14px] flex-shrink-0" />;
+	return <span aria-hidden="true" className="inline-block flex-shrink-0" style={{ width: "0.95rem", height: "0.95rem" }} />;
 }
 
-function FolderIcon({ open }: { open: boolean }) {
-	return (
-		<svg viewBox="0 0 20 20" width="16" height="16" className="flex-shrink-0" aria-hidden="true">
-			{open ? (
-				<path
-					d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.6a1.5 1.5 0 0 1 1.06.44l.94.94a1.5 1.5 0 0 0 1.06.44H16a1.5 1.5 0 0 1 1.5 1.5v.37H4.6a1.5 1.5 0 0 0-1.45 1.1L2 14V5.5Zm1.6 3.87a.7.7 0 0 0-.68.51l-1.15 4.4A1 1 0 0 0 3.24 15.5h12.5a1 1 0 0 0 .97-.73l1.22-4.41a.7.7 0 0 0-.68-.89H4.1Z"
-					fill="#f6c653"
-					stroke="#c48f1d"
-					strokeWidth="0.4"
-				/>
-			) : (
-				<path
-					d="M4 4a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 4 16h12a1.5 1.5 0 0 0 1.5-1.5V7.5A1.5 1.5 0 0 0 16 6H10.4a.5.5 0 0 1-.36-.15l-.98-.98A1.5 1.5 0 0 0 8 4.44L7.6 4H4Z"
-					fill="#f6c653"
-					stroke="#c48f1d"
-					strokeWidth="0.4"
-				/>
-			)}
-		</svg>
-	);
-}
-
-function HomeIcon() {
-	return (
-		<svg viewBox="0 0 20 20" width="14" height="14" className="flex-shrink-0" aria-hidden="true">
-			<path d="M10 3.2 3 8.5V16a1 1 0 0 0 1 1h3.5v-4.5h5V17H16a1 1 0 0 0 1-1V8.5L10 3.2Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-		</svg>
-	);
-}
-
-function HardDriveIcon() {
-	return (
-		<svg viewBox="0 0 20 20" width="14" height="14" className="flex-shrink-0" aria-hidden="true">
-			<path d="M3 12h14M3 12 5 6h10l2 6M3 12v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-			<circle cx="14" cy="14.5" r="0.9" fill="currentColor" />
-		</svg>
-	);
+function FolderGlyph({ open }: { open: boolean }) {
+	return <Glyph glyph={open ? NF.folderOpen : NF.folderClosed} size="1.05rem" color="#f6c653" />;
 }
 
 /**
@@ -241,7 +229,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 							className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md text-fg-2 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
 							title={home || undefined}
 						>
-							<HomeIcon />
+							<Glyph glyph={NF.home} size="0.95rem" />
 							{t("folderPicker.home")}
 						</button>
 						<button
@@ -250,7 +238,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 							className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 							title="/"
 						>
-							<HardDriveIcon />
+							<Glyph glyph={NF.hardDisk} size="0.95rem" />
 							{t("folderPicker.rootFs")}
 						</button>
 					</div>
@@ -410,12 +398,10 @@ function FolderTree({ rootPath, listingsRef, onSelect, onNavigate }: FolderTreeP
 								: "text-fg-2 hover:bg-elevated hover:text-fg"
 						}`}
 					>
-						{data.isDir ? <ChevronIcon expanded={expanded} /> : <ChevronPlaceholder />}
-						<FolderIcon open={expanded && data.isDir} />
+						{data.isDir ? <ChevronGlyph expanded={expanded} /> : <ChevronPlaceholder />}
+						<FolderGlyph open={expanded && data.isDir} />
 						<span className="truncate">{data.name}</span>
-						{loading && (
-							<span className="ml-1 inline-block w-2.5 h-2.5 rounded-full bg-accent/50 animate-pulse flex-shrink-0" aria-label="loading" />
-						)}
+						{loading && <Glyph glyph={NF.loading} size="0.85rem" className="text-fg-muted ml-1" spin />}
 					</button>
 				);
 			})}
