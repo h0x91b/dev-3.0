@@ -1,5 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
-import type { ExternalApp } from "../shared/types";
+import {
+	DEFAULT_TASKS_QUICK_SWITCH_FILTERS,
+	DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT,
+	normalizeTasksQuickSwitchFilters,
+	normalizeTasksQuickSwitchShortcut,
+	type ExternalApp,
+	type TasksQuickSwitchFilter,
+	type TasksQuickSwitchShortcut,
+} from "../shared/types";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -24,6 +32,8 @@ export interface GlobalSettings {
 	taskOpenMode?: "split" | "fullscreen";
 	defaultDiffViewMode?: "split" | "unified";
 	preventSleepWhileRunning?: boolean;
+	tasksQuickSwitchFilters?: TasksQuickSwitchFilter[];
+	tasksQuickSwitchShortcut?: TasksQuickSwitchShortcut;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -31,6 +41,8 @@ const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultConfigId: "claude-default",
 	taskDropPosition: "top",
 	updateChannel: "stable",
+	tasksQuickSwitchFilters: [...DEFAULT_TASKS_QUICK_SWITCH_FILTERS],
+	tasksQuickSwitchShortcut: { ...DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT },
 };
 
 export async function loadSettings(): Promise<GlobalSettings> {
@@ -56,6 +68,15 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			defaultDiffViewMode: data.defaultDiffViewMode === "unified" ? "unified" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
+			tasksQuickSwitchFilters: normalizeTasksQuickSwitchFilters(
+				Array.isArray(data.tasksQuickSwitchFilters)
+					? data.tasksQuickSwitchFilters
+					: data.tasksQuickSwitchStatuses,
+			),
+			tasksQuickSwitchShortcut: normalizeTasksQuickSwitchShortcut(
+				data.tasksQuickSwitchShortcut,
+				data.tasksQuickSwitchShortcutModifier,
+			),
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -96,6 +117,15 @@ export function loadSettingsSync(): GlobalSettings {
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			defaultDiffViewMode: data.defaultDiffViewMode === "unified" ? "unified" : undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
+			tasksQuickSwitchFilters: normalizeTasksQuickSwitchFilters(
+				Array.isArray(data.tasksQuickSwitchFilters)
+					? data.tasksQuickSwitchFilters
+					: data.tasksQuickSwitchStatuses,
+			),
+			tasksQuickSwitchShortcut: normalizeTasksQuickSwitchShortcut(
+				data.tasksQuickSwitchShortcut,
+				data.tasksQuickSwitchShortcutModifier,
+			),
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

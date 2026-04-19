@@ -212,6 +212,8 @@ const tips = {
 	"tip.copyWorktreePath.body": "Haz clic en el icono de carpeta+portapapeles en la barra de la tarea, o clic derecho en la tarjeta → Copy Path.",
 	"tip.cancelPreparing.title": "Aborta la preparación",
 	"tip.cancelPreparing.body": "En una tarjeta Preparing, pulsa Cancel para matar el setup y devolver la tarea a To Do.",
+	"tip.tasksQuickSwitch.title": "Recorre tareas activas",
+	"tip.tasksQuickSwitch.body": "Usa el atajo configurado para saltar entre tareas activas recientes; cambia teclas y tipos de tarea en Global Settings.",
 	"tip.bugHunterSkill.title": "Caza de bugs con seed",
 	"tip.bugHunterSkill.body": "Usa la skill dev3-bug-hunter y lanza 3-5 variantes para que cada ejecución empiece en una zona seeded distinta.",
 	"tip.folderPickerPastePath.title": "Pega una ruta en el picker",

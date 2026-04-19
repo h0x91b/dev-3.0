@@ -1,9 +1,14 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
+import type {
+	CodingAgent,
+	GlobalSettings as GlobalSettingsType,
+	Project,
+} from "../../../shared/types";
 import { KEYMAP_LS_KEY } from "../../terminal-keymaps";
+import { TASKS_QUICK_SWITCH_SHORTCUT_LS_KEY } from "../global-settings/utils";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -21,6 +26,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getAgents: vi.fn(),
 			saveAgents: vi.fn(),
+			getProjects: vi.fn(),
 			getGlobalSettings: vi.fn(),
 			saveGlobalSettings: vi.fn(),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
@@ -60,7 +66,38 @@ const mockGlobalSettings: GlobalSettingsType = {
 	defaultConfigId: "cfg-1",
 	taskDropPosition: "top",
 	updateChannel: "stable",
+	tasksQuickSwitchShortcut: {
+		modifiers: ["alt"],
+		key: "Tab",
+	},
+	tasksQuickSwitchFilters: [
+		"in-progress",
+		"review-by-ai",
+		"review-by-user",
+		"review-by-colleague",
+	],
 };
+
+const mockProjects: Project[] = [
+	{
+		id: "p1",
+		name: "Alpha",
+		path: "/alpha",
+		setupScript: "",
+		devScript: "",
+		cleanupScript: "",
+		defaultBaseBranch: "main",
+		createdAt: "2026-04-15T10:00:00.000Z",
+		customColumns: [
+			{
+				id: "col-waiting",
+				name: "Waiting on API",
+				color: "#22c55e",
+				llmInstruction: "",
+			},
+		],
+	},
+];
 
 function renderGlobalSettings() {
 	return render(
@@ -75,6 +112,7 @@ function setupMocks(
 	settings: GlobalSettingsType = mockGlobalSettings,
 ) {
 	mockedApi.request.getAgents.mockResolvedValue(agents);
+	mockedApi.request.getProjects.mockResolvedValue(mockProjects);
 	mockedApi.request.getGlobalSettings.mockResolvedValue(settings);
 	mockedApi.request.saveAgents.mockResolvedValue(undefined as any);
 	mockedApi.request.saveGlobalSettings.mockResolvedValue(undefined as any);
@@ -90,10 +128,17 @@ async function waitForLoad() {
 }
 
 describe("GlobalSettings", () => {
+	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
 		document.documentElement.dataset.theme = "dark";
+		scrollIntoViewMock = vi.fn();
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoViewMock,
+		});
 	});
 
 	describe("initial load", () => {
@@ -103,6 +148,7 @@ describe("GlobalSettings", () => {
 			await waitForLoad();
 
 			expect(mockedApi.request.getAgents).toHaveBeenCalledOnce();
+			expect(mockedApi.request.getProjects).toHaveBeenCalledOnce();
 			expect(mockedApi.request.getGlobalSettings).toHaveBeenCalledOnce();
 		});
 
@@ -210,6 +256,237 @@ describe("GlobalSettings", () => {
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({ taskDropPosition: "bottom" }),
 			);
+		});
+	});
+
+	describe("tasks quick switch", () => {
+		it("shows Option/Alt + Tab as the default shortcut", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(
+				screen.getByRole("button", { name: "Option/Alt + Tab" }).className,
+			).toContain("border-accent");
+		});
+
+		it("switches the shortcut to Ctrl + Tab and saves it", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: "Ctrl + Tab" }));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tasksQuickSwitchShortcut: {
+						modifiers: ["ctrl"],
+						key: "Tab",
+					},
+				}),
+			);
+			expect(localStorage.getItem(TASKS_QUICK_SWITCH_SHORTCUT_LS_KEY)).toBe(
+				JSON.stringify({
+					modifiers: ["ctrl"],
+					key: "Tab",
+				}),
+			);
+		});
+
+		it("shows the current shortcut as read-only text", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(
+				screen.getByLabelText("Current shortcut"),
+			).toHaveTextContent("Option/Alt + Tab");
+			expect(
+				screen.queryByRole("button", { name: "Current shortcut" }),
+			).not.toBeInTheDocument();
+		});
+
+		it("shows active plus completed and cancelled chips, with completed/cancelled unselected by default", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(
+				screen.getByRole("button", { name: "Agent is Working" }).className,
+			).toContain("border-accent");
+			expect(
+				screen.getByRole("button", { name: "Has Questions" }).className,
+			).not.toContain("border-accent");
+			expect(
+				screen.queryByRole("button", { name: "To Do" }),
+			).not.toBeInTheDocument();
+			expect(
+				screen.getByRole("button", { name: "Completed" }).className,
+			).not.toContain("border-accent");
+			expect(
+				screen.getByRole("button", { name: "Cancelled" }).className,
+			).not.toContain("border-accent");
+			expect(
+				screen.getByRole("button", { name: "Alpha / Waiting on API" }),
+			).toBeInTheDocument();
+		});
+
+		it("drops legacy todo while preserving completed and cancelled filters when saving", async () => {
+			setupMocks(mockAgents, {
+				...mockGlobalSettings,
+				tasksQuickSwitchFilters: [
+					"todo",
+					"in-progress",
+					"completed",
+					"cancelled",
+				],
+			});
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: "Has Questions" }));
+
+			const savedSettings =
+				mockedApi.request.saveGlobalSettings.mock.calls[
+					mockedApi.request.saveGlobalSettings.mock.calls.length - 1
+				]?.[0];
+			expect(savedSettings).toEqual(
+				expect.objectContaining({
+					tasksQuickSwitchFilters: [
+						"in-progress",
+						"completed",
+						"cancelled",
+						"user-questions",
+					],
+				}),
+			);
+		});
+
+		it("adds an optional status and saves it", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: "Has Questions" }));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tasksQuickSwitchFilters: expect.arrayContaining([
+						"user-questions",
+					]),
+				}),
+			);
+		});
+
+		it("records a custom shortcut in the modal and saves on Save click", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const customButton = screen.getByRole("button", { name: "Custom" });
+			await user.click(customButton);
+			const recorder = screen.getByRole("button", {
+				name: "Record quick switch shortcut",
+			});
+			await user.click(recorder);
+			await user.keyboard("{Control>}{Shift>}k{/Shift}{/Control}");
+
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+
+			await user.click(screen.getByRole("button", { name: "Save" }));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tasksQuickSwitchShortcut: {
+						modifiers: ["ctrl", "shift"],
+						key: "K",
+					},
+				}),
+			);
+			expect(localStorage.getItem(TASKS_QUICK_SWITCH_SHORTCUT_LS_KEY)).toBe(
+				JSON.stringify({
+					modifiers: ["ctrl", "shift"],
+					key: "K",
+				}),
+			);
+			await waitFor(() => expect(document.activeElement).toBe(customButton));
+			expect(scrollIntoViewMock).toHaveBeenCalled();
+		});
+
+		it("captures a custom shortcut immediately after clicking Custom", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: "Custom" }));
+			await user.keyboard("{Control>}j{/Control}");
+
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+
+			await user.click(screen.getByRole("button", { name: "Save" }));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tasksQuickSwitchShortcut: {
+						modifiers: ["ctrl"],
+						key: "J",
+					},
+				}),
+			);
+		});
+
+		it("records the physical letter key instead of the produced Option character", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: "Custom" }));
+			const recorder = screen.getByRole("button", {
+				name: "Record quick switch shortcut",
+			});
+			fireEvent.keyDown(recorder, {
+					key: "Π",
+					code: "KeyP",
+					altKey: true,
+					shiftKey: true,
+					bubbles: true,
+			});
+			await user.click(screen.getByRole("button", { name: "Save" }));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({
+					tasksQuickSwitchShortcut: {
+						modifiers: ["alt", "shift"],
+						key: "P",
+					},
+				}),
+			);
+		});
+
+		it("cancels a recorded shortcut without saving it", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const customButton = screen.getByRole("button", { name: "Custom" });
+			await user.click(customButton);
+			await user.keyboard("{Control>}j{/Control}");
+			await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+			expect(screen.queryByText("Set custom shortcut")).not.toBeInTheDocument();
+			expect(screen.getByLabelText("Current shortcut")).toHaveTextContent(
+				"Option/Alt + Tab",
+			);
+			await waitFor(() => expect(document.activeElement).toBe(customButton));
+			expect(scrollIntoViewMock).toHaveBeenCalled();
 		});
 	});
 

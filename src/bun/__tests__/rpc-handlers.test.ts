@@ -1282,6 +1282,40 @@ describe("handlers.getTasks", () => {
 });
 
 // ================================================================
+// handlers.getTasksQuickSwitchTasks
+// ================================================================
+
+describe("handlers.getTasksQuickSwitchTasks", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("returns every quick-switch-eligible status but still excludes todo", async () => {
+		const project = makeProject();
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({ id: "todo-1", status: "todo", worktreePath: null, branchName: null }),
+			makeTask({ id: "active-1", status: "in-progress" }),
+			makeTask({ id: "questions-1", status: "user-questions" }),
+			makeTask({ id: "completed-1", status: "completed", worktreePath: null, branchName: null }),
+			makeTask({ id: "cancelled-1", status: "cancelled", worktreePath: null, branchName: null }),
+		]);
+
+		const result = await handlers.getTasksQuickSwitchTasks();
+
+		expect(result).toEqual([
+			{
+				projectId: project.id,
+				tasks: [
+					expect.objectContaining({ id: "active-1", status: "in-progress" }),
+					expect.objectContaining({ id: "questions-1", status: "user-questions" }),
+					expect.objectContaining({ id: "completed-1", status: "completed" }),
+					expect.objectContaining({ id: "cancelled-1", status: "cancelled" }),
+				],
+			},
+		]);
+	});
+});
+
+// ================================================================
 // handlers.createTask
 // ================================================================
 

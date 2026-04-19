@@ -40,6 +40,18 @@ export const MERGE_COMPLETE_ELIGIBLE_STATUSES: TaskStatus[] = [
 	"review-by-colleague",
 ];
 
+export const DEFAULT_TASKS_QUICK_SWITCH_STATUSES: TaskStatus[] = [
+	"in-progress",
+	"review-by-ai",
+	"review-by-user",
+	"review-by-colleague",
+];
+
+export type TasksQuickSwitchShortcutModifier = "alt" | "ctrl";
+
+export const DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT_MODIFIER: TasksQuickSwitchShortcutModifier =
+	"alt";
+
 export const ALL_STATUSES: TaskStatus[] = [
 	"todo",
 	"in-progress",
@@ -50,6 +62,10 @@ export const ALL_STATUSES: TaskStatus[] = [
 	"completed",
 	"cancelled",
 ];
+
+export const TASKS_QUICK_SWITCH_FILTER_STATUSES: TaskStatus[] = ALL_STATUSES.filter(
+	(status) => status !== "todo",
+);
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
 	todo: "To Do",
@@ -83,6 +99,46 @@ export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	completed: "#059669",
 	cancelled: "#dc2626",
 };
+
+export type TasksQuickSwitchFilter = TaskStatus | `custom:${string}`;
+
+export type ShortcutModifier = "ctrl" | "alt" | "shift" | "meta";
+
+export interface TasksQuickSwitchShortcut {
+	modifiers: ShortcutModifier[];
+	key: string;
+}
+
+export const DEFAULT_TASKS_QUICK_SWITCH_FILTERS: TasksQuickSwitchFilter[] = [
+	...DEFAULT_TASKS_QUICK_SWITCH_STATUSES,
+];
+
+export const DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT: TasksQuickSwitchShortcut = {
+	modifiers: [DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT_MODIFIER],
+	key: "Tab",
+};
+
+const TASKS_QUICK_SWITCH_SHORTCUT_MODIFIERS: ShortcutModifier[] = [
+	"ctrl",
+	"alt",
+	"shift",
+	"meta",
+];
+
+export function makeTasksQuickSwitchCustomFilter(
+	customColumnId: string,
+): TasksQuickSwitchFilter {
+	return `custom:${customColumnId}`;
+}
+
+export function getTasksQuickSwitchCustomColumnId(
+	filter: string | null | undefined,
+): string | null {
+	if (!filter?.startsWith("custom:")) {
+		return null;
+	}
+	return filter.slice("custom:".length) || null;
+}
 
 /** Convert "#rrggbb" → "R G B" for use as CSS variable value */
 export function hexToRgb(hex: string): string {
@@ -387,6 +443,10 @@ export interface GlobalSettings {
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	defaultDiffViewMode?: "split" | "unified"; // default inline diff layout
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
+	tasksQuickSwitchFilters?: TasksQuickSwitchFilter[]; // statuses and custom columns shown in the quick switch
+	tasksQuickSwitchShortcut?: TasksQuickSwitchShortcut; // key chord used for the quick switch shortcut
+	tasksQuickSwitchStatuses?: TaskStatus[]; // legacy status-only quick switch filters
+	tasksQuickSwitchShortcutModifier?: TasksQuickSwitchShortcutModifier; // legacy modifier-only quick switch shortcut
 }
 
 export interface TipState {
@@ -650,6 +710,122 @@ export interface TaskSessionState {
 /** Returns the display title: custom override if set, otherwise auto-generated. */
 export function getTaskTitle(task: Task): string {
 	return task.customTitle || task.title;
+}
+
+export function normalizeTasksQuickSwitchStatuses(
+	statuses: TaskStatus[] | null | undefined,
+): TaskStatus[] {
+	const filtered = (statuses ?? []).filter((status, index, arr) =>
+		TASKS_QUICK_SWITCH_FILTER_STATUSES.includes(status) &&
+		arr.indexOf(status) === index,
+	);
+	return filtered.length > 0
+		? filtered
+		: [...DEFAULT_TASKS_QUICK_SWITCH_STATUSES];
+}
+
+export function normalizeTasksQuickSwitchFilters(
+	filters: (string | null | undefined)[] | null | undefined,
+): TasksQuickSwitchFilter[] {
+	const filtered = (filters ?? []).filter((filter, index, arr): filter is TasksQuickSwitchFilter => {
+		if (typeof filter !== "string") {
+			return false;
+		}
+		const isBuiltInStatus = TASKS_QUICK_SWITCH_FILTER_STATUSES.includes(
+			filter as TaskStatus,
+		);
+		const isCustomColumn = getTasksQuickSwitchCustomColumnId(filter) !== null;
+		return (isBuiltInStatus || isCustomColumn) && arr.indexOf(filter) === index;
+	});
+	return filtered.length > 0
+		? filtered
+		: [...DEFAULT_TASKS_QUICK_SWITCH_FILTERS];
+}
+
+export function normalizeTasksQuickSwitchShortcutModifier(
+	modifier: string | null | undefined,
+): TasksQuickSwitchShortcutModifier {
+	return modifier === "ctrl"
+		? "ctrl"
+		: DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT_MODIFIER;
+}
+
+export function normalizeTasksQuickSwitchShortcutModifiers(
+	modifiers: (string | null | undefined)[] | null | undefined,
+): ShortcutModifier[] {
+	const seen = new Set(
+		(modifiers ?? []).filter((modifier): modifier is ShortcutModifier =>
+			TASKS_QUICK_SWITCH_SHORTCUT_MODIFIERS.includes(modifier as ShortcutModifier),
+		),
+	);
+	// Always return in canonical order so isQuickSwitchShortcutPressed's
+	// positional comparison against keyboard-event modifiers works regardless
+	// of how the shortcut was stored (e.g. hand-edited settings file).
+	return TASKS_QUICK_SWITCH_SHORTCUT_MODIFIERS.filter((m) => seen.has(m));
+}
+
+export function normalizeTasksQuickSwitchShortcutKey(
+	key: string | null | undefined,
+): string | null {
+	if (typeof key !== "string") {
+		return null;
+	}
+	if (key === " ") {
+		return "Space";
+	}
+	if (key === "Esc") {
+		return "Escape";
+	}
+	if (
+		key === "Shift" ||
+		key === "Control" ||
+		key === "Alt" ||
+		key === "Meta"
+	) {
+		return null;
+	}
+	if (key.length === 1) {
+		return key.toUpperCase();
+	}
+	return key || null;
+}
+
+export function normalizeTasksQuickSwitchShortcut(
+	shortcut: Partial<TasksQuickSwitchShortcut> | null | undefined,
+	legacyModifier?: string | null | undefined,
+): TasksQuickSwitchShortcut {
+	const modifiers = normalizeTasksQuickSwitchShortcutModifiers(
+		Array.isArray(shortcut?.modifiers) ? shortcut.modifiers : undefined,
+	);
+	const key = normalizeTasksQuickSwitchShortcutKey(shortcut?.key);
+	if (modifiers.length > 0 && key) {
+		return {
+			modifiers,
+			key,
+		};
+	}
+	return {
+		modifiers: [
+			normalizeTasksQuickSwitchShortcutModifier(legacyModifier),
+		],
+		key: DEFAULT_TASKS_QUICK_SWITCH_SHORTCUT.key,
+	};
+}
+
+export function tasksQuickSwitchShortcutsEqual(
+	left: TasksQuickSwitchShortcut | null | undefined,
+	right: TasksQuickSwitchShortcut | null | undefined,
+): boolean {
+	if (!left || !right) {
+		return false;
+	}
+	if (left.key !== right.key) {
+		return false;
+	}
+	if (left.modifiers.length !== right.modifiers.length) {
+		return false;
+	}
+	return left.modifiers.every((modifier, index) => modifier === right.modifiers[index]);
 }
 
 /** Humanize a status slug for display in notifications (e.g. "in-progress" → "In Progress"). */
@@ -1008,6 +1184,10 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			getAllProjectTasks: {
+				params: void;
+				response: { projectId: string; tasks: Task[] }[];
+			};
+			getTasksQuickSwitchTasks: {
 				params: void;
 				response: { projectId: string; tasks: Task[] }[];
 			};

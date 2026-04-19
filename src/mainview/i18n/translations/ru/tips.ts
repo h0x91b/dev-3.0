@@ -212,6 +212,8 @@ const tips = {
 	"tip.copyWorktreePath.body": "Нажмите иконку папки с буфером обмена в заголовке задачи, или правый клик по карточке → Copy Path.",
 	"tip.cancelPreparing.title": "Прервать подготовку",
 	"tip.cancelPreparing.body": "На карточке Preparing нажмите Cancel, чтобы прибить setup и вернуть задачу в To Do.",
+	"tip.tasksQuickSwitch.title": "Переключение активных задач",
+	"tip.tasksQuickSwitch.body": "Используйте настроенный шорткат быстрого переключения для перехода по недавним активным задачам; клавиши и типы задач меняются в Global Settings.",
 	"tip.bugHunterSkill.title": "Сидированный поиск багов",
 	"tip.bugHunterSkill.body": "Используйте skill dev3-bug-hunter и запускайте 3-5 вариантов, чтобы каждый шёл в свою seeded стартовую зону.",
 	"tip.folderPickerPastePath.title": "Вставка пути в пикер",

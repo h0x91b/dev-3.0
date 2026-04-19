@@ -5,12 +5,16 @@ import {
 	formatStatus,
 	ALL_STATUSES,
 	ACTIVE_STATUSES,
+	TASKS_QUICK_SWITCH_FILTER_STATUSES,
+	normalizeTasksQuickSwitchFilters,
+	normalizeTasksQuickSwitchStatuses,
 	STATUS_LABELS,
 	STATUS_COLORS,
 	STATUS_COLORS_LIGHT,
 	DEFAULT_AGENTS,
 	getPrimaryStopTarget,
 	LABEL_COLORS,
+	makeTasksQuickSwitchCustomFilter,
 } from "../../shared/types";
 import type { TaskStatus } from "../../shared/types";
 
@@ -359,5 +363,41 @@ describe("formatStatus", () => {
 		expect(formatStatus("todo")).toBe("Todo");
 		expect(formatStatus("completed")).toBe("Completed");
 		expect(formatStatus("cancelled")).toBe("Cancelled");
+	});
+});
+
+describe("tasks quick switch normalization", () => {
+	it("allows completed and cancelled in quick switch filter statuses but still excludes todo", () => {
+		expect(TASKS_QUICK_SWITCH_FILTER_STATUSES).toContain("completed");
+		expect(TASKS_QUICK_SWITCH_FILTER_STATUSES).toContain("cancelled");
+		expect(TASKS_QUICK_SWITCH_FILTER_STATUSES).not.toContain("todo");
+	});
+
+	it("drops todo but keeps completed and cancelled in legacy quick switch status settings", () => {
+		expect(
+			normalizeTasksQuickSwitchStatuses([
+				"todo",
+				"in-progress",
+				"completed",
+				"cancelled",
+			]),
+		).toEqual(["in-progress", "completed", "cancelled"]);
+	});
+
+	it("drops todo from quick switch filters but keeps completed, cancelled, and custom columns", () => {
+		expect(
+			normalizeTasksQuickSwitchFilters([
+				"todo",
+				"in-progress",
+				"completed",
+				makeTasksQuickSwitchCustomFilter("col-waiting"),
+				"cancelled",
+			]),
+		).toEqual([
+			"in-progress",
+			"completed",
+			"custom:col-waiting",
+			"cancelled",
+		]);
 	});
 });

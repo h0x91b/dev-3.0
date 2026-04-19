@@ -11,6 +11,21 @@ const common = {
 	"quit.confirm": "Salir",
 	"quit.cancel": "Cancelar",
 
+	// Tasks Quick Switch
+	"quickSwitch.title": "Cambio rápido de tareas",
+	"quickSwitch.empty": "Ninguna tarea coincide con los tipos seleccionados.",
+	"quickSwitch.hint": "Suelta {shortcut} para cambiar. Usa Tab o las flechas para moverte.",
+	"quickSwitch.shortcutAlt": "Option/Alt",
+	"quickSwitch.shortcutCtrl": "Ctrl",
+	"quickSwitch.shortcutShift": "Shift",
+	"quickSwitch.shortcutMeta": "Cmd",
+	"quickSwitch.keyTab": "Tab",
+	"quickSwitch.keySpace": "Espacio",
+	"quickSwitch.keyArrowUp": "Arriba",
+	"quickSwitch.keyArrowDown": "Abajo",
+	"quickSwitch.keyArrowLeft": "Izquierda",
+	"quickSwitch.keyArrowRight": "Derecha",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "Agente trabajando",

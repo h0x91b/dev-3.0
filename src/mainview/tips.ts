@@ -708,6 +708,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.scratchTask.body",
 		icon: "\u{F018D}", // nf-md-console
 	},
+	// Batch 34: tasks quick switch
+	{
+		id: "tasks-quick-switch",
+		titleKey: "tip.tasksQuickSwitch.title",
+		bodyKey: "tip.tasksQuickSwitch.body",
+		icon: "\u{F0413}", // nf-md-tab
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

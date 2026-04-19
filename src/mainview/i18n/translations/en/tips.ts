@@ -212,6 +212,8 @@ const tips = {
 	"tip.copyWorktreePath.body": "Click the folder+clipboard icon in the task header bar, or right-click a task card and choose Copy Path.",
 	"tip.cancelPreparing.title": "Abort stuck prep",
 	"tip.cancelPreparing.body": "On a Preparing card, click Cancel to kill setup and send the task back to To Do.",
+	"tip.tasksQuickSwitch.title": "Cycle active tasks",
+	"tip.tasksQuickSwitch.body": "Use the configured quick-switch shortcut to jump between recent active tasks; choose keys and task types in Global Settings.",
 	"tip.bugHunterSkill.title": "Seeded bug hunts",
 	"tip.bugHunterSkill.body": "Use the dev3-bug-hunter skill and launch 3-5 variants so each run hunts bugs from a different seeded starting area.",
 	"tip.folderPickerPastePath.title": "Paste a path in the picker",

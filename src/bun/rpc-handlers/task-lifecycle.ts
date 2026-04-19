@@ -1,6 +1,12 @@
 import { existsSync } from "node:fs";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, titleFromDescription } from "../../shared/types";
+import {
+	ACTIVE_STATUSES,
+	DEFAULT_REVIEW_PROMPT,
+	getPreparingStageProgress,
+	TASKS_QUICK_SWITCH_FILTER_STATUSES,
+	titleFromDescription,
+} from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -560,6 +566,28 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	return results;
 }
 
+async function getTasksQuickSwitchTasks(): Promise<{ projectId: string; tasks: Task[] }[]> {
+	log.info("→ getTasksQuickSwitchTasks");
+	const projects = await data.loadProjects();
+	const results = await Promise.all(
+		projects.map(async (project) => {
+			const tasks = await data.loadTasks(project);
+			const quickSwitchTasks = tasks.filter((task) =>
+				TASKS_QUICK_SWITCH_FILTER_STATUSES.includes(task.status),
+			);
+			return { projectId: project.id, tasks: quickSwitchTasks };
+		}),
+	);
+	const totalQuickSwitchTasks = results.reduce(
+		(sum, result) => sum + result.tasks.length,
+		0,
+	);
+	log.info(
+		`← getTasksQuickSwitchTasks: ${totalQuickSwitchTasks} quick-switch task(s) across ${projects.length} project(s)`,
+	);
+	return results;
+}
+
 async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean }): Promise<Task> {
 	log.info("→ createTask", params);
 	const project = await data.getProject(params.projectId);
@@ -1015,6 +1043,7 @@ async function toggleTaskWatch(params: { taskId: string; projectId: string; watc
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
+	getTasksQuickSwitchTasks,
 	createTask,
 	moveTask,
 	cancelTaskPreparation,

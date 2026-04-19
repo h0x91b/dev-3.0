@@ -8,7 +8,14 @@ import type {
 	CodingAgent,
 	ExternalApp,
 	GlobalSettings as GlobalSettingsType,
+	Project,
 	TerminalKeymapPreset,
+	TasksQuickSwitchFilter,
+	TasksQuickSwitchShortcut,
+} from "../../shared/types";
+import {
+	normalizeTasksQuickSwitchFilters,
+	normalizeTasksQuickSwitchShortcut,
 } from "../../shared/types";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
@@ -27,6 +34,7 @@ import {
 	DEFAULT_GLOBAL_SETTINGS,
 	normalizeExternalApps,
 	resolveTheme,
+	setStoredTasksQuickSwitchShortcut,
 	toStoredDiffViewMode,
 	toStoredTaskOpenMode,
 	type Theme,
@@ -66,6 +74,7 @@ function GlobalSettings() {
 		() => getKeymapPreset(),
 	);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const [projects, setProjects] = useState<Project[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(
 		DEFAULT_GLOBAL_SETTINGS,
 	);
@@ -95,6 +104,9 @@ function GlobalSettings() {
 		(updater: GlobalSettingsUpdater, options: PersistOptions = {}) => {
 			const next = applyGlobalSettingsLocally(updater);
 			options.onLocalUpdate?.(next);
+			window.dispatchEvent(
+				new CustomEvent("dev3:globalSettingsChanged", { detail: next }),
+			);
 			api.request.saveGlobalSettings(next).catch(() => {});
 			return next;
 		},
@@ -128,8 +140,15 @@ function GlobalSettings() {
 
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
+		api.request.getProjects().then(setProjects).catch(() => {});
 		api.request.getGlobalSettings().then((settings) => {
 			setGlobalSettingsState(settings);
+			setStoredTasksQuickSwitchShortcut(
+				normalizeTasksQuickSwitchShortcut(
+					settings.tasksQuickSwitchShortcut,
+					settings.tasksQuickSwitchShortcutModifier,
+				),
+			);
 			if (settings.terminalKeymap) {
 				setKeymapPresetState(settings.terminalKeymap);
 				setKeymapPreset(settings.terminalKeymap);
@@ -175,6 +194,35 @@ function GlobalSettings() {
 					},
 				},
 			);
+		},
+		[persistSettingChange],
+	);
+
+	const handleTasksQuickSwitchFiltersChange = useCallback(
+		(filters: TasksQuickSwitchFilter[]) => {
+			persistSettingChange({
+				tasksQuickSwitchFilters: normalizeTasksQuickSwitchFilters(filters),
+				tasksQuickSwitchStatuses: undefined,
+			});
+		},
+		[persistSettingChange],
+	);
+
+	const handleTasksQuickSwitchShortcutChange = useCallback(
+		(shortcut: TasksQuickSwitchShortcut) => {
+			persistSettingChange({
+				tasksQuickSwitchShortcut: normalizeTasksQuickSwitchShortcut(shortcut),
+				tasksQuickSwitchShortcutModifier: undefined,
+			}, {
+				onLocalUpdate: (next) => {
+					setStoredTasksQuickSwitchShortcut(
+						normalizeTasksQuickSwitchShortcut(
+							next.tasksQuickSwitchShortcut,
+							next.tasksQuickSwitchShortcutModifier,
+						),
+					);
+				},
+			});
 		},
 		[persistSettingChange],
 	);
@@ -420,6 +468,7 @@ function GlobalSettings() {
 					<BehaviorSettingsSection
 						t={t}
 						globalSettings={globalSettings}
+						projects={projects}
 						caffeinateAvailable={caffeinateAvailable}
 						keymapPreset={keymapPreset}
 						tipsResetDone={tipsResetDone}
@@ -427,6 +476,12 @@ function GlobalSettings() {
 						onKeymapChange={handleKeymapChange}
 						onPreventSleepToggle={handlePreventSleepToggle}
 						onSoundToggle={handleSoundToggle}
+						onTasksQuickSwitchShortcutChange={
+							handleTasksQuickSwitchShortcutChange
+						}
+						onTasksQuickSwitchFiltersChange={
+							handleTasksQuickSwitchFiltersChange
+						}
 						onTaskDropPositionChange={handleTaskDropPositionChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}

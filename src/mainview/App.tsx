@@ -7,6 +7,7 @@ import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, Requir
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
+import { useTasksQuickSwitch } from "./hooks/useTasksQuickSwitch";
 import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
@@ -25,7 +26,9 @@ import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
 import { ErrorToast } from "./components/ErrorToast";
 import FolderPickerHost from "./components/FolderPickerModal";
+import TasksQuickSwitchModal from "./components/TasksQuickSwitchModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
+import { isTasksQuickSwitchShortcutModalOpen } from "./tasks-quick-switch-shortcut";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
@@ -159,9 +162,19 @@ function App() {
 		navigate({ screen: "dashboard" });
 	}, [navigate, state.route.screen]);
 
-	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
+	const { quickSwitchSession, syncQuickSwitchTask } = useTasksQuickSwitch({
+		navigate,
+		projects: state.projects,
+		recentTaskIds: state.recentTaskIds,
+		route: state.route,
+	});
+
+	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+P, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
+			if (e.defaultPrevented || isTasksQuickSwitchShortcutModalOpen()) {
+				return;
+			}
 			if ((e.metaKey || e.ctrlKey) && e.key === "q") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -298,13 +311,14 @@ function App() {
 
 	// Listen for push messages from bun
 	useEffect(() => {
-		function onTaskUpdated(e: Event) {
-			const { task } = (e as CustomEvent).detail;
-			dispatch({ type: "updateTask", task });
-		}
-		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
-		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
-	}, [dispatch]);
+			function onTaskUpdated(e: Event) {
+				const { task } = (e as CustomEvent).detail as { task: Task };
+				dispatch({ type: "updateTask", task });
+				syncQuickSwitchTask(task);
+			}
+			window.addEventListener("rpc:taskUpdated", onTaskUpdated);
+			return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+		}, [dispatch, syncQuickSwitchTask]);
 
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {
@@ -584,6 +598,7 @@ function App() {
 	useGlobalShortcut(
 		(e) => {
 			if (e.key !== "Escape") return;
+			if (isTasksQuickSwitchShortcutModalOpen()) return;
 			const terminalEl = document.querySelector('[data-terminal="true"]');
 			if (terminalEl?.contains(document.activeElement)) return;
 			if (showQuitDialog) {
@@ -675,6 +690,13 @@ function App() {
 				/>
 			)}
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
+			{quickSwitchSession && (
+				<TasksQuickSwitchModal
+					items={quickSwitchSession.items}
+					selectedIndex={quickSwitchSession.selectedIndex}
+					shortcut={quickSwitchSession.shortcut}
+				/>
+			)}
 			{showAddProjectModal && (
 				<AddProjectModal
 					dispatch={dispatch}

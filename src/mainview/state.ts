@@ -24,6 +24,7 @@ export interface AppState {
 	route: Route;
 	routeHistory: Route[];
 	historyIndex: number;
+	recentTaskIds: string[];
 	projects: Project[];
 	currentProjectTasks: Task[];
 	loading: boolean;
@@ -36,6 +37,7 @@ export const initialState: AppState = {
 	route: { screen: "dashboard" },
 	routeHistory: [{ screen: "dashboard" }],
 	historyIndex: 0,
+	recentTaskIds: [],
 	projects: [],
 	currentProjectTasks: [],
 	loading: true,
@@ -87,17 +89,50 @@ function normalizeProjectPath(path: string): string {
 	return path.replace(/\/+$/, "");
 }
 
+function getRouteTaskId(route: Route): string | null {
+	if (route.screen === "task") {
+		return route.taskId;
+	}
+	if (route.screen === "project" && route.activeTaskId) {
+		return route.activeTaskId;
+	}
+	return null;
+}
+
+function updateRecentTaskIds(
+	recentTaskIds: string[],
+	route: Route,
+): string[] {
+	const taskId = getRouteTaskId(route);
+	if (!taskId) return recentTaskIds;
+	return [taskId, ...recentTaskIds.filter((id) => id !== taskId)].slice(
+		0,
+		HISTORY_LIMIT,
+	);
+}
+
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate": {
 			const bellCounts = clearBellForRoute(state.bellCounts, action.route);
+			const recentTaskIds = updateRecentTaskIds(
+				state.recentTaskIds,
+				action.route,
+			);
 			// Truncate any forward history beyond the current index, then push
 			const base = state.routeHistory.slice(0, state.historyIndex + 1);
 			base.push(action.route);
 			// Trim oldest entries if over the limit
 			const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
 			const historyIndex = routeHistory.length - 1;
-			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts };
+			return {
+				...state,
+				route: action.route,
+				routeHistory,
+				historyIndex,
+				recentTaskIds,
+				bellCounts,
+			};
 		}
 		case "goBack": {
 			if (state.historyIndex <= 0) return state;

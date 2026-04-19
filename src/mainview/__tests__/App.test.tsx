@@ -2,6 +2,9 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { I18nProvider } from "../i18n";
+import type { Route } from "../state";
+import { TASKS_QUICK_SWITCH_SHORTCUT_LS_KEY } from "../components/global-settings/utils";
+import { TASKS_QUICK_SWITCH_SHORTCUT_MODAL_ATTR } from "../tasks-quick-switch-shortcut";
 
 vi.mock("../rpc", () => ({
 	api: {
@@ -10,6 +13,24 @@ vi.mock("../rpc", () => ({
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
+			getGlobalSettings: vi.fn().mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskDropPosition: "top",
+				updateChannel: "stable",
+				tasksQuickSwitchShortcut: {
+					modifiers: ["alt"],
+					key: "Tab",
+				},
+				tasksQuickSwitchFilters: [
+					"in-progress",
+					"review-by-ai",
+					"review-by-user",
+					"review-by-colleague",
+				],
+			}),
+			getAllProjectTasks: vi.fn().mockResolvedValue([]),
+			getTasksQuickSwitchTasks: vi.fn().mockResolvedValue([]),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
@@ -66,13 +87,18 @@ vi.mock("../components/Changelog", () => ({
 	default: (_props: { navigate: unknown; goBack: unknown; canGoBack: unknown }) => <div data-testid="changelog-screen" />,
 }));
 vi.mock("../components/ProjectView", () => ({
-	default: () => <div data-testid="project-screen" />,
+	default: (props: { projectId: string; activeTaskId?: string }) => (
+		<div data-testid="project-screen">
+			{props.projectId}:{props.activeTaskId ?? "none"}
+		</div>
+	),
 }));
 vi.mock("../components/TaskWorkspaceView", () => ({
-	default: () => <div data-testid="task-screen" />,
-}));
-vi.mock("../components/TaskTerminal", () => ({
-	default: () => <div data-testid="task-screen" />,
+	default: (props: { projectId: string; taskId: string }) => (
+		<div data-testid="task-screen">
+			{props.projectId}:{props.taskId}
+		</div>
+	),
 }));
 vi.mock("../components/ProjectSettings", () => ({
 	default: () => <div data-testid="project-settings-screen" />,
@@ -100,16 +126,16 @@ async function renderApp() {
 			<App />
 		</I18nProvider>,
 	);
-	await waitFor(() =>
-		expect(
-			screen.queryByTestId("dashboard-screen")
-			|| screen.queryByTestId("project-screen")
-			|| screen.queryByTestId("task-screen")
-			|| screen.queryByTestId("settings-screen")
-			|| screen.queryByTestId("project-settings-screen")
-			|| screen.queryByTestId("project-terminal-screen"),
-		).toBeInTheDocument(),
-	);
+	await waitFor(() => {
+		const renderedScreen =
+			screen.queryByTestId("dashboard-screen") ||
+			screen.queryByTestId("project-screen") ||
+			screen.queryByTestId("project-terminal-screen") ||
+			screen.queryByTestId("task-screen") ||
+			screen.queryByTestId("settings-screen") ||
+			screen.queryByTestId("project-settings-screen");
+		expect(renderedScreen).toBeInTheDocument();
+	});
 }
 
 describe("App keyboard shortcuts", () => {
@@ -117,7 +143,24 @@ describe("App keyboard shortcuts", () => {
 		vi.clearAllMocks();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
-		vi.mocked(api.request.getUpdateRoute).mockResolvedValue({ route: null });
+		vi.mocked(api.request.getUpdateRoute).mockResolvedValue({ route: null } as any);
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			tasksQuickSwitchShortcut: {
+				modifiers: ["alt"],
+				key: "Tab",
+			},
+			tasksQuickSwitchFilters: [
+				"in-progress",
+				"review-by-ai",
+				"review-by-user",
+				"review-by-colleague",
+			],
+		} as any);
+		vi.mocked(api.request.getTasksQuickSwitchTasks).mockResolvedValue([]);
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
 	});
 
@@ -398,6 +441,774 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			await userEvent.keyboard("{Meta>}`{/Meta}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+	});
+
+	describe("tasks quick switch (Option/Alt+Tab)", () => {
+		const projects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{
+				id: "p2",
+				name: "Beta",
+				path: "/b",
+				setupScript: "",
+				devScript: "",
+				cleanupScript: "",
+				defaultBaseBranch: "main",
+				createdAt: "",
+				customColumns: [
+					{
+						id: "col-waiting",
+						name: "Waiting on API",
+						color: "#22c55e",
+						llmInstruction: "",
+					},
+				],
+			},
+		];
+
+		const quickSwitchTasks = [
+			{
+				projectId: "p1",
+				tasks: [
+					{
+						id: "t1",
+						seq: 1,
+						projectId: "p1",
+						title: "Current Task",
+						description: "Current Task",
+						status: "in-progress",
+						baseBranch: "main",
+						worktreePath: "/a/.wt",
+						branchName: "feat/current",
+						groupId: null,
+						variantIndex: null,
+						agentId: null,
+						configId: null,
+						createdAt: "2026-04-15T10:00:00.000Z",
+						updatedAt: "2026-04-15T10:00:00.000Z",
+					},
+				],
+			},
+			{
+				projectId: "p2",
+				tasks: [
+					{
+						id: "t2",
+						seq: 2,
+						projectId: "p2",
+						title: "Next Task",
+						description: "Next Task",
+						status: "review-by-user",
+						baseBranch: "main",
+						worktreePath: "/b/.wt1",
+						branchName: "feat/next",
+						groupId: null,
+						variantIndex: null,
+						agentId: null,
+						configId: null,
+						createdAt: "2026-04-15T10:00:00.000Z",
+						updatedAt: "2026-04-15T10:20:00.000Z",
+					},
+					{
+						id: "t3",
+						seq: 3,
+						projectId: "p2",
+						title: "Third Task",
+						description: "Third Task",
+						status: "review-by-ai",
+						baseBranch: "main",
+						worktreePath: "/b/.wt2",
+						branchName: "feat/third",
+						groupId: null,
+						variantIndex: null,
+						agentId: null,
+						configId: null,
+						createdAt: "2026-04-15T10:00:00.000Z",
+						updatedAt: "2026-04-15T10:10:00.000Z",
+					},
+					{
+						id: "t4",
+						seq: 4,
+						projectId: "p2",
+						title: "Waiting Task",
+						description: "Waiting Task",
+						status: "in-progress",
+						customColumnId: "col-waiting",
+						baseBranch: "main",
+						worktreePath: "/b/.wt3",
+						branchName: "feat/waiting",
+						groupId: null,
+						variantIndex: null,
+						agentId: null,
+						configId: null,
+						createdAt: "2026-04-15T10:00:00.000Z",
+						updatedAt: "2026-04-15T10:25:00.000Z",
+					},
+				],
+			},
+		];
+
+		async function renderAppOnTask(
+			route: Route,
+			settingsOverride: Record<string, unknown> = {},
+		) {
+			localStorage.setItem(
+				TASKS_QUICK_SWITCH_SHORTCUT_LS_KEY,
+				JSON.stringify(
+					settingsOverride.tasksQuickSwitchShortcut ?? {
+						modifiers: ["alt"],
+						key: "Tab",
+					},
+				),
+			);
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects as any);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify(route),
+			} as any);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskDropPosition: "top",
+				updateChannel: "stable",
+				tasksQuickSwitchShortcut: {
+					modifiers: ["alt"],
+					key: "Tab",
+				},
+				tasksQuickSwitchFilters: [
+					"in-progress",
+					"review-by-ai",
+					"review-by-user",
+					"review-by-colleague",
+				],
+				...settingsOverride,
+			} as any);
+			vi.mocked(api.request.getTasksQuickSwitchTasks).mockResolvedValue(
+				quickSwitchTasks as any,
+			);
+			await renderApp();
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p1:t1",
+				),
+			);
+		}
+
+		it("hydrates quick switch settings on mount but delays task loading until the shortcut is used", async () => {
+			await renderAppOnTask({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+
+			expect(api.request.getGlobalSettings).toHaveBeenCalledOnce();
+			expect(api.request.getTasksQuickSwitchTasks).not.toHaveBeenCalled();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			await waitFor(() => {
+				expect(api.request.getGlobalSettings).toHaveBeenCalledOnce();
+				expect(api.request.getTasksQuickSwitchTasks).toHaveBeenCalledOnce();
+			});
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+		});
+
+		it("reverses direction when Shift is added to the shortcut chord", async () => {
+			await renderAppOnTask({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+
+			// Default-filter items sorted by updatedAt desc: [t2, t3, t1]; origin=t1 (index 2).
+			// Forward (Alt+Tab) would wrap to t2 (index 0); backward (Shift+Alt+Tab) → t3 (index 1).
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						shiftKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", {
+						key: "Alt",
+						bubbles: true,
+					}),
+				);
+			});
+
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p2:t3",
+				),
+			);
+		});
+
+		it("shows completed, cancelled, and has-questions tasks when those filters are selected", async () => {
+			await renderAppOnTask(
+				{
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				},
+				{
+					tasksQuickSwitchFilters: [
+						"completed",
+						"cancelled",
+						"user-questions",
+					],
+				},
+			);
+
+			vi.mocked(api.request.getTasksQuickSwitchTasks).mockResolvedValue([
+				{
+					projectId: "p1",
+					tasks: [
+						{
+							id: "t-completed",
+							seq: 5,
+							projectId: "p1",
+							title: "Completed Task",
+							description: "Completed Task",
+							status: "completed",
+							baseBranch: "main",
+							worktreePath: null,
+							branchName: null,
+							groupId: null,
+							variantIndex: null,
+							agentId: null,
+							configId: null,
+							createdAt: "2026-04-15T10:00:00.000Z",
+							updatedAt: "2026-04-15T10:30:00.000Z",
+						},
+						{
+							id: "t-cancelled",
+							seq: 6,
+							projectId: "p1",
+							title: "Cancelled Task",
+							description: "Cancelled Task",
+							status: "cancelled",
+							baseBranch: "main",
+							worktreePath: null,
+							branchName: null,
+							groupId: null,
+							variantIndex: null,
+							agentId: null,
+							configId: null,
+							createdAt: "2026-04-15T10:00:00.000Z",
+							updatedAt: "2026-04-15T10:25:00.000Z",
+						},
+						{
+							id: "t-questions",
+							seq: 7,
+							projectId: "p1",
+							title: "Questions Task",
+							description: "Questions Task",
+							status: "user-questions",
+							baseBranch: "main",
+							worktreePath: "/a/.wt-questions",
+							branchName: "feat/questions",
+							groupId: null,
+							variantIndex: null,
+							agentId: null,
+							configId: null,
+							createdAt: "2026-04-15T10:00:00.000Z",
+							updatedAt: "2026-04-15T10:35:00.000Z",
+						},
+					],
+				},
+			] as any);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Completed Task")).toBeInTheDocument();
+			expect(screen.getByText("Cancelled Task")).toBeInTheDocument();
+			expect(screen.getByText("Questions Task")).toBeInTheDocument();
+			expect(screen.queryByText("Next Task")).not.toBeInTheDocument();
+		});
+
+		it("opens the modal and switches to the next recent active task on Alt release", async () => {
+			await renderAppOnTask({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+			expect(screen.getByText("Next Task")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", { key: "Alt", bubbles: true }),
+				);
+			});
+
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p2:t2",
+				),
+			);
+		});
+
+		it("moves selection with arrow keys before switching", async () => {
+			await renderAppOnTask({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "ArrowDown",
+						bubbles: true,
+					}),
+				);
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", { key: "Alt", bubbles: true }),
+				);
+			});
+
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p2:t3",
+				),
+			);
+		});
+
+		it("uses a recorded custom shortcut when configured", async () => {
+			await renderAppOnTask(
+				{
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				},
+				{
+					tasksQuickSwitchShortcut: {
+						modifiers: ["ctrl", "shift"],
+						key: "K",
+					},
+				},
+			);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "K",
+						ctrlKey: true,
+						shiftKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", {
+						key: "Control",
+						shiftKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p2:t2",
+				),
+			);
+		});
+
+		it("uses locally changed quick switch settings before the backend refetch catches up", async () => {
+			await renderAppOnTask({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("dev3:globalSettingsChanged", {
+						detail: {
+							defaultAgentId: "builtin-claude",
+							defaultConfigId: "claude-default",
+							taskDropPosition: "top",
+							updateChannel: "stable",
+							tasksQuickSwitchShortcut: {
+								modifiers: ["ctrl"],
+								key: "Tab",
+							},
+							tasksQuickSwitchFilters: ["custom:col-waiting"],
+						},
+					}),
+				);
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						ctrlKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+			expect(screen.getByText("Waiting Task")).toBeInTheDocument();
+			expect(screen.queryByText("Next Task")).not.toBeInTheDocument();
+			expect(
+				screen.getByText("Release Ctrl to switch. Use Tab or arrow keys to move."),
+			).toBeInTheDocument();
+		});
+
+		it("uses a filter change immediately even before the app rerenders around the shortcut listener", async () => {
+			await renderAppOnTask({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("dev3:globalSettingsChanged", {
+						detail: {
+							defaultAgentId: "builtin-claude",
+							defaultConfigId: "claude-default",
+							taskDropPosition: "top",
+							updateChannel: "stable",
+							tasksQuickSwitchShortcut: {
+								modifiers: ["alt"],
+								key: "Tab",
+							},
+							tasksQuickSwitchFilters: ["custom:col-waiting"],
+						},
+					}),
+				);
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+			expect(screen.getByText("Waiting Task")).toBeInTheDocument();
+			expect(screen.queryByText("Next Task")).not.toBeInTheDocument();
+		});
+
+		it("prefers quick switch over app-level shortcuts when a custom binding overlaps", async () => {
+			await renderAppOnTask(
+				{
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				},
+				{
+					tasksQuickSwitchShortcut: {
+						modifiers: ["ctrl"],
+						key: ",",
+					},
+				},
+			);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: ",",
+						ctrlKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toHaveTextContent("p1:t1");
+			expect(screen.queryByTestId("settings-screen")).not.toBeInTheDocument();
+		});
+
+		it("does not trigger global shortcuts while the custom shortcut modal is open", async () => {
+			await renderAppOnTask(
+				{
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				},
+				{
+					tasksQuickSwitchShortcut: {
+						modifiers: ["ctrl"],
+						key: ",",
+					},
+				},
+			);
+
+			const modal = document.createElement("div");
+			modal.setAttribute(TASKS_QUICK_SWITCH_SHORTCUT_MODAL_ATTR, "true");
+			document.body.appendChild(modal);
+
+			try {
+				await act(async () => {
+					window.dispatchEvent(
+						new KeyboardEvent("keydown", {
+							key: ",",
+							ctrlKey: true,
+							bubbles: true,
+						}),
+					);
+				});
+
+				expect(screen.queryByText("Tasks Quick Switch")).not.toBeInTheDocument();
+				expect(screen.getByTestId("project-screen")).toHaveTextContent("p1:t1");
+				expect(screen.queryByTestId("settings-screen")).not.toBeInTheDocument();
+			} finally {
+				modal.remove();
+			}
+		});
+
+		it("does not let app-level Escape navigation run while the custom shortcut modal is open", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Meta>},{/Meta}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+
+			const modal = document.createElement("div");
+			modal.setAttribute(TASKS_QUICK_SWITCH_SHORTCUT_MODAL_ATTR, "true");
+			document.body.appendChild(modal);
+
+			try {
+				await userEvent.keyboard("{Escape}");
+				expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+				expect(screen.queryByTestId("dashboard-screen")).not.toBeInTheDocument();
+			} finally {
+				modal.remove();
+			}
+		});
+
+		it("filters tasks in custom columns by the selected custom column type", async () => {
+			await renderAppOnTask(
+				{
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				},
+				{
+					tasksQuickSwitchFilters: ["custom:col-waiting"],
+				},
+			);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Waiting Task")).toBeInTheDocument();
+			expect(screen.queryByText("Next Task")).not.toBeInTheDocument();
+			expect(screen.getByText("Waiting on API")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", { key: "Alt", bubbles: true }),
+				);
+			});
+
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p2:t4",
+				),
+			);
+		});
+
+		it("refetches quick-switch tasks when newly visible projects are missing from the cache", async () => {
+			const initialProjects = [projects[0]];
+			const updatedProjects = projects;
+			const initialTasks = [quickSwitchTasks[0]];
+			const updatedTasks = quickSwitchTasks;
+
+			localStorage.setItem(
+				TASKS_QUICK_SWITCH_SHORTCUT_LS_KEY,
+				JSON.stringify({
+					modifiers: ["alt"],
+					key: "Tab",
+				}),
+			);
+			vi.mocked(api.request.getProjects)
+				.mockResolvedValueOnce(initialProjects as any)
+				.mockResolvedValue(updatedProjects as any);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				}),
+			} as any);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskDropPosition: "top",
+				updateChannel: "stable",
+				tasksQuickSwitchShortcut: {
+					modifiers: ["alt"],
+					key: "Tab",
+				},
+				tasksQuickSwitchFilters: [
+					"in-progress",
+					"review-by-ai",
+					"review-by-user",
+					"review-by-colleague",
+				],
+			} as any);
+			vi.mocked(api.request.getTasksQuickSwitchTasks)
+				.mockResolvedValueOnce(initialTasks as any)
+				.mockResolvedValue(updatedTasks as any);
+
+			await renderApp();
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p1:t1",
+				),
+			);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+			await waitFor(() =>
+				expect(api.request.getTasksQuickSwitchTasks).toHaveBeenCalledTimes(1),
+			);
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", { key: "Alt", bubbles: true }),
+				);
+			});
+
+			await userEvent.click(screen.getByRole("button", { name: "dev-3.0" }));
+			await waitFor(() =>
+				expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument(),
+			);
+			await waitFor(() =>
+				expect(api.request.getProjects).toHaveBeenCalledTimes(2),
+			);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Tab",
+						altKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			await waitFor(() =>
+				expect(api.request.getTasksQuickSwitchTasks).toHaveBeenCalledTimes(2),
+			);
+			expect(screen.getByText("Next Task")).toBeInTheDocument();
+		});
+
+		it("matches recorded letter shortcuts by physical key code for Option characters", async () => {
+			await renderAppOnTask(
+				{
+					screen: "project",
+					projectId: "p1",
+					activeTaskId: "t1",
+				},
+				{
+					tasksQuickSwitchShortcut: {
+						modifiers: ["alt", "shift"],
+						key: "P",
+					},
+				},
+			);
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keydown", {
+						key: "Π",
+						code: "KeyP",
+						altKey: true,
+						shiftKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
+			expect(screen.getByText("Next Task")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new KeyboardEvent("keyup", {
+						key: "Alt",
+						shiftKey: true,
+						bubbles: true,
+					}),
+				);
+			});
+
+			await waitFor(() =>
+				expect(screen.getByTestId("project-screen")).toHaveTextContent(
+					"p2:t2",
+				),
+			);
 		});
 	});
 

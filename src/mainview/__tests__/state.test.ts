@@ -37,6 +37,7 @@ describe("initialState", () => {
 			route: { screen: "dashboard" },
 			routeHistory: [{ screen: "dashboard" }],
 			historyIndex: 0,
+			recentTaskIds: [],
 			projects: [],
 			currentProjectTasks: [],
 			loading: true,
@@ -54,6 +55,38 @@ describe("reducer", () => {
 			route: { screen: "project", projectId: "p1" },
 		});
 		expect(next.route).toEqual({ screen: "project", projectId: "p1" });
+	});
+
+	it("navigate: records recent task ids for split-view task routes", () => {
+		const next = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "project", projectId: "p1", activeTaskId: "t1" },
+		});
+		expect(next.recentTaskIds).toEqual(["t1"]);
+	});
+
+	it("navigate: records recent task ids for full task routes", () => {
+		const next = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		});
+		expect(next.recentTaskIds).toEqual(["t1"]);
+	});
+
+	it("navigate: moves the most recently opened task to the front", () => {
+		let state = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "project", projectId: "p1", activeTaskId: "t1" },
+		});
+		state = reducer(state, {
+			type: "navigate",
+			route: { screen: "project", projectId: "p1", activeTaskId: "t2" },
+		});
+		state = reducer(state, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		});
+		expect(state.recentTaskIds).toEqual(["t1", "t2"]);
 	});
 
 	it("navigate: pushes to routeHistory and advances historyIndex", () => {

@@ -11,6 +11,21 @@ const common = {
 	"quit.confirm": "Выйти",
 	"quit.cancel": "Отмена",
 
+	// Tasks Quick Switch
+	"quickSwitch.title": "Быстрое переключение задач",
+	"quickSwitch.empty": "Нет задач, подходящих под выбранные типы.",
+	"quickSwitch.hint": "Отпустите {shortcut}, чтобы переключиться. Для выбора используйте Tab или стрелки.",
+	"quickSwitch.shortcutAlt": "Option/Alt",
+	"quickSwitch.shortcutCtrl": "Ctrl",
+	"quickSwitch.shortcutShift": "Shift",
+	"quickSwitch.shortcutMeta": "Cmd",
+	"quickSwitch.keyTab": "Tab",
+	"quickSwitch.keySpace": "Space",
+	"quickSwitch.keyArrowUp": "Вверх",
+	"quickSwitch.keyArrowDown": "Вниз",
+	"quickSwitch.keyArrowLeft": "Влево",
+	"quickSwitch.keyArrowRight": "Вправо",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "Агент работает",
