@@ -828,7 +828,7 @@ describe("TaskDiffViewer", () => {
 
 		expect(writeText).toHaveBeenCalledWith("src/app.ts");
 		expect(screen.getByRole("button", { name: "Copied file path src/app.ts" })).toBeInTheDocument();
-		expect(screen.getByText("Copied!")).toBeInTheDocument();
+		expect(screen.queryByText("Copied!")).not.toBeInTheDocument();
 	});
 
 	it("manages inline review comments from the sidebar and copies compact xml", async () => {

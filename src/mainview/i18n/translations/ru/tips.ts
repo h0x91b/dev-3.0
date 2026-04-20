@@ -49,7 +49,7 @@ const tips = {
 	"tip.inlineDiffReviewExport.title": "Копируйте review как XML",
 	"tip.inlineDiffReviewExport.body": "Сайдбар собирает XML-блок из ваших inline comments, чтобы его можно было сразу вставить обратно агенту.",
 	"tip.inlineDiffCopyPath.title": "Копируйте пути файлов из diff",
-	"tip.inlineDiffCopyPath.body": "Нажмите Copy Path в header любого diff-файла, чтобы скопировать его repo path для чата или терминала.",
+	"tip.inlineDiffCopyPath.body": "Нажмите на copy-иконку рядом с именем diff-файла, чтобы скопировать его repo path для чата или терминала.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",
 	"tip.unpushedDiff.body": "Нажмите «Unpushed» в панели задачи, чтобы посмотреть уже закоммиченные изменения, которые пока живут только у вас.",
 	"tip.imagePasteAttach.title": "Вставляйте картинки в заметки",

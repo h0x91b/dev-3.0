@@ -1,1 +1,1 @@
-Added a Copy Path button to each file header in the inline Git Diff viewer so reviewers can copy repo-relative file paths without leaving the diff. Also added localization, a discovery tip, and coverage for the new clipboard action.
+Added a GitHub-style copy-path icon next to each filename in the inline Git Diff viewer so reviewers can copy repo-relative file paths without leaving the diff. Also added localization, a discovery tip, and coverage for the new clipboard action.
