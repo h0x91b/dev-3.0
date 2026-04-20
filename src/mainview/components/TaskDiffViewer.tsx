@@ -89,6 +89,7 @@ interface TaskDiffViewerProps {
 
 interface TaskDiffFileSectionProps {
 	file: TaskDiffFile;
+	worktreePath: string | null | undefined;
 	diffLib: DiffLibrary;
 	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
@@ -151,6 +152,14 @@ function getInlineCommentSideLabel(side: InlineCommentSideKey): "infoPanel.diffC
 
 function getReviewFilePath(file: TaskDiffFile): string {
 	return file.newPath ?? file.oldPath ?? file.displayPath;
+}
+
+function getCopiedFilePath(worktreePath: string | null | undefined, file: TaskDiffFile): string {
+	const filePath = getReviewFilePath(file);
+	if (!worktreePath) {
+		return filePath;
+	}
+	return `${worktreePath.replace(/\/+$/, "")}/${filePath.replace(/^\/+/, "")}`;
 }
 
 function getReviewCommentPreview(value: string, maxLength = 100): string {
@@ -747,6 +756,7 @@ function buildDiffTree(files: TaskDiffFile[]): DiffTreeNode[] {
 
 function TaskDiffFileSection({
 	file,
+	worktreePath,
 	diffLib,
 	resolvedTheme,
 	viewMode,
@@ -772,10 +782,12 @@ function TaskDiffFileSection({
 	const [activated, setActivated] = useState(eager);
 	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
+	const [copiedPath, setCopiedPath] = useState(false);
 	const hostRef = useRef<HTMLDivElement | null>(null);
 	const diffInstanceRef = useRef<DiffInstance | null>(null);
 	const builtModesRef = useRef<Set<DiffViewMode>>(new Set());
 	const isFirstExpandedEffectRef = useRef(true);
+	const copiedPathResetRef = useRef<number | null>(null);
 
 	useEffect(() => {
 		setActivated(eager);
@@ -788,6 +800,12 @@ function TaskDiffFileSection({
 		setDiffFile(null);
 		setBuildError(null);
 	}, [diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath]);
+
+	useEffect(() => () => {
+		if (copiedPathResetRef.current !== null) {
+			window.clearTimeout(copiedPathResetRef.current);
+		}
+	}, []);
 
 	useEffect(() => {
 		if (isFirstExpandedEffectRef.current) {
@@ -885,6 +903,20 @@ function TaskDiffFileSection({
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
 	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${hashText(file.hunks?.join("\n") ?? `${file.oldContent}\u0000${file.newContent}`)}`;
+	const copiedFilePath = getCopiedFilePath(worktreePath, file);
+
+	function handleCopyPath() {
+		navigator.clipboard.writeText(copiedFilePath).then(() => {
+			setCopiedPath(true);
+			if (copiedPathResetRef.current !== null) {
+				window.clearTimeout(copiedPathResetRef.current);
+			}
+			copiedPathResetRef.current = window.setTimeout(() => {
+				setCopiedPath(false);
+				copiedPathResetRef.current = null;
+			}, 1500);
+		}).catch(() => {});
+	}
 
 	return (
 		<div
@@ -896,24 +928,52 @@ function TaskDiffFileSection({
 			data-file-id={file.id}
 		>
 			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
-				<button
-					onClick={onToggleExpanded}
-					aria-expanded={expanded}
-					className="min-w-0 flex-1 flex items-center gap-2 text-left hover:text-fg transition-colors"
-				>
+				<div className="min-w-0 flex-1 flex items-center gap-2">
 					<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
 						{statusLabel(file.status)}
 					</span>
-					<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}`}>
-						{file.displayPath}
-					</span>
+
+					<button
+						onClick={onToggleExpanded}
+						aria-expanded={expanded}
+						className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
+					>
+						<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}`}>
+							{file.displayPath}
+						</span>
+					</button>
+
+					<button
+						type="button"
+						onClick={handleCopyPath}
+						aria-label={copiedPath
+							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
+							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
+						title={copiedPath
+							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
+							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
+						className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
+							copiedPath
+								? "border-success/30 bg-success/10 text-success"
+								: "border-edge bg-base text-fg-2 hover:bg-elevated-hover"
+						}`}
+					>
+						<span
+							aria-hidden="true"
+							className="text-[1rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{copiedPath ? "\uF00C" : "\uF4BB"}
+						</span>
+					</button>
+
 					{(fileStats.insertions > 0 || fileStats.deletions > 0) && (
-						<span className="ml-1 inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-[0.6875rem] font-mono">
+						<span className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-[0.6875rem] font-mono">
 							{fileStats.insertions > 0 && <span className="text-success">+{fileStats.insertions}</span>}
 							{fileStats.deletions > 0 && <span className="text-danger">−{fileStats.deletions}</span>}
 						</span>
 					)}
-				</button>
+				</div>
 
 				<label className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${isRead ? "border-success/30 bg-success/10 text-success" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}>
 					<input
@@ -1882,6 +1942,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							<TaskDiffFileSection
 								key={file.id}
 								file={file}
+								worktreePath={task.worktreePath}
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}

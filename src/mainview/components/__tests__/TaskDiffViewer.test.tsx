@@ -804,6 +804,33 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
+	it("copies the full worktree file path from a diff header", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		await user.click(screen.getByRole("button", { name: "Copy full file path /tmp/wt/t1/src/app.ts" }));
+
+		expect(writeText).toHaveBeenCalledWith("/tmp/wt/t1/src/app.ts");
+		expect(screen.getByRole("button", { name: "Copied full file path /tmp/wt/t1/src/app.ts" })).toBeInTheDocument();
+		expect(screen.queryByText("Copied!")).not.toBeInTheDocument();
+	});
+
 	it("manages inline review comments from the sidebar and copies compact xml", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
