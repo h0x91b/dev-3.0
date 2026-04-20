@@ -150,6 +150,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0198}", // nf-md-content_copy
 	},
 	{
+		id: "diff-binary-files",
+		titleKey: "tip.diffBinaryFiles.title",
+		bodyKey: "tip.diffBinaryFiles.body",
+		icon: "\u{F0219}", // nf-md-file_image_outline
+	},
+	{
 		id: "unpushed-diff",
 		titleKey: "tip.unpushedDiff.title",
 		bodyKey: "tip.unpushedDiff.body",

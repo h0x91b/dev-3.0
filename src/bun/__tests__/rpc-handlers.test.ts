@@ -2676,8 +2676,7 @@ describe("handlers.getTaskDiff", () => {
 			fallbackReason: null,
 			summary: { files: 1, insertions: 3, deletions: 1 },
 			files: [],
-			skippedBinaryFiles: [],
-			skippedLargeFiles: [],
+			skippedFiles: [],
 		};
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -2713,8 +2712,7 @@ describe("handlers.getTaskDiff", () => {
 			fallbackReason: null,
 			summary: { files: 0, insertions: 0, deletions: 0 },
 			files: [],
-			skippedBinaryFiles: [],
-			skippedLargeFiles: [],
+			skippedFiles: [],
 		});
 
 		await handlers.getTaskDiff({ taskId: "task-1", projectId: "proj-1", mode: "uncommitted" });

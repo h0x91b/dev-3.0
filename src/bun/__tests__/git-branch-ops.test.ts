@@ -386,6 +386,79 @@ describe("getTaskDiff", () => {
 			hunks: ["diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n@@ -0,0 +1 @@\n+export {};"],
 		}));
 	});
+
+	it("reports binary files in skippedFiles with both sides' sizes", async () => {
+		queueResponse(0, "M\0image.png\0");
+		queueResponse(0, " 1 file changed, 0 insertions(+), 0 deletions(-)");
+		queueResponse(0, "image.png\n");
+		queueResponse(0, "120\n");              // cat-file -s old
+		queueResponse(0, "250\n");              // cat-file -s new
+		queueResponse(0, "\0binary-old");       // show old (binary content)
+		queueResponse(0, "\0binary-new-bytes"); // show new (binary content)
+
+		const result = await getTaskDiff("/repo", "branch", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		expect(result.files).toEqual([]);
+		expect(result.skippedFiles).toHaveLength(1);
+		const skipped = result.skippedFiles[0];
+		expect(skipped.status).toBe("modified");
+		expect(skipped.reason).toBe("binary");
+		expect(skipped.displayPath).toBe("image.png");
+		expect(skipped.oldSize).toBeGreaterThan(0);
+		expect(skipped.newSize).toBeGreaterThan(0);
+	});
+
+	it("reports added binary files with null oldSize", async () => {
+		queueResponse(0, "A\0assets/logo.png\0");
+		queueResponse(0, " 1 file changed, 0 insertions(+), 0 deletions(-)");
+		queueResponse(0, "assets/logo.png\n");
+		queueResponse(0, "64\n");             // cat-file -s new
+		queueResponse(0, "\0png-new-bytes");  // show new (binary)
+
+		const result = await getTaskDiff("/repo", "branch", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		expect(result.files).toEqual([]);
+		expect(result.skippedFiles).toHaveLength(1);
+		const skipped = result.skippedFiles[0];
+		expect(skipped.status).toBe("added");
+		expect(skipped.reason).toBe("binary");
+		expect(skipped.oldPath).toBeNull();
+		expect(skipped.oldSize).toBeNull();
+		expect(skipped.newSize).toBeGreaterThan(0);
+	});
+
+	it("reports renamed binary files with old→new paths and sizes", async () => {
+		queueResponse(0, "R100\0old.png\0new.png\0");
+		queueResponse(0, " 1 file changed, 0 insertions(+), 0 deletions(-)");
+		queueResponse(0, "old.png\nnew.png\n");
+		queueResponse(0, "80\n");         // cat-file -s old
+		queueResponse(0, "82\n");         // cat-file -s new
+		queueResponse(0, "\0oldbin");     // show old
+		queueResponse(0, "\0newbin2");    // show new
+
+		const result = await getTaskDiff("/repo", "branch", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		expect(result.skippedFiles).toHaveLength(1);
+		const skipped = result.skippedFiles[0];
+		expect(skipped.status).toBe("renamed");
+		expect(skipped.reason).toBe("binary");
+		expect(skipped.oldPath).toBe("old.png");
+		expect(skipped.newPath).toBe("new.png");
+		expect(skipped.oldSize).toBeGreaterThan(0);
+		expect(skipped.newSize).toBeGreaterThan(0);
+	});
 });
 
 // ─── listBranches ────────────────────────────────────────────────────────────

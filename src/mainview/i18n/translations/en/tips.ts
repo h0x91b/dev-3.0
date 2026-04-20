@@ -50,6 +50,8 @@ const tips = {
 	"tip.inlineDiffReviewExport.body": "The sidebar builds an XML review block from your inline comments so you can paste it straight back into the agent chat.",
 	"tip.inlineDiffCopyPath.title": "Copy diff file paths",
 	"tip.inlineDiffCopyPath.body": "Click the copy icon next to any diff file name to grab its full worktree path before pasting it into chat or terminal.",
+	"tip.diffBinaryFiles.title": "Binary files in the diff",
+	"tip.diffBinaryFiles.body": "Images and other binary changes now appear in a dedicated list at the bottom of the diff, with status and old→new sizes.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",
 	"tip.unpushedDiff.body": "Click \"Unpushed\" in the task panel to review committed work that is still only on your machine.",
 	"tip.imagePasteAttach.title": "Paste images into notes",

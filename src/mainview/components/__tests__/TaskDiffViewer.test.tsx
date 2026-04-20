@@ -193,8 +193,7 @@ const diffPayload: TaskDiffResponse = {
 			hunks: ["diff --git a/docs/readme.md b/docs/readme.md\n@@ -1 +1 @@\n-old\n+new\n"],
 		},
 	],
-	skippedBinaryFiles: [],
-	skippedLargeFiles: [],
+	skippedFiles: [],
 };
 
 describe("TaskDiffViewer", () => {
@@ -264,6 +263,75 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
+	});
+
+	it("renders binary and oversized skipped files with status, old→new sizes and reason badges", async () => {
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
+			mode,
+			compareRef: mode === "uncommitted" ? null : "origin/main",
+			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
+			fallbackReason: null,
+			summary: { files: 3, insertions: 0, deletions: 0 },
+			files: [],
+			skippedFiles: [
+				{
+					id: "assets/logo.png",
+					status: "added",
+					reason: "binary",
+					displayPath: "assets/logo.png",
+					oldPath: null,
+					newPath: "assets/logo.png",
+					oldSize: null,
+					newSize: 45_000,
+				},
+				{
+					id: "old.png",
+					status: "renamed",
+					reason: "binary",
+					displayPath: "old.png -> new.png",
+					oldPath: "old.png",
+					newPath: "new.png",
+					oldSize: 120_000,
+					newSize: 130_000,
+				},
+				{
+					id: "data/big.csv",
+					status: "modified",
+					reason: "too-large",
+					displayPath: "data/big.csv",
+					oldPath: "data/big.csv",
+					newPath: "data/big.csv",
+					oldSize: 300_000,
+					newSize: 500_000,
+				},
+			],
+		}));
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const section = await screen.findByTestId("diff-skipped-files");
+		expect(within(section).getByText("Binary & large files")).toBeInTheDocument();
+		expect(within(section).getByText("assets/logo.png")).toBeInTheDocument();
+		expect(within(section).getByText("old.png")).toBeInTheDocument();
+		expect(within(section).getByText("new.png")).toBeInTheDocument();
+		expect(within(section).getByText("data/big.csv")).toBeInTheDocument();
+		// Two "binary" + one "too large" reason badges
+		expect(within(section).getAllByText("binary")).toHaveLength(2);
+		expect(within(section).getByText("too large")).toBeInTheDocument();
+		// Added file has no oldSize — rendered as em-dash, newSize formatted as "44 KB"
+		expect(within(section).getByText(/44 KB/)).toBeInTheDocument();
+		// Renamed binary shows old size formatted
+		expect(within(section).getByText(/117 KB/)).toBeInTheDocument();
+		expect(within(section).getByText(/127 KB/)).toBeInTheDocument();
 	});
 
 	it("uses unified as the initial layout when configured in global settings", async () => {

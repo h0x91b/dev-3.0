@@ -692,6 +692,19 @@ export interface TaskDiffSummary {
 	deletions: number;
 }
 
+export type TaskDiffSkippedReason = "binary" | "too-large";
+
+export interface TaskDiffSkippedFile {
+	id: string;
+	status: TaskDiffFileStatus;
+	reason: TaskDiffSkippedReason;
+	displayPath: string;
+	oldPath: string | null;
+	newPath: string | null;
+	oldSize: number | null;
+	newSize: number | null;
+}
+
 export interface TaskDiffResponse {
 	mode: TaskDiffMode;
 	compareRef: string | null;
@@ -699,8 +712,7 @@ export interface TaskDiffResponse {
 	fallbackReason: TaskDiffFallbackReason | null;
 	summary: TaskDiffSummary;
 	files: TaskDiffFile[];
-	skippedBinaryFiles: string[];
-	skippedLargeFiles: string[];
+	skippedFiles: TaskDiffSkippedFile[];
 }
 
 export interface PRInfo {

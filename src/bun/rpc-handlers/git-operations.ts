@@ -403,11 +403,13 @@ async function getTaskDiff(params: {
 		compareRef: params.compareRef,
 		compareLabel: params.compareLabel,
 	});
+	const skippedBinary = result.skippedFiles.filter((f) => f.reason === "binary").length;
+	const skippedLarge = result.skippedFiles.filter((f) => f.reason === "too-large").length;
 	log.info("← getTaskDiff", {
 		mode: result.mode,
 		files: result.files.length,
-		binary: result.skippedBinaryFiles.length,
-		large: result.skippedLargeFiles.length,
+		binary: skippedBinary,
+		large: skippedLarge,
 		fallbackReason: result.fallbackReason,
 	});
 	return result;

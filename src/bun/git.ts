@@ -1,4 +1,4 @@
-import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSummary } from "../shared/types";
+import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSkippedFile, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
 import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
@@ -25,10 +25,11 @@ type ParsedNameStatusEntry = {
 };
 
 type TextReadResult =
-	| { kind: "text"; content: string }
-	| { kind: "binary" }
-	| { kind: "large" }
-	| { kind: "missing" };
+	| { kind: "text"; content: string; size: number }
+	| { kind: "binary"; size: number }
+	| { kind: "large"; size: number }
+	| { kind: "missing" }
+	| { kind: "absent" };
 
 type DiffContentSource =
 	| { kind: "ref"; ref: string }
@@ -303,7 +304,7 @@ async function readRefTextFile(
 		return { kind: "missing" };
 	}
 	if (size > MAX_INLINE_DIFF_FILE_BYTES) {
-		return { kind: "large" };
+		return { kind: "large", size };
 	}
 
 	const result = await runBinary(
@@ -314,13 +315,17 @@ async function readRefTextFile(
 		return { kind: "missing" };
 	}
 	if (result.stdout.byteLength > MAX_INLINE_DIFF_FILE_BYTES) {
-		return { kind: "large" };
+		return { kind: "large", size: result.stdout.byteLength };
 	}
 	if (isProbablyBinary(result.stdout)) {
-		return { kind: "binary" };
+		return { kind: "binary", size: result.stdout.byteLength };
 	}
 
-	return { kind: "text", content: new TextDecoder().decode(result.stdout) };
+	return {
+		kind: "text",
+		content: new TextDecoder().decode(result.stdout),
+		size: result.stdout.byteLength,
+	};
 }
 
 async function readWorktreeTextFile(
@@ -329,17 +334,19 @@ async function readWorktreeTextFile(
 ): Promise<TextReadResult> {
 	try {
 		const file = Bun.file(`${worktreePath}/${filePath}`);
-		if (file.size > MAX_INLINE_DIFF_FILE_BYTES) {
-			return { kind: "large" };
+		const fileSize = file.size;
+		if (fileSize > MAX_INLINE_DIFF_FILE_BYTES) {
+			return { kind: "large", size: fileSize };
 		}
 		const content = await file.text();
-		if (Buffer.byteLength(content, "utf-8") > MAX_INLINE_DIFF_FILE_BYTES) {
-			return { kind: "large" };
+		const textSize = Buffer.byteLength(content, "utf-8");
+		if (textSize > MAX_INLINE_DIFF_FILE_BYTES) {
+			return { kind: "large", size: textSize };
 		}
 		if (content.includes("\0")) {
-			return { kind: "binary" };
+			return { kind: "binary", size: textSize };
 		}
-		return { kind: "text", content };
+		return { kind: "text", content, size: textSize };
 	} catch {
 		return { kind: "missing" };
 	}
@@ -351,12 +358,28 @@ async function readTextFromSource(
 	filePath: string | null,
 ): Promise<TextReadResult> {
 	if (!filePath) {
-		return { kind: "text", content: "" };
+		return { kind: "absent" };
 	}
 	if (source.kind === "ref") {
 		return readRefTextFile(worktreePath, source.ref, filePath);
 	}
 	return readWorktreeTextFile(worktreePath, filePath);
+}
+
+function readSize(result: TextReadResult): number | null {
+	switch (result.kind) {
+		case "text":
+		case "binary":
+		case "large":
+			return result.size;
+		case "absent":
+		case "missing":
+			return null;
+	}
+}
+
+function readTextContent(result: TextReadResult): string {
+	return result.kind === "text" ? result.content : "";
 }
 
 function getEntryPathArgs(entry: ParsedNameStatusEntry): string[] {
@@ -385,10 +408,9 @@ async function buildTaskDiffFiles(
 	oldSource: DiffContentSource,
 	newSource: DiffContentSource,
 	renderSource: DiffRenderSource,
-): Promise<Pick<TaskDiffResponse, "files" | "skippedBinaryFiles" | "skippedLargeFiles">> {
+): Promise<Pick<TaskDiffResponse, "files" | "skippedFiles">> {
 	const files: TaskDiffFile[] = [];
-	const skippedBinaryFiles: string[] = [];
-	const skippedLargeFiles: string[] = [];
+	const skippedFiles: TaskDiffSkippedFile[] = [];
 
 	for (const entry of entries) {
 		const [oldContent, newContent] = await Promise.all([
@@ -396,12 +418,20 @@ async function buildTaskDiffFiles(
 			readTextFromSource(worktreePath, newSource, entry.newPath),
 		]);
 
-		if (oldContent.kind === "binary" || newContent.kind === "binary") {
-			skippedBinaryFiles.push(entry.displayPath);
-			continue;
-		}
-		if (oldContent.kind === "large" || newContent.kind === "large") {
-			skippedLargeFiles.push(entry.displayPath);
+		const isBinary = oldContent.kind === "binary" || newContent.kind === "binary";
+		const isLarge = oldContent.kind === "large" || newContent.kind === "large";
+
+		if (isBinary || isLarge) {
+			skippedFiles.push({
+				id: entry.oldPath ?? entry.newPath ?? entry.displayPath,
+				status: entry.status,
+				reason: isBinary ? "binary" : "too-large",
+				displayPath: entry.displayPath,
+				oldPath: entry.oldPath,
+				newPath: entry.newPath,
+				oldSize: readSize(oldContent),
+				newSize: readSize(newContent),
+			});
 			continue;
 		}
 
@@ -415,13 +445,13 @@ async function buildTaskDiffFiles(
 			displayPath: entry.displayPath,
 			oldPath: entry.oldPath,
 			newPath: entry.newPath,
-			oldContent: oldContent.kind === "text" ? oldContent.content : "",
-			newContent: newContent.kind === "text" ? newContent.content : "",
+			oldContent: readTextContent(oldContent),
+			newContent: readTextContent(newContent),
 			hunks,
 		});
 	}
 
-	return { files, skippedBinaryFiles, skippedLargeFiles };
+	return { files, skippedFiles };
 }
 
 // Validates that a string is a safe git ref (SHA, branch name, origin/xxx).

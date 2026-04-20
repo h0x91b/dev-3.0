@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
-import type { Project, Task, TaskDiffFile, TaskDiffResponse } from "../../shared/types";
+import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffResponse } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
+import { formatBytes } from "../utils/formatBytes";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 import "./TaskDiffViewer.css";
@@ -628,7 +629,7 @@ function findDiffFileByPath(files: TaskDiffFile[], path: string | undefined): Ta
 	)) ?? null;
 }
 
-function statusClassName(status: TaskDiffFile["status"]): string {
+function statusClassName(status: TaskDiffFileStatus): string {
 	switch (status) {
 		case "added":
 		case "untracked":
@@ -643,7 +644,32 @@ function statusClassName(status: TaskDiffFile["status"]): string {
 	}
 }
 
-function statusLabel(status: TaskDiffFile["status"]): string {
+function formatSkippedSize(size: number | null): string {
+	return size === null ? "—" : formatBytes(size);
+}
+
+function statusLabelLong(status: TaskDiffFileStatus, t: (key: any, vars?: any) => string): string {
+	switch (status) {
+		case "added":
+			return t("infoPanel.diffStatusAdded");
+		case "modified":
+			return t("infoPanel.diffStatusModified");
+		case "deleted":
+			return t("infoPanel.diffStatusDeleted");
+		case "renamed":
+			return t("infoPanel.diffStatusRenamed");
+		case "copied":
+			return t("infoPanel.diffStatusCopied");
+		case "type-changed":
+			return t("infoPanel.diffStatusTypeChanged");
+		case "untracked":
+			return t("infoPanel.diffStatusUntracked");
+		default:
+			return status;
+	}
+}
+
+function statusLabel(status: TaskDiffFileStatus): string {
 	switch (status) {
 		case "added":
 			return "A";
@@ -1761,16 +1787,24 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 									{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
 								</span>
 							)}
-							{payload.skippedBinaryFiles.length > 0 && (
-								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
-									{t("infoPanel.diffBinarySkipped", { count: String(payload.skippedBinaryFiles.length) })}
-								</span>
-							)}
-							{payload.skippedLargeFiles.length > 0 && (
-								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
-									{t("infoPanel.diffLargeSkipped", { count: String(payload.skippedLargeFiles.length) })}
-								</span>
-							)}
+							{(() => {
+								const binaryCount = payload.skippedFiles.filter((f) => f.reason === "binary").length;
+								const largeCount = payload.skippedFiles.filter((f) => f.reason === "too-large").length;
+								return (
+									<>
+										{binaryCount > 0 && (
+											<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+												{t.plural("infoPanel.diffBinaryCount", binaryCount)}
+											</span>
+										)}
+										{largeCount > 0 && (
+											<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+												{t.plural("infoPanel.diffLargeCount", largeCount)}
+											</span>
+										)}
+									</>
+								);
+							})()}
 						</>
 					)}
 					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
@@ -1926,14 +1960,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					</div>
 				)}
 
-				{!error && !isBusy && payload && payload.files.length === 0 && payload.summary.files === 0 && renderState(
+				{!error && !isBusy && payload && payload.files.length === 0 && payload.skippedFiles.length === 0 && renderState(
 					t("infoPanel.diffNoChanges"),
 					t("infoPanel.diffNoChangesBody"),
-				)}
-
-				{!error && !isBusy && payload && payload.files.length === 0 && payload.summary.files > 0 && renderState(
-					t("infoPanel.diffNoRenderableFiles"),
-					t("infoPanel.diffNoRenderableFilesBody"),
 				)}
 
 				{!error && !isBusy && payload && diffLib && viewMode && payload.files.length > 0 && (
@@ -1966,6 +1995,65 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								}}
 							/>
 						))}
+					</div>
+				)}
+
+				{!error && !isBusy && payload && payload.skippedFiles.length > 0 && (
+					<div className={payload.files.length > 0 ? "mt-5" : ""} data-testid="diff-skipped-files">
+						<div className="rounded-xl border border-edge bg-raised">
+							<div className="px-3 py-2 border-b border-edge flex items-center gap-2">
+								<span
+									aria-hidden="true"
+									className="text-[1rem] leading-none text-fg-3"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{"\u{F0219}"}
+								</span>
+								<span className="text-xs font-semibold text-fg">
+									{t("infoPanel.diffSkippedFilesTitle")}
+								</span>
+								<span className="text-[0.6875rem] text-fg-3 font-mono">
+									{payload.skippedFiles.length}
+								</span>
+							</div>
+							<ul className="divide-y divide-edge">
+								{payload.skippedFiles.map((skipped) => (
+									<li key={skipped.id} className="px-3 py-2 flex items-center gap-2 text-[0.75rem]">
+										<span
+											title={statusLabelLong(skipped.status, t)}
+											className={`px-1.5 py-0.5 rounded-md border text-[0.625rem] font-bold ${statusClassName(skipped.status)}`}
+										>
+											{statusLabel(skipped.status)}
+										</span>
+										<span className="min-w-0 flex-1 truncate font-mono text-fg-2" title={skipped.displayPath}>
+											{(skipped.status === "renamed" || skipped.status === "copied") && skipped.oldPath && skipped.newPath
+												? (
+													<>
+														<span className="text-fg-muted">{skipped.oldPath}</span>
+														<span className="mx-1.5 text-fg-3">{"→"}</span>
+														<span>{skipped.newPath}</span>
+													</>
+												)
+												: skipped.displayPath}
+										</span>
+										<span className="shrink-0 font-mono text-fg-3 text-[0.6875rem] tabular-nums">
+											{formatSkippedSize(skipped.oldSize)}
+											<span className="mx-1.5 text-fg-muted">{"→"}</span>
+											{formatSkippedSize(skipped.newSize)}
+										</span>
+										<span className={`shrink-0 px-1.5 py-0.5 rounded-md border text-[0.625rem] ${
+											skipped.reason === "binary"
+												? "bg-accent/10 text-accent border-accent/25"
+												: "bg-warning/10 text-warning border-warning/25"
+										}`}>
+											{skipped.reason === "binary"
+												? t("infoPanel.diffSkippedReasonBinary")
+												: t("infoPanel.diffSkippedReasonLarge")}
+										</span>
+									</li>
+								))}
+							</ul>
+						</div>
 					</div>
 				)}
 			</div>

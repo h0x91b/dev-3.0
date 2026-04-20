@@ -1,0 +1,1 @@
+Show binary and oversized files in the task diff viewer instead of hiding them. The diff response now exposes skipped files with status (added/modified/deleted/renamed), old→new byte sizes, and the reason (binary or too-large), and the viewer renders them as a dedicated list below the regular text diff.
