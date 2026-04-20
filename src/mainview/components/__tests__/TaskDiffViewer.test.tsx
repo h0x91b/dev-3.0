@@ -334,6 +334,72 @@ describe("TaskDiffViewer", () => {
 		expect(within(section).getByText(/127 KB/)).toBeInTheDocument();
 	});
 
+	it("lists binary/large files in the left file tree with Read checkbox, jump target, and counts them in read ratio", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
+			mode,
+			compareRef: mode === "uncommitted" ? null : "origin/main",
+			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
+			fallbackReason: null,
+			summary: { files: 2, insertions: 2, deletions: 0 },
+			files: [
+				{
+					id: "src/app.ts",
+					status: "modified",
+					displayPath: "src/app.ts",
+					oldPath: "src/app.ts",
+					newPath: "src/app.ts",
+					oldContent: "a\n",
+					newContent: "b\n",
+					hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n"],
+				},
+			],
+			skippedFiles: [
+				{
+					id: "assets/logo.png",
+					status: "added",
+					reason: "binary",
+					displayPath: "assets/logo.png",
+					oldPath: null,
+					newPath: "assets/logo.png",
+					oldSize: null,
+					newSize: 12_000,
+				},
+			],
+		}));
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Tree contains the skipped file
+		const treeButton = await screen.findByRole("button", { name: /open diff file assets\/logo\.png/i });
+		expect(treeButton).toBeInTheDocument();
+
+		// Initial read ratio counts skipped in the total
+		expect(screen.getByText(/0\/2\s+Read/i)).toBeInTheDocument();
+
+		// Clicking the tree entry does not crash (jumps to the row)
+		await user.click(treeButton);
+
+		// Mark the skipped file as read via its row checkbox
+		const skippedSection = screen.getByTestId("diff-skipped-files");
+		const readCheckbox = within(skippedSection).getByRole("checkbox", { name: /mark assets\/logo\.png as read/i });
+		await user.click(readCheckbox);
+
+		// Read ratio updated
+		expect(screen.getByText(/1\/2\s+Read/i)).toBeInTheDocument();
+		// Tree label for the skipped file now has line-through
+		expect(within(treeButton).getByText("logo.png")).toHaveClass("line-through");
+	});
+
 	it("uses unified as the initial layout when configured in global settings", async () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
