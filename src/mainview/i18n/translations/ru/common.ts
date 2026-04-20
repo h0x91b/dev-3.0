@@ -58,7 +58,6 @@ const common = {
 	"folderPicker.title": "Выберите папку",
 	"folderPicker.home": "Домой",
 	"folderPicker.rootLabel": "Корень",
-	"folderPicker.rootFs": "/",
 	"folderPicker.loading": "Загрузка…",
 	"folderPicker.pathPlaceholder": "Вставьте путь, Enter",
 	"folderPicker.filterPlaceholder": "Фильтр папок…",

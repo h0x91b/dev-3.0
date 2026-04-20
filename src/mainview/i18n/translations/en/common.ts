@@ -58,7 +58,6 @@ const common = {
 	"folderPicker.title": "Select a folder",
 	"folderPicker.home": "Home",
 	"folderPicker.rootLabel": "Root",
-	"folderPicker.rootFs": "/",
 	"folderPicker.loading": "Loading…",
 	"folderPicker.pathPlaceholder": "Paste a path, press Enter",
 	"folderPicker.filterPlaceholder": "Filter folders…",
