@@ -88,6 +88,8 @@ const infoPanel = {
 	"infoPanel.diffMarkAllUnread": "Снять read со всех",
 	"infoPanel.diffExpandFile": "Развернуть {file}",
 	"infoPanel.diffCollapseFile": "Свернуть {file}",
+	"infoPanel.diffCopyFilePath": "Скопировать путь файла {file}",
+	"infoPanel.diffFilePathCopied": "Путь файла {file} скопирован",
 	"infoPanel.diffExpandAll": "Развернуть все",
 	"infoPanel.diffCollapseAll": "Свернуть все",
 	"infoPanel.diffOpenFile": "Открыть diff файла {file}",

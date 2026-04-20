@@ -86,6 +86,8 @@ const infoPanel = {
 	"infoPanel.diffMarkAllUnread": "Mark all unread",
 	"infoPanel.diffExpandFile": "Expand {file}",
 	"infoPanel.diffCollapseFile": "Collapse {file}",
+	"infoPanel.diffCopyFilePath": "Copy file path {file}",
+	"infoPanel.diffFilePathCopied": "Copied file path {file}",
 	"infoPanel.diffExpandAll": "Expand all",
 	"infoPanel.diffCollapseAll": "Collapse all",
 	"infoPanel.diffOpenFile": "Open diff file {file}",

@@ -144,6 +144,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0198}", // nf-md-content_copy
 	},
 	{
+		id: "inline-diff-copy-path",
+		titleKey: "tip.inlineDiffCopyPath.title",
+		bodyKey: "tip.inlineDiffCopyPath.body",
+		icon: "\u{F0198}", // nf-md-content_copy
+	},
+	{
 		id: "unpushed-diff",
 		titleKey: "tip.unpushedDiff.title",
 		bodyKey: "tip.unpushedDiff.body",

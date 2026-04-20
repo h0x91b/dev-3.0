@@ -86,6 +86,8 @@ const infoPanel = {
 	"infoPanel.diffMarkAllUnread": "Quitar leído a todo",
 	"infoPanel.diffExpandFile": "Expandir {file}",
 	"infoPanel.diffCollapseFile": "Colapsar {file}",
+	"infoPanel.diffCopyFilePath": "Copiar la ruta del archivo {file}",
+	"infoPanel.diffFilePathCopied": "Ruta del archivo {file} copiada",
 	"infoPanel.diffExpandAll": "Expandir todo",
 	"infoPanel.diffCollapseAll": "Colapsar todo",
 	"infoPanel.diffOpenFile": "Abrir diff del archivo {file}",

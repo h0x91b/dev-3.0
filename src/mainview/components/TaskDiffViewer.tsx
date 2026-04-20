@@ -772,10 +772,12 @@ function TaskDiffFileSection({
 	const [activated, setActivated] = useState(eager);
 	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
+	const [copiedPath, setCopiedPath] = useState(false);
 	const hostRef = useRef<HTMLDivElement | null>(null);
 	const diffInstanceRef = useRef<DiffInstance | null>(null);
 	const builtModesRef = useRef<Set<DiffViewMode>>(new Set());
 	const isFirstExpandedEffectRef = useRef(true);
+	const copiedPathResetRef = useRef<number | null>(null);
 
 	useEffect(() => {
 		setActivated(eager);
@@ -788,6 +790,12 @@ function TaskDiffFileSection({
 		setDiffFile(null);
 		setBuildError(null);
 	}, [diffLib, file.hunks, file.id, file.newContent, file.newPath, file.oldContent, file.oldPath]);
+
+	useEffect(() => () => {
+		if (copiedPathResetRef.current !== null) {
+			window.clearTimeout(copiedPathResetRef.current);
+		}
+	}, []);
 
 	useEffect(() => {
 		if (isFirstExpandedEffectRef.current) {
@@ -885,6 +893,20 @@ function TaskDiffFileSection({
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
 	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${hashText(file.hunks?.join("\n") ?? `${file.oldContent}\u0000${file.newContent}`)}`;
+	const filePath = getReviewFilePath(file);
+
+	function handleCopyPath() {
+		navigator.clipboard.writeText(filePath).then(() => {
+			setCopiedPath(true);
+			if (copiedPathResetRef.current !== null) {
+				window.clearTimeout(copiedPathResetRef.current);
+			}
+			copiedPathResetRef.current = window.setTimeout(() => {
+				setCopiedPath(false);
+				copiedPathResetRef.current = null;
+			}, 1500);
+		}).catch(() => {});
+	}
 
 	return (
 		<div
@@ -931,6 +953,31 @@ function TaskDiffFileSection({
 					</span>
 					<span>{t("infoPanel.diffRead")}</span>
 				</label>
+
+				<button
+					type="button"
+					onClick={handleCopyPath}
+					aria-label={copiedPath
+						? t("infoPanel.diffFilePathCopied", { file: filePath })
+						: t("infoPanel.diffCopyFilePath", { file: filePath })}
+					title={copiedPath
+						? t("infoPanel.diffFilePathCopied", { file: filePath })
+						: t("infoPanel.diffCopyFilePath", { file: filePath })}
+					className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors ${
+						copiedPath
+							? "border-success/30 bg-success/10 text-success"
+							: "border-edge bg-base text-fg-2 hover:bg-elevated-hover"
+					}`}
+				>
+					<span
+						aria-hidden="true"
+						className="text-[0.9rem] leading-none"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{copiedPath ? "\uF00C" : "\u{F0198}"}
+					</span>
+					<span>{copiedPath ? t("openIn.pathCopied") : t("openIn.copyPath")}</span>
+				</button>
 
 				<button
 					onClick={onToggleExpanded}

@@ -804,6 +804,33 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
+	it("copies the repo-relative file path from a diff header", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		await user.click(screen.getByRole("button", { name: "Copy file path src/app.ts" }));
+
+		expect(writeText).toHaveBeenCalledWith("src/app.ts");
+		expect(screen.getByRole("button", { name: "Copied file path src/app.ts" })).toBeInTheDocument();
+		expect(screen.getByText("Copied!")).toBeInTheDocument();
+	});
+
 	it("manages inline review comments from the sidebar and copies compact xml", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
