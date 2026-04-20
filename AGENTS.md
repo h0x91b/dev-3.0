@@ -66,6 +66,20 @@ The user may communicate with agents in Russian, but everything written into the
 
 **If in doubt, use `TeamCreate`.** Defaulting to `Agent` out of habit is exactly what this rule prevents.
 
+## On-disk data layout — hard invariants (MANDATORY)
+
+The `~/.dev3.0/` directory is shared between **every installed version** of the app on the user's machine: production (`~/Applications/dev-3.0.app`), dev builds, `bun run dev` runs, side-by-side channels. Any change that breaks forward/backward compatibility of that directory breaks whichever version happens to open it next. This has already burned us once (PR #486 → reverted in #488); see `decisions/039-revert-project-slug-dash-escape.md`.
+
+**The following are not negotiable. Do not violate them, even for "clean" fixes.**
+
+1. **`projectSlug()` algorithm is frozen.** The function in `src/bun/git.ts` maps `/a/b/c` → `a-b-c` and must not change. This is the canonical name used for `~/.dev3.0/data/<slug>/`, `~/.dev3.0/worktrees/<slug>/`, and for CLI worktree context detection. If you think you have a good reason to change it — stop. Discuss it with the user first, with a concrete migration plan that does not touch existing data on disk.
+2. **No automatic renames of anything under `~/.dev3.0/`.** Never call `renameSync`, `rename`, `mv`, or any equivalent on `~/.dev3.0/data/*`, `~/.dev3.0/worktrees/*`, `~/.dev3.0/projects.json`, `~/.dev3.0/tasks.json`, `~/.dev3.0/sockets/*`, or any sibling. Not at startup, not in a migration hook, not "just this once". An older version of the app still running on the same machine will look in the pre-rename path, find nothing, and silently show an empty Kanban board.
+3. **No destructive migrations of user state at load time.** `rawLoadAllProjects` and friends may **rewrite file contents** in place if the schema genuinely evolves (see the `say` cleanup-script migration) — that is fine because the file path is unchanged. They must **never** move, rename, or delete directories or files. If a migration cannot be done in place, it is not allowed; design it differently.
+4. **CLI worktree detection relies on the plain slug.** `src/cli/context.ts` reads `projects.json` and recomputes `path.replace(/^\//, "").replaceAll("/", "-")` inline. If the slug algorithm ever drifts from this, CLI auto-detection of `taskId` from `cwd` breaks, and every agent hook that relies on it (`dev3 task move --status in-progress --if-status-not review-by-ai`, etc.) starts failing. Keep the two in lockstep — but see rule 1: the preferred solution is to not change the algorithm at all.
+5. **If you are convinced a change is unavoidable,** do it behind a new parallel path (e.g. write a new file alongside the old one, read both, prefer the new), keep the old path readable by at least N-2 versions, and document the sunset plan in a decision record before writing code. No silent in-place rewrites.
+
+These rules apply to any new code that touches `~/.dev3.0/`, any refactor of `src/bun/data.ts` / `src/bun/git.ts` / `src/bun/paths.ts` / `src/cli/context.ts`, and any "cleanup" that thinks it can tidy up the data directory.
+
 ## Git
 
 ### Worktree
