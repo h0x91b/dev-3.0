@@ -81,6 +81,10 @@ function clearBellForRoute(bellCounts: Map<string, number>, route: Route): Map<s
 	return bellCounts;
 }
 
+function normalizeProjectPath(path: string): string {
+	return path.replace(/\/+$/, "");
+}
+
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate": {
@@ -174,8 +178,22 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				],
 			};
 		}
-		case "addProject":
-			return { ...state, projects: [...state.projects, action.project] };
+		case "addProject": {
+			const normalizedPath = normalizeProjectPath(action.project.path);
+			const existingIndex = state.projects.findIndex((project) =>
+				project.id === action.project.id ||
+				normalizeProjectPath(project.path) === normalizedPath,
+			);
+			if (existingIndex === -1) {
+				return { ...state, projects: [...state.projects, action.project] };
+			}
+			return {
+				...state,
+				projects: state.projects.map((project, index) =>
+					index === existingIndex ? action.project : project,
+				),
+			};
+		}
 		case "removeProject":
 			return {
 				...state,
