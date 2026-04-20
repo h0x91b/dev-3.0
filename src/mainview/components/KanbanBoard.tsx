@@ -34,9 +34,21 @@ interface KanbanBoardProps {
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
 	onSwitchToSidebar?: () => void;
+	disableGlobalFindShortcut?: boolean;
 }
 
-function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts, taskResourceUsage, activeTaskId, onSwitchToSidebar }: KanbanBoardProps) {
+function KanbanBoard({
+	project,
+	tasks,
+	dispatch,
+	navigate,
+	bellCounts,
+	taskPorts,
+	taskResourceUsage,
+	activeTaskId,
+	onSwitchToSidebar,
+	disableGlobalFindShortcut = false,
+}: KanbanBoardProps) {
 	const t = useT();
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -514,6 +526,7 @@ function KanbanBoard({ project, tasks, dispatch, navigate, bellCounts, taskPorts
 				onClear={() => setActiveFilters([])}
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
+				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {

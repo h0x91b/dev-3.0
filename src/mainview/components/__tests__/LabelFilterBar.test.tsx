@@ -6,6 +6,7 @@ import { I18nProvider } from "../../i18n";
 function renderBar(
 	searchQuery = "",
 	onSearchChange = vi.fn(),
+	disableGlobalFindShortcut = false,
 ) {
 	return render(
 		<I18nProvider>
@@ -16,6 +17,7 @@ function renderBar(
 				onClear={vi.fn()}
 				searchQuery={searchQuery}
 				onSearchChange={onSearchChange}
+				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
 		</I18nProvider>,
 	);
@@ -36,6 +38,14 @@ describe("LabelFilterBar keyboard shortcuts", () => {
 		expect(input).not.toHaveFocus();
 		await userEvent.keyboard("{Control>}f{/Control}");
 		expect(input).toHaveFocus();
+	});
+
+	it("does not hijack Cmd+F when disabled", async () => {
+		renderBar("", vi.fn(), true);
+		const input = screen.getByPlaceholderText("Search tasks...");
+		expect(input).not.toHaveFocus();
+		await userEvent.keyboard("{Meta>}f{/Meta}");
+		expect(input).not.toHaveFocus();
 	});
 
 	it("Escape in the search input clears the query", async () => {

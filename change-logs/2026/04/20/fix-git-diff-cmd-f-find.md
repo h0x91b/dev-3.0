@@ -1,0 +1,1 @@
+Stopped the board/sidebar Cmd+F handlers from hijacking the shortcut while the inline Git Diff is open, so the diff page can use normal in-page find behavior. Added regression tests for both search entry points.
