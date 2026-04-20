@@ -1,0 +1,1 @@
+Fixed duplicate project entries in the renderer state when the same repository is added more than once. Re-adding a project now replaces the existing entry by project ID or normalized path instead of appending a duplicate card.

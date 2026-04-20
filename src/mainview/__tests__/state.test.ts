@@ -401,6 +401,41 @@ describe("reducer", () => {
 		expect(next.projects).toEqual([mockProject]);
 	});
 
+	it("addProject: replaces existing project with the same id", () => {
+		const state: AppState = {
+			...initialState,
+			projects: [mockProject],
+		};
+		const updated = { ...mockProject, defaultBaseBranch: "develop" };
+
+		const next = reducer(state, {
+			type: "addProject",
+			project: updated,
+		});
+
+		expect(next.projects).toEqual([updated]);
+	});
+
+	it("addProject: replaces existing project with the same normalized path", () => {
+		const state: AppState = {
+			...initialState,
+			projects: [mockProject],
+		};
+		const duplicatePathProject: Project = {
+			...mockProject,
+			id: "p2",
+			path: "/tmp/test/",
+			name: "Renamed Project",
+		};
+
+		const next = reducer(state, {
+			type: "addProject",
+			project: duplicatePathProject,
+		});
+
+		expect(next.projects).toEqual([duplicatePathProject]);
+	});
+
 	it("removeProject: removes by id", () => {
 		const state: AppState = {
 			...initialState,
