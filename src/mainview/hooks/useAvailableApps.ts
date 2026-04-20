@@ -29,12 +29,15 @@ export function useAvailableApps(): ExternalApp[] {
 				cachedApps = result;
 				fetchedAt = Date.now();
 				return result;
-			}).catch(() => {
-				return [];
+			}).catch((err) => {
+				fetchPromise = null;
+				throw err;
 			});
 		}
 
-		fetchPromise.then((result) => setApps(result)).catch(() => {});
+		fetchPromise.then((result) => setApps(result)).catch(() => {
+			setApps([]);
+		});
 	}, []);
 
 	return apps;

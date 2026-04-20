@@ -53,7 +53,27 @@ export function useTaskBranchStatus({
 		setCompareRef(defaultCompareRef);
 	}, [defaultCompareRef, task.id]);
 
-	const completeTask = useCallback((fromStatus: Task["status"]) => {
+	const completeTask = useCallback(async (fromStatus: Task["status"]) => {
+		try {
+			await api.request.moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: "completed",
+			});
+		} catch {
+			try {
+				await api.request.moveTask({
+					taskId: task.id,
+					projectId: project.id,
+					newStatus: "completed",
+					force: true,
+				});
+			} catch (err) {
+				alert(t("task.failedMove", { error: String(err) }));
+				return;
+			}
+		}
+
 		dispatch({
 			type: "updateTask",
 			task: {
@@ -68,19 +88,7 @@ export function useTaskBranchStatus({
 		dispatch({ type: "clearBell", taskId: task.id });
 		trackEvent("task_moved", { from_status: fromStatus, to_status: "completed" });
 		navigate({ screen: "project", projectId: project.id });
-		api.request.moveTask({
-			taskId: task.id,
-			projectId: project.id,
-			newStatus: "completed",
-		}).catch(() => {
-			api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus: "completed",
-				force: true,
-			}).catch((err) => console.error("Background moveTask (git completion) failed:", err));
-		});
-	}, [dispatch, navigate, project.id, task]);
+	}, [dispatch, navigate, project.id, t, task]);
 
 	useEffect(() => {
 		if (!isTaskActive || !task.worktreePath) {

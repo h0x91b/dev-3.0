@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ./node_modules
-          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -55,7 +55,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ./node_modules
-          key: bun-deps-macos-arm64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-macos-arm64-${{ hashFiles('bun.lock') }}
 
       - name: Import code signing certificate
         env:
@@ -142,7 +142,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ./node_modules
-          key: bun-deps-macos-x64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-macos-x64-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -153,7 +153,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ./node_modules
-          key: bun-deps-macos-x64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-macos-x64-${{ hashFiles('bun.lock') }}
 
       - name: Import code signing certificate
         env:
@@ -249,7 +249,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
 
       - name: Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -260,7 +260,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lockb') }}
+          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
 
       - name: Clean build directory
         run: rm -rf ./build ./artifacts

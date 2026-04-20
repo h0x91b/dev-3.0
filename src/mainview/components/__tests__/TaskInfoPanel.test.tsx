@@ -1604,6 +1604,49 @@ describe("TaskInfoPanel", () => {
 
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
 		});
+
+		it("shows an error and skips the optimistic completion when both completion RPC attempts fail", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const alertSpy = vi.fn();
+			const task = makeTask({ status: "review-by-user" });
+
+			window.alert = alertSpy;
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask
+				.mockRejectedValueOnce(new Error("primary failure"))
+				.mockRejectedValueOnce(new Error("forced failure"));
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:gitOpCompleted", {
+						detail: { taskId: "t1", operation: "merge", ok: true },
+					}),
+				);
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			});
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
+			});
+			await waitFor(() => {
+				expect(alertSpy).toHaveBeenCalled();
+			});
+
+			const completedUpdate = dispatch.mock.calls.find(
+				(call: unknown[]) => (call[0] as AppAction).type === "updateTask"
+					&& ((call[0] as { task: Task }).task).status === "completed",
+			);
+
+			expect(completedUpdate).toBeUndefined();
+			expect(navigate).not.toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+		});
 	});
 
 	describe("inline rename", () => {

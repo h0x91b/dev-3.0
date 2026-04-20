@@ -3,6 +3,31 @@ import { spawn } from "./spawn";
 
 const log = createLogger("shell-env");
 
+type SupportedShell = "bash" | "zsh";
+
+function getShellName(shell: string): string {
+	return shell.split("/").pop() || shell;
+}
+
+export function getSupportedShell(shell: string): SupportedShell | null {
+	const name = getShellName(shell);
+	if (name === "bash" || name === "zsh") {
+		return name;
+	}
+	return null;
+}
+
+export function getShellRcFile(shell: string, home: string): string | null {
+	const supportedShell = getSupportedShell(shell);
+	if (supportedShell === "bash") {
+		return `${home}/.bashrc`;
+	}
+	if (supportedShell === "zsh") {
+		return `${home}/.zshrc`;
+	}
+	return null;
+}
+
 /**
  * Resolve the user's full shell environment (PATH, LANG) by spawning their login shell.
  *
@@ -16,6 +41,12 @@ const log = createLogger("shell-env");
 export async function resolveShellEnv(): Promise<{ path?: string; lang?: string }> {
 	const shell = process.env.SHELL || "/bin/zsh";
 	const timeout = 5_000;
+	const supportedShell = getSupportedShell(shell);
+
+	if (!supportedShell) {
+		log.warn("Skipping shell environment resolution for unsupported shell", { shell });
+		return {};
+	}
 
 	try {
 		const proc = spawn([shell, "-ilc", 'echo "___PATH=$PATH";echo "___LANG=$LANG"'], {

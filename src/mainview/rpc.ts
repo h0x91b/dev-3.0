@@ -192,6 +192,13 @@ function initBrowserApi(): ApiShape {
 	}
 	resetWsReady();
 
+	function rejectPendingRequests(error: Error) {
+		for (const [id, entry] of pending.entries()) {
+			pending.delete(id);
+			entry.reject(error);
+		}
+	}
+
 	function connect() {
 		const wsUrl = buildWsUrl("/rpc");
 		console.log("[browser-rpc] Connecting WS to", wsUrl.replace(/token=[^&]+/, "token=***"));
@@ -228,6 +235,9 @@ function initBrowserApi(): ApiShape {
 
 		ws.addEventListener("close", (event) => {
 			console.warn("[browser-rpc] WS CLOSED", { code: event.code, reason: event.reason, hasToken: !!sessionToken });
+			rejectPendingRequests(
+				new Error(`RPC connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})`),
+			);
 			// Only reconnect if we have a valid session token (or are in Vite dev mode).
 			// Without a token the server returns 401 and we'd loop forever.
 			if (isViteDevServer || sessionToken) {
