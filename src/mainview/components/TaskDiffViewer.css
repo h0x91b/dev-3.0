@@ -68,3 +68,25 @@
 	transform: translateZ(0);
 	backface-visibility: hidden;
 }
+
+.dev3-diff-search-highlight {
+	background: rgb(var(--accent) / 0.22);
+	color: inherit;
+	border-radius: 0.2rem;
+	box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.16);
+}
+
+.dev3-diff-search-match-line {
+	background: rgb(var(--accent) / 0.08);
+}
+
+.dev3-diff-search-current-hit {
+	background: rgb(var(--accent) / 0.38);
+	box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.42), 0 0 0 1px rgb(var(--accent) / 0.18);
+}
+
+.dev3-diff-search-current-line {
+	outline: 2px solid rgb(var(--accent) / 0.45);
+	outline-offset: -2px;
+	border-radius: 0.35rem;
+}

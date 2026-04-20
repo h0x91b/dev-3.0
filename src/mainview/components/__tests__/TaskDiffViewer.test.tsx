@@ -254,6 +254,7 @@ const diffPayload: TaskDiffResponse = {
 
 describe("TaskDiffViewer", () => {
 	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+	let lastScrolledText: string | null;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -271,7 +272,10 @@ describe("TaskDiffViewer", () => {
 		});
 		localStorage.clear();
 		document.documentElement.dataset.theme = "dark";
-		scrollIntoViewMock = vi.fn();
+		lastScrolledText = null;
+		scrollIntoViewMock = vi.fn(function(this: HTMLElement) {
+			lastScrolledText = this.textContent?.replace(/\s+/g, " ").trim() ?? null;
+		});
 		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 			configurable: true,
 			value: scrollIntoViewMock,
@@ -524,6 +528,68 @@ describe("TaskDiffViewer", () => {
 		});
 		await waitFor(() => {
 			expect(scrollIntoViewMock).toHaveBeenCalled();
+		});
+	});
+
+	it("highlights the found diff text", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.keyboard("{Meta>}f{/Meta}");
+		await user.type(screen.getByPlaceholderText("Search diff..."), "ok");
+
+		await waitFor(() => {
+			expect(document.querySelectorAll(".dev3-diff-search-match-line").length).toBeGreaterThan(0);
+		});
+		expect(document.querySelector(".dev3-diff-search-current-line")).not.toBeNull();
+	});
+
+	it("moves through matches in top-to-bottom order with next and prev", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.keyboard("{Meta>}f{/Meta}");
+		await user.type(screen.getByPlaceholderText("Search diff..."), "const a = ");
+
+		await waitFor(() => {
+			expect(screen.getByText("1 / 2")).toBeInTheDocument();
+			expect(lastScrolledText).toContain('const a = "one";');
+		});
+
+		await user.click(screen.getByRole("button", { name: "Next match" }));
+
+		await waitFor(() => {
+			expect(screen.getByText("2 / 2")).toBeInTheDocument();
+			expect(lastScrolledText).toContain('const a = "two";');
+		});
+
+		await user.click(screen.getByRole("button", { name: "Previous match" }));
+
+		await waitFor(() => {
+			expect(screen.getByText("1 / 2")).toBeInTheDocument();
+			expect(lastScrolledText).toContain('const a = "one";');
 		});
 	});
 

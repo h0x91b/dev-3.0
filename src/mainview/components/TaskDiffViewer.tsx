@@ -2285,9 +2285,16 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 									className="w-44 bg-transparent text-sm text-fg outline-none placeholder:text-fg-muted"
 								/>
 								{searchStatusLabel && (
-									<span className="min-w-[3.5rem] text-right text-[0.6875rem] font-mono text-fg-3">
-										{searchStatusLabel}
-									</span>
+									<div className="min-w-[3.5rem] max-w-[12rem] text-right">
+										<div className="text-[0.6875rem] font-mono text-fg-3">
+											{searchStatusLabel}
+										</div>
+										{searchLocationLabel && (
+											<div className="truncate text-[0.625rem] text-fg-muted" title={searchLocationLabel}>
+												{searchLocationLabel}
+											</div>
+										)}
+									</div>
 								)}
 								{searchLocationLabel && (
 									<span className="max-w-[11rem] truncate text-[0.6875rem] font-mono text-fg-3" title={searchLocationLabel}>
