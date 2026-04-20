@@ -49,7 +49,7 @@ const tips = {
 	"tip.inlineDiffReviewExport.title": "Copia tu review como XML",
 	"tip.inlineDiffReviewExport.body": "La barra lateral arma un bloque XML desde tus comentarios inline para pegarlo directo en el chat del agente.",
 	"tip.inlineDiffCopyPath.title": "Copia rutas del diff",
-	"tip.inlineDiffCopyPath.body": "Pulsa el icono de copiar junto al nombre del diff para copiar su ruta del repo antes de pegarla en el chat o terminal.",
+	"tip.inlineDiffCopyPath.body": "Pulsa el icono de copiar junto al nombre del diff para copiar su ruta completa del worktree antes de pegarla en el chat o terminal.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",
 	"tip.unpushedDiff.body": "Haz clic en \"Unpushed\" en el panel de la tarea para revisar cambios ya confirmados que aún solo existen en tu máquina.",
 	"tip.imagePasteAttach.title": "Pega imágenes en las notas",

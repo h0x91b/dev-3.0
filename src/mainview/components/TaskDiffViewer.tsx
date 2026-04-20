@@ -89,6 +89,7 @@ interface TaskDiffViewerProps {
 
 interface TaskDiffFileSectionProps {
 	file: TaskDiffFile;
+	worktreePath: string | null | undefined;
 	diffLib: DiffLibrary;
 	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
@@ -151,6 +152,14 @@ function getInlineCommentSideLabel(side: InlineCommentSideKey): "infoPanel.diffC
 
 function getReviewFilePath(file: TaskDiffFile): string {
 	return file.newPath ?? file.oldPath ?? file.displayPath;
+}
+
+function getCopiedFilePath(worktreePath: string | null | undefined, file: TaskDiffFile): string {
+	const filePath = getReviewFilePath(file);
+	if (!worktreePath) {
+		return filePath;
+	}
+	return `${worktreePath.replace(/\/+$/, "")}/${filePath.replace(/^\/+/, "")}`;
 }
 
 function getReviewCommentPreview(value: string, maxLength = 100): string {
@@ -747,6 +756,7 @@ function buildDiffTree(files: TaskDiffFile[]): DiffTreeNode[] {
 
 function TaskDiffFileSection({
 	file,
+	worktreePath,
 	diffLib,
 	resolvedTheme,
 	viewMode,
@@ -893,10 +903,10 @@ function TaskDiffFileSection({
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
 	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${hashText(file.hunks?.join("\n") ?? `${file.oldContent}\u0000${file.newContent}`)}`;
-	const filePath = getReviewFilePath(file);
+	const copiedFilePath = getCopiedFilePath(worktreePath, file);
 
 	function handleCopyPath() {
-		navigator.clipboard.writeText(filePath).then(() => {
+		navigator.clipboard.writeText(copiedFilePath).then(() => {
 			setCopiedPath(true);
 			if (copiedPathResetRef.current !== null) {
 				window.clearTimeout(copiedPathResetRef.current);
@@ -937,11 +947,11 @@ function TaskDiffFileSection({
 						type="button"
 						onClick={handleCopyPath}
 						aria-label={copiedPath
-							? t("infoPanel.diffFilePathCopied", { file: filePath })
-							: t("infoPanel.diffCopyFilePath", { file: filePath })}
+							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
+							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
 						title={copiedPath
-							? t("infoPanel.diffFilePathCopied", { file: filePath })
-							: t("infoPanel.diffCopyFilePath", { file: filePath })}
+							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
+							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
 						className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
 							copiedPath
 								? "border-success/30 bg-success/10 text-success"
@@ -1932,6 +1942,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							<TaskDiffFileSection
 								key={file.id}
 								file={file}
+								worktreePath={task.worktreePath}
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}

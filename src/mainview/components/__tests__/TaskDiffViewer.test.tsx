@@ -804,7 +804,7 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
-	it("copies the repo-relative file path from a diff header", async () => {
+	it("copies the full worktree file path from a diff header", async () => {
 		const user = userEvent.setup();
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
@@ -824,10 +824,10 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
-		await user.click(screen.getByRole("button", { name: "Copy file path src/app.ts" }));
+		await user.click(screen.getByRole("button", { name: "Copy full file path /tmp/wt/t1/src/app.ts" }));
 
-		expect(writeText).toHaveBeenCalledWith("src/app.ts");
-		expect(screen.getByRole("button", { name: "Copied file path src/app.ts" })).toBeInTheDocument();
+		expect(writeText).toHaveBeenCalledWith("/tmp/wt/t1/src/app.ts");
+		expect(screen.getByRole("button", { name: "Copied full file path /tmp/wt/t1/src/app.ts" })).toBeInTheDocument();
 		expect(screen.queryByText("Copied!")).not.toBeInTheDocument();
 	});
 
