@@ -572,6 +572,14 @@ function getFileReadSignature(taskId: string, file: TaskDiffFile): string {
 	return `${taskId}:${file.oldPath ?? ""}:${file.newPath ?? ""}:${hashText(payload)}`;
 }
 
+// Hash of the diff payload (hunks + both sides of content). Combined with `file.id`,
+// this produces a uuid that invalidates the @git-diff-view/core File cache whenever
+// the diff content actually changes — see usage in the DiffFile constructor.
+export function getDiffFileContentHash(file: TaskDiffFile): string {
+	const payload = `${file.hunks?.join("\n") ?? ""}\u0001${file.oldContent}\u0000${file.newContent}`;
+	return hashText(payload);
+}
+
 function readStoredReadState(): Record<string, boolean> {
 	try {
 		const raw = localStorage.getItem(LS_DIFF_READ_STATE);
@@ -834,8 +842,13 @@ function TaskDiffFileSection({
 				if (!nextDiffFile) {
 					const oldPath = file.oldPath ?? file.newPath ?? "/dev/null";
 					const newPath = file.newPath ?? file.oldPath ?? "/dev/null";
+					// The @git-diff-view/core cache is keyed by uuid alone (ignores file content).
+					// Using a stable `file.id` across re-renders returns a stale cached File after
+					// the branch is rebased or the diff changes. Mix a content hash into the uuid
+					// so the cache invalidates when the old/new content or hunks change.
+					const diffCacheUuid = `${file.id}:${getDiffFileContentHash(file)}`;
 					nextDiffFile = file.hunks
-						? new diffLib.DiffFile(oldPath, file.oldContent, newPath, file.newContent, file.hunks, undefined, undefined, file.id)
+						? new diffLib.DiffFile(oldPath, file.oldContent, newPath, file.newContent, file.hunks, undefined, undefined, diffCacheUuid)
 						: diffLib.generateDiffFile(oldPath, file.oldContent, newPath, file.newContent);
 					nextDiffFile.initTheme(resolvedTheme);
 					nextDiffFile.initRaw();
