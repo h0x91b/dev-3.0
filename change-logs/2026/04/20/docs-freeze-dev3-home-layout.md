@@ -1,0 +1,1 @@
+Freeze the `~/.dev3.0/` on-disk layout as a hard invariant. Add a MANDATORY section to AGENTS.md and decision 040 forbidding any automatic rename or move of `projectSlug`-derived directories, since doing so in PR #486 silently broke cross-version installs (v1.8.2 ↔ v1.8.3) until the revert in #488. In-place file-content migrations remain allowed; path moves do not.
