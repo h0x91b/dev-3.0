@@ -92,8 +92,8 @@ describe("data race-safe mutators", () => {
 			notes: [{ id: "base-note", content: "Base", source: "user", createdAt: "2026-04-15T00:00:00.000Z", updatedAt: "2026-04-15T00:00:00.000Z" }],
 		});
 		writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));
-		mkdirSync(join(dev3Home, "data", "tmp-race-test-project"), { recursive: true });
-		writeFileSync(join(dev3Home, "data", "tmp-race-test-project", "tasks.json"), JSON.stringify([task], null, 2));
+		mkdirSync(join(dev3Home, "data", "tmp-race--test--project"), { recursive: true });
+		writeFileSync(join(dev3Home, "data", "tmp-race--test--project", "tasks.json"), JSON.stringify([task], null, 2));
 
 		const results = await Promise.all([
 			data.updateTaskWith(project, task.id, async (currentTask) => ({

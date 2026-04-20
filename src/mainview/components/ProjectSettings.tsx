@@ -916,6 +916,11 @@ function ProjectSettings({
 	const [wtLocalConfig, setWtLocalConfig] = useState<Dev3RepoConfig>({});
 	const [savingWtRepo, setSavingWtRepo] = useState(false);
 	const [savingWtLocal, setSavingWtLocal] = useState(false);
+	// Tracks whether the current selected worktree's configs loaded successfully.
+	// When false (load in flight or failed), writes are unsafe because the form
+	// may still hold the previous task's values. Prevents M2·B: stale config
+	// being persisted into a different worktree after a load failure.
+	const [wtConfigLoadState, setWtConfigLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
 	const loadedWtRepoConfig = useRef<Dev3RepoConfig>({});
 	const loadedWtLocalConfig = useRef<Dev3RepoConfig>({});
 
@@ -970,8 +975,24 @@ function ProjectSettings({
 	// Load worktree configs when task selection changes
 	const selectedTask = tasks.find((t) => t.id === selectedWorktreeTaskId);
 	useEffect(() => {
-		if (!selectedTask?.worktreePath) return;
-		api.request.getProjectConfigs({ projectId, worktreePath: selectedTask.worktreePath }).then(({ repo, local }) => {
+		if (!selectedTask?.worktreePath) {
+			setWtConfigLoadState("idle");
+			return;
+		}
+		// Clear the form before the request so stale values from the previous
+		// task cannot bleed into the new worktree. If the request fails, the
+		// form stays empty and Save is disabled until the load succeeds.
+		setWtConfigLoadState("loading");
+		setWtRepoConfig({});
+		setWtLocalConfig({});
+		loadedWtRepoConfig.current = {};
+		loadedWtLocalConfig.current = {};
+
+		const worktreePath = selectedTask.worktreePath;
+		let cancelled = false;
+
+		api.request.getProjectConfigs({ projectId, worktreePath }).then(({ repo, local }) => {
+			if (cancelled) return;
 			const normalizedRepo = normalizeLocalConfig(repo, {
 				defaultBaseBranch: project?.defaultBaseBranch ?? "main",
 			});
@@ -985,7 +1006,15 @@ function ProjectSettings({
 			setWtLocalConfig(normalizedLocal);
 			loadedWtRepoConfig.current = normalizedRepo;
 			loadedWtLocalConfig.current = normalizedLocal;
-		}).catch(() => {});
+			setWtConfigLoadState("loaded");
+		}).catch(() => {
+			if (cancelled) return;
+			setWtConfigLoadState("error");
+		});
+
+		return () => {
+			cancelled = true;
+		};
 	}, [selectedWorktreeTaskId, selectedTask?.worktreePath, project?.defaultBaseBranch]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const configsEqual = useCallback((a: Dev3RepoConfig, b: Dev3RepoConfig) => {
@@ -1182,6 +1211,9 @@ function ProjectSettings({
 	// ---- Worktree tab saves ----
 	async function handleSaveWtRepo() {
 		if (!selectedTask?.worktreePath) return;
+		// Never save when the current config hasn't finished loading: the form
+		// may still hold values belonging to a previous selection.
+		if (wtConfigLoadState !== "loaded") return;
 		setSavingWtRepo(true);
 		try {
 			const toSave = sanitizeConfigPaths(wtRepoConfig);
@@ -1197,6 +1229,7 @@ function ProjectSettings({
 
 	async function handleSaveWtLocal() {
 		if (!selectedTask?.worktreePath) return;
+		if (wtConfigLoadState !== "loaded") return;
 		setSavingWtLocal(true);
 		try {
 			const toSave = sanitizeConfigPaths(wtLocalConfig);

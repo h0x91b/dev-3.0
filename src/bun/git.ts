@@ -534,7 +534,25 @@ export function shortId(taskId: string): string {
 }
 
 export function projectSlug(projectPath: string): string {
-	// /Users/arsenyp/Desktop/my-repo → Users-arsenyp-Desktop-my-repo
+	// Inject-style escape so distinct paths produce distinct slugs:
+	//   "-"  → "--"    (escape literal dashes)
+	//   "/"  → "-"     (path separator becomes a single dash)
+	// Examples:
+	//   /Users/arsenyp/Desktop/my-repo → Users-arsenyp-Desktop-my--repo
+	//   /foo/bar-baz                   → foo-bar--baz
+	//   /foo-bar/baz                   → foo--bar-baz   (no longer collides with /foo/bar-baz)
+	return projectPath
+		.replace(/^\//, "")
+		.replaceAll("-", "--")
+		.replaceAll("/", "-");
+}
+
+/**
+ * Legacy project slug algorithm (pre-dash-escape). Used only for one-shot
+ * migration of existing `~/.dev3.0/data/<slug>` and `~/.dev3.0/worktrees/<slug>`
+ * directories created before the collision fix. Do not use for anything else.
+ */
+export function legacyProjectSlug(projectPath: string): string {
 	return projectPath.replace(/^\//, "").replaceAll("/", "-");
 }
 

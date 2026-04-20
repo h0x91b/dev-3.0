@@ -1,3 +1,4 @@
+import { existsSync, renameSync } from "node:fs";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskStatus, TipState } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
@@ -5,7 +6,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { detectClonePaths } from "./cow-clone";
 import { withFileLock } from "./file-lock";
-import { projectSlug } from "./git";
+import { legacyProjectSlug, projectSlug } from "./git";
 
 const log = createLogger("data");
 
@@ -27,6 +28,38 @@ export class DataFileReadError extends Error {
 
 function tasksFile(project: Project): string {
 	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
+}
+
+/**
+ * One-shot migration for the dash-escape slug fix.
+ *
+ * Rename `{DEV3_HOME}/{kind}/<legacy-slug>` → `{DEV3_HOME}/{kind}/<new-slug>`
+ * when the slug function produces a different output than it used to and only
+ * the legacy directory exists. Safe to call every startup: it's a no-op once
+ * the new directory is present.
+ */
+function migrateSlugDir(projectPath: string, kind: "data"): void {
+	const legacy = legacyProjectSlug(projectPath);
+	const fresh = projectSlug(projectPath);
+	if (legacy === fresh) return;
+	const legacyDir = `${DEV3_HOME}/${kind}/${legacy}`;
+	const freshDir = `${DEV3_HOME}/${kind}/${fresh}`;
+	if (!existsSync(legacyDir) || existsSync(freshDir)) return;
+	try {
+		renameSync(legacyDir, freshDir);
+		log.info(`Migrated ${kind} slug directory`, { from: legacyDir, to: freshDir });
+	} catch (err) {
+		log.warn(`Failed to migrate ${kind} slug directory`, { legacyDir, freshDir, error: String(err) });
+	}
+}
+
+function migrateProjectSlugDirs(project: Project): void {
+	// Only migrate data/ — worktrees/ is skipped because git worktrees have
+	// internal `gitdir` pointers tied to the original absolute path, and
+	// task.worktreePath in tasks.json also references the original path.
+	// Old worktrees remain under their old slug until completed; new worktrees
+	// are created under the new slug.
+	migrateSlugDir(project.path, "data");
 }
 
 function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
@@ -94,6 +127,11 @@ async function rawLoadAllProjects(options?: { strict?: boolean; persistMigration
 		if (needsSave && options?.persistMigrations) {
 			log.info("Migrated legacy 'say' cleanup scripts, saving projects");
 			await rawSaveProjects(projects);
+		}
+		// One-shot: rename pre-dash-escape data/worktree slug directories.
+		// No-op once migrated (new-slug dir already present).
+		for (const project of projects) {
+			if (!project.deleted) migrateProjectSlugDirs(project);
 		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
 		return projects;

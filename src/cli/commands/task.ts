@@ -118,12 +118,24 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const params: Record<string, unknown> = { taskId };
 	if (args.flags.project) params.projectId = args.flags.project;
 	else if (context?.projectId) params.projectId = context.projectId;
-	const trimmedTitle = args.flags.title?.trim();
-	const trimmedDesc = args.flags.description?.trim();
-	if (trimmedTitle) params.title = trimmedTitle;
-	if (trimmedDesc) params.description = trimmedDesc;
+	// Tri-state semantics:
+	//   flag absent           → leave field untouched (not in params)
+	//   flag present+empty    → clear the field (empty string in params)
+	//   flag present+non-empty → set the field (trimmed value in params)
+	// Titles still require a non-empty value — clearing a title makes no sense,
+	// so whitespace-only titles are rejected below.
+	const rawTitle = args.flags.title;
+	const rawDesc = args.flags.description;
+	if (rawTitle !== undefined) {
+		const trimmed = rawTitle.trim();
+		if (!trimmed) exitUsage("--title cannot be empty");
+		params.title = trimmed;
+	}
+	if (rawDesc !== undefined) {
+		params.description = rawDesc.trim();
+	}
 
-	if (!params.title && !params.description) {
+	if (params.title === undefined && params.description === undefined) {
 		exitUsage("Provide --title or --description to update");
 	}
 

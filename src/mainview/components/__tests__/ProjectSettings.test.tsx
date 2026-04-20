@@ -537,5 +537,82 @@ describe("ProjectSettings", () => {
 			await user.click(screen.getByText("Worktree Config"));
 			expect(screen.getByText("Test task")).toBeInTheDocument();
 		});
+
+		it("does not save stale config into the new worktree when config load fails after selection change", async () => {
+			// Bug M2·B: when the user edits task A's worktree config, then switches
+			// to task B and task B's getProjectConfigs fails, the form used to stay
+			// rebound to task B with task A's (dirty) values. Pressing Save then
+			// wrote task A's edits into task B's worktree.
+			const { api } = await import("../../rpc");
+			const getConfigs = api.request.getProjectConfigs as ReturnType<typeof vi.fn>;
+			const saveRepo = api.request.saveRepoConfig as ReturnType<typeof vi.fn>;
+
+			const taskA: Task = {
+				...mockTaskWithWorktree,
+				id: "task-A",
+				title: "Task A",
+				description: "Task A",
+				worktreePath: "/tmp/wt-A",
+			};
+			const taskB: Task = {
+				...mockTaskWithWorktree,
+				id: "task-B",
+				title: "Task B",
+				description: "Task B",
+				worktreePath: "/tmp/wt-B",
+			};
+
+			// Task A loads successfully with a distinctive value; task B's load rejects.
+			getConfigs.mockReset();
+			getConfigs
+				.mockResolvedValueOnce({ repo: { setupScript: "A-initial" }, local: {}, app: {} })
+				.mockRejectedValueOnce(new Error("boom: failed to load"));
+
+			const user = userEvent.setup();
+			await renderProjectSettings(mockProject, {}, [taskA, taskB]);
+			await user.click(screen.getByText("Worktree Config"));
+
+			// Wait for task A's config to land.
+			await vi.waitFor(() => {
+				expect(screen.getByDisplayValue("A-initial")).toBeInTheDocument();
+			});
+
+			// User edits the form while looking at task A (makes it dirty).
+			const textarea = screen.getByDisplayValue("A-initial") as HTMLTextAreaElement;
+			await user.clear(textarea);
+			await user.type(textarea, "A-EDITED");
+
+			// Switch to task B — its config load rejects.
+			const selector = screen.getByRole("combobox");
+			await act(async () => {
+				await user.selectOptions(selector, "task-B");
+			});
+			await act(async () => {
+				await Promise.resolve();
+				await Promise.resolve();
+			});
+
+			saveRepo.mockClear();
+
+			// Try to click Save if the sticky dirty bar still shows it.
+			const saveCandidates = screen.queryAllByRole("button", { name: /^Save$/i });
+			for (const btn of saveCandidates) {
+				if (!(btn as HTMLButtonElement).disabled) {
+					await user.click(btn);
+				}
+			}
+			await act(async () => {
+				await Promise.resolve();
+				await Promise.resolve();
+			});
+
+			// A-EDITED must never be persisted against task B's worktreePath.
+			for (const call of saveRepo.mock.calls) {
+				const payload = call[0] as { worktreePath?: string; setupScript?: string };
+				if (payload?.worktreePath === "/tmp/wt-B") {
+					expect(payload.setupScript).not.toBe("A-EDITED");
+				}
+			}
+		});
 	});
 });

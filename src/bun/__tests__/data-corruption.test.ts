@@ -79,7 +79,8 @@ describe("data corruption guards", () => {
 	it("refuses to overwrite tasks.json after a parse failure", async () => {
 		const project = makeProject();
 		const existingTask = makeTask();
-		const tasksDir = join(dev3Home, "data", "tmp-existing-project");
+		// Slug for "/tmp/existing-project" under the dash-escape algorithm.
+		const tasksDir = join(dev3Home, "data", "tmp-existing--project");
 		const tasksFile = join(tasksDir, "tasks.json");
 
 		writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));

@@ -794,11 +794,34 @@ describe("task update whitespace validation", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("rejects whitespace-only --description when it's the only update field", async () => {
-		await expect(
-			handleTask("update", args(["aaaaaaaa"], { description: "   " }), SOCKET, null),
-		).rejects.toThrow("EXIT_3");
-		expect(mockSend).not.toHaveBeenCalled();
+	it("clears description when --description is whitespace-only", async () => {
+		// Whitespace-only is interpreted as "clear the description" — tri-state
+		// behavior: present flag (even if empty/whitespace) means set, absent means leave alone.
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, description: "" }));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { description: "   " }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.description).toBe("");
+	});
+
+	it("clears description when --description is empty string", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, description: "" }));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { description: "" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params).toHaveProperty("description", "");
 	});
 });
 

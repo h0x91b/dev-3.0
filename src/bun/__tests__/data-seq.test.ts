@@ -39,7 +39,9 @@ const testProject: Project = {
 };
 
 function tasksFilePath(): string {
-	return "/tmp/dev3-test-seq/data/tmp-test-project/tasks.json";
+	// Slug for "/tmp/test-project" under the dash-escape algorithm:
+	// strip /, escape "-" → "--", replace "/" → "-".
+	return "/tmp/dev3-test-seq/data/tmp-test--project/tasks.json";
 }
 
 function seedTasks(tasks: unknown[]): void {

@@ -5307,6 +5307,39 @@ describe("triggerColumnAgentIfNeeded", () => {
 
 		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
 	});
+
+	it("notifies the user via pushMessage when a custom-column agent fails to launch", async () => {
+		// Bug M7·Y: review-by-ai has a fallback path, but a custom-column agent
+		// failure would previously leave the task silently parked with no agent
+		// and no notification.
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+		const customColumn: any = {
+			id: "col-1",
+			name: "Security Review",
+			color: "#abcdef",
+			agentConfig: { agentId: "builtin-claude", configId: "claude-bypass-sonnet", prompt: "audit" },
+		};
+
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(
+			new Error("boom: agent binary missing"),
+		);
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await triggerColumnAgentIfNeeded(customColumn.id, project, task, { customColumn });
+
+		const events = push.mock.calls.map((c) => c[0]);
+		expect(events).toContain("columnAgentFailed");
+		const payload = push.mock.calls.find((c) => c[0] === "columnAgentFailed")?.[1];
+		expect(payload).toMatchObject({
+			taskId: task.id,
+			projectId: project.id,
+			columnName: "Security Review",
+		});
+		expect(String(payload.error)).toContain("boom");
+	});
 });
 
 // ================================================================
