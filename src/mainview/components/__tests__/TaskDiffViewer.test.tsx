@@ -20,10 +20,17 @@ vi.mock("@git-diff-view/react", async () => {
 		new: 1,
 	} as const;
 
+	type MockDiffLine = {
+		key: string;
+		side: "old" | "new";
+		text: string;
+	};
+
 	return {
 		DiffView: ({
 			diffViewMode,
 			diffViewTheme,
+			diffFile,
 			diffViewAddWidget,
 			renderWidgetLine,
 			renderExtendLine,
@@ -31,6 +38,7 @@ vi.mock("@git-diff-view/react", async () => {
 		}: {
 			diffViewMode: number;
 			diffViewTheme: "dark" | "light";
+			diffFile?: { __mockLines?: MockDiffLine[] };
 			diffViewAddWidget?: boolean;
 			renderWidgetLine?: (props: { lineNumber: number; side: number; onClose: () => void; diffFile: object }) => React.ReactNode;
 			renderExtendLine?: (props: { lineNumber: number; side: number; data: unknown; onUpdate: () => void; diffFile: object }) => React.ReactNode;
@@ -60,6 +68,15 @@ vi.mock("@git-diff-view/react", async () => {
 				<div className="diff-table-scroll-container overflow-x-auto" data-testid="mock-diff-scroll">
 					<div data-testid="mock-diff">
 						mode:{diffViewMode} theme:{diffViewTheme}
+						<div className="space-y-1">
+							{diffFile?.__mockLines?.map((line, index) => (
+								<div key={line.key} data-line={index + 1} className="diff-line">
+									<div className={line.side === "old" ? "diff-line-old-content" : "diff-line-new-content"}>
+										<span data-testid="mock-search-line-content">{line.text}</span>
+									</div>
+								</div>
+							))}
+						</div>
 						{diffViewAddWidget && (
 							<button
 								type="button"
@@ -103,6 +120,28 @@ vi.mock("@git-diff-view/react", async () => {
 		},
 		SplitSide,
 		DiffFile: class {
+			__mockLines: MockDiffLine[];
+
+			constructor(
+				_oldFileName: string,
+				oldFileContent: string,
+				_newFileName: string,
+				newFileContent: string,
+			) {
+				this.__mockLines = [
+					...oldFileContent.split("\n").filter(Boolean).map((text, index) => ({
+						key: `old-${index}`,
+						side: "old" as const,
+						text,
+					})),
+					...newFileContent.split("\n").filter(Boolean).map((text, index) => ({
+						key: `new-${index}`,
+						side: "new" as const,
+						text,
+					})),
+				];
+			}
+
 			initTheme() {}
 			initRaw() {}
 			buildSplitDiffLines() {}
@@ -112,7 +151,24 @@ vi.mock("@git-diff-view/react", async () => {
 });
 
 vi.mock("@git-diff-view/file", () => ({
-	generateDiffFile: () => ({
+	generateDiffFile: (
+		_oldFileName: string,
+		oldFileContent: string,
+		_newFileName: string,
+		newFileContent: string,
+	) => ({
+		__mockLines: [
+			...oldFileContent.split("\n").filter(Boolean).map((text, index) => ({
+				key: `old-${index}`,
+				side: "old" as const,
+				text,
+			})),
+			...newFileContent.split("\n").filter(Boolean).map((text, index) => ({
+				key: `new-${index}`,
+				side: "new" as const,
+				text,
+			})),
+		],
 		initTheme() {},
 		initRaw() {},
 		buildSplitDiffLines() {},
@@ -422,6 +478,52 @@ describe("TaskDiffViewer", () => {
 
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
+		});
+	});
+
+	it("opens diff search and focuses it on Cmd+F", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.keyboard("{Meta>}f{/Meta}");
+
+		expect(screen.getByPlaceholderText("Search diff...")).toHaveFocus();
+	});
+
+	it("searches diff content and jumps to the matching line", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.keyboard("{Meta>}f{/Meta}");
+		await user.type(screen.getByPlaceholderText("Search diff..."), "ok");
+
+		await waitFor(() => {
+			expect(screen.getByText("1 / 1")).toBeInTheDocument();
+		});
+		await waitFor(() => {
+			expect(scrollIntoViewMock).toHaveBeenCalled();
 		});
 	});
 

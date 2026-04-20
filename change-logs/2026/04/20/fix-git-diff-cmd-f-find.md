@@ -1,1 +1,1 @@
-Stopped the board/sidebar Cmd+F handlers from hijacking the shortcut while the inline Git Diff is open, so the diff page can use normal in-page find behavior. Added regression tests for both search entry points.
+Inline Git Diff now opens its own local search with Cmd+F instead of falling through to board/task search or doing nothing. The search bar jumps between matching diff lines, keeps the board/sidebar shortcut disabled while diff is open, and includes regression tests for the shortcut and navigation flow.
