@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import FolderPickerHost from "../FolderPickerModal";
@@ -100,6 +100,9 @@ describe("FolderPickerHost", () => {
 	});
 
 	it("renders sidebar shortcuts for Home + Desktop/Documents/Downloads when they exist", async () => {
+		// `Desktop`/`Documents`/`Downloads` may also appear as tree rows once
+		// the async loader fetches the home listing — scope queries to the
+		// sidebar element so we don't trip on the duplicate.
 		mockedApi.request.listDirectory.mockResolvedValue(
 			mockListing("/Users/test", [
 				{ name: "Desktop", isDir: true },
@@ -113,12 +116,14 @@ describe("FolderPickerHost", () => {
 		openFolderPicker();
 
 		await screen.findByTestId("folder-picker-backdrop");
-		expect(await screen.findByText("Home")).toBeInTheDocument();
-		expect(screen.getByText("Desktop")).toBeInTheDocument();
-		expect(screen.getByText("Documents")).toBeInTheDocument();
-		expect(screen.getByText("Downloads")).toBeInTheDocument();
+		const sidebar = await screen.findByTestId("folder-picker-sidebar");
+		const sidebarQuery = within(sidebar);
+		await waitFor(() => expect(sidebarQuery.getByText("Desktop")).toBeInTheDocument());
+		expect(sidebarQuery.getByText("Home")).toBeInTheDocument();
+		expect(sidebarQuery.getByText("Documents")).toBeInTheDocument();
+		expect(sidebarQuery.getByText("Downloads")).toBeInTheDocument();
 		// Root shortcut is always present
-		expect(screen.getByText("Root")).toBeInTheDocument();
+		expect(sidebarQuery.getByText("Root")).toBeInTheDocument();
 	});
 
 	it("saves the selected path to recent, and shows it in the sidebar next time", async () => {

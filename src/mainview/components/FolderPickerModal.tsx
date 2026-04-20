@@ -309,7 +309,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				{/* Body: sidebar + main */}
 				<div className="flex flex-1 min-h-[24rem] max-h-[min(36rem,80vh)]">
 					{/* Sidebar */}
-					<aside className="w-[11.5rem] flex-shrink-0 border-r border-edge bg-raised/40 py-2 overflow-y-auto flex flex-col gap-3">
+					<aside data-testid="folder-picker-sidebar" className="w-[11.5rem] flex-shrink-0 border-r border-edge bg-raised/40 py-2 overflow-y-auto flex flex-col gap-3">
 						<SidebarSection title={t("folderPicker.sectionPlaces")}>
 							{quickPlaces.map((place) => (
 								<SidebarItem
