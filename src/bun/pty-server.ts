@@ -1,6 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
+import { getUserShell } from "./shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
 import { writeShellInit } from "./shell-init";
 
@@ -570,7 +571,7 @@ function setupProjectLayout(session: PtySession): void {
 
 function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = session.tmuxSessionName;
-	const tmuxCmd = session.tmuxCommand || "bash";
+	const tmuxCmd = session.tmuxCommand || getUserShell();
 
 	if (!existsSync(session.cwd)) {
 		log.error("Cannot spawn PTY — cwd does not exist", {

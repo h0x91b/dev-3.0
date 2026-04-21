@@ -19,7 +19,7 @@ import { resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { resolveShellEnv } from "./shell-env";
+import { getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
@@ -79,6 +79,7 @@ if (!process.env.DEV3_VIEWS_DIR) {
 }
 
 // ── Resolve shell PATH + LANG + key gh config vars (same as GUI entry) ──
+process.env.SHELL = getUserShell();
 const originalPath = process.env.PATH;
 const originalLang = process.env.LANG;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;

@@ -1,5 +1,5 @@
 import { createLogger } from "./logger";
-import { spawn } from "./spawn";
+import { spawn, spawnSync } from "./spawn";
 
 const log = createLogger("shell-env");
 
@@ -28,6 +28,49 @@ export function getShellRcFile(shell: string, home: string): string | null {
 	return null;
 }
 
+function decodeStdout(stdout?: Uint8Array): string {
+	return stdout ? new TextDecoder().decode(stdout).trim() : "";
+}
+
+function readAccountShell(): string | null {
+	const user = process.env.USER || process.env.LOGNAME;
+	if (!user) return null;
+
+	try {
+		if (process.platform === "darwin") {
+			const result = spawnSync(["dscl", ".", "-read", `/Users/${user}`, "UserShell"], {
+				stdout: "pipe",
+				stderr: "ignore",
+			});
+			if (result.exitCode === 0) {
+				const match = decodeStdout(result.stdout).match(/^UserShell:\s+(.+)$/m);
+				return match?.[1]?.trim() || null;
+			}
+			return null;
+		}
+
+		if (process.platform === "linux") {
+			const result = spawnSync(["getent", "passwd", user], {
+				stdout: "pipe",
+				stderr: "ignore",
+			});
+			if (result.exitCode === 0) {
+				const line = decodeStdout(result.stdout);
+				const shell = line.split(":")[6]?.trim();
+				return shell || null;
+			}
+		}
+	} catch (err) {
+		log.debug("Failed to read account shell", { user, error: String(err) });
+	}
+
+	return null;
+}
+
+export function getUserShell(): string {
+	return readAccountShell() || process.env.SHELL || "/bin/zsh";
+}
+
 /**
  * Resolve the user's shell environment by spawning their login shell.
  *
@@ -46,7 +89,7 @@ export async function resolveShellEnv(): Promise<{
 	xdgConfigHome?: string;
 	ghConfigDir?: string;
 }> {
-	const shell = process.env.SHELL || "/bin/zsh";
+	const shell = getUserShell();
 	const timeout = 5_000;
 	const supportedShell = getSupportedShell(shell);
 

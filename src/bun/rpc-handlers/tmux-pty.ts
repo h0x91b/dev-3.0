@@ -9,9 +9,10 @@ import * as repoConfig from "../repo-config";
 import { getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
 import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
+import { getUserShell } from "../shell-env";
 import { spawn, spawnSync } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
-import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
+import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -222,6 +223,7 @@ export async function launchTaskPty(
 	}
 
 	const env = buildAgentEnv(extraEnv, task.id);
+	const userShell = getUserShell();
 
 	const portCount = project.portCount ?? 0;
 	if (portCount > 0) {
@@ -251,7 +253,7 @@ export async function launchTaskPty(
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
 			const originalCmdPath = `/tmp/dev3-${task.id}-original-cmd.sh`;
-			await Bun.write(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true }));
+			await Bun.write(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
 
 			const retryScript = [
 				"#!/bin/bash",
@@ -259,7 +261,7 @@ export async function launchTaskPty(
 				"check_and_run() {",
 				`  if command -v ${shellQuote(binaryName)} &>/dev/null; then`,
 				`    printf '\\n\\033[1;32m✓ Found %s\\033[0m\\n\\n' ${shellQuote(binaryName)}`,
-				`    exec bash "${originalCmdPath}"`,
+				`    exec ${buildScriptRunnerCommand(originalCmdPath, { shellPath: userShell })}`,
 				"  fi",
 				"}",
 				"",
@@ -277,7 +279,7 @@ export async function launchTaskPty(
 
 			const retryScriptPath = `/tmp/dev3-${task.id}-agent-check.sh`;
 			await Bun.write(retryScriptPath, retryScript);
-			tmuxCmd = `bash "${retryScriptPath}"`;
+			tmuxCmd = buildScriptRunnerCommand(retryScriptPath, { shellPath: userShell });
 			log.info("Replaced tmuxCmd with agent-check retry wrapper");
 		}
 	}
@@ -338,12 +340,12 @@ export async function launchTaskPty(
 		const startupPath = `${prefix}-startup.sh`;
 
 		await Bun.write(setupPath, project.setupScript + "\n");
-		await Bun.write(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true }));
+		await Bun.write(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
 
-		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "bash '${cmdPath}'"`;
+		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "${escapeForDoubleQuotes(buildScriptRunnerCommand(cmdPath, { shellPath: userShell }))}"`;
 		const setupFail = [
 			"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
-			"  exec bash",
+			`  exec ${shellQuote(userShell)}`,
 		].join("\n");
 		const setupOkClose = [
 			"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
@@ -355,7 +357,7 @@ export async function launchTaskPty(
 		const startupLines = [
 			"#!/bin/bash",
 			...(setupScriptLaunchMode === "parallel" ? [splitCmd] : []),
-			`bash -x "${setupPath}"`,
+			buildScriptRunnerCommand(setupPath, { shellPath: userShell, trace: true }),
 			"S=$?",
 			`if [ $S -ne 0 ]; then`,
 			setupFail,
@@ -364,13 +366,13 @@ export async function launchTaskPty(
 			setupOkClose,
 		];
 		await Bun.write(startupPath, startupLines.join("\n") + "\n");
-		tmuxCmd = `bash "${startupPath}"`;
+		tmuxCmd = buildScriptRunnerCommand(startupPath, { shellPath: userShell });
 		isSetupWrapper = true;
 	}
 
 	const runScriptPath = `/tmp/dev3-${task.id}-run.sh`;
-	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper }));
-	const wrapperCmd = `bash "${runScriptPath}"`;
+	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell }));
+	const wrapperCmd = buildScriptRunnerCommand(runScriptPath, { shellPath: userShell });
 
 	log.info("Creating PTY session", {
 		taskId: task.id.slice(0, 8),
@@ -982,8 +984,7 @@ async function getProjectPtyUrl(params: { projectId: string }): Promise<string> 
 		if (!existsSync(project.path)) {
 			throw new Error(`Project path does not exist: ${project.path}`);
 		}
-		const userShell = process.env.SHELL || "/bin/zsh";
-		pty.createSession(sessionKey, params.projectId, project.path, userShell, {}, pty.DEFAULT_TMUX_SOCKET, "project");
+		pty.createSession(sessionKey, params.projectId, project.path, getUserShell(), {}, pty.DEFAULT_TMUX_SOCKET, "project");
 	}
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;

@@ -13,7 +13,7 @@ import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpd
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { getShellRcFile, resolveShellEnv } from "./shell-env";
+import { getShellRcFile, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { stopTunnel } from "./cloudflare-tunnel";
@@ -109,7 +109,8 @@ log.info("Log files", { dir: getLogPath() });
 
 	// Append ~/.dev3.0/bin to the user's shell RC file (idempotent).
 	// This makes `dev3` available in all terminals, not just worktree tmux sessions.
-	const shell = process.env.SHELL || "/bin/zsh";
+	const shell = getUserShell();
+	process.env.SHELL = shell;
 	const home = process.env.HOME || "/tmp";
 	const marker = ".dev3.0/bin";
 	const rcFile = getShellRcFile(shell, home);

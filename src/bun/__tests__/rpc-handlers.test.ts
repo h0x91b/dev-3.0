@@ -541,19 +541,19 @@ describe("buildCmdScript", () => {
 		expect(result).not.toContain(`exec ${cmd}`);
 	});
 
-	it("defaults to keepShell=false: drops into bash only on failure", () => {
-		const result = buildCmdScript("claude");
+	it("defaults to keepShell=false: drops into the selected shell on failure", () => {
+		const result = buildCmdScript("claude", undefined, { shellPath: "/bin/zsh" });
 		expect(result).toContain("__EC=$?");
 		expect(result).toContain("if [ $__EC -ne 0 ]; then");
-		expect(result).toContain("exec bash");
-		expect(result).not.toContain('exec "${SHELL:-bash}"');
+		expect(result).toContain("exec '/bin/zsh'");
+		expect(result).not.toContain("exec bash");
 	});
 
 	it("keepShell=true: always drops into user shell after command finishes", () => {
-		const result = buildCmdScript("claude", undefined, { keepShell: true });
+		const result = buildCmdScript("claude", undefined, { keepShell: true, shellPath: "/bin/zsh" });
 		expect(result).toContain("__EC=$?");
-		expect(result).toContain('exec "${SHELL:-bash}"');
-		expect(result).not.toContain("exec bash\n");
+		expect(result).toContain("exec '/bin/zsh'");
+		expect(result).not.toContain("exec bash");
 	});
 
 	it("keepShell=true: shows error message on non-zero exit", () => {
@@ -4462,6 +4462,7 @@ describe("launchTaskPty", () => {
 	});
 
 	it("waits for setup completion before opening the agent pane in blocking mode", async () => {
+		process.env.SHELL = "/bin/zsh";
 		const project = makeProject({
 			setupScript: "bun install",
 			...( { setupScriptLaunchMode: "blocking" } as any ),
@@ -4474,8 +4475,8 @@ describe("launchTaskPty", () => {
 
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
-			const setupIndex = script.indexOf('bash -x "/tmp/dev3-task-1-setup.sh"');
-			const splitIndex = script.indexOf('tmux split-window -v -c "/tmp/wt" "bash \'/tmp/dev3-task-1-cmd.sh\'"');
+			const setupIndex = script.indexOf(`'${process.env.SHELL}' -x '/tmp/dev3-task-1-setup.sh'`);
+			const splitIndex = script.indexOf(`tmux split-window -v -c "/tmp/wt" "'${process.env.SHELL}' '/tmp/dev3-task-1-cmd.sh'"`);
 
 			expect(setupIndex).toBeGreaterThanOrEqual(0);
 			expect(splitIndex).toBeGreaterThanOrEqual(0);
@@ -4486,6 +4487,7 @@ describe("launchTaskPty", () => {
 	});
 
 	it("opens the agent pane immediately in parallel mode", async () => {
+		process.env.SHELL = "/bin/zsh";
 		const project = makeProject({
 			setupScript: "bun install",
 			...( { setupScriptLaunchMode: "parallel" } as any ),
@@ -4498,8 +4500,8 @@ describe("launchTaskPty", () => {
 
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
-			const splitIndex = script.indexOf('tmux split-window -v -c "/tmp/wt" "bash \'/tmp/dev3-task-1-cmd.sh\'"');
-			const setupIndex = script.indexOf('bash -x "/tmp/dev3-task-1-setup.sh"');
+			const splitIndex = script.indexOf(`tmux split-window -v -c "/tmp/wt" "'${process.env.SHELL}' '/tmp/dev3-task-1-cmd.sh'"`);
+			const setupIndex = script.indexOf(`'${process.env.SHELL}' -x '/tmp/dev3-task-1-setup.sh'`);
 
 			expect(splitIndex).toBeGreaterThanOrEqual(0);
 			expect(setupIndex).toBeGreaterThanOrEqual(0);
