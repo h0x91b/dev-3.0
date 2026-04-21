@@ -19,8 +19,9 @@ import {
 	withTaskPreparation,
 } from "../preparation-runtime";
 import { loadSettings, loadSettingsSync } from "../settings";
+import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
-import { getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
+import { buildScriptRunnerCommand, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
 import { resolveOperationalProjectConfig } from "./settings-config";
 import { cleanupTaskTmuxState, killDevServerSession, launchColumnAgent, launchTaskPty } from "./tmux-pty";
@@ -433,13 +434,14 @@ export async function runCleanupScript(
 	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
+	const userShell = getUserShell();
 
 	await Bun.write(scriptPath, `#!/bin/bash\n${script}\n`);
 
 	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
 
 	const cleanupSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, `bash "${scriptPath}"`);
+	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, buildScriptRunnerCommand(scriptPath, { shellPath: userShell }));
 	const proc = spawn(
 		cleanupArgs,
 		{

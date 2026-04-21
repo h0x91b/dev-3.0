@@ -160,7 +160,8 @@ describe("pty-server", () => {
 			expect(tmuxCall![0]).toContain(TMUX_CONF_PATH);
 		});
 
-		it("uses 'bash' when tmuxCommand is empty", () => {
+		it("uses the user shell when tmuxCommand is empty", () => {
+			process.env.SHELL = "/bin/zsh";
 			const id = track("task-defcmd-01");
 			createSession(id, "proj-1", "/tmp/cwd", "", {});
 
@@ -168,8 +169,8 @@ describe("pty-server", () => {
 				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
 			);
 			expect(tmuxCall).toBeDefined();
-			// last arg should be "bash" (default)
-			expect(tmuxCall![0][tmuxCall![0].length - 1]).toBe("bash");
+			// last arg should be the resolved user shell
+			expect(tmuxCall![0][tmuxCall![0].length - 1]).toBe("/bin/zsh");
 		});
 
 		it("calls onPtyDied when cwd does not exist", () => {

@@ -1,0 +1,1 @@
+Detect the user's real account shell from system user records instead of trusting a stale `SHELL` environment variable. Task setup, startup, cleanup, and fallback shells now launch through that resolved shell so shell-managed tools like `bun` and `gh` keep working in dev-3.0 terminals.

@@ -21,6 +21,22 @@ export function shellQuote(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+export function getScriptShellPath(shellPath?: string): string {
+	return shellPath?.trim() || process.env.SHELL || "/bin/zsh";
+}
+
+export function buildScriptRunnerCommand(
+	scriptPath: string,
+	options?: { shellPath?: string; trace?: boolean },
+): string {
+	const parts = [shellQuote(getScriptShellPath(options?.shellPath))];
+	if (options?.trace) {
+		parts.push("-x");
+	}
+	parts.push(shellQuote(scriptPath));
+	return parts.join(" ");
+}
+
 export function buildEnvExports(env: Record<string, string>): string[] {
 	return Object.entries(env).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
 }
@@ -28,13 +44,14 @@ export function buildEnvExports(env: Record<string, string>): string[] {
 export function buildCmdScript(
 	tmuxCmd: string,
 	env?: Record<string, string>,
-	options?: { paneTitle?: string; keepShell?: boolean; onExitCommand?: string },
+	options?: { paneTitle?: string; keepShell?: boolean; onExitCommand?: string; shellPath?: string },
 ): string {
 	const escaped = escapeForDoubleQuotes(tmuxCmd);
 	const exportLines = env && Object.keys(env).length > 0 ? buildEnvExports(env) : [];
 	const safePaneTitle = options?.paneTitle?.replace(/'/g, "") ?? "";
 	const titleLine = safePaneTitle ? `printf '\\033]2;${safePaneTitle}\\033\\\\'` : "";
 	const onExitLines = options?.onExitCommand ? [options.onExitCommand] : [];
+	const shellPath = getScriptShellPath(options?.shellPath);
 	if (options?.keepShell) {
 		return [
 			"#!/bin/bash",
@@ -48,7 +65,7 @@ export function buildCmdScript(
 			`  printf '\\n\\033[2mAgent session ended (exit 0). You are in the worktree shell.\\033[0m\\n'`,
 			...onExitLines,
 			"fi",
-			`exec "\${SHELL:-bash}"`,
+			`exec ${shellQuote(shellPath)}`,
 			"",
 		].join("\n");
 	}
@@ -60,7 +77,7 @@ export function buildCmdScript(
 		"__EC=$?",
 		"if [ $__EC -ne 0 ]; then",
 		`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
-		"  exec bash",
+		`  exec ${shellQuote(shellPath)}`,
 		...(onExitLines.length > 0 ? ["else", ...onExitLines] : []),
 		"fi",
 		"",

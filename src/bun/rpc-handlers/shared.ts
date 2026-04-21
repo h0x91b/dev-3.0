@@ -3,6 +3,8 @@ export {
 	log,
 	escapeForDoubleQuotes,
 	shellQuote,
+	getScriptShellPath,
+	buildScriptRunnerCommand,
 	buildEnvExports,
 	buildCmdScript,
 	resolveBinaryPath,
