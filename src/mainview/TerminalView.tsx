@@ -572,14 +572,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				const dims = fit.proposeDimensions();
 				console.log("[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
-					// Resize dance: send slightly different dimensions first,
-					// then correct ones after a short delay. This forces two
-					// SIGWINCHes even if the PTY already has the same size
-					// (reconnection case). The kernel skips SIGWINCH for
-					// same-size resizes, so the nudge guarantees the app
-					// receives SIGWINCH and does a full screen redraw.
-					const nudgeCols = Math.max(2, dims.cols - 1);
-					ws?.send(`\x1b]resize;${nudgeCols};${dims.rows}\x07`);
+					// Resize dance: nudge the row count up by 1, then back to
+					// the real value. This forces two SIGWINCHes so tmux
+					// always repaints even when the PTY already has the
+					// same size (reconnection case where the kernel would
+					// otherwise skip SIGWINCH).
+					//
+					// We nudge ROWS rather than COLS because changing column
+					// count forces tmux to re-wrap every line, making both
+					// paints visually distinct and producing a "refresh /
+					// realign" flicker. A row nudge keeps column width (and
+					// therefore all text wrapping) identical between the two
+					// paints — the only visible difference is one extra blank
+					// row at the bottom that disappears on the second paint,
+					// which is effectively invisible.
+					const nudgeRows = dims.rows + 1;
+					ws?.send(`\x1b]resize;${dims.cols};${nudgeRows}\x07`);
 					setTimeout(() => {
 						if (ws?.readyState === WebSocket.OPEN) {
 							ws.send(

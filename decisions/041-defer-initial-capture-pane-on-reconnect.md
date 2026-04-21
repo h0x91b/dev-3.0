@@ -1,67 +1,91 @@
-# 041 — Drop `capture-pane` replay on WS reconnect
+# 041 — Three fixes to eliminate the task-switch terminal glitch
 
 ## Context
 
-Switching between tasks produced a garbled terminal for the newly-activated
-task: overlapping text, mis-aligned rows, and leftover characters that only
-cleared after the user manually added a pane (which forces tmux to hard-
-redraw). Adding a pane was a workaround, not a fix.
+Switching between tasks produced three distinct symptoms, all perceived as
+"the terminal glitches on every switch":
+
+1. **Garbled overlap** — stale-width text characters stuck behind the new
+   task's content until the user manually added a pane.
+2. **Flicker of the task being left** — the outgoing task's content
+   visibly redrew, then blanked, then the new task appeared.
+3. **"Refresh and realign"** — text shifted sideways between two rapid
+   paints on each switch.
 
 ## Investigation
 
-The PTY server keeps one long-lived tmux session per task. On WebSocket
-reconnect (`src/bun/pty-server.ts` WS `open` handler) the server used to
-call `capturePane()` immediately and send the result prefixed with
-`\x1b[2J\x1b[H` so the user saw content instantly instead of a blank
-terminal (introduced in PR #352 for the #234 flicker).
+Each symptom had an independent root cause.
 
-`tmux capture-pane -p -e` returns content at **tmux's current internal
-pane size**. That size reflects whatever the last client (or the 80×24
-spawn default) told tmux — not the freshly-measured dimensions of the
-ghostty-web terminal the React tree just mounted. When the two sizes
-differ, rendering stale-width lines into a terminal sized differently
-produces exactly the "switch glitch" we saw. Tmux's SIGWINCH redraw
-(triggered by the client's resize dance) only repaints changed cells and
-cannot clean up the stale characters that sit in cells it does not touch.
+**(1) Garbled overlap.** On WS reconnect the PTY server immediately called
+`capturePane()` and sent `\x1b[2J\x1b[H` + captured content so the user
+saw content instantly (from PR #352 / issue #234). `tmux capture-pane`
+returns content at **tmux's current internal pane size** — stale whenever
+the previous client disconnected at a different size (or the session was
+still at the 80×24 spawn default). Rendering stale-width lines into a
+freshly-sized client terminal produced the overlap; tmux's SIGWINCH
+redraw only repaints changed cells, so the leftover characters stuck
+around.
 
-A first attempt **deferred** the replay until after the client's resize
-message propagated to tmux, with an 80 ms debounce. That fixed the glitch
-but introduced noticeable flicker on every switch: clear on WS open,
-then tmux's SIGWINCH redraw paints gradually, then 80 ms later another
-clear+capture replay flashes over top. Two clears + a redraw + a replay
-in ~130 ms is visually noisy.
+**(2) Flicker of the leaving task.** `TaskTerminal` was not keyed by
+`taskId`, so on every switch React re-ran the component with the new
+`taskId` while the previous task's `ptyUrl` state was still in scope.
+That caused `TerminalView` to remount *twice*: first with the stale URL
++ new taskId (repainting the leaving task into a freshly re-created
+canvas), then again once the new URL arrived.
+
+**(3) Refresh/realign.** The client-side resize dance nudged columns
+(`cols-1` → `cols`) to force SIGWINCH on same-size reconnects. Tmux
+emitted a full pane repaint at each size, and because column count
+differs between the two paints, text re-wrapped at a narrower width and
+then at the target width — a visible horizontal shift.
 
 ## Decision
 
-Drop the replay altogether. On WS reconnect (`src/bun/pty-server.ts`
-WS `open`, reconnect branch) the server sends **nothing**. The React tree
-mounts a fresh ghostty-web terminal which is already blank, and the
-client's resize dance (cols-1 → cols, 50 ms apart) forces two SIGWINCHes
-that make tmux emit a full pane redraw via the natural PTY data path.
+Three independent fixes, committed together:
 
-That single redraw is the authoritative paint. No clear, no capture
-replay, no competing flashes.
+- **Drop the capture-pane replay.** `src/bun/pty-server.ts` WS `open`
+  reconnect branch now sends nothing. React mounts a fresh ghostty-web
+  terminal per switch (already blank), and the client's resize dance
+  forces tmux's SIGWINCH full-pane repaint down the natural PTY data
+  path. That single redraw is the authoritative paint.
+- **Key `TaskTerminal` by `taskId`.** `src/mainview/components/
+  TaskWorkspacePane.tsx` now renders `<TaskTerminal key={taskId} … />`,
+  so a task switch fully unmounts the previous `TaskTerminal`, starts
+  the new one with a null `ptyUrl`, and mounts `TerminalView` exactly
+  once — after the new URL arrives.
+- **Row-nudge the resize dance.** `src/mainview/TerminalView.tsx`
+  `ws.onopen` now sends `(cols, rows+1)` then `(cols, rows)` (was
+  `(cols-1, rows)` then `(cols, rows)`). Text wrapping is identical
+  between the two paints, so the only visual difference is one extra
+  blank bottom row that disappears on the second paint — effectively
+  invisible.
 
 ## Risks
 
-- The "instant paint on reconnect" UX from #352 is gone. In practice the
-  SIGWINCH redraw arrives within a few frames, so the previously-described
-  flicker window is small; in exchange, switches are now glitch-free *and*
-  free of the double-flash the deferred-capture attempt introduced.
-- Relies on tmux always doing a full pane redraw on SIGWINCH. Tmux's
-  `window_redraw_all_panes()` path does this; the client's resize dance
-  guarantees the kernel forwards SIGWINCH even when the dimensions equal
-  tmux's current size.
+- The instant-paint-on-reconnect UX from #352 is gone. In practice the
+  SIGWINCH redraw arrives within a couple of frames, so the previously-
+  described flicker window is small.
+- Keying `TaskTerminal` tears down the old task's Terminal + WS on every
+  switch. This was already happening implicitly via prop changes, just
+  twice instead of once — net resource cost is lower after this change.
+- The row-nudge still causes two SIGWINCH/repaints in tmux; we rely on
+  tmux's redraw of an identical-width pane being visually stable. If a
+  future tmux version changes that behavior the dance may need to be
+  reconsidered.
 
 ## Alternatives considered
 
-- **Defer capture until after first resize (80 ms debounce).** Fixed the
-  glitch but flickered on every switch; superseded by this decision.
+- **Defer capture until after first resize (80 ms debounce).** Fixed
+  symptom (1) but introduced double-flash flicker on every switch
+  (clear on WS open + clear+capture after debounce). Superseded.
 - **Force a tmux full redraw via `refresh-client` / `send-keys -R`.**
-  Requires a client target (tty), adds a subprocess spawn per resize, and
-  still depends on tmux's output arriving via the PTY — no real gain over
-  the SIGWINCH-only path.
-- **Pass client dims in the WS URL so the server can resize tmux before
-  capturing.** Cleanest conceptually, but the client only knows its
-  dimensions after `FitAddon.fit()` runs, and threading that through the
-  existing RPC-returned URL is more invasive than dropping the replay.
+  Requires a client tty target and a subprocess spawn per resize; no
+  real gain over the SIGWINCH-only path.
+- **Pass client dims in the WS URL** so the server can resize tmux
+  before capturing. Cleanest conceptually, but the client only knows
+  its dimensions after `FitAddon.fit()` runs and threading that through
+  the existing RPC-returned URL is more invasive than dropping the
+  replay.
+- **Keep all visited tasks mounted with CSS hide/show** for zero-flicker
+  switching. A meaningful UX upgrade but a much bigger change (memory,
+  multiple live WS connections, cache eviction policy). Deferred.
