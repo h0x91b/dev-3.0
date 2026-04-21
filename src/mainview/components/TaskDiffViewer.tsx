@@ -1621,7 +1621,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		}
 
 		return () => clearDiffSearchDecorations(root);
-	}, [currentSearchMatch, searchQuery]);
+	}, [currentSearchMatch, searchQuery, expandedFiles]);
 
 	function getScrollOffset(fileId: string): number | null {
 		const scrollRegion = scrollRegionRef.current;
