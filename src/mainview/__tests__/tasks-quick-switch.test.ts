@@ -4,7 +4,6 @@ import {
 	getActiveQuickSwitchRouteTaskId,
 	getInitialTasksQuickSwitchIndex,
 	getQuickSwitchDirection,
-	isTasksQuickSwitchCacheComplete,
 	moveTasksQuickSwitchSelection,
 	syncTasksQuickSwitchProjectTasks,
 } from "../tasks-quick-switch";
@@ -187,23 +186,6 @@ describe("tasks quick switch helpers", () => {
 		expect(moveTasksQuickSwitchSelection(0, 3, 1)).toBe(1);
 		expect(moveTasksQuickSwitchSelection(2, 3, 1)).toBe(0);
 		expect(moveTasksQuickSwitchSelection(0, 3, -1)).toBe(2);
-	});
-
-	it("treats the cache as incomplete when a visible project has no cached task entry yet", () => {
-		const complete = isTasksQuickSwitchCacheComplete(
-			[projectAlpha, projectBeta],
-			new Map([
-				["p1", []],
-				["p2", []],
-			]),
-		);
-		const incomplete = isTasksQuickSwitchCacheComplete(
-			[projectAlpha, projectBeta],
-			new Map([["p1", []]]),
-		);
-
-		expect(complete).toBe(true);
-		expect(incomplete).toBe(false);
 	});
 
 	it("reads the active task id from supported routes", () => {

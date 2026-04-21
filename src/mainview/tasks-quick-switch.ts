@@ -47,15 +47,6 @@ export function getQuickSwitchDirection(
 	return event.shiftKey && !shortcut.modifiers.includes("shift") ? -1 : 1;
 }
 
-export function isTasksQuickSwitchCacheComplete(
-	projects: Project[],
-	tasksByProject: Map<string, Task[]>,
-): boolean {
-	return projects
-		.filter((project) => !project.deleted)
-		.every((project) => tasksByProject.has(project.id));
-}
-
 function getTaskRecencyValue(task: Task): number {
 	return new Date(task.movedAt ?? task.updatedAt ?? task.createdAt).getTime();
 }
