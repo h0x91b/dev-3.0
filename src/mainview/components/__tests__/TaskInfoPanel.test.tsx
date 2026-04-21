@@ -214,6 +214,30 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("src/mainview/App.tsx")).toBeInTheDocument();
 		});
 
+		it("opens inline diff when clicking the top diff summary badge", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 2,
+				diffInsertions: 12,
+				diffDeletions: 4,
+				diffFileNames: ["bun.lock", "src/mainview/App.tsx"],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+
+			await user.click(screen.getByText("2 files").closest("button")!);
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "branch",
+				compareRef: undefined,
+				compareLabel: "origin/main",
+			});
+		});
+
 		it("opens inline diff focused on the selected changed file from the popup", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const onOpenInlineDiff = vi.fn();

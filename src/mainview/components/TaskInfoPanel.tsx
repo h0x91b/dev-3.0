@@ -85,7 +85,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const dragging = useRef(false);
 	const statusTriggerRef = useRef<HTMLButtonElement>(null);
 	const statusMenuRef = useRef<HTMLDivElement>(null);
-	const diffFilesTriggerRef = useRef<HTMLSpanElement>(null);
+	const diffFilesTriggerRef = useRef<HTMLButtonElement>(null);
 	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
@@ -364,35 +364,41 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		});
 	}
 
+	function openBranchDiff(focusFile?: string) {
+		if (!onOpenInlineDiff) {
+			return;
+		}
+		onOpenInlineDiff({
+			mode: "branch",
+			compareRef: metadataBranchState?.compareRef,
+			compareLabel: metadataBranchState?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`,
+			focusFile,
+		});
+	}
+
 	function handleFileDiff(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
 		event.stopPropagation();
 		setDiffFilesHover(false);
 		setFileOpenInMenu(null);
-		if (!onOpenInlineDiff) {
-			return;
-		}
-		const compareLabel = metadataBranchState?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`;
-		onOpenInlineDiff({
-			mode: "branch",
-			compareRef: metadataBranchState?.compareRef,
-			compareLabel,
-			focusFile: relativePath,
-		});
+		openBranchDiff(relativePath);
 	}
 
 	const metadataBranchStatus = metadataBranchState?.branchStatus ?? null;
 	const diffSummaryBadge = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
-		<span
+		<button
+			type="button"
 			ref={diffFilesTriggerRef}
-			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-[0.6875rem] font-mono text-fg-2 flex-shrink-0 cursor-default"
+			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-[0.6875rem] font-mono text-fg-2 flex-shrink-0 cursor-pointer transition-colors hover:bg-elevated-hover"
+			onClick={() => openBranchDiff()}
 			onMouseEnter={showDiffFilesPopover}
 			onMouseLeave={hideDiffFilesPopover}
+			title={t("infoPanel.showDiff")}
 		>
 			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
 			<span>{metadataBranchStatus.diffFiles} {metadataBranchStatus.diffFiles === 1 ? "file" : "files"}</span>
 			<span className="text-success">+{metadataBranchStatus.diffInsertions}</span>
 			<span className="text-danger">−{metadataBranchStatus.diffDeletions}</span>
-		</span>
+		</button>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && metadataBranchStatus.diffFileNames.length > 0 && createPortal(
 		<div

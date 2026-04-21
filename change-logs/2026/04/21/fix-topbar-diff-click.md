@@ -1,0 +1,1 @@
+Made the top changed-files badge in the task header open the same inline branch diff as the `Show Diff` button. Added a regression test to keep the badge click wired to the diff dialog while preserving the hover popover.
