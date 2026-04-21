@@ -13,6 +13,25 @@ vi.mock("../spawn", () => ({
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
+function fakeProc(stdout: string, stderr = "", exitCode = 0) {
+	const encoder = new TextEncoder();
+	return {
+		exited: Promise.resolve(exitCode),
+		stdout: new ReadableStream({
+			start(controller) {
+				controller.enqueue(encoder.encode(stdout));
+				controller.close();
+			},
+		}),
+		stderr: new ReadableStream({
+			start(controller) {
+				controller.enqueue(encoder.encode(stderr));
+				controller.close();
+			},
+		}),
+	};
+}
+
 describe("shell environment bootstrap", () => {
 	let originalShell: string | undefined;
 
@@ -34,6 +53,26 @@ describe("shell environment bootstrap", () => {
 
 		expect(result).toEqual({});
 		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("captures gh-related config variables from the login shell", async () => {
+		process.env.SHELL = "/bin/zsh";
+		spawnMock.mockReturnValue(fakeProc([
+			"___PATH=/opt/homebrew/bin:/usr/bin:/bin",
+			"___LANG=en_US.UTF-8",
+			"___XDG_CONFIG_HOME=/Users/tester/.config-xdg",
+			"___GH_CONFIG_DIR=/Users/tester/.config-gh",
+		].join("\n")));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		const result = await resolveShellEnv();
+
+		expect(result).toEqual({
+			path: "/opt/homebrew/bin:/usr/bin:/bin",
+			lang: "en_US.UTF-8",
+			xdgConfigHome: "/Users/tester/.config-xdg",
+			ghConfigDir: "/Users/tester/.config-gh",
+		});
 	});
 
 	it("main-process PATH bootstrap uses an explicit shell-profile helper instead of defaulting to zsh", () => {
