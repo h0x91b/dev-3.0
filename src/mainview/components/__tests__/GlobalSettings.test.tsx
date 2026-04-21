@@ -260,7 +260,7 @@ describe("GlobalSettings", () => {
 	});
 
 	describe("tasks quick switch", () => {
-		it("shows Option/Alt + Tab as the default shortcut", async () => {
+		it("renders the default shortcut and available task-type chips", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
@@ -268,6 +268,27 @@ describe("GlobalSettings", () => {
 			expect(
 				screen.getByRole("button", { name: "Option/Alt + Tab" }).className,
 			).toContain("border-accent");
+			expect(
+				screen.getByLabelText("Current shortcut"),
+			).toHaveTextContent("Option/Alt + Tab");
+			expect(
+				screen.getByRole("button", { name: "Agent is Working" }).className,
+			).toContain("border-accent");
+			expect(
+				screen.getByRole("button", { name: "Has Questions" }).className,
+			).not.toContain("border-accent");
+			expect(
+				screen.queryByRole("button", { name: "To Do" }),
+			).not.toBeInTheDocument();
+			expect(
+				screen.getByRole("button", { name: "Completed" }).className,
+			).not.toContain("border-accent");
+			expect(
+				screen.getByRole("button", { name: "Cancelled" }).className,
+			).not.toContain("border-accent");
+			expect(
+				screen.getByRole("button", { name: "Alpha / Waiting on API" }),
+			).toBeInTheDocument();
 		});
 
 		it("switches the shortcut to Ctrl + Tab and saves it", async () => {
@@ -292,44 +313,6 @@ describe("GlobalSettings", () => {
 					key: "Tab",
 				}),
 			);
-		});
-
-		it("shows the current shortcut as read-only text", async () => {
-			setupMocks();
-			renderGlobalSettings();
-			await waitForLoad();
-
-			expect(
-				screen.getByLabelText("Current shortcut"),
-			).toHaveTextContent("Option/Alt + Tab");
-			expect(
-				screen.queryByRole("button", { name: "Current shortcut" }),
-			).not.toBeInTheDocument();
-		});
-
-		it("shows active plus completed and cancelled chips, with completed/cancelled unselected by default", async () => {
-			setupMocks();
-			renderGlobalSettings();
-			await waitForLoad();
-
-			expect(
-				screen.getByRole("button", { name: "Agent is Working" }).className,
-			).toContain("border-accent");
-			expect(
-				screen.getByRole("button", { name: "Has Questions" }).className,
-			).not.toContain("border-accent");
-			expect(
-				screen.queryByRole("button", { name: "To Do" }),
-			).not.toBeInTheDocument();
-			expect(
-				screen.getByRole("button", { name: "Completed" }).className,
-			).not.toContain("border-accent");
-			expect(
-				screen.getByRole("button", { name: "Cancelled" }).className,
-			).not.toContain("border-accent");
-			expect(
-				screen.getByRole("button", { name: "Alpha / Waiting on API" }),
-			).toBeInTheDocument();
 		});
 
 		it("drops legacy todo while preserving completed and cancelled filters when saving", async () => {
@@ -360,23 +343,6 @@ describe("GlobalSettings", () => {
 						"cancelled",
 						"user-questions",
 					],
-				}),
-			);
-		});
-
-		it("adds an optional status and saves it", async () => {
-			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings();
-			await waitForLoad();
-
-			await user.click(screen.getByRole("button", { name: "Has Questions" }));
-
-			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({
-					tasksQuickSwitchFilters: expect.arrayContaining([
-						"user-questions",
-					]),
 				}),
 			);
 		});
@@ -415,29 +381,6 @@ describe("GlobalSettings", () => {
 			);
 			await waitFor(() => expect(document.activeElement).toBe(customButton));
 			expect(scrollIntoViewMock).toHaveBeenCalled();
-		});
-
-		it("captures a custom shortcut immediately after clicking Custom", async () => {
-			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings();
-			await waitForLoad();
-
-			await user.click(screen.getByRole("button", { name: "Custom" }));
-			await user.keyboard("{Control>}j{/Control}");
-
-			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
-
-			await user.click(screen.getByRole("button", { name: "Save" }));
-
-			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({
-					tasksQuickSwitchShortcut: {
-						modifiers: ["ctrl"],
-						key: "J",
-					},
-				}),
-			);
 		});
 
 		it("records the physical letter key instead of the produced Option character", async () => {

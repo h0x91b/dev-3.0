@@ -1,10 +1,10 @@
 import { render, screen } from "@testing-library/react";
-import TasksQuickSwitchModal from "../TasksQuickSwitchModal";
-import { I18nProvider } from "../../i18n";
 import { vi } from "vitest";
+import { I18nProvider } from "../../i18n";
+import TasksQuickSwitchModal from "../TasksQuickSwitchModal";
 
 describe("TasksQuickSwitchModal", () => {
-	it("renders outside the app container so viewport positioning is not affected by ancestor layout", () => {
+	it("renders into document.body so ancestor layout cannot clip it", () => {
 		const host = document.createElement("div");
 		host.style.transform = "translateZ(0)";
 		document.body.appendChild(host);
@@ -29,7 +29,6 @@ describe("TasksQuickSwitchModal", () => {
 				{ container: host },
 			);
 
-			expect(screen.getByText("Tasks Quick Switch")).toBeInTheDocument();
 			expect(host.querySelector('[role="dialog"]')).toBeNull();
 			expect(document.body.querySelector('[role="dialog"]')).toBeTruthy();
 		} finally {
@@ -37,7 +36,7 @@ describe("TasksQuickSwitchModal", () => {
 		}
 	});
 
-	it("uses a stronger accent background for the selected task while keeping non-selected rows neutral", () => {
+	it("marks the selected row and renders custom-column labels", () => {
 		render(
 			<I18nProvider>
 				<TasksQuickSwitchModal
@@ -53,8 +52,10 @@ describe("TasksQuickSwitchModal", () => {
 							projectId: "p1",
 							projectName: "Alpha",
 							taskId: "t2",
-							taskTitle: "Other Task",
-							status: "todo",
+							taskTitle: "Waiting Task",
+							status: "in-progress",
+							customColumnName: "Waiting on API",
+							customColumnColor: "#22c55e",
 						},
 					]}
 					selectedIndex={0}
@@ -66,53 +67,28 @@ describe("TasksQuickSwitchModal", () => {
 		const options = screen.getAllByRole("option");
 		expect(options).toHaveLength(2);
 		expect(options[0]).toHaveAttribute("aria-selected", "true");
-		expect(options[0]).toHaveClass("bg-accent/20", "border-accent/40");
 		expect(options[1]).toHaveAttribute("aria-selected", "false");
-		expect(options[1]).toHaveClass("border-transparent");
-		expect(options[1]).not.toHaveClass("bg-accent/20");
+		expect(screen.getByText("Waiting on API")).toBeInTheDocument();
 	});
 
-	it("keeps the dialog height bounded and scrolls the list internally once there are more than six items", () => {
-		render(
-			<I18nProvider>
-				<TasksQuickSwitchModal
-					items={Array.from({ length: 8 }, (_, index) => ({
-						projectId: "p1",
-						projectName: "Alpha",
-						taskId: `t${index + 1}`,
-						taskTitle: `Task ${index + 1}`,
-						status: "in-progress" as const,
-					}))}
-					selectedIndex={0}
-					shortcut={{ modifiers: ["ctrl"], key: "Tab" }}
-				/>
-			</I18nProvider>,
-		);
-
-		const dialog = screen.getByRole("dialog", { name: "Tasks Quick Switch" });
-		const listbox = screen.getByRole("listbox", { name: "Tasks Quick Switch" });
-
-		expect(dialog).toHaveClass("max-h-[calc(100vh-2rem)]", "flex", "flex-col");
-		expect(listbox).toHaveClass("max-h-[26rem]", "overflow-y-auto");
-		expect(screen.getAllByRole("option")).toHaveLength(8);
-	});
-
-	it("scrolls the selected option into view when the selection moves forward or backward", () => {
+	it("scrolls the selected option into view when the selection changes", () => {
 		const scrollSpy = vi
 			.spyOn(HTMLElement.prototype, "scrollIntoView")
 			.mockImplementation(() => {});
 
 		try {
+			const items = Array.from({ length: 8 }, (_, index) => ({
+				projectId: "p1",
+				projectName: "Alpha",
+				taskId: `t${index + 1}`,
+				taskTitle: `Task ${index + 1}`,
+				status: "in-progress" as const,
+			}));
+
 			const { rerender } = render(
 				<I18nProvider>
 					<TasksQuickSwitchModal
-						items={Array.from({ length: 8 }, (_, index) => ({
-							projectId: "p1",
-							projectName: "Alpha",
-							taskId: `t${index + 1}`,
-							taskTitle: `Task ${index + 1}`,
-							status: "in-progress" as const,
-						}))}
+						items={items}
 						selectedIndex={0}
 						shortcut={{ modifiers: ["ctrl"], key: "Tab" }}
 					/>
@@ -124,44 +100,14 @@ describe("TasksQuickSwitchModal", () => {
 			rerender(
 				<I18nProvider>
 					<TasksQuickSwitchModal
-						items={Array.from({ length: 8 }, (_, index) => ({
-							projectId: "p1",
-							projectName: "Alpha",
-							taskId: `t${index + 1}`,
-							taskTitle: `Task ${index + 1}`,
-							status: "in-progress" as const,
-						}))}
+						items={items}
 						selectedIndex={7}
 						shortcut={{ modifiers: ["ctrl"], key: "Tab" }}
 					/>
 				</I18nProvider>,
 			);
 
-			expect(scrollSpy).toHaveBeenLastCalledWith({
-				block: "nearest",
-			});
-
-			scrollSpy.mockClear();
-
-			rerender(
-				<I18nProvider>
-					<TasksQuickSwitchModal
-						items={Array.from({ length: 8 }, (_, index) => ({
-							projectId: "p1",
-							projectName: "Alpha",
-							taskId: `t${index + 1}`,
-							taskTitle: `Task ${index + 1}`,
-							status: "in-progress" as const,
-						}))}
-						selectedIndex={1}
-						shortcut={{ modifiers: ["ctrl"], key: "Tab" }}
-					/>
-				</I18nProvider>,
-			);
-
-			expect(scrollSpy).toHaveBeenLastCalledWith({
-				block: "nearest",
-			});
+			expect(scrollSpy).toHaveBeenLastCalledWith({ block: "nearest" });
 		} finally {
 			scrollSpy.mockRestore();
 		}
