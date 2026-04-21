@@ -2038,9 +2038,6 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const searchStatusLabel = hasSearchQuery
 		? (searchMatches.length > 0 ? `${activeSearchIndex + 1} / ${searchMatches.length}` : t("infoPanel.diffSearchNoMatches"))
 		: null;
-	const searchLocationLabel = currentSearchMatch
-		? `${currentSearchMatch.filePath}${currentSearchMatch.lineNumber ? `:${currentSearchMatch.lineNumber}` : ""}`
-		: null;
 
 	function renderFileTreeNode(node: DiffTreeNode, depth = 0): JSX.Element {
 		if (node.type === "folder") {
@@ -2239,9 +2236,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							}}
 							aria-label={t("infoPanel.diffSearchOpen")}
 							title={t("infoPanel.diffSearchOpen")}
-							className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+							className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition-all active:scale-[0.98] ${
 								isSearchOpen
-									? "border-accent bg-accent text-white"
+									? "border-accent bg-accent text-white shadow-sm"
 									: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
 							}`}
 						>
@@ -2254,73 +2251,79 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							</span>
 						</button>
 						{isSearchOpen && (
-							<div className="inline-flex max-w-[24rem] items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1">
-								<input
-									ref={searchInputRef}
-									type="text"
-									value={searchQuery}
-									onChange={(event) => {
-										setSearchQuery(event.target.value);
-										setActiveSearchIndex(0);
-									}}
-									onKeyDown={(event) => {
-										if (event.key === "Enter") {
-											event.preventDefault();
-											event.stopPropagation();
-											stepSearchMatch(event.shiftKey ? -1 : 1);
-											return;
-										}
-										if (event.key === "Escape") {
-											event.preventDefault();
-											event.stopPropagation();
-											if (searchQuery.trim()) {
-												setSearchQuery("");
-												setActiveSearchIndex(0);
-											} else {
-												setIsSearchOpen(false);
+							<div className="inline-flex min-w-[20rem] max-w-[38rem] items-center gap-2 rounded-[1.35rem] border border-edge bg-raised/95 px-2 py-2">
+								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-edge bg-base/80 px-3">
+									<span
+										aria-hidden="true"
+										className="shrink-0 text-[0.9rem] leading-none text-fg-muted"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uF002"}
+									</span>
+									<input
+										ref={searchInputRef}
+										type="text"
+										value={searchQuery}
+										onChange={(event) => {
+											setSearchQuery(event.target.value);
+											setActiveSearchIndex(0);
+										}}
+										onKeyDown={(event) => {
+											if (event.key === "Enter") {
+												event.preventDefault();
+												event.stopPropagation();
+												stepSearchMatch(event.shiftKey ? -1 : 1);
+												return;
 											}
-										}
-									}}
-									placeholder={t("infoPanel.diffSearchPlaceholder")}
-									className="w-44 bg-transparent text-sm text-fg outline-none placeholder:text-fg-muted"
-								/>
+											if (event.key === "Escape") {
+												event.preventDefault();
+												event.stopPropagation();
+												if (searchQuery.trim()) {
+													setSearchQuery("");
+													setActiveSearchIndex(0);
+												} else {
+													setIsSearchOpen(false);
+												}
+											}
+										}}
+										placeholder={t("infoPanel.diffSearchPlaceholder")}
+										className="h-10 min-w-0 flex-1 bg-transparent text-[0.95rem] font-medium text-fg outline-none placeholder:text-fg-muted"
+									/>
+								</div>
 								{searchStatusLabel && (
-									<div className="min-w-[3.5rem] max-w-[12rem] text-right">
-										<div className="text-[0.6875rem] font-mono text-fg-3">
-											{searchStatusLabel}
-										</div>
-										{searchLocationLabel && (
-											<div className="truncate text-[0.625rem] text-fg-muted" title={searchLocationLabel}>
-												{searchLocationLabel}
-											</div>
-										)}
-									</div>
-								)}
-								{searchLocationLabel && (
-									<span className="max-w-[11rem] truncate text-[0.6875rem] font-mono text-fg-3" title={searchLocationLabel}>
-										{searchLocationLabel}
+									<span
+										className={`inline-flex h-10 shrink-0 items-center rounded-full border px-3 text-[0.75rem] font-mono ${
+											searchMatches.length > 0
+												? "border-edge bg-base text-fg-2"
+												: "border-warning/25 bg-warning/10 text-warning"
+										}`}
+									>
+										{searchStatusLabel}
 									</span>
 								)}
-								<button
-									type="button"
-									onClick={() => stepSearchMatch(-1)}
-									disabled={searchMatches.length === 0}
-									aria-label={t("infoPanel.diffSearchPrev")}
-									title={t("infoPanel.diffSearchPrev")}
-									className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-								>
-									{"\u25B2"}
-								</button>
-								<button
-									type="button"
-									onClick={() => stepSearchMatch(1)}
-									disabled={searchMatches.length === 0}
-									aria-label={t("infoPanel.diffSearchNext")}
-									title={t("infoPanel.diffSearchNext")}
-									className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-								>
-									{"\u25BC"}
-								</button>
+								<div className="inline-flex shrink-0 items-center overflow-hidden rounded-full border border-edge bg-base">
+									<button
+										type="button"
+										onClick={() => stepSearchMatch(-1)}
+										disabled={searchMatches.length === 0}
+										aria-label={t("infoPanel.diffSearchPrev")}
+										title={t("infoPanel.diffSearchPrev")}
+										className="inline-flex h-10 w-10 items-center justify-center text-fg-2 transition-all hover:bg-elevated-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:text-fg-muted"
+									>
+										{"\u25B2"}
+									</button>
+									<div className="h-5 w-px bg-edge" />
+									<button
+										type="button"
+										onClick={() => stepSearchMatch(1)}
+										disabled={searchMatches.length === 0}
+										aria-label={t("infoPanel.diffSearchNext")}
+										title={t("infoPanel.diffSearchNext")}
+										className="inline-flex h-10 w-10 items-center justify-center text-fg-2 transition-all hover:bg-elevated-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:text-fg-muted"
+									>
+										{"\u25BC"}
+									</button>
+								</div>
 								<button
 									type="button"
 									onClick={() => {
@@ -2330,7 +2333,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 									}}
 									aria-label={t("infoPanel.diffSearchClose")}
 									title={t("infoPanel.diffSearchClose")}
-									className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
+									className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-edge bg-base text-fg-2 transition-all hover:bg-elevated-hover active:scale-[0.98]"
 								>
 									{"\u2715"}
 								</button>
