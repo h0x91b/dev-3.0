@@ -1,0 +1,1 @@
+Import `GH_CONFIG_DIR` and `XDG_CONFIG_HOME` from the user's login shell during app startup so backend `gh` auth checks use the same config directory as interactive terminals. Added a regression test for shell environment bootstrapping to keep the startup warning aligned with real `gh auth status`.

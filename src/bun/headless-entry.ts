@@ -78,9 +78,11 @@ if (!process.env.DEV3_VIEWS_DIR) {
 	}
 }
 
-// ── Resolve shell PATH + LANG (same as GUI entry — needed for spawned tmux/git/bun) ──
+// ── Resolve shell PATH + LANG + key gh config vars (same as GUI entry) ──
 const originalPath = process.env.PATH;
 const originalLang = process.env.LANG;
+const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+const originalGhConfigDir = process.env.GH_CONFIG_DIR;
 const shellEnv = await resolveShellEnv();
 if (shellEnv.path) {
 	process.env.PATH = shellEnv.path;
@@ -107,6 +109,16 @@ if (shellEnv.lang) {
 	log.info("Shell LANG resolved", { original: originalLang, resolved: shellEnv.lang });
 } else if (!process.env.LANG) {
 	process.env.LANG = "en_US.UTF-8";
+}
+
+if (shellEnv.xdgConfigHome) {
+	process.env.XDG_CONFIG_HOME = shellEnv.xdgConfigHome;
+	log.info("Shell XDG_CONFIG_HOME resolved", { original: originalXdgConfigHome, resolved: shellEnv.xdgConfigHome });
+}
+
+if (shellEnv.ghConfigDir) {
+	process.env.GH_CONFIG_DIR = shellEnv.ghConfigDir;
+	log.info("Shell GH_CONFIG_DIR resolved", { original: originalGhConfigDir, resolved: shellEnv.ghConfigDir });
 }
 
 // ── CLI socket server (required — CLI tool talks to the app over this) ──

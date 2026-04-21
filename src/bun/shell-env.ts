@@ -29,16 +29,23 @@ export function getShellRcFile(shell: string, home: string): string | null {
 }
 
 /**
- * Resolve the user's full shell environment (PATH, LANG) by spawning their login shell.
+ * Resolve the user's shell environment by spawning their login shell.
  *
  * macOS .app bundles launch with a minimal environment:
  * - PATH: /usr/bin:/bin:/usr/sbin:/sbin (no homebrew, nvm, etc.)
  * - LANG: undefined (causes tmux to replace non-ASCII with underscores)
+ * - GH_CONFIG_DIR / XDG_CONFIG_HOME: undefined (gh auth can look unauthenticated
+ *   in the main process while working fine inside terminal shells)
  *
  * This function gets the real values from the user's configured shell so that
- * spawned processes (tmux, git, pbcopy, etc.) work correctly.
+ * spawned processes (tmux, git, gh, pbcopy, etc.) work correctly.
  */
-export async function resolveShellEnv(): Promise<{ path?: string; lang?: string }> {
+export async function resolveShellEnv(): Promise<{
+	path?: string;
+	lang?: string;
+	xdgConfigHome?: string;
+	ghConfigDir?: string;
+}> {
 	const shell = process.env.SHELL || "/bin/zsh";
 	const timeout = 5_000;
 	const supportedShell = getSupportedShell(shell);
@@ -49,7 +56,12 @@ export async function resolveShellEnv(): Promise<{ path?: string; lang?: string 
 	}
 
 	try {
-		const proc = spawn([shell, "-ilc", 'echo "___PATH=$PATH";echo "___LANG=$LANG"'], {
+		const proc = spawn([shell, "-ilc", [
+			'echo "___PATH=$PATH"',
+			'echo "___LANG=$LANG"',
+			'echo "___XDG_CONFIG_HOME=$XDG_CONFIG_HOME"',
+			'echo "___GH_CONFIG_DIR=$GH_CONFIG_DIR"',
+		].join(";")], {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -70,6 +82,8 @@ export async function resolveShellEnv(): Promise<{ path?: string; lang?: string 
 
 		let path: string | undefined;
 		let lang: string | undefined;
+		let xdgConfigHome: string | undefined;
+		let ghConfigDir: string | undefined;
 
 		for (const line of lines) {
 			if (line.startsWith("___PATH=")) {
@@ -78,10 +92,16 @@ export async function resolveShellEnv(): Promise<{ path?: string; lang?: string 
 			} else if (line.startsWith("___LANG=")) {
 				const val = line.slice("___LANG=".length).trim();
 				if (val) lang = val;
+			} else if (line.startsWith("___XDG_CONFIG_HOME=")) {
+				const val = line.slice("___XDG_CONFIG_HOME=".length).trim();
+				if (val) xdgConfigHome = val;
+			} else if (line.startsWith("___GH_CONFIG_DIR=")) {
+				const val = line.slice("___GH_CONFIG_DIR=".length).trim();
+				if (val) ghConfigDir = val;
 			}
 		}
 
-		return { path, lang };
+		return { path, lang, xdgConfigHome, ghConfigDir };
 	} catch (err) {
 		log.warn("Failed to resolve shell environment", {
 			shell,
