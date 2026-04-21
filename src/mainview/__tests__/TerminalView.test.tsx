@@ -1,5 +1,5 @@
 import { render, act, waitFor } from "@testing-library/react";
-import TerminalView from "../TerminalView";
+import TerminalView, { buildResizeDance } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
@@ -599,5 +599,33 @@ describe("TerminalView – disposal safety (no 'Terminal has been disposed' erro
 		}).not.toThrow();
 
 		mockFocus.mockReset();
+	});
+});
+
+// ── buildResizeDance — pins the nudge axis (decision 041) ────────────────────
+
+describe("buildResizeDance", () => {
+	it("nudges rows, not columns, so text wrapping is stable between paints", () => {
+		const [nudge, correct] = buildResizeDance(120, 30);
+		// If a future refactor swaps this back to a column nudge, the
+		// "refresh / realign" task-switch flicker from issue cb75af7b
+		// will return. Keep the nudge on rows.
+		expect(nudge).toBe("\x1b]resize;120;31\x07");
+		expect(correct).toBe("\x1b]resize;120;30\x07");
+	});
+
+	it("uses the same column count for both messages", () => {
+		const [nudge, correct] = buildResizeDance(200, 60);
+		const nudgeCols = nudge.match(/resize;(\d+);/)![1];
+		const correctCols = correct.match(/resize;(\d+);/)![1];
+		expect(nudgeCols).toBe(correctCols);
+		expect(nudgeCols).toBe("200");
+	});
+
+	it("differs by exactly one row between nudge and correct", () => {
+		const [nudge, correct] = buildResizeDance(80, 24);
+		const nudgeRows = Number(nudge.match(/resize;\d+;(\d+)/)![1]);
+		const correctRows = Number(correct.match(/resize;\d+;(\d+)/)![1]);
+		expect(nudgeRows - correctRows).toBe(1);
 	});
 });

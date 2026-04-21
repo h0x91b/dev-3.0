@@ -56,6 +56,28 @@ const LIGHT_TERMINAL_THEME = {
 
 const TERMINAL_BASE_FONT_SIZE = 14;
 
+/**
+ * Build the two-stage resize-dance WebSocket messages that force tmux to
+ * redraw on reconnect — including the same-size reconnect case where the
+ * kernel would otherwise skip SIGWINCH.
+ *
+ * The nudge always targets **rows** (never columns) so the two paints
+ * share column width and therefore produce identical text wrapping. A
+ * column nudge makes every line re-wrap at a slightly narrower width and
+ * then at the target width, which is visible as a "refresh / realign"
+ * flicker on every task switch. See decision 041.
+ *
+ * Exported for unit testing — keeps the nudge axis pinned against
+ * accidental refactors.
+ */
+export function buildResizeDance(cols: number, rows: number): [string, string] {
+	const nudgeRows = rows + 1;
+	return [
+		`\x1b]resize;${cols};${nudgeRows}\x07`,
+		`\x1b]resize;${cols};${rows}\x07`,
+	];
+}
+
 export interface TerminalHandle {
 	sendInput: (data: string) => void;
 	focus: () => void;
@@ -117,15 +139,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			// 2. Send RIS (Reset to Initial State) to PTY/tmux
 			ws.send("\x1bc");
 
-			// 3. Force tmux redraw via resize nudge
+			// 3. Force tmux redraw via resize nudge — use the same
+			//    row-nudge as the WS-open reconnect path so Hard Reset
+			//    doesn't introduce a column-re-wrap flicker.
 			if (term) {
 				try {
-					const cols = term.cols;
-					const rows = term.rows;
-					ws.send(`\x1b]resize;${Math.max(2, cols - 1)};${rows}\x07`);
+					const [nudge, correct] = buildResizeDance(term.cols, term.rows);
+					ws.send(nudge);
 					setTimeout(() => {
 						if (ws.readyState === WebSocket.OPEN) {
-							ws.send(`\x1b]resize;${cols};${rows}\x07`);
+							ws.send(correct);
 						}
 					}, 50);
 				} catch { /* disposed */ }
@@ -572,27 +595,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				const dims = fit.proposeDimensions();
 				console.log("[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
-					// Resize dance: nudge the row count up by 1, then back to
-					// the real value. This forces two SIGWINCHes so tmux
-					// always repaints even when the PTY already has the
-					// same size (reconnection case where the kernel would
-					// otherwise skip SIGWINCH).
-					//
-					// We nudge ROWS rather than COLS because changing column
-					// count forces tmux to re-wrap every line, making both
-					// paints visually distinct and producing a "refresh /
-					// realign" flicker. A row nudge keeps column width (and
-					// therefore all text wrapping) identical between the two
-					// paints — the only visible difference is one extra blank
-					// row at the bottom that disappears on the second paint,
-					// which is effectively invisible.
-					const nudgeRows = dims.rows + 1;
-					ws?.send(`\x1b]resize;${dims.cols};${nudgeRows}\x07`);
+					// See buildResizeDance() — row-nudge keeps text wrapping
+					// identical between the two paints. See decision 041.
+					const [nudge, correct] = buildResizeDance(dims.cols, dims.rows);
+					ws?.send(nudge);
 					setTimeout(() => {
 						if (ws?.readyState === WebSocket.OPEN) {
-							ws.send(
-								`\x1b]resize;${dims.cols};${dims.rows}\x07`,
-							);
+							ws.send(correct);
 						}
 					}, 50);
 				}
