@@ -1,0 +1,1 @@
+Fixed the garbled/overlapping terminal content that appeared when switching between tasks. The PTY server now defers the capture-pane replay on WebSocket reconnect until after the client's resize dance has propagated to tmux, so the captured content matches the new terminal dimensions instead of leftover stale ones.

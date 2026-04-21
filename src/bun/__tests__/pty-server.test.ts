@@ -45,6 +45,8 @@ import {
 	setOnBell,
 	setOnOsc52Copy,
 	TMUX_CONF_PATH,
+	maybeScheduleInitialCapture,
+	INITIAL_CAPTURE_DEBOUNCE_MS,
 } from "../pty-server";
 
 // ---- Typed mock handles ----
@@ -975,6 +977,113 @@ describe("pty-server", () => {
 		it("writes a backslash split binding with a literal double backslash", async () => {
 			const config = await reimportAndGetDarkConfig();
 			expect(config).toContain(String.raw`bind \\ split-window -h -c "#{pane_current_path}"`);
+		});
+	});
+
+	// ------- maybeScheduleInitialCapture (task cb75af7b) -------
+	//
+	// Regression tests for the "tmux switch glitch" fix: the initial
+	// capture-pane replay on WS reconnect must be deferred until AFTER
+	// the client has told the server its target dimensions. Capturing
+	// earlier yields stale-width content that garbles when rendered
+	// into a newly-sized client terminal.
+	describe("maybeScheduleInitialCapture", () => {
+		function makeFakeWs(): any {
+			return {
+				readyState: 1, // OPEN
+				needsInitialCapture: true,
+				captureTimer: null,
+				sendText: vi.fn(),
+			};
+		}
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("no-ops when ws is not flagged for initial capture", () => {
+			const ws = makeFakeWs();
+			ws.needsInitialCapture = false;
+			maybeScheduleInitialCapture(ws, "task-no-flag");
+			expect(ws.captureTimer).toBeNull();
+			vi.advanceTimersByTime(INITIAL_CAPTURE_DEBOUNCE_MS * 2);
+			expect(ws.sendText).not.toHaveBeenCalled();
+		});
+
+		it("captures and sends clear + content after debounce", () => {
+			const ws = makeFakeWs();
+			const captured = "line one\nline two\n";
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode(captured),
+			} as any);
+
+			maybeScheduleInitialCapture(ws, "task-capture-01");
+			expect(ws.captureTimer).not.toBeNull();
+			expect(ws.sendText).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(INITIAL_CAPTURE_DEBOUNCE_MS);
+
+			expect(ws.sendText).toHaveBeenCalledTimes(1);
+			expect(ws.sendText).toHaveBeenCalledWith("\x1b[2J\x1b[H" + captured);
+			expect(ws.needsInitialCapture).toBe(false);
+			expect(ws.captureTimer).toBeNull();
+		});
+
+		it("debounces across the two-stage resize dance", () => {
+			const ws = makeFakeWs();
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode("final-content"),
+			} as any);
+
+			// First resize (nudge) arrives.
+			maybeScheduleInitialCapture(ws, "task-debounce-01");
+			const firstTimer = ws.captureTimer;
+
+			// 50 ms later the real resize arrives — still before debounce.
+			vi.advanceTimersByTime(50);
+			maybeScheduleInitialCapture(ws, "task-debounce-01");
+
+			// Timer was reset to a fresh one.
+			expect(ws.captureTimer).not.toBe(firstTimer);
+			expect(ws.sendText).not.toHaveBeenCalled();
+
+			// Fires exactly once once the full debounce window elapses
+			// after the LAST resize.
+			vi.advanceTimersByTime(INITIAL_CAPTURE_DEBOUNCE_MS);
+			expect(ws.sendText).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not send if the ws closed during the debounce window", () => {
+			const ws = makeFakeWs();
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new TextEncoder().encode("ignored"),
+			} as any);
+
+			maybeScheduleInitialCapture(ws, "task-closed-01");
+			ws.readyState = 3; // CLOSED
+			vi.advanceTimersByTime(INITIAL_CAPTURE_DEBOUNCE_MS);
+			expect(ws.sendText).not.toHaveBeenCalled();
+		});
+
+		it("skips send when capturePane returns empty content", () => {
+			const ws = makeFakeWs();
+			mockSpawnSync.mockReturnValue({
+				exitCode: 0,
+				stdout: new Uint8Array(0),
+			} as any);
+
+			maybeScheduleInitialCapture(ws, "task-empty-01");
+			vi.advanceTimersByTime(INITIAL_CAPTURE_DEBOUNCE_MS);
+			expect(ws.sendText).not.toHaveBeenCalled();
+			// Flag was already consumed so subsequent resizes don't re-arm.
+			expect(ws.needsInitialCapture).toBe(false);
 		});
 	});
 });

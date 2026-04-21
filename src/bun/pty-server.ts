@@ -740,6 +740,46 @@ function findTaskIdByTmuxSession(tmuxSessionName: string): string | null {
 	return null;
 }
 
+/**
+ * Delay between the last client resize message and the deferred capture-pane
+ * replay on reconnect. The client sends a two-stage resize dance (cols-1,
+ * then cols, ~50 ms apart) to force SIGWINCH; 80 ms after the last resize
+ * is enough for tmux to process SIGWINCH and settle at the new size.
+ */
+export const INITIAL_CAPTURE_DEBOUNCE_MS = 80;
+
+/**
+ * Schedule a one-shot capture-pane replay for a freshly reconnected client,
+ * debounced so the two-stage resize dance collapses into a single capture.
+ * Captured content reflects tmux's dimensions at the moment of capture, so
+ * running this *after* the client's resize has propagated to tmux guarantees
+ * the replay matches the client terminal's size and avoids the "switch
+ * glitch" (see WS open handler and fix: task cb75af7b).
+ *
+ * Exported for unit testing.
+ */
+export function maybeScheduleInitialCapture(ws: any, sessionId: string): void {
+	if (!ws?.needsInitialCapture) return;
+	if (ws.captureTimer) clearTimeout(ws.captureTimer);
+	ws.captureTimer = setTimeout(() => {
+		ws.captureTimer = null;
+		// readyState === 1 is OPEN. If the client disconnected during the
+		// debounce window, drop the replay.
+		if (ws.readyState !== 1) return;
+		ws.needsInitialCapture = false;
+		const content = capturePane(sessionId);
+		if (!content) return;
+		try {
+			// Clear + replay at the post-resize dimensions. This gives the
+			// same "instant paint" UX as before, but now with content whose
+			// line widths match the client terminal.
+			ws.sendText("\x1b[2J\x1b[H" + content);
+		} catch {
+			// WS may have closed between the readyState check and sendText.
+		}
+	}, INITIAL_CAPTURE_DEBOUNCE_MS);
+}
+
 const ptyServer = Bun.serve({
 	port: 0,
 	fetch(req, server) {
@@ -816,26 +856,32 @@ const ptyServer = Bun.serve({
 				const cols = 80;
 				const rows = 24;
 
-				// If no proc yet, spawn one. If proc exists, just reconnect
-				// and send current screen content for immediate rendering.
+				// If no proc yet, spawn one. If proc exists, reconnect —
+				// but defer the capture-pane replay until we know the
+				// client's target dimensions (see resize handler below).
 				if (!session.proc) {
 					log.info("No proc, spawning new PTY", { taskId: shortId(sessionId) });
 					spawnPty(session, cols, rows);
 				} else {
-					// Capture current tmux pane content (with ANSI colors) so the
-					// client sees the screen immediately instead of a blank terminal
-					// while waiting for the app to redraw after resize.
-					log.info("Reconnecting to existing PTY, capturing pane", { taskId: shortId(sessionId) });
-					const content = capturePane(sessionId);
-					if (content) {
-						// Clear screen + reset cursor before injecting captured
-						// pane content. Without this, old terminal state from the
-						// previous connection can overlap with the new content,
-						// causing visual corruption (the #234 flickering bug).
-						// \x1b[2J = erase entire display
-						// \x1b[H  = cursor home (top-left)
-						(ws as any).sendText("\x1b[2J\x1b[H" + content);
-					}
+					// Clear the client terminal immediately so any prior
+					// content is gone, but do NOT call capturePane() here.
+					// capturePane reads tmux's current internal pane size,
+					// which is stale whenever the previous client disconnected
+					// at a different size (or the session was spawned at the
+					// default 80×24). Rendering stale-size content into a
+					// freshly-sized ghostty-web terminal causes the "switch
+					// glitch" where text appears garbled until a manual
+					// pane-add forces tmux to do a full redraw.
+					//
+					// Instead, flag this client as awaiting its initial
+					// capture; the resize handler will schedule the capture
+					// once the client has told us its dimensions and tmux has
+					// resized to match. See fix: task cb75af7b.
+					log.info("Reconnecting to existing PTY, capture deferred until first resize", {
+						taskId: shortId(sessionId),
+					});
+					(ws as any).needsInitialCapture = true;
+					(ws as any).sendText("\x1b[2J\x1b[H");
 				}
 			} catch (err) {
 				log.error("WS open handler CRASHED", {
@@ -864,6 +910,7 @@ const ptyServer = Bun.serve({
 							Number(match[1]),
 							Number(match[2]),
 						);
+						maybeScheduleInitialCapture(ws as any, sessionId);
 					}
 					return;
 				}
@@ -882,6 +929,16 @@ const ptyServer = Bun.serve({
 				if (!sessionId) return;
 
 				log.info("WS disconnected", { taskId: shortId(sessionId) });
+
+				// Cancel any pending initial-capture timer — the client
+				// disconnected before tmux settled after the resize dance.
+				const pending = (ws as any).captureTimer as ReturnType<
+					typeof setTimeout
+				> | null | undefined;
+				if (pending) {
+					clearTimeout(pending);
+					(ws as any).captureTimer = null;
+				}
 
 				const session = sessions.get(sessionId);
 				if (session) {
