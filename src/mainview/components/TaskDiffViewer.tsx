@@ -2236,9 +2236,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							}}
 							aria-label={t("infoPanel.diffSearchOpen")}
 							title={t("infoPanel.diffSearchOpen")}
-							className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition-all active:scale-[0.98] ${
+							className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
 								isSearchOpen
-									? "border-accent bg-accent text-white shadow-sm"
+									? "border-accent bg-accent text-white"
 									: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
 							}`}
 						>
@@ -2251,11 +2251,11 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 							</span>
 						</button>
 						{isSearchOpen && (
-							<div className="inline-flex min-w-[20rem] max-w-[38rem] items-center gap-2 rounded-[1.35rem] border border-edge bg-raised/95 px-2 py-2">
-								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-edge bg-base/80 px-3">
+							<div className="inline-flex min-w-[18rem] max-w-[32rem] items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1">
+								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2">
 									<span
 										aria-hidden="true"
-										className="shrink-0 text-[0.9rem] leading-none text-fg-muted"
+										className="shrink-0 text-[0.8rem] leading-none text-fg-muted"
 										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 									>
 										{"\uF002"}
@@ -2287,12 +2287,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 											}
 										}}
 										placeholder={t("infoPanel.diffSearchPlaceholder")}
-										className="h-10 min-w-0 flex-1 bg-transparent text-[0.95rem] font-medium text-fg outline-none placeholder:text-fg-muted"
+										className="h-7 min-w-0 flex-1 bg-transparent text-xs font-medium text-fg outline-none placeholder:text-fg-muted"
 									/>
 								</div>
 								{searchStatusLabel && (
 									<span
-										className={`inline-flex h-10 shrink-0 items-center rounded-full border px-3 text-[0.75rem] font-mono ${
+										className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-[0.6875rem] font-mono ${
 											searchMatches.length > 0
 												? "border-edge bg-base text-fg-2"
 												: "border-warning/25 bg-warning/10 text-warning"
@@ -2301,25 +2301,24 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 										{searchStatusLabel}
 									</span>
 								)}
-								<div className="inline-flex shrink-0 items-center overflow-hidden rounded-full border border-edge bg-base">
+								<div className="inline-flex shrink-0 items-center gap-1">
 									<button
 										type="button"
 										onClick={() => stepSearchMatch(-1)}
 										disabled={searchMatches.length === 0}
 										aria-label={t("infoPanel.diffSearchPrev")}
 										title={t("infoPanel.diffSearchPrev")}
-										className="inline-flex h-10 w-10 items-center justify-center text-fg-2 transition-all hover:bg-elevated-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:text-fg-muted"
+										className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
 									>
 										{"\u25B2"}
 									</button>
-									<div className="h-5 w-px bg-edge" />
 									<button
 										type="button"
 										onClick={() => stepSearchMatch(1)}
 										disabled={searchMatches.length === 0}
 										aria-label={t("infoPanel.diffSearchNext")}
 										title={t("infoPanel.diffSearchNext")}
-										className="inline-flex h-10 w-10 items-center justify-center text-fg-2 transition-all hover:bg-elevated-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:text-fg-muted"
+										className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
 									>
 										{"\u25BC"}
 									</button>
@@ -2333,7 +2332,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 									}}
 									aria-label={t("infoPanel.diffSearchClose")}
 									title={t("infoPanel.diffSearchClose")}
-									className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-edge bg-base text-fg-2 transition-all hover:bg-elevated-hover active:scale-[0.98]"
+									className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
 								>
 									{"\u2715"}
 								</button>
