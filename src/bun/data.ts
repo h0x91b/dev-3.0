@@ -325,7 +325,9 @@ async function rawSaveTasks(
 	const file = tasksFile(project);
 	log.debug("Saving tasks", { projectId: project.id, count: tasks.length });
 	await ensureDir(file);
-	await writeHourlyTasksBackup(project, file);
+	await writeHourlyTasksBackup(project, file).catch((err) => {
+		log.warn("Failed to write hourly tasks backup (non-fatal)", { projectId: project.id, err });
+	});
 	await writeFile(file, JSON.stringify(tasks, null, 2));
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
 }

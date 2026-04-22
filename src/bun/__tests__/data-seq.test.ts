@@ -332,6 +332,23 @@ describe("tasks.json hourly backups", () => {
 		expect(backupFiles[backupFiles.length - 1]).toBe("2026-04-23T00Z.json");
 		expect(backupFiles).not.toContain("2026-04-20T00Z.json");
 	});
+
+	it("does not block task save when backup write fails", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-04-22T10:00:00.000Z"));
+
+		const originalTasks = [{ ...makeRawTask({ id: "a", title: "Original", description: "Original" }), seq: 1 }];
+		seedTasks(originalTasks);
+
+		// Make the backup dir unwritable by pre-creating a file where mkdir would put the dir
+		const backupDir = tasksBackupDirPath();
+		writeFileSync(backupDir, "block"); // file in place of directory → mkdir will fail
+
+		await expect(updateTask(testProject, "a", { title: "Updated" })).resolves.toBeDefined();
+		expect(readSavedTasks()[0].title).toBe("Updated");
+
+		rmSync(backupDir);
+	});
 });
 
 // ============================================================
