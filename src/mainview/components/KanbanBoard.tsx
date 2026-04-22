@@ -19,6 +19,7 @@ import CreateTaskModal from "./CreateTaskModal";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
+import GitPullButton from "./GitPullButton";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
@@ -527,6 +528,7 @@ function KanbanBoard({
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
+				rightSlot={<GitPullButton project={project} />}
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {

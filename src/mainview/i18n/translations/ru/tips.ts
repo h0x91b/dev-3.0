@@ -204,6 +204,8 @@ const tips = {
 	"tip.bugHunterSkill.body": "Используйте skill dev3-bug-hunter и запускайте 3-5 вариантов, чтобы каждый шёл в свою seeded стартовую зону.",
 	"tip.folderPickerPastePath.title": "Вставка пути в пикер",
 	"tip.folderPickerPastePath.body": "В пикере папок сверху есть поле ввода — вставьте абсолютный путь и нажмите Enter, чтобы сразу прыгнуть туда.",
+	"tip.kanbanGitPull.title": "Git Pull прямо из Kanban",
+	"tip.kanbanGitPull.body": "Кнопка Git Pull в тулбаре Kanban тянет основной worktree проекта — активна только когда он на main или master.",
 };
 
 export default tips;

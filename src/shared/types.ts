@@ -1235,6 +1235,10 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: { branch: string | null; isBaseBranch: boolean; isDirty: boolean };
 			};
+			pullProjectMain: {
+				params: { projectId: string };
+				response: { ok: boolean; branch: string | null; output: string; error: string };
+			};
 			getTipState: {
 				params: void;
 				response: TipState;

@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, type ReactNode } from "react";
 import type { Label } from "../../shared/types";
 import { useT } from "../i18n";
 import LabelChip from "./LabelChip";
@@ -11,6 +11,7 @@ interface LabelFilterBarProps {
 	searchQuery: string;
 	onSearchChange: (query: string) => void;
 	disableGlobalFindShortcut?: boolean;
+	rightSlot?: ReactNode;
 }
 
 function LabelFilterBar({
@@ -21,6 +22,7 @@ function LabelFilterBar({
 	searchQuery,
 	onSearchChange,
 	disableGlobalFindShortcut = false,
+	rightSlot,
 }: LabelFilterBarProps) {
 	const t = useT();
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -105,10 +107,16 @@ function LabelFilterBar({
 				<button
 					type="button"
 					onClick={onClear}
-					className="ml-auto text-xs text-fg-3 hover:text-fg px-2 py-0.5 rounded-lg hover:bg-fg/8 transition-colors flex-shrink-0"
+					className={`${rightSlot ? "" : "ml-auto"} text-xs text-fg-3 hover:text-fg px-2 py-0.5 rounded-lg hover:bg-fg/8 transition-colors flex-shrink-0`}
 				>
 					× {t("labels.clearFilters")}
 				</button>
+			)}
+
+			{rightSlot && (
+				<div className="ml-auto flex items-center gap-2 flex-shrink-0">
+					{rightSlot}
+				</div>
 			)}
 		</div>
 	);

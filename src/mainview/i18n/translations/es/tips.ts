@@ -204,6 +204,8 @@ const tips = {
 	"tip.bugHunterSkill.body": "Usa la skill dev3-bug-hunter y lanza 3-5 variantes para que cada ejecución empiece en una zona seeded distinta.",
 	"tip.folderPickerPastePath.title": "Pega una ruta en el picker",
 	"tip.folderPickerPastePath.body": "El selector de carpetas tiene un campo arriba — pega una ruta absoluta y pulsa Enter para saltar allí al instante.",
+	"tip.kanbanGitPull.title": "Pull main sin terminal",
+	"tip.kanbanGitPull.body": "El botón Git Pull en la barra del Kanban ejecuta git pull en el worktree principal — activo solo cuando está en main o master.",
 };
 
 export default tips;
