@@ -12,6 +12,8 @@ vi.mock("../../rpc", () => ({
 			applyUpdate: vi.fn(),
 			saveUpdateRoute: vi.fn(),
 			renameTask: vi.fn(),
+			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
+			pullProjectMain: vi.fn(),
 		},
 	},
 }));

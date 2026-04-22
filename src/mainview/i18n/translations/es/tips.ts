@@ -205,7 +205,7 @@ const tips = {
 	"tip.folderPickerPastePath.title": "Pega una ruta en el picker",
 	"tip.folderPickerPastePath.body": "El selector de carpetas tiene un campo arriba — pega una ruta absoluta y pulsa Enter para saltar allí al instante.",
 	"tip.kanbanGitPull.title": "Pull main sin terminal",
-	"tip.kanbanGitPull.body": "El botón Git Pull en la barra del Kanban ejecuta git pull en el worktree principal — activo solo cuando está en main o master.",
+	"tip.kanbanGitPull.body": "El botón Pull junto a Project Terminal en la cabecera superior ejecuta git pull en el worktree principal — activo solo cuando está en main o master.",
 };
 
 export default tips;

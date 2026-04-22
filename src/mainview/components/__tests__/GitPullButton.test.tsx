@@ -2,7 +2,6 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GitPullButton from "../GitPullButton";
 import { I18nProvider } from "../../i18n";
-import type { Project } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -15,23 +14,12 @@ vi.mock("../../rpc", () => ({
 
 import { api } from "../../rpc";
 
-const project: Project = {
-	id: "p1",
-	name: "Test Project",
-	path: "/tmp/test",
-	setupScript: "",
-	devScript: "",
-	cleanupScript: "",
-	defaultBaseBranch: "main",
-	createdAt: "2025-01-01T00:00:00Z",
-};
-
 async function renderButton() {
 	let result: ReturnType<typeof render>;
 	await act(async () => {
 		result = render(
 			<I18nProvider>
-				<GitPullButton project={project} />
+				<GitPullButton projectId="p1" />
 			</I18nProvider>,
 		);
 	});

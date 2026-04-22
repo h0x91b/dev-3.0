@@ -205,7 +205,7 @@ const tips = {
 	"tip.folderPickerPastePath.title": "Paste a path in the picker",
 	"tip.folderPickerPastePath.body": "The folder picker has a path input at the top — paste an absolute path, hit Enter, and it jumps there instantly.",
 	"tip.kanbanGitPull.title": "Pull main without the terminal",
-	"tip.kanbanGitPull.body": "The Git Pull button in the Kanban toolbar runs git pull on the project's main worktree — enabled only when it's on main or master.",
+	"tip.kanbanGitPull.body": "The Git Pull button next to Project Terminal in the top header runs git pull on the project's main worktree — enabled only when it's on main or master.",
 } as const;
 
 export default tips;
