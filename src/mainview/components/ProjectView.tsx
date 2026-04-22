@@ -135,6 +135,7 @@ function ProjectView({
 				bellCounts={bellCounts}
 				taskPorts={taskPorts}
 				onSwitchToBoard={() => toggleSidebarMode("board")}
+				disableGlobalFindShortcut={inlineDiff.isOpen}
 			/>
 		) : (
 			<KanbanBoard
@@ -147,6 +148,7 @@ function ProjectView({
 				taskResourceUsage={taskResourceUsage}
 				activeTaskId={activeTaskId}
 				onSwitchToSidebar={() => toggleSidebarMode("sidebar")}
+				disableGlobalFindShortcut={inlineDiff.isOpen}
 			/>
 		);
 

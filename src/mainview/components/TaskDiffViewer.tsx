@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState, type ComponentType } from "react";
-import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffResponse, TaskDiffSkippedFile } from "../../shared/types";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import type {
+	Project,
+	Task,
+	TaskDiffFile,
+	TaskDiffFileStatus,
+	TaskDiffResponse,
+	TaskDiffSkippedFile,
+} from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
@@ -81,6 +88,22 @@ interface InlineReviewExportEntry {
 	createdAt: string;
 }
 
+interface DiffSearchLineCandidate {
+	side: InlineCommentSideKey;
+	lineNumber: number | null;
+	text: string;
+}
+
+interface DiffSearchMatch {
+	id: string;
+	fileId: string;
+	filePath: string;
+	kind: "path" | "content";
+	text: string;
+	lineNumber: number | null;
+	side: InlineCommentSideKey | null;
+}
+
 interface TaskDiffViewerProps {
 	task: Task;
 	project: Project;
@@ -94,6 +117,8 @@ interface TaskDiffFileSectionProps {
 	diffLib: DiffLibrary;
 	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
+	searchQuery: string;
+	isCurrentPathMatch: boolean;
 	comments: InlineDiffCommentFileData;
 	eager: boolean;
 	expanded: boolean;
@@ -133,7 +158,7 @@ interface DiffTreeFileNode {
 	name: string;
 	path: string;
 	fileId: string;
-	status: TaskDiffFile["status"];
+	status: TaskDiffFileStatus;
 	skipped?: "binary" | "too-large";
 }
 
@@ -226,6 +251,150 @@ function parseDiffHunkLines(hunk: string): Array<{
 	}
 
 	return parsed;
+}
+
+function collectDiffSearchCandidates(file: TaskDiffFile): DiffSearchLineCandidate[] {
+	const candidates: DiffSearchLineCandidate[] = [];
+	const seen = new Set<string>();
+
+	const addCandidate = (side: InlineCommentSideKey, lineNumber: number | null, text: string) => {
+		const trimmedText = text.trim();
+		if (!trimmedText) {
+			return;
+		}
+		const key = `${side}:${lineNumber ?? "?"}:${trimmedText}`;
+		if (seen.has(key)) {
+			return;
+		}
+		seen.add(key);
+		candidates.push({
+			side,
+			lineNumber,
+			text: trimmedText,
+		});
+	};
+
+	if (file.hunks && file.hunks.length > 0) {
+		for (const hunk of file.hunks) {
+			for (const line of parseDiffHunkLines(hunk)) {
+				if (line.kind === "-") {
+					addCandidate("oldFile", line.oldLine, line.content);
+				} else {
+					addCandidate("newFile", line.newLine, line.content);
+				}
+			}
+		}
+		if (candidates.length > 0) {
+			return candidates;
+		}
+	}
+
+	file.oldContent.split("\n").forEach((line, index) => addCandidate("oldFile", index + 1, line));
+	file.newContent.split("\n").forEach((line, index) => addCandidate("newFile", index + 1, line));
+	return candidates;
+}
+
+function buildDiffSearchMatches(files: TaskDiffFile[], query: string): DiffSearchMatch[] {
+	const needle = query.trim().toLocaleLowerCase();
+	if (!needle) {
+		return [];
+	}
+
+	const matches: DiffSearchMatch[] = [];
+	for (const file of files) {
+		const filePath = getReviewFilePath(file);
+		if (filePath.toLocaleLowerCase().includes(needle)) {
+			matches.push({
+				id: `${file.id}:path`,
+				fileId: file.id,
+				filePath,
+				kind: "path",
+				text: filePath,
+				lineNumber: null,
+				side: null,
+			});
+		}
+
+		for (const candidate of collectDiffSearchCandidates(file)) {
+			if (!candidate.text.toLocaleLowerCase().includes(needle)) {
+				continue;
+			}
+			matches.push({
+				id: `${file.id}:${candidate.side}:${candidate.lineNumber ?? "?"}:${candidate.text}`,
+				fileId: file.id,
+				filePath,
+				kind: "content",
+				text: candidate.text,
+				lineNumber: candidate.lineNumber,
+				side: candidate.side,
+			});
+		}
+	}
+
+	return matches;
+}
+
+function renderHighlightedText(text: string, query: string, isCurrent = false): ReactNode {
+	const needle = query.trim();
+	if (!needle) {
+		return text;
+	}
+
+	const lowerText = text.toLocaleLowerCase();
+	const lowerNeedle = needle.toLocaleLowerCase();
+	const parts: ReactNode[] = [];
+	let from = 0;
+	let matchIndex = 0;
+
+	while (from < text.length) {
+		const matchStart = lowerText.indexOf(lowerNeedle, from);
+		if (matchStart === -1) {
+			break;
+		}
+		if (matchStart > from) {
+			parts.push(text.slice(from, matchStart));
+		}
+		const matchEnd = matchStart + needle.length;
+		parts.push(
+			<span
+				key={`${text}:${matchStart}:${matchIndex}`}
+				className={`dev3-diff-search-highlight${isCurrent && matchIndex === 0 ? " dev3-diff-search-current-hit" : ""}`}
+			>
+				{text.slice(matchStart, matchEnd)}
+			</span>,
+		);
+		from = matchEnd;
+		matchIndex += 1;
+	}
+
+	if (parts.length === 0) {
+		return text;
+	}
+	if (from < text.length) {
+		parts.push(text.slice(from));
+	}
+	return parts;
+}
+
+function clearDiffSearchDecorations(root: ParentNode | null) {
+	if (!root) {
+		return;
+	}
+
+	for (const line of root.querySelectorAll(".dev3-diff-search-match-line")) {
+		line.classList.remove("dev3-diff-search-match-line");
+	}
+	for (const line of root.querySelectorAll(".dev3-diff-search-current-line")) {
+		line.classList.remove("dev3-diff-search-current-line");
+	}
+}
+
+function lineContainsQuery(container: HTMLElement, query: string): boolean {
+	const needle = query.trim().toLocaleLowerCase();
+	if (!needle) {
+		return false;
+	}
+	return (container.textContent ?? "").toLocaleLowerCase().includes(needle);
 }
 
 function extractReviewSnippet(
@@ -806,6 +975,8 @@ function TaskDiffFileSection({
 	diffLib,
 	resolvedTheme,
 	viewMode,
+	searchQuery,
+	isCurrentPathMatch,
 	comments,
 	eager,
 	expanded,
@@ -984,8 +1155,8 @@ function TaskDiffFileSection({
 						aria-expanded={expanded}
 						className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
 					>
-						<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}`}>
-							{file.displayPath}
+						<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+							{renderHighlightedText(file.displayPath, searchQuery, isCurrentPathMatch)}
 						</span>
 					</button>
 
@@ -1111,9 +1282,11 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const resolvedTheme = useResolvedTheme();
 	const toolbarRef = useRef<HTMLDivElement | null>(null);
 	const scrollRegionRef = useRef<HTMLDivElement | null>(null);
+	const searchInputRef = useRef<HTMLInputElement | null>(null);
 	const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 	const pendingScrollFrameRef = useRef<number | null>(null);
 	const pendingCommentScrollFrameRef = useRef<number | null>(null);
+	const pendingSearchScrollFrameRef = useRef<number | null>(null);
 	const commentRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
@@ -1130,9 +1303,17 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 	const [editingCommentDraft, setEditingCommentDraft] = useState("");
+	const [isSearchOpen, setIsSearchOpen] = useState(false);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [activeSearchIndex, setActiveSearchIndex] = useState(0);
 	const fileTree = payload ? buildDiffTree(payload.files, payload.skippedFiles) : [];
 	const reviewExportEntries = payload ? buildInlineReviewExportEntries(payload.files, inlineComments) : [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
+	const searchMatches = useMemo(
+		() => (payload ? buildDiffSearchMatches(payload.files, searchQuery) : []),
+		[payload, searchQuery],
+	);
+	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
 	useEffect(() => {
 		setCurrentRequest(request);
@@ -1160,9 +1341,40 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
+			const isMetaFind = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "f";
+			if (isMetaFind) {
+				event.preventDefault();
+				event.stopPropagation();
+				event.stopImmediatePropagation?.();
+				setIsSearchOpen(true);
+				window.requestAnimationFrame(() => {
+					const input = searchInputRef.current;
+					if (!input) {
+						return;
+					}
+					input.focus();
+					input.select();
+				});
+				return;
+			}
+
 			if (event.key !== "Escape" || event.metaKey || event.ctrlKey || event.altKey) {
 				return;
 			}
+
+			if (isSearchOpen) {
+				event.preventDefault();
+				event.stopPropagation();
+				event.stopImmediatePropagation?.();
+				if (searchQuery.trim()) {
+					setSearchQuery("");
+					setActiveSearchIndex(0);
+				} else {
+					setIsSearchOpen(false);
+				}
+				return;
+			}
+
 			event.preventDefault();
 			event.stopPropagation();
 			event.stopImmediatePropagation?.();
@@ -1171,7 +1383,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 
 		window.addEventListener("keydown", onKeyDown, { capture: true });
 		return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
-	}, [onBack]);
+	}, [isSearchOpen, onBack, searchQuery]);
 
 	useEffect(() => () => {
 		if (pendingScrollFrameRef.current !== null) {
@@ -1179,6 +1391,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		}
 		if (pendingCommentScrollFrameRef.current !== null) {
 			window.cancelAnimationFrame(pendingCommentScrollFrameRef.current);
+		}
+		if (pendingSearchScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingSearchScrollFrameRef.current);
 		}
 	}, []);
 
@@ -1365,6 +1580,49 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		setCopiedReviewXml(false);
 	}, [reviewExportXml]);
 
+	useEffect(() => {
+		if (!searchQuery.trim()) {
+			setActiveSearchIndex(0);
+			cancelPendingSearchScroll();
+			return;
+		}
+		if (searchMatches.length === 0) {
+			setActiveSearchIndex(0);
+			cancelPendingSearchScroll();
+			return;
+		}
+		activateSearchMatch(0);
+		// Search should jump to the first match whenever the query changes.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [searchMatches, searchQuery]);
+
+	useEffect(() => {
+		const root = scrollRegionRef.current;
+		clearDiffSearchDecorations(root);
+		if (!root || !searchQuery.trim()) {
+			return;
+		}
+
+		const currentElement = currentSearchMatch ? findSearchMatchElement(currentSearchMatch) : null;
+		const containers = Array.from(root.querySelectorAll<HTMLElement>(
+			".diff-line-content, .diff-line-old-content, .diff-line-new-content, .diff-line-hunk-content, [data-testid='mock-search-line-content']",
+		));
+
+		for (const container of containers) {
+			const targetLine = container.closest<HTMLElement>("[data-line], tr, .diff-line");
+			if (!targetLine || !lineContainsQuery(container, searchQuery)) {
+				continue;
+			}
+			targetLine.classList.add("dev3-diff-search-match-line");
+		}
+
+		if (currentElement) {
+			currentElement.classList.add("dev3-diff-search-current-line");
+		}
+
+		return () => clearDiffSearchDecorations(root);
+	}, [currentSearchMatch, searchQuery, expandedFiles]);
+
 	function getScrollOffset(fileId: string): number | null {
 		const scrollRegion = scrollRegionRef.current;
 		const section = sectionRefs.current[fileId];
@@ -1388,6 +1646,13 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		if (pendingCommentScrollFrameRef.current !== null) {
 			window.cancelAnimationFrame(pendingCommentScrollFrameRef.current);
 			pendingCommentScrollFrameRef.current = null;
+		}
+	}
+
+	function cancelPendingSearchScroll() {
+		if (pendingSearchScrollFrameRef.current !== null) {
+			window.cancelAnimationFrame(pendingSearchScrollFrameRef.current);
+			pendingSearchScrollFrameRef.current = null;
 		}
 	}
 
@@ -1476,6 +1741,84 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			retries: 4,
 			onSettled: startCommentScroll,
 		});
+	}
+
+	function findSearchMatchElement(match: DiffSearchMatch): HTMLElement | null {
+		const section = sectionRefs.current[match.fileId];
+		if (!section || match.kind !== "content") {
+			return null;
+		}
+
+		const query = match.text.toLocaleLowerCase();
+		const candidates = Array.from(section.querySelectorAll<HTMLElement>(
+			".diff-line-content, .diff-line-old-content, .diff-line-new-content, .diff-line-hunk-content, [data-testid='mock-search-line-content']",
+		)).filter((element) => (
+			(element.textContent ?? "").toLocaleLowerCase().includes(query)
+		));
+		if (candidates.length === 0) {
+			return null;
+		}
+
+		const lineSpecificCandidate = match.lineNumber === null
+			? null
+			: candidates.find((element) => {
+				const lineRoot = element.closest<HTMLElement>("[data-line], tr, .diff-line");
+				return (lineRoot?.textContent ?? "").includes(String(match.lineNumber));
+			});
+		const target = lineSpecificCandidate ?? candidates[0];
+		return target.closest<HTMLElement>("[data-line], tr, .diff-line") ?? target;
+	}
+
+	function queueSearchMatchScroll(match: DiffSearchMatch) {
+		cancelPendingSearchScroll();
+		let attemptsLeft = 12;
+		const tryScroll = () => {
+			const element = findSearchMatchElement(match);
+			if (element) {
+				element.scrollIntoView({
+					behavior: "smooth",
+					block: "center",
+				});
+				pendingSearchScrollFrameRef.current = null;
+				return;
+			}
+			attemptsLeft -= 1;
+			if (attemptsLeft <= 0) {
+				pendingSearchScrollFrameRef.current = null;
+				return;
+			}
+			pendingSearchScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
+		};
+		pendingSearchScrollFrameRef.current = window.requestAnimationFrame(tryScroll);
+	}
+
+	function activateSearchMatch(index: number) {
+		if (searchMatches.length === 0) {
+			return;
+		}
+		const nextIndex = ((index % searchMatches.length) + searchMatches.length) % searchMatches.length;
+		setActiveSearchIndex(nextIndex);
+		const match = searchMatches[nextIndex];
+		if (!match) {
+			return;
+		}
+		scrollToFile(match.fileId, {
+			expand: true,
+			behavior: "smooth",
+			retries: 4,
+			onSettled: () => {
+				if (match.kind === "content") {
+					queueSearchMatchScroll(match);
+				}
+			},
+		});
+	}
+
+	function stepSearchMatch(direction: -1 | 1) {
+		if (searchMatches.length === 0) {
+			return;
+		}
+		activateSearchMatch(activeSearchIndex + direction);
 	}
 
 	function startEditingComment(commentId: string, body: string) {
@@ -1691,10 +2034,15 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			&& payload.files.every((file) => readFiles[file.id] ?? false)
 			&& payload.skippedFiles.every((skipped) => readFiles[skipped.id] ?? false)
 		: false;
+	const hasSearchQuery = searchQuery.trim().length > 0;
+	const searchStatusLabel = hasSearchQuery
+		? (searchMatches.length > 0 ? `${activeSearchIndex + 1} / ${searchMatches.length}` : t("infoPanel.diffSearchNoMatches"))
+		: null;
 
 	function renderFileTreeNode(node: DiffTreeNode, depth = 0): JSX.Element {
 		if (node.type === "folder") {
 			const collapsed = collapsedFolders[node.key] ?? false;
+			const isCurrentPathMatch = currentSearchMatch?.kind === "path" && currentSearchMatch.filePath === node.path;
 			return (
 				<div key={node.key}>
 					<button
@@ -1711,7 +2059,9 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						<span className="text-[1rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uF07B"}
 						</span>
-						<span className="min-w-0 truncate font-medium">{node.name}</span>
+						<span className={`min-w-0 truncate font-medium${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+							{renderHighlightedText(node.name, searchQuery, isCurrentPathMatch)}
+						</span>
 					</button>
 					{!collapsed && (
 						<div>
@@ -1725,6 +2075,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		const isRead = readFiles[node.fileId] ?? false;
 		const isActive = activeFileId === node.fileId;
 		const isSkipped = node.skipped !== undefined;
+		const isCurrentPathMatch = currentSearchMatch?.kind === "path" && currentSearchMatch.fileId === node.fileId;
 		return (
 			<button
 				key={node.key}
@@ -1740,8 +2091,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 				<span className={`inline-flex items-center justify-center min-w-[1.1rem] rounded border px-1 py-0.5 text-[0.6rem] font-bold ${statusClassName(node.status)}`}>
 					{statusLabel(node.status)}
 				</span>
-				<span className={`min-w-0 truncate font-mono ${isRead ? "text-fg-muted line-through decoration-1" : ""} ${isSkipped ? "italic" : ""}`}>
-					{node.name}
+				<span className={`min-w-0 truncate font-mono ${isRead ? "text-fg-muted line-through decoration-1" : ""} ${isSkipped ? "italic" : ""}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+					{renderHighlightedText(node.name, searchQuery, isCurrentPathMatch)}
 				</span>
 				{isSkipped && (
 					<span
@@ -1870,6 +2221,129 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
 					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
 					<div className="ml-auto flex items-center gap-2">
+						<button
+							type="button"
+							onClick={() => {
+								if (isSearchOpen) {
+									setIsSearchOpen(false);
+									setSearchQuery("");
+									setActiveSearchIndex(0);
+									return;
+								}
+								setIsSearchOpen(true);
+								window.requestAnimationFrame(() => {
+									const input = searchInputRef.current;
+									if (!input) {
+										return;
+									}
+									input.focus();
+									input.select();
+								});
+							}}
+							aria-label={t("infoPanel.diffSearchOpen")}
+							title={`${t("infoPanel.diffSearchOpen")} (⌘F)`}
+							className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+								isSearchOpen
+									? "border-accent bg-accent text-white"
+									: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
+							}`}
+						>
+							<span
+								aria-hidden="true"
+								className="text-[0.95rem] leading-none"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\uF002"}
+							</span>
+						</button>
+						{isSearchOpen && (
+							<div className="inline-flex min-w-[18rem] max-w-[32rem] items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1">
+								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2 focus-within:border-accent/60 transition-colors">
+									<span
+										aria-hidden="true"
+										className="shrink-0 text-[0.8rem] leading-none text-fg-muted"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uF002"}
+									</span>
+									<input
+										ref={searchInputRef}
+										type="text"
+										value={searchQuery}
+										onChange={(event) => {
+											setSearchQuery(event.target.value);
+											setActiveSearchIndex(0);
+										}}
+										onKeyDown={(event) => {
+											if (event.key === "Enter") {
+												event.preventDefault();
+												event.stopPropagation();
+												stepSearchMatch(event.shiftKey ? -1 : 1);
+												return;
+											}
+											if (event.key === "Escape") {
+												event.preventDefault();
+												event.stopPropagation();
+												if (searchQuery.trim()) {
+													setSearchQuery("");
+													setActiveSearchIndex(0);
+												} else {
+													setIsSearchOpen(false);
+												}
+											}
+										}}
+										placeholder={t("infoPanel.diffSearchPlaceholder")}
+										className="h-7 min-w-0 flex-1 bg-transparent text-xs font-medium text-fg outline-none placeholder:text-fg-muted"
+									/>
+								</div>
+								{searchStatusLabel && (
+									<span
+										className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-[0.6875rem] font-mono ${
+											searchMatches.length > 0
+												? "border-edge bg-base text-fg-2"
+												: "border-warning/25 bg-warning/10 text-warning"
+										}`}
+									>
+										{searchStatusLabel}
+									</span>
+								)}
+								<div className="inline-flex shrink-0 items-center gap-1">
+									<button
+										type="button"
+										onClick={() => stepSearchMatch(-1)}
+										disabled={searchMatches.length === 0}
+										aria-label={t("infoPanel.diffSearchPrev")}
+										title={t("infoPanel.diffSearchPrev")}
+										className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+									>
+										{"\u25B2"}
+									</button>
+									<button
+										type="button"
+										onClick={() => stepSearchMatch(1)}
+										disabled={searchMatches.length === 0}
+										aria-label={t("infoPanel.diffSearchNext")}
+										title={t("infoPanel.diffSearchNext")}
+										className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+									>
+										{"\u25BC"}
+									</button>
+								</div>
+								<button
+									type="button"
+									onClick={() => {
+										setIsSearchOpen(false);
+										setSearchQuery("");
+										setActiveSearchIndex(0);
+									}}
+									aria-label={t("infoPanel.diffSearchClose")}
+									title={t("infoPanel.diffSearchClose")}
+									className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
+								>
+									{"\u2715"}
+								</button>
+							</div>
+						)}
 						{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
 						{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
 					</div>
@@ -2034,6 +2508,8 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}
+								searchQuery={searchQuery}
+								isCurrentPathMatch={currentSearchMatch?.kind === "path" && currentSearchMatch.fileId === file.id}
 								comments={inlineComments[file.id] ?? createEmptyInlineCommentFileData()}
 								eager={index < EAGER_FILE_COUNT}
 								expanded={expandedFiles[file.id] ?? true}

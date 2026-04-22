@@ -23,6 +23,7 @@ interface ActiveTasksSidebarProps {
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
 	onSwitchToBoard: () => void;
+	disableGlobalFindShortcut?: boolean;
 }
 
 /** Status display order: most actionable for the user first */
@@ -43,6 +44,7 @@ function ActiveTasksSidebar({
 	bellCounts,
 	taskPorts,
 	onSwitchToBoard,
+	disableGlobalFindShortcut = false,
 }: ActiveTasksSidebarProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -52,6 +54,10 @@ function ActiveTasksSidebar({
 
 	// Ctrl/Cmd+F focuses the search input when sidebar is visible
 	useEffect(() => {
+		if (disableGlobalFindShortcut) {
+			return;
+		}
+
 		function handleKeyDown(e: KeyboardEvent) {
 			if ((e.metaKey || e.ctrlKey) && e.key === "f") {
 				e.preventDefault();
@@ -60,7 +66,7 @@ function ActiveTasksSidebar({
 		}
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, []);
+	}, [disableGlobalFindShortcut]);
 
 	let activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 	if (searchQuery.trim()) {

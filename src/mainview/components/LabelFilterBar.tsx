@@ -10,14 +10,27 @@ interface LabelFilterBarProps {
 	onClear: () => void;
 	searchQuery: string;
 	onSearchChange: (query: string) => void;
+	disableGlobalFindShortcut?: boolean;
 }
 
-function LabelFilterBar({ labels, activeFilters, onToggle, onClear, searchQuery, onSearchChange }: LabelFilterBarProps) {
+function LabelFilterBar({
+	labels,
+	activeFilters,
+	onToggle,
+	onClear,
+	searchQuery,
+	onSearchChange,
+	disableGlobalFindShortcut = false,
+}: LabelFilterBarProps) {
 	const t = useT();
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	// Ctrl/Cmd+F focuses the search input
 	useEffect(() => {
+		if (disableGlobalFindShortcut) {
+			return;
+		}
+
 		function handleKeyDown(e: KeyboardEvent) {
 			if ((e.metaKey || e.ctrlKey) && e.key === "f") {
 				e.preventDefault();
@@ -26,7 +39,7 @@ function LabelFilterBar({ labels, activeFilters, onToggle, onClear, searchQuery,
 		}
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, []);
+	}, [disableGlobalFindShortcut]);
 
 	const hasLabels = labels.length > 0;
 	const hasActiveFilters = activeFilters.length > 0;

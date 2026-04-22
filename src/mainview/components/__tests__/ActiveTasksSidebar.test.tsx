@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
@@ -97,5 +98,31 @@ describe("ActiveTasksSidebar", () => {
 		expect(screen.getByText("Codex · GPT-5.4 Heavy Bypass")).toBeInTheDocument();
 		expect(screen.getByTestId("variant-indicator-t1")).toBeInTheDocument();
 		expect(screen.getAllByText("#494")).toHaveLength(2);
+	});
+
+	it("does not hijack Cmd+F when disabled", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+					disableGlobalFindShortcut
+				/>
+			</I18nProvider>,
+		);
+
+		const input = screen.getByPlaceholderText("Search tasks...");
+		expect(input).not.toHaveFocus();
+		await user.keyboard("{Meta>}f{/Meta}");
+		expect(input).not.toHaveFocus();
 	});
 });
