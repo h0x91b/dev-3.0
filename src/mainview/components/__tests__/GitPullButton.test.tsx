@@ -85,7 +85,7 @@ describe("GitPullButton", () => {
 		expect(btn.getAttribute("title") || "").toMatch(/detached|Detached/);
 	});
 
-	it("calls pullProjectMain and shows success alert on success", async () => {
+	it("flashes 'Up to date' on the button and does NOT alert when already up to date", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",
 			isBaseBranch: true,
@@ -97,19 +97,40 @@ describe("GitPullButton", () => {
 			output: "Already up to date.",
 			error: "",
 		});
-		const alertSpy = alertMock;
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
 		await waitFor(() => expect(btn).not.toBeDisabled());
 		await userEvent.click(btn);
 		await waitFor(() => expect(api.request.pullProjectMain).toHaveBeenCalledWith({ projectId: "p1" }));
-		await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-		const alertText = alertSpy.mock.calls[0][0] as string;
-		expect(alertText).toMatch(/main/);
-		expect(alertText).toMatch(/Already up to date/);
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("up-to-date"));
+		expect(btn.textContent || "").toMatch(/Up to date/i);
+		expect(alertMock).not.toHaveBeenCalled();
 	});
 
-	it("shows failure alert when pullProjectMain reports ok=false", async () => {
+	it("flashes 'Pulled' and shows alert with details when commits were pulled", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+		});
+		(api.request.pullProjectMain as any).mockResolvedValue({
+			ok: true,
+			branch: "main",
+			output: "Updating abc..def\nFast-forward\n src/x.ts | 2 ++\n",
+			error: "",
+		});
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		await userEvent.click(btn);
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
+		expect(btn.textContent || "").toMatch(/Pulled/);
+		await waitFor(() => expect(alertMock).toHaveBeenCalled());
+		const alertText = alertMock.mock.calls[0][0] as string;
+		expect(alertText).toMatch(/Fast-forward/);
+	});
+
+	it("flashes 'Failed' and shows failure alert when pullProjectMain reports ok=false", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",
 			isBaseBranch: true,
@@ -121,13 +142,14 @@ describe("GitPullButton", () => {
 			output: "",
 			error: "fatal: unable to access origin",
 		});
-		const alertSpy = alertMock;
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
 		await waitFor(() => expect(btn).not.toBeDisabled());
 		await userEvent.click(btn);
-		await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-		const alertText = alertSpy.mock.calls[0][0] as string;
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("failed"));
+		expect(btn.textContent || "").toMatch(/Failed/);
+		await waitFor(() => expect(alertMock).toHaveBeenCalled());
+		const alertText = alertMock.mock.calls[0][0] as string;
 		expect(alertText).toMatch(/failed|Pull failed/i);
 		expect(alertText).toMatch(/fatal: unable to access origin/);
 	});

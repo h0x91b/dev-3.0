@@ -130,6 +130,14 @@ const kanban = {
 	"kanban.gitPullUpToDate": "Ya está actualizado.",
 	"kanban.gitPullFailedTitle": "Pull falló en {branch}",
 	"kanban.gitPullFailedUnknown": "error desconocido",
+
+	// Git pull — post-operation flash state on the button (~3s)
+	"kanban.gitPullFlashPulledLabel": "Pulled",
+	"kanban.gitPullFlashPulled": "Se descargaron nuevos commits en {branch}",
+	"kanban.gitPullFlashUpToDateLabel": "Up to date",
+	"kanban.gitPullFlashUpToDate": "{branch} ya estaba actualizado",
+	"kanban.gitPullFlashFailedLabel": "Failed",
+	"kanban.gitPullFlashFailed": "Pull falló en {branch}",
 };
 
 export default kanban;
