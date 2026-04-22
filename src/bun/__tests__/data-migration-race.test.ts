@@ -7,6 +7,7 @@ const { mockFileStore, lockQueues, fsPromises } = vi.hoisted(() => ({
 	fsPromises: {
 		mkdir: vi.fn(),
 		readFile: vi.fn(),
+		readdir: vi.fn(),
 		unlink: vi.fn(),
 		writeFile: vi.fn(),
 	},
@@ -105,6 +106,14 @@ beforeEach(() => {
 	}
 	lockQueues.clear();
 	fsPromises.mkdir.mockResolvedValue(undefined);
+	fsPromises.readdir.mockImplementation(async (dirPath: string | URL | Buffer) => {
+		const prefix = `${String(dirPath)}/`;
+		return Object.keys(mockFileStore)
+			.filter((path) => path.startsWith(prefix))
+			.map((path) => path.slice(prefix.length))
+			.filter((entry) => !entry.includes("/"))
+			.sort();
+	});
 	fsPromises.unlink.mockImplementation(async (path: string | URL | Buffer) => {
 		delete mockFileStore[String(path)];
 	});

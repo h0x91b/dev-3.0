@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskStatus, TipState } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
@@ -10,6 +10,9 @@ import { projectSlug } from "./git";
 const log = createLogger("data");
 
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
+const TASK_BACKUPS_DIR = "tasks-backups";
+const TASK_BACKUP_RETENTION_HOURS = 72;
+const TASK_BACKUP_FILE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}Z\.json$/;
 type ProjectUpdates = Partial<Pick<Project, "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels">>;
 
 export class DataFileReadError extends Error {
@@ -27,6 +30,14 @@ export class DataFileReadError extends Error {
 
 function tasksFile(project: Project): string {
 	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
+}
+
+function tasksBackupDir(project: Project): string {
+	return `${DEV3_HOME}/data/${projectSlug(project.path)}/${TASK_BACKUPS_DIR}`;
+}
+
+function tasksBackupFileName(now: Date = new Date()): string {
+	return `${now.toISOString().slice(0, 13)}Z.json`;
 }
 
 function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
@@ -314,8 +325,43 @@ async function rawSaveTasks(
 	const file = tasksFile(project);
 	log.debug("Saving tasks", { projectId: project.id, count: tasks.length });
 	await ensureDir(file);
+	await writeHourlyTasksBackup(project, file);
 	await writeFile(file, JSON.stringify(tasks, null, 2));
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
+}
+
+async function writeHourlyTasksBackup(project: Project, filePath: string): Promise<void> {
+	let currentContent: string;
+	try {
+		currentContent = await readFile(filePath, "utf8");
+	} catch (err: any) {
+		if (err.code === "ENOENT") {
+			return;
+		}
+		throw err;
+	}
+
+	const backupDir = tasksBackupDir(project);
+	const backupFile = `${backupDir}/${tasksBackupFileName()}`;
+
+	await mkdir(backupDir, { recursive: true });
+
+	try {
+		await readFile(backupFile, "utf8");
+	} catch (err: any) {
+		if (err.code !== "ENOENT") {
+			throw err;
+		}
+		await writeFile(backupFile, currentContent);
+	}
+
+	const backupFiles = (await readdir(backupDir))
+		.filter((entry) => TASK_BACKUP_FILE_PATTERN.test(entry))
+		.sort();
+
+	for (const staleFile of backupFiles.slice(0, Math.max(0, backupFiles.length - TASK_BACKUP_RETENTION_HOURS))) {
+		await unlink(`${backupDir}/${staleFile}`);
+	}
 }
 
 // ---- Tasks (public API — all mutators use file lock) ----

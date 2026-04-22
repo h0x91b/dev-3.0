@@ -1,0 +1,1 @@
+Added hourly pre-save backups for each project's `tasks.json` under a new `tasks-backups/` directory in `~/.dev3.0/data/<slug>/`. The data layer now keeps one snapshot per UTC hour and prunes the set to the newest 72 files, with regression tests covering snapshot creation, hourly deduping, and retention trimming.

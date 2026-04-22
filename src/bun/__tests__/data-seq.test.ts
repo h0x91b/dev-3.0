@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Project, Task } from "../../shared/types";
 
@@ -25,7 +25,11 @@ beforeEach(() => {
 	mkdirSync("/tmp/dev3-test-seq", { recursive: true });
 });
 
-import { loadTasks, addTask, updateTask } from "../data";
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+import { addTask, loadTasks, saveTasks, updateTask } from "../data";
 
 const testProject: Project = {
 	id: "proj-1",
@@ -40,6 +44,18 @@ const testProject: Project = {
 
 function tasksFilePath(): string {
 	return "/tmp/dev3-test-seq/data/tmp-test-project/tasks.json";
+}
+
+function tasksBackupDirPath(): string {
+	return "/tmp/dev3-test-seq/data/tmp-test-project/tasks-backups";
+}
+
+function readBackupFileNames(): string[] {
+	try {
+		return readdirSync(tasksBackupDirPath()).sort();
+	} catch {
+		return [];
+	}
 }
 
 function seedTasks(tasks: unknown[]): void {
@@ -263,6 +279,58 @@ describe("addTask — seq assignment", () => {
 		// New task should get seq=3
 		const newTask = await addTask(testProject, "New task");
 		expect(newTask.seq).toBe(3);
+	});
+});
+
+describe("tasks.json hourly backups", () => {
+	it("captures the previous tasks.json once per hour before overwriting it", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-04-22T10:15:00.000Z"));
+
+		const originalTasks = [{ ...makeRawTask({ id: "a", title: "Original", description: "Original" }), seq: 1 }];
+		seedTasks(originalTasks);
+
+		await updateTask(testProject, "a", { title: "Updated title" });
+
+		const backupFiles = readBackupFileNames();
+		expect(backupFiles).toEqual(["2026-04-22T10Z.json"]);
+		expect(JSON.parse(readFileSync(`${tasksBackupDirPath()}/2026-04-22T10Z.json`, "utf8"))).toEqual(originalTasks);
+		expect(readSavedTasks()[0].title).toBe("Updated title");
+	});
+
+	it("does not create a second backup file within the same hour", async () => {
+		vi.useFakeTimers();
+
+		const originalTasks = [{ ...makeRawTask({ id: "a", title: "Original", description: "Original" }), seq: 1 }];
+		seedTasks(originalTasks);
+
+		vi.setSystemTime(new Date("2026-04-22T10:05:00.000Z"));
+		await updateTask(testProject, "a", { title: "First update" });
+
+		vi.setSystemTime(new Date("2026-04-22T10:45:00.000Z"));
+		await updateTask(testProject, "a", { title: "Second update" });
+
+		const backupFiles = readBackupFileNames();
+		expect(backupFiles).toEqual(["2026-04-22T10Z.json"]);
+		expect(JSON.parse(readFileSync(`${tasksBackupDirPath()}/2026-04-22T10Z.json`, "utf8"))).toEqual(originalTasks);
+		expect(readSavedTasks()[0].title).toBe("Second update");
+	});
+
+	it("keeps only the latest 72 hourly backups", async () => {
+		vi.useFakeTimers();
+
+		seedTasks([{ ...makeRawTask({ id: "a", title: "Task 0", description: "Task 0" }), seq: 1 }]);
+
+		for (let hour = 0; hour < 73; hour++) {
+			vi.setSystemTime(new Date(`2026-04-${String(20 + Math.floor(hour / 24)).padStart(2, "0")}T${String(hour % 24).padStart(2, "0")}:00:00.000Z`));
+			await saveTasks(testProject, readSavedTasks());
+		}
+
+		const backupFiles = readBackupFileNames();
+		expect(backupFiles).toHaveLength(72);
+		expect(backupFiles[0]).toBe("2026-04-20T01Z.json");
+		expect(backupFiles[backupFiles.length - 1]).toBe("2026-04-23T00Z.json");
+		expect(backupFiles).not.toContain("2026-04-20T00Z.json");
 	});
 });
 
