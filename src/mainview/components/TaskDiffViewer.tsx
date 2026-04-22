@@ -2224,6 +2224,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						<button
 							type="button"
 							onClick={() => {
+								if (isSearchOpen) {
+									setIsSearchOpen(false);
+									setSearchQuery("");
+									setActiveSearchIndex(0);
+									return;
+								}
 								setIsSearchOpen(true);
 								window.requestAnimationFrame(() => {
 									const input = searchInputRef.current;
@@ -2235,7 +2241,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 								});
 							}}
 							aria-label={t("infoPanel.diffSearchOpen")}
-							title={t("infoPanel.diffSearchOpen")}
+							title={`${t("infoPanel.diffSearchOpen")} (⌘F)`}
 							className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
 								isSearchOpen
 									? "border-accent bg-accent text-white"
@@ -2252,7 +2258,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 						</button>
 						{isSearchOpen && (
 							<div className="inline-flex min-w-[18rem] max-w-[32rem] items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1">
-								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2">
+								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2 focus-within:border-accent/60 transition-colors">
 									<span
 										aria-hidden="true"
 										className="shrink-0 text-[0.8rem] leading-none text-fg-muted"
