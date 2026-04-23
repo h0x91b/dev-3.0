@@ -49,6 +49,12 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 
+				const overview = task.overview?.trim() || "";
+				if (overview) {
+					fields.push(["", ""]);
+					fields.push(["Overview:", ""]);
+				}
+
 				if (task.description && task.description !== displayTitle) {
 					fields.push(["", ""]);
 					fields.push(["Description:", ""]);
@@ -56,7 +62,14 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 				printDetail(fields);
 
+				if (overview) {
+					for (const line of overview.split("\n")) {
+						process.stdout.write(`  ${line}\n`);
+					}
+				}
+
 				if (task.description && task.description !== displayTitle) {
+					if (overview) process.stdout.write("\n");
 					for (const line of task.description.split("\n")) {
 						process.stdout.write(`  ${line}\n`);
 					}
@@ -104,6 +117,13 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 		if (task.branchName) fields.push(["Branch:", task.branchName as string]);
 		if (task.worktreePath) fields.push(["Worktree:", task.worktreePath as string]);
 
+		const overviewRaw = (task as Partial<Task>).overview;
+		const overview = typeof overviewRaw === "string" ? overviewRaw.trim() : "";
+		if (overview) {
+			fields.push(["", ""]);
+			fields.push(["Overview:", ""]);
+		}
+
 		const desc = task.description as string | undefined;
 		if (desc && desc !== displayTitle) {
 			fields.push(["", ""]);
@@ -115,7 +135,14 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 		printDetail(fields);
 
+		if (overview) {
+			for (const line of overview.split("\n")) {
+				process.stdout.write(`  ${line}\n`);
+			}
+		}
+
 		if (desc && desc !== displayTitle) {
+			if (overview) process.stdout.write("\n");
 			for (const line of desc.split("\n")) {
 				process.stdout.write(`  ${line}\n`);
 			}
