@@ -930,7 +930,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				/>
 			)}
 
-			<TerminalPreviewPopover {...preview.state} />
+			<TerminalPreviewPopover
+				{...preview.state}
+				taskId={task.id}
+				projectId={project.id}
+				overview={task.overview ?? null}
+				description={task.description}
+			/>
 		</div>
 	);
 }

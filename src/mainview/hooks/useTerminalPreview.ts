@@ -33,6 +33,8 @@ export interface TerminalPreviewState {
 	html: string | null;
 	loading: boolean;
 	pos: { top: number; left: number };
+	/** Task id currently rendered in the popover; null when closed. */
+	activeTaskId: string | null;
 	cancelClose: () => void;
 	scheduleClose: () => void;
 }
@@ -52,6 +54,7 @@ export function useTerminalPreview() {
 	const [html, setHtml] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [pos, setPos] = useState({ top: 0, left: 0 });
+	const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
 	const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,6 +82,7 @@ export function useTerminalPreview() {
 		setHtml(null);
 		setLoading(false);
 		activeTaskIdRef.current = null;
+		setActiveTaskId(null);
 	}, [cancelTimers]);
 
 	const scheduleClose = useCallback(() => {
@@ -113,6 +117,7 @@ export function useTerminalPreview() {
 			setPos(position);
 			setOpen(true);
 			setLoading(true);
+			setActiveTaskId(taskId);
 
 			try {
 				const content = await api.request.getTerminalPreview({ taskId });
@@ -161,7 +166,7 @@ export function useTerminalPreview() {
 	}, [cancelTimers]);
 
 	return {
-		state: { open, html, loading, pos, cancelClose, scheduleClose },
+		state: { open, html, loading, pos, activeTaskId, cancelClose, scheduleClose },
 		handlers: { onMouseEnter, onMouseLeave },
 		close,
 	};

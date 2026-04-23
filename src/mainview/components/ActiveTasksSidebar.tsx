@@ -311,7 +311,20 @@ function ActiveTasksSidebar({
 				)}
 			</div>
 
-			<TerminalPreviewPopover {...preview.state} />
+			{(() => {
+				const hoveredTask = preview.state.activeTaskId
+					? tasks.find((t) => t.id === preview.state.activeTaskId)
+					: null;
+				return (
+					<TerminalPreviewPopover
+						{...preview.state}
+						taskId={hoveredTask?.id ?? null}
+						projectId={project.id}
+						overview={hoveredTask?.overview ?? null}
+						description={hoveredTask?.description ?? null}
+					/>
+				);
+			})()}
 		</div>
 	);
 }

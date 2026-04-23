@@ -20,6 +20,8 @@ const tips = {
 	"tip.cmdN.body": "Press \u2318N anywhere to create a new task without touching the mouse.",
 	"tip.terminalPreview.title": "Terminal preview",
 	"tip.terminalPreview.body": "Hover over an active task card to see a live preview of what's happening in the terminal.",
+	"tip.taskOverviewHover.title": "Task overview on hover",
+	"tip.taskOverviewHover.body": "Hover any active task to see its overview above the terminal. Click the pencil to edit a one-paragraph summary inline — perfect for re-entering focus after a break.",
 	"tip.splitViewEscape.title": "Escape closes split view",
 	"tip.splitViewEscape.body": "Press Escape to dismiss the terminal panel and return to the full Kanban board at any time.",
 	"tip.multiVariantTasks.title": "Explore multiple solutions at once",

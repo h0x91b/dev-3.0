@@ -273,6 +273,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			if ((task as any).notes === undefined) task.notes = [];
 			if ((task as any).customTitle === undefined) task.customTitle = null;
 			if ((task as any).customColumnId === undefined) task.customColumnId = null;
+			if ((task as any).overview === undefined) task.overview = null;
 		}
 
 		// Backfill seq for tasks created before seq existed

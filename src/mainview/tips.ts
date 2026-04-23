@@ -57,6 +57,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.terminalPreview.body",
 		icon: "\u{F0489}", // nf-md-monitor
 	},
+	{
+		id: "task-overview-hover",
+		titleKey: "tip.taskOverviewHover.title",
+		bodyKey: "tip.taskOverviewHover.body",
+		icon: "\u{F02FC}", // nf-md-information_outline
+	},
 	// Batch 1: split-view, multi-variant, labels, search, PR
 	{
 		id: "split-view-escape",
