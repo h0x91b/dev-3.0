@@ -719,6 +719,39 @@ async function getProjectCurrentBranch(params: { projectId: string }): Promise<{
 	return { branch, isBaseBranch, isDirty };
 }
 
+const PULLABLE_BRANCHES = new Set(["main", "master"]);
+
+async function pullProjectMain(params: { projectId: string }): Promise<{
+	ok: boolean;
+	branch: string | null;
+	output: string;
+	error: string;
+}> {
+	log.info("→ pullProjectMain", params);
+	const project = await data.getProject(params.projectId);
+	const branch = await git.getCurrentBranch(project.path);
+
+	if (!branch) {
+		const error = "Detached HEAD — switch to a branch first";
+		log.warn("pullProjectMain: detached HEAD", { projectId: params.projectId });
+		return { ok: false, branch: null, output: "", error };
+	}
+	if (!PULLABLE_BRANCHES.has(branch)) {
+		const error = `Refusing to pull on branch '${branch}' — only main or master is allowed from this button`;
+		log.warn("pullProjectMain: branch not pullable", { projectId: params.projectId, branch });
+		return { ok: false, branch, output: "", error };
+	}
+
+	const result = await git.pullOrigin(project.path, branch);
+	log.info("← pullProjectMain", { branch, ok: result.ok });
+	return {
+		ok: result.ok,
+		branch,
+		output: result.stdout,
+		error: result.stderr,
+	};
+}
+
 async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 	log.info("→ getProjectPRs", params);
 	const project = await data.getProject(params.projectId);
@@ -761,4 +794,5 @@ export const gitOperationHandlers = {
 	fetchBranches,
 	getProjectCurrentBranch,
 	getProjectPRs,
+	pullProjectMain,
 };

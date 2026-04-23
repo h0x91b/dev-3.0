@@ -50,6 +50,7 @@ const dashboard = {
 	"header.reportBugTooltip": "Сообщить об ошибке",
 	"header.remoteAccessTooltip": "Открыть на телефоне — отсканируйте QR-код для удалённого доступа",
 	"header.reportLabel": "Report",
+	"header.gitPullLabel": "Pull",
 	"header.switchProject": "Переключить проект",
 	"header.activeTaskCount_one": "{count} активная",
 	"header.activeTaskCount_few": "{count} активных",

@@ -942,6 +942,27 @@ export async function fetchOrigin(projectPath: string): Promise<boolean> {
 	}
 }
 
+export async function pullOrigin(
+	projectPath: string,
+	branch: string,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+	const startedAt = performance.now();
+	log.info("pullOrigin", { projectPath, branch });
+	const result = await run(["git", "pull", "--ff-only", "origin", branch], projectPath);
+	log.info("pullOrigin finished", {
+		projectPath,
+		branch,
+		ok: result.ok,
+		durationMs: Math.round(performance.now() - startedAt),
+	});
+	if (result.ok) {
+		// A successful pull effectively refreshes the remote tracking branch too —
+		// keep the fetch cache honest so immediate callers don't re-fetch.
+		fetchLastSuccess.set(projectPath, Date.now());
+	}
+	return result;
+}
+
 export async function getOriginUrl(projectPath: string): Promise<string | null> {
 	const result = await run(["git", "remote", "get-url", "origin"], projectPath);
 	return result.ok ? result.stdout : null;

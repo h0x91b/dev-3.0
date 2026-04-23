@@ -68,6 +68,7 @@ vi.mock("../git", () => ({
 	getCurrentBranch: vi.fn(),
 	isWorktreeDirty: vi.fn(),
 	listBranches: vi.fn(),
+	pullOrigin: vi.fn(),
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
 	run: vi.fn(),
@@ -1246,6 +1247,91 @@ describe("handlers.getProjectCurrentBranch", () => {
 		expect(result).toEqual({ branch: "feat/login", isBaseBranch: false, isDirty: true });
 		expect(git.getCurrentBranch).toHaveBeenCalledWith(project.path);
 		expect(git.isWorktreeDirty).toHaveBeenCalledWith(project.path);
+	});
+});
+
+describe("handlers.pullProjectMain", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("pulls on main and returns stdout", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("main");
+		vi.mocked(git.pullOrigin).mockResolvedValue({
+			ok: true,
+			stdout: "Already up to date.",
+			stderr: "",
+		});
+
+		const result = await handlers.pullProjectMain({ projectId: "proj-1" });
+
+		expect(result).toEqual({
+			ok: true,
+			branch: "main",
+			output: "Already up to date.",
+			error: "",
+		});
+		expect(git.pullOrigin).toHaveBeenCalledWith(project.path, "main");
+	});
+
+	it("pulls on master", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("master");
+		vi.mocked(git.pullOrigin).mockResolvedValue({
+			ok: true,
+			stdout: "Updating abc..def",
+			stderr: "",
+		});
+
+		const result = await handlers.pullProjectMain({ projectId: "proj-1" });
+
+		expect(result.ok).toBe(true);
+		expect(result.branch).toBe("master");
+		expect(git.pullOrigin).toHaveBeenCalledWith(project.path, "master");
+	});
+
+	it("refuses to pull on a feature branch", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+
+		const result = await handlers.pullProjectMain({ projectId: "proj-1" });
+
+		expect(result.ok).toBe(false);
+		expect(result.branch).toBe("feat/login");
+		expect(result.error).toMatch(/Refusing to pull/);
+		expect(git.pullOrigin).not.toHaveBeenCalled();
+	});
+
+	it("refuses on detached HEAD", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue(null);
+
+		const result = await handlers.pullProjectMain({ projectId: "proj-1" });
+
+		expect(result.ok).toBe(false);
+		expect(result.branch).toBeNull();
+		expect(result.error).toMatch(/Detached HEAD/);
+		expect(git.pullOrigin).not.toHaveBeenCalled();
+	});
+
+	it("returns stderr on pull failure", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("main");
+		vi.mocked(git.pullOrigin).mockResolvedValue({
+			ok: false,
+			stdout: "",
+			stderr: "fatal: unable to access",
+		});
+
+		const result = await handlers.pullProjectMain({ projectId: "proj-1" });
+
+		expect(result.ok).toBe(false);
+		expect(result.branch).toBe("main");
+		expect(result.error).toBe("fatal: unable to access");
 	});
 });
 

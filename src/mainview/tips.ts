@@ -638,6 +638,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.folderPickerPastePath.body",
 		icon: "\u{F0770}", // nf-md-folder_open
 	},
+	// Batch 30: kanban git pull button
+	{
+		id: "kanban-git-pull",
+		titleKey: "tip.kanbanGitPull.title",
+		bodyKey: "tip.kanbanGitPull.body",
+		icon: "\u{F0164}", // nf-md-cloud_download_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

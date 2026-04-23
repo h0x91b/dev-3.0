@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
+import GitPullButton from "./GitPullButton";
 
 interface GlobalHeaderProps {
 	route: Route;
@@ -423,6 +424,11 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						</span>
 						<span className="text-[0.6875rem] font-medium">{t("projectTerminal.open")}</span>
 					</button>
+				)}
+
+				{/* Git Pull — quick pull of origin/{main|master} into project main worktree */}
+				{"projectId" in route && (
+					<GitPullButton projectId={route.projectId} />
 				)}
 
 				{/* Remote Access QR Code */}

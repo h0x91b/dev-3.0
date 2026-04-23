@@ -66,6 +66,7 @@ import {
 	getOriginUrl,
 	deriveForkUrl,
 	fetchFork,
+	pullOrigin,
 	_resetFetchState,
 } from "../git";
 
@@ -99,6 +100,32 @@ describe("getCurrentBranch", () => {
 		queueResponse(128, "", "fatal: not a git repository");
 		const result = await getCurrentBranch("/not-a-repo");
 		expect(result).toBeNull();
+	});
+});
+
+// ─── pullOrigin ──────────────────────────────────────────────────────────────
+
+describe("pullOrigin", () => {
+	it("returns ok=true with stdout when pull succeeds", async () => {
+		queueResponse(0, "Already up to date.\n");
+		const result = await pullOrigin("/repo", "main");
+		expect(result.ok).toBe(true);
+		expect(result.stdout).toBe("Already up to date.");
+		expect(result.stderr).toBe("");
+	});
+
+	it("returns ok=false with stderr when pull fails", async () => {
+		queueResponse(1, "", "fatal: unable to access 'https://...': Could not resolve host\n");
+		const result = await pullOrigin("/repo", "main");
+		expect(result.ok).toBe(false);
+		expect(result.stderr).toMatch(/unable to access/);
+	});
+
+	it("passes branch name through to git pull", async () => {
+		queueResponse(0, "Updating abc..def\nFast-forward\n");
+		const result = await pullOrigin("/repo", "master");
+		expect(result.ok).toBe(true);
+		expect(result.stdout).toMatch(/Fast-forward/);
 	});
 });
 

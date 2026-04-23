@@ -117,6 +117,25 @@ const kanban = {
 
 	// Pipeline
 	"pipeline.current": "current",
+
+	// Git pull (Kanban toolbar)
+	"kanban.gitPull": "Git Pull",
+	"kanban.gitPullBranchLabel": "({branch})",
+	"kanban.gitPullTooltip": "Pull origin/{branch} into the main worktree",
+	"kanban.gitPullInProgress": "Pulling…",
+	"kanban.gitPullDisabledDetached": "Cannot pull — the main worktree is in detached HEAD state",
+	"kanban.gitPullDisabledBranch": "Git Pull is only available on main or master (current: {branch})",
+	"kanban.gitPullDisabledUnknown": "Detecting current branch…",
+	"kanban.gitPullFailedTitle": "Pull failed on {branch}",
+	"kanban.gitPullFailedUnknown": "unknown error",
+
+	// Git pull — post-operation flash state on the button (~3s)
+	"kanban.gitPullFlashPulledLabel": "Pulled",
+	"kanban.gitPullFlashPulled": "Pulled new commits into {branch}",
+	"kanban.gitPullFlashUpToDateLabel": "Up to date",
+	"kanban.gitPullFlashUpToDate": "{branch} was already up to date",
+	"kanban.gitPullFlashFailedLabel": "Failed",
+	"kanban.gitPullFlashFailed": "Pull failed on {branch}",
 } as const;
 
 export default kanban;

@@ -12,6 +12,8 @@ vi.mock("../rpc", () => ({
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
+			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
+			pullProjectMain: vi.fn(),
 		},
 	},
 }));

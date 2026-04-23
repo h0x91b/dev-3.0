@@ -204,6 +204,8 @@ const tips = {
 	"tip.bugHunterSkill.body": "Use the dev3-bug-hunter skill and launch 3-5 variants so each run hunts bugs from a different seeded starting area.",
 	"tip.folderPickerPastePath.title": "Paste a path in the picker",
 	"tip.folderPickerPastePath.body": "The folder picker has a path input at the top — paste an absolute path, hit Enter, and it jumps there instantly.",
+	"tip.kanbanGitPull.title": "Pull main without the terminal",
+	"tip.kanbanGitPull.body": "The Git Pull button next to Project Terminal in the top header runs git pull on the project's main worktree — enabled only when it's on main or master.",
 } as const;
 
 export default tips;
