@@ -126,8 +126,6 @@ const kanban = {
 	"kanban.gitPullDisabledDetached": "No se puede tirar — el worktree principal está en detached HEAD",
 	"kanban.gitPullDisabledBranch": "Git Pull solo está disponible en main o master (actual: {branch})",
 	"kanban.gitPullDisabledUnknown": "Detectando rama actual…",
-	"kanban.gitPullSuccessTitle": "Pull exitoso en {branch}",
-	"kanban.gitPullUpToDate": "Ya está actualizado.",
 	"kanban.gitPullFailedTitle": "Pull falló en {branch}",
 	"kanban.gitPullFailedUnknown": "error desconocido",
 

@@ -107,7 +107,7 @@ describe("GitPullButton", () => {
 		expect(alertMock).not.toHaveBeenCalled();
 	});
 
-	it("flashes 'Pulled' and shows alert with details when commits were pulled", async () => {
+	it("flashes 'Pulled' on the button and does NOT alert when commits were pulled", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",
 			isBaseBranch: true,
@@ -125,9 +125,7 @@ describe("GitPullButton", () => {
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
 		expect(btn.textContent || "").toMatch(/Pulled/);
-		await waitFor(() => expect(alertMock).toHaveBeenCalled());
-		const alertText = alertMock.mock.calls[0][0] as string;
-		expect(alertText).toMatch(/Fast-forward/);
+		expect(alertMock).not.toHaveBeenCalled();
 	});
 
 	it("flashes 'Failed' and shows failure alert when pullProjectMain reports ok=false", async () => {

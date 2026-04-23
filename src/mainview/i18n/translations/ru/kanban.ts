@@ -128,8 +128,6 @@ const kanban = {
 	"kanban.gitPullDisabledDetached": "Нельзя тянуть — main worktree в состоянии detached HEAD",
 	"kanban.gitPullDisabledBranch": "Git Pull доступен только на main или master (сейчас: {branch})",
 	"kanban.gitPullDisabledUnknown": "Определяю текущую ветку…",
-	"kanban.gitPullSuccessTitle": "Pull успешен на {branch}",
-	"kanban.gitPullUpToDate": "Уже актуально.",
 	"kanban.gitPullFailedTitle": "Pull провалился на {branch}",
 	"kanban.gitPullFailedUnknown": "неизвестная ошибка",
 

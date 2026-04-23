@@ -80,13 +80,8 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 			if (result.ok) {
 				const kind = classifySuccess(result.output);
 				flashResult({ kind, branch: displayBranch });
-				// Only show alert with details when something actually changed.
-				// "Up to date" is obvious from the button flash — no alert needed.
-				if (kind === "pulled") {
-					alert(
-						`${t("kanban.gitPullSuccessTitle", { branch: displayBranch })}\n\n${result.output.trim()}`,
-					);
-				}
+				// Success path is silent — the button flash is the feedback.
+				// Details are available via the worktree git log if the user wants them.
 			} else {
 				flashResult({ kind: "failed", branch: displayBranch });
 				const errorMsg = result.error.trim() || t("kanban.gitPullFailedUnknown");
