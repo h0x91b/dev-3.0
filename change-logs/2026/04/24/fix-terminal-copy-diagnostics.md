@@ -1,0 +1,1 @@
+Added terminal copy diagnostics that log selection-driven clipboard attempts, `navigator.clipboard.writeText` failures, `execCommand("copy")` fallback usage, and mouse-tracking interference into the app log. Also added focused tests around terminal clipboard diagnostics and the updated terminal lifecycle wiring.

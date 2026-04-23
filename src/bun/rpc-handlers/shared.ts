@@ -21,7 +21,7 @@ export {
 import { extname } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { dlopen, FFIType } from "bun:ffi";
-import type { RequirementCheckResult, Task } from "../../shared/types";
+import type { RendererLogLevel, RequirementCheckResult, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { log } from "./shared-pure";
@@ -60,6 +60,16 @@ export function hideAppNative(): void {
 
 export function logRendererError(params: { description: string; source: "error" | "unhandledrejection" }): void {
 	rendererLog.warn(`[${params.source}] ${params.description}`);
+}
+
+export function logRendererEvent(params: {
+	level: RendererLogLevel;
+	tag: string;
+	message: string;
+	extra?: Record<string, string | number | boolean | null>;
+}): void {
+	const fn = rendererLog[params.level] ?? rendererLog.info;
+	fn(`[${params.tag}] ${params.message}`, params.extra);
 }
 
 const SYSTEM_REQUIREMENTS: RequirementCheckResult[] = [

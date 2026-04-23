@@ -12,7 +12,7 @@ import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
-import { getUploadedImageExtension, hideAppNative, log, logRendererError } from "./shared";
+import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent } from "./shared";
 
 async function quitApp(): Promise<void> {
 	log.info("→ quitApp (Cmd+Q from renderer)");
@@ -484,6 +484,7 @@ async function checkCaffeinateAvailable(): Promise<{ available: boolean }> {
 
 export const appHandlers = {
 	logRendererError,
+	logRendererEvent,
 	quitApp,
 	hideApp,
 	showConfirm,

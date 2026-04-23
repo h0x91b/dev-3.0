@@ -4,6 +4,8 @@ import { useT } from "./i18n";
 import { dispatchErrorToast } from "./components/ErrorToast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
+import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
+import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
@@ -74,9 +76,29 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
+	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
+
+	function logCopyEvent(
+		level: "debug" | "info" | "warn" | "error",
+		message: string,
+		extra?: Record<string, string | number | boolean | null>,
+	) {
+		const request = api.request.logRendererEvent({
+			level,
+			tag: "terminal-copy",
+			message,
+			extra: {
+				taskId: taskId.slice(0, 8),
+				...(extra ?? {}),
+			},
+		});
+		if (request && typeof (request as Promise<void>).catch === "function") {
+			request.catch(() => {});
+		}
+	}
 
 	useEffect(() => {
 		const observer = new MutationObserver(() => {
@@ -145,6 +167,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		function handleOsc52Clipboard(event: Event) {
 			const detail = (event as CustomEvent<{ taskId?: string; text?: string }>).detail;
 			if (detail?.taskId !== taskId || typeof detail.text !== "string") return;
+			copyDiagnosticsRef.current?.markOsc52Copy(detail.text.length);
+			logCopyEvent("info", "osc52 clipboard payload received", {
+				len: detail.text.length,
+			});
 			navigator.clipboard?.writeText(detail.text).catch(() => {});
 		}
 
@@ -159,6 +185,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		let layoutObserver: ResizeObserver | null = null;
 		let mouseCleanup: (() => void) | undefined;
 		const termSubs: Array<{ dispose(): void }> = [];
+		const diagnosticsId = `terminal-copy-${taskId}-${Math.random().toString(36).slice(2, 8)}`;
+
+		copyDiagnosticsRef.current = installTerminalCopyDiagnostics({
+			id: diagnosticsId,
+			taskId: taskId.slice(0, 8),
+			log: logCopyEvent,
+		});
 
 		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
@@ -380,6 +413,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 								return false;
 							});
 
+							termSubs.push(term.onSelectionChange(() => {
+								if (disposed) return;
+								try {
+									if (!term.hasSelection()) {
+										copyDiagnosticsRef.current?.clearSelection();
+										return;
+									}
+									copyDiagnosticsRef.current?.markSelection(
+										term.getSelection().length,
+										term.hasMouseTracking(),
+									);
+								} catch {
+									copyDiagnosticsRef.current?.clearSelection();
+								}
+							}));
+
 							// Expose terminal handle for external input (e.g. ExtraKeyBar)
 							onReady?.({
 								sendInput: (data: string) => {
@@ -450,6 +499,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				if (disposed) return;
 				try {
 					if (!term.hasMouseTracking() || e.button > 2) return;
+					copyDiagnosticsRef.current?.markMouseTrackingIntercept(e.button);
 					trackedButton = e.button;
 					const [col, row] = cellCoords(e);
 					sgrMouse(e.button, col, row, true);
@@ -649,6 +699,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				cancelAnimationFrame(writeRafId);
 				writeRafId = null;
 			}
+			copyDiagnosticsRef.current?.dispose();
+			copyDiagnosticsRef.current = null;
 			pendingWrite = "";
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
@@ -721,6 +773,32 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		document.addEventListener("keydown", handleKeydown);
 		return () => document.removeEventListener("keydown", handleKeydown);
 	}, []);
+
+	useEffect(() => {
+		function handleTerminalCopyShortcut(e: KeyboardEvent) {
+			const container = containerRef.current;
+			const term = termRef.current;
+			if (!container || !term) return;
+			if (!container.contains(document.activeElement) && document.activeElement !== container) return;
+			if (!e.metaKey || e.code !== "KeyC") return;
+			try {
+				const hasSelection = term.hasSelection();
+				const selectionLength = hasSelection ? term.getSelection().length : 0;
+				logCopyEvent("info", "cmd+c detected in terminal", {
+					selectionLen: selectionLength,
+					mouseTracking: term.hasMouseTracking(),
+				});
+				if (hasSelection) {
+					copyDiagnosticsRef.current?.markShortcutCopy(selectionLength, term.hasMouseTracking());
+				}
+			} catch {
+				// Best effort diagnostics only.
+			}
+		}
+
+		window.addEventListener("keydown", handleTerminalCopyShortcut, { capture: true });
+		return () => window.removeEventListener("keydown", handleTerminalCopyShortcut, { capture: true });
+	}, [taskId]);
 
 	// Terminal keymap shortcuts (configurable preset).
 	// Uses capture phase so ghostty-web can't swallow the events.

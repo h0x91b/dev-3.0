@@ -12,6 +12,8 @@ export interface ChangelogEntry {
 	issueRef?: string; // Short issue ref (e.g. "#191")
 }
 
+export type RendererLogLevel = "debug" | "info" | "warn" | "error";
+
 // ---- Data models ----
 
 export type TaskStatus =
@@ -1232,6 +1234,15 @@ export type AppRPCSchema = {
 			};
 			logRendererError: {
 				params: { description: string; source: "error" | "unhandledrejection" };
+				response: void;
+			};
+			logRendererEvent: {
+				params: {
+					level: RendererLogLevel;
+					tag: string;
+					message: string;
+					extra?: Record<string, string | number | boolean | null>;
+				};
 				response: void;
 			};
 			listBranches: {

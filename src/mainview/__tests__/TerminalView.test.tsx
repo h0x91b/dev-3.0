@@ -6,11 +6,19 @@ import { KEYMAP_LS_KEY } from "../terminal-keymaps";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
-const { mockFocus, mockInput, mockTermInstance, mockOnDataDispose, mockOnResizeDispose } = vi.hoisted(() => {
+const {
+	mockFocus,
+	mockInput,
+	mockTermInstance,
+	mockOnDataDispose,
+	mockOnResizeDispose,
+	mockOnSelectionChangeDispose,
+} = vi.hoisted(() => {
 	const mockFocus = vi.fn();
 	const mockInput = vi.fn();
 	const mockOnDataDispose = vi.fn();
 	const mockOnResizeDispose = vi.fn();
+	const mockOnSelectionChangeDispose = vi.fn();
 	// Plain object — avoids document.createElement at hoist time
 	const mockCanvas = {
 		addEventListener: vi.fn(),
@@ -24,9 +32,12 @@ const { mockFocus, mockInput, mockTermInstance, mockOnDataDispose, mockOnResizeD
 		input: mockInput,
 		onData: vi.fn(() => ({ dispose: mockOnDataDispose })),
 		onResize: vi.fn(() => ({ dispose: mockOnResizeDispose })),
+		onSelectionChange: vi.fn(() => ({ dispose: mockOnSelectionChangeDispose })),
 		attachCustomKeyEventHandler: vi.fn(),
 		attachCustomWheelEventHandler: vi.fn(),
 		hasMouseTracking: vi.fn(() => false),
+		hasSelection: vi.fn(() => false),
+		getSelection: vi.fn(() => ""),
 		renderer: {
 			getCanvas: () => mockCanvas,
 			charWidth: 8,
@@ -41,7 +52,15 @@ const { mockFocus, mockInput, mockTermInstance, mockOnDataDispose, mockOnResizeD
 		rows: 24,
 		options: {} as Record<string, unknown>,
 	};
-	return { mockFocus, mockInput, mockCanvas, mockTermInstance, mockOnDataDispose, mockOnResizeDispose };
+	return {
+		mockFocus,
+		mockInput,
+		mockCanvas,
+		mockTermInstance,
+		mockOnDataDispose,
+		mockOnResizeDispose,
+		mockOnSelectionChangeDispose,
+	};
 });
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -62,7 +81,7 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
-	api: { request: { uploadFileBase64: vi.fn(), tmuxAction: vi.fn() } },
+	api: { request: { uploadFileBase64: vi.fn(), tmuxAction: vi.fn(), logRendererEvent: vi.fn().mockResolvedValue(undefined) } },
 }));
 
 vi.mock("../zoom", () => ({
@@ -84,6 +103,7 @@ vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
 
 // Minimal WebSocket stub (just needs to not throw during connectPty)
 let lastWebSocket: MockWebSocket | null = null;
+let clipboardWriteTextMock: ReturnType<typeof vi.fn>;
 
 class MockWebSocket {
 	static OPEN = 1;
@@ -138,10 +158,11 @@ beforeEach(() => {
 		configurable: true,
 		value: { load: vi.fn().mockReturnValue(Promise.resolve([])) },
 	});
+	clipboardWriteTextMock = vi.fn().mockResolvedValue(undefined);
 	Object.defineProperty(navigator, "clipboard", {
 		configurable: true,
 		value: {
-			writeText: vi.fn().mockResolvedValue(undefined),
+			writeText: clipboardWriteTextMock,
 		},
 	});
 });
@@ -444,7 +465,6 @@ describe("TerminalView – drag-and-drop", () => {
 describe("TerminalView – OSC 52 clipboard", () => {
 	it("writes OSC 52 payloads for the active terminal to navigator.clipboard", async () => {
 		await renderAndSetup();
-		const writeText = vi.mocked(navigator.clipboard.writeText);
 
 		await act(async () => {
 			window.dispatchEvent(
@@ -454,12 +474,11 @@ describe("TerminalView – OSC 52 clipboard", () => {
 			);
 		});
 
-		expect(writeText).toHaveBeenCalledWith("copied from osc52");
+		expect(clipboardWriteTextMock).toHaveBeenCalledWith("copied from osc52");
 	});
 
 	it("ignores OSC 52 payloads for other terminals", async () => {
 		await renderAndSetup();
-		const writeText = vi.mocked(navigator.clipboard.writeText);
 
 		await act(async () => {
 			window.dispatchEvent(
@@ -469,7 +488,7 @@ describe("TerminalView – OSC 52 clipboard", () => {
 			);
 		});
 
-		expect(writeText).not.toHaveBeenCalled();
+		expect(clipboardWriteTextMock).not.toHaveBeenCalled();
 	});
 });
 
@@ -488,6 +507,7 @@ describe("TerminalView – disposal safety (no 'Terminal has been disposed' erro
 
 		expect(mockOnDataDispose).toHaveBeenCalledTimes(1);
 		expect(mockOnResizeDispose).toHaveBeenCalledTimes(1);
+		expect(mockOnSelectionChangeDispose).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not throw when mouse events fire after unmount", async () => {
