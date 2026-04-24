@@ -1,0 +1,1 @@
+The selected task in the Active Tasks sidebar now shows its overview directly inside its card (below the title, only when an overview is set). This removes the need to hover to recall context — the overview is visible the moment you return to the task after a break, solving the discoverability gap of the previous hover-only preview.

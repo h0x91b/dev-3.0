@@ -170,6 +170,76 @@ describe("ActiveTasksSidebar", () => {
 		});
 	});
 
+	it("shows overview inline only for the active task when overview is set", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "t1", overview: "Fixing fork-branch fetch bug." }),
+						makeTask({
+							id: "t2",
+							variantIndex: 2,
+							agentId: "builtin-codex",
+							configId: "codex-default",
+							overview: "Other variant overview.",
+						}),
+					]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent, codexAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Active task (t1) shows its overview inline
+		expect(screen.getByTestId("active-task-overview-t1")).toHaveTextContent(
+			"Fixing fork-branch fetch bug.",
+		);
+		// Inactive task (t2) does NOT render overview inline (even though it has one)
+		expect(screen.queryByTestId("active-task-overview-t2")).toBeNull();
+	});
+
+	it("does not render overview block when overview is empty or whitespace", () => {
+		const { rerender } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ overview: null })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByTestId("active-task-overview-t1")).toBeNull();
+
+		rerender(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ overview: "   \n  " })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.queryByTestId("active-task-overview-t1")).toBeNull();
+	});
+
 	it("does not hijack Cmd+F when disabled", async () => {
 		const user = userEvent.setup();
 
