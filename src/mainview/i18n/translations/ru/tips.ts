@@ -210,6 +210,10 @@ const tips = {
 	"tip.folderPickerPastePath.body": "В пикере папок сверху есть поле ввода — вставьте абсолютный путь и нажмите Enter, чтобы сразу прыгнуть туда.",
 	"tip.kanbanGitPull.title": "Git Pull прямо из header",
 	"tip.kanbanGitPull.body": "Кнопка Pull рядом с Project Terminal в верхнем header тянет основной worktree проекта — активна только когда он на main или master.",
+	"tip.initNewProject.title": "Проект с нуля за один клик",
+	"tip.initNewProject.body": "Add Project → New позволяет выбрать пустую папку: dev-3.0 сам сделает git init, создаст .dev3/README.md и первый коммит.",
+	"tip.folderPickerNewFolder.title": "Создавай папки прямо в пикере",
+	"tip.folderPickerNewFolder.body": "В пикере для нового проекта над деревом есть кнопка \"Новая папка\" — можно создать подпапку на месте, не выходя из приложения.",
 };
 
 export default tips;

@@ -657,6 +657,19 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.kanbanGitPull.body",
 		icon: "\u{F0164}", // nf-md-cloud_download_outline
 	},
+	// Batch 31: new-project init flow
+	{
+		id: "init-new-project",
+		titleKey: "tip.initNewProject.title",
+		bodyKey: "tip.initNewProject.body",
+		icon: "\u{F0415}", // nf-md-plus_box
+	},
+	{
+		id: "folder-picker-new-folder",
+		titleKey: "tip.folderPickerNewFolder.title",
+		bodyKey: "tip.folderPickerNewFolder.body",
+		icon: "\u{F0770}", // nf-md-folder_open
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

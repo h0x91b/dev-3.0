@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			addProject: vi.fn(),
 			cloneAndAddProject: vi.fn(),
+			initAndAddProject: vi.fn(),
 			getGlobalSettings: vi.fn(() =>
 				Promise.resolve({
 					defaultAgentId: "builtin-claude",
@@ -62,10 +63,43 @@ describe("AddProjectModal", () => {
 		vi.clearAllMocks();
 	});
 
-	it("renders with two tabs", () => {
+	it("renders with three tabs", () => {
 		renderModal();
 		expect(screen.getByText("Local Folder")).toBeInTheDocument();
 		expect(screen.getByText("Clone from URL")).toBeInTheDocument();
+		expect(screen.getByText("New")).toBeInTheDocument();
+	});
+
+	it("init flow: picks a folder, runs initAndAddProject, dispatches addProject", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		mockedOpenFolderPicker.mockResolvedValue("/tmp/fresh");
+		mockedApi.request.initAndAddProject.mockResolvedValue({ ok: true, project: mockProject } as any);
+
+		renderModal(dispatch, onClose);
+		await act(async () => { await user.click(screen.getByText("New")); });
+		await act(async () => { await user.click(screen.getByText("Pick folder...")); });
+
+		expect(mockedOpenFolderPicker).toHaveBeenCalledWith(expect.objectContaining({ allowCreateFolder: true }));
+		expect(mockedApi.request.initAndAddProject).toHaveBeenCalledWith({ path: "/tmp/fresh", name: "fresh" });
+		expect(dispatch).toHaveBeenCalledWith({ type: "addProject", project: mockProject });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("init flow: surfaces error from initAndAddProject", async () => {
+		const user = userEvent.setup();
+		mockedOpenFolderPicker.mockResolvedValue("/tmp/messy");
+		mockedApi.request.initAndAddProject.mockResolvedValue({
+			ok: false,
+			error: "Folder is not empty and not a git repository.",
+		} as any);
+
+		renderModal();
+		await act(async () => { await user.click(screen.getByText("New")); });
+		await act(async () => { await user.click(screen.getByText("Pick folder...")); });
+
+		expect(screen.getByText(/not empty/i)).toBeInTheDocument();
 	});
 
 	it("defaults to Local Folder tab with Browse button", () => {

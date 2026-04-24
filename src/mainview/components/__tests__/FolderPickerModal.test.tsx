@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			listDirectory: vi.fn(),
+			createDirectory: vi.fn(),
 		},
 	},
 }));

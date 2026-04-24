@@ -892,6 +892,14 @@ export type AppRPCSchema = {
 				params: { url: string; baseDir: string; repoName?: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
+			createDirectory: {
+				params: { parentPath: string; name: string };
+				response: { ok: true; path: string } | { ok: false; error: string };
+			};
+			initAndAddProject: {
+				params: { path: string; name: string };
+				response: { ok: true; project: Project } | { ok: false; error: string };
+			};
 			removeProject: {
 				params: { projectId: string };
 				response: void;

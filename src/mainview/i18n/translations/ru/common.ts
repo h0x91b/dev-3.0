@@ -66,6 +66,11 @@ const common = {
 	"folderPicker.selected": "Выбрано",
 	"folderPicker.select": "Выбрать",
 	"folderPicker.cancel": "Отмена",
+	"folderPicker.newFolder": "Новая папка",
+	"folderPicker.newFolderTitle": "Создать здесь новую папку",
+	"folderPicker.newFolderPlaceholder": "Имя папки",
+	"folderPicker.create": "Создать",
+	"folderPicker.creating": "Создание…",
 
 	// Unsaved changes guard
 	"unsavedChanges.title": "Несохранённые изменения",

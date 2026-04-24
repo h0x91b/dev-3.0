@@ -210,6 +210,10 @@ const tips = {
 	"tip.folderPickerPastePath.body": "The folder picker has a path input at the top — paste an absolute path, hit Enter, and it jumps there instantly.",
 	"tip.kanbanGitPull.title": "Pull main without the terminal",
 	"tip.kanbanGitPull.body": "The Git Pull button next to Project Terminal in the top header runs git pull on the project's main worktree — enabled only when it's on main or master.",
+	"tip.initNewProject.title": "Start a project from scratch",
+	"tip.initNewProject.body": "Add Project → New lets you pick an empty folder; dev-3.0 runs git init, writes .dev3/README.md, and makes the first commit for you.",
+	"tip.folderPickerNewFolder.title": "Create folders while picking",
+	"tip.folderPickerNewFolder.body": "In the New-project folder picker, click \"New folder\" above the tree to create a subfolder on the spot without leaving the app.",
 } as const;
 
 export default tips;

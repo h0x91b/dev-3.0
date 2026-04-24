@@ -13,12 +13,13 @@ interface AddProjectModalProps {
 
 function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	const t = useT();
-	const [activeTab, setActiveTab] = useState<"local" | "clone">("local");
+	const [activeTab, setActiveTab] = useState<"local" | "clone" | "init">("local");
 	const [gitUrl, setGitUrl] = useState("");
 	const [repoName, setRepoName] = useState("");
 	const [cloneBaseDir, setCloneBaseDir] = useState<string | null>(null);
 	const [cloning, setCloning] = useState(false);
 	const [browsing, setBrowsing] = useState(false);
+	const [initializing, setInitializing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const urlInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +70,38 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			setError(String(err));
 		} finally {
 			setBrowsing(false);
+		}
+	}
+
+	async function handleInitNew() {
+		if (initializing) return;
+		setError(null);
+		let folder: string | null;
+		try {
+			folder = await openFolderPicker({
+				allowCreateFolder: true,
+				title: t("addProject.initPickerTitle"),
+			});
+		} catch (err) {
+			setError(String(err));
+			return;
+		}
+		if (!folder) return;
+		setInitializing(true);
+		try {
+			const name = folder.split("/").pop() || folder;
+			const result = await api.request.initAndAddProject({ path: folder, name });
+			if (result.ok) {
+				dispatch({ type: "addProject", project: result.project });
+				trackEvent("project_added", { source: "init" });
+				onClose();
+			} else {
+				setError(result.error);
+			}
+		} catch (err) {
+			setError(String(err));
+		} finally {
+			setInitializing(false);
 		}
 	}
 
@@ -152,6 +185,16 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					>
 						{t("addProject.tabClone")}
 					</button>
+					<button
+						onClick={() => { setActiveTab("init"); setError(null); }}
+						className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+							activeTab === "init"
+								? "bg-elevated text-fg shadow-sm"
+								: "text-fg-3 hover:text-fg-2"
+						}`}
+					>
+						{t("addProject.tabInit")}
+					</button>
 				</div>
 
 				{/* Tab content */}
@@ -166,6 +209,19 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 							className="w-full px-4 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{browsing ? t("addProject.adding") : t("addProject.browseBtn")}
+						</button>
+					</div>
+				) : activeTab === "init" ? (
+					<div className="space-y-3">
+						<p className="text-fg-3 text-sm">
+							{t("addProject.initHint")}
+						</p>
+						<button
+							onClick={handleInitNew}
+							disabled={initializing}
+							className="w-full px-4 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							{initializing ? t("addProject.initializing") : t("addProject.initBtn")}
 						</button>
 					</div>
 				) : (
