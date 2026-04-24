@@ -198,6 +198,8 @@ const tips = {
 	"tip.bugHunters.body": "Pulsa el botón rojo «Buscar bugs» en la cabecera de la tarea para abrir un lightbox — elige cuántos (3 por defecto) y un enjambre de agentes de solo lectura se abre en el panel derecho, cada uno ejecuta /dev3-bug-hunter con su propia estrategia semilla.",
 	"tip.bugHuntersReadOnly.title": "Los cazadores nunca tocan el código",
 	"tip.bugHuntersReadOnly.body": "El skill /dev3-bug-hunter es solo de lectura — sin commits, sin parches. Tras reportar hallazgos, el agente pregunta antes de convertir bugs críticos/medianos en nuevas tareas dev3.",
+	"tip.multiWindow.title": "Reparte proyectos entre pantallas",
+	"tip.multiWindow.body": "Usa Archivo → Nueva ventana para abrir otra ventana de dev-3.0: un proyecto por monitor, y puedes cerrar cualquier ventana sin salir de la app.",
 };
 
 export default tips;

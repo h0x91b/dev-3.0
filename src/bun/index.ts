@@ -1,13 +1,9 @@
 import Electrobun, {
 	ApplicationMenu,
-	BrowserView,
-	BrowserWindow,
 	PATHS,
-	Screen,
 	Updater,
 	Utils,
 } from "electrobun/bun";
-import type { AppRPCSchema } from "../shared/types";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
@@ -23,6 +19,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
+import { createAppWindow, broadcastToAllWindows, getFocusedWindow, sendToFocusedWindow } from "./window-manager";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
@@ -242,18 +239,6 @@ async function getMainViewUrl(): Promise<string> {
 const url = await getMainViewUrl();
 log.info("Loading URL", { url });
 
-// --- RPC ---
-
-const rpc = BrowserView.defineRPC<AppRPCSchema>({
-	maxRequestTime: 120_000,
-	handlers: {
-		requests: handlers as any,
-		messages: {},
-	},
-});
-
-log.info("RPC handlers registered");
-
 // --- Application Menu ---
 
 ApplicationMenu.setApplicationMenu(buildApplicationMenu(getMenuContext()));
@@ -267,37 +252,33 @@ onMenuContextChange((ctx) => {
 
 // --- Main Window ---
 
-// Size the window to ~95% of the primary display's work area, centered
-const primaryDisplay = Screen.getPrimaryDisplay();
-const workArea = primaryDisplay.workArea;
-const WINDOW_RATIO = 0.95;
-const windowWidth = Math.round(workArea.width * WINDOW_RATIO);
-const windowHeight = Math.round(workArea.height * WINDOW_RATIO);
-const windowX = workArea.x + Math.round((workArea.width - windowWidth) / 2);
-const windowY = workArea.y + Math.round((workArea.height - windowHeight) / 2);
+async function openMainWindow() {
+	return createAppWindow({
+		title: makeTitle(APP_VERSION, lastBuildTime),
+		url,
+		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
+		onDomReady: async (win) => {
+			const channel = await Updater.localInfo.channel();
+			if (channel === "dev") {
+				win.webview.openDevTools();
+			}
+			log.info(`DOM ready [${lastBuildTime}]`);
+		},
+		onExternalLink: (externalUrl) => {
+			log.info("Opening external URL", { url: externalUrl });
+			Utils.openExternal(externalUrl);
+		},
+		onFocus: () => tryNavigateFromRecentNotification("window-focus"),
+	});
+}
 
-const mainWindow = new BrowserWindow({
-	title: makeTitle(APP_VERSION, lastBuildTime),
-	url,
-	rpc,
-	frame: {
-		width: windowWidth,
-		height: windowHeight,
-		x: windowX,
-		y: windowY,
-	},
-});
-
+await openMainWindow();
 log.info("Main window created");
 
-// Wire push messages to renderer (Electrobun + browser clients)
+// Wire push messages: every open renderer window + any connected browser clients.
 setPushMessage((name, payload) => {
 	log.debug("Push to renderer", { name });
-	if (name === "qrTokenConsumed") {
-		mainWindow.webview.rpc?.send("qrTokenConsumed", {});
-	} else {
-		(mainWindow.webview.rpc as any).send[name]?.(payload);
-	}
+	broadcastToAllWindows(name, payload);
 	pushToBrowserClients(name, payload);
 });
 
@@ -305,7 +286,7 @@ setPushMessage((name, payload) => {
 // rpc-handlers — same broadcast target as above.
 import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
 	setPortTunnelsPushHook((name, payload) => {
-		(mainWindow.webview.rpc as any).send[name]?.(payload);
+		broadcastToAllWindows(name, payload);
 		pushToBrowserClients(name, payload);
 	});
 }).catch((err) => log.warn("port-tunnels push hook setup failed", { error: String(err) }));
@@ -338,7 +319,7 @@ startPRDetectionPoller();
 startPortScanPoller(
 	(name, payload) => {
 		try {
-			(mainWindow.webview.rpc as any).send[name]?.(payload);
+			broadcastToAllWindows(name, payload);
 		} catch (err) {
 			log.error("Failed to push port update", { error: String(err) });
 		}
@@ -349,7 +330,7 @@ startPortScanPoller(
 // Start background resource usage monitor (discovers tmux sessions directly, not via pty-server)
 startResourceMonitor((name, payload) => {
 	try {
-		(mainWindow.webview.rpc as any).send[name]?.(payload);
+		broadcastToAllWindows(name, payload);
 	} catch (err) {
 		log.error("Failed to push resource usage update", { error: String(err) });
 	}
@@ -360,14 +341,14 @@ setOnPtyDied((sessionKey) => {
 	try {
 		if (sessionKey === "home") {
 			log.info("Home terminal died, notifying renderer");
-			(mainWindow.webview.rpc as any).send.homePtyDied?.({});
+			broadcastToAllWindows("homePtyDied", {});
 		} else if (sessionKey.startsWith("project-")) {
 			const projectId = sessionKey.slice(8);
 			log.info("Project terminal died, notifying renderer", { projectId: projectId.slice(0, 8) });
-			(mainWindow.webview.rpc as any).send.projectPtyDied?.({ projectId });
+			broadcastToAllWindows("projectPtyDied", { projectId });
 		} else {
 			log.info("PTY died, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-			(mainWindow.webview.rpc as any).send.ptyDied?.({ taskId: sessionKey });
+			broadcastToAllWindows("ptyDied", { taskId: sessionKey });
 		}
 	} catch (err) {
 		log.error("Failed to notify renderer about PTY death", {
@@ -386,7 +367,7 @@ setOnBell((sessionKey) => {
 		if (sessionKey.startsWith("project-")) return;
 
 		log.debug("Terminal bell, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-		(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId: sessionKey });
+		broadcastToAllWindows("terminalBell", { taskId: sessionKey });
 		// Auto-move task from "in-progress" to "user-questions" on bell
 		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus unhandled error", { error: String(err) });
@@ -412,7 +393,7 @@ setOnIdle((sessionKey) => {
 		if (!inProgress) return;
 		try {
 			log.debug("Terminal idle, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-			(mainWindow.webview.rpc as any).send.terminalBell?.({ taskId: sessionKey });
+			broadcastToAllWindows("terminalBell", { taskId: sessionKey });
 		} catch (err) {
 			log.error("Failed to handle terminal idle", {
 				taskId: sessionKey.slice(0, 8),
@@ -439,7 +420,7 @@ setOnOsc52Copy((payload) => {
 	// Still forward to renderer (diagnostics) and remote browser clients
 	// (where the user's clipboard is the browser, not the host).
 	try {
-		(mainWindow.webview.rpc as any).send.osc52Clipboard?.(payload);
+		broadcastToAllWindows("osc52Clipboard", payload);
 		pushToBrowserClients("osc52Clipboard", payload);
 	} catch (err) {
 		log.error("Failed to forward OSC 52 clipboard payload", {
@@ -456,17 +437,20 @@ setOnPaneExited((taskId, paneId) => {
 	});
 });
 
-mainWindow.on("close", () => {
-	log.info("Main window closing, cleaning up");
-	stopPortScanPoller();
-	stopResourceMonitor();
-	stopSocketServer();
+// Global teardown runs once, when the app is about to quit for any reason
+// (last window closed, Cmd+Q, menu Quit, app shutdown). Per-window close
+// handlers live in the window-manager and only track registry state —
+// Electrobun auto-calls quit() when the last BrowserWindow closes.
+Electrobun.events.on("before-quit", () => {
+	log.info("App is quitting, running global cleanup");
+	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
+	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
+	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }
 	// Tear down every per-task cloudflared process spawned by the GUI's
 	// `Expose port` button or by `--expose-ports`. Leaving them running
 	// would orphan tunnels (and trycloudflare quotas) on app exit.
 	import("./port-tunnels").then(({ cleanupAllTunnels }) => cleanupAllTunnels()).catch(() => { /* shutdown — best-effort */ });
-	stopTunnel();
-	Utils.quit();
+	try { stopTunnel(); } catch (err) { log.warn("stopTunnel failed", { error: String(err) }); }
 });
 
 // Click-to-open for watched-task notifications.
@@ -474,14 +458,14 @@ mainWindow.on("close", () => {
 // foreground" signal that arrives shortly after a notification fired as a click-through.
 //
 // We listen on multiple events because none of them fire reliably in every scenario:
-//   - `window.focus`            — fires on windowDidBecomeKey: (does NOT re-fire if the
-//                                  window was already key, e.g. another app was just on top)
-//   - `app.reopen` (global)     — fires on applicationShouldHandleReopen: (dock click,
-//                                  some notification-activation paths on macOS)
-//   - `webview.dom-focus` proxy — fires when the WKWebView regains focus inside the window
+//   - window focus  — fires on windowDidBecomeKey: (does NOT re-fire if the window was
+//                      already key, e.g. another app was just on top). Wired per-window
+//                      via the createAppWindow onFocus hook.
+//   - `app.reopen`  — fires on applicationShouldHandleReopen: (dock click, some
+//                      notification-activation paths on macOS).
 //
-// On the first signal we consume the recent-notification slot and tell the renderer to
-// navigate. Subsequent signals find the slot empty and no-op.
+// On the first signal we consume the recent-notification slot and tell the focused window
+// to navigate. Subsequent signals find the slot empty and no-op.
 function tryNavigateFromRecentNotification(source: string): void {
 	const recent = consumeRecentWatchedNotification();
 	log.debug(`[notif] activation signal received (${source})`, {
@@ -489,49 +473,32 @@ function tryNavigateFromRecentNotification(source: string): void {
 		taskId: recent?.taskId?.slice(0, 8) ?? null,
 	});
 	if (!recent) return;
-	try {
-		(mainWindow.webview.rpc as any).send.openTaskFromNotification?.(recent);
-	} catch (err) {
-		log.error("Failed to push openTaskFromNotification", { error: String(err) });
-	}
+	sendToFocusedWindow("openTaskFromNotification", recent);
 }
 
-mainWindow.on("focus", () => tryNavigateFromRecentNotification("window-focus"));
 Electrobun.events.on("reopen", () => tryNavigateFromRecentNotification("app-reopen"));
-
-// Open DevTools automatically on dev channel
-mainWindow.webview.on("dom-ready", async () => {
-	const channel = await Updater.localInfo.channel();
-	if (channel === "dev") {
-		mainWindow.webview.openDevTools();
-	}
-	log.info(`DOM ready [${lastBuildTime}]`);
-});
-
-// Open external links in the default browser.
-// ghostty-web's built-in link providers call window.open() on Cmd+Click,
-// which triggers this event in the WKWebView. Redirect to system browser.
-(mainWindow.webview as any).on("new-window-open", (e: any) => {
-	const url = e.data?.detail?.url;
-	if (typeof url === "string" && /^https?:\/\//.test(url)) {
-		log.info("Opening external URL", { url });
-		Utils.openExternal(url);
-	} else {
-		log.warn("Blocked new-window-open with unexpected URL", { data: e.data });
-	}
-});
 
 // Helper to push update progress to the renderer
 const sendUpdateProgress = (status: string, progress?: number) => {
-	(mainWindow.webview.rpc as any).send.updateDownloadProgress?.({ status, progress });
+	broadcastToAllWindows("updateDownloadProgress", { status, progress });
 };
 
 // --- Menu Event Handlers ---
 
 Electrobun.events.on("application-menu-clicked", async (e) => {
+	// Most menu actions target the currently focused window; a few (update
+	// progress, broadcast notifications) reach all windows via broadcast.
+	const focused = getFocusedWindow();
+
+	if (e.data.action === MENU_ACTIONS.newWindow) {
+		log.info("Menu: open new window");
+		await openMainWindow();
+		return;
+	}
+
 	if (e.data.action === MENU_ACTIONS.hardRefresh) {
 		log.info("Hard refresh — navigating to home page");
-		mainWindow.webview.loadURL(url);
+		focused?.webview.loadURL(url);
 	} else if (e.data.action === MENU_ACTIONS.about) {
 		Utils.showMessageBox({
 			type: "info",
@@ -541,15 +508,15 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			buttons: ["OK"],
 		});
 	} else if (e.data.action === MENU_ACTIONS.openSettings) {
-		mainWindow.webview.rpc?.send("navigateToSettings", {});
+		sendToFocusedWindow("navigateToSettings");
 	} else if (e.data.action === MENU_ACTIONS.openNewTask) {
-		mainWindow.webview.rpc?.send("openCreateTaskModal", {});
+		sendToFocusedWindow("openCreateTaskModal");
 	} else if (e.data.action === MENU_ACTIONS.openAddProject) {
-		mainWindow.webview.rpc?.send("openAddProjectModal", {});
+		sendToFocusedWindow("openAddProjectModal");
 	} else if (e.data.action === MENU_ACTIONS.gaugeDemo) {
-		mainWindow.webview.rpc?.send("navigateToGaugeDemo", {});
+		sendToFocusedWindow("navigateToGaugeDemo");
 	} else if (e.data.action === MENU_ACTIONS.viewportLab) {
-		mainWindow.webview.rpc?.send("navigateToViewportLab", {});
+		sendToFocusedWindow("navigateToViewportLab");
 	} else if (e.data.action === MENU_ACTIONS.checkForUpdates) {
 		try {
 			const settings = await loadSettings();
@@ -622,25 +589,25 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			});
 		}
 	} else if (e.data.action === "terminal-soft-reset") {
-		mainWindow.webview.rpc?.send("terminalSoftReset", {});
+		sendToFocusedWindow("terminalSoftReset");
 	} else if (e.data.action === "terminal-hard-reset") {
-		mainWindow.webview.rpc?.send("terminalHardReset", {});
+		sendToFocusedWindow("terminalHardReset");
 	} else if (e.data.action === "toggle-devtools") {
-		mainWindow.webview.openDevTools();
+		focused?.webview.openDevTools();
 	} else if (e.data.action === "open-logs-directory") {
 		openLogsDirectory();
 	} else if (e.data.action === "zoom-in") {
-		mainWindow.webview.rpc?.send("zoomIn", {});
+		sendToFocusedWindow("zoomIn");
 	} else if (e.data.action === "zoom-out") {
-		mainWindow.webview.rpc?.send("zoomOut", {});
+		sendToFocusedWindow("zoomOut");
 	} else if (e.data.action === "zoom-reset") {
-		mainWindow.webview.rpc?.send("zoomReset", {});
+		sendToFocusedWindow("zoomReset");
 	} else if (e.data.action === "show-remote-qr") {
 		try {
 			const qrDataUrl = await generateQrDataUrl();
 			const accessUrl = await getAccessUrl();
 			const { isCloudflaredAvailable, getTunnelState } = await import("./cloudflare-tunnel");
-			mainWindow.webview.rpc?.send("showRemoteAccessQR", { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable() });
+			sendToFocusedWindow("showRemoteAccessQR", { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable() });
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}
@@ -656,7 +623,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		// push channel. The renderer's `menuRouter` (App.tsx listener) decides
 		// what to do based on its current state.
 		log.debug("Routing menu action to renderer", { action: e.data.action });
-		mainWindow.webview.rpc?.send("menuAction", { action: e.data.action });
+		sendToFocusedWindow("menuAction", { action: e.data.action });
 	}
 });
 
@@ -671,7 +638,7 @@ startAutoCheck(
 		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 		if (dlResult.ok) {
 			log.info("Auto-download complete, notifying renderer", { version });
-			(mainWindow.webview.rpc as any).send.updateAvailable?.({ version });
+			broadcastToAllWindows("updateAvailable", { version });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
 			sendUpdateProgress("error");

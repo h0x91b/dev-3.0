@@ -627,6 +627,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.bugHuntersReadOnly.body",
 		icon: "\u{F0E73}", // nf-md-eye_lock_outline
 	},
+	// Batch 39: multi-window
+	{
+		id: "multi-window",
+		titleKey: "tip.multiWindow.title",
+		bodyKey: "tip.multiWindow.body",
+		icon: "\u{F05C2}", // nf-md-window_restore
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

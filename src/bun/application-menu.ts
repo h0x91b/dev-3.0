@@ -25,6 +25,7 @@ export const MENU_ACTIONS = {
 	setLocaleEs: "set-locale-es",
 
 	// ── File ──
+	newWindow: "new-window",
 	openNewTask: "open-new-task",
 	openAddProject: "open-add-project",
 	openCloneRepository: "open-clone-repository",
@@ -512,6 +513,8 @@ function fileMenu(): ApplicationMenuItemConfig {
 	return {
 		label: "File",
 		submenu: [
+			item({ label: "New Window", action: MENU_ACTIONS.newWindow, accelerator: "shift+n" }),
+			SEP,
 			item({ label: "New Task", action: MENU_ACTIONS.openNewTask, accelerator: "n" }),
 			SEP,
 			item({ label: "Add Local Project...", action: MENU_ACTIONS.openAddProject, accelerator: "p" }),
