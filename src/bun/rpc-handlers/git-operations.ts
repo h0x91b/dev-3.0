@@ -1,4 +1,10 @@
-import type { BranchStatus, PRInfo, TaskDiffMode, TaskDiffResponse } from "../../shared/types";
+import {
+	type BranchStatus,
+	type PRInfo,
+	type TaskDiffMode,
+	type TaskDiffResponse,
+	MERGE_COMPLETE_ELIGIBLE_STATUSES,
+} from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
@@ -112,7 +118,7 @@ let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startMergeDetectionPoller(): void {
 	stopMergeDetectionPoller();
-	const POLL_INTERVAL = 5 * 60_000;
+	const POLL_INTERVAL = 60_000;
 
 	mergePollerInterval = setInterval(async () => {
 		try {
@@ -155,7 +161,7 @@ async function checkMergedBranches(): Promise<void> {
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
-			(task) => (task.status === "review-by-user" || task.status === "review-by-colleague") && task.worktreePath && !mergeNotifiedTasks.has(task.id),
+			(task) => MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) && task.worktreePath && !mergeNotifiedTasks.has(task.id),
 		);
 
 		if (reviewTasks.length === 0) continue;

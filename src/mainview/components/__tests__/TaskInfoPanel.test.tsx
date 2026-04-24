@@ -1588,6 +1588,83 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("post-merge auto-complete", () => {
+		it("does not offer auto-complete for merged AI Review tasks", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-ai" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+			});
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(100);
+			});
+
+			expect(mockedApi.request.showConfirm).not.toHaveBeenCalled();
+			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
+		});
+
+		it("offers auto-complete for merged PR Review tasks", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-colleague" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+			});
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			});
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					newStatus: "completed",
+				});
+			});
+		});
+
+		it("offers auto-complete for merged Has Questions tasks", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "user-questions" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+			});
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			});
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					newStatus: "completed",
+				});
+			});
+		});
+
 		it("sets movedAt when auto-completing after merge", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();

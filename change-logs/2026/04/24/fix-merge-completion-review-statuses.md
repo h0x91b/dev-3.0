@@ -1,0 +1,1 @@
+Restore merge-completion prompts for Has Questions, Your Review, and PR Review. Merged branches are checked every 60 seconds again, and AI Review is explicitly excluded for now because its review agent may still be running long after the branch becomes stale.
