@@ -1337,6 +1337,7 @@ export type AppRPCSchema = {
 	webview: RPCSchema<{
 		requests: Record<string, never>;
 		messages: {
+			openCreateTaskModal: {};
 			openAddProjectModal: {};
 			navigateToSettings: {};
 			navigateToGaugeDemo: {};

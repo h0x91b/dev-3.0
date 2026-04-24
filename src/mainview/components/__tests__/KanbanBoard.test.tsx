@@ -1,5 +1,4 @@
 import { act, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import KanbanBoard from "../KanbanBoard";
 import { I18nProvider } from "../../i18n";
 import type { CustomColumn, Project } from "../../../shared/types";
@@ -36,25 +35,6 @@ const project: Project = {
 	defaultBaseBranch: "main",
 	createdAt: "2025-01-01T00:00:00Z",
 };
-
-async function renderBoard() {
-	let result: ReturnType<typeof render>;
-	await act(async () => {
-		result = render(
-			<I18nProvider>
-				<KanbanBoard
-					project={project}
-					tasks={[]}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
-					bellCounts={new Map()}
-					taskPorts={new Map()}
-				/>
-			</I18nProvider>,
-		);
-	});
-	return result!;
-}
 
 const customColA: CustomColumn = { id: "col-a", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 const customColB: CustomColumn = { id: "col-b", name: "Beta", color: "#00ff00", llmInstruction: "" };
@@ -332,42 +312,5 @@ describe("collapsible columns", () => {
 			// Collapsed columns should not contain TipCard content
 			expect(col.querySelector("[class*='tip']")).toBeNull();
 		}
-	});
-});
-
-describe("KanbanBoard keyboard shortcuts", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
-	it("Cmd+N opens the create task modal", async () => {
-		await renderBoard();
-		expect(screen.queryByText("New Task")).not.toBeInTheDocument();
-		await userEvent.keyboard("{Meta>}n{/Meta}");
-		expect(screen.getByText("New Task")).toBeInTheDocument();
-	});
-
-	it("Ctrl+N opens the create task modal", async () => {
-		await renderBoard();
-		expect(screen.queryByText("New Task")).not.toBeInTheDocument();
-		await userEvent.keyboard("{Control>}n{/Control}");
-		expect(screen.getByText("New Task")).toBeInTheDocument();
-	});
-
-	it("Cmd+N does nothing when the modal is already open", async () => {
-		await renderBoard();
-		await userEvent.keyboard("{Meta>}n{/Meta}");
-		expect(screen.getByText("New Task")).toBeInTheDocument();
-		// Second press should not open a second modal
-		await userEvent.keyboard("{Meta>}n{/Meta}");
-		expect(screen.getAllByText("New Task")).toHaveLength(1);
-	});
-
-	it("Escape closes the create task modal after Cmd+N", async () => {
-		await renderBoard();
-		await userEvent.keyboard("{Meta>}n{/Meta}");
-		expect(screen.getByText("New Task")).toBeInTheDocument();
-		await userEvent.keyboard("{Escape}");
-		expect(screen.queryByText("New Task")).not.toBeInTheDocument();
 	});
 });

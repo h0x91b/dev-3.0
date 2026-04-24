@@ -19,6 +19,7 @@ import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAc
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
+import { buildApplicationMenu, MENU_ACTIONS } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
@@ -244,76 +245,7 @@ log.info("RPC handlers registered");
 
 // --- Application Menu ---
 
-ApplicationMenu.setApplicationMenu([
-	{
-		label: "dev-3.0",
-		submenu: [
-			{ label: "About dev-3.0", action: "about" },
-			{ label: "Check for Updates...", action: "check-for-updates" },
-			{ type: "separator" },
-			{ label: "Settings...", action: "open-settings", accelerator: "," },
-			{ type: "separator" },
-			{ role: "hide" },
-			{ role: "hideOthers" },
-			{ role: "showAll" },
-			{ type: "separator" },
-			{ role: "quit" },
-		],
-	},
-	{
-		label: "File",
-		submenu: [
-			{ label: "Add Project...", action: "open-add-project" },
-		],
-	},
-	{
-		label: "Edit",
-		submenu: [
-			{ role: "undo" },
-			{ role: "redo" },
-			{ type: "separator" },
-			{ role: "cut" },
-			{ role: "copy" },
-			{ role: "paste" },
-			{ role: "pasteAndMatchStyle" },
-			{ role: "delete" },
-			{ role: "selectAll" },
-		],
-	},
-	{
-		label: "View",
-		submenu: [
-			{ label: "Hard Refresh", action: "hard-refresh", accelerator: "r" },
-			{ label: "Toggle Developer Tools", action: "toggle-devtools" },
-			{ label: "Open Logs Directory", action: "open-logs-directory" },
-			{ type: "separator" },
-			{ label: "Soft Reset Terminal", action: "terminal-soft-reset" },
-			{ label: "Hard Reset Terminal", action: "terminal-hard-reset" },
-			{ type: "separator" },
-			{ label: "Gauge Demo", action: "gauge-demo" },
-			{ label: "Viewport Lab", action: "viewport-lab" },
-			{ type: "separator" },
-			{ label: "Zoom In", action: "zoom-in", accelerator: "=" },
-			{ label: "Zoom Out", action: "zoom-out", accelerator: "-" },
-			{ label: "Reset Zoom", action: "zoom-reset", accelerator: "0" },
-			{ type: "separator" },
-			{ label: "Remote Access QR Code", action: "show-remote-qr" },
-			{ type: "separator" },
-			{ role: "toggleFullScreen" },
-		],
-	},
-	{
-		label: "Window",
-		submenu: [
-			{ role: "minimize" },
-			{ role: "zoom" },
-			{ type: "separator" },
-			{ role: "bringAllToFront" },
-			{ role: "cycleThroughWindows" },
-			{ role: "close" },
-		],
-	},
-]);
+ApplicationMenu.setApplicationMenu(buildApplicationMenu());
 
 // --- Main Window ---
 
@@ -528,10 +460,10 @@ const sendUpdateProgress = (status: string, progress?: number) => {
 // --- Menu Event Handlers ---
 
 Electrobun.events.on("application-menu-clicked", async (e) => {
-	if (e.data.action === "hard-refresh") {
+	if (e.data.action === MENU_ACTIONS.hardRefresh) {
 		log.info("Hard refresh — navigating to home page");
 		mainWindow.webview.loadURL(url);
-	} else if (e.data.action === "about") {
+	} else if (e.data.action === MENU_ACTIONS.about) {
 		Utils.showMessageBox({
 			type: "info",
 			title: "About",
@@ -539,15 +471,17 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			detail: "Terminal-centric project manager\nBuilt with Electrobun, React, and Bun.",
 			buttons: ["OK"],
 		});
-	} else if (e.data.action === "open-settings") {
+	} else if (e.data.action === MENU_ACTIONS.openSettings) {
 		mainWindow.webview.rpc?.send("navigateToSettings", {});
-	} else if (e.data.action === "open-add-project") {
+	} else if (e.data.action === MENU_ACTIONS.openNewTask) {
+		mainWindow.webview.rpc?.send("openCreateTaskModal", {});
+	} else if (e.data.action === MENU_ACTIONS.openAddProject) {
 		mainWindow.webview.rpc?.send("openAddProjectModal", {});
-	} else if (e.data.action === "gauge-demo") {
+	} else if (e.data.action === MENU_ACTIONS.gaugeDemo) {
 		mainWindow.webview.rpc?.send("navigateToGaugeDemo", {});
-	} else if (e.data.action === "viewport-lab") {
+	} else if (e.data.action === MENU_ACTIONS.viewportLab) {
 		mainWindow.webview.rpc?.send("navigateToViewportLab", {});
-	} else if (e.data.action === "check-for-updates") {
+	} else if (e.data.action === MENU_ACTIONS.checkForUpdates) {
 		try {
 			const settings = await loadSettings();
 			sendUpdateProgress("checking");
