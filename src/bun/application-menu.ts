@@ -513,7 +513,7 @@ function fileMenu(): ApplicationMenuItemConfig {
 	return {
 		label: "File",
 		submenu: [
-			item({ label: "New Window", action: MENU_ACTIONS.newWindow, accelerator: "shift+n" }),
+			item({ label: "New Window", action: MENU_ACTIONS.newWindow }),
 			SEP,
 			item({ label: "New Task", action: MENU_ACTIONS.openNewTask, accelerator: "n" }),
 			SEP,

@@ -12,6 +12,7 @@ type FakeWindow = {
 	setSize: ReturnType<typeof vi.fn>;
 	on: ReturnType<typeof vi.fn>;
 	handlers: Record<string, () => void>;
+	frame?: { x: number; y: number; width: number; height: number };
 };
 
 // vi.mock is hoisted, so the registry must live on globalThis rather than a
@@ -29,7 +30,10 @@ vi.mock("electrobun/bun", () => {
 		setSize: ReturnType<typeof vi.fn>;
 		on: ReturnType<typeof vi.fn>;
 		handlers: Record<string, () => void>;
-		constructor() {
+		frame?: { x: number; y: number; width: number; height: number };
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		constructor(opts?: any) {
+			this.frame = opts?.frame;
 			const fakeSend: Record<string, ReturnType<typeof vi.fn>> = {};
 			const handlers: Record<string, () => void> = {};
 			this.webview = {
@@ -151,6 +155,21 @@ describe("window-manager", () => {
 		first.handlers.close?.();
 		expect(getWindowCount()).toBe(0);
 		expect(getFocusedWindow()).toBe(null);
+	});
+
+	it("clamps cascade offset so windows stay within the work area", () => {
+		// Mock workArea: 1920×1080. With RATIO=0.95:
+		//   window size = 1824×1026, centered at (48, 27).
+		//   max x = 1920-1824 = 96, max y = 1080-1026 = 54.
+		// Second window (offset=40): unclamped y=67 would exceed maxY=54.
+		spawn(); // size=0 before → offset=0
+		spawn(); // size=1 before → offset=40
+
+		const [, secondWin] = createdWindows;
+		// y must not exceed wa.height - window.height (= 1080 - 1026 = 54)
+		expect(secondWin.frame?.y).toBeLessThanOrEqual(54);
+		// x must not exceed wa.width - window.width (= 1920 - 1824 = 96)
+		expect(secondWin.frame?.x).toBeLessThanOrEqual(96);
 	});
 
 	it("invokes onClosed with the remaining window count", () => {

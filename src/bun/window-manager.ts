@@ -62,8 +62,10 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	const width = Math.round(wa.width * RATIO);
 	const height = Math.round(wa.height * RATIO);
 	const offset = windows.size * 40;
-	const x = wa.x + Math.round((wa.width - width) / 2) + offset;
-	const y = wa.y + Math.round((wa.height - height) / 2) + offset;
+	// Clamp so the window never extends beyond the work area, even when
+	// many windows are open (cascade stagger can exceed the available margin).
+	const x = Math.min(wa.x + Math.round((wa.width - width) / 2) + offset, wa.x + wa.width - width);
+	const y = Math.min(wa.y + Math.round((wa.height - height) / 2) + offset, wa.y + wa.height - height);
 
 	const win = new BrowserWindow({
 		title: opts.title,
