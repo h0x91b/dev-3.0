@@ -308,7 +308,7 @@ describe("DEFAULT_AGENTS", () => {
 
 		const cfg = codex!.configurations.find((c) => c.id === "codex-default");
 		expect(cfg).toBeDefined();
-		expect(cfg!.name).toBe("Default (GPT-5.4 Heavy Bypass)");
+		expect(cfg!.name).toBe("Default (GPT-5.5 Heavy Bypass)");
 		expect(cfg!.additionalArgs).toContain("--sandbox");
 		expect(cfg!.additionalArgs).toContain("danger-full-access");
 		expect(cfg!.additionalArgs).toContain('model_reasoning_effort="high"');

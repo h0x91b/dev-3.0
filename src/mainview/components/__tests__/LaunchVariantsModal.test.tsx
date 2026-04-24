@@ -46,27 +46,27 @@ const codexAgent: CodingAgent = {
 	configurations: [
 		{
 			id: "codex-default",
-			name: "Default (GPT-5.4 Heavy Bypass)",
-			model: "gpt-5.4",
+			name: "Default (GPT-5.5 Heavy Bypass)",
+			model: "gpt-5.5",
 			additionalArgs: ["--search", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 		},
 		{
 			id: "codex-plan",
-			name: "Plan (GPT-5.4)",
-			model: "gpt-5.4",
+			name: "Plan (GPT-5.5)",
+			model: "gpt-5.5",
 			appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 		},
 		{
 			id: "codex-heavy",
-			name: "Heavy (GPT-5.4 High)",
-			model: "gpt-5.4",
+			name: "Heavy (GPT-5.5 High)",
+			model: "gpt-5.5",
 			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 		},
 		{
 			id: "codex-heavy-confirm",
-			name: "Heavy (GPT-5.4 High Confirm)",
-			model: "gpt-5.4",
+			name: "Heavy (GPT-5.5 High Confirm)",
+			model: "gpt-5.5",
 			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
 		},
 		{
@@ -296,10 +296,10 @@ describe("LaunchVariantsModal", () => {
 
 			const options = await getDropdownOptions(user, getConfigButtons()[0]);
 			expect(options).toHaveLength(6);
-			expect(options[0]).toBe("Default (GPT-5.4 Heavy Bypass)");
-			expect(options[1]).toBe("Plan (GPT-5.4)");
-			expect(options[2]).toBe("Heavy (GPT-5.4 High)");
-			expect(options[3]).toBe("Heavy (GPT-5.4 High Confirm)");
+			expect(options[0]).toBe("Default (GPT-5.5 Heavy Bypass)");
+			expect(options[1]).toBe("Plan (GPT-5.5)");
+			expect(options[2]).toBe("Heavy (GPT-5.5 High)");
+			expect(options[3]).toBe("Heavy (GPT-5.5 High Confirm)");
 			expect(options[4]).toBe("GPT-5.3 Codex Medium");
 			expect(options[5]).toBe("GPT-5.3 Codex High");
 		});
@@ -335,12 +335,12 @@ describe("LaunchVariantsModal", () => {
 			await selectOption(user, agentBtn, "Codex");
 
 			const configBtnAfter = getConfigButtons()[0];
-			expect(getSelectedText(configBtnAfter)).toBe("Default (GPT-5.4 Heavy Bypass)");
+			expect(getSelectedText(configBtnAfter)).toBe("Default (GPT-5.5 Heavy Bypass)");
 
 			// Config dropdown should show Codex curated configs
 			const options = await getDropdownOptions(user, configBtnAfter);
 			expect(options).toHaveLength(6);
-			expect(options[0]).toBe("Default (GPT-5.4 Heavy Bypass)");
+			expect(options[0]).toBe("Default (GPT-5.5 Heavy Bypass)");
 		});
 
 		it("switching back to Claude restores all Claude configs", async () => {

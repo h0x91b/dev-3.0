@@ -22,7 +22,7 @@ const codexAgent: CodingAgent = {
 	baseCommand: "codex",
 	isDefault: true,
 	configurations: [
-		{ id: "codex-default", name: "Default", model: "gpt-5.4" },
+		{ id: "codex-default", name: "Default", model: "gpt-5.5" },
 	],
 	defaultConfigId: "codex-default",
 };
@@ -57,7 +57,7 @@ vi.mock("../../rpc", () => ({
 					baseCommand: "codex",
 					isDefault: true,
 					configurations: [
-						{ id: "codex-default", name: "Default", model: "gpt-5.4" },
+						{ id: "codex-default", name: "Default", model: "gpt-5.5" },
 					],
 					defaultConfigId: "codex-default",
 				},
