@@ -34,7 +34,7 @@ const codexAgent: CodingAgent = {
 	baseCommand: "codex",
 	isDefault: true,
 	configurations: [
-		{ id: "codex-default", name: "Default (GPT-5.4 Heavy Bypass)", model: "gpt-5.4" },
+		{ id: "codex-default", name: "Default (GPT-5.5 Heavy Bypass)", model: "gpt-5.5" },
 	],
 	defaultConfigId: "codex-default",
 };
@@ -100,7 +100,7 @@ describe("ActiveTasksSidebar", () => {
 		expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 		expect(screen.getByRole("img", { name: "Codex" })).toBeInTheDocument();
 		expect(screen.getByText("Claude · Opus 4.7 · Bypass")).toBeInTheDocument();
-		expect(screen.getByText("Codex · GPT-5.4 Heavy Bypass")).toBeInTheDocument();
+		expect(screen.getByText("Codex · GPT-5.5 Heavy Bypass")).toBeInTheDocument();
 		expect(screen.getByTestId("variant-indicator-t1")).toBeInTheDocument();
 		expect(screen.getAllByText("#494")).toHaveLength(2);
 	});

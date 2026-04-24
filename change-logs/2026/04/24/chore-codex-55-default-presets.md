@@ -1,0 +1,1 @@
+Updated the built-in Codex presets to default to `gpt-5.5` across the preset list, and bumped preset versions so saved agent configs migrate off old GPT-5.4 defaults automatically. OpenCode's OpenAI-backed preset labels were aligned to GPT-5.5 as well, and the Codex model placeholder text now points at 5.5.

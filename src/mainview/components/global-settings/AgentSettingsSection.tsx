@@ -726,7 +726,7 @@ function ConfigEditor({
 							}
 							placeholder={
 								baseCommandName === "codex"
-									? "gpt-5.4, o3, etc."
+									? "gpt-5.5, o3, etc."
 									: baseCommandName === "gemini"
 										? "gemini-2.5-pro, etc."
 										: "opus, sonnet, etc."
