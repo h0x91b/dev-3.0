@@ -4971,6 +4971,7 @@ describe("getChangelogs", () => {
 
 describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 	beforeEach(() => {
+		vi.clearAllMocks();
 		vi.useFakeTimers();
 		stopMergeDetectionPoller();
 	});
@@ -5034,6 +5035,30 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			taskTitle: task.title,
 			branchName: "dev3/task-test",
 		});
+	});
+
+	it("does not notify about merged AI Review tasks", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-ai",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalled();
+		expect(git.isContentMergedInto).not.toHaveBeenCalled();
 	});
 });
 

@@ -1588,7 +1588,7 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("post-merge auto-complete", () => {
-		it("offers auto-complete for merged AI Review tasks", async () => {
+		it("does not offer auto-complete for merged AI Review tasks", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "review-by-ai" });
@@ -1603,16 +1603,12 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch, navigate });
 			});
 
-			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(100);
 			});
-			await waitFor(() => {
-				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
-					taskId: "t1",
-					projectId: "p1",
-					newStatus: "completed",
-				});
-			});
+
+			expect(mockedApi.request.showConfirm).not.toHaveBeenCalled();
+			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
 		it("offers auto-complete for merged PR Review tasks", async () => {

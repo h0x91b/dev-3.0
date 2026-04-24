@@ -123,18 +123,18 @@ export function useTaskBranchStatus({
 						!mergeDialogShownRef.current
 					) {
 						mergeDialogShownRef.current = true;
-						const shouldComplete = await api.request.showConfirm({
-							title: t("app.branchMergedTitle"),
-							message: t("app.branchMergedMessage", {
-								taskTitle: task.customTitle || task.title,
-								branchName: task.branchName || "",
-							}),
-						});
-						if (shouldComplete) {
-							completeTask("review-by-user");
+							const shouldComplete = await api.request.showConfirm({
+								title: t("app.branchMergedTitle"),
+								message: t("app.branchMergedMessage", {
+									taskTitle: task.customTitle || task.title,
+									branchName: task.branchName || "",
+								}),
+							});
+							if (shouldComplete) {
+								completeTask(task.status);
+							}
 						}
 					}
-				}
 			} catch {
 				// Polling retries on the next tick.
 			}
