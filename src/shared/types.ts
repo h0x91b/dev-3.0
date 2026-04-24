@@ -588,6 +588,14 @@ export interface Task {
 	watched?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */
 	sessionState?: TaskSessionState | null;
+	/**
+	 * True when the task was created via the "Scratch Task" button with no
+	 * initial prompt. The `description` holds only a `Scratch — HH:mm`
+	 * placeholder used for the title; at launch time the agent receives an
+	 * empty prompt instead of the placeholder. The flag propagates from the
+	 * source todo task into every variant spawned from it.
+	 */
+	scratch?: boolean;
 }
 
 export type PreparingStage =

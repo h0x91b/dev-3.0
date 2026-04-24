@@ -1345,14 +1345,11 @@ describe("handlers.createTask", () => {
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
-	it("scratch task uses placeholder description, forces in-progress, launches with blank prompt", async () => {
+	it("scratch task creates a todo task with placeholder title and scratch flag, no worktree", async () => {
 		const project = makeProject();
-		const task = makeTask({ status: "in-progress", worktreePath: null });
-		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+		const task = makeTask({ status: "todo", worktreePath: null });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.addTask).mockResolvedValue(task);
-		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 
 		const result = await handlers.createTask({
 			projectId: "proj-1",
@@ -1360,36 +1357,34 @@ describe("handlers.createTask", () => {
 			scratch: true,
 		});
 
-		expect(result).toEqual(updatedTask);
-		// Placeholder matches `Scratch — HH:MM` (em dash, 2-digit hours/minutes).
+		expect(result).toEqual(task);
 		const addTaskCall = vi.mocked(data.addTask).mock.calls[0];
 		expect(addTaskCall[0]).toEqual(project);
+		// Placeholder matches `Scratch — HH:MM` (em dash, 2-digit hours/minutes).
 		expect(addTaskCall[1]).toMatch(/^Scratch \u2014 \d{2}:\d{2}$/);
-		expect(addTaskCall[2]).toBe("in-progress");
-		// Prompt (arg index 2) passed to agent resolver must be empty — not the placeholder.
-		const resolveCall = vi.mocked(agents.resolveCommandForProject).mock.calls[0];
-		expect(resolveCall[2]).toBe("");
-		expect(pty.createSession).toHaveBeenCalled();
+		expect(addTaskCall[2]).toBe("todo");
+		expect(addTaskCall[3]).toEqual({ scratch: true });
+		// No worktree, no agent spawn — scratch just creates the todo row, the
+		// Launch Variants modal will spawn the agent later.
+		expect(git.createWorktree).not.toHaveBeenCalled();
+		expect(pty.createSession).not.toHaveBeenCalled();
 	});
 
-	it("scratch task overrides any incoming status", async () => {
+	it("scratch task ignores any incoming status (always todo)", async () => {
 		const project = makeProject();
-		const task = makeTask({ status: "in-progress", worktreePath: null });
-		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+		const task = makeTask({ status: "todo", worktreePath: null });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.addTask).mockResolvedValue(task);
-		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 
 		await handlers.createTask({
 			projectId: "proj-1",
 			description: "",
 			scratch: true,
-			status: "todo", // should be ignored
+			status: "in-progress", // should be ignored
 		});
 
-		expect(vi.mocked(data.addTask).mock.calls[0][2]).toBe("in-progress");
-		expect(git.createWorktree).toHaveBeenCalled();
+		expect(vi.mocked(data.addTask).mock.calls[0][2]).toBe("todo");
+		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 });
 
@@ -2104,25 +2099,6 @@ describe("activateTask", () => {
 		);
 	});
 
-	it("clears description when blankPrompt is set (scratch task path)", async () => {
-		const project = makeProject();
-		const task = makeTask({
-			status: "in-progress",
-			description: "Scratch — 14:32",
-			worktreePath: null,
-			branchName: null,
-		});
-
-		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
-
-		await activateTask(project, task, { blankPrompt: true });
-
-		// Prompt (arg index 2) must be empty — the placeholder description is NOT
-		// sent to the agent. We assert on the prompt slot only, since other args
-		// (worktreePath, opts with sessionId, etc.) vary by environment.
-		const resolveCall = vi.mocked(agents.resolveCommandForProject).mock.calls[0];
-		expect(resolveCall[2]).toBe("");
-	});
 });
 
 // ================================================================

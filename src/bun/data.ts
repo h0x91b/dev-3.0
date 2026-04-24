@@ -397,6 +397,7 @@ export async function addTask(
 		preparingStage?: Task["preparingStage"];
 		preparingProgress?: Task["preparingProgress"];
 		watched?: boolean;
+		scratch?: boolean;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -428,6 +429,7 @@ export async function addTask(
 			...(extras?.preparingStage ? { preparingStage: extras.preparingStage } : {}),
 			...(typeof extras?.preparingProgress === "number" ? { preparingProgress: extras.preparingProgress } : {}),
 			...(extras?.watched ? { watched: true } : {}),
+			...(extras?.scratch ? { scratch: true } : {}),
 		};
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);

@@ -266,13 +266,18 @@ async function prepareTaskInBackground(
 				() => runCowClones(resolved, wt.worktreePath),
 				"cloning-shared-paths",
 			);
+			// Scratch tasks carry a placeholder `description` used only to
+			// derive the card title. At launch time we blank it so the agent
+			// receives an empty prompt (same mechanism as the reopen path in
+			// activateTask).
+			const taskForLaunch = task.scratch ? { ...task, description: "" } : task;
 			await measurePreparationStep(
 				task,
 				runId,
 				"launchTaskPty",
 				() => launchTaskPty(
 					resolved,
-					task,
+					taskForLaunch,
 					wt.worktreePath,
 					options.agentId,
 					options.configId,
@@ -334,10 +339,9 @@ async function prepareTaskInBackground(
 export async function activateTask(
 	project: Project,
 	task: Task,
-	opts?: { isReopen?: boolean; blankPrompt?: boolean },
+	opts?: { isReopen?: boolean },
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
-	const blankPrompt = opts?.blankPrompt ?? false;
 	const preResolved = await repoConfig.resolveProjectConfig(project);
 	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
 	const resolved = await resolveOperationalProjectConfig(project, wt.worktreePath);
@@ -348,14 +352,13 @@ export async function activateTask(
 		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
 	}
 	await runCowClones(resolved, wt.worktreePath);
-	// On reopen (completed/cancelled → active) OR when creating a Scratch Task
-	// (user clicked "Scratch Task" without formulating a prompt), we intentionally
-	// blank the description so the agent starts in a clean session instead of
-	// replaying anything as the first user message. See commit a2b87778
-	// ("Skip task prompt when reopening from completed/cancelled") for the original
-	// reopen case. `blankPrompt` is the same mechanism, exposed for scratch tasks.
-	const shouldBlankPrompt = isReopen || blankPrompt;
-	const taskForLaunch = shouldBlankPrompt ? { ...task, description: "" } : task;
+	// On reopen (completed/cancelled → active), we intentionally blank the description
+	// so the agent starts in a clean session instead of replaying the original prompt.
+	// Original intent: commit a2b87778 ("Skip task prompt when reopening from completed/cancelled").
+	// Scratch-task blanking happens in prepareTaskInBackground (via the Launch Variants
+	// flow), not here — activateTask is only used for direct launches that already
+	// have a real description.
+	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
 	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
@@ -561,19 +564,22 @@ async function createTask(params: { projectId: string; description: string; stat
 	log.info("→ createTask", params);
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
-	// Scratch tasks ignore any incoming description/status — they always create
-	// a live, in-progress task with a placeholder title and launch the agent
-	// with no initial prompt. The agent is expected to rewrite title/overview
-	// via the dev3 CLI once the user tells it what the task is really about.
-	const status = isScratch ? "in-progress" : (params.status || "todo");
+	// Scratch tasks always start in "todo" with a placeholder title so the
+	// Launch Variants modal can open and let the user pick the agent before
+	// anything is actually spawned. The `scratch: true` flag is persisted so
+	// that when spawnVariants / prepareTaskInBackground eventually launch the
+	// agent, the prompt is blanked (the placeholder is NOT sent to the agent).
+	const status = isScratch ? "todo" : (params.status || "todo");
 	const description = isScratch ? scratchPlaceholder() : params.description;
-	const task = await data.addTask(project, description, status,
-		params.existingBranch ? { existingBranch: params.existingBranch } : undefined,
-	);
+	const extras: Parameters<typeof data.addTask>[3] = {
+		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
+		...(isScratch ? { scratch: true } : {}),
+	};
+	const task = await data.addTask(project, description, status, Object.keys(extras).length ? extras : undefined);
 
 	if (isActive(status)) {
-		log.info("Created into active status, creating worktree + PTY", { taskId: task.id, scratch: isScratch });
-		const wt = await activateTask(project, task, isScratch ? { blankPrompt: true } : undefined);
+		log.info("Created into active status, creating worktree + PTY", { taskId: task.id });
+		const wt = await activateTask(project, task);
 
 		const updated = await data.updateTask(project, task.id, {
 			worktreePath: wt.worktreePath,
@@ -814,6 +820,10 @@ async function spawnVariants(params: {
 				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				watched: sourceTask.watched,
+				// Scratch tasks keep the `Scratch — HH:mm` placeholder as title
+				// on every variant, but the flag tells the launch path (see
+				// prepareTaskInBackground → launchTaskPty) to blank the prompt.
+				scratch: sourceTask.scratch,
 			},
 		);
 
