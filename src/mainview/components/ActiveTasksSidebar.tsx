@@ -212,22 +212,22 @@ function ActiveTasksSidebar({
 				<span className="text-xs font-semibold text-fg-2 uppercase tracking-wider truncate">
 					{t("sidebar.activeTasks")}
 				</span>
-				<div className="flex items-center gap-1.5 flex-shrink-0">
+				<div className="flex items-center gap-1.5 flex-shrink-0 h-5">
 					<button
 						type="button"
 						onClick={() => setScope("project")}
 						title={t("sidebar.scopeProject")}
-						className={`leading-none transition-colors ${
+						className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 							scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
 						}`}
 						data-testid="sidebar-scope-project"
 					>
-						{/* Nerd Font: folder (U+F07BB) */}
+						{/* Nerd Font: nf-fa-folder_open (U+F07C) */}
 						<span
 							className="text-sm leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
-							{"\u{F07BB}"}
+							{"\uF07C"}
 						</span>
 					</button>
 					<button
@@ -254,26 +254,31 @@ function ActiveTasksSidebar({
 						type="button"
 						onClick={() => setScope("global")}
 						title={t("sidebar.scopeGlobal")}
-						className={`leading-none transition-colors ${
+						className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 							scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
 						}`}
 						data-testid="sidebar-scope-global"
 					>
-						{/* Nerd Font: earth (U+F024B) */}
+						{/* Nerd Font: nf-cod-globe (U+EB01) */}
 						<span
 							className="text-sm leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
-							{"\u{F024B}"}
+							{"\uEB01"}
 						</span>
 					</button>
 					<button
 						onClick={onSwitchToBoard}
-						className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5 ml-0.5"
+						className="inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5 ml-0.5"
 						title={t("sidebar.switchToBoard")}
 					>
 						{/* Nerd Font: fa-columns (U+F0DB) */}
-						<span className="text-sm font-mono leading-none">{"\uF0DB"}</span>
+						<span
+							className="text-sm leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\uF0DB"}
+						</span>
 					</button>
 				</div>
 			</div>
@@ -426,7 +431,7 @@ function ActiveTasksSidebar({
 															style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 															className="leading-none"
 														>
-															{"\u{F024B}"}
+															{"\uEB01"}
 														</span>
 														<span className="truncate">{projectBadgeName}</span>
 													</div>

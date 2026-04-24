@@ -675,7 +675,7 @@ const ALL_TIPS: Tip[] = [
 		id: "sidebar-global-scope",
 		titleKey: "tip.sidebarGlobalScope.title",
 		bodyKey: "tip.sidebarGlobalScope.body",
-		icon: "\u{F024B}", // nf-md-earth
+		icon: "\uEB01", // nf-cod-globe
 	},
 ];
 
