@@ -450,7 +450,7 @@ function ActiveTasksSidebar({
 												    Helps the user re-enter context without relying on hover-only preview. */}
 												{isActive && task.overview && task.overview.trim().length > 0 && (
 													<div
-														className="mt-1.5 pt-1.5 border-t border-accent/20 text-[0.6875rem] leading-relaxed text-fg-3 whitespace-pre-wrap break-words"
+														className="mt-1.5 pt-1.5 border-t border-accent/20 text-xs leading-relaxed text-fg-2 whitespace-pre-wrap break-words"
 														data-testid={`active-task-overview-${task.id}`}
 													>
 														{task.overview}
