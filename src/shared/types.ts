@@ -33,6 +33,7 @@ export const ACTIVE_STATUSES: TaskStatus[] = [
 ];
 
 export const MERGE_COMPLETE_ELIGIBLE_STATUSES: TaskStatus[] = [
+	"user-questions",
 	"review-by-user",
 	"review-by-colleague",
 ];

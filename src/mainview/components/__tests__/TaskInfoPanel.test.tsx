@@ -1638,6 +1638,33 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("offers auto-complete for merged Has Questions tasks", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "user-questions" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+			});
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			});
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					newStatus: "completed",
+				});
+			});
+		});
+
 		it("sets movedAt when auto-completing after merge", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();

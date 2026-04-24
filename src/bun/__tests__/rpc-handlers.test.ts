@@ -5037,6 +5037,35 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		});
 	});
 
+	it("notifies about merged Has Questions tasks on the first 60-second poll", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-user-questions",
+			status: "user-questions",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", {
+			taskId: task.id,
+			projectId: project.id,
+			taskTitle: task.title,
+			branchName: "dev3/task-test",
+		});
+	});
+
 	it("does not notify about merged AI Review tasks", async () => {
 		const project = makeProject();
 		const task = makeTask({
