@@ -751,7 +751,7 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i })).not.toBeChecked();
 		});
-		expect(screen.getAllByText("context two").length).toBeGreaterThan(0);
+		expect((await screen.findAllByText("context two")).length).toBeGreaterThan(0);
 	});
 
 	it("refetches when the same diff request is opened again", async () => {
