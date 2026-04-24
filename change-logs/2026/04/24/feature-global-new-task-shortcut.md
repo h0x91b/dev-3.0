@@ -1,1 +1,1 @@
-Command+N now opens the New Task dialog from any project screen, including full task views, and File now includes a matching New Task item. Add Project in the File menu now uses Command+P, and the menu wiring is covered by tests.
+Command+N now opens the New Task dialog from any project screen, including full task views, and File now includes a matching New Task item. Command+P now returns to the projects dashboard and opens Add Project, with tests covering both the keyboard shortcut and the shared menu event flow.

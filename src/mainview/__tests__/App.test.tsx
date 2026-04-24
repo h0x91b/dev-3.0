@@ -191,6 +191,43 @@ describe("App keyboard shortcuts", () => {
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal"));
 			});
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			expect(await screen.findByTestId("add-project-modal")).toBeInTheDocument();
+		});
+
+		it("Cmd+P returns to dashboard and opens Add Project from the full task screen", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await userEvent.keyboard("{Meta>}p{/Meta}");
+
+			expect(await screen.findByTestId("dashboard-screen")).toBeInTheDocument();
+			expect(await screen.findByTestId("add-project-modal")).toBeInTheDocument();
+		});
+
+		it("rpc:openAddProjectModal returns to dashboard and opens Add Project from the full task screen", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal"));
+			});
+
+			expect(await screen.findByTestId("dashboard-screen")).toBeInTheDocument();
 			expect(await screen.findByTestId("add-project-modal")).toBeInTheDocument();
 		});
 

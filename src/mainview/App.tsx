@@ -56,6 +56,7 @@ function App() {
 	// GitHub CLI availability warning
 	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 
 	// Auth failure for browser remote access (expired/invalid QR token)
@@ -138,6 +139,16 @@ function App() {
 		return true;
 	}, [getProjectIdForRoute, state.route]);
 
+	const openAddProject = useCallback(() => {
+		if (state.route.screen === "dashboard") {
+			setOpenAddProjectOnDashboard(false);
+			setShowAddProjectModal(true);
+			return;
+		}
+		setOpenAddProjectOnDashboard(true);
+		navigate({ screen: "dashboard" });
+	}, [navigate, state.route.screen]);
+
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
@@ -158,6 +169,11 @@ function App() {
 				if (!openCreateTaskModal()) return;
 				e.preventDefault();
 				e.stopPropagation();
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog) return;
+				openAddProject();
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -197,7 +213,7 @@ function App() {
 				}
 			}
 		},
-		[createTaskProjectId, navigate, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[createTaskProjectId, navigate, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -431,6 +447,18 @@ function App() {
 
 	// Listen for Cmd+, (Settings menu item)
 	useEffect(() => {
+		if (!openAddProjectOnDashboard) return;
+		if (state.route.screen === "dashboard") {
+			setShowAddProjectModal(true);
+			setOpenAddProjectOnDashboard(false);
+			return;
+		}
+		if (pendingNavigation === null) {
+			setOpenAddProjectOnDashboard(false);
+		}
+	}, [openAddProjectOnDashboard, pendingNavigation, state.route.screen]);
+
+	useEffect(() => {
 		function onNavigateToSettings() {
 			navigate({ screen: "settings" });
 		}
@@ -448,11 +476,11 @@ function App() {
 
 	useEffect(() => {
 		function onOpenAddProjectModal() {
-			setShowAddProjectModal(true);
+			openAddProject();
 		}
 		window.addEventListener("rpc:openAddProjectModal", onOpenAddProjectModal);
 		return () => window.removeEventListener("rpc:openAddProjectModal", onOpenAddProjectModal);
-	}, []);
+	}, [openAddProject]);
 
 	// Listen for View > Gauge Demo menu item
 	useEffect(() => {
