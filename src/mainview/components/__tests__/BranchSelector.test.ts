@@ -13,7 +13,7 @@ vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
 }));
 
-import { parseForkRef, matchesBranchQuery, splitBranchWords } from "../BranchSelector";
+import { parseForkRef, normalizeBranchQuery, matchesBranchQuery, splitBranchWords, sortBranchesForDisplay } from "../BranchSelector";
 
 // ─── parseForkRef ────────────────────────────────────────────────────────────
 
@@ -59,6 +59,16 @@ describe("parseForkRef", () => {
 	});
 });
 
+describe("normalizeBranchQuery", () => {
+	it("normalizes fork refs to remote-style slashes", () => {
+		expect(normalizeBranchQuery("roiros:feat/collapsible-kanban-columns")).toBe("roiros/feat/collapsible-kanban-columns");
+	});
+
+	it("trims surrounding whitespace", () => {
+		expect(normalizeBranchQuery("  origin/main  ")).toBe("origin/main");
+	});
+});
+
 // ─── splitBranchWords ────────────────────────────────────────────────────────
 
 describe("splitBranchWords", () => {
@@ -96,5 +106,26 @@ describe("matchesBranchQuery", () => {
 
 	it("matches partial fork ref with colon", () => {
 		expect(matchesBranchQuery("roiros/feat/collapsible-kanban-columns", "roiros:feat")).toBe(true);
+	});
+});
+
+describe("sortBranchesForDisplay", () => {
+	it("prioritizes fetched fork branches and remote refs in review-heavy flows", () => {
+		const result = sortBranchesForDisplay([
+			{ name: "feature/local-work", isRemote: false },
+			{ name: "origin/main", isRemote: true },
+			{ name: "sworgkh/fix/dev3-tmux-switch-glitch", isRemote: true },
+			{ name: "yanive/feat/cross-project-activity-tab", isRemote: true },
+		], {
+			preferRemote: true,
+			prioritizedBranchNames: ["sworgkh/fix/dev3-tmux-switch-glitch"],
+		});
+
+		expect(result.map((branch) => branch.name)).toEqual([
+			"sworgkh/fix/dev3-tmux-switch-glitch",
+			"yanive/feat/cross-project-activity-tab",
+			"origin/main",
+			"feature/local-work",
+		]);
 	});
 });
