@@ -49,14 +49,18 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 
-				if (task.description && task.description !== displayTitle) {
-					fields.push(["", ""]);
-					fields.push(["Description:", ""]);
-				}
-
 				printDetail(fields);
 
+				const overview = task.overview?.trim() || "";
+				if (overview) {
+					process.stdout.write("\nOverview:\n");
+					for (const line of overview.split("\n")) {
+						process.stdout.write(`  ${line}\n`);
+					}
+				}
+
 				if (task.description && task.description !== displayTitle) {
+					process.stdout.write("\nDescription:\n");
 					for (const line of task.description.split("\n")) {
 						process.stdout.write(`  ${line}\n`);
 					}
@@ -104,18 +108,23 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 		if (task.branchName) fields.push(["Branch:", task.branchName as string]);
 		if (task.worktreePath) fields.push(["Worktree:", task.worktreePath as string]);
 
-		const desc = task.description as string | undefined;
-		if (desc && desc !== displayTitle) {
-			fields.push(["", ""]);
-			fields.push(["Description:", ""]);
-		}
-
 		fields.push(["", ""]);
 		fields.push(["(offline)", "App not running — showing cached data"]);
 
 		printDetail(fields);
 
+		const overviewRaw = (task as Partial<Task>).overview;
+		const overview = typeof overviewRaw === "string" ? overviewRaw.trim() : "";
+		if (overview) {
+			process.stdout.write("\nOverview:\n");
+			for (const line of overview.split("\n")) {
+				process.stdout.write(`  ${line}\n`);
+			}
+		}
+
+		const desc = task.description as string | undefined;
 		if (desc && desc !== displayTitle) {
+			process.stdout.write("\nDescription:\n");
 			for (const line of desc.split("\n")) {
 				process.stdout.write(`  ${line}\n`);
 			}

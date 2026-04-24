@@ -8,6 +8,7 @@ import updates from "./en/updates";
 import columns from "./en/columns";
 import tips from "./en/tips";
 import gaugeDemo from "./en/gaugeDemo";
+import overview from "./en/overview";
 
 const en = {
 	...common,
@@ -20,6 +21,7 @@ const en = {
 	...columns,
 	...tips,
 	...gaugeDemo,
+	...overview,
 } as const;
 
 export type TranslationKey = keyof typeof en;

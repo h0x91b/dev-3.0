@@ -6,6 +6,7 @@ import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
+import { handleOverview } from "./commands/overview";
 import { handleLabel } from "./commands/label";
 import { handleInstallHooks } from "./commands/install-hooks";
 import { handleInstallSkills } from "./commands/install-skills";
@@ -27,6 +28,9 @@ Commands:
   dev3 note add "..." [--source user]   Add note to current task
   dev3 note list                        List notes
   dev3 note delete <id>                 Delete note (8-char prefix works)
+  dev3 overview set "..."               Set task overview (one paragraph)
+  dev3 overview show                    Show task overview (or description fallback)
+  dev3 overview clear                   Remove task overview
   dev3 label list                       List project labels
   dev3 label create "name" [--color "#hex"]  Create label
   dev3 label delete <id>                Delete label
@@ -113,6 +117,8 @@ async function main(): Promise<void> {
 				return await handleTask(subcommand, args, socketPath, context);
 			case "note":
 				return await handleNote(subcommand, args, socketPath, context);
+			case "overview":
+				return await handleOverview(subcommand, args, socketPath, context);
 			case "label":
 				return await handleLabel(subcommand, args, socketPath, context);
 			case "config":

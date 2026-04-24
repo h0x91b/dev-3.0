@@ -536,6 +536,13 @@ export interface Task {
 	projectId: string;
 	title: string;
 	description: string;
+	/**
+	 * Short, clean one-paragraph summary written by the agent (or the user).
+	 * Surfaced in the hover-preview popover above the terminal snapshot so
+	 * the user can re-enter focus fast after a long break. `description` is
+	 * the raw original user request and must NOT be used as a substitute.
+	 */
+	overview?: string | null;
 	customTitle?: string | null;
 	status: TaskStatus;
 	baseBranch: string;
@@ -984,6 +991,10 @@ export type AppRPCSchema = {
 			};
 			renameTask: {
 				params: { taskId: string; projectId: string; customTitle: string | null };
+				response: Task;
+			};
+			setTaskOverview: {
+				params: { taskId: string; projectId: string; overview: string | null };
 				response: Task;
 			};
 			spawnVariants: {

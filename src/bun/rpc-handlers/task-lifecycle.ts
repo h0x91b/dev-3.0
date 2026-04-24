@@ -954,6 +954,17 @@ async function renameTask(params: { taskId: string; projectId: string; customTit
 	return updated;
 }
 
+async function setTaskOverview(params: { taskId: string; projectId: string; overview: string | null }): Promise<Task> {
+	log.info("→ setTaskOverview", { taskId: params.taskId, len: params.overview?.length ?? 0 });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const trimmed = params.overview?.trim() || null;
+	const updated = await data.updateTask(project, task.id, { overview: trimmed });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← setTaskOverview done", { taskId: task.id });
+	return updated;
+}
+
 async function toggleTaskWatch(params: { taskId: string; projectId: string; watched: boolean }): Promise<Task> {
 	log.info("→ toggleTaskWatch", { taskId: params.taskId, watched: params.watched });
 	const project = await data.getProject(params.projectId);
@@ -975,5 +986,6 @@ export const taskLifecycleHandlers = {
 	addAttempts,
 	editTask,
 	renameTask,
+	setTaskOverview,
 	toggleTaskWatch,
 };

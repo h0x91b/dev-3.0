@@ -78,6 +78,25 @@ const SKILL_NOTES = `
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
 `;
 
+const SKILL_OVERVIEW = `
+## Overview (MANDATORY)
+
+Every task MUST have a one-paragraph \`overview\` written by you. The \`description\` field is the **original user request** (often long, messy) — it's NOT a substitute for \`overview\`. The overview is a concise, clean summary that lets the user re-enter focus in 5 seconds after not touching the task for days.
+
+**Language — IMPORTANT:** Write the overview in the **same language the user is using with you in this task**. If the user writes in Russian, the overview is in Russian. If in Spanish, in Spanish. If in English, in English. Look at the task \`description\` and the user's messages in this session — match that language. Do NOT default to English.
+
+**When to set it:**
+- Within the first minute after starting a task — write an initial overview based on what you understood
+- Re-set it whenever the direction changes materially
+- Refresh it roughly every 5 user↔agent exchanges so it stays current (easy to forget otherwise)
+
+**How:**
+
+    dev3 overview set "One clean paragraph, in the user's language. What the task is about and current state."
+
+Keep it under ~400 chars. Plain text, no markdown headers. Think: "what would the user want to read in a hover tooltip on day 3, in their own language?"
+`;
+
 const SKILL_DEV_SERVER_CONTROL = `
 ## Dev Server Control
 
@@ -143,9 +162,9 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 `;
 
 // Composed bodies for each agent type
-const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT;
-const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT;
+const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 

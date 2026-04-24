@@ -217,6 +217,29 @@ const handlers: Record<string, Handler> = {
 		return updated;
 	},
 
+	"overview.set": async (params) => {
+		const overview = params.overview as string | undefined;
+		if (typeof overview !== "string" || !overview.trim()) {
+			throw new Error("overview text is required");
+		}
+		const { project, task } = await resolveTaskFromParams(params);
+		const updated = await data.updateTask(project, task.id, { overview: overview.trim() });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return updated;
+	},
+
+	"overview.show": async (params) => {
+		const { task } = await resolveTaskFromParams(params);
+		return { overview: task.overview ?? null, description: task.description };
+	},
+
+	"overview.clear": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const updated = await data.updateTask(project, task.id, { overview: null });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return updated;
+	},
+
 	"note.add": async (params) => {
 		const taskId = params.taskId as string;
 		const content = params.content as string;
