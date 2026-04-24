@@ -696,6 +696,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.scratchTask.body",
 		icon: "\u{F018D}", // nf-md-console
 	},
+	// Batch 34: ai review hands task back
+	{
+		id: "ai-review-hands-back",
+		titleKey: "tip.aiReviewHandsBack.title",
+		bodyKey: "tip.aiReviewHandsBack.body",
+		icon: "\u{F0804}", // nf-md-code_review
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

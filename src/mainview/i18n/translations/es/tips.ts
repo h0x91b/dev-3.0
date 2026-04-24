@@ -222,6 +222,8 @@ const tips = {
 	"tip.sidebarGlobalScope.body": "El interruptor junto a Active Tasks alterna entre solo este proyecto y todas las tareas activas de dev-3.0 — haz clic en una tarjeta para saltar a su proyecto.",
 	"tip.scratchTask.title": "¿Solo necesitas un terminal?",
 	"tip.scratchTask.body": "Pulsa Scratch Task en la ventana de nueva tarea para lanzar un worktree + agente sin prompt — el agente te saluda y renombra la tarea en cuanto le dices qué quieres.",
+	"tip.aiReviewHandsBack.title": "AI Review devuelve la tarea",
+	"tip.aiReviewHandsBack.body": "Tras AI Review, la tarea se mueve sola: a Has Questions si encontró o arregló algo, o a Your Review si el diff está limpio.",
 };
 
 export default tips;

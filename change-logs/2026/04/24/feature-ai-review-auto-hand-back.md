@@ -1,0 +1,1 @@
+AI Review now hands the task back to the user automatically. The default review prompt instructs the agent to move the task to `user-questions` when it found or fixed anything, or to `review-by-user` when the diff is clean. The existing review-by-ai safety net remains, so a crashed or forgetful review agent still lands in `review-by-user`.

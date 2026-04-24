@@ -111,7 +111,15 @@ export interface ColumnAgentConfig {
 export const DEFAULT_REVIEW_PROMPT = `Review all changes on this branch (use git diff against {baseBranch}).
 Focus on: bugs, logic errors, runtime failures, duplicated code, security issues.
 For medium/high severity: fix directly and commit.
-For minor/cosmetic: leave alone. Do NOT break existing functionality.`;
+For minor/cosmetic: leave alone. Do NOT break existing functionality.
+
+As the very last step (after any commits), you MUST hand the task back to the user by moving it yourself:
+- If you found problems, committed fixes, or have anything worth surfacing — add a short \`dev3 note add "<1–3 sentence summary>"\` and then run:
+    dev3 task move --status user-questions
+- If the diff is clean and nothing needed changing — run:
+    dev3 task move --status review-by-user
+
+Do not skip this step. Move the task exactly once, at the end.`;
 
 export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
 	return autoReviewEnabled ? "review-by-ai" : "review-by-user";
