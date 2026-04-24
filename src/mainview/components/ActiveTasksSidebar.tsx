@@ -215,6 +215,23 @@ function ActiveTasksSidebar({
 				<div className="flex items-center gap-1.5 flex-shrink-0">
 					<button
 						type="button"
+						onClick={() => setScope("project")}
+						title={t("sidebar.scopeProject")}
+						className={`leading-none transition-colors ${
+							scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
+						}`}
+						data-testid="sidebar-scope-project"
+					>
+						{/* Nerd Font: folder (U+F07BB) */}
+						<span
+							className="text-sm leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F07BB}"}
+						</span>
+					</button>
+					<button
+						type="button"
 						role="switch"
 						aria-checked={scope === "global"}
 						onClick={() => setScope(scope === "global" ? "project" : "global")}
@@ -225,24 +242,6 @@ function ActiveTasksSidebar({
 						data-testid="sidebar-scope-toggle"
 					>
 						<span
-							aria-hidden
-							className={`absolute top-1/2 -translate-y-1/2 left-0.5 text-[0.5rem] leading-none transition-opacity ${
-								scope === "project" ? "opacity-0" : "text-white/90"
-							}`}
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{"\u{F0A43}"}
-						</span>
-						<span
-							aria-hidden
-							className={`absolute top-1/2 -translate-y-1/2 right-0.5 text-[0.5rem] leading-none transition-opacity ${
-								scope === "global" ? "opacity-0" : "text-fg-3"
-							}`}
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{"\u{F024B}"}
-						</span>
-						<span
 							className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow transform transition-transform ${
 								scope === "global" ? "translate-x-[1.125rem]" : "translate-x-0.5"
 							}`}
@@ -252,8 +251,25 @@ function ActiveTasksSidebar({
 						</span>
 					</button>
 					<button
+						type="button"
+						onClick={() => setScope("global")}
+						title={t("sidebar.scopeGlobal")}
+						className={`leading-none transition-colors ${
+							scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
+						}`}
+						data-testid="sidebar-scope-global"
+					>
+						{/* Nerd Font: earth (U+F024B) */}
+						<span
+							className="text-sm leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F024B}"}
+						</span>
+					</button>
+					<button
 						onClick={onSwitchToBoard}
-						className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5"
+						className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5 ml-0.5"
 						title={t("sidebar.switchToBoard")}
 					>
 						{/* Nerd Font: fa-columns (U+F0DB) */}
