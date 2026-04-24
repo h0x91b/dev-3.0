@@ -1022,9 +1022,11 @@ export async function fetchFork(
 	}
 
 	// Fetch the specific branch
-	log.info("Fetching fork branch", { forkOwner, branchName });
+	const remoteTrackingRef = `refs/remotes/${forkOwner}/${branchName}`;
+	const fetchRefspec = `+refs/heads/${branchName}:${remoteTrackingRef}`;
+	log.info("Fetching fork branch", { forkOwner, branchName, remoteTrackingRef });
 	const fetchResult = await run(
-		["git", "fetch", forkOwner, branchName, "--quiet"],
+		["git", "fetch", forkOwner, fetchRefspec, "--quiet"],
 		projectPath,
 	);
 	if (!fetchResult.ok) {

@@ -679,6 +679,27 @@ describe("CreateTaskModal", () => {
 			expect(mockedApi.request.fetchBranches).toHaveBeenCalledWith({ projectId: "p1" });
 		});
 	});
+
+	it("fetches and auto-selects fork branches entered as owner:branch", async () => {
+		mockedApi.request.listBranches.mockResolvedValue([]);
+		mockedApi.request.fetchBranches.mockResolvedValue([
+			{ name: "sworgkh/fix/dev3-tmux-switch-glitch", isRemote: true },
+		]);
+		renderModal();
+
+		await userEvent.click(screen.getByText("Use existing branch"));
+		const input = screen.getByPlaceholderText("Type to search branches...");
+		await userEvent.type(input, "sworgkh:fix/dev3-tmux-switch-glitch");
+		await userEvent.click(screen.getByText("Fetch"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.fetchBranches).toHaveBeenCalledWith({
+				projectId: "p1",
+				forkRef: "sworgkh:fix/dev3-tmux-switch-glitch",
+			});
+		});
+		expect(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch")).toBeInTheDocument();
+	});
 });
 
 // ================================================================

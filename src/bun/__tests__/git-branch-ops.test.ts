@@ -10,6 +10,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 
+const { spawnMock } = vi.hoisted(() => ({
+	spawnMock: vi.fn(),
+}));
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -32,26 +36,32 @@ function queueResponse(exitCode: number, stdout: string, stderr = "") {
 }
 
 vi.mock("../spawn", () => ({
-	spawn: () => {
-		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
-		const encoder = new TextEncoder();
-		return {
-			exited: Promise.resolve(response.exitCode),
-			stdout: new ReadableStream({
-				start(controller) {
-					controller.enqueue(encoder.encode(response.stdout));
-					controller.close();
-				},
-			}),
-			stderr: new ReadableStream({
-				start(controller) {
-					controller.enqueue(encoder.encode(response.stderr));
-					controller.close();
-				},
-			}),
-		};
-	},
+	spawn: spawnMock,
 }));
+
+function makeFakeProc(stdout: string, stderr: string, exitCode: number) {
+	const encoder = new TextEncoder();
+	return {
+		exited: Promise.resolve(exitCode),
+		stdout: new ReadableStream({
+			start(controller) {
+				controller.enqueue(encoder.encode(stdout));
+				controller.close();
+			},
+		}),
+		stderr: new ReadableStream({
+			start(controller) {
+				controller.enqueue(encoder.encode(stderr));
+				controller.close();
+			},
+		}),
+	};
+}
+
+spawnMock.mockImplementation(() => {
+		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
+		return makeFakeProc(response.stdout, response.stderr, response.exitCode);
+});
 
 import {
 	getCurrentBranch,
@@ -73,6 +83,11 @@ import {
 beforeEach(() => {
 	spawnResponses = [];
 	_resetFetchState();
+	spawnMock.mockClear();
+	spawnMock.mockImplementation(() => {
+		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
+		return makeFakeProc(response.stdout, response.stderr, response.exitCode);
+	});
 });
 
 // ─── getCurrentBranch ────────────────────────────────────────────────────────
@@ -607,6 +622,33 @@ describe("fetchFork", () => {
 		queueResponse(0, "");                                            // fetch
 		const result = await fetchFork("/repo", "yanive", "feat/cool-stuff");
 		expect(result).toBe(true);
+	});
+
+	it("fetches fork branches into remote-tracking refs so the branch selector can see them", async () => {
+		queueResponse(0, "https://github.com/h0x91b/dev-3.0.git\n"); // get-url origin
+		queueResponse(0, "https://github.com/yanive/dev-3.0.git\n"); // get-url forkOwner (exists)
+		queueResponse(0, "");                                            // fetch
+
+		const result = await fetchFork("/repo", "yanive", "feat/cool-stuff");
+
+		expect(result).toBe(true);
+		expect(spawnMock).toHaveBeenNthCalledWith(
+			3,
+			[
+				"git",
+				"-c",
+				"core.quotepath=false",
+				"fetch",
+				"yanive",
+				"+refs/heads/feat/cool-stuff:refs/remotes/yanive/feat/cool-stuff",
+				"--quiet",
+			],
+			{
+				cwd: "/repo",
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
 	});
 
 	it("reuses existing remote", async () => {

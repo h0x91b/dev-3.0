@@ -1,0 +1,1 @@
+Fixed PR review branch fetching for fork remotes by storing fetched fork branches as remote-tracking refs, so they appear in the Create Task branch picker. Added regression coverage for the git fetch command shape and the fork-branch modal flow.
