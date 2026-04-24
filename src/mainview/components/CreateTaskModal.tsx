@@ -467,20 +467,25 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						<>
 							<div className="flex items-center justify-end gap-2">
 								{onCreateAndRun && (
-									<button
-										onClick={handleCreateScratch}
-										disabled={creating}
-										title={t("createTask.scratchHint")}
-										className="px-3 py-1.5 bg-elevated border border-edge-active text-fg-2 text-xs font-medium rounded-lg hover:bg-elevated-hover hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 mr-auto"
-									>
-										<span
-											className="text-[0.875rem] leading-none"
-											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									<div className="mr-auto flex flex-col items-start gap-0.5">
+										<button
+											onClick={handleCreateScratch}
+											disabled={creating}
+											title={t("createTask.scratchHint")}
+											className="px-3 py-1.5 bg-elevated border border-edge-active text-fg-2 text-xs font-medium rounded-lg hover:bg-elevated-hover hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 										>
-											{"\u{F018D}"}
+											<span
+												className="text-[0.875rem] leading-none"
+												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+											>
+												{"\u{F018D}"}
+											</span>
+											{t("createTask.scratch")}
+										</button>
+										<span className="text-fg-muted text-[0.6875rem] leading-tight">
+											{t("createTask.scratchSubtitle")}
 										</span>
-										{t("createTask.scratch")}
-									</button>
+									</div>
 								)}
 								{onCreateAndRun && (
 									<button

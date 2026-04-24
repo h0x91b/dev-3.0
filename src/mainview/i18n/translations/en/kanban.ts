@@ -22,6 +22,7 @@ const kanban = {
 	"createTask.createAndRun": "Save & Start",
 	"createTask.submitHintRun": "\u2318Enter save \u00b7 \u2318\u21e7Enter save & start",
 	"createTask.scratch": "Scratch Task",
+	"createTask.scratchSubtitle": "No prompt — agent will ask",
 	"createTask.scratchHint": "Open a terminal + agent with no prompt. The agent will name the task itself once you tell it what to do.",
 	"createTask.discardConfirm": "Discard changes? Your description will be lost.",
 	"createTask.keepEditing": "Keep editing",
