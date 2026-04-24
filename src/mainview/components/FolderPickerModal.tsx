@@ -67,6 +67,7 @@ const NF = {
 	filter: "\uF0B0",         // nf-fa-filter
 	close: "\uF00D",          // nf-fa-times
 	loading: "\uF1CE",        // nf-fa-circle_o_notch (spinning)
+	plus: "\uF067",           // nf-fa-plus (safer than nf-md-folder_plus — see NF note above)
 } as const;
 
 const NF_FONT = "'JetBrainsMono Nerd Font Mono'";
@@ -184,6 +185,9 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	const [home, setHome] = useState<string>("");
 	const [homeEntries, setHomeEntries] = useState<Set<string>>(new Set());
 	const [treeKey, setTreeKey] = useState(0);
+	const [newFolderInput, setNewFolderInput] = useState<string | null>(null);
+	const [newFolderError, setNewFolderError] = useState<string | null>(null);
+	const [creatingFolder, setCreatingFolder] = useState(false);
 
 	const listingsRef = useRef<Map<string, FolderListing>>(new Map());
 
@@ -268,6 +272,30 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 		setRecentPaths(pushRecent(selectedPath));
 		onClose(selectedPath);
 	}, [selectedPath, onClose]);
+
+	const handleCreateFolder = useCallback(async () => {
+		const name = (newFolderInput ?? "").trim();
+		if (!name || !currentRoot) return;
+		setCreatingFolder(true);
+		setNewFolderError(null);
+		try {
+			const result = await api.request.createDirectory({ parentPath: currentRoot, name });
+			if (!result.ok) {
+				setNewFolderError(result.error);
+				return;
+			}
+			// Invalidate the parent listing so the tree reloads with the new child,
+			// then drill into the freshly created folder so it becomes `selectedPath`
+			// and the user can click "Select" immediately.
+			listingsRef.current.delete(currentRoot);
+			setNewFolderInput(null);
+			await navigateTo(result.path);
+		} catch (err) {
+			setNewFolderError(String(err));
+		} finally {
+			setCreatingFolder(false);
+		}
+	}, [newFolderInput, currentRoot, navigateTo]);
 
 	// Build sidebar shortcuts — only those that actually exist under $HOME.
 	const quickPlaces = useMemo(() => {
@@ -391,6 +419,69 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 								/>
 							</label>
 						</div>
+
+						{/* New folder toolbar (only when enabled by caller) */}
+						{options.allowCreateFolder && currentRoot && (
+							<div className="px-4 py-1.5 border-b border-edge flex items-center gap-2 flex-shrink-0 bg-raised/20">
+								{newFolderInput === null ? (
+									<button
+										type="button"
+										onClick={() => { setNewFolderInput(""); setNewFolderError(null); }}
+										className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-fg-2 text-xs hover:bg-elevated hover:text-fg transition-colors"
+										title={t("folderPicker.newFolderTitle")}
+									>
+										<Glyph glyph={NF.plus} size="0.7rem" className="text-fg-3" />
+										<span>{t("folderPicker.newFolder")}</span>
+									</button>
+								) : (
+									<form
+										onSubmit={(e) => { e.preventDefault(); void handleCreateFolder(); }}
+										className="flex items-center gap-2 flex-1 min-w-0"
+									>
+										<Glyph glyph={NF.folderClosed} size="0.85rem" color="#f6c653" />
+										<input
+											autoFocus
+											type="text"
+											value={newFolderInput}
+											onChange={(e) => { setNewFolderInput(e.target.value); setNewFolderError(null); }}
+											onKeyDown={(e) => {
+												if (e.key === "Escape") {
+													e.stopPropagation();
+													setNewFolderInput(null);
+													setNewFolderError(null);
+												}
+											}}
+											placeholder={t("folderPicker.newFolderPlaceholder")}
+											spellCheck={false}
+											autoCorrect="off"
+											autoCapitalize="off"
+											disabled={creatingFolder}
+											className="flex-1 min-w-0 px-2 py-1 bg-elevated border border-edge-active rounded-md text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors disabled:opacity-60"
+										/>
+										<button
+											type="submit"
+											disabled={creatingFolder || !newFolderInput.trim()}
+											className="px-2.5 py-1 text-xs font-semibold rounded-md bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+										>
+											{creatingFolder ? t("folderPicker.creating") : t("folderPicker.create")}
+										</button>
+										<button
+											type="button"
+											onClick={() => { setNewFolderInput(null); setNewFolderError(null); }}
+											disabled={creatingFolder}
+											className="px-2 py-1 text-xs text-fg-3 hover:text-fg rounded-md hover:bg-elevated transition-colors disabled:opacity-40"
+										>
+											{t("folderPicker.cancel")}
+										</button>
+									</form>
+								)}
+								{newFolderError && (
+									<span className="text-danger text-xs truncate" title={newFolderError}>
+										{newFolderError}
+									</span>
+								)}
+							</div>
+						)}
 
 						{/* Tree */}
 						<div className="flex-1 overflow-auto px-1 py-1 bg-raised/30">

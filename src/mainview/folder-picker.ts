@@ -13,6 +13,12 @@
 export interface FolderPickerOptions {
 	initialPath?: string | null;
 	title?: string;
+	/**
+	 * Show a "New Folder" button inside the tree. Used by the "New Project"
+	 * flow so the user can materialise a fresh folder without leaving dev-3.0.
+	 * Default: false (existing call sites are for picking existing folders).
+	 */
+	allowCreateFolder?: boolean;
 }
 
 export interface FolderPickerRequest {

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
@@ -183,6 +183,135 @@ async function cloneAndAddProject(params: { url: string; baseDir: string; repoNa
 		return addProjectImpl({ path: targetDir, name });
 	} catch (err) {
 		log.error("cloneAndAddProject failed", { error: String(err), params });
+		return { ok: false, error: String(err) };
+	}
+}
+
+/**
+ * Create a new directory (used by the folder picker's "New Folder" button).
+ *
+ * Rejects names containing path separators or control characters. Does not
+ * overwrite existing directories — returns an error instead.
+ */
+async function createDirectory(params: { parentPath: string; name: string }): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+	log.info("→ createDirectory", params);
+	try {
+		const name = params.name.trim();
+		if (!name) return { ok: false, error: "Folder name cannot be empty" };
+		if (name === "." || name === "..") return { ok: false, error: "Invalid folder name" };
+		// eslint-disable-next-line no-control-regex
+		if (/[\x00-\x1f\x7f/\\]/.test(name)) {
+			return { ok: false, error: "Folder name contains invalid characters" };
+		}
+		if (!isAbsolute(params.parentPath)) {
+			return { ok: false, error: "Parent path must be absolute" };
+		}
+		if (!existsSync(params.parentPath)) {
+			return { ok: false, error: "Parent folder does not exist" };
+		}
+		const fullPath = join(params.parentPath, name);
+		if (existsSync(fullPath)) {
+			return { ok: false, error: "A folder with that name already exists" };
+		}
+		mkdirSync(fullPath, { recursive: false });
+		log.info("← createDirectory OK", { path: fullPath });
+		return { ok: true, path: fullPath };
+	} catch (err) {
+		log.error("createDirectory failed", { error: String(err), params });
+		return { ok: false, error: String(err) };
+	}
+}
+
+/**
+ * Treat a folder as "effectively empty" when it has no meaningful children.
+ * We tolerate junk that macOS / editors routinely scatter around so the user
+ * can pick a folder they just created via Finder without hitting the
+ * "not empty" error for a `.DS_Store` file.
+ */
+function isEffectivelyEmpty(path: string): boolean {
+	try {
+		const entries = readdirSync(path);
+		const IGNORED = new Set([".DS_Store", "Thumbs.db", ".localized"]);
+		return entries.every((name) => IGNORED.has(name));
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Initialise an empty folder as a git repo (if needed), seed it with a
+ * `.dev3/README.md` placeholder, commit it as "init", and register the
+ * resulting repo as a project.
+ *
+ * - Already a git repo → skip init, register directly.
+ * - Empty (or only macOS junk) → git init + placeholder commit + register.
+ * - Non-empty and not a git repo → refuse (we don't want to silently add
+ *   files into someone's unrelated folder).
+ */
+async function initAndAddProject(params: { path: string; name: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+	log.info("→ initAndAddProject", params);
+	try {
+		if (!isAbsolute(params.path) || !existsSync(params.path)) {
+			return { ok: false, error: "Folder does not exist" };
+		}
+		if (!statSync(params.path).isDirectory()) {
+			return { ok: false, error: "Path is not a folder" };
+		}
+
+		const alreadyRepo = await git.isGitRepo(params.path);
+		if (alreadyRepo) {
+			log.info("initAndAddProject: folder is already a git repo — registering as-is");
+			return addProjectImpl({ path: params.path, name: params.name });
+		}
+
+		if (!isEffectivelyEmpty(params.path)) {
+			return {
+				ok: false,
+				error: "Folder is not empty and not a git repository. Pick an empty folder or an existing repo.",
+			};
+		}
+
+		const initResult = await git.run(["git", "init"], params.path);
+		if (!initResult.ok) {
+			return { ok: false, error: `git init failed: ${initResult.stderr || "unknown error"}` };
+		}
+
+		const dev3Dir = join(params.path, ".dev3");
+		mkdirSync(dev3Dir, { recursive: true });
+		const readmePath = join(dev3Dir, "README.md");
+		const readmeContent = [
+			"# .dev3/",
+			"",
+			"This folder is used by [dev-3.0](https://github.com/h0x91b/dev-3.0) to",
+			"store project-level config (setup / dev / cleanup scripts, clone paths,",
+			"base branch, etc). Check it in so the whole team shares the same setup.",
+			"",
+			"Local overrides go into `.dev3/config.local.json` (git-ignored).",
+			"",
+		].join("\n");
+		writeFileSync(readmePath, readmeContent, "utf8");
+
+		const addResult = await git.run(["git", "add", "."], params.path);
+		if (!addResult.ok) {
+			return { ok: false, error: `git add failed: ${addResult.stderr || "unknown error"}` };
+		}
+		const commitResult = await git.run(
+			["git", "commit", "-m", "init"],
+			params.path,
+		);
+		if (!commitResult.ok) {
+			// Most common failure: missing user.name / user.email. Surface it
+			// clearly so the user can fix `git config` and retry.
+			return {
+				ok: false,
+				error: `git commit failed: ${commitResult.stderr || "unknown error"}`,
+			};
+		}
+
+		log.info("initAndAddProject: initial commit created, registering project");
+		return addProjectImpl({ path: params.path, name: params.name });
+	} catch (err) {
+		log.error("initAndAddProject failed", { error: String(err), params });
 		return { ok: false, error: String(err) };
 	}
 }
@@ -493,6 +622,8 @@ export const appHandlers = {
 	listDirectory,
 	addProject: addProjectImpl,
 	cloneAndAddProject,
+	createDirectory,
+	initAndAddProject,
 	removeProject,
 	detectClonePaths,
 	getChangelogs,

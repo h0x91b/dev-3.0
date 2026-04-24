@@ -66,6 +66,11 @@ const common = {
 	"folderPicker.selected": "Selected",
 	"folderPicker.select": "Select",
 	"folderPicker.cancel": "Cancel",
+	"folderPicker.newFolder": "New folder",
+	"folderPicker.newFolderTitle": "Create a new folder here",
+	"folderPicker.newFolderPlaceholder": "Folder name",
+	"folderPicker.create": "Create",
+	"folderPicker.creating": "Creating…",
 
 	// Unsaved changes guard
 	"unsavedChanges.title": "Unsaved Changes",
