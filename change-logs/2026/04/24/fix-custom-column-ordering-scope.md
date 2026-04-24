@@ -1,0 +1,1 @@
+Fixed task ordering so custom columns keep independent columnOrder values even when they share the same built-in status. Reordering or reopening a task now renumbers only the rendered column it belongs to.

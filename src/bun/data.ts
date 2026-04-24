@@ -539,8 +539,9 @@ function applyTaskUpdate(
 		tasks[idx] = { ...tasks[idx], ...updates, movedAt: now, columnOrder: undefined, updatedAt: now };
 
 		if (dropPosition) {
+			const targetCustomColumnId = tasks[idx].customColumnId ?? null;
 			const columnTasks = tasks
-				.filter((t) => t.status === newStatus && t.id !== tasks[idx].id)
+				.filter((t) => t.status === newStatus && (t.customColumnId ?? null) === targetCustomColumnId && t.id !== tasks[idx].id)
 				.sort((a, b) => {
 					if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
 						return a.columnOrder - b.columnOrder;
@@ -565,6 +566,10 @@ function applyTaskUpdate(
 	}
 
 	return tasks[idx];
+}
+
+function isInSameRenderedColumn(task: Task, status: string, customColumnId: string | null | undefined): boolean {
+	return task.status === status && (task.customColumnId ?? null) === (customColumnId ?? null);
 }
 
 // ---- Preferences ----
@@ -620,9 +625,10 @@ export async function reorderTasksInColumn(
 		if (!task) throw new Error(`Task not found: ${taskId}`);
 
 		const columnStatus = task.status;
+		const columnCustomColumnId = task.customColumnId ?? null;
 
 		const columnTasks = tasks
-			.filter((t) => t.status === columnStatus)
+			.filter((t) => isInSameRenderedColumn(t, columnStatus, columnCustomColumnId))
 			.sort((a, b) => {
 				if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
 					return a.columnOrder - b.columnOrder;

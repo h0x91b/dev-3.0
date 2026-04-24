@@ -211,6 +211,23 @@ describe("reorderTasksInColumn — disk persistence", () => {
 		const xTask = saved.find((t) => t.id === "X")!;
 		expect(xTask.columnOrder).toBe(5); // unchanged
 	});
+
+	it("does not modify tasks in other rendered columns with the same status", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "in-progress", customColumnId: "col-b", createdAt: "2025-01-03T00:00:00Z", columnOrder: 7 }),
+			makeTask({ id: "D", seq: 4, status: "in-progress", customColumnId: null, createdAt: "2025-01-04T00:00:00Z", columnOrder: 9 }),
+		];
+		seedTasks(tasks);
+
+		const result = await reorderTasksInColumn(testProject, "B", 0);
+
+		expect(result.map((t) => t.id)).toEqual(["B", "A"]);
+		const saved = readSavedTasks();
+		expect(saved.find((t) => t.id === "C")!.columnOrder).toBe(7);
+		expect(saved.find((t) => t.id === "D")!.columnOrder).toBe(9);
+	});
 });
 
 // ============================================================
@@ -584,6 +601,28 @@ describe("updateTask — columnOrder lifecycle", () => {
 			.filter((t) => t.status === "todo")
 			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
 		expect(todoTasks.map((t) => t.id)).toEqual(["B", "A", "C"]);
+	});
+
+	it("moving into a custom column with dropPosition does not modify other rendered columns with the same status", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "in-progress", customColumnId: "col-b", createdAt: "2025-01-03T00:00:00Z", columnOrder: 7 }),
+			makeTask({ id: "D", seq: 4, status: "in-progress", customColumnId: null, createdAt: "2025-01-04T00:00:00Z", columnOrder: 9 }),
+			makeTask({ id: "E", seq: 5, status: "completed", customColumnId: null, createdAt: "2025-01-05T00:00:00Z", columnOrder: 3 }),
+		];
+		seedTasks(tasks);
+
+		const updated = await updateTask(testProject, "E", { status: "in-progress", customColumnId: "col-a" }, { dropPosition: "top" });
+
+		expect(updated.columnOrder).toBe(0);
+		const saved = readSavedTasks();
+		const colATasks = saved
+			.filter((t) => t.status === "in-progress" && t.customColumnId === "col-a")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(colATasks.map((t) => t.id)).toEqual(["E", "A", "B"]);
+		expect(saved.find((t) => t.id === "C")!.columnOrder).toBe(7);
+		expect(saved.find((t) => t.id === "D")!.columnOrder).toBe(9);
 	});
 
 	it("without dropPosition, columnOrder is cleared (backward compat)", async () => {
