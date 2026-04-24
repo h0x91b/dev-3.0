@@ -94,6 +94,13 @@ describe("getDiffFileContentHash", () => {
 		expect(getDiffFileContentHash(base)).not.toBe(getDiffFileContentHash(mutated));
 	});
 
+	it("detects content-only changes even if hunk strings happen to match", () => {
+		const stableHunk = "@@ -1 +1 @@\n-old value\n+new value\n";
+		const base = fileFor("old value\ncontext one\n", "new value\ncontext one\n", stableHunk);
+		const mutated = fileFor("old value\ncontext two\n", "new value\ncontext two\n", stableHunk);
+		expect(getDiffFileContentHash(base)).not.toBe(getDiffFileContentHash(mutated));
+	});
+
 	it("renders fresh content when uuid includes the content hash", () => {
 		const v4File = fileFor(OLD_CONTENT_COMMON, V4_NEW_CONTENT, V4_HUNK);
 		const v5File = fileFor(OLD_CONTENT_COMMON, V5_NEW_CONTENT, V5_HUNK);

@@ -1,0 +1,1 @@
+Refresh the inline diff viewer when the same diff request is opened again, and include full file content in read-state and render cache keys so repeated commits cannot reuse stale UI state for changed files.

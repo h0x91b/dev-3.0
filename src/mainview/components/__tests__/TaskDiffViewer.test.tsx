@@ -252,6 +252,33 @@ const diffPayload: TaskDiffResponse = {
 	skippedFiles: [],
 };
 
+function singleFilePayload(newContent: string, hunk: string, oldContent = "base\n"): TaskDiffResponse {
+	return {
+		mode: "branch",
+		compareRef: "origin/main",
+		compareLabel: "origin/main",
+		fallbackReason: null,
+		summary: {
+			files: 1,
+			insertions: 1,
+			deletions: 1,
+		},
+		files: [
+			{
+				id: "src/app.ts",
+				status: "modified",
+				displayPath: "src/app.ts",
+				oldPath: "src/app.ts",
+				newPath: "src/app.ts",
+				oldContent,
+				newContent,
+				hunks: [hunk],
+			},
+		],
+		skippedFiles: [],
+	};
+}
+
 describe("TaskDiffViewer", () => {
 	let scrollIntoViewMock: ReturnType<typeof vi.fn>;
 	let lastScrolledText: string | null;
@@ -682,6 +709,88 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
 			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
 		});
+	});
+
+	it("does not reuse read state when file content changes behind the same hunk", async () => {
+		const user = userEvent.setup();
+		const stableHunk = "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-old value\n+new value\n";
+		vi.mocked(api.request.getTaskDiff)
+			.mockResolvedValueOnce(singleFilePayload("new value\ncontext one\n", stableHunk, "old value\ncontext one\n"))
+			.mockResolvedValueOnce(singleFilePayload("new value\ncontext two\n", stableHunk, "old value\ncontext two\n"));
+
+		const view = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByText("context one");
+		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
+		await waitFor(() => {
+			expect(screen.queryAllByText("context one")).toHaveLength(0);
+		});
+
+		view.unmount();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i })).not.toBeChecked();
+		});
+		expect(screen.getAllByText("context two").length).toBeGreaterThan(0);
+	});
+
+	it("refetches when the same diff request is opened again", async () => {
+		const firstHunk = "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-base\n+commit one\n";
+		const secondHunk = "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-base\n+commit two\n";
+		vi.mocked(api.request.getTaskDiff)
+			.mockResolvedValueOnce(singleFilePayload("commit one\n", firstHunk))
+			.mockResolvedValueOnce(singleFilePayload("commit two\n", secondHunk));
+
+		const { rerender } = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findByText("commit one");
+		expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenCalledTimes(1);
+
+		rerender(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenCalledTimes(2);
+		});
+		await screen.findByText("commit two");
+		expect(screen.queryByText("commit one")).not.toBeInTheDocument();
 	});
 
 	it("scrolls to a requested file when opened from changed files popup", async () => {
