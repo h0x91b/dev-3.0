@@ -214,6 +214,8 @@ const tips = {
 	"tip.initNewProject.body": "Add Project → Nuevo te deja elegir una carpeta vacía: dev-3.0 ejecuta git init, crea .dev3/README.md y hace el primer commit por ti.",
 	"tip.folderPickerNewFolder.title": "Crea carpetas desde el picker",
 	"tip.folderPickerNewFolder.body": "En el selector para un nuevo proyecto, pulsa \"Nueva carpeta\" sobre el árbol para crear una subcarpeta al vuelo, sin salir de la app.",
+	"tip.sidebarGlobalScope.title": "Tareas de todos los proyectos",
+	"tip.sidebarGlobalScope.body": "El interruptor junto a Active Tasks alterna entre solo este proyecto y todas las tareas activas de dev-3.0 — haz clic en una tarjeta para saltar a su proyecto.",
 };
 
 export default tips;

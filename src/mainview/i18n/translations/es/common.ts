@@ -38,6 +38,11 @@ const common = {
 	"sidebar.searchPlaceholder": "Buscar tareas...",
 	"sidebar.switchToBoard": "Mostrar tablero",
 	"sidebar.switchToSidebar": "Mostrar panel",
+	"sidebar.scopeProject": "Solo este proyecto",
+	"sidebar.scopeGlobal": "Todos los proyectos",
+	"sidebar.scopeToggleTitle": "Alternar alcance (este proyecto / todos los proyectos)",
+	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
+	"sidebar.unknownProject": "Proyecto desconocido",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",

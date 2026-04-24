@@ -670,6 +670,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.folderPickerNewFolder.body",
 		icon: "\u{F0770}", // nf-md-folder_open
 	},
+	// Batch 32: sidebar global task scope toggle
+	{
+		id: "sidebar-global-scope",
+		titleKey: "tip.sidebarGlobalScope.title",
+		bodyKey: "tip.sidebarGlobalScope.body",
+		icon: "\u{F024B}", // nf-md-earth
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useMemo, type Dispatch } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
 import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
+import { api } from "../rpc";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
@@ -13,9 +14,27 @@ import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 
+type SidebarScope = "project" | "global";
+const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
+
+function readScope(): SidebarScope {
+	try {
+		const v = localStorage.getItem(LS_SIDEBAR_SCOPE);
+		if (v === "global" || v === "project") return v;
+	} catch { /* ignore */ }
+	return "project";
+}
+
+function writeScope(scope: SidebarScope) {
+	try {
+		localStorage.setItem(LS_SIDEBAR_SCOPE, scope);
+	} catch { /* ignore */ }
+}
+
 interface ActiveTasksSidebarProps {
 	project: Project;
 	tasks: Task[];
+	allProjects?: Project[];
 	activeTaskId?: string;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
@@ -38,6 +57,7 @@ const STATUS_ORDER: TaskStatus[] = [
 function ActiveTasksSidebar({
 	project,
 	tasks,
+	allProjects,
 	activeTaskId,
 	navigate,
 	agents,
@@ -50,7 +70,15 @@ function ActiveTasksSidebar({
 	const statusColors = useStatusColors();
 	const preview = useTerminalPreview();
 	const [searchQuery, setSearchQuery] = useState("");
+	const [scope, setScopeState] = useState<SidebarScope>(readScope);
+	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
+	const [globalLoading, setGlobalLoading] = useState(false);
 	const searchRef = useRef<HTMLInputElement>(null);
+
+	const setScope = useCallback((next: SidebarScope) => {
+		setScopeState(next);
+		writeScope(next);
+	}, []);
 
 	// Ctrl/Cmd+F focuses the search input when sidebar is visible
 	useEffect(() => {
@@ -68,14 +96,80 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [disableGlobalFindShortcut]);
 
-	let activeTasks = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+	// Fetch active tasks from all projects when in global scope.
+	useEffect(() => {
+		if (scope !== "global") return;
+		let cancelled = false;
+		setGlobalLoading(true);
+		(async () => {
+			try {
+				const results = await api.request.getAllProjectTasks();
+				if (cancelled) return;
+				const flat: Task[] = [];
+				for (const { tasks: projectTasks } of results) {
+					for (const task of projectTasks) flat.push(task);
+				}
+				setGlobalTasks(flat);
+			} catch (err) {
+				if (!cancelled) {
+					console.error("Failed to load global active tasks:", err);
+				}
+			} finally {
+				if (!cancelled) setGlobalLoading(false);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [scope]);
+
+	// Keep global tasks live across all projects.
+	useEffect(() => {
+		if (scope !== "global") return;
+		function onTaskUpdated(e: Event) {
+			const { task } = (e as CustomEvent).detail as { task: Task };
+			setGlobalTasks((prev) => {
+				const idx = prev.findIndex((t) => t.id === task.id);
+				const isActive = ACTIVE_STATUSES.includes(task.status);
+				if (isActive) {
+					if (idx >= 0) {
+						const next = prev.slice();
+						next[idx] = task;
+						return next;
+					}
+					return [...prev, task];
+				}
+				if (idx >= 0) {
+					const next = prev.slice();
+					next.splice(idx, 1);
+					return next;
+				}
+				return prev;
+			});
+		}
+		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
+		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+	}, [scope]);
+
+	const sourceTasks = scope === "global" ? globalTasks : tasks;
+
+	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 	if (searchQuery.trim()) {
 		activeTasks = activeTasks.filter((task) => matchesSearchQuery(task, searchQuery));
 	}
 
+	const projectById = useMemo(() => {
+		const map = new Map<string, Project>();
+		if (allProjects) {
+			for (const p of allProjects) map.set(p.id, p);
+		}
+		map.set(project.id, project);
+		return map;
+	}, [allProjects, project]);
+
 	const siblingMap = useMemo(() => {
 		const map = new Map<string, Task[]>();
-		for (const task of tasks) {
+		for (const task of sourceTasks) {
 			if (!task.groupId) continue;
 			const existing = map.get(task.groupId);
 			if (existing) {
@@ -85,7 +179,7 @@ function ActiveTasksSidebar({
 			}
 		}
 		return map;
-	}, [tasks]);
+	}, [sourceTasks]);
 
 	// Group by status in display order
 	const grouped = STATUS_ORDER
@@ -97,12 +191,13 @@ function ActiveTasksSidebar({
 
 	function handleTaskClick(task: Task) {
 		preview.close();
-		if (task.id === activeTaskId) {
+		const targetProjectId = task.projectId || project.id;
+		if (task.id === activeTaskId && targetProjectId === project.id) {
 			navigate({ screen: "project", projectId: project.id });
 		} else {
 			navigate({
 				screen: "project",
-				projectId: project.id,
+				projectId: targetProjectId,
 				activeTaskId: task.id,
 			});
 		}
@@ -113,18 +208,58 @@ function ActiveTasksSidebar({
 	return (
 		<div className="h-full flex flex-col bg-base">
 			{/* Header */}
-			<div className="flex items-center justify-between px-3 py-2.5 border-b border-edge flex-shrink-0">
-				<span className="text-xs font-semibold text-fg-2 uppercase tracking-wider">
+			<div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-edge flex-shrink-0">
+				<span className="text-xs font-semibold text-fg-2 uppercase tracking-wider truncate">
 					{t("sidebar.activeTasks")}
 				</span>
-				<button
-					onClick={onSwitchToBoard}
-					className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5"
-					title={t("sidebar.switchToBoard")}
-				>
-					{/* Nerd Font: fa-columns (U+F0DB) */}
-					<span className="text-sm font-mono leading-none">{"\uF0DB"}</span>
-				</button>
+				<div className="flex items-center gap-1.5 flex-shrink-0">
+					<button
+						type="button"
+						role="switch"
+						aria-checked={scope === "global"}
+						onClick={() => setScope(scope === "global" ? "project" : "global")}
+						title={t("sidebar.scopeToggleTitle")}
+						className={`relative inline-flex items-center h-4 w-8 rounded-full transition-colors ${
+							scope === "global" ? "bg-accent" : "bg-fg/20"
+						}`}
+						data-testid="sidebar-scope-toggle"
+					>
+						<span
+							aria-hidden
+							className={`absolute top-1/2 -translate-y-1/2 left-0.5 text-[0.5rem] leading-none transition-opacity ${
+								scope === "project" ? "opacity-0" : "text-white/90"
+							}`}
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F0A43}"}
+						</span>
+						<span
+							aria-hidden
+							className={`absolute top-1/2 -translate-y-1/2 right-0.5 text-[0.5rem] leading-none transition-opacity ${
+								scope === "global" ? "opacity-0" : "text-fg-3"
+							}`}
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F024B}"}
+						</span>
+						<span
+							className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow transform transition-transform ${
+								scope === "global" ? "translate-x-[1.125rem]" : "translate-x-0.5"
+							}`}
+						/>
+						<span className="sr-only">
+							{scope === "global" ? t("sidebar.scopeGlobal") : t("sidebar.scopeProject")}
+						</span>
+					</button>
+					<button
+						onClick={onSwitchToBoard}
+						className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5"
+						title={t("sidebar.switchToBoard")}
+					>
+						{/* Nerd Font: fa-columns (U+F0DB) */}
+						<span className="text-sm font-mono leading-none">{"\uF0DB"}</span>
+					</button>
+				</div>
 			</div>
 
 			{/* Search input */}
@@ -168,7 +303,11 @@ function ActiveTasksSidebar({
 
 			{/* Task list */}
 			<div className="flex-1 overflow-y-auto overflow-x-hidden">
-				{grouped.length === 0 ? (
+				{scope === "global" && globalLoading && grouped.length === 0 ? (
+					<div className="px-3 py-6 text-center text-xs text-fg-muted">
+						{t("sidebar.globalLoading")}
+					</div>
+				) : grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
 						{searchQuery.trim() ? t("sidebar.noSearchResults") : t("sidebar.noActiveTasks")}
 					</div>
@@ -196,16 +335,20 @@ function ActiveTasksSidebar({
 
 							{/* Tasks in this status */}
 							{groupTasks.map((task, idx) => {
-								const isActive = task.id === activeTaskId;
+								const isActive = task.id === activeTaskId && task.projectId === project.id;
 								const bellCount = bellCounts.get(task.id) ?? 0;
 								const displayTitle = getTaskTitle(task);
 								const { agent, configLabel } = getTaskAgentMeta(task, agents);
 								const taskLabelIds = task.labelIds ?? [];
+								const taskProject = projectById.get(task.projectId);
+								const labelsPool = (taskProject?.labels ?? projectLabels) as typeof projectLabels;
 								const assignedLabels = taskLabelIds
-									.map((id) => projectLabels.find((l) => l.id === id))
+									.map((id) => labelsPool.find((l) => l.id === id))
 									.filter(Boolean) as typeof projectLabels;
 								const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
 								const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
+								const showProjectBadge = scope === "global" && task.projectId !== project.id;
+								const projectBadgeName = taskProject?.name ?? t("sidebar.unknownProject");
 
 								return (
 									<div key={task.id}>
@@ -254,6 +397,24 @@ function ActiveTasksSidebar({
 														/>
 													)}
 												</div>
+
+												{/* Project badge (global scope only) */}
+												{showProjectBadge && (
+													<div
+														className="mb-1 inline-flex items-center gap-1 max-w-full text-[0.5625rem] text-fg-3 bg-fg/5 rounded px-1 py-[1px]"
+														title={projectBadgeName}
+														data-testid={`sidebar-project-badge-${task.id}`}
+													>
+														<span
+															aria-hidden
+															style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+															className="leading-none"
+														>
+															{"\u{F024B}"}
+														</span>
+														<span className="truncate">{projectBadgeName}</span>
+													</div>
+												)}
 
 												{/* Title */}
 												<div className={`text-xs leading-snug break-words ${

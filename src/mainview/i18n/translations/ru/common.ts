@@ -38,6 +38,11 @@ const common = {
 	"sidebar.searchPlaceholder": "Поиск задач...",
 	"sidebar.switchToBoard": "Показать доску",
 	"sidebar.switchToSidebar": "Показать панель",
+	"sidebar.scopeProject": "Только этот проект",
+	"sidebar.scopeGlobal": "Все проекты",
+	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",
+	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
+	"sidebar.unknownProject": "Неизвестный проект",
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",

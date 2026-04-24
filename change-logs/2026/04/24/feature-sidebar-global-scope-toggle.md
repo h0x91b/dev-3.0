@@ -1,0 +1,1 @@
+Add a slider switch to the Active Tasks sidebar header that toggles between project-only and global scope. In global mode the sidebar lists every active task across all dev-3.0 projects, tags each card with its project name, and clicking a card jumps directly into the task's home project. The preference is persisted in localStorage so it survives app restarts.

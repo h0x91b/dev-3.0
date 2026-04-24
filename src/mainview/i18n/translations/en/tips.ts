@@ -214,6 +214,8 @@ const tips = {
 	"tip.initNewProject.body": "Add Project → New lets you pick an empty folder; dev-3.0 runs git init, writes .dev3/README.md, and makes the first commit for you.",
 	"tip.folderPickerNewFolder.title": "Create folders while picking",
 	"tip.folderPickerNewFolder.body": "In the New-project folder picker, click \"New folder\" above the tree to create a subfolder on the spot without leaving the app.",
+	"tip.sidebarGlobalScope.title": "See tasks from every project",
+	"tip.sidebarGlobalScope.body": "Flip the toggle next to Active Tasks to switch between this project only and every active task in dev-3.0 — click any card to jump straight into its project.",
 } as const;
 
 export default tips;

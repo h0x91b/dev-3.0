@@ -128,6 +128,7 @@ function ProjectView({
 			<ActiveTasksSidebar
 				project={project}
 				tasks={tasks}
+				allProjects={projects}
 				activeTaskId={activeTaskId}
 				dispatch={dispatch}
 				navigate={navigate}

@@ -214,6 +214,8 @@ const tips = {
 	"tip.initNewProject.body": "Add Project → New позволяет выбрать пустую папку: dev-3.0 сам сделает git init, создаст .dev3/README.md и первый коммит.",
 	"tip.folderPickerNewFolder.title": "Создавай папки прямо в пикере",
 	"tip.folderPickerNewFolder.body": "В пикере для нового проекта над деревом есть кнопка \"Новая папка\" — можно создать подпапку на месте, не выходя из приложения.",
+	"tip.sidebarGlobalScope.title": "Все задачи изо всех проектов",
+	"tip.sidebarGlobalScope.body": "Переключатель рядом с Active Tasks меняет область между текущим проектом и всеми активными задачами dev-3.0 — клик по карточке сразу прыгает в её проект.",
 };
 
 export default tips;
