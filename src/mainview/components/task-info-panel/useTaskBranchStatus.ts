@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
-import type { BranchStatus, Project, Task } from "../../../shared/types";
+import {
+	type BranchStatus,
+	type Project,
+	type Task,
+	MERGE_COMPLETE_ELIGIBLE_STATUSES,
+} from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
@@ -114,7 +119,7 @@ export function useTaskBranchStatus({
 
 					if (
 						status.mergedByContent &&
-						task.status === "review-by-user" &&
+						MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) &&
 						!mergeDialogShownRef.current
 					) {
 						mergeDialogShownRef.current = true;

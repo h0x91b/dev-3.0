@@ -32,6 +32,12 @@ export const ACTIVE_STATUSES: TaskStatus[] = [
 	"review-by-ai",
 ];
 
+export const MERGE_COMPLETE_ELIGIBLE_STATUSES: TaskStatus[] = [
+	"review-by-ai",
+	"review-by-user",
+	"review-by-colleague",
+];
+
 export const ALL_STATUSES: TaskStatus[] = [
 	"todo",
 	"in-progress",

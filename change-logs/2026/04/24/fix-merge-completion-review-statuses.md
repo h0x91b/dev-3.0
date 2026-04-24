@@ -1,0 +1,1 @@
+Restore merge-completion prompts across all review columns. Merged branches are now checked every 60 seconds again, and tasks in AI Review, Your Review, and PR Review all offer completion when their changes are already in the base branch.
