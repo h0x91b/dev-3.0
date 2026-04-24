@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 
-interface BranchInfo {
+export interface BranchInfo {
 	name: string;
 	isRemote: boolean;
 }
@@ -14,6 +14,10 @@ export function parseForkRef(query: string): { forkOwner: string; branchName: st
 	const match = query.match(FORK_REF_RE);
 	if (!match) return null;
 	return { forkOwner: match[1], branchName: match[2] };
+}
+
+export function normalizeBranchQuery(query: string): string {
+	return query.trim().replace(":", "/");
 }
 
 /** Split a branch name into words on /, -, _, ., and camelCase boundaries. */
@@ -30,7 +34,7 @@ export function splitBranchWords(name: string): string[] {
 export function matchesBranchQuery(branchName: string, query: string): boolean {
 	if (!query) return true;
 	// Normalize fork ref format: "user:branch" → "user/branch" for matching
-	const normalizedQuery = query.replace(":", "/");
+	const normalizedQuery = normalizeBranchQuery(query);
 	const nameLower = branchName.toLowerCase();
 	const words = splitBranchWords(branchName);
 	const tokens = normalizedQuery.toLowerCase().split(/\s+/).filter(Boolean);
@@ -40,6 +44,37 @@ export function matchesBranchQuery(branchName: string, query: string): boolean {
 		// Substring fallback for tokens containing "/" (e.g., "origin/dev", "user:branch")
 		if (token.includes("/") && nameLower.includes(token)) return true;
 		return false;
+	});
+}
+
+function isForkRemoteBranch(branch: BranchInfo): boolean {
+	return branch.isRemote && !branch.name.startsWith("origin/");
+}
+
+export function sortBranchesForDisplay(
+	branches: BranchInfo[],
+	options: { preferRemote: boolean; prioritizedBranchNames?: string[] },
+): BranchInfo[] {
+	const prioritizedNames = new Set(options.prioritizedBranchNames ?? []);
+
+	return [...branches].sort((a, b) => {
+		const aPriority = prioritizedNames.has(a.name) ? 1 : 0;
+		const bPriority = prioritizedNames.has(b.name) ? 1 : 0;
+		if (aPriority !== bPriority) return bPriority - aPriority;
+
+		if (options.preferRemote && a.isRemote !== b.isRemote) {
+			return a.isRemote ? -1 : 1;
+		}
+
+		const aForkRemote = isForkRemoteBranch(a) ? 1 : 0;
+		const bForkRemote = isForkRemoteBranch(b) ? 1 : 0;
+		if (aForkRemote !== bForkRemote) return bForkRemote - aForkRemote;
+
+		if (!options.preferRemote && a.isRemote !== b.isRemote) {
+			return a.isRemote ? 1 : -1;
+		}
+
+		return a.name.localeCompare(b.name);
 	});
 }
 
@@ -59,6 +94,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 	const [fetchingBranches, setFetchingBranches] = useState(false);
 	const [branchesLoaded, setBranchesLoaded] = useState(false);
 	const [branchSectionOpen, setBranchSectionOpen] = useState(false);
+	const [prioritizedBranchNames, setPrioritizedBranchNames] = useState<string[]>([]);
 	const branchInputRef = useRef<HTMLInputElement>(null);
 	const branchDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -76,21 +112,19 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 	const handleFetchBranches = useCallback(async () => {
 		setFetchingBranches(true);
 		try {
-			const forkRef = parseForkRef(branchQuery) ? branchQuery : undefined;
+			const parsedForkRef = parseForkRef(branchQuery);
+			const forkRef = parsedForkRef ? branchQuery : undefined;
 			const result = await api.request.fetchBranches({ projectId, forkRef });
 			setBranches(result);
 			setBranchesLoaded(true);
-			// After fetching a fork branch, auto-select it
-			if (forkRef) {
-				const parsed = parseForkRef(branchQuery);
-				if (parsed) {
-					const expectedRemote = `${parsed.forkOwner}/${parsed.branchName}`;
-					const found = result.find((b) => b.name === expectedRemote);
-					if (found) {
-						onSelectBranch(found.name);
-						setBranchQuery("");
-						setBranchDropdownOpen(false);
-					}
+			setBranchDropdownOpen(true);
+
+			if (parsedForkRef) {
+				const expectedRemote = `${parsedForkRef.forkOwner}/${parsedForkRef.branchName}`;
+				const found = result.find((b) => b.name === expectedRemote);
+				if (found) {
+					setPrioritizedBranchNames((prev) => [expectedRemote, ...prev.filter((name) => name !== expectedRemote)]);
+					setBranchQuery(expectedRemote);
 				}
 			}
 		} catch {
@@ -98,10 +132,14 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 		} finally {
 			setFetchingBranches(false);
 		}
-	}, [projectId, branchQuery, onSelectBranch]);
+	}, [projectId, branchQuery]);
 
-	const filteredBranches = branches.filter((b) =>
+	const preferRemoteBranches = reviewMode || prioritizedBranchNames.length > 0 || parseForkRef(branchQuery) !== null;
+	const filteredBranches = sortBranchesForDisplay(
+		branches.filter((b) =>
 		matchesBranchQuery(b.name, branchQuery),
+		),
+		{ preferRemote: preferRemoteBranches, prioritizedBranchNames },
 	);
 
 	const localBranches = filteredBranches.filter((b) => !b.isRemote);
@@ -210,12 +248,12 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 
 				{branchDropdownOpen && !selectedBranch && (
 					<div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-overlay border border-edge rounded-xl shadow-lg">
-						{localBranches.length > 0 && (
+						{(preferRemoteBranches ? remoteBranches.length > 0 : localBranches.length > 0) && (
 							<>
 								<div className="px-3 py-1 text-[0.625rem] font-semibold text-fg-muted uppercase tracking-wider">
-									{t("createTask.branchLocal")}
+									{preferRemoteBranches ? t("createTask.branchRemote") : t("createTask.branchLocal")}
 								</div>
-								{localBranches.map((b) => (
+								{(preferRemoteBranches ? remoteBranches : localBranches).map((b) => (
 									<button
 										key={b.name}
 										type="button"
@@ -232,12 +270,12 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 							</>
 						)}
 
-						{remoteBranches.length > 0 && (
+						{(preferRemoteBranches ? localBranches.length > 0 : remoteBranches.length > 0) && (
 							<>
 								<div className="px-3 py-1 text-[0.625rem] font-semibold text-fg-muted uppercase tracking-wider">
-									{t("createTask.branchRemote")}
+									{preferRemoteBranches ? t("createTask.branchLocal") : t("createTask.branchRemote")}
 								</div>
-								{remoteBranches.map((b) => (
+								{(preferRemoteBranches ? localBranches : remoteBranches).map((b) => (
 									<button
 										key={b.name}
 										type="button"

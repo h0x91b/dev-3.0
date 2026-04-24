@@ -680,9 +680,11 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
-	it("fetches and auto-selects fork branches entered as owner:branch", async () => {
+	it("fetches fork branches into the visible dropdown instead of auto-selecting them", async () => {
 		mockedApi.request.listBranches.mockResolvedValue([]);
 		mockedApi.request.fetchBranches.mockResolvedValue([
+			{ name: "feature/local-work", isRemote: false },
+			{ name: "origin/main", isRemote: true },
 			{ name: "sworgkh/fix/dev3-tmux-switch-glitch", isRemote: true },
 		]);
 		renderModal();
@@ -698,6 +700,12 @@ describe("CreateTaskModal", () => {
 				forkRef: "sworgkh:fix/dev3-tmux-switch-glitch",
 			});
 		});
+
+		expect(screen.getByPlaceholderText("Type to search branches...")).toHaveValue("sworgkh/fix/dev3-tmux-switch-glitch");
+		expect(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch")).toBeInTheDocument();
+
+		await userEvent.click(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch"));
+		expect(screen.queryByPlaceholderText("Type to search branches...")).not.toBeInTheDocument();
 		expect(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch")).toBeInTheDocument();
 	});
 });
