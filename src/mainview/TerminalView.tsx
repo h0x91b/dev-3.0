@@ -4,6 +4,7 @@ import { useT } from "./i18n";
 import { dispatchErrorToast } from "./components/ErrorToast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
+// TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
@@ -86,6 +87,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		message: string,
 		extra?: Record<string, string | number | boolean | null>,
 	) {
+		// TEMP DIAGNOSTIC: renderer->backend logging for the terminal copy investigation.
 		const request = api.request.logRendererEvent({
 			level,
 			tag: "terminal-copy",
@@ -167,6 +169,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		function handleOsc52Clipboard(event: Event) {
 			const detail = (event as CustomEvent<{ taskId?: string; text?: string }>).detail;
 			if (detail?.taskId !== taskId || typeof detail.text !== "string") return;
+			// TEMP DIAGNOSTIC: correlate OSC52 copy payloads with clipboard write results.
 			copyDiagnosticsRef.current?.markOsc52Copy(detail.text.length);
 			logCopyEvent("info", "osc52 clipboard payload received", {
 				len: detail.text.length,
@@ -187,6 +190,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		const termSubs: Array<{ dispose(): void }> = [];
 		const diagnosticsId = `terminal-copy-${taskId}-${Math.random().toString(36).slice(2, 8)}`;
 
+		// TEMP DIAGNOSTIC: install per-terminal clipboard instrumentation.
 		copyDiagnosticsRef.current = installTerminalCopyDiagnostics({
 			id: diagnosticsId,
 			taskId: taskId.slice(0, 8),
@@ -413,6 +417,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 								return false;
 							});
 
+							// TEMP DIAGNOSTIC: log when selection exists before clipboard copy paths run.
 							termSubs.push(term.onSelectionChange(() => {
 								if (disposed) return;
 								try {
@@ -499,6 +504,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				if (disposed) return;
 				try {
 					if (!term.hasMouseTracking() || e.button > 2) return;
+					// TEMP DIAGNOSTIC: flag mouse-mode interception because it may block normal selection copy.
 					copyDiagnosticsRef.current?.markMouseTrackingIntercept(e.button);
 					trackedButton = e.button;
 					const [col, row] = cellCoords(e);
@@ -784,6 +790,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			try {
 				const hasSelection = term.hasSelection();
 				const selectionLength = hasSelection ? term.getSelection().length : 0;
+				// TEMP DIAGNOSTIC: distinguish manual Cmd+C from auto-copy-on-selection.
 				logCopyEvent("info", "cmd+c detected in terminal", {
 					selectionLen: selectionLength,
 					mouseTracking: term.hasMouseTracking(),

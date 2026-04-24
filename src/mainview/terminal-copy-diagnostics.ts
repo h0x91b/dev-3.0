@@ -1,5 +1,7 @@
 import type { RendererLogLevel } from "../shared/types";
 
+// TEMP DIAGNOSTIC: this entire file exists only to localize the macOS terminal
+// copy bug. Remove the file and its call sites after the root cause is fixed.
 type TerminalClipboardSource = "selection" | "cmd-c" | "osc52";
 
 interface PendingClipboardContext {

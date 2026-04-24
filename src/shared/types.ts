@@ -1236,6 +1236,7 @@ export type AppRPCSchema = {
 				params: { description: string; source: "error" | "unhandledrejection" };
 				response: void;
 			};
+			// TEMP DIAGNOSTIC: remove with terminal copy investigation cleanup.
 			logRendererEvent: {
 				params: {
 					level: RendererLogLevel;

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installTerminalCopyDiagnostics } from "../terminal-copy-diagnostics";
 
+// TEMP DIAGNOSTIC: remove with terminal-copy-diagnostics.ts after the copy bug is fixed.
 type LogEntry = {
 	level: string;
 	message: string;

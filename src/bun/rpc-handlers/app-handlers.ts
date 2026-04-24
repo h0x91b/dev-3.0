@@ -484,6 +484,7 @@ async function checkCaffeinateAvailable(): Promise<{ available: boolean }> {
 
 export const appHandlers = {
 	logRendererError,
+	// TEMP DIAGNOSTIC: remove with logRendererEvent after terminal copy bug cleanup.
 	logRendererEvent,
 	quitApp,
 	hideApp,
