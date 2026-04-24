@@ -9,6 +9,7 @@ vi.mock("../rpc", () => ({
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
+			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
@@ -60,6 +61,9 @@ vi.mock("../components/Changelog", () => ({
 vi.mock("../components/ProjectView", () => ({
 	default: () => <div data-testid="project-screen" />,
 }));
+vi.mock("../components/TaskWorkspaceView", () => ({
+	default: () => <div data-testid="task-screen" />,
+}));
 vi.mock("../components/TaskTerminal", () => ({
 	default: () => <div data-testid="task-screen" />,
 }));
@@ -90,7 +94,14 @@ async function renderApp() {
 		</I18nProvider>,
 	);
 	await waitFor(() =>
-		expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument(),
+		expect(
+			screen.queryByTestId("dashboard-screen")
+			|| screen.queryByTestId("project-screen")
+			|| screen.queryByTestId("task-screen")
+			|| screen.queryByTestId("settings-screen")
+			|| screen.queryByTestId("project-settings-screen")
+			|| screen.queryByTestId("project-terminal-screen"),
+		).toBeInTheDocument(),
 	);
 }
 
@@ -99,6 +110,7 @@ describe("App keyboard shortcuts", () => {
 		vi.clearAllMocks();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
+		vi.mocked(api.request.getUpdateRoute).mockResolvedValue({ route: null });
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
 	});
 
@@ -197,6 +209,42 @@ describe("App keyboard shortcuts", () => {
 				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed" } }));
 			});
 			expect(playTaskSound).toHaveBeenCalledWith("completed");
+		});
+	});
+
+	describe("New Task modal", () => {
+		it("opens from the full task screen with Cmd+N", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await userEvent.keyboard("{Meta>}n{/Meta}");
+
+			expect(await screen.findByText("New Task")).toBeInTheDocument();
+		});
+
+		it("opens from the full task screen when rpc:openCreateTaskModal fires", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal"));
+			});
+
+			expect(await screen.findByText("New Task")).toBeInTheDocument();
 		});
 	});
 

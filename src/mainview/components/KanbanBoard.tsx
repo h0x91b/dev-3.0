@@ -123,20 +123,6 @@ function KanbanBoard({
 		});
 	}, []);
 
-	// Cmd+N — open create task modal (capture phase to intercept before terminal)
-	const handleCmdN = useCallback((e: KeyboardEvent) => {
-		if (!((e.metaKey || e.ctrlKey) && e.key === "n")) return;
-		if (showCreateModal || launchModal !== null) return;
-		e.preventDefault();
-		e.stopPropagation();
-		setShowCreateModal(true);
-	}, [showCreateModal, launchModal]);
-
-	useEffect(() => {
-		window.addEventListener("keydown", handleCmdN, { capture: true });
-		return () => window.removeEventListener("keydown", handleCmdN, { capture: true });
-	}, [handleCmdN]);
-
 	function recordMove(taskId: string) {
 		moveCounterRef.current += 1;
 		setMoveOrderMap((prev) => new Map(prev).set(taskId, moveCounterRef.current));

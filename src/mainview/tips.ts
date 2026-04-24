@@ -585,6 +585,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0415}", // nf-md-plus_box
 	},
 	{
+		id: "new-task-menu",
+		titleKey: "tip.newTaskMenu.title",
+		bodyKey: "tip.newTaskMenu.body",
+		icon: "\u{F0415}", // nf-md-plus_box
+	},
+	{
 		id: "open-logs-menu",
 		titleKey: "tip.openLogsMenu.title",
 		bodyKey: "tip.openLogsMenu.body",

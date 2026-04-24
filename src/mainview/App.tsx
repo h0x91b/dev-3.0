@@ -11,6 +11,7 @@ import GlobalHeader from "./components/GlobalHeader";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
+import CreateTaskModal from "./components/CreateTaskModal";
 import ProjectView from "./components/ProjectView";
 import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
@@ -55,6 +56,7 @@ function App() {
 	// GitHub CLI availability warning
 	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 
 	// Auth failure for browser remote access (expired/invalid QR token)
 	const [authFailed, setAuthFailed] = useState(false);
@@ -116,7 +118,27 @@ function App() {
 		[dispatch],
 	);
 
-	// Cmd/Ctrl+Q, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
+	const getProjectIdForRoute = useCallback((route: Route): string | null => {
+		switch (route.screen) {
+			case "project":
+			case "project-terminal":
+			case "task":
+			case "project-settings":
+				return route.projectId;
+			default:
+				return null;
+		}
+	}, []);
+
+	const openCreateTaskModal = useCallback(() => {
+		const projectId = getProjectIdForRoute(state.route);
+		if (!projectId) return false;
+		if (document.querySelector('[data-create-task-modal="true"]')) return false;
+		setCreateTaskProjectId((current) => current ?? projectId);
+		return true;
+	}, [getProjectIdForRoute, state.route]);
+
+	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
 			if ((e.metaKey || e.ctrlKey) && e.key === "q") {
@@ -131,6 +153,11 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+				if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
+				if (!openCreateTaskModal()) return;
+				e.preventDefault();
+				e.stopPropagation();
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -170,7 +197,7 @@ function App() {
 				}
 			}
 		},
-		[navigate, state.projects, state.route],
+		[createTaskProjectId, navigate, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -412,6 +439,14 @@ function App() {
 	}, [navigate]);
 
 	useEffect(() => {
+		function onOpenCreateTaskModal() {
+			openCreateTaskModal();
+		}
+		window.addEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);
+		return () => window.removeEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);
+	}, [openCreateTaskModal]);
+
+	useEffect(() => {
 		function onOpenAddProjectModal() {
 			setShowAddProjectModal(true);
 		}
@@ -560,6 +595,9 @@ function App() {
 	}
 
 	const { route } = state;
+	const createTaskProject = createTaskProjectId
+		? state.projects.find((project) => project.id === createTaskProjectId) ?? null
+		: null;
 
 	return (
 		<div className="h-full w-full flex flex-col">
@@ -582,6 +620,13 @@ function App() {
 				<AddProjectModal
 					dispatch={dispatch}
 					onClose={() => setShowAddProjectModal(false)}
+				/>
+			)}
+			{createTaskProject && (
+				<CreateTaskModal
+					project={createTaskProject}
+					dispatch={dispatch}
+					onClose={() => setCreateTaskProjectId(null)}
 				/>
 			)}
 			{pendingNavigation && (

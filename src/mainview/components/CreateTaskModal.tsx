@@ -265,6 +265,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	return (
 		<div
+			data-create-task-modal="true"
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 			onClick={handleRequestClose}
 		>
