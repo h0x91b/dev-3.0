@@ -51,10 +51,15 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 				printDetail(fields);
 
-				const overview = task.overview?.trim() || "";
-				if (overview) {
-					process.stdout.write("\nOverview:\n");
-					for (const line of overview.split("\n")) {
+				const aiOverview = task.overview?.trim() || "";
+				const userOverview = task.userOverview?.trim() || "";
+				const effectiveOverview = userOverview || aiOverview;
+				if (effectiveOverview) {
+					const header = userOverview
+						? "\nOverview (user-edited — AI version hidden):\n"
+						: "\nOverview:\n";
+					process.stdout.write(header);
+					for (const line of effectiveOverview.split("\n")) {
 						process.stdout.write(`  ${line}\n`);
 					}
 				}
@@ -113,11 +118,17 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 		printDetail(fields);
 
-		const overviewRaw = (task as Partial<Task>).overview;
-		const overview = typeof overviewRaw === "string" ? overviewRaw.trim() : "";
-		if (overview) {
-			process.stdout.write("\nOverview:\n");
-			for (const line of overview.split("\n")) {
+		const aiOverviewRaw = (task as Partial<Task>).overview;
+		const userOverviewRaw = (task as Partial<Task>).userOverview;
+		const aiOverview = typeof aiOverviewRaw === "string" ? aiOverviewRaw.trim() : "";
+		const userOverview = typeof userOverviewRaw === "string" ? userOverviewRaw.trim() : "";
+		const effectiveOverview = userOverview || aiOverview;
+		if (effectiveOverview) {
+			const header = userOverview
+				? "\nOverview (user-edited — AI version hidden):\n"
+				: "\nOverview:\n";
+			process.stdout.write(header);
+			for (const line of effectiveOverview.split("\n")) {
 				process.stdout.write(`  ${line}\n`);
 			}
 		}

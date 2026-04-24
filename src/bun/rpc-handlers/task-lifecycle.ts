@@ -954,14 +954,25 @@ async function renameTask(params: { taskId: string; projectId: string; customTit
 	return updated;
 }
 
-async function setTaskOverview(params: { taskId: string; projectId: string; overview: string | null }): Promise<Task> {
-	log.info("→ setTaskOverview", { taskId: params.taskId, len: params.overview?.length ?? 0 });
+async function setUserOverview(params: { taskId: string; projectId: string; userOverview: string }): Promise<Task> {
+	log.info("→ setUserOverview", { taskId: params.taskId, len: params.userOverview?.length ?? 0 });
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	const trimmed = params.overview?.trim() || null;
-	const updated = await data.updateTask(project, task.id, { overview: trimmed });
+	const trimmed = params.userOverview?.trim();
+	if (!trimmed) throw new Error("userOverview is required — use clearUserOverview to remove it");
+	const updated = await data.updateTask(project, task.id, { userOverview: trimmed });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("← setTaskOverview done", { taskId: task.id });
+	log.info("← setUserOverview done", { taskId: task.id });
+	return updated;
+}
+
+async function clearUserOverview(params: { taskId: string; projectId: string }): Promise<Task> {
+	log.info("→ clearUserOverview", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const updated = await data.updateTask(project, task.id, { userOverview: null });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← clearUserOverview done", { taskId: task.id });
 	return updated;
 }
 
@@ -986,6 +997,7 @@ export const taskLifecycleHandlers = {
 	addAttempts,
 	editTask,
 	renameTask,
-	setTaskOverview,
+	setUserOverview,
+	clearUserOverview,
 	toggleTaskWatch,
 };

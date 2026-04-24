@@ -935,6 +935,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				taskId={task.id}
 				projectId={project.id}
 				overview={task.overview ?? null}
+				userOverview={task.userOverview ?? null}
 				description={task.description}
 			/>
 		</div>

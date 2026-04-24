@@ -240,6 +240,64 @@ describe("ActiveTasksSidebar", () => {
 		expect(screen.queryByTestId("active-task-overview-t1")).toBeNull();
 	});
 
+	it("shows user-edited overview instead of AI overview when both are set", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({
+							id: "t1",
+							overview: "AI-written summary the user doesn't want.",
+							userOverview: "My hand-written version.",
+						}),
+					]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		expect(screen.getByTestId("active-task-overview-t1")).toHaveTextContent(
+			"My hand-written version.",
+		);
+		expect(
+			screen.queryByText("AI-written summary the user doesn't want."),
+		).toBeNull();
+	});
+
+	it("falls back to AI overview when userOverview is null/empty", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({
+							id: "t1",
+							overview: "AI summary.",
+							userOverview: null,
+						}),
+					]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.getByTestId("active-task-overview-t1")).toHaveTextContent(
+			"AI summary.",
+		);
+	});
+
 	it("does not hijack Cmd+F when disabled", async () => {
 		const user = userEvent.setup();
 

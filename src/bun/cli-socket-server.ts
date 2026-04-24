@@ -230,7 +230,11 @@ const handlers: Record<string, Handler> = {
 
 	"overview.show": async (params) => {
 		const { task } = await resolveTaskFromParams(params);
-		return { overview: task.overview ?? null, description: task.description };
+		return {
+			overview: task.overview ?? null,
+			userOverview: task.userOverview ?? null,
+			description: task.description,
+		};
 	},
 
 	"overview.clear": async (params) => {

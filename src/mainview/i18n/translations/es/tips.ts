@@ -24,6 +24,8 @@ const tips = {
 	"tip.taskOverviewHover.body": "Pasa el cursor sobre una tarea activa para ver su resumen encima del terminal. Haz clic en el lápiz para editar un párrafo en línea — ideal para retomar el foco después de un descanso.",
 	"tip.activeTaskOverviewInline.title": "Resumen de la tarea seleccionada",
 	"tip.activeTaskOverviewInline.body": "La tarea en la que estás trabajando muestra su resumen directamente en su tarjeta del sidebar, sin necesidad de pasar el cursor. Vuelves tras una pausa y el contexto ya está frente a ti.",
+	"tip.userOverviewOverride.title": "Escribe tu propio resumen",
+	"tip.userOverviewOverride.body": "Pulsa el lápiz junto al resumen y guarda tu propia versión — anula lo que escriba el agente. El icono de deshacer a su lado te devuelve a la versión IA.",
 	"tip.splitViewEscape.title": "Escape cierra la vista dividida",
 	"tip.splitViewEscape.body": "Pulsa Escape para cerrar el panel de terminal y volver al tablero Kanban completo en cualquier momento.",
 	"tip.multiVariantTasks.title": "Explora varias soluciones a la vez",

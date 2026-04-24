@@ -9,12 +9,16 @@ const FALLBACK_DESCRIPTION_CHARS = 240;
 const EDIT_ICON = "\u{F040}"; // nf-mdi-pencil
 const SAVE_ICON = "\u{F00C}"; // nf-fa-check
 const CANCEL_ICON = "\u{F00D}"; // nf-fa-times
+const REVERT_ICON = "\u{F0450}"; // nf-md-undo_variant
 
 interface TerminalPreviewPopoverProps extends TerminalPreviewState {
 	/** Full task id (resolved by consumer from activeTaskId). */
 	taskId?: string | null;
 	projectId?: string | null;
+	/** Agent-written overview (read-only for UI display/edit purposes). */
 	overview?: string | null;
+	/** User-edited override. When present, takes precedence over `overview`. */
+	userOverview?: string | null;
 	description?: string | null;
 }
 
@@ -34,6 +38,7 @@ function TerminalPreviewPopover({
 	taskId,
 	projectId,
 	overview,
+	userOverview,
 	description,
 }: TerminalPreviewPopoverProps) {
 	const t = useT();
@@ -50,14 +55,22 @@ function TerminalPreviewPopover({
 		setSaving(false);
 	}, [taskId, open]);
 
+	// The effective overview shown everywhere: the user edit wins if present.
+	const aiOverview = overview?.trim() || "";
+	const userEdit = userOverview?.trim() || "";
+	const effectiveOverview = userEdit || aiOverview;
+	const hasUserOverride = userEdit.length > 0;
+
 	const startEditing = useCallback(() => {
 		if (!taskId || !projectId) return;
-		setValue(overview || "");
+		// Prefill with whatever is currently shown — user edit if present,
+		// otherwise the AI version so the user can tweak instead of starting blank.
+		setValue(effectiveOverview);
 		setEditing(true);
 		cancelClose();
 		// Keep popover anchored while the textarea is focused.
 		setTimeout(() => textareaRef.current?.focus(), 0);
-	}, [taskId, projectId, overview, cancelClose]);
+	}, [taskId, projectId, effectiveOverview, cancelClose]);
 
 	const cancelEditing = useCallback(() => {
 		setEditing(false);
@@ -68,27 +81,47 @@ function TerminalPreviewPopover({
 		if (!taskId || !projectId) return;
 		const trimmed = value.trim();
 		if (trimmed.length > OVERVIEW_MAX_LEN) return;
-		if (trimmed === (overview || "")) {
+		// Saving the same text that's already shown — no-op.
+		if (trimmed === effectiveOverview) {
 			setEditing(false);
 			return;
 		}
 		setSaving(true);
 		try {
-			await api.request.setTaskOverview({
-				taskId,
-				projectId,
-				overview: trimmed || null,
-			});
+			if (!trimmed || trimmed === aiOverview) {
+				// Empty save or user typed exactly the AI version — drop the
+				// override so the agent's overview is shown again.
+				await api.request.clearUserOverview({ taskId, projectId });
+			} else {
+				await api.request.setUserOverview({
+					taskId,
+					projectId,
+					userOverview: trimmed,
+				});
+			}
 			setEditing(false);
 		} catch (err) {
 			alert(t("overview.saveFailed", { error: String(err) }));
 		}
 		setSaving(false);
-	}, [taskId, projectId, value, overview, t]);
+	}, [taskId, projectId, value, effectiveOverview, aiOverview, t]);
+
+	const revertToAI = useCallback(async () => {
+		if (!taskId || !projectId) return;
+		setSaving(true);
+		try {
+			await api.request.clearUserOverview({ taskId, projectId });
+			setEditing(false);
+			setValue("");
+		} catch (err) {
+			alert(t("overview.saveFailed", { error: String(err) }));
+		}
+		setSaving(false);
+	}, [taskId, projectId, t]);
 
 	if (!open) return null;
 
-	const hasOverview = !!(overview && overview.trim());
+	const hasOverview = effectiveOverview.length > 0;
 	const hasDescription = !!(description && description.trim());
 	const canEdit = !!taskId && !!projectId;
 	const showOverviewBlock = hasOverview || hasDescription || editing;
@@ -96,7 +129,7 @@ function TerminalPreviewPopover({
 	const overBudget = value.length > OVERVIEW_MAX_LEN;
 
 	const displayText = hasOverview
-		? overview!.trim()
+		? effectiveOverview
 		: hasDescription
 			? truncate(description!, FALLBACK_DESCRIPTION_CHARS)
 			: "";
@@ -121,26 +154,52 @@ function TerminalPreviewPopover({
 			{showOverviewBlock && (
 				<div className="flex flex-col border-b border-edge p-2 gap-1">
 					<div className="flex items-center justify-between gap-2">
-						<span
-							className={`text-[0.5625rem] font-semibold uppercase tracking-wider ${
-								hasOverview ? "text-fg-3" : "text-fg-muted"
-							}`}
-						>
-							{t(labelKey)}
-						</span>
-						{canEdit && !editing && (
-							<button
-								type="button"
-								onClick={startEditing}
-								className="flex-shrink-0 text-fg-muted hover:text-fg-2 transition-colors leading-none"
-								title={t("overview.edit")}
-								aria-label={t("overview.edit")}
+						<div className="flex items-center gap-1.5 min-w-0">
+							<span
+								className={`text-[0.5625rem] font-semibold uppercase tracking-wider ${
+									hasOverview ? "text-fg-3" : "text-fg-muted"
+								}`}
 							>
-								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "0.875rem" }}>
-									{EDIT_ICON}
+								{t(labelKey)}
+							</span>
+							{hasUserOverride && (
+								<span
+									className="text-[0.5625rem] text-fg-muted italic"
+									title={t("overview.editedByYouHint")}
+								>
+									{t("overview.editedByYou")}
 								</span>
-							</button>
-						)}
+							)}
+						</div>
+						<div className="flex items-center gap-2">
+							{canEdit && !editing && hasUserOverride && (
+								<button
+									type="button"
+									onClick={() => void revertToAI()}
+									disabled={saving}
+									className="flex-shrink-0 text-fg-muted hover:text-accent transition-colors leading-none disabled:opacity-40"
+									title={t("overview.revertToAI")}
+									aria-label={t("overview.revertToAI")}
+								>
+									<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "0.875rem" }}>
+										{REVERT_ICON}
+									</span>
+								</button>
+							)}
+							{canEdit && !editing && (
+								<button
+									type="button"
+									onClick={startEditing}
+									className="flex-shrink-0 text-fg-muted hover:text-fg-2 transition-colors leading-none"
+									title={t("overview.edit")}
+									aria-label={t("overview.edit")}
+								>
+									<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "0.875rem" }}>
+										{EDIT_ICON}
+									</span>
+								</button>
+							)}
+						</div>
 					</div>
 					{editing ? (
 						<>

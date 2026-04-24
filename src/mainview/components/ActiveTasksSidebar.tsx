@@ -447,15 +447,21 @@ function ActiveTasksSidebar({
 												</div>
 
 												{/* Overview — shown only for the active task, and only if set.
-												    Helps the user re-enter context without relying on hover-only preview. */}
-												{isActive && task.overview && task.overview.trim().length > 0 && (
-													<div
-														className="mt-1.5 pt-1.5 border-t border-accent/20 text-xs leading-relaxed text-fg-2 whitespace-pre-wrap break-words"
-														data-testid={`active-task-overview-${task.id}`}
-													>
-														{task.overview}
-													</div>
-												)}
+												    The user's manual edit (`userOverview`) overrides the agent's
+												    `overview`, so the user always sees the version they authored. */}
+												{(() => {
+													if (!isActive) return null;
+													const effective = task.userOverview?.trim() || task.overview?.trim() || "";
+													if (!effective) return null;
+													return (
+														<div
+															className="mt-1.5 pt-1.5 border-t border-accent/20 text-xs leading-relaxed text-fg-2 whitespace-pre-wrap break-words"
+															data-testid={`active-task-overview-${task.id}`}
+														>
+															{effective}
+														</div>
+													);
+												})()}
 
 												<div className="mt-1 flex items-center gap-1 min-w-0">
 													<div className="text-[0.5625rem] text-fg-muted font-mono shrink-0">
@@ -516,6 +522,7 @@ function ActiveTasksSidebar({
 						taskId={hoveredTask?.id ?? null}
 						projectId={project.id}
 						overview={hoveredTask?.overview ?? null}
+						userOverview={hoveredTask?.userOverview ?? null}
 						description={hoveredTask?.description ?? null}
 					/>
 				);

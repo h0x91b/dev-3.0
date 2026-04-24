@@ -60,14 +60,36 @@ async function showOverview(
 	const resp = await sendRequest(socketPath, "overview.show", params);
 	if (!resp.ok) exitError(resp.error || "Failed to load overview");
 
-	const data = resp.data as { overview: string | null; description: string };
-	if (data.overview) {
-		process.stdout.write(`${data.overview}\n`);
+	const data = resp.data as {
+		overview: string | null;
+		userOverview: string | null;
+		description: string;
+	};
+
+	const aiOverview = data.overview?.trim() || "";
+	const userOverview = data.userOverview?.trim() || "";
+
+	// If the user has edited the overview, their version is what the user
+	// actually sees. Agents keep writing to `overview` freely, but surface
+	// this state so they don't wonder why their edits don't show up.
+	if (userOverview) {
+		process.stdout.write(
+			"(user-edited — the version below is what the user sees; agent edits to the AI overview are kept but hidden)\n\n",
+		);
+		process.stdout.write(`${userOverview}\n`);
+		if (aiOverview && aiOverview !== userOverview) {
+			process.stdout.write(`\n--- AI overview (currently hidden by user edit) ---\n${aiOverview}\n`);
+		}
 		return;
 	}
 
-	// No overview — show a hint + the raw description so the agent can see
-	// what the task is actually about and write a proper overview from it.
+	if (aiOverview) {
+		process.stdout.write(`${aiOverview}\n`);
+		return;
+	}
+
+	// No overview at all — show a hint + the raw description so the agent
+	// can see what the task is actually about and write a proper overview.
 	process.stdout.write("(no overview set — run `dev3 overview set \"...\"` to add one)\n");
 	if (data.description) {
 		process.stdout.write(`\n--- description ---\n${data.description}\n`);

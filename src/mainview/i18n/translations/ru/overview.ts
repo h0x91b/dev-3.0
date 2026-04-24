@@ -8,6 +8,9 @@ const overview = {
 	"overview.cancel": "Отменить",
 	"overview.saveHint": "⌘↵ сохранить, Esc отменить",
 	"overview.saveFailed": "Не удалось сохранить обзор: {error}",
+	"overview.editedByYou": "отредактировано вами",
+	"overview.editedByYouHint": "Ваша правка перекрывает обзор от агента. Нажмите иконку отмены, чтобы вернуть AI-версию.",
+	"overview.revertToAI": "Вернуть AI-версию",
 };
 
 export default overview;

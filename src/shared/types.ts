@@ -545,12 +545,21 @@ export interface Task {
 	title: string;
 	description: string;
 	/**
-	 * Short, clean one-paragraph summary written by the agent (or the user).
+	 * Short, clean one-paragraph summary written by the agent.
 	 * Surfaced in the hover-preview popover above the terminal snapshot so
 	 * the user can re-enter focus fast after a long break. `description` is
 	 * the raw original user request and must NOT be used as a substitute.
+	 * When `userOverview` is set, it takes precedence for display — agents
+	 * keep writing here freely, but the user won't see it until they revert.
 	 */
 	overview?: string | null;
+	/**
+	 * User-edited overview that OVERRIDES the agent-written `overview` in
+	 * every display surface. Set when the user saves a manual edit through
+	 * the UI pencil editor; cleared only when the user explicitly reverts
+	 * to the AI version. Agents never read or write this field directly.
+	 */
+	userOverview?: string | null;
 	customTitle?: string | null;
 	status: TaskStatus;
 	baseBranch: string;
@@ -1009,8 +1018,12 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; customTitle: string | null };
 				response: Task;
 			};
-			setTaskOverview: {
-				params: { taskId: string; projectId: string; overview: string | null };
+			setUserOverview: {
+				params: { taskId: string; projectId: string; userOverview: string };
+				response: Task;
+			};
+			clearUserOverview: {
+				params: { taskId: string; projectId: string };
 				response: Task;
 			};
 			spawnVariants: {

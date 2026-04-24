@@ -188,7 +188,11 @@ describe("overview set", () => {
 describe("overview show", () => {
 	it("prints overview when present", async () => {
 		mockSend.mockResolvedValue(
-			okResp({ overview: "The saved summary.", description: "Raw request." }),
+			okResp({
+				overview: "The saved summary.",
+				userOverview: null,
+				description: "Raw request.",
+			}),
 		);
 
 		await handleOverview("show", args(), SOCKET, CTX);
@@ -199,11 +203,49 @@ describe("overview show", () => {
 		});
 		expect(stdoutOutput).toContain("The saved summary.");
 		expect(stdoutOutput).not.toContain("no overview set");
+		expect(stdoutOutput).not.toContain("user-edited");
+	});
+
+	it("prints user-edited version and hides AI version when user overrides", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				overview: "AI-written summary.",
+				userOverview: "My hand-written version.",
+				description: "Raw request.",
+			}),
+		);
+
+		await handleOverview("show", args(), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("user-edited");
+		expect(stdoutOutput).toContain("My hand-written version.");
+		// AI version is surfaced so agents know their edits aren't lost
+		expect(stdoutOutput).toContain("AI overview (currently hidden by user edit)");
+		expect(stdoutOutput).toContain("AI-written summary.");
+	});
+
+	it("does not repeat AI section when user override equals AI overview", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				overview: "Same text.",
+				userOverview: "Same text.",
+				description: "Raw request.",
+			}),
+		);
+
+		await handleOverview("show", args(), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("user-edited");
+		expect(stdoutOutput).not.toContain("AI overview (currently hidden");
 	});
 
 	it("prints hint + description fallback when overview missing", async () => {
 		mockSend.mockResolvedValue(
-			okResp({ overview: null, description: "The original user request text." }),
+			okResp({
+				overview: null,
+				userOverview: null,
+				description: "The original user request text.",
+			}),
 		);
 
 		await handleOverview("show", args(), SOCKET, CTX);
@@ -213,7 +255,9 @@ describe("overview show", () => {
 	});
 
 	it("handles empty description gracefully", async () => {
-		mockSend.mockResolvedValue(okResp({ overview: null, description: "" }));
+		mockSend.mockResolvedValue(
+			okResp({ overview: null, userOverview: null, description: "" }),
+		);
 
 		await handleOverview("show", args(), SOCKET, CTX);
 
