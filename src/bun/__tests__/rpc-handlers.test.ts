@@ -1344,6 +1344,48 @@ describe("handlers.createTask", () => {
 		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
+
+	it("scratch task creates a todo task with placeholder title and scratch flag, no worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+
+		const result = await handlers.createTask({
+			projectId: "proj-1",
+			description: "ignored typed text",
+			scratch: true,
+		});
+
+		expect(result).toEqual(task);
+		const addTaskCall = vi.mocked(data.addTask).mock.calls[0];
+		expect(addTaskCall[0]).toEqual(project);
+		// Placeholder matches `Scratch — HH:MM` (em dash, 2-digit hours/minutes).
+		expect(addTaskCall[1]).toMatch(/^Scratch \u2014 \d{2}:\d{2}$/);
+		expect(addTaskCall[2]).toBe("todo");
+		expect(addTaskCall[3]).toEqual({ scratch: true });
+		// No worktree, no agent spawn — scratch just creates the todo row, the
+		// Launch Variants modal will spawn the agent later.
+		expect(git.createWorktree).not.toHaveBeenCalled();
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("scratch task ignores any incoming status (always todo)", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+
+		await handlers.createTask({
+			projectId: "proj-1",
+			description: "",
+			scratch: true,
+			status: "in-progress", // should be ignored
+		});
+
+		expect(vi.mocked(data.addTask).mock.calls[0][2]).toBe("todo");
+		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
 });
 
 // ================================================================
@@ -2056,6 +2098,7 @@ describe("activateTask", () => {
 			{ resume: true },
 		);
 	});
+
 });
 
 // ================================================================

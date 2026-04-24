@@ -689,6 +689,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.sidebarGlobalScope.body",
 		icon: "\uEB01", // nf-cod-globe
 	},
+	// Batch 33: scratch task
+	{
+		id: "scratch-task",
+		titleKey: "tip.scratchTask.title",
+		bodyKey: "tip.scratchTask.body",
+		icon: "\u{F018D}", // nf-md-console
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -37,7 +37,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [projectCurrentBranch, setProjectCurrentBranch] = useState<ProjectCurrentBranchInfo | null>(null);
 	const [checkedProjectCurrentBranch, setCheckedProjectCurrentBranch] = useState(false);
 	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
-	const [pendingSubmitMode, setPendingSubmitMode] = useState<"save" | "run" | null>(null);
+	const [pendingSubmitMode, setPendingSubmitMode] = useState<"save" | "run" | "scratch" | null>(null);
 	const [reviewMode, setReviewMode] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
@@ -165,14 +165,18 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [description, onClose, confirmDiscard, pendingBranchChoice]);
 
-	async function createTaskWithBranch(branch: string | null, mode: "save" | "run") {
+	async function createTaskWithBranch(branch: string | null, mode: "save" | "run" | "scratch") {
 		const trimmed = description.trim();
-		if (!trimmed || creating) return;
+		if (mode !== "scratch" && !trimmed) return;
+		if (creating) return;
 		setCreating(true);
 		try {
 			let task = await api.request.createTask({
 				projectId: project.id,
-				description: trimmed,
+				// For scratch tasks the backend generates its own placeholder description —
+				// we still send an empty string here to match the RPC shape.
+				description: mode === "scratch" ? "" : trimmed,
+				...(mode === "scratch" ? { scratch: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
 			});
 			if (customTitle) {
@@ -193,8 +197,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			trackEvent("task_created", {
 				project_id: project.id,
 				...(mode === "run" ? { source: "create_and_run" } : {}),
+				...(mode === "scratch" ? { source: "scratch" } : {}),
 			});
-			if (mode === "run" && onCreateAndRun) {
+			if ((mode === "run" || mode === "scratch") && onCreateAndRun) {
 				onCreateAndRun(task);
 			} else {
 				onClose();
@@ -205,9 +210,12 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		}
 	}
 
-	async function handleSubmit(mode: "save" | "run") {
+	async function handleSubmit(mode: "save" | "run" | "scratch") {
 		const trimmed = description.trim();
-		if (!trimmed || creating || (mode === "run" && !onCreateAndRun)) return;
+		if (creating) return;
+		if (mode !== "scratch" && !trimmed) return;
+		if (mode === "run" && !onCreateAndRun) return;
+		if (mode === "scratch" && !onCreateAndRun) return;
 
 		// Race guard: if the initial getProjectCurrentBranch() lookup is still
 		// in-flight when the user clicks Save, the user has not yet had a
@@ -243,6 +251,10 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	async function handleCreateAndRun() {
 		await handleSubmit("run");
+	}
+
+	async function handleCreateScratch() {
+		await handleSubmit("scratch");
 	}
 
 	function dismissBranchChoice() {
@@ -454,6 +466,27 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 					) : (
 						<>
 							<div className="flex items-center justify-end gap-2">
+								{onCreateAndRun && (
+									<div className="mr-auto flex flex-col items-start gap-0.5">
+										<button
+											onClick={handleCreateScratch}
+											disabled={creating}
+											title={t("createTask.scratchHint")}
+											className="px-3 py-1.5 bg-elevated border border-edge-active text-fg-2 text-xs font-medium rounded-lg hover:bg-elevated-hover hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+										>
+											<span
+												className="text-[0.875rem] leading-none"
+												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+											>
+												{"\u{F018D}"}
+											</span>
+											{t("createTask.scratch")}
+										</button>
+										<span className="text-fg-muted text-[0.6875rem] leading-tight">
+											{t("createTask.scratchSubtitle")}
+										</span>
+									</div>
+								)}
 								{onCreateAndRun && (
 									<button
 										onClick={handleCreateAndRun}
