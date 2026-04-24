@@ -222,8 +222,6 @@ const tips = {
 	"tip.sidebarGlobalScope.body": "Flip the toggle next to Active Tasks to switch between this project only and every active task in dev-3.0 — click any card to jump straight into its project.",
 	"tip.scratchTask.title": "Just need a terminal?",
 	"tip.scratchTask.body": "Click Scratch Task in the New Task modal to spin up a worktree + agent with no prompt — the agent greets you and renames the task itself once you say what you need.",
-	"tip.aiReviewHandsBack.title": "AI Review hands the task back",
-	"tip.aiReviewHandsBack.body": "After AI Review finishes, the task moves itself: to Has Questions if anything was found or fixed, or to Your Review if the diff is clean.",
 } as const;
 
 export default tips;

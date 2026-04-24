@@ -222,8 +222,6 @@ const tips = {
 	"tip.sidebarGlobalScope.body": "Переключатель рядом с Active Tasks меняет область между текущим проектом и всеми активными задачами dev-3.0 — клик по карточке сразу прыгает в её проект.",
 	"tip.scratchTask.title": "Нужен просто терминал?",
 	"tip.scratchTask.body": "Кнопка Scratch Task в окне новой таски создаёт worktree и запускает агента без промпта — агент сам поздоровается и переименует таску, как только ты скажешь, что нужно.",
-	"tip.aiReviewHandsBack.title": "AI Review сам возвращает таску",
-	"tip.aiReviewHandsBack.body": "После AI Review таска двигается автоматически: в Has Questions если что-то нашли или пофиксили, либо в Your Review если в diff всё чисто.",
 };
 
 export default tips;
