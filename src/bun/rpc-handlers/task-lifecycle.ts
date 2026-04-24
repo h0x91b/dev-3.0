@@ -334,9 +334,10 @@ async function prepareTaskInBackground(
 export async function activateTask(
 	project: Project,
 	task: Task,
-	opts?: { isReopen?: boolean },
+	opts?: { isReopen?: boolean; blankPrompt?: boolean },
 ): Promise<{ worktreePath: string; branchName: string }> {
 	const isReopen = opts?.isReopen ?? false;
+	const blankPrompt = opts?.blankPrompt ?? false;
 	const preResolved = await repoConfig.resolveProjectConfig(project);
 	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
 	const resolved = await resolveOperationalProjectConfig(project, wt.worktreePath);
@@ -347,12 +348,22 @@ export async function activateTask(
 		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
 	}
 	await runCowClones(resolved, wt.worktreePath);
-	// On reopen (completed/cancelled → active), we intentionally blank the description
-	// so the agent starts in a clean session instead of replaying the original prompt.
-	// Original intent: commit a2b87778 ("Skip task prompt when reopening from completed/cancelled").
-	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
+	// On reopen (completed/cancelled → active) OR when creating a Scratch Task
+	// (user clicked "Scratch Task" without formulating a prompt), we intentionally
+	// blank the description so the agent starts in a clean session instead of
+	// replaying anything as the first user message. See commit a2b87778
+	// ("Skip task prompt when reopening from completed/cancelled") for the original
+	// reopen case. `blankPrompt` is the same mechanism, exposed for scratch tasks.
+	const shouldBlankPrompt = isReopen || blankPrompt;
+	const taskForLaunch = shouldBlankPrompt ? { ...task, description: "" } : task;
 	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
+}
+
+function scratchPlaceholder(now: Date = new Date()): string {
+	const hh = String(now.getHours()).padStart(2, "0");
+	const mm = String(now.getMinutes()).padStart(2, "0");
+	return `Scratch — ${hh}:${mm}`;
 }
 
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
@@ -546,17 +557,23 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean }): Promise<Task> {
 	log.info("→ createTask", params);
 	const project = await data.getProject(params.projectId);
-	const status = params.status || "todo";
-	const task = await data.addTask(project, params.description, status,
+	const isScratch = params.scratch === true;
+	// Scratch tasks ignore any incoming description/status — they always create
+	// a live, in-progress task with a placeholder title and launch the agent
+	// with no initial prompt. The agent is expected to rewrite title/overview
+	// via the dev3 CLI once the user tells it what the task is really about.
+	const status = isScratch ? "in-progress" : (params.status || "todo");
+	const description = isScratch ? scratchPlaceholder() : params.description;
+	const task = await data.addTask(project, description, status,
 		params.existingBranch ? { existingBranch: params.existingBranch } : undefined,
 	);
 
 	if (isActive(status)) {
-		log.info("Created into active status, creating worktree + PTY", { taskId: task.id });
-		const wt = await activateTask(project, task);
+		log.info("Created into active status, creating worktree + PTY", { taskId: task.id, scratch: isScratch });
+		const wt = await activateTask(project, task, isScratch ? { blankPrompt: true } : undefined);
 
 		const updated = await data.updateTask(project, task.id, {
 			worktreePath: wt.worktreePath,

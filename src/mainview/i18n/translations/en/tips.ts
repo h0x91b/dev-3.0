@@ -220,6 +220,8 @@ const tips = {
 	"tip.folderPickerNewFolder.body": "In the New-project folder picker, click \"New folder\" above the tree to create a subfolder on the spot without leaving the app.",
 	"tip.sidebarGlobalScope.title": "See tasks from every project",
 	"tip.sidebarGlobalScope.body": "Flip the toggle next to Active Tasks to switch between this project only and every active task in dev-3.0 — click any card to jump straight into its project.",
+	"tip.scratchTask.title": "Just need a terminal?",
+	"tip.scratchTask.body": "Click Scratch Task in the New Task modal to spin up a worktree + agent with no prompt — the agent greets you and renames the task itself once you say what you need.",
 } as const;
 
 export default tips;

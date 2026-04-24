@@ -21,6 +21,8 @@ const kanban = {
 	"createTask.submitHint": "\u2318Enter para guardar",
 	"createTask.createAndRun": "Guardar e iniciar",
 	"createTask.submitHintRun": "\u2318Enter guardar \u00b7 \u2318\u21e7Enter guardar e iniciar",
+	"createTask.scratch": "Tarea rápida",
+	"createTask.scratchHint": "Abre un terminal con un agente sin prompt. El agente nombrará la tarea por sí mismo cuando le digas qué hacer.",
 	"createTask.discardConfirm": "¿Descartar cambios? Se perderá la descripción introducida.",
 	"createTask.keepEditing": "Seguir editando",
 	"createTask.discard": "Descartar",

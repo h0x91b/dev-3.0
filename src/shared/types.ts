@@ -991,7 +991,7 @@ export type AppRPCSchema = {
 				response: { projectId: string; tasks: Task[] }[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string };
+				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean };
 				response: Task;
 			};
 			moveTask: {

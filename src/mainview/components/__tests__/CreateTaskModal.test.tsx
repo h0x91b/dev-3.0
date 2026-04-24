@@ -582,6 +582,59 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
+	// ---- Scratch Task ----
+
+	it("shows Scratch Task button when onCreateAndRun is provided", () => {
+		renderModal({ onCreateAndRun: vi.fn() });
+		expect(screen.getByText("Scratch Task")).toBeInTheDocument();
+	});
+
+	it("does not show Scratch Task button when onCreateAndRun is omitted", () => {
+		renderModal();
+		expect(screen.queryByText("Scratch Task")).not.toBeInTheDocument();
+	});
+
+	it("Scratch Task button is enabled with empty description", () => {
+		renderModal({ onCreateAndRun: vi.fn() });
+		const btn = screen.getByText("Scratch Task").closest("button");
+		expect(btn).not.toBeDisabled();
+	});
+
+	it("Scratch Task click sends scratch:true and empty description, calls onCreateAndRun", async () => {
+		const onCreateAndRun = vi.fn();
+		const dispatch = vi.fn();
+		renderModal({ onCreateAndRun, dispatch });
+
+		await userEvent.click(screen.getByText("Scratch Task"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "",
+				scratch: true,
+			});
+		});
+		expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
+		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
+	});
+
+	it("Scratch Task ignores typed description text (backend generates placeholder)", async () => {
+		const onCreateAndRun = vi.fn();
+		renderModal({ onCreateAndRun });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "irrelevant text user typed then clicked scratch");
+		await userEvent.click(screen.getByText("Scratch Task"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: "p1",
+				description: "",
+				scratch: true,
+			});
+		});
+	});
+
 	it("does not ask when project is already on the base branch", async () => {
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false });
 		renderModal();

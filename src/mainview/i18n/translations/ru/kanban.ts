@@ -21,6 +21,8 @@ const kanban = {
 	"createTask.submitHint": "\u2318Enter для сохранения",
 	"createTask.createAndRun": "Сохранить и начать",
 	"createTask.submitHintRun": "\u2318Enter сохранить \u00b7 \u2318\u21e7Enter сохранить и начать",
+	"createTask.scratch": "Черновик",
+	"createTask.scratchHint": "Открыть терминал с агентом без промпта. Агент сам назовёт таску, когда ты объяснишь, что нужно.",
 	"createTask.discardConfirm": "Отменить? Введённое описание будет потеряно.",
 	"createTask.keepEditing": "Продолжить редактирование",
 	"createTask.discard": "Отменить",

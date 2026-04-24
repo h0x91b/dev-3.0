@@ -1,0 +1,1 @@
+Added **Scratch Task** button to the New Task modal. Creates a worktree + terminal + agent with no initial prompt — the agent greets you, asks what you need, and rewrites the task title/overview/labels itself once you tell it. Handy when you just want a sandbox terminal and haven't formulated the task yet.
