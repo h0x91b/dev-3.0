@@ -747,9 +747,7 @@ function hashText(value: string): string {
 }
 
 function getFileReadSignature(taskId: string, file: TaskDiffFile): string {
-	const payload = file.hunks?.join("\n")
-		?? `${file.oldContent}\u0000${file.newContent}`;
-	return `${taskId}:${file.oldPath ?? ""}:${file.newPath ?? ""}:${hashText(payload)}`;
+	return `${taskId}:${file.oldPath ?? ""}:${file.newPath ?? ""}:${getDiffFileContentHash(file)}`;
 }
 
 // Hash of the diff payload (hunks + both sides of content). Combined with `file.id`,
@@ -1119,7 +1117,7 @@ function TaskDiffFileSection({
 
 	const DiffView = diffLib.DiffView;
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
-	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${hashText(file.hunks?.join("\n") ?? `${file.oldContent}\u0000${file.newContent}`)}`;
+	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${getDiffFileContentHash(file)}`;
 	const copiedFilePath = getCopiedFilePath(worktreePath, file);
 
 	function handleCopyPath() {
@@ -1291,6 +1289,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
 	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(request);
+	const [requestVersion, setRequestVersion] = useState(0);
 	const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 	const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
 	const [readFiles, setReadFiles] = useState<Record<string, boolean>>({});
@@ -1315,9 +1314,16 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	);
 	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
+	const isInitialRequestSyncRef = useRef(true);
+
 	useEffect(() => {
 		setCurrentRequest(request);
-	}, [request.compareLabel, request.compareRef, request.focusFile, request.mode]);
+		if (isInitialRequestSyncRef.current) {
+			isInitialRequestSyncRef.current = false;
+			return;
+		}
+		setRequestVersion((version) => version + 1);
+	}, [request]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -1469,7 +1475,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 		return () => {
 			cancelled = true;
 		};
-	}, [currentRequest.compareLabel, currentRequest.compareRef, currentRequest.mode, project.id, task.id]);
+	}, [currentRequest.compareLabel, currentRequest.compareRef, currentRequest.mode, project.id, requestVersion, task.id]);
 
 	useEffect(() => {
 		if (!payload) {
