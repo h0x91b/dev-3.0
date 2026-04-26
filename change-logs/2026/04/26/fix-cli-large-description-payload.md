@@ -1,0 +1,1 @@
+Fixed CLI socket request parsing so large `dev3 task create/update --description @file.md` payloads are buffered across socket chunks instead of failing with a misleading `Invalid JSON`. Oversized CLI requests now return an explicit payload-size error.
