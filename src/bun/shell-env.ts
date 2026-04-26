@@ -88,6 +88,7 @@ export async function resolveShellEnv(): Promise<{
 	lang?: string;
 	xdgConfigHome?: string;
 	ghConfigDir?: string;
+	sshAuthSock?: string;
 }> {
 	const shell = getUserShell();
 	const timeout = 5_000;
@@ -104,6 +105,7 @@ export async function resolveShellEnv(): Promise<{
 			'echo "___LANG=$LANG"',
 			'echo "___XDG_CONFIG_HOME=$XDG_CONFIG_HOME"',
 			'echo "___GH_CONFIG_DIR=$GH_CONFIG_DIR"',
+			'echo "___SSH_AUTH_SOCK=$SSH_AUTH_SOCK"',
 		].join(";")], {
 			stdout: "pipe",
 			stderr: "pipe",
@@ -127,6 +129,7 @@ export async function resolveShellEnv(): Promise<{
 		let lang: string | undefined;
 		let xdgConfigHome: string | undefined;
 		let ghConfigDir: string | undefined;
+		let sshAuthSock: string | undefined;
 
 		for (const line of lines) {
 			if (line.startsWith("___PATH=")) {
@@ -141,10 +144,13 @@ export async function resolveShellEnv(): Promise<{
 			} else if (line.startsWith("___GH_CONFIG_DIR=")) {
 				const val = line.slice("___GH_CONFIG_DIR=".length).trim();
 				if (val) ghConfigDir = val;
+			} else if (line.startsWith("___SSH_AUTH_SOCK=")) {
+				const val = line.slice("___SSH_AUTH_SOCK=".length).trim();
+				if (val) sshAuthSock = val;
 			}
 		}
 
-		return { path, lang, xdgConfigHome, ghConfigDir };
+		return { path, lang, xdgConfigHome, ghConfigDir, sshAuthSock };
 	} catch (err) {
 		log.warn("Failed to resolve shell environment", {
 			shell,
