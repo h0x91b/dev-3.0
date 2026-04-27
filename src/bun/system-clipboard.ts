@@ -62,15 +62,43 @@ function getClipboardTool(): ClipboardTool | null {
 /**
  * Pipe `text` into the host clipboard. Returns the tool used, or `null` if
  * unsupported / failed.
+ *
+ * Spawn returns synchronously, so callers don't need to await — but we attach
+ * a deferred handler that logs the eventual exit code + stderr. This makes it
+ * possible to diagnose silent failures (broken pbcopy, missing permissions,
+ * "no display" on Linux, etc.) from logs alone.
  */
 export function writeSystemClipboard(text: string): string | null {
 	const tool = getClipboardTool();
 	if (!tool) return null;
 	try {
-		const proc = spawn(tool.cmd, { stdin: "pipe", stdout: "ignore", stderr: "ignore" });
+		const proc = spawn(tool.cmd, { stdin: "pipe", stdout: "ignore", stderr: "pipe" });
 		const sink = proc.stdin as unknown as import("bun").FileSink;
 		sink.write(text);
 		sink.end();
+		// Deferred diagnostics — observe whether the tool actually accepted the
+		// payload. Non-zero exit or stderr output is the smoking gun for the
+		// "pbcopy is broken on user's machine" class of bug reports.
+		(async () => {
+			try {
+				const [exitCode, stderr] = await Promise.all([
+					proc.exited,
+					proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(""),
+				]);
+				if (exitCode === 0 && !stderr) {
+					log.debug("clipboard wrote", { tool: tool.label, len: text.length });
+				} else {
+					log.warn("clipboard tool exited non-cleanly", {
+						tool: tool.label,
+						exitCode,
+						stderr: stderr.slice(0, 500),
+						len: text.length,
+					});
+				}
+			} catch (err) {
+				log.warn("clipboard tool exit observation failed", { tool: tool.label, error: String(err) });
+			}
+		})();
 		return tool.label;
 	} catch (err) {
 		log.warn("clipboard write failed", { tool: tool.label, error: String(err) });
