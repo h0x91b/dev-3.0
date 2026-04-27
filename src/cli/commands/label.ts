@@ -3,8 +3,10 @@ import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, type CliContext } from "../context";
+import { rejectUnknownFlags } from "../flag-validation";
 
 async function listLabels(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["project"]);
 	const projectId = args.flags.project || context?.projectId;
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -26,6 +28,7 @@ async function listLabels(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function createLabel(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["project", "name", "color"]);
 	const projectId = args.flags.project || context?.projectId;
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -47,6 +50,7 @@ async function createLabel(args: ParsedArgs, socketPath: string, context: CliCon
 }
 
 async function deleteLabel(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["project", "id"]);
 	const projectId = args.flags.project || context?.projectId;
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -64,14 +68,15 @@ async function deleteLabel(args: ParsedArgs, socketPath: string, context: CliCon
 }
 
 async function setTaskLabels(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const projectId = args.flags.project || context?.projectId;
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
 	}
 
-	const rawTaskId = args.flags.task || context?.taskId;
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTaskId) {
-		exitUsage("--task <id> is required (or run from inside a worktree)");
+		exitUsage("--task <id> or --task-id <id> is required (or run from inside a worktree)");
 	}
 	const taskId = expandShortId(rawTaskId, context);
 
@@ -89,14 +94,15 @@ async function setTaskLabels(args: ParsedArgs, socketPath: string, context: CliC
 }
 
 async function clearTaskLabels(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project", "clear"]);
 	const projectId = args.flags.project || context?.projectId;
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
 	}
 
-	const rawTaskId = args.flags.task || context?.taskId;
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTaskId) {
-		exitUsage("--task <id> is required (or run from inside a worktree)");
+		exitUsage("--task <id> or --task-id <id> is required (or run from inside a worktree)");
 	}
 	const taskId = expandShortId(rawTaskId, context);
 

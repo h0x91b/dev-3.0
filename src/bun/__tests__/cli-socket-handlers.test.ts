@@ -78,6 +78,7 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage } from "../rpc-handlers";
 import { runDevServer, stopDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
+import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
@@ -1607,6 +1608,62 @@ describe("startSocketServer", () => {
 		expect(staleCalls).toHaveLength(0);
 
 		killSpy.mockRestore();
+	});
+
+	it("buffers a large request split across socket data events", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		startSocketServer();
+
+		const listenCalls = vi.mocked((globalThis as any).Bun.listen).mock.calls;
+		const listenOptions = listenCalls[listenCalls.length - 1][0];
+		const socketHandlers = listenOptions.socket;
+		const socket = {};
+		const project = makeProject();
+		const task = makeTask({ status: "todo" });
+		const description = `Line of markdown content.\n`.repeat(600);
+		const request = JSON.stringify(makeRequest("task.create", {
+			projectId: project.id,
+			title: "Large description",
+			description,
+		})) + "\n";
+		const splitAt = Math.floor(request.length / 2);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		await socketHandlers.data(socket, Buffer.from(request.slice(0, splitAt), "utf-8"));
+		expect(flushAndEnd).not.toHaveBeenCalled();
+
+		await socketHandlers.data(socket, Buffer.from(request.slice(splitAt), "utf-8"));
+
+		expect(data.addTask).toHaveBeenCalledWith(project, description.trim(), "todo");
+		const flushCalls = vi.mocked(flushAndEnd).mock.calls;
+		const response = flushCalls[flushCalls.length - 1][1] as string;
+		expect(JSON.parse(response.trim())).toMatchObject({ id: "req-1", ok: true });
+	});
+
+	it("returns a clear error when a CLI request exceeds the payload limit", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		startSocketServer();
+
+		const listenCalls = vi.mocked((globalThis as any).Bun.listen).mock.calls;
+		const listenOptions = listenCalls[listenCalls.length - 1][0];
+		const socketHandlers = listenOptions.socket;
+		const socket = {};
+		const oversizedRequest = "x".repeat(1024 * 1024 + 1);
+
+		await socketHandlers.data(socket, Buffer.from(oversizedRequest, "utf-8"));
+
+		const flushCalls = vi.mocked(flushAndEnd).mock.calls;
+		const response = flushCalls[flushCalls.length - 1][1] as string;
+		expect(JSON.parse(response.trim())).toMatchObject({
+			id: "unknown",
+			ok: false,
+			error: "Payload exceeded 1024 KB limit, current size 1025 KB",
+		});
 	});
 });
 

@@ -5,6 +5,7 @@ import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, type CliContext } from "../context";
+import { rejectUnknownFlags } from "../flag-validation";
 
 // Statuses that destroy the worktree + terminal are forbidden via CLI.
 // An agent running inside a worktree must not be able to kill its own session.
@@ -58,15 +59,16 @@ function printTask(task: Task): void {
 }
 
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
-	const raw = args.positional[0] || args.flags.id || context?.taskId;
+	const raw = args.positional[0] || args.flags.task || args.flags["task-id"] || args.flags.id || context?.taskId;
 	if (!raw) return undefined;
 	return expandShortId(raw, context);
 }
 
 async function showTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task show <id>");
+		exitUsage("Usage: dev3 task show <id|--task id|--task-id id|--id id>");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -80,6 +82,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["project", "title", "description"]);
 	const projectId = args.flags.project || context?.projectId;
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -110,9 +113,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id> --title '...' [--description '...']");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> --title '...' [--description '...']");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -147,9 +151,10 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function moveTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "status", "if-status", "if-status-not", CODEX_STOP_HOOK_FLAG.slice(2)]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task move <id> --status <status>");
+		exitUsage("Usage: dev3 task move <id|--task id|--task-id id|--id id> --status <status>");
 	}
 
 	const newStatus = args.flags.status;

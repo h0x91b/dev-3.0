@@ -21,21 +21,21 @@ Auto-detects project and task from the worktree context.
 
 Commands:
   dev3 current                          Show current project, task, status
-  dev3 task show                        Full task details
-  dev3 task move --status <status>      Change task status
-  dev3 task update --title "..." [--description "..."]  Update title/description
-  dev3 task create --title "..."        Create a new task (To Do)
-  dev3 note add "..." [--source user]   Add note to current task
-  dev3 note list                        List notes
-  dev3 note delete <id>                 Delete note (8-char prefix works)
-  dev3 overview set "..."               Set task overview (one paragraph)
-  dev3 overview show                    Show task overview (or description fallback)
-  dev3 overview clear                   Remove task overview
+  dev3 task show [--task <id>]          Full task details
+  dev3 task move [--task <id>] --status <status>  Change task status
+  dev3 task update [--task <id>] --title "..." [--description "..."]  Update title/description
+  dev3 task create --title "..." [--description "..."]  Create a new task (To Do)
+  dev3 note add "..." [--task <id>] [--source user]  Add note to a task
+  dev3 note list [--task <id>]          List notes
+  dev3 note delete <id> [--task <task>] Delete note (8-char prefix works)
+  dev3 overview set "..." [--task <id>] Set task overview (one paragraph)
+  dev3 overview show [--task <id>]      Show task overview (or description fallback)
+  dev3 overview clear [--task <id>]     Remove task overview
   dev3 label list                       List project labels
   dev3 label create "name" [--color "#hex"]  Create label
   dev3 label delete <id>                Delete label
-  dev3 label set <id> [<id>...]         Assign labels to current task
-  dev3 label set --clear                Remove all labels from task
+  dev3 label set <id> [<id>...] [--task <task>]  Assign labels to a task
+  dev3 label set --clear [--task <id>]  Remove all labels from a task
   dev3 tasks list [--status <s>] [--label <id>]  List/filter tasks
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
@@ -55,7 +55,7 @@ Statuses: todo, in-progress, user-questions, review-by-ai, review-by-user
 @file syntax: any argument starting with @ reads from file (e.g. @plan.md).
   Double @@ for literal @.
 
-Options: --project <id> (override auto-detect), --help, --version
+Options: --project <id> (override auto-detect), --task <id> / --task-id <id> (override task target), --help, --version
 `;
 
 

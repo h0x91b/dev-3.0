@@ -3,6 +3,7 @@ import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, type CliContext } from "../context";
+import { rejectUnknownFlags } from "../flag-validation";
 
 const VALID_SOURCES: NoteSource[] = ["user", "ai"];
 
@@ -24,9 +25,10 @@ function truncate(text: string, maxLen: number): string {
 }
 
 async function addNote(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	const rawTaskId = args.flags.task || context?.taskId;
+	rejectUnknownFlags(args, ["task", "task-id", "project", "content", "source"]);
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTaskId) {
-		exitUsage("Usage: dev3 note add \"content\" (or run from inside a worktree)");
+		exitUsage("Usage: dev3 note add \"content\" [--task <id>|--task-id <id>] (or run from inside a worktree)");
 	}
 	const taskId = expandShortId(rawTaskId, context);
 
@@ -53,9 +55,10 @@ async function addNote(args: ParsedArgs, socketPath: string, context: CliContext
 }
 
 async function listNotes(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	const rawTaskId = args.flags.task || args.positional[0] || context?.taskId;
+	rejectUnknownFlags(args, ["task", "task-id", "project"]);
+	const rawTaskId = args.flags.task || args.flags["task-id"] || args.positional[0] || context?.taskId;
 	if (!rawTaskId) {
-		exitUsage("Usage: dev3 note list (or run from inside a worktree)");
+		exitUsage("Usage: dev3 note list [--task <id>|--task-id <id>] (or run from inside a worktree)");
 	}
 	const taskId = expandShortId(rawTaskId, context);
 
@@ -83,14 +86,15 @@ async function listNotes(args: ParsedArgs, socketPath: string, context: CliConte
 }
 
 async function deleteNote(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const noteId = args.positional[0];
 	if (!noteId) {
 		exitUsage("Usage: dev3 note delete <note-id>");
 	}
 
-	const rawTaskId = args.flags.task || context?.taskId;
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTaskId) {
-		exitUsage("--task <id> is required (or run from inside a worktree)");
+		exitUsage("--task <id> or --task-id <id> is required (or run from inside a worktree)");
 	}
 	const taskId = expandShortId(rawTaskId, context);
 

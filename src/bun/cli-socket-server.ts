@@ -30,10 +30,20 @@ function findByIdPrefix<T extends { id: string }>(items: T[], prefix: string, en
 }
 
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
+const MAX_CLI_REQUEST_BYTES = 1024 * 1024;
 let socketPath = "";
+const pendingRequestText = new Map<unknown, string>();
 
 export function getSocketPath(): string {
 	return socketPath;
+}
+
+function formatKiB(bytes: number): number {
+	return Math.ceil(bytes / 1024);
+}
+
+function payloadTooLargeMessage(bytes: number): string {
+	return `Payload exceeded ${formatKiB(MAX_CLI_REQUEST_BYTES)} KB limit, current size ${formatKiB(bytes)} KB`;
 }
 
 function cleanupStaleSockets(): void {
@@ -616,18 +626,45 @@ export function startSocketServer(): string {
 			},
 			async data(socket, raw) {
 				const text = typeof raw === "string" ? raw : Buffer.from(raw).toString("utf-8");
+				const buffered = pendingRequestText.get(socket) || "";
+				const combined = buffered + text;
+				const combinedBytes = Buffer.byteLength(combined, "utf-8");
+
+				if (combinedBytes > MAX_CLI_REQUEST_BYTES) {
+					pendingRequestText.delete(socket);
+					const errResp: CliResponse = {
+						id: "unknown",
+						ok: false,
+						error: payloadTooLargeMessage(combinedBytes),
+					};
+					flushAndEnd(socket, JSON.stringify(errResp) + "\n");
+					return;
+				}
 
 				// Handle multiple NDJSON messages in one chunk — accumulate all
 				// responses first, then flush once to avoid interleaved partial writes.
 				let responseData = "";
-				for (const line of text.split("\n")) {
+				const lines = combined.split("\n");
+				const tail = lines.pop() || "";
+				if (tail) {
+					pendingRequestText.set(socket, tail);
+				} else {
+					pendingRequestText.delete(socket);
+				}
+
+				for (const line of lines) {
 					if (!line.trim()) continue;
 
 					let req: CliRequest;
 					try {
 						req = JSON.parse(line);
 					} catch {
-						const errResp: CliResponse = { id: "unknown", ok: false, error: "Invalid JSON" };
+						const bytes = Buffer.byteLength(line, "utf-8");
+						const errResp: CliResponse = {
+							id: "unknown",
+							ok: false,
+							error: `Invalid JSON in CLI request (${formatKiB(bytes)} KB). The request may be truncated or corrupted.`,
+						};
 						responseData += JSON.stringify(errResp) + "\n";
 						continue;
 					}
@@ -636,13 +673,16 @@ export function startSocketServer(): string {
 					responseData += JSON.stringify(resp) + "\n";
 				}
 
-				flushAndEnd(socket, responseData);
+				if (responseData) {
+					flushAndEnd(socket, responseData);
+				}
 			},
 			drain(socket) {
 				drainSocket(socket);
 			},
 			close(socket) {
 				pendingWrites.delete(socket);
+				pendingRequestText.delete(socket);
 				log.debug("CLI client disconnected");
 			},
 			error(_socket, error) {

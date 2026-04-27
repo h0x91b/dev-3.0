@@ -3,6 +3,7 @@ import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, type CliContext } from "../context";
+import { rejectUnknownFlags } from "../flag-validation";
 
 const OVERVIEW_MAX_LEN = 500;
 
@@ -10,9 +11,9 @@ function resolveTargetIds(
 	args: ParsedArgs,
 	context: CliContext | null,
 ): { taskId: string; projectId?: string } {
-	const rawTaskId = args.flags.task || context?.taskId;
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTaskId) {
-		exitUsage("No task in context. Run from inside a worktree or pass --task <id>.");
+		exitUsage("No task in context. Run from inside a worktree or pass --task <id> / --task-id <id>.");
 	}
 	const taskId = expandShortId(rawTaskId, context);
 	const projectId = args.flags.project || context?.projectId || undefined;
@@ -24,6 +25,7 @@ async function setOverview(
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project", "text"]);
 	const raw = (args.positional[0] ?? args.flags.text ?? "").toString();
 	const overview = raw.trim();
 	if (!overview) {
@@ -53,6 +55,7 @@ async function showOverview(
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const { taskId, projectId } = resolveTargetIds(args, context);
 	const params: Record<string, unknown> = { taskId };
 	if (projectId) params.projectId = projectId;
@@ -101,6 +104,7 @@ async function clearOverview(
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const { taskId, projectId } = resolveTargetIds(args, context);
 	const params: Record<string, unknown> = { taskId };
 	if (projectId) params.projectId = projectId;

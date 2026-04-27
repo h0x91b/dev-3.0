@@ -50,6 +50,10 @@ longer than ~6 words, synthesize a concise title and update it:
 Good titles: "Fix auth race condition", "Map missing keyboard bindings", "Add drag-to-reorder support"
 Bad titles: copies of the description, vague summaries, titles with ellipsis
 
+When targeting a task other than the auto-detected current worktree task, pass
+\`--task <id>\` or \`--task-id <id>\` explicitly. This works for \`task show\`,
+\`task update\`, \`task move\`, \`note\`, \`overview\`, and \`label set\`.
+
 In the same session-start pass, also assign task labels:
 
 - Run \`dev3 label list\` and reuse existing labels whenever possible.

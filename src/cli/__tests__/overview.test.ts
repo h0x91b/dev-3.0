@@ -157,6 +157,15 @@ describe("overview set", () => {
 		expect(params.taskId).toBe("bbbbbbbb-2222-3333-4444-555555555555");
 	});
 
+	it("--task-id flag overrides context", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleOverview("set", args(["summary"], { "task-id": "cccccccc-2222-3333-4444-555555555555" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc-2222-3333-4444-555555555555");
+	});
+
 	it("resolves 8-char --task short ID to full UUID", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
@@ -180,6 +189,18 @@ describe("overview set", () => {
 			handleOverview("set", args(["summary"]), SOCKET, CTX),
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task not found");
+	});
+});
+
+describe("overview unknown flags", () => {
+	it("rejects unknown flags instead of falling back to context", async () => {
+		await expect(
+			handleOverview("set", args(["summary"], { taskk: "bbbbbbbb" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+
+		expect(stderrOutput).toContain("Unknown option");
+		expect(stderrOutput).toContain("--taskk");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
