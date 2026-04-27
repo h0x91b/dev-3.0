@@ -32,15 +32,7 @@ function TaskWorkspacePane({
 	return (
 		<div className="h-full w-full relative overflow-hidden">
 			<div className={inlineDiffRequest ? "h-full hidden" : "h-full"}>
-				{/* key={taskId} forces a fresh TaskTerminal instance per task.
-				   Without it, the previous task's cached `ptyUrl` state is
-				   still in scope when `taskId` changes, so TerminalView
-				   first remounts with (old url + new taskId), repaints the
-				   leaving task's content in the freshly re-created canvas,
-				   then remounts again once the new url arrives — producing
-				   the "clean of screen of the task we leave" flicker. */}
 				<TaskTerminal
-					key={taskId}
 					projectId={projectId}
 					taskId={taskId}
 					tasks={tasks}
