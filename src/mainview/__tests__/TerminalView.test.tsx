@@ -81,7 +81,14 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
-	api: { request: { uploadFileBase64: vi.fn(), tmuxAction: vi.fn(), logRendererEvent: vi.fn().mockResolvedValue(undefined) } },
+	api: {
+		request: {
+			uploadFileBase64: vi.fn(),
+			tmuxAction: vi.fn(),
+			logRendererEvent: vi.fn().mockResolvedValue(undefined),
+			writeClipboardText: vi.fn().mockResolvedValue(undefined),
+		},
+	},
 }));
 
 vi.mock("../zoom", () => ({
@@ -474,7 +481,7 @@ describe("TerminalView – OSC 52 clipboard", () => {
 			);
 		});
 
-		expect(clipboardWriteTextMock).toHaveBeenCalledWith("copied from osc52");
+		expect(api.request.writeClipboardText).toHaveBeenCalledWith({ text: "copied from osc52" });
 	});
 
 	it("ignores OSC 52 payloads for other terminals", async () => {
@@ -489,6 +496,24 @@ describe("TerminalView – OSC 52 clipboard", () => {
 		});
 
 		expect(clipboardWriteTextMock).not.toHaveBeenCalled();
+		expect(api.request.writeClipboardText).not.toHaveBeenCalled();
+	});
+
+	it("writes the current selection to navigator.clipboard when terminal selection changes", async () => {
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("selected text");
+
+		await renderAndSetup();
+
+		const selectionChangeCallback = (mockTermInstance.onSelectionChange.mock.calls as unknown[][])[0]?.[0] as
+			| (() => void)
+			| undefined;
+
+		await act(async () => {
+			selectionChangeCallback?.();
+		});
+
+		expect(api.request.writeClipboardText).toHaveBeenCalledWith({ text: "selected text" });
 	});
 });
 

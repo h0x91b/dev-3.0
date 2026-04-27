@@ -313,6 +313,10 @@ function initBrowserApi(): ApiShape {
 			}
 		},
 
+		async writeClipboardText(params: { text: string }): Promise<void> {
+			await navigator.clipboard.writeText(params.text);
+		},
+
 		async getPtyUrl(params: { taskId: string; resume?: boolean }) {
 			const result = await rpcRequest("getPtyUrl", params);
 			// If the server signals a recoverable session, pass it through

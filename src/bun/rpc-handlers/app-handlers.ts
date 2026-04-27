@@ -486,6 +486,10 @@ async function pasteClipboardImage(params: { projectId: string }): Promise<{ pat
 	return saveUploadedFile(params.projectId, pngData, { mimeType: "image/png" });
 }
 
+async function writeClipboardText(params: { text: string }): Promise<void> {
+	Utils.clipboardWriteText(params.text);
+}
+
 async function uploadImageBase64(params: { projectId: string; base64: string; filename?: string; mimeType?: string }): Promise<{ path: string } | null> {
 	return uploadFileBase64(params);
 }
@@ -628,6 +632,7 @@ export const appHandlers = {
 	detectClonePaths,
 	getChangelogs,
 	pasteClipboardImage,
+	writeClipboardText,
 	uploadFileBase64,
 	uploadImageBase64,
 	readImageBase64,

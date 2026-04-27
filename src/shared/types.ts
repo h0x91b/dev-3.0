@@ -1255,6 +1255,10 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: { path: string } | null;
 			};
+			writeClipboardText: {
+				params: { text: string };
+				response: void;
+			};
 			readImageBase64: {
 				params: { path: string };
 				response: { dataUrl: string } | null;

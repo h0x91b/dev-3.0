@@ -1,0 +1,1 @@
+Keep the terminal behavior aligned with the previous implementation and only add one change: when terminal selection changes, copy the selected text through the app's native clipboard API. This preserves the existing tmux mouse and context-menu behavior while making selection-to-clipboard more reliable.

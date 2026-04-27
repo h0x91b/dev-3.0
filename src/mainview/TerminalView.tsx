@@ -197,7 +197,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			logCopyEvent("info", "osc52 clipboard payload received", {
 				len: detail.text.length,
 			});
-			navigator.clipboard?.writeText(detail.text).catch(() => {});
+			api.request.writeClipboardText({ text: detail.text }).catch(() => {});
 		}
 
 		window.addEventListener("rpc:osc52Clipboard", handleOsc52Clipboard);
@@ -448,10 +448,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 										copyDiagnosticsRef.current?.clearSelection();
 										return;
 									}
+									const selection = term.getSelection();
 									copyDiagnosticsRef.current?.markSelection(
-										term.getSelection().length,
+										selection.length,
 										term.hasMouseTracking(),
 									);
+									api.request.writeClipboardText({ text: selection }).catch(() => {});
 								} catch {
 									copyDiagnosticsRef.current?.clearSelection();
 								}
