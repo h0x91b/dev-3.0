@@ -1,0 +1,1 @@
+Fix tmux selection-to-clipboard regression introduced by PR #473. Mouse-drag copy in the terminal now actually lands in the host clipboard again — the desktop main process pipes OSC 52 payloads directly into pbcopy/wl-copy/xclip, instead of relying on the renderer's `navigator.clipboard.writeText()`, which silently fails in Electrobun WKWebView without a user gesture.

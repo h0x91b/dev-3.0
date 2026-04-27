@@ -16,6 +16,7 @@ import { DEV3_HOME } from "./paths";
 import { getShellRcFile, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
+import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
@@ -412,6 +413,19 @@ setOnIdle((sessionKey) => {
 });
 
 setOnOsc52Copy((payload) => {
+	// Write directly to the host clipboard. The renderer cannot do this
+	// reliably — navigator.clipboard.writeText() in Electrobun WKWebView
+	// requires a user gesture, and an async WS message is not one.
+	const tool = writeSystemClipboard(payload.text);
+	if (tool) {
+		log.info("OSC 52 written to host clipboard", {
+			taskId: payload.taskId.slice(0, 8),
+			len: payload.len,
+			tool,
+		});
+	}
+	// Still forward to renderer (diagnostics) and remote browser clients
+	// (where the user's clipboard is the browser, not the host).
 	try {
 		(mainWindow.webview.rpc as any).send.osc52Clipboard?.(payload);
 		pushToBrowserClients("osc52Clipboard", payload);
