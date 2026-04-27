@@ -172,6 +172,20 @@ describe("note add", () => {
 		expect(params.taskId).toBe("bbbbbbbb");
 	});
 
+	it("uses --task-id flag when no context", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleNote(
+			"add",
+			args(["test"], { "task-id": "cccccccc", project: "proj-001" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc");
+	});
+
 	it("exits when no content", async () => {
 		await expect(
 			handleNote("add", args(), SOCKET, CTX),
@@ -236,6 +250,15 @@ describe("note list", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.taskId).toBe("bbbbbbbb");
+	});
+
+	it("uses --task-id flag when listing notes", async () => {
+		mockSend.mockResolvedValue(okResp([]));
+
+		await handleNote("list", args([], { "task-id": "cccccccc" }), SOCKET, null);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc");
 	});
 
 	it("--project flag overrides context", async () => {
@@ -328,6 +351,20 @@ describe("note delete", () => {
 		expect(params.taskId).toBe("bbbbbbbb");
 	});
 
+	it("uses --task-id flag when deleting a note", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
+
+		await handleNote(
+			"delete",
+			args(["nnnnnnnn"], { "task-id": "cccccccc", project: "proj-001" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc");
+	});
+
 	it("--project flag overrides context", async () => {
 		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, notes: [] }));
 
@@ -408,6 +445,18 @@ describe("note add multiline", () => {
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.content).toBe(multiline);
 		expect(params.content).toContain("\n");
+	});
+});
+
+describe("note unknown flags", () => {
+	it("rejects unknown flags instead of falling back to context", async () => {
+		await expect(
+			handleNote("add", args(["note"], { taskk: "bbbbbbbb" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+
+		expect(stderrOutput).toContain("Unknown option");
+		expect(stderrOutput).toContain("--taskk");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 

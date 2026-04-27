@@ -460,6 +460,28 @@ describe("task show --id flag", () => {
 	});
 });
 
+describe("task show --task aliases", () => {
+	it("--task flag takes priority over context taskId", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleTask("show", args([], { task: "bbbbbbbb" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("bbbbbbbb");
+		expect(params.taskId).not.toBe(CTX.taskId);
+	});
+
+	it("--task-id flag is accepted as an explicit target alias", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleTask("show", args([], { "task-id": "cccccccc" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc");
+		expect(params.taskId).not.toBe(CTX.taskId);
+	});
+});
+
 describe("task update --id flag", () => {
 	it("uses --id flag when no positional arg given", async () => {
 		const updated = { ...FAKE_TASK, title: "Updated" };
@@ -491,6 +513,40 @@ describe("task update --id flag", () => {
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.taskId).not.toBe(CTX.taskId);
 		expect(params.taskId).toBe("different-task");
+	});
+});
+
+describe("task update --task flag", () => {
+	it("--task flag takes priority over context taskId", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleTask("update", args([], { task: "bbbbbbbb", description: "D" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("bbbbbbbb");
+		expect(params.taskId).not.toBe(CTX.taskId);
+	});
+
+	it("--task-id flag is accepted as an explicit target alias", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleTask("update", args([], { "task-id": "cccccccc", title: "T" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc");
+		expect(params.taskId).not.toBe(CTX.taskId);
+	});
+});
+
+describe("task unknown flags", () => {
+	it("rejects unknown flags instead of falling back to context", async () => {
+		await expect(
+			handleTask("update", args([], { taskk: "bbbbbbbb", description: "D" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+
+		expect(stderrOutput).toContain("Unknown option");
+		expect(stderrOutput).toContain("--taskk");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
 
@@ -602,6 +658,30 @@ describe("task move --id flag", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.taskId).toBe("bbbbbbbb");
+	});
+});
+
+describe("task move --task aliases", () => {
+	it("--task flag takes priority over context taskId", async () => {
+		const moved = { ...FAKE_TASK, status: "todo" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask("move", args([], { task: "bbbbbbbb", status: "todo" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("bbbbbbbb");
+		expect(params.taskId).not.toBe(CTX.taskId);
+	});
+
+	it("--task-id flag is accepted as an explicit target alias", async () => {
+		const moved = { ...FAKE_TASK, status: "todo" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask("move", args([], { "task-id": "cccccccc", status: "todo" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.taskId).toBe("cccccccc");
+		expect(params.taskId).not.toBe(CTX.taskId);
 	});
 });
 
