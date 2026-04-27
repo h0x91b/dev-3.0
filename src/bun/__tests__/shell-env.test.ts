@@ -61,13 +61,14 @@ describe("shell environment bootstrap", () => {
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
-	it("captures gh-related config variables from the login shell", async () => {
+	it("captures gh-related config variables and SSH_AUTH_SOCK from the login shell", async () => {
 		process.env.SHELL = "/bin/zsh";
 		spawnMock.mockReturnValue(fakeProc([
 			"___PATH=/opt/homebrew/bin:/usr/bin:/bin",
 			"___LANG=en_US.UTF-8",
 			"___XDG_CONFIG_HOME=/Users/tester/.config-xdg",
 			"___GH_CONFIG_DIR=/Users/tester/.config-gh",
+			"___SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.abc/Listeners",
 		].join("\n")));
 
 		const { resolveShellEnv } = await import("../shell-env");
@@ -78,6 +79,7 @@ describe("shell environment bootstrap", () => {
 			lang: "en_US.UTF-8",
 			xdgConfigHome: "/Users/tester/.config-xdg",
 			ghConfigDir: "/Users/tester/.config-gh",
+			sshAuthSock: "/private/tmp/com.apple.launchd.abc/Listeners",
 		});
 	});
 

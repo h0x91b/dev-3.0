@@ -140,6 +140,7 @@ const originalPath = process.env.PATH;
 const originalLang = process.env.LANG;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 const originalGhConfigDir = process.env.GH_CONFIG_DIR;
+const originalSshAuthSock = process.env.SSH_AUTH_SOCK;
 const shellEnv = await resolveShellEnv();
 if (shellEnv.path) {
 	process.env.PATH = shellEnv.path;
@@ -195,6 +196,14 @@ if (shellEnv.ghConfigDir) {
 	log.info("Shell GH_CONFIG_DIR resolved", {
 		original: originalGhConfigDir,
 		resolved: shellEnv.ghConfigDir,
+	});
+}
+
+if (shellEnv.sshAuthSock) {
+	process.env.SSH_AUTH_SOCK = shellEnv.sshAuthSock;
+	log.info("Shell SSH_AUTH_SOCK resolved", {
+		original: originalSshAuthSock,
+		resolved: shellEnv.sshAuthSock,
 	});
 }
 

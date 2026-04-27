@@ -1,0 +1,1 @@
+Fixed git fetch failing silently in repos that use SSH authentication (e.g., git@github.com: remotes). The app now captures SSH_AUTH_SOCK from the user's login shell during startup, so the SSH agent socket is available to git and other spawned processes.
