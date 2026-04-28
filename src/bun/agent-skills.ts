@@ -181,9 +181,15 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 `;
 
 // Composed bodies for each agent type
-const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT;
-const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+//
+// These are also injected directly into the agent's system prompt via
+// --append-system-prompt (Claude) or the prompt argument (Codex / Cursor /
+// OpenCode), so the skill rules are always in context regardless of whether
+// the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
+// `agents.ts`.
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 

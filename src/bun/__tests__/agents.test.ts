@@ -161,7 +161,10 @@ describe("resolveAgentCommand — resume", () => {
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		expect(cmd).toContain("Fresh Codex sessions use hooks");
+		// Codex skill body includes the hook-aware status section and the
+		// codex shell note (`shell="/bin/bash"`).
+		expect(cmd).toContain("Task Lifecycle Protocol");
+		expect(cmd).toContain("Codex sessions started after the dev3 config was installed");
 		expect(cmd).toContain("shell=\"/bin/bash\"");
 		expect(cmd).toContain("user-questions");
 	});
@@ -250,8 +253,8 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).not.toContain("--continue");
-		// Cursor injects generic DEV3_SYSTEM_PROMPT via prompt (no hooks)
-		expect(cmd).toContain("MANDATORY");
+		// Cursor injects generic DEV3_SYSTEM_PROMPT (skill body) via prompt (no hooks)
+		expect(cmd).toContain("Task Lifecycle Protocol");
 		expect(cmd).toContain("dev3 task move");
 	});
 
@@ -265,7 +268,7 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).not.toContain("--append-system-prompt");
-		expect(cmd).not.toContain("MANDATORY");
+		expect(cmd).not.toContain("Task Lifecycle Protocol");
 	});
 
 	it("Claude: includes --append-system-prompt by default", () => {
@@ -322,9 +325,10 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).toContain("--prompt");
-		expect(cmd).toContain("MANDATORY");
+		expect(cmd).toContain("Task Lifecycle Protocol");
 		expect(cmd).toContain("dev3 task move");
-		expect(cmd).not.toContain("managed automatically by hooks");
+		// Generic skill body uses manual status management, not the hooks variant
+		expect(cmd).not.toContain("Hooks automatically manage task status");
 	});
 
 	it("OpenCode: does not emit --permission-mode, --effort, or --max-budget-usd", () => {

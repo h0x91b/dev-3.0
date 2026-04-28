@@ -8,6 +8,7 @@ import { ensureCodexConfig } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
+import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
 const log = createLogger("agents");
 
@@ -187,41 +188,26 @@ export function interpolateTemplate(template: string, ctx: TemplateContext): str
 // ---- Command Resolution ----
 
 /**
- * System-prompt reminder injected via --append-system-prompt for all
- * Claude-based agents.  Belt-and-suspenders: the full skill lives in
- * ~/.claude/skills/dev3/SKILL.md, but the skill trigger is not 100 %
- * reliable, so we reinforce critical rules at the CLI level.
+ * System-prompt content injected via --append-system-prompt for all
+ * Claude-based agents. Since the working directory is guaranteed to be inside
+ * a dev-3.0 managed worktree, we inline the full skill body directly into the
+ * system prompt instead of asking the agent to invoke `/dev3` first. The skill
+ * file in `~/.claude/skills/dev3/SKILL.md` remains for manual `/dev3` use, but
+ * is no longer required for the rules to take effect.
  */
-export const DEV3_SYSTEM_PROMPT =
-	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
-	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
-	"Task status transitions (in-progress, user-questions, review) are managed " +
-	"automatically by hooks — do NOT call `dev3 task move` for status changes " +
-	"unless you need to move to a custom column.";
+export const DEV3_SYSTEM_PROMPT = CLAUDE_SKILL_BODY;
 
 /**
- * Generic system-prompt for agents without automatic hooks (OpenCode,
- * Cursor Agent, etc.).  Direct instructions — what to do, not what exists.
+ * Generic skill body for agents without automatic hooks (OpenCode,
+ * Cursor Agent, etc.). Includes manual status-management instructions.
  */
-export const DEV3_SYSTEM_PROMPT_GENERIC =
-	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
-	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
-	"You MUST manage task status yourself: run `dev3 task move --status in-progress` " +
-	"when you start working, `dev3 task move --status user-questions` when you need " +
-	"user input, and `dev3 task move --status review-by-user` when you finish.";
+export const DEV3_SYSTEM_PROMPT_GENERIC = GENERIC_SKILL_BODY;
 
 /**
- * Codex uses automatic hooks for active/review transitions, but still needs
- * explicit fallback instructions because skill loading is not guaranteed and
- * Codex has no PermissionRequest hook for user-questions.
+ * Codex skill body. Uses hook-aware status section and includes the Codex
+ * shell note (`shell="/bin/bash"`, `login=false`).
  */
-export const DEV3_SYSTEM_PROMPT_CODEX =
-	"MANDATORY: You are inside a dev-3.0 managed worktree. " +
-	"Invoke the /dev3 skill BEFORE doing any other work. Do NOT skip this step. " +
-	"Fresh Codex sessions use hooks for `in-progress` and review transitions. " +
-	"If you need user input, move the task to `user-questions` before your final response. " +
-	"If hooks appear inactive in this session, manage statuses manually with `dev3 task move`. " +
-	"For exec_command calls, always set `shell=\"/bin/bash\"` and `login=false`.";
+export const DEV3_SYSTEM_PROMPT_CODEX = CODEX_SKILL_BODY;
 
 /** Returns true when the resolved base command is the Claude CLI. */
 export function isClaudeCommand(baseCmd: string): boolean {
