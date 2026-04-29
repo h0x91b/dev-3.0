@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import type { DragEvent } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
@@ -14,6 +15,7 @@ interface ActivityOverviewProps {
 	bellCounts: Map<string, number>;
 	onRemoveProject?: (projectId: string) => void | Promise<void>;
 	onOpenAddProject?: () => void;
+	onReorderProjects?: (projectIds: string[]) => void | Promise<void>;
 }
 
 /** Statuses that require the user's attention — shown as individual task rows. */
@@ -21,6 +23,8 @@ const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
 
 /** Statuses that are "background work" — collapsed into a summary line. */
 const BACKGROUND_STATUSES: TaskStatus[] = ["in-progress", "review-by-ai", "review-by-colleague"];
+
+type DropSide = "before" | "after";
 
 function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => string): string {
 	if (!isoDate) return "";
@@ -34,11 +38,13 @@ function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => strin
 	return t("activity.daysAgo", { count: String(days) });
 }
 
-function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject }: ActivityOverviewProps) {
+function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	const [loading, setLoading] = useState(true);
+	const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+	const [dropTarget, setDropTarget] = useState<{ projectId: string; side: DropSide } | null>(null);
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
@@ -96,17 +102,50 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 		);
 	}
 
-	const sortedProjects = projects
-		.filter((p) => !p.deleted)
-		.sort((a, b) => {
-			const aCount = tasksByProject.get(a.id)?.length ?? 0;
-			const bCount = tasksByProject.get(b.id)?.length ?? 0;
-			// Projects with active tasks first, then by count descending
-			if (aCount === 0 && bCount > 0) return 1;
-			if (aCount > 0 && bCount === 0) return -1;
-			return bCount - aCount;
-		});
+	const visibleProjects = projects.filter((p) => !p.deleted);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
+
+	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
+		const ids = visibleProjects.map((project) => project.id);
+		const sourceIndex = ids.indexOf(sourceProjectId);
+		if (sourceIndex === -1) return ids;
+		ids.splice(sourceIndex, 1);
+		const targetIndex = ids.indexOf(targetProjectId);
+		if (targetIndex === -1) return visibleProjects.map((project) => project.id);
+		ids.splice(side === "after" ? targetIndex + 1 : targetIndex, 0, sourceProjectId);
+		return ids;
+	}
+
+	function reorderProject(sourceProjectId: string, targetProjectId: string, side: DropSide) {
+		if (!onReorderProjects || sourceProjectId === targetProjectId) return;
+		const projectIds = moveProject(sourceProjectId, targetProjectId, side);
+		void onReorderProjects(projectIds);
+	}
+
+	function handleDragOver(event: DragEvent<HTMLDivElement>, projectId: string) {
+		if (!draggedProjectId || draggedProjectId === projectId) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "move";
+		const rect = event.currentTarget.getBoundingClientRect();
+		const side: DropSide = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+		setDropTarget({ projectId, side });
+	}
+
+	function handleDrop(event: DragEvent<HTMLDivElement>, projectId: string) {
+		event.preventDefault();
+		const sourceProjectId = draggedProjectId ?? event.dataTransfer.getData("text/plain").replace(/^project:/, "");
+		const side = dropTarget?.projectId === projectId ? dropTarget.side : "before";
+		setDraggedProjectId(null);
+		setDropTarget(null);
+		reorderProject(sourceProjectId, projectId, side);
+	}
+
+	function moveProjectByStep(projectId: string, step: -1 | 1) {
+		const index = visibleProjects.findIndex((project) => project.id === projectId);
+		const target = visibleProjects[index + step];
+		if (!target) return;
+		reorderProject(projectId, target.id, step < 0 ? "before" : "after");
+	}
 
 	return (
 		<div className="h-full overflow-y-auto p-7">
@@ -114,7 +153,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 				<div className="flex items-start justify-between gap-4">
 					<div>
 						<div className="text-fg-2 text-sm font-medium">
-							{t.plural("dashboard.projectCount", sortedProjects.length)}
+							{t.plural("dashboard.projectCount", visibleProjects.length)}
 						</div>
 						{totalActive === 0 && (
 							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
@@ -130,9 +169,12 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						</button>
 					)}
 				</div>
-				{sortedProjects.map((project) => {
+				{visibleProjects.map((project, index) => {
 					const tasks = tasksByProject.get(project.id) ?? [];
 					const hasActiveTasks = tasks.length > 0;
+					const isDragged = draggedProjectId === project.id;
+					const showDropBefore = dropTarget?.projectId === project.id && dropTarget.side === "before";
+					const showDropAfter = dropTarget?.projectId === project.id && dropTarget.side === "after";
 
 					// Split into attention tasks (shown individually) and background tasks (summarized)
 					const attentionTasks = tasks.filter((t) => ATTENTION_STATUSES.includes(t.status));
@@ -148,13 +190,78 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					}
 
 					return (
-						<div key={project.id} className="bg-raised rounded-2xl border border-edge overflow-hidden">
+						<div
+							key={project.id}
+							className={`relative bg-raised rounded-2xl border border-edge overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
+							onDragOver={(event) => handleDragOver(event, project.id)}
+							onDragLeave={() => setDropTarget((current) => current?.projectId === project.id ? null : current)}
+							onDrop={(event) => handleDrop(event, project.id)}
+						>
+							{showDropBefore && <div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
+							{showDropAfter && <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{/* Project header */}
 							<div className={`group flex items-center gap-2 pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+								<div className="pl-3 flex items-center gap-0.5">
+									<button
+										type="button"
+										draggable={!!onReorderProjects}
+										onDragStart={(event) => {
+											if (!onReorderProjects) return;
+											setDraggedProjectId(project.id);
+											event.dataTransfer.setData("text/plain", `project:${project.id}`);
+											event.dataTransfer.effectAllowed = "move";
+										}}
+										onDragEnd={() => {
+											setDraggedProjectId(null);
+											setDropTarget(null);
+										}}
+										className="text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+										title={t("dashboard.reorderProject")}
+										aria-label={t("dashboard.reorderProject")}
+										disabled={!onReorderProjects}
+									>
+										<span
+											className="text-[1rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\u{F01DB}"}
+										</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => moveProjectByStep(project.id, -1)}
+										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+										title={t("dashboard.moveProjectUp")}
+										aria-label={t("dashboard.moveProjectUp")}
+										disabled={!onReorderProjects || index === 0}
+									>
+										<span
+											className="text-[0.875rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\uF062"}
+										</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => moveProjectByStep(project.id, 1)}
+										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+										title={t("dashboard.moveProjectDown")}
+										aria-label={t("dashboard.moveProjectDown")}
+										disabled={!onReorderProjects || index === visibleProjects.length - 1}
+									>
+										<span
+											className="text-[0.875rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\uF063"}
+										</span>
+									</button>
+								</div>
 								<button
 									type="button"
 									onClick={() => openProject(project.id)}
-									className="min-w-0 flex-1 flex items-center gap-3 pl-5 text-left"
+									className="min-w-0 flex-1 flex items-center gap-3 text-left"
 								>
 									<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
 										<svg className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">

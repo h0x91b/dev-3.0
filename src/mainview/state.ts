@@ -50,6 +50,7 @@ export type AppAction =
 	| { type: "goBack" }
 	| { type: "goForward" }
 	| { type: "setProjects"; projects: Project[] }
+	| { type: "reorderProjects"; projectIds: string[] }
 	| { type: "setTasks"; tasks: Task[] }
 	| { type: "updateTask"; task: Task }
 	| { type: "addTask"; task: Task }
@@ -113,6 +114,21 @@ export function reducer(state: AppState, action: AppAction): AppState {
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };
+		case "reorderProjects": {
+			const byId = new Map(state.projects.map((project) => [project.id, project]));
+			const seen = new Set<string>();
+			const reordered: Project[] = [];
+			for (const projectId of action.projectIds) {
+				const project = byId.get(projectId);
+				if (!project || seen.has(project.id)) continue;
+				reordered.push(project);
+				seen.add(project.id);
+			}
+			for (const project of state.projects) {
+				if (!seen.has(project.id)) reordered.push(project);
+			}
+			return { ...state, projects: reordered };
+		}
 		case "setTasks":
 			return { ...state, currentProjectTasks: action.tasks };
 		case "updateTask": {

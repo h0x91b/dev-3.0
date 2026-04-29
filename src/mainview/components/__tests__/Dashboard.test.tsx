@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Dashboard from "../Dashboard";
 import { I18nProvider } from "../../i18n";
@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			removeProject: vi.fn(),
+			reorderProjects: vi.fn(),
 			showConfirm: vi.fn(),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
 		},
@@ -52,6 +53,7 @@ const mockProject: Project = {
 describe("Dashboard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
 	});
 
 	describe("empty state", () => {
@@ -93,6 +95,61 @@ describe("Dashboard", () => {
 
 			renderDashboard(projects, vi.fn(), vi.fn(), vi.fn());
 			expect(await screen.findByText("2 projects")).toBeInTheDocument();
+		});
+
+		it("keeps the persisted project order instead of sorting by active task count", async () => {
+			mockedApi.request.getAllProjectTasks.mockResolvedValue([
+				{
+					projectId: "p2",
+					tasks: [{
+						id: "t1",
+						projectId: "p2",
+						title: "Active",
+						description: "Active",
+						status: "in-progress",
+						movedAt: "2026-04-29T00:00:00.000Z",
+					}],
+				},
+			] as any);
+			const projects = [
+				mockProject,
+				{ ...mockProject, id: "p2", name: "Second", path: "/home/user/second" },
+			];
+
+			renderDashboard(projects, vi.fn(), vi.fn(), vi.fn());
+			const first = await screen.findByText("My Project");
+			const second = await screen.findByText("Second");
+
+			expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		});
+
+		it("moves a project up and persists the new order", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const projects = [
+				mockProject,
+				{ ...mockProject, id: "p2", name: "Second", path: "/home/user/second" },
+				{ ...mockProject, id: "p3", name: "Third", path: "/home/user/third" },
+			];
+			mockedApi.request.reorderProjects.mockResolvedValue([projects[1], projects[0], projects[2]]);
+
+			renderDashboard(projects, dispatch, vi.fn(), vi.fn());
+			await screen.findByText("Second");
+			await user.click(screen.getAllByTitle("Move project up")[1]);
+
+			expect(dispatch).toHaveBeenCalledWith({
+				type: "reorderProjects",
+				projectIds: ["p2", "p1", "p3"],
+			});
+			expect(mockedApi.request.reorderProjects).toHaveBeenCalledWith({
+				projectIds: ["p2", "p1", "p3"],
+			});
+			await waitFor(() => {
+				expect(dispatch).toHaveBeenCalledWith({
+					type: "setProjects",
+					projects: [projects[1], projects[0], projects[2]],
+				});
+			});
 		});
 	});
 

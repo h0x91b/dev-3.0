@@ -8,6 +8,10 @@ const dashboard = {
 	"dashboard.confirmRemove": "¿Eliminar este proyecto de la lista?",
 	"dashboard.failedAdd": "Error al agregar proyecto: {error}",
 	"dashboard.failedRemove": "Error al eliminar proyecto: {error}",
+	"dashboard.failedReorder": "Error al reordenar proyectos: {error}",
+	"dashboard.reorderProject": "Arrastrar para reordenar proyecto",
+	"dashboard.moveProjectUp": "Subir proyecto",
+	"dashboard.moveProjectDown": "Bajar proyecto",
 	"dashboard.projectCount_one": "{count} proyecto",
 	"dashboard.projectCount_other": "{count} proyectos",
 

@@ -881,6 +881,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: Project[];
 			};
+			reorderProjects: {
+				params: { projectIds: string[] };
+				response: Project[];
+			};
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };
 				response: FolderListing;

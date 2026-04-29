@@ -40,6 +40,7 @@ vi.mock("../data", () => ({
 	updateTask: vi.fn(),
 	addTask: vi.fn(),
 	addProject: vi.fn(),
+	reorderProjects: vi.fn(),
 	deleteTask: vi.fn(),
 	removeProject: vi.fn(),
 	updateProject: vi.fn(),
@@ -866,6 +867,20 @@ describe("handlers.getProjects", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([]);
 		const result = await handlers.getProjects();
 		expect(result).toEqual([]);
+	});
+});
+
+describe("handlers.reorderProjects", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("persists and returns the reordered project list", async () => {
+		const projects = [makeProject({ id: "proj-2", name: "Second" }), makeProject()];
+		vi.mocked(data.reorderProjects).mockResolvedValue(projects);
+
+		const result = await handlers.reorderProjects({ projectIds: ["proj-2", "proj-1"] });
+
+		expect(data.reorderProjects).toHaveBeenCalledWith(["proj-2", "proj-1"]);
+		expect(result).toEqual(projects);
 	});
 });
 

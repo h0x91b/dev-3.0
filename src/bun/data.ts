@@ -140,6 +140,36 @@ export async function saveProjects(projects: Project[]): Promise<void> {
 	await withFileLock(PROJECTS_FILE, () => rawSaveProjects(projects));
 }
 
+export async function reorderProjects(projectIds: string[]): Promise<Project[]> {
+	return withFileLock(PROJECTS_FILE, async () => {
+		log.info("Reordering projects", { projectIds });
+		const projects = await rawLoadAllProjects({ strict: true, persistMigrations: true });
+		const seen = new Set<string>();
+		const orderedActive: Project[] = [];
+
+		for (const projectId of projectIds) {
+			if (seen.has(projectId)) continue;
+			const project = projects.find((candidate) => candidate.id === projectId && !candidate.deleted);
+			if (!project) continue;
+			orderedActive.push(project);
+			seen.add(project.id);
+		}
+
+		for (const project of projects) {
+			if (!project.deleted && !seen.has(project.id)) {
+				orderedActive.push(project);
+				seen.add(project.id);
+			}
+		}
+
+		const deleted = projects.filter((project) => project.deleted);
+		const reordered = [...orderedActive, ...deleted];
+		await rawSaveProjects(reordered);
+		log.info("Projects reordered", { count: orderedActive.length });
+		return orderedActive;
+	});
+}
+
 export async function addProject(
 	path: string,
 	name: string,

@@ -32,6 +32,19 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 		}
 	}
 
+	async function handleReorderProjects(projectIds: string[]) {
+		const previousProjects = projects;
+		dispatch({ type: "reorderProjects", projectIds });
+		try {
+			const reordered = await api.request.reorderProjects({ projectIds });
+			dispatch({ type: "setProjects", projects: reordered });
+			trackEvent("projects_reordered", { project_count: projectIds.length });
+		} catch (err) {
+			dispatch({ type: "setProjects", projects: previousProjects });
+			alert(t("dashboard.failedReorder", { error: String(err) }));
+		}
+	}
+
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-hidden">
@@ -42,6 +55,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 						bellCounts={bellCounts}
 						onRemoveProject={handleRemoveProject}
 						onOpenAddProject={onOpenAddProject}
+						onReorderProjects={handleReorderProjects}
 					/>
 				) : (
 					<div className="h-full overflow-y-auto p-7">
