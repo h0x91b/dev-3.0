@@ -356,7 +356,7 @@ export function resolveAgentCommand(
 	}
 
 	if (config?.model) {
-		args.push("--model", config.model);
+		args.push("--model", shellEscape(config.model));
 	}
 
 	const cursorAgent = isCursorCommand(baseCmd);
