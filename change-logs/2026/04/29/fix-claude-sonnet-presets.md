@@ -1,0 +1,1 @@
+Update Claude Code Sonnet presets to use the current `sonnet` model alias instead of the deprecated timed Sonnet alias. Bump the affected preset versions so existing saved configurations pick up the replacement.

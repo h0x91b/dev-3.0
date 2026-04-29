@@ -302,6 +302,18 @@ describe("DEFAULT_AGENTS", () => {
 		expect(claude!.baseCommand).toBe("claude");
 	});
 
+	it("uses the current Claude Code Sonnet model alias in Sonnet presets", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		expect(claude).toBeDefined();
+
+		const sonnetConfigs = claude!.configurations.filter((config) => config.id.endsWith("-sonnet"));
+		expect(sonnetConfigs.length).toBeGreaterThan(0);
+		for (const config of sonnetConfigs) {
+			expect(config.model).toBe("sonnet");
+			expect(config.version).toBeGreaterThan(0);
+		}
+	});
+
 	it("uses a heavy bypass preset as the default Codex configuration", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();

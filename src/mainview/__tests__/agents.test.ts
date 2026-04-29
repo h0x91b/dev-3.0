@@ -290,6 +290,30 @@ describe("mergeWithDefaults", () => {
 		expect(cfg.version).toBe(defCfg.version);
 	});
 
+	it("updates stored Claude Sonnet aliases when preset versions are older", () => {
+		const defClaude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		const defCfg = defClaude.configurations.find((c) => c.id === "claude-bypass-sonnet")!;
+		const staleTimedSonnetAlias = `sonnet${"[1m]"}`;
+
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-claude",
+				name: "Claude",
+				baseCommand: "claude",
+				configurations: [
+					{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: staleTimedSonnetAlias, additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+				],
+				defaultConfigId: "claude-bypass-sonnet",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const claude = result.find((a) => a.id === "builtin-claude")!;
+		const cfg = claude.configurations.find((c) => c.id === "claude-bypass-sonnet")!;
+
+		expect(cfg.model).toBe("sonnet");
+		expect(cfg.version).toBe(defCfg.version);
+	});
+
 	it("preserves user additionalArgs when stored version == default version", () => {
 		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
 		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;
