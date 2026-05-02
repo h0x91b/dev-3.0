@@ -109,6 +109,9 @@ jobs:
       - name: Create release artifacts
         run: bash ./scripts/create-release-artifacts.sh macos arm64
 
+      - name: Create CLI tarball
+        run: bash ./scripts/create-cli-tarball.sh macos arm64
+
       - name: Upload artifacts to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -118,7 +121,7 @@ jobs:
           TAG="${{ needs.prepare.outputs.tag }}"
           aws s3 sync "./artifacts-macos-arm64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
           aws s3 sync "./artifacts-macos-arm64/" "s3://h0x91b-releases/dev-3.0/" \
-            --exclude "*.dmg" --exclude "*Setup*.tar.gz"
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz"
 
       - name: Upload artifacts for release job
         uses: actions/upload-artifact@v4
@@ -207,6 +210,9 @@ jobs:
       - name: Create release artifacts
         run: bash ./scripts/create-release-artifacts.sh macos x64
 
+      - name: Create CLI tarball
+        run: bash ./scripts/create-cli-tarball.sh macos x64
+
       - name: Upload artifacts to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -216,7 +222,7 @@ jobs:
           TAG="${{ needs.prepare.outputs.tag }}"
           aws s3 sync "./artifacts-macos-x64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
           aws s3 sync "./artifacts-macos-x64/" "s3://h0x91b-releases/dev-3.0/" \
-            --exclude "*.dmg" --exclude "*Setup*.tar.gz"
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz"
 
       - name: Upload artifacts for release job
         uses: actions/upload-artifact@v4
@@ -287,6 +293,9 @@ jobs:
       - name: Create release artifacts
         run: bash ./scripts/create-release-artifacts.sh linux x64
 
+      - name: Create CLI tarball
+        run: bash ./scripts/create-cli-tarball.sh linux x64
+
       - name: Upload artifacts to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -296,7 +305,7 @@ jobs:
           TAG="${{ needs.prepare.outputs.tag }}"
           aws s3 sync "./artifacts-linux-x64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
           aws s3 sync "./artifacts-linux-x64/" "s3://h0x91b-releases/dev-3.0/" \
-            --exclude "*.dmg" --exclude "*Setup*.tar.gz"
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz"
 
       - name: Upload artifacts for release job
         uses: actions/upload-artifact@v4
@@ -391,6 +400,17 @@ jobs:
             gh release upload "$TAG" "$dmg" --repo "${{ github.repository }}" --clobber
           done
 
+      - name: Upload CLI tarballs to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          for tarball in all-artifacts/dev3-cli-*.tar.gz; do
+            [ -f "$tarball" ] || continue
+            echo "Uploading $(basename "$tarball") to release $TAG"
+            gh release upload "$TAG" "$tarball" --repo "${{ github.repository }}" --clobber
+          done
+
       - name: Update Homebrew Cask
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -422,4 +442,84 @@ jobs:
             exit 0
           fi
           git commit -m "Update dev3 to ${VERSION}"
+          git push origin main
+
+      - name: Update Homebrew Formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          VERSION="${TAG#v}"
+          S3_BASE="https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/$TAG"
+
+          MACOS_ARM64="all-artifacts/dev3-cli-macos-arm64.tar.gz"
+          MACOS_X64="all-artifacts/dev3-cli-macos-x64.tar.gz"
+          LINUX_X64="all-artifacts/dev3-cli-linux-x64.tar.gz"
+
+          if [ ! -f "$LINUX_X64" ] || [ ! -f "$MACOS_ARM64" ] || [ ! -f "$MACOS_X64" ]; then
+            echo "::warning::CLI tarballs missing for one or more platforms — skipping Formula update"
+            ls -lh all-artifacts/dev3-cli-*.tar.gz 2>/dev/null || echo "(none)"
+            exit 0
+          fi
+
+          MACOS_ARM64_SHA=$(shasum -a 256 "$MACOS_ARM64" | awk '{print $1}')
+          MACOS_X64_SHA=$(shasum -a 256 "$MACOS_X64" | awk '{print $1}')
+          LINUX_X64_SHA=$(shasum -a 256 "$LINUX_X64" | awk '{print $1}')
+          echo "Formula sha256: macos-arm64=$MACOS_ARM64_SHA macos-x64=$MACOS_X64_SHA linux-x64=$LINUX_X64_SHA"
+
+          rm -rf /tmp/homebrew-dev3
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/h0x91b/homebrew-dev3.git" /tmp/homebrew-dev3
+          mkdir -p /tmp/homebrew-dev3/Formula
+
+          cat > /tmp/homebrew-dev3/Formula/dev3.rb <<EOF
+          class Dev3 < Formula
+            desc "Terminal-centric project manager for AI coding agents (CLI + headless)"
+            homepage "https://h0x91b.github.io/dev-3.0/"
+            version "${VERSION}"
+            license "Apache-2.0"
+
+            on_macos do
+              on_arm do
+                url "${S3_BASE}/dev3-cli-macos-arm64.tar.gz"
+                sha256 "${MACOS_ARM64_SHA}"
+              end
+              on_intel do
+                url "${S3_BASE}/dev3-cli-macos-x64.tar.gz"
+                sha256 "${MACOS_X64_SHA}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "${S3_BASE}/dev3-cli-linux-x64.tar.gz"
+                sha256 "${LINUX_X64_SHA}"
+              end
+            end
+
+            depends_on "tmux"
+            depends_on "git"
+
+            def install
+              libexec.install "dev3", "dev3-server", "dist"
+              chmod 0755, libexec/"dev3"
+              chmod 0755, libexec/"dev3-server"
+              bin.install_symlink libexec/"dev3"
+              bin.install_symlink libexec/"dev3-server"
+            end
+
+            test do
+              assert_match "dev3", shell_output("#{bin}/dev3 --version")
+            end
+          end
+          EOF
+
+          cd /tmp/homebrew-dev3
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/dev3.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew Formula already up to date (no changes)"
+            exit 0
+          fi
+          git commit -m "Update dev3 formula to ${VERSION}"
           git push origin main

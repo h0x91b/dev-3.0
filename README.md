@@ -110,46 +110,57 @@ Apple Silicon and Intel are both supported. Windows is on the roadmap.
 
 Run dev-3.0 on any Linux x86_64 box and serve the full React UI to your laptop's browser. No GUI on the server, just a CLI that prints a QR code + access URL.
 
-**Requirements**
+#### Homebrew (recommended)
 
-- Linux x86_64 (Ubuntu 22.04+, Debian 12+ tested)
-- ≥4 GB RAM, or 2 GB + 4 GB swap (the first `vite build` is memory-hungry)
-- Outbound IPv4 — GitHub has no AAAA records, and DNS64/NAT64 on IPv6-only cloud VMs is unreliable. On Hetzner Cloud, add a Primary IPv4 (~€0.49/mo) when creating the VM.
+Same tap as macOS, separate command — installs the CLI + headless server (`tmux` and `git` come with as dependencies):
 
-**Setup (Debian / Ubuntu)**
+```sh
+brew tap h0x91b/dev3
+brew install h0x91b/dev3/dev3
+dev3 remote
+```
+
+`dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint — open the URL on your laptop and you're in. The token rotates every 25 seconds; the QR auto-refreshes too.
+
+#### Pre-built tarball (no Homebrew)
+
+```sh
+# Pick your arch — on Hetzner CPX/CCX it's x64
+curl -fsSL -o /tmp/dev3.tar.gz \
+  https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-x64.tar.gz
+
+mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
+~/.dev3/dev3 remote
+# (optional) put it on PATH: echo 'export PATH=$HOME/.dev3:$PATH' >> ~/.bashrc
+```
+
+Make sure `tmux` and `git` are installed via your package manager (`apt install -y tmux git` on Debian/Ubuntu).
+
+#### Caveats for cloud VMs
+
+- **IPv4 outbound** is required — GitHub has no AAAA records, and DNS64/NAT64 on IPv6-only cloud VMs is unreliable. On Hetzner Cloud, add a Primary IPv4 (~€0.49/mo) when creating the VM.
+- **2 GB VMs** work fine for the brew/tarball install (no build needed). If you ever build from source on one, add 4 GB swap first — vite OOMs on the first build:
+  ```bash
+  fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  ```
+
+#### Build from source (contributors)
 
 ```bash
-# System packages — `unzip` is usually the only one missing on cloud images
-apt-get update
 apt-get install -y git tmux bash ca-certificates curl unzip
+curl -fsSL https://bun.sh/install | bash && source ~/.bashrc
 
-# Optional: 4 GB swap on 2 GB VMs so `vite build` doesn't OOM
-fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
-
-# Bun runtime
-curl -fsSL https://bun.sh/install | bash
-source ~/.bashrc
-
-# Build from source (Linux pre-built binaries coming soon)
-git clone https://github.com/h0x91b/dev-3.0.git /opt/dev-3.0
-cd /opt/dev-3.0
+git clone https://github.com/h0x91b/dev-3.0.git && cd dev-3.0
 bun install --frozen-lockfile
 bun scripts/generate-build-info.ts
 bun scripts/generate-changelog.ts
-bun --bun ./node_modules/vite/bin/vite.js build
+bun --bun ./node_modules/vite/bin/vite.js build   # `bun --bun` avoids Node OOM
 bun build src/cli/main.ts              --compile --outfile dist/dev3
 bun build src/bun/headless-bootstrap.ts --compile --outfile dist/dev3-server
 
-# Run — prints QR code + access URL, just open it in any browser
 ./dist/dev3 remote
 ```
-
-That's it. `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint — open the URL on your laptop and you're in. The token in the URL is single-use and rotates every 25 seconds; the QR auto-refreshes too.
-
-> Why `bun --bun ./node_modules/vite/bin/vite.js build` instead of plain `vite build`? When `node` is also installed, vite's shebang routes the build through Node, which OOMs on 2 GB VMs. Forcing Bun keeps everything on one runtime.
-
-**Pre-built Linux binaries via `brew install h0x91b/dev3/dev3` are coming.** For now, build from source as shown above.
 
 ## Tech stack
 

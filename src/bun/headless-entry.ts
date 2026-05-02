@@ -14,8 +14,8 @@
  * the flag on the child env as belt-and-suspenders.
  */
 
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -57,15 +57,29 @@ const wantTunnel = process.env.DEV3_REMOTE_TUNNEL === "1";
 
 // ── Resolve DEV3_VIEWS_DIR if not already set ──
 // remote-access-server uses PATHS.VIEWS_FOLDER (backed by DEV3_VIEWS_DIR env in
-// headless mode) to serve the Vite build. Resolve it relative to this file:
-//   dev:        src/bun/headless-entry.ts  -> <repo>/dist
-//   compiled:   <bin-dir>/dev3             -> <bin-dir>/dist (expected layout)
+// headless mode) to serve the Vite build. We probe a few common layouts:
+//
+//   tarball release:  <bin-dir>/dev3 + <bin-dir>/dist           (CLI tarball)
+//   FHS install:      <bin-dir>/dev3 + <prefix>/share/dev-3.0/dist
+//   dev mode:         src/bun/headless-entry.ts  → <repo>/dist
+//   electrobun bundle: <bin-dir>/dev3-server     → <bin-dir>/dist
+//   CWD fallback:     ./dist (last resort)
+//
+// `process.execPath` resolves to the on-disk binary even when launched via a
+// symlink (e.g. brew's bin → libexec). `import.meta.dir` is virtual inside
+// bun-compiled bundles, so it only matters in dev mode.
 if (!process.env.DEV3_VIEWS_DIR) {
+	let execDir = "";
+	try {
+		execDir = dirname(realpathSync(process.execPath));
+	} catch { /* unreadable execPath — skip and rely on the other candidates */ }
 	const candidates = [
-		resolve(import.meta.dir, "..", "..", "dist"),        // dev: <repo>/dist
-		resolve(import.meta.dir, "..", "dist"),              // compiled next to dist/
-		resolve(process.cwd(), "dist"),                      // CWD fallback
-	];
+		execDir && resolve(execDir, "dist"),                        // tarball
+		execDir && resolve(execDir, "..", "share", "dev-3.0", "dist"), // brew/FHS
+		resolve(import.meta.dir, "..", "..", "dist"),               // dev mode
+		resolve(import.meta.dir, "..", "dist"),                     // older bundles
+		resolve(process.cwd(), "dist"),                             // CWD fallback
+	].filter(Boolean) as string[];
 	for (const candidate of candidates) {
 		if (existsSync(resolve(candidate, "index.html"))) {
 			process.env.DEV3_VIEWS_DIR = candidate;
