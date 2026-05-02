@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import type { ParsedArgs } from "../args";
@@ -74,11 +74,18 @@ function isRunningViaBun(): boolean {
  *   <bin>/dev3           ← CLI  (this process)
  *   <bin>/dev3-server    ← headless server (spawned)
  *
+ * Resolved via `realpathSync(process.execPath)` so brew-style installs
+ * (`bin/dev3` is a symlink to `libexec/dev3`, server lives at `libexec/dev3-server`)
+ * find the sibling next to the actual binary, not next to the symlink.
+ *
  * Only meaningful in prod — from the compiled `dev3`. Dev mode bypasses this
  * entirely via `runViaBun`; see isRunningViaBun.
  */
 function locateServerBinary(): string | null {
-	const cliDir = dirname(process.execPath);
+	let cliDir = dirname(process.execPath);
+	try {
+		cliDir = dirname(realpathSync(process.execPath));
+	} catch { /* unreadable execPath — fall back to dirname(execPath) */ }
 	const sibling = resolve(cliDir, "dev3-server");
 	return existsSync(sibling) ? sibling : null;
 }

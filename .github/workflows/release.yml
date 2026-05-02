@@ -503,8 +503,10 @@ jobs:
               libexec.install "dev3", "dev3-server", "dist"
               chmod 0755, libexec/"dev3"
               chmod 0755, libexec/"dev3-server"
+              # Only link \`dev3\`. The compiled \`dev3-server\` is spawned by
+              # \`dev3\` via realpath(execPath)/dev3-server, so it finds itself
+              # next to the real binary in libexec.
               bin.install_symlink libexec/"dev3"
-              bin.install_symlink libexec/"dev3-server"
             end
 
             test do
