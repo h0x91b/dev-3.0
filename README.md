@@ -106,26 +106,18 @@ Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0
 
 Apple Silicon and Intel are both supported. Windows is on the roadmap.
 
-### Linux server — headless mode (`dev3 remote`)
+### Linux
 
-Run dev-3.0 on any Linux x86_64 box and serve the full React UI to your laptop's browser. No GUI on the server, just a CLI that prints a QR code + access URL.
+Two install paths, pick whichever fits your setup:
+
+- **Homebrew CLI** — installs the `dev3` command-line tool and the headless web UI server. Works on every Linux box, headless or desktop. This is the path most users want.
+- **Desktop GUI bundle** — full Electrobun desktop app for Linux machines with X11/Wayland. Separate tarball download.
 
 #### Homebrew (recommended)
 
-Same tap as macOS, separate command — installs the CLI + headless server (`tmux` and `git` come with as dependencies):
+If you don't have Homebrew on Linux yet, install it first (one-time setup). The official installer works on Linux unchanged — same script, same `brew` command. Glibc ≥ 2.28 is required (Ubuntu 18.04+, Debian 10+, RHEL 8+).
 
-```sh
-brew tap h0x91b/dev3
-brew install h0x91b/dev3/dev3
-dev3 remote
-```
-
-`dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint — open the URL on your laptop and you're in. The token rotates every 25 seconds; the QR auto-refreshes too.
-
-<details>
-<summary>Don't have Homebrew on Linux yet? (one-time setup)</summary>
-
-Homebrew runs on Linux unchanged from macOS — same installer, same `brew` command. Glibc ≥ 2.28 is required (Ubuntu 18.04+, Debian 10+, RHEL 8+).
+> ⚠️ **Don't run the Homebrew installer as `root`.** It refuses by design. On a fresh cloud VM, create a regular user first: `useradd -m -s /bin/bash dev3 && su - dev3`.
 
 ```bash
 # Prereqs (Debian/Ubuntu — adjust for your distro)
@@ -140,10 +132,33 @@ echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 ```
 
-Now `brew install h0x91b/dev3/dev3` works the same as on macOS. Full Homebrew-on-Linux docs: https://docs.brew.sh/Homebrew-on-Linux
-</details>
+Full Homebrew-on-Linux docs: https://docs.brew.sh/Homebrew-on-Linux
 
-#### Pre-built tarball (no Homebrew)
+Then install dev-3.0 (same tap as macOS, separate command — `tmux` and `git` come along as dependencies):
+
+```sh
+brew tap h0x91b/dev3
+brew install h0x91b/dev3/dev3
+```
+
+This installs the `dev3` CLI. Two ways to use it:
+
+- **Headless / browser UI** — `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint. Open the URL on your laptop and you're in. The token rotates every 25 seconds; the QR auto-refreshes too. Perfect for remote dev boxes.
+- **CLI tooling** — `dev3 task …`, `dev3 current`, `dev3 note add …` etc. when you want to script the Kanban board from a terminal.
+
+#### Desktop GUI on Linux
+
+If your Linux machine has a display, you can run the full Electrobun desktop app. Download the latest tarball from [**Releases**](https://github.com/h0x91b/dev-3.0/releases) (look for `stable-linux-x64-dev-3.0.tar.zst`), extract, and run.
+
+Runtime dependencies (Debian/Ubuntu — adjust for your distro):
+
+```sh
+sudo apt install -y libgtk-3-0 libwebkit2gtk-4.0-37 libayatana-appindicator3-1 librsvg2-2 tmux git
+```
+
+#### Pre-built CLI tarball (no Homebrew)
+
+If you don't want Homebrew at all (e.g. running inside a minimal container), grab the CLI tarball directly:
 
 ```sh
 # Pick your arch — on Hetzner CPX/CCX it's x64
