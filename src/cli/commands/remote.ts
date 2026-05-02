@@ -7,7 +7,7 @@ import { exitError, exitUsage } from "../output";
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
 
 Usage:
-  dev3 remote [--tunnel] [--views-dir <path>]
+  dev3 remote [--tunnel] [--port <n>] [--views-dir <path>]
 
 What it does:
   Starts a Bun-only dev-3.0 server (no GUI window) and serves the full web UI
@@ -21,6 +21,12 @@ Flags:
       public URL in the QR. Requires \`cloudflared\` on PATH.
       Note: Cloudflare doesn't sanction trycloudflare.com for production
       use — treat this as a dev convenience only.
+
+  --port <n>
+      Bind to a fixed TCP port instead of a random one. Useful when running
+      inside Docker (so you can publish \`-p <n>:<n>\`) or when you want to
+      preconfigure an SSH \`-L\` forward without scraping the banner line.
+      Valid range: 1-65535. Defaults to a random free port.
 
   --views-dir <path>
       Override the directory served as static assets (defaults to the
@@ -43,6 +49,7 @@ Connection options shown on startup:
 Examples:
   dev3 remote                   # LAN + SSH forwarding
   dev3 remote --tunnel          # + public Cloudflare tunnel
+  dev3 remote --port 3000       # fixed port (ideal for Docker -p 3000:3000)
 `;
 
 /**
@@ -117,7 +124,7 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 	}
 
 	for (const key of Object.keys(args.flags)) {
-		if (key !== "tunnel" && key !== "views-dir" && key !== "static-code" && key !== "help" && key !== "h") {
+		if (key !== "tunnel" && key !== "views-dir" && key !== "static-code" && key !== "port" && key !== "help" && key !== "h") {
 			exitUsage(`Unknown flag: --${key}\nRun "dev3 remote --help" for usage.`);
 		}
 	}
@@ -130,6 +137,16 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 	}
 	if (args.flags["views-dir"] && args.flags["views-dir"] !== "true") {
 		childEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];
+	}
+	if (args.flags.port !== undefined) {
+		if (args.flags.port === "true") {
+			exitUsage(`--port requires a value: --port <1-65535>`);
+		}
+		const n = Number.parseInt(args.flags.port, 10);
+		if (!Number.isFinite(n) || n < 1 || n > 65535 || String(n) !== args.flags.port.trim()) {
+			exitUsage(`--port must be an integer in 1-65535 (got "${args.flags.port}")`);
+		}
+		childEnv.DEV3_REMOTE_PORT = String(n);
 	}
 	if (args.flags["static-code"] && args.flags["static-code"] !== "true") {
 		const code = args.flags["static-code"];

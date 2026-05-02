@@ -1,0 +1,44 @@
+# dev-3.0 — headless Docker Compose for testing the `dev3 remote` flag.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up --build
+#
+# Then open the URL printed in the container logs in your browser, but
+# replace the container's IP with `localhost` — Docker Desktop forwards
+# port 3000 to your host automatically.
+#
+# The two bind mounts are optional but convenient:
+#   ~/.dev3.0-docker → /home/dev3/.dev3.0  (persists tasks between restarts)
+#   ~/projects       → /workspace           (makes host repos visible inside)
+
+services:
+  dev3-remote:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: dev3-remote:latest
+    container_name: dev3-remote
+    # stdin + tty = interactive banner with a live QR code in `docker logs -f`.
+    stdin_open: true
+    tty: true
+    ports:
+      - "3000:3000"
+    environment:
+      # Fix the listen port so the `-p` mapping above is stable across runs.
+      DEV3_REMOTE_PORT: "3000"
+      # Uncomment to skip QR rotation and use a memorable access code
+      # (LOCAL DEV ONLY — no replay protection, min 4 chars):
+      # DEV3_REMOTE_STATIC_CODE: "letmein"
+    volumes:
+      # Persist the dev-3.0 data dir between container rebuilds.
+      - dev3-home:/home/dev3/.dev3.0
+      # Bind-mount a host directory to work on real projects from inside.
+      # Replace the source path with wherever you keep your repos.
+      - ${HOME}/projects:/workspace
+    # Default command comes from the Dockerfile CMD; override it like this
+    # if you want to experiment with other flags:
+    #
+    #   command: ["remote", "--port", "3000", "--static-code=letmein"]
+
+volumes:
+  dev3-home:

@@ -1,0 +1,1 @@
+Added `--port <n>` to `dev3 remote` (env `DEV3_REMOTE_PORT`) so the listen port can be pinned instead of randomised — useful for Docker `-p` mappings and SSH `-L` forwards. Shipped a multi-stage `docker/Dockerfile`, `.dockerignore`, and `docker/docker-compose.yml` so the new flag can be tested on any machine without a real Linux server.

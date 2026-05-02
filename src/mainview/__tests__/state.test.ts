@@ -240,6 +240,22 @@ describe("reducer", () => {
 		expect(next.projects).toEqual([mockProject]);
 	});
 
+	it("reorderProjects: reorders by project id and keeps omitted projects at the end", () => {
+		const p2 = { ...mockProject, id: "p2", name: "Second", path: "/tmp/second" };
+		const p3 = { ...mockProject, id: "p3", name: "Third", path: "/tmp/third" };
+		const state: AppState = {
+			...initialState,
+			projects: [mockProject, p2, p3],
+		};
+
+		const next = reducer(state, {
+			type: "reorderProjects",
+			projectIds: ["p2", "p1"],
+		});
+
+		expect(next.projects.map((project) => project.id)).toEqual(["p2", "p1", "p3"]);
+	});
+
 	it("setTasks: replaces currentProjectTasks", () => {
 		const next = reducer(initialState, {
 			type: "setTasks",

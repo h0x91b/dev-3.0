@@ -257,15 +257,40 @@ interface StartOptions {
 
 let qrConsumedCallback: (() => void) | null = null;
 
+/**
+ * Resolve the listen port from DEV3_REMOTE_PORT env.
+ *
+ * Returns 0 (let Bun pick a random port) when unset or invalid. The env is
+ * set by the CLI's `--port <n>` flag and is what Docker containers use to
+ * map a stable host port to a known container port — otherwise the caller
+ * would have to scrape the rolling banner line to discover the port.
+ *
+ * Invalid values (non-numeric, out of range, < 1, > 65535) fall back to 0
+ * rather than crashing: the banner will still print a usable URL. Privileged
+ * ports (< 1024) are accepted — bind() will fail later and Bun surfaces the
+ * EACCES cleanly, which is a more informative error than "refused at startup".
+ */
+export function resolveListenPort(): number {
+	const raw = process.env.DEV3_REMOTE_PORT;
+	if (!raw) return 0;
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 1 || n > 65535) {
+		log.warn("Invalid DEV3_REMOTE_PORT, falling back to random port", { raw });
+		return 0;
+	}
+	return n;
+}
+
 export async function startRemoteAccessServer(options: StartOptions): Promise<void> {
 	await initSecret();
 	requestHandler = options.rpcHandler;
 	ptyPortGetter = options.getPtyPort;
 	qrConsumedCallback = options.onQrTokenConsumed ?? null;
 
+	const requestedPort = resolveListenPort();
 	const server = Bun.serve<WsData>({
 		hostname: "0.0.0.0",
-		port: 0, // random
+		port: requestedPort, // 0 = random, otherwise pinned via DEV3_REMOTE_PORT
 		async fetch(req, server) {
 			const url = new URL(req.url);
 			const ua = req.headers.get("user-agent")?.slice(0, 80) ?? "unknown";

@@ -47,6 +47,14 @@ async function getProjects(): Promise<Project[]> {
 	return projects;
 }
 
+async function reorderProjects(params: { projectIds: string[] }): Promise<Project[]> {
+	log.info("→ reorderProjects", { count: params.projectIds.length });
+	const rawProjects = await data.reorderProjects(params.projectIds);
+	const projects = await Promise.all(rawProjects.map((project) => repoConfig.resolveProjectConfig(project)));
+	log.info("← reorderProjects", { count: projects.length });
+	return projects;
+}
+
 /**
  * Normalize a requested directory path for the folder picker.
  *
@@ -619,6 +627,7 @@ export const appHandlers = {
 	hideApp,
 	showConfirm,
 	getProjects,
+	reorderProjects,
 	listDirectory,
 	addProject: addProjectImpl,
 	cloneAndAddProject,

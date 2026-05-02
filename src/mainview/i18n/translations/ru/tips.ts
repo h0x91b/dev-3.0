@@ -106,6 +106,8 @@ const tips = {
 	"tip.cowClonePaths.body": "dev3 копирует node_modules или .venv в каждый worktree через APFS copy-on-write — настройка занимает секунды, а не минуты.",
 	"tip.keyboardShortcuts.title": "Переключайтесь через \u23181–9",
 	"tip.keyboardShortcuts.body": "Нажмите \u23181–9 (или Ctrl+1–9), чтобы мгновенно перейти к одному из первых девяти проектов без мыши.",
+	"tip.projectReorder.title": "Закрепите важные проекты",
+	"tip.projectReorder.body": "Перетащите проекты на Dashboard, чтобы выбрать, что откроют Cmd+1...Cmd+9.",
 	"tip.systemTheme.title": "Тема следует за системой",
 	"tip.systemTheme.body": "Выберите тему «Системная», и dev3 будет автоматически переключаться между тёмным и светлым режимом вслед за настройками ОС.",
 	"tip.tmuxSessionManager.title": "Следите за tmux-сессиями",

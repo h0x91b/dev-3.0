@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -309,6 +309,64 @@ describe("MIME types", () => {
 		expect(MIME_TYPES[".woff2"]).toBe("font/woff2");
 		expect(MIME_TYPES[".woff"]).toBe("font/woff");
 		expect(MIME_TYPES[".ttf"]).toBe("font/ttf");
+	});
+});
+
+// ================================================================
+// DEV3_REMOTE_PORT parsing (resolveListenPort)
+// ================================================================
+
+import { resolveListenPort } from "../remote-access-server";
+
+describe("resolveListenPort", () => {
+	const originalEnv = process.env.DEV3_REMOTE_PORT;
+
+	afterEach(() => {
+		if (originalEnv === undefined) {
+			delete process.env.DEV3_REMOTE_PORT;
+		} else {
+			process.env.DEV3_REMOTE_PORT = originalEnv;
+		}
+	});
+
+	it("returns 0 when env var is unset", () => {
+		delete process.env.DEV3_REMOTE_PORT;
+		expect(resolveListenPort()).toBe(0);
+	});
+
+	it("returns parsed port for a valid numeric value", () => {
+		process.env.DEV3_REMOTE_PORT = "3000";
+		expect(resolveListenPort()).toBe(3000);
+	});
+
+	it("accepts privileged ports (1-1023) — bind() will surface EACCES at startup", () => {
+		process.env.DEV3_REMOTE_PORT = "80";
+		expect(resolveListenPort()).toBe(80);
+	});
+
+	it("accepts the max valid port 65535", () => {
+		process.env.DEV3_REMOTE_PORT = "65535";
+		expect(resolveListenPort()).toBe(65535);
+	});
+
+	it("falls back to 0 for non-numeric values", () => {
+		process.env.DEV3_REMOTE_PORT = "abc";
+		expect(resolveListenPort()).toBe(0);
+	});
+
+	it("falls back to 0 for port below range", () => {
+		process.env.DEV3_REMOTE_PORT = "0";
+		expect(resolveListenPort()).toBe(0);
+	});
+
+	it("falls back to 0 for port above 65535", () => {
+		process.env.DEV3_REMOTE_PORT = "70000";
+		expect(resolveListenPort()).toBe(0);
+	});
+
+	it("falls back to 0 for negative port", () => {
+		process.env.DEV3_REMOTE_PORT = "-1";
+		expect(resolveListenPort()).toBe(0);
 	});
 });
 

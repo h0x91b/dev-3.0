@@ -106,6 +106,8 @@ const tips = {
 	"tip.cowClonePaths.body": "dev3 puede clonar node_modules o .venv en cada worktree usando copy-on-write de APFS, reduciendo la configuración a segundos.",
 	"tip.keyboardShortcuts.title": "Cambia proyectos con \u23181–9",
 	"tip.keyboardShortcuts.body": "Pulsa \u23181–9 (o Ctrl+1–9) para saltar directamente a cualquiera de tus primeros nueve proyectos sin usar el ratón.",
+	"tip.projectReorder.title": "Fija proyectos importantes",
+	"tip.projectReorder.body": "Arrastra proyectos en el Dashboard para elegir qué repos abren Cmd+1 a Cmd+9 primero.",
 	"tip.systemTheme.title": "El tema sigue al sistema",
 	"tip.systemTheme.body": "Selecciona el tema «Sistema» y dev3 cambiará automáticamente entre modo oscuro y claro según la preferencia de tu SO.",
 	"tip.tmuxSessionManager.title": "Controla tus sesiones tmux",

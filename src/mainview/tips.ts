@@ -323,6 +323,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F030D}", // nf-md-keyboard
 	},
 	{
+		id: "project-reorder",
+		titleKey: "tip.projectReorder.title",
+		bodyKey: "tip.projectReorder.body",
+		icon: "\u{F0140}", // nf-md-arrow_up_down
+	},
+	{
 		id: "system-theme",
 		titleKey: "tip.systemTheme.title",
 		bodyKey: "tip.systemTheme.body",

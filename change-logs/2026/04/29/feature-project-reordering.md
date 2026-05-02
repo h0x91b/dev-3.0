@@ -1,0 +1,1 @@
+Dashboard projects can now be reordered and the saved order drives Cmd+1 through Cmd+9 project switching. The dashboard keeps the user's explicit project order instead of reshuffling projects by active task count.
