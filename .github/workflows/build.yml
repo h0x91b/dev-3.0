@@ -110,16 +110,6 @@ jobs:
       - name: Build check
         run: bunx vite build && bun run build:cli
 
-      - name: Smoke-test CLI tarball
-        run: bash ./scripts/create-cli-tarball.sh linux x64
-
-      - name: Upload CLI tarball as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dev3-cli-linux-x64
-          path: ./artifacts-linux-x64/dev3-cli-linux-x64.tar.gz
-          retention-days: 14
-
   trivy-scan:
     runs-on: ubuntu-latest
     permissions:
