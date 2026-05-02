@@ -84,28 +84,130 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 
 ## Install
 
-### Homebrew (recommended)
+### Desktop app — macOS
+
+#### Homebrew (recommended)
 
 ```sh
 brew tap h0x91b/dev3
 brew install --cask dev3
 ```
 
-This will also install required dependencies (`git`, `tmux`) if not already present.
+Auto-installs the required `git` and `tmux` dependencies.
 
 ```sh
-# Update to latest version
-brew upgrade --cask dev3
-
-# Uninstall
-brew uninstall --cask dev3
+brew upgrade --cask dev3   # update
+brew uninstall --cask dev3 # remove
 ```
 
-### Manual download
+#### Manual download
 
 Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git` and `tmux` are installed.
 
-macOS (Apple Silicon + Intel) and Linux — Windows coming soon.
+Apple Silicon and Intel are both supported. Windows is on the roadmap.
+
+### Linux server — headless mode (`dev3 remote`)
+
+Run dev-3.0 on any Linux x86_64 box and serve the full React UI to your laptop's browser over HTTP + WebSocket. Same Kanban + terminal experience as the desktop app, no GUI on the server.
+
+#### Requirements
+
+- Linux x86_64 (Ubuntu 22.04+, Debian 12+ tested)
+- ≥4 GB RAM, **or** 2 GB + 4 GB swap — `vite build` is memory-hungry on first build
+- Outbound IPv4 — GitHub has no AAAA records, and DNS64/NAT64 on IPv6-only cloud VMs is unreliable. On Hetzner Cloud, add a Primary IPv4 (~€0.49/mo) when creating the VM.
+- System tools: `git`, `tmux`, `bash`, `curl`, `unzip`, `ca-certificates`
+
+#### Steps (Debian / Ubuntu)
+
+```bash
+# 1. System dependencies (most are pre-installed on Hetzner cloud images;
+#    `unzip` is the only one usually missing, and Bun's installer needs it)
+apt-get update
+apt-get install -y git tmux bash ca-certificates curl unzip
+
+# 2. (Only on 2 GB VMs) Add 4 GB swap so `vite build` doesn't OOM
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# 3. Install Bun (the JS runtime dev-3.0 is built on)
+curl -fsSL https://bun.sh/install | bash
+source ~/.bashrc   # or open a new shell
+
+# 4. Clone, install JS deps, build the UI + CLI + headless server
+git clone https://github.com/h0x91b/dev-3.0.git /opt/dev-3.0
+cd /opt/dev-3.0
+bun install --frozen-lockfile
+bun scripts/generate-build-info.ts
+bun scripts/generate-changelog.ts
+bun --bun ./node_modules/vite/bin/vite.js build
+bun build src/cli/main.ts              --compile --outfile dist/dev3
+bun build src/bun/headless-bootstrap.ts --compile --outfile dist/dev3-server
+
+# 5. Run
+./dist/dev3 remote --port 3000 --static-code=PICK-A-CODE
+```
+
+The server prints an ASCII QR code, an access URL, an SSH-forward hint, and (with `--tunnel`) a Cloudflare tunnel URL.
+
+> Why `bun --bun ./node_modules/vite/bin/vite.js build` instead of plain `vite build`? On systems where `node` is also installed, the `vite` shebang routes the build through Node, which OOMs on 2 GB VMs. Forcing Bun keeps everything on one runtime.
+
+#### Connecting from your laptop
+
+```bash
+# Option A — SSH port-forward (recommended, no public exposure)
+ssh -L 3000:localhost:3000 user@<server>
+# Then open http://localhost:3000/?token=PICK-A-CODE in your browser.
+
+# Option B — Direct over public IP (open the firewall first)
+# Open http://<server-ip>:3000/?token=PICK-A-CODE
+
+# Option C — Cloudflare quick tunnel (no static IP needed)
+# Install cloudflared from https://pkg.cloudflare.com, then re-run with --tunnel:
+./dist/dev3 remote --port 3000 --tunnel
+```
+
+#### Optional: GitHub CLI for PR / merge detection
+
+`gh` enables automatic PR detection, "promote to PR Review" task transitions, and merge detection. dev-3.0 runs fine without it; install it when you want those features:
+
+```bash
+type -p gh || (apt-get install -y --no-install-recommends gnupg && \
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
+    dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
+  echo "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list && \
+  apt-get update && apt-get install -y gh)
+gh auth login
+```
+
+#### Optional: run as a systemd service
+
+```ini
+# /etc/systemd/system/dev3-remote.service
+[Unit]
+Description=dev-3.0 headless server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/dev-3.0
+ExecStart=/opt/dev-3.0/dist/dev3 remote --port 3000 --static-code=PICK-A-CODE
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now dev3-remote
+journalctl -u dev3-remote -f
+```
+
+> **Pre-built Linux binaries via `brew install h0x91b/dev3/dev3` are coming.** For now, the build-from-source path above is the supported route on Linux.
 
 ## Tech stack
 
