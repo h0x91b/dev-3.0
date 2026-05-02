@@ -13,6 +13,7 @@ import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
+import { handleGui } from "./commands/gui";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 
@@ -48,6 +49,9 @@ Commands:
   dev3 projects list                    List all projects
   dev3 remote [--tunnel]                 Run headless — serve the UI to a browser
                                          (see "dev3 remote --help" for full usage)
+  dev3 gui                               Launch the dev-3.0 desktop app
+                                         (Linux: lazily downloads bundle on first run.
+                                          See "dev3 gui --help" for full usage)
 
 Statuses: todo, in-progress, user-questions, review-by-ai, review-by-user
   ("completed" and "cancelled" are UI-only — they destroy the worktree)
@@ -64,7 +68,7 @@ async function main(): Promise<void> {
 
 	// Subcommands that own their own --help output. Route to them before
 	// we swallow --help as the generic top-level help.
-	const ownsHelp = new Set(["remote"]);
+	const ownsHelp = new Set(["remote", "gui"]);
 	const firstPositional = rawArgs.find((a) => !a.startsWith("-"));
 	const routeToSubcommand = firstPositional && ownsHelp.has(firstPositional);
 
@@ -100,6 +104,12 @@ async function main(): Promise<void> {
 		// `dev3 remote` IS the app in headless mode — it must not require a
 		// running instance socket. It starts its own CLI socket once up.
 		return await handleRemote(subcommand, args);
+	}
+	if (command === "gui") {
+		// `dev3 gui` launches the desktop app (mac) or the bundled launcher
+		// (Linux). It does not need the headless server, and on Linux it
+		// lazily installs the GUI bundle on first run.
+		return await handleGui(subcommand, args);
 	}
 
 	// All other commands require the socket
