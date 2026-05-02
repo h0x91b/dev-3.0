@@ -1103,6 +1103,7 @@ describe("getDefaultEnvForAgent", () => {
 		const env = getDefaultEnvForAgent(agent);
 		expect(env).toEqual(CLAUDE_DEFAULT_ENV);
 		expect(env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe("1");
+		expect(env.CLAUDE_CODE_NO_FLICKER).toBe("1");
 	});
 
 	it("returns CLAUDE_DEFAULT_ENV for full-path claude command", () => {

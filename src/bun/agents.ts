@@ -467,6 +467,7 @@ export function findConfig(
 /** Default env vars injected for Claude-based agents. */
 export const CLAUDE_DEFAULT_ENV: Record<string, string> = {
 	CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1",
+	CLAUDE_CODE_NO_FLICKER: "1",
 };
 
 /** Build default env vars for an agent based on its base command. */

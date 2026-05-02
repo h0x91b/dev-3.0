@@ -1,0 +1,1 @@
+Inject `CLAUDE_CODE_NO_FLICKER=1` into all Claude-based agent presets via `CLAUDE_DEFAULT_ENV`, so every Claude launch (Default, Plan, Bypass, Auto, Accept Edits, Don't Ask — Opus and Sonnet variants) inherits the flag automatically.
