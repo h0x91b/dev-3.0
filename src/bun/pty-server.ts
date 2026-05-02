@@ -817,26 +817,21 @@ const ptyServer = Bun.serve({
 				const cols = 80;
 				const rows = 24;
 
-				// If no proc yet, spawn one. If proc exists, just reconnect
-				// and send current screen content for immediate rendering.
+				// If no proc yet, spawn one. If proc exists, just attach
+				// the WS — the freshly-mounted ghostty-web terminal on the
+				// client is already blank, and the client's resize dance
+				// will force tmux to SIGWINCH and emit a full pane redraw
+				// via the natural PTY data path. Any explicit clear or
+				// capture-pane replay here races that redraw and causes
+				// visible flicker on every task switch; sending nothing
+				// is the clean path. See fix: task cb75af7b.
 				if (!session.proc) {
 					log.info("No proc, spawning new PTY", { taskId: shortId(sessionId) });
 					spawnPty(session, cols, rows);
 				} else {
-					// Capture current tmux pane content (with ANSI colors) so the
-					// client sees the screen immediately instead of a blank terminal
-					// while waiting for the app to redraw after resize.
-					log.info("Reconnecting to existing PTY, capturing pane", { taskId: shortId(sessionId) });
-					const content = capturePane(sessionId);
-					if (content) {
-						// Clear screen + reset cursor before injecting captured
-						// pane content. Without this, old terminal state from the
-						// previous connection can overlap with the new content,
-						// causing visual corruption (the #234 flickering bug).
-						// \x1b[2J = erase entire display
-						// \x1b[H  = cursor home (top-left)
-						(ws as any).sendText("\x1b[2J\x1b[H" + content);
-					}
+					log.info("Reconnecting to existing PTY, tmux will redraw on resize", {
+						taskId: shortId(sessionId),
+					});
 				}
 			} catch (err) {
 				log.error("WS open handler CRASHED", {
