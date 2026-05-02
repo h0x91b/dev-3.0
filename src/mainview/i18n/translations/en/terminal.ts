@@ -83,6 +83,16 @@ const terminal = {
 	"projectTerminal.backToBoard": "Back to Board",
 	"projectTerminal.shortcutHint": "\u2318`",
 	"projectTerminal.tooltipWithShortcut": "Project Terminal (\u2318`)",
+
+	// Home Terminal
+	"homeTerminal.open": "Home Terminal",
+	"homeTerminal.label": "Home Terminal",
+	"homeTerminal.tooltipWithShortcut": "Home Terminal (\u2318\u21e7`)",
+	"homeTerminal.shortcutHint": "\u2318\u21e7`",
+	"homeTerminal.back": "Back",
+	"homeTerminal.sessionEnded": "Home terminal session ended",
+	"homeTerminal.sessionEndedDesc": "The terminal process has exited. Click restart to open a new session.",
+	"homeTerminal.restart": "Restart",
 	"fileDrop.uploadFailed": "File upload failed: {error}",
 } as const;
 

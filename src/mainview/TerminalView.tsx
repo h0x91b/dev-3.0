@@ -926,6 +926,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				}
 			}
 			if (!hasImage) return;
+			// No project context (e.g. home terminal) — image paste is unsupported,
+			// let the default text paste behavior run.
+			if (!projectId) return;
 
 			e.preventDefault();
 			e.stopPropagation();

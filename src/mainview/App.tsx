@@ -15,6 +15,7 @@ import CreateTaskModal from "./components/CreateTaskModal";
 import ProjectView from "./components/ProjectView";
 import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
+import HomeTerminal from "./components/HomeTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
@@ -190,6 +191,15 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "~") {
+				// Cmd+Shift+` — toggle home terminal (key="~" because Shift+` produces ~)
+				e.preventDefault();
+				e.stopPropagation();
+				if (state.route.screen === "home-terminal") {
+					navigate({ screen: "dashboard" });
+				} else {
+					navigate({ screen: "home-terminal" });
+				}
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "`") {
 				// Cmd+` — toggle project terminal
 				const { route } = state;
@@ -568,6 +578,8 @@ function App() {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project-terminal") {
 				navigate({ screen: "project", projectId: route.projectId });
+			} else if (route.screen === "home-terminal") {
+				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project" && route.activeTaskId) {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project") {
@@ -910,6 +922,12 @@ function App() {
 					</div>
 				) : null;
 			}
+			case "home-terminal":
+				return (
+					<div className="flex-1 min-h-0 flex flex-col">
+						<HomeTerminal onBack={() => navigate({ screen: "dashboard" })} />
+					</div>
+				);
 			case "task":
 				return (
 					<TaskWorkspaceView

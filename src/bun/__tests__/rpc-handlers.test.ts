@@ -100,6 +100,8 @@ vi.mock("../pty-server", () => ({
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
+	HOME_TERMINAL_SESSION_KEY: "home",
+	HOME_TERMINAL_TMUX_NAME: "dev3-home",
 }));
 
 vi.mock("../agents", () => ({
@@ -4663,6 +4665,62 @@ describe("handlers.destroyProjectTerminal", () => {
 	it("destroys the project terminal session", async () => {
 		await handlers.destroyProjectTerminal({ projectId: "proj-123" });
 		expect(pty.destroySession).toHaveBeenCalledWith("project-proj-123");
+	});
+});
+
+// ================================================================
+// handlers.getHomePtyUrl / destroyHomeTerminal
+// ================================================================
+
+describe("handlers.getHomePtyUrl", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("creates a home PTY session in the user's home directory", async () => {
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		const url = await handlers.getHomePtyUrl({});
+
+		expect(pty.createSession).toHaveBeenCalledWith(
+			"home",
+			"",
+			expect.any(String),
+			process.env.SHELL || "/bin/zsh",
+			{},
+			"dev3",
+			"home",
+		);
+		expect(url).toBe("ws://localhost:9999?session=home");
+	});
+
+	it("reuses existing home session without creating a new one", async () => {
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+
+		await handlers.getHomePtyUrl({});
+
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("destroys dead home session before creating a new one", async () => {
+		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		await handlers.getHomePtyUrl({});
+
+		expect(pty.destroySession).toHaveBeenCalledWith("home");
+		expect(pty.createSession).toHaveBeenCalled();
+	});
+});
+
+describe("handlers.destroyHomeTerminal", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("destroys the home terminal session", async () => {
+		await handlers.destroyHomeTerminal({});
+		expect(pty.destroySession).toHaveBeenCalledWith("home");
 	});
 });
 

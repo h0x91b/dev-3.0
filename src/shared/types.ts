@@ -803,6 +803,7 @@ export interface TmuxSessionInfo {
 	windowCount: number;
 	isCleanup: boolean;
 	isProjectTerminal?: boolean;
+	isHomeTerminal?: boolean;
 	projectName?: string;
 	taskTitle?: string;
 	taskId?: string;
@@ -1087,6 +1088,14 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
+			getHomePtyUrl: {
+				params: {};
+				response: string;
+			};
+			destroyHomeTerminal: {
+				params: {};
+				response: void;
+			};
 			runDevServer: {
 				params: { taskId: string; projectId: string };
 				response: DevServerStatus;
@@ -1364,6 +1373,7 @@ export type AppRPCSchema = {
 			taskSound: { status: "completed" | "cancelled" };
 			ptyDied: { taskId: string };
 			projectPtyDied: { projectId: string };
+			homePtyDied: {};
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };

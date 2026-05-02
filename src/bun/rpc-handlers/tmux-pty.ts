@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import type { ColumnAgentConfig, DevServerStatus, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
@@ -999,6 +1000,34 @@ async function destroyProjectTerminal(params: { projectId: string }): Promise<vo
 	log.info("← destroyProjectTerminal done");
 }
 
+async function getHomePtyUrl(_params: {}): Promise<string> {
+	const sessionKey = pty.HOME_TERMINAL_SESSION_KEY;
+	log.info("→ getHomePtyUrl", { hasExistingSession: pty.hasSession(sessionKey) });
+
+	if (pty.hasDeadSession(sessionKey)) {
+		log.info("Dead home terminal session — destroying to recreate");
+		pty.destroySession(sessionKey);
+	}
+
+	if (!pty.hasSession(sessionKey)) {
+		const home = homedir();
+		if (!existsSync(home)) {
+			throw new Error(`Home directory does not exist: ${home}`);
+		}
+		pty.createSession(sessionKey, "", home, getUserShell(), {}, pty.DEFAULT_TMUX_SOCKET, "home");
+	}
+
+	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
+	log.info("← getHomePtyUrl", { url });
+	return url;
+}
+
+async function destroyHomeTerminal(_params: {}): Promise<void> {
+	log.info("→ destroyHomeTerminal");
+	pty.destroySession(pty.HOME_TERMINAL_SESSION_KEY);
+	log.info("← destroyHomeTerminal done");
+}
+
 async function getTaskPorts(params: { taskId: string }): Promise<PortInfo[]> {
 	log.info("→ getTaskPorts", { taskId: params.taskId.slice(0, 8) });
 	const ports = getPortsForTask(params.taskId);
@@ -1032,6 +1061,7 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		windowCount: number;
 		isCleanup: boolean;
 		isProjectTerminal: boolean;
+		isHomeTerminal: boolean;
 		shortId: string;
 	}> = [];
 
@@ -1043,7 +1073,14 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 
 		const isCleanup = name.startsWith("dev3-cl-");
 		const isProjectTerminal = name.startsWith("dev3-pt-");
-		const shortId = isProjectTerminal ? name.slice(8) : isCleanup ? name.slice(8) : name.slice(5);
+		const isHomeTerminal = name === pty.HOME_TERMINAL_TMUX_NAME;
+		const shortId = isHomeTerminal
+			? "home"
+			: isProjectTerminal
+				? name.slice(8)
+				: isCleanup
+					? name.slice(8)
+					: name.slice(5);
 		if (!shortId) continue;
 
 		rawSessions.push({
@@ -1053,12 +1090,13 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 			windowCount: parseInt(windowsStr, 10) || 1,
 			isCleanup,
 			isProjectTerminal,
+			isHomeTerminal,
 			shortId,
 		});
 
 		if (isProjectTerminal) {
 			projectShortIds.add(shortId);
-		} else {
+		} else if (!isHomeTerminal) {
 			taskShortIds.add(shortId);
 		}
 	}
@@ -1103,7 +1141,18 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 
 	const sessions: TmuxSessionInfo[] = [];
 	for (const rawSession of rawSessions) {
-		const { name, cwd, windowCount, createdAt, isCleanup, isProjectTerminal, shortId } = rawSession;
+		const { name, cwd, windowCount, createdAt, isCleanup, isProjectTerminal, isHomeTerminal, shortId } = rawSession;
+		if (isHomeTerminal) {
+			sessions.push({
+				name,
+				cwd,
+				createdAt,
+				windowCount,
+				isCleanup: false,
+				isHomeTerminal: true,
+			});
+			continue;
+		}
 		if (isProjectTerminal) {
 			const projectInfo = projectMap.get(shortId);
 			sessions.push({
@@ -1403,6 +1452,8 @@ export const tmuxPtyHandlers = {
 	getPtyUrl,
 	getProjectPtyUrl,
 	destroyProjectTerminal,
+	getHomePtyUrl,
+	destroyHomeTerminal,
 	getTaskPorts,
 	getPortAllocations,
 	listTmuxSessions,
