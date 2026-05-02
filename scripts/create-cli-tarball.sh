@@ -50,14 +50,11 @@ cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"
 
 # Pack contents (no leading ./dev3-cli/ wrapper — extracts straight into CWD).
-# `--sort=name` + fixed `--mtime`/`--owner`/`--group` keeps the tarball
-# deterministic-ish across CI runs (gzip itself still embeds OS and timestamp).
-tar -C "$STAGE_DIR" \
-    --sort=name \
-    --owner=0 --group=0 --numeric-owner \
-    --mtime='2026-01-01 00:00:00 UTC' \
-    -czf "$TARBALL" \
-    .
+# Plain `tar czf` — works on both GNU tar (Linux) and BSD tar (macOS).
+# We deliberately don't use --sort=name / --mtime / --owner / --group: they're
+# GNU-only and macOS runners ship BSD tar. The Formula updater hashes the same
+# tarball it just produced, so per-run reproducibility doesn't matter here.
+tar -C "$STAGE_DIR" -czf "$TARBALL" .
 
 ls -lh "$TARBALL"
 echo "SHA-256: $(shasum -a 256 "$TARBALL" | awk '{print $1}')"
