@@ -11,7 +11,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -20,7 +20,7 @@ jobs:
 
       - name: Restore node_modules cache
         id: cache-deps
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ./node_modules
           key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
@@ -31,7 +31,7 @@ jobs:
 
       - name: Save node_modules cache
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ./node_modules
           key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
@@ -45,7 +45,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -54,7 +54,7 @@ jobs:
 
       - name: Restore node_modules cache
         id: cache-deps
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ./node_modules
           key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
@@ -65,7 +65,7 @@ jobs:
 
       - name: Save node_modules cache
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ./node_modules
           key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
@@ -79,7 +79,7 @@ jobs:
   build-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -88,7 +88,7 @@ jobs:
 
       - name: Restore node_modules cache
         id: cache-deps
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ./node_modules
           key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
@@ -99,7 +99,7 @@ jobs:
 
       - name: Save node_modules cache
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ./node_modules
           key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
@@ -116,7 +116,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -134,7 +134,7 @@ jobs:
 
       - name: Post Trivy results to PR
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
