@@ -324,6 +324,16 @@ function initBrowserApi(): ApiShape {
 			return { url: `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}` };
 		},
 
+		async getProjectPtyUrl(params: { projectId: string }): Promise<string> {
+			// Server-side: ensure the tmux session exists.
+			// We discard the URL it returns (`ws://localhost:<ptyPort>`) because
+			// `localhost` resolves on the laptop in browser mode, not on the
+			// server. Build the proxied `/pty` URL relative to window.location.
+			await rpcRequest("getProjectPtyUrl", params);
+			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
+			return `${wsProtocol}//${window.location.host}/pty?session=project-${params.projectId}${tokenParam}`;
+		},
+
 		async resumeTask(params: { taskId: string }): Promise<string> {
 			await rpcRequest("resumeTask", params);
 			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
