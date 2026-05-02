@@ -319,7 +319,18 @@ function probeMissingLibs(bundleRoot: string): string[] {
 	const target = resolve(bundleRoot, "bin", "libNativeWrapper.so");
 	if (!existsSync(target)) return [];
 
-	const result = spawnSync("ldd", [target], { encoding: "utf-8" });
+	// Run ldd with the bundle's bin/ on LD_LIBRARY_PATH so it finds sibling
+	// libs (libasar.so etc.) that ship inside the bundle. The Electrobun
+	// launcher does this implicitly at exec time; without it our probe would
+	// report bundled libs as "not found" and we'd print a misleading distro
+	// install command for libs that are actually right there in the tarball.
+	const result = spawnSync("ldd", [target], {
+		encoding: "utf-8",
+		env: {
+			...process.env,
+			LD_LIBRARY_PATH: `${resolve(bundleRoot, "bin")}:${process.env.LD_LIBRARY_PATH ?? ""}`,
+		},
+	});
 	if (result.status !== 0 || typeof result.stdout !== "string") {
 		// `ldd` not installed or refused — we can't probe. Don't block the user;
 		// let the launcher try and produce its own error.
