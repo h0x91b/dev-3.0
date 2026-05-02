@@ -122,6 +122,27 @@ dev3 remote
 
 `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint — open the URL on your laptop and you're in. The token rotates every 25 seconds; the QR auto-refreshes too.
 
+<details>
+<summary>Don't have Homebrew on Linux yet? (one-time setup)</summary>
+
+Homebrew runs on Linux unchanged from macOS — same installer, same `brew` command. Glibc ≥ 2.28 is required (Ubuntu 18.04+, Debian 10+, RHEL 8+).
+
+```bash
+# Prereqs (Debian/Ubuntu — adjust for your distro)
+sudo apt-get install -y build-essential procps curl file git
+
+# Install Homebrew (the official installer detects Linux automatically)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Add brew to your shell PATH (the installer prints this exact block — copy it)
+echo >> ~/.bashrc
+echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+```
+
+Now `brew install h0x91b/dev3/dev3` works the same as on macOS. Full Homebrew-on-Linux docs: https://docs.brew.sh/Homebrew-on-Linux
+</details>
+
 #### Pre-built tarball (no Homebrew)
 
 ```sh
