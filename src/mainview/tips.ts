@@ -591,6 +591,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0489}", // nf-md-console
 	},
 	{
+		id: "home-terminal",
+		titleKey: "tip.homeTerminal.title",
+		bodyKey: "tip.homeTerminal.body",
+		icon: "\u{F02DC}", // nf-md-home
+	},
+	{
 		id: "activity-project-actions",
 		titleKey: "tip.activityProjectActions.title",
 		bodyKey: "tip.activityProjectActions.body",

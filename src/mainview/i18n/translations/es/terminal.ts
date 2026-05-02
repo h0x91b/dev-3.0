@@ -81,8 +81,18 @@ const terminal = {
 	"projectTerminal.restart": "Reiniciar",
 	"projectTerminal.label": "Terminal del proyecto",
 	"projectTerminal.backToBoard": "Volver al tablero",
-	"projectTerminal.shortcutHint": "\u2318`",
-	"projectTerminal.tooltipWithShortcut": "Terminal del proyecto (\u2318`)",
+	"projectTerminal.shortcutHint": "⌘`",
+	"projectTerminal.tooltipWithShortcut": "Terminal del proyecto (⌘`)",
+
+	// Home Terminal
+	"homeTerminal.open": "Terminal de inicio",
+	"homeTerminal.label": "Terminal de inicio",
+	"homeTerminal.tooltipWithShortcut": "Terminal de inicio (⌘⇧`)",
+	"homeTerminal.shortcutHint": "⌘⇧`",
+	"homeTerminal.back": "Volver",
+	"homeTerminal.sessionEnded": "Sesión del terminal de inicio finalizada",
+	"homeTerminal.sessionEndedDesc": "El proceso del terminal ha terminado. Haz clic en reiniciar para abrir una nueva sesión.",
+	"homeTerminal.restart": "Reiniciar",
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
 };
 

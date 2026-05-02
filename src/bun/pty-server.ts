@@ -180,7 +180,10 @@ let ptyWsPort = 0;
 // by 10-100x while maintaining perceptual smoothness.
 const PTY_BATCH_INTERVAL_MS = 16;
 
-export type PtySessionType = "task" | "project";
+export type PtySessionType = "task" | "project" | "home";
+
+export const HOME_TERMINAL_SESSION_KEY = "home";
+export const HOME_TERMINAL_TMUX_NAME = "dev3-home";
 
 interface PtySession {
 	taskId: string;
@@ -238,6 +241,9 @@ function computeTmuxSessionName(key: string, type: PtySessionType): string {
 	if (type === "project") {
 		const projectId = key.startsWith("project-") ? key.slice(8) : key;
 		return `dev3-pt-${projectId.slice(0, 8)}`;
+	}
+	if (type === "home") {
+		return HOME_TERMINAL_TMUX_NAME;
 	}
 	return `dev3-${shortId(key)}`;
 }
@@ -534,18 +540,18 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 }
 
 /**
- * Create a 2×2 pane grid for project terminals.
+ * Create a 2×2 pane grid for project and home terminals.
  * Only runs if the session currently has exactly one pane (i.e. freshly created).
  * Uses `select-layout tiled` to avoid pane-index arithmetic.
  */
-function setupProjectLayout(session: PtySession): void {
+function setupTiledLayout(session: PtySession): void {
 	const s = session.tmuxSessionName;
 	const sock = session.tmuxSocket;
 	try {
 		const listResult = spawnSync(tmuxArgs(sock, "list-panes", "-t", s));
 		const paneCount = new TextDecoder().decode(listResult.stdout).trim().split("\n").filter(Boolean).length;
 		if (paneCount !== 1) {
-			log.info("Project layout: session already has multiple panes, skipping", { tmuxSession: s, paneCount });
+			log.info("Tiled layout: session already has multiple panes, skipping", { tmuxSession: s, paneCount });
 			return;
 		}
 		// Create 3 more panes (4 total), then apply tiled layout for 2×2 grid.
@@ -560,9 +566,9 @@ function setupProjectLayout(session: PtySession): void {
 		spawnSync(tmuxArgs(sock, "select-layout", "-t", s, "tiled"));
 		// Return focus to pane 1 (base-index 1 in tmux config)
 		spawnSync(tmuxArgs(sock, "select-pane", "-t", `${s}:1.1`));
-		log.info("Project terminal 2×2 layout created", { tmuxSession: s });
+		log.info("Tiled 2×2 layout created", { tmuxSession: s, sessionType: session.sessionType });
 	} catch (err) {
-		log.error("Failed to create project terminal layout", {
+		log.error("Failed to create tiled terminal layout", {
 			tmuxSession: s,
 			error: String(err),
 		});
@@ -699,8 +705,8 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			if (envKeys.length > 0) {
 				log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
 			}
-			if (session.sessionType === "project") {
-				setupProjectLayout(session);
+			if (session.sessionType === "project" || session.sessionType === "home") {
+				setupTiledLayout(session);
 			}
 
 		} catch (err) {

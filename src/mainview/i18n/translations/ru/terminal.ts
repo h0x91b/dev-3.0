@@ -85,8 +85,18 @@ const terminal = {
 	"projectTerminal.restart": "Перезапустить",
 	"projectTerminal.label": "Терминал проекта",
 	"projectTerminal.backToBoard": "Назад к доске",
-	"projectTerminal.shortcutHint": "\u2318`",
-	"projectTerminal.tooltipWithShortcut": "Терминал проекта (\u2318`)",
+	"projectTerminal.shortcutHint": "⌘`",
+	"projectTerminal.tooltipWithShortcut": "Терминал проекта (⌘`)",
+
+	// Home Terminal
+	"homeTerminal.open": "Домашний терминал",
+	"homeTerminal.label": "Домашний терминал",
+	"homeTerminal.tooltipWithShortcut": "Домашний терминал (⌘⇧`)",
+	"homeTerminal.shortcutHint": "⌘⇧`",
+	"homeTerminal.back": "Назад",
+	"homeTerminal.sessionEnded": "Сессия домашнего терминала завершена",
+	"homeTerminal.sessionEndedDesc": "Процесс терминала завершился. Нажмите «Перезапустить» для новой сессии.",
+	"homeTerminal.restart": "Перезапустить",
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
 };
 

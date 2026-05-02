@@ -190,6 +190,8 @@ const tips = {
 	"tip.projectTerminal.body": "Нужен быстрый shell в корне репо? Нажми кнопку Terminal в шапке или \u2318` для переключения с любого экрана проекта.",
 	"tip.projectTerminalDashboard.title": "Терминал с дашборда",
 	"tip.projectTerminalDashboard.body": "Терминал проекта можно открыть прямо с Dashboard — нажми иконку терминала на карточке проекта.",
+	"tip.homeTerminal.title": "Домашний терминал",
+	"tip.homeTerminal.body": "Нужен shell без привязки к проекту? Нажми иконку домика в шапке или ⌘⇧` — откроется tmux-сетка 2×2 в твоём home-каталоге.",
 	"tip.activityProjectActions.title": "Действия проекта в Activity",
 	"tip.activityProjectActions.body": "Кнопки в строке Activity сразу открывают настройки проекта, папку репо или терминал проекта.",
 	"tip.addProjectMenu.title": "Добавление проекта через меню",

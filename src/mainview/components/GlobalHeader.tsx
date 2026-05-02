@@ -7,6 +7,7 @@ import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
+import HomeTerminalIcon from "./HomeTerminalIcon";
 
 interface GlobalHeaderProps {
 	route: Route;
@@ -182,6 +183,11 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	// Project terminal breadcrumb segment
 	if (route.screen === "project-terminal") {
 		segments.push({ label: t("projectTerminal.label") });
+	}
+
+	// Home terminal breadcrumb segment
+	if (route.screen === "home-terminal") {
+		segments.push({ label: t("homeTerminal.label") });
 	}
 
 	// Task segment for split view
@@ -425,6 +431,26 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						<span className="text-[0.6875rem] font-medium">{t("projectTerminal.open")}</span>
 					</button>
 				)}
+
+				{/* Home Terminal — always visible (rootless tmux in $HOME) */}
+				<button
+					onClick={() => {
+						if (route.screen === "home-terminal") {
+							navigate({ screen: "dashboard" });
+						} else {
+							navigate({ screen: "home-terminal" });
+						}
+					}}
+					className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
+						route.screen === "home-terminal"
+							? "text-accent bg-accent/15 hover:bg-accent/25"
+							: "text-fg-3 hover:text-fg hover:bg-elevated"
+					}`}
+					title={t("homeTerminal.tooltipWithShortcut")}
+				>
+					<HomeTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
+					<span className="text-[0.6875rem] font-medium">{t("homeTerminal.open")}</span>
+				</button>
 
 				{/* Git Pull — quick pull of origin/{main|master} into project main worktree */}
 				{"projectId" in route && (

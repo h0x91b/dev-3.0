@@ -190,6 +190,8 @@ const tips = {
 	"tip.projectTerminal.body": "Need a quick shell at the repo root? Click the Terminal button in the header or press \u2318` to toggle it from any project screen.",
 	"tip.projectTerminalDashboard.title": "Terminal from Dashboard",
 	"tip.projectTerminalDashboard.body": "You can also open a project terminal straight from the Dashboard — click the terminal icon on any project card.",
+	"tip.homeTerminal.title": "Home Terminal",
+	"tip.homeTerminal.body": "Need a project-free shell? Click the home-shaped icon in the header or press ⌘⇧` to open a 2×2 tmux grid in your home directory.",
 	"tip.activityProjectActions.title": "Project actions in Activity",
 	"tip.activityProjectActions.body": "Use the Activity row buttons to open project settings, the repo folder, or the project terminal directly.",
 	"tip.addProjectMenu.title": "Add projects from the menu",

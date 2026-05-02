@@ -1,0 +1,1 @@
+Add Home Terminal — a project-free 2×2 tmux grid that opens in the user's home directory. Available from the global header (house icon) or via the Cmd+Shift+` shortcut from any screen, complementing the existing Project Terminal.

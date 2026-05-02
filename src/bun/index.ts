@@ -351,7 +351,10 @@ startResourceMonitor((name, payload) => {
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
 	try {
-		if (sessionKey.startsWith("project-")) {
+		if (sessionKey === "home") {
+			log.info("Home terminal died, notifying renderer");
+			(mainWindow.webview.rpc as any).send.homePtyDied?.({});
+		} else if (sessionKey.startsWith("project-")) {
 			const projectId = sessionKey.slice(8);
 			log.info("Project terminal died, notifying renderer", { projectId: projectId.slice(0, 8) });
 			(mainWindow.webview.rpc as any).send.projectPtyDied?.({ projectId });
@@ -371,7 +374,8 @@ setOnPtyDied((sessionKey) => {
 // Wire terminal bell notifications
 setOnBell((sessionKey) => {
 	try {
-		// Project terminals are plain shells — skip bell/auto-status logic
+		// Project and home terminals are plain shells — skip bell/auto-status logic
+		if (sessionKey === "home") return;
 		if (sessionKey.startsWith("project-")) return;
 
 		log.debug("Terminal bell, notifying renderer", { taskId: sessionKey.slice(0, 8) });
@@ -393,7 +397,8 @@ setOnBell((sessionKey) => {
 // Only fires for tasks that are currently "in-progress" — idle terminals
 // in other statuses (review, todo, etc.) are expected and not noteworthy.
 setOnIdle((sessionKey) => {
-	// Project terminals have no task status — skip idle notifications
+	// Project and home terminals have no task status — skip idle notifications
+	if (sessionKey === "home") return;
 	if (sessionKey.startsWith("project-")) return;
 
 	isTaskInProgress(sessionKey).then((inProgress) => {
