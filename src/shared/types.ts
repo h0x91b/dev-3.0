@@ -168,8 +168,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		configurations: [
 			{ id: "claude-default", name: "Default (Opus 4.7)", additionalArgs: ["--dangerously-skip-permissions"], version: 4 },
 			{ id: "claude-default-sonnet", name: "Default (Sonnet)", model: "sonnet", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-plan", name: "Plan (Opus 4.7)", permissionMode: "plan", additionalArgs: ["--dangerously-skip-permissions"], version: 4 },
-			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			{ id: "claude-plan", name: "Plan (Opus 4.7)", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 5 },
+			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 2 },
 			{ id: "claude-bypass", name: "Bypass (Opus 4.7)", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 4 },
 			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
 			{ id: "claude-auto", name: "Auto (Opus 4.7)", permissionMode: "auto", version: 4 },
