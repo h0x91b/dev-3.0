@@ -141,20 +141,11 @@ brew tap h0x91b/dev3
 brew install h0x91b/dev3/dev3
 ```
 
-This installs the `dev3` CLI. Two ways to use it:
+This installs the `dev3` CLI. Three ways to use it:
 
 - **Headless / browser UI** — `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint. Open the URL on your laptop and you're in. The token rotates every 25 seconds; the QR auto-refreshes too. Perfect for remote dev boxes.
+- **Desktop GUI** — `dev3 gui` launches the full Electrobun desktop app. On the first run it lazily downloads the bundle (~88 MB) into `~/.dev3.0/gui/` and registers an XDG menu entry. If your distro is missing GTK/WebKit libraries it prints the exact `apt`/`dnf`/`pacman` command for you to copy.
 - **CLI tooling** — `dev3 task …`, `dev3 current`, `dev3 note add …` etc. when you want to script the Kanban board from a terminal.
-
-#### Desktop GUI on Linux
-
-If your Linux machine has a display, you can run the full Electrobun desktop app. Download the latest tarball from [**Releases**](https://github.com/h0x91b/dev-3.0/releases) (look for `stable-linux-x64-dev-3.0.tar.zst`), extract, and run.
-
-Runtime dependencies (Debian/Ubuntu — adjust for your distro):
-
-```sh
-sudo apt install -y libgtk-3-0 libwebkit2gtk-4.0-37 libayatana-appindicator3-1 librsvg2-2 tmux git
-```
 
 #### Pre-built CLI tarball (no Homebrew)
 
