@@ -1,0 +1,1 @@
+Cmd+N now opens the same New Task dialog everywhere (with Scratch + Save & Start buttons), regardless of whether the user is on the Kanban board or inside a task. Removed the duplicate CreateTaskModal instance from KanbanBoard and made the "+" button route through the same App-level modal.

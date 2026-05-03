@@ -3,7 +3,7 @@ import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
 import { useT } from "./i18n";
 import { trackPageView, trackEvent } from "./analytics";
-import type { RequirementCheckResult } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
@@ -12,6 +12,7 @@ import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
 import CreateTaskModal from "./components/CreateTaskModal";
+import LaunchVariantsModal from "./components/LaunchVariantsModal";
 import ProjectView from "./components/ProjectView";
 import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
@@ -59,6 +60,14 @@ function App() {
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
+	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
+	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
+		defaultAgentId: "builtin-claude",
+		defaultConfigId: "claude-default",
+		taskDropPosition: "top",
+		updateChannel: "stable",
+	});
 
 	// Auth failure for browser remote access (expired/invalid QR token)
 	const [authFailed, setAuthFailed] = useState(false);
@@ -484,6 +493,16 @@ function App() {
 		return () => window.removeEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);
 	}, [openCreateTaskModal]);
 
+	// Load agents + global settings the first time the create-task modal opens.
+	// Needed by the LaunchVariantsModal that follows "Create & Run" / "Scratch".
+	const agentsLoadedRef = useRef(false);
+	useEffect(() => {
+		if (!createTaskProjectId || agentsLoadedRef.current) return;
+		agentsLoadedRef.current = true;
+		api.request.getAgents().then(setAgents).catch(() => {});
+		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
+	}, [createTaskProjectId]);
+
 	useEffect(() => {
 		function onOpenAddProjectModal() {
 			openAddProject();
@@ -667,6 +686,21 @@ function App() {
 					project={createTaskProject}
 					dispatch={dispatch}
 					onClose={() => setCreateTaskProjectId(null)}
+					onCreateAndRun={(task) => {
+						setCreateTaskProjectId(null);
+						setLaunchModal({ task, targetStatus: "in-progress", project: createTaskProject });
+					}}
+				/>
+			)}
+			{launchModal && (
+				<LaunchVariantsModal
+					task={launchModal.task}
+					project={launchModal.project}
+					targetStatus={launchModal.targetStatus}
+					agents={agents}
+					globalSettings={globalSettings}
+					dispatch={dispatch}
+					onClose={() => setLaunchModal(null)}
 				/>
 			)}
 			{pendingNavigation && (

@@ -15,6 +15,13 @@ vi.mock("../rpc", () => ({
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			pullProjectMain: vi.fn(),
+			getAgents: vi.fn().mockResolvedValue([]),
+			getGlobalSettings: vi.fn().mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskDropPosition: "top",
+				updateChannel: "stable",
+			}),
 		},
 	},
 }));
@@ -264,6 +271,25 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("{Meta>}n{/Meta}");
 
 			expect(await screen.findByText("New Task")).toBeInTheDocument();
+		});
+
+		it("Cmd+N from a task shows the Scratch button (same dialog as Kanban)", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await userEvent.keyboard("{Meta>}n{/Meta}");
+
+			expect(await screen.findByText("New Task")).toBeInTheDocument();
+			// Scratch + Save & Start are the markers that onCreateAndRun was passed
+			expect(await screen.findByText("Scratch Task")).toBeInTheDocument();
+			expect(await screen.findByText("Save & Start")).toBeInTheDocument();
 		});
 
 		it("opens from the full task screen when rpc:openCreateTaskModal fires", async () => {

@@ -15,7 +15,6 @@ import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import KanbanColumn from "./KanbanColumn";
-import CreateTaskModal from "./CreateTaskModal";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
@@ -50,7 +49,6 @@ function KanbanBoard({
 	disableGlobalFindShortcut = false,
 }: KanbanBoardProps) {
 	const t = useT();
-	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
 		defaultAgentId: "builtin-claude",
@@ -521,7 +519,7 @@ function KanbanBoard({
 						project,
 						dispatch,
 						navigate,
-						onAddTask: () => setShowCreateModal(true),
+						onAddTask: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
 						agents,
 						onLaunchVariants: (task: Task, targetStatus: TaskStatus) =>
 							setLaunchModal({ task, targetStatus }),
@@ -587,18 +585,6 @@ function KanbanBoard({
 					);
 				})}
 			</div>
-
-			{showCreateModal && (
-				<CreateTaskModal
-					project={project}
-					dispatch={dispatch}
-					onClose={() => setShowCreateModal(false)}
-					onCreateAndRun={(task) => {
-						setShowCreateModal(false);
-						setLaunchModal({ task, targetStatus: "in-progress" });
-					}}
-				/>
-			)}
 
 			{launchModal && (
 				<LaunchVariantsModal
