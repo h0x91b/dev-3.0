@@ -36,12 +36,6 @@ vi.mock("../rpc", () => ({
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			pullProjectMain: vi.fn(),
 			getAgents: vi.fn().mockResolvedValue([]),
-			getGlobalSettings: vi.fn().mockResolvedValue({
-				defaultAgentId: "builtin-claude",
-				defaultConfigId: "claude-default",
-				taskDropPosition: "top",
-				updateChannel: "stable",
-			}),
 		},
 	},
 }));
