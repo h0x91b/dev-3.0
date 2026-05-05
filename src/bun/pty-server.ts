@@ -206,6 +206,8 @@ interface PtySession {
 	pendingData: string;
 	/** Timer handle for the batch flush interval. */
 	batchTimer: ReturnType<typeof setTimeout> | null;
+	/** Partial OSC 52 clipboard sequence buffered across PTY chunks. */
+	osc52Buffer: string;
 }
 
 const sessions = new Map<string, PtySession>();
@@ -275,6 +277,7 @@ export function createSession(
 		decoder: new TextDecoder("utf-8", { fatal: false }),
 		pendingData: "",
 		batchTimer: null,
+		osc52Buffer: "",
 	};
 	sessions.set(taskId, session);
 	// Spawn immediately in the background — don't wait for WS connection
@@ -455,27 +458,75 @@ export function tmuxSessionExists(taskId: string, socket: string = DEFAULT_TMUX_
 	}
 }
 
-const OSC52_RE = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/g;
+const OSC52_PREFIX = "\x1b]52;";
+const OSC52_RE = /^\x1b\]52;[^;]*;([A-Za-z0-9+/=]*|\?)(?:\x07|\x1b\\)$/;
 // Matches any OSC sequence terminated by BEL or ST — used to strip them
 // before checking for standalone BEL (\x07)
 const OSC_ANY_RE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
-function handleOsc52(data: string, taskId: string): string {
-	return data.replace(OSC52_RE, (_match, b64: string) => {
-		if (b64 && b64 !== "?") {
-			try {
-				const text = Buffer.from(b64, "base64").toString("utf-8");
-				onOsc52CopyCallback?.({ taskId, text, len: text.length });
-				log.info("OSC 52: forwarded clipboard payload to client", {
-					taskId: shortId(taskId),
-					len: text.length,
-				});
-			} catch {
-				// ignore
+function findOscTerminator(data: string, start: number): { index: number; length: number } | null {
+	const bel = data.indexOf("\x07", start);
+	const st = data.indexOf("\x1b\\", start);
+	if (bel === -1 && st === -1) return null;
+	if (bel !== -1 && (st === -1 || bel < st)) return { index: bel, length: 1 };
+	return { index: st, length: 2 };
+}
+
+function trailingOsc52PrefixLength(data: string): number {
+	const max = Math.min(OSC52_PREFIX.length - 1, data.length);
+	for (let len = max; len > 0; len--) {
+		if (data.endsWith(OSC52_PREFIX.slice(0, len))) return len;
+	}
+	return 0;
+}
+
+function emitOsc52(seq: string, taskId: string): void {
+	const match = OSC52_RE.exec(seq);
+	const b64 = match?.[1];
+	if (!b64 || b64 === "?") return;
+	try {
+		const text = Buffer.from(b64, "base64").toString("utf-8");
+		onOsc52CopyCallback?.({ taskId, text, len: text.length });
+		log.info("OSC 52: forwarded clipboard payload to client", {
+			taskId: shortId(taskId),
+			len: text.length,
+		});
+	} catch {
+		// ignore malformed clipboard payloads
+	}
+}
+
+function handleOsc52(data: string, session: PtySession): string {
+	let input = session.osc52Buffer + data;
+	session.osc52Buffer = "";
+	let output = "";
+
+	while (input.length > 0) {
+		const start = input.indexOf(OSC52_PREFIX);
+		if (start === -1) {
+			const trailing = trailingOsc52PrefixLength(input);
+			if (trailing > 0) {
+				output += input.slice(0, -trailing);
+				session.osc52Buffer = input.slice(-trailing);
+			} else {
+				output += input;
 			}
+			break;
 		}
-		return "";
-	});
+
+		output += input.slice(0, start);
+		const terminator = findOscTerminator(input, start + OSC52_PREFIX.length);
+		if (!terminator) {
+			session.osc52Buffer = input.slice(start);
+			break;
+		}
+
+		const end = terminator.index + terminator.length;
+		emitOsc52(input.slice(start, end), session.taskId);
+		input = input.slice(end);
+	}
+
+	return output;
 }
 
 function checkForBell(data: string, taskId: string): void {
@@ -632,11 +683,11 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 									: session.decoder.decode(data, { stream: true });
 							session.lastOutputTime = Date.now();
 							session.idleNotified = false;
-							checkForBell(str, session.taskId);
-							const cleaned = handleOsc52(str, session.taskId);
-							if (cleaned && session.clients.size > 0) {
-								enqueuePtyData(session, cleaned);
-							}
+								const cleaned = handleOsc52(str, session);
+								checkForBell(cleaned, session.taskId);
+								if (cleaned && session.clients.size > 0) {
+									enqueuePtyData(session, cleaned);
+								}
 						} catch (err) {
 							log.error("PTY data callback error", {
 								taskId: shortId(session.taskId),

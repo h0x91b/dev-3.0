@@ -12,6 +12,7 @@ import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
+import { writeSystemClipboard } from "../system-clipboard";
 import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent } from "./shared";
 
 async function quitApp(): Promise<void> {
@@ -619,6 +620,19 @@ async function checkCaffeinateAvailable(): Promise<{ available: boolean }> {
 	return { available };
 }
 
+async function copyTerminalSelection(params: { taskId: string; text: string; mouseTracking: boolean }): Promise<{ ok: boolean; tool: string | null }> {
+	if (!params.text) return { ok: false, tool: null };
+	if (process.env.DEV3_HEADLESS === "1") return { ok: false, tool: null };
+	const tool = writeSystemClipboard(params.text);
+	log.info("terminal selection copied through backend", {
+		taskId: params.taskId.slice(0, 8),
+		len: params.text.length,
+		mouseTracking: params.mouseTracking,
+		tool,
+	});
+	return { ok: Boolean(tool), tool };
+}
+
 export const appHandlers = {
 	logRendererError,
 	// TEMP DIAGNOSTIC: remove with logRendererEvent after terminal copy bug cleanup.
@@ -648,4 +662,5 @@ export const appHandlers = {
 	updateTipState,
 	resetTipState,
 	checkCaffeinateAvailable,
+	copyTerminalSelection,
 };

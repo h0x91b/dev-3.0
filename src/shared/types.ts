@@ -1260,6 +1260,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV" };
 				response: void;
 			};
+			copyTerminalSelection: {
+				params: { taskId: string; text: string; mouseTracking: boolean };
+				response: { ok: boolean; tool: string | null };
+			};
 			spawnAgentInTask: {
 				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null };
 				response: void;

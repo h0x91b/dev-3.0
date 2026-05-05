@@ -1,0 +1,1 @@
+Fixed terminal clipboard handling for long drag selections, including Home Terminal selections that scroll beyond one screen. OSC 52 clipboard payloads are now buffered across PTY chunks before decoding, and native ghostty selections also use a backend clipboard bridge on desktop.

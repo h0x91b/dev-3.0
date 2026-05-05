@@ -81,7 +81,14 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
-	api: { request: { uploadFileBase64: vi.fn(), tmuxAction: vi.fn(), logRendererEvent: vi.fn().mockResolvedValue(undefined) } },
+	api: {
+		request: {
+			uploadFileBase64: vi.fn(),
+			tmuxAction: vi.fn(),
+			logRendererEvent: vi.fn().mockResolvedValue(undefined),
+			copyTerminalSelection: vi.fn().mockResolvedValue({ ok: true, tool: "pbcopy" }),
+		},
+	},
 }));
 
 vi.mock("../zoom", () => ({
@@ -317,6 +324,7 @@ describe("TerminalView – focus-on-type", () => {
 
 const mockedTmuxAction = vi.mocked(api.request.tmuxAction);
 const mockedUploadFileBase64 = vi.mocked(api.request.uploadFileBase64);
+const mockedCopyTerminalSelection = vi.mocked(api.request.copyTerminalSelection);
 
 /** Focus a child element inside the terminal container so the keymap guard passes. */
 function focusInsideTerminal(): HTMLElement {
@@ -489,6 +497,49 @@ describe("TerminalView – OSC 52 clipboard", () => {
 		});
 
 		expect(clipboardWriteTextMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("TerminalView – selection clipboard bridge", () => {
+	beforeEach(() => {
+		mockedCopyTerminalSelection.mockClear();
+		mockedCopyTerminalSelection.mockResolvedValue({ ok: true, tool: "pbcopy" });
+	});
+
+	it("copies native terminal selections through the backend on mouseup", async () => {
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("line 1\nline 2\nline 3");
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+
+		await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+		});
+
+		expect(mockedCopyTerminalSelection).toHaveBeenCalledWith({
+			text: "line 1\nline 2\nline 3",
+			taskId: "t1",
+			mouseTracking: false,
+		});
+	});
+
+	it("does not use the backend bridge when tmux mouse tracking owns the drag", async () => {
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("tmux-owned selection");
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+
+		await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+		});
+
+		expect(mockedCopyTerminalSelection).not.toHaveBeenCalled();
 	});
 });
 

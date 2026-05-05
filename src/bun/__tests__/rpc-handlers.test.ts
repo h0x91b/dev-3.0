@@ -104,6 +104,10 @@ vi.mock("../pty-server", () => ({
 	HOME_TERMINAL_TMUX_NAME: "dev3-home",
 }));
 
+vi.mock("../system-clipboard", () => ({
+	writeSystemClipboard: vi.fn(() => "pbcopy"),
+}));
+
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
 	ensureCodexTrust: vi.fn(),
@@ -198,6 +202,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
+import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
@@ -3386,6 +3391,39 @@ describe("handlers.showConfirm", () => {
 		vi.mocked(Utils.showMessageBox).mockResolvedValue({ response: 1 } as any);
 		const result = await handlers.showConfirm({ title: "Confirm", message: "Are you sure?" });
 		expect(result).toBe(false);
+	});
+});
+
+describe("handlers.copyTerminalSelection", () => {
+	beforeEach(() => {
+		vi.mocked(systemClipboard.writeSystemClipboard).mockReset();
+		vi.mocked(systemClipboard.writeSystemClipboard).mockReturnValue("pbcopy");
+		delete process.env.DEV3_HEADLESS;
+	});
+
+	it("writes terminal selections through the system clipboard helper", async () => {
+		const result = await handlers.copyTerminalSelection({
+			taskId: "home",
+			text: "selected terminal text",
+			mouseTracking: false,
+		});
+
+		expect(systemClipboard.writeSystemClipboard).toHaveBeenCalledWith("selected terminal text");
+		expect(result).toEqual({ ok: true, tool: "pbcopy" });
+	});
+
+	it("does not write host clipboard from headless mode", async () => {
+		process.env.DEV3_HEADLESS = "1";
+
+		const result = await handlers.copyTerminalSelection({
+			taskId: "home",
+			text: "remote browser text",
+			mouseTracking: false,
+		});
+
+		expect(systemClipboard.writeSystemClipboard).not.toHaveBeenCalled();
+		expect(result).toEqual({ ok: false, tool: null });
+		delete process.env.DEV3_HEADLESS;
 	});
 });
 
