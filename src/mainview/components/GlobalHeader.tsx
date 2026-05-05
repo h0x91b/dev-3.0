@@ -405,6 +405,26 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 					</div>
 				)}
 
+				{/* Home Terminal — always visible (rootless tmux in $HOME) */}
+				<button
+					onClick={() => {
+						if (route.screen === "home-terminal") {
+							navigate({ screen: "dashboard" });
+						} else {
+							navigate({ screen: "home-terminal" });
+						}
+					}}
+					className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
+						route.screen === "home-terminal"
+							? "text-accent bg-accent/15 hover:bg-accent/25"
+							: "text-fg-3 hover:text-fg hover:bg-elevated"
+					}`}
+					title={t("homeTerminal.tooltipWithShortcut")}
+				>
+					<HomeTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
+					<span className="text-[0.6875rem] font-medium">{t("homeTerminal.open")}</span>
+				</button>
+
 				{/* Project Terminal — visible when inside a project */}
 				{"projectId" in route && (
 					<button
@@ -431,26 +451,6 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						<span className="text-[0.6875rem] font-medium">{t("projectTerminal.open")}</span>
 					</button>
 				)}
-
-				{/* Home Terminal — always visible (rootless tmux in $HOME) */}
-				<button
-					onClick={() => {
-						if (route.screen === "home-terminal") {
-							navigate({ screen: "dashboard" });
-						} else {
-							navigate({ screen: "home-terminal" });
-						}
-					}}
-					className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
-						route.screen === "home-terminal"
-							? "text-accent bg-accent/15 hover:bg-accent/25"
-							: "text-fg-3 hover:text-fg hover:bg-elevated"
-					}`}
-					title={t("homeTerminal.tooltipWithShortcut")}
-				>
-					<HomeTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
-					<span className="text-[0.6875rem] font-medium">{t("homeTerminal.open")}</span>
-				</button>
 
 				{/* Git Pull — quick pull of origin/{main|master} into project main worktree */}
 				{"projectId" in route && (

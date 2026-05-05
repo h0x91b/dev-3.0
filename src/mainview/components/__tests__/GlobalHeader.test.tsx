@@ -521,6 +521,17 @@ describe("GlobalHeader — project terminal button", () => {
 		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
 	});
 
+	it("shows home terminal before project terminal", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+
+		const homeButton = screen.getByTitle("Home Terminal (\u2318\u21e7`)");
+		const projectButton = screen.getByTitle("Project Terminal (\u2318`)");
+
+		expect(
+			homeButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
+
 	it("does not show terminal button on dashboard", () => {
 		renderHeader({ screen: "dashboard" });
 		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();
