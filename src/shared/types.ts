@@ -366,6 +366,7 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
 	{ id: "intellij", name: "IntelliJ", macAppName: "IntelliJ IDEA" },
 	{ id: "intellij-ultimate", name: "IntelliJ", macAppName: "IntelliJ IDEA Ultimate" },
 	{ id: "intellij-ce", name: "IntelliJ", macAppName: "IntelliJ IDEA CE" },
+	{ id: "pycharm", name: "PyCharm", macAppName: "PyCharm" },
 	{ id: "zed", name: "Zed", macAppName: "Zed" },
 	{ id: "sublime", name: "Sublime Text", macAppName: "Sublime Text" },
 ];

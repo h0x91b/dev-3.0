@@ -274,17 +274,14 @@ function GlobalSettings() {
 
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
-			persistGlobalSettings(
-				(prev) => ({
-					...prev,
-					externalApps: normalizeExternalApps(apps),
-				}),
-				{
-					onLocalUpdate: () => invalidateAvailableApps(),
-				},
-			);
+			api.request.saveGlobalSettings({
+				...globalSettingsRef.current,
+				externalApps: normalizeExternalApps(apps),
+			}).then(() => {
+				invalidateAvailableApps();
+			}).catch(() => {});
 		},
-		[persistGlobalSettings],
+		[],
 	);
 
 	const debouncedSaveExternalApps = useDebouncedCallback(saveExternalApps, 500);

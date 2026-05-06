@@ -129,6 +129,29 @@ describe("GlobalSettings", () => {
 			expect(screen.getByText("ES")).toBeInTheDocument();
 		});
 
+		it("keeps incomplete external app rows visible while saving valid rows only", async () => {
+			const user = userEvent.setup();
+			setupMocks();
+
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: /Add App/ }));
+			const displayNameInput = screen.getByPlaceholderText("Display name");
+			await user.type(displayNameInput, "PyCharm");
+
+			expect(displayNameInput).toHaveValue("PyCharm");
+
+			await waitFor(() => {
+				expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalled();
+			});
+			expect(screen.getByDisplayValue("PyCharm")).toBeInTheDocument();
+
+			const saveCalls = mockedApi.request.saveGlobalSettings.mock.calls;
+			const savedSettings = saveCalls[saveCalls.length - 1]?.[0];
+			expect(savedSettings?.externalApps).toBeUndefined();
+		});
+
 		it("renders agent list", async () => {
 			setupMocks();
 			renderGlobalSettings();

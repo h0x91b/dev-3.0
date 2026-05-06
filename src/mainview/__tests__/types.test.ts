@@ -9,6 +9,7 @@ import {
 	STATUS_COLORS,
 	STATUS_COLORS_LIGHT,
 	DEFAULT_AGENTS,
+	DEFAULT_EXTERNAL_APPS,
 	getPrimaryStopTarget,
 	LABEL_COLORS,
 } from "../../shared/types";
@@ -325,6 +326,18 @@ describe("DEFAULT_AGENTS", () => {
 		expect(cfg!.additionalArgs).toContain("danger-full-access");
 		expect(cfg!.additionalArgs).toContain('model_reasoning_effort="high"');
 		expect(cfg!.additionalArgs).not.toContain('default_permissions="dev3"');
+	});
+});
+
+// ---- Constants: DEFAULT_EXTERNAL_APPS ----
+
+describe("DEFAULT_EXTERNAL_APPS", () => {
+	it("includes PyCharm as a built-in external app", () => {
+		expect(DEFAULT_EXTERNAL_APPS).toContainEqual({
+			id: "pycharm",
+			name: "PyCharm",
+			macAppName: "PyCharm",
+		});
 	});
 });
 
