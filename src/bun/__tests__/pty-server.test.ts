@@ -655,6 +655,30 @@ describe("pty-server", () => {
 			expect(mockSpawn).not.toHaveBeenCalled();
 		});
 
+		it("emits OSC 52 clipboard data split across PTY chunks", () => {
+			const id = track("task-osc52-split");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			const osc52Cb = vi.fn();
+			setOnOsc52Copy(osc52Cb);
+
+			const testText = `${"long clipboard line\n".repeat(200)}done`;
+			const b64 = Buffer.from(testText).toString("base64");
+			const osc52Seq = `\x1b]52;c;${b64}\x07`;
+			const splitAt = 120;
+
+			mockSpawn.mockClear();
+
+			capturedDataCb!(null, osc52Seq.slice(0, splitAt));
+			capturedDataCb!(null, osc52Seq.slice(splitAt));
+
+			expect(osc52Cb).toHaveBeenCalledWith({
+				taskId: id,
+				text: testText,
+				len: testText.length,
+			});
+			expect(mockSpawn).not.toHaveBeenCalled();
+		});
+
 		it("ignores OSC 52 query (b64 is '?')", () => {
 			const id = track("task-osc52-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});

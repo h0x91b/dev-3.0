@@ -210,6 +210,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		let ws: WebSocket | null = null;
 		let layoutObserver: ResizeObserver | null = null;
 		let mouseCleanup: (() => void) | undefined;
+		let nativeSelectionClipboardCleanup: (() => void) | undefined;
 		const termSubs: Array<{ dispose(): void }> = [];
 		const diagnosticsId = `terminal-copy-${taskId}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -423,6 +424,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 							fitAddon!.observeResize();
 							term.focus();
 							mouseCleanup = setupMouseTracking(term);
+							nativeSelectionClipboardCleanup = setupNativeSelectionClipboardBridge(term);
 
 							// Fix Shift+functional keys — intercept before
 							// ghostty-web's buggy shortcut swallows the modifier.
@@ -601,6 +603,59 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			};
 		}
 
+		function setupNativeSelectionClipboardBridge(term: Terminal): () => void {
+			let selectionGestureActive = false;
+
+			function onMouseDown(event: MouseEvent) {
+				if (disposed) return;
+				try {
+					const container = containerRef.current;
+					selectionGestureActive =
+						!!container &&
+						event.target instanceof Node &&
+						container.contains(event.target) &&
+						!term.hasMouseTracking();
+				} catch {
+					selectionGestureActive = false;
+				}
+			}
+
+			function onMouseUp() {
+				if (disposed) return;
+				if (!selectionGestureActive) return;
+				selectionGestureActive = false;
+				queueMicrotask(() => {
+					if (disposed) return;
+					try {
+						const mouseTracking = term.hasMouseTracking();
+						if (mouseTracking || !term.hasSelection()) return;
+						const text = term.getSelection();
+						if (!text) return;
+						copyDiagnosticsRef.current?.markSelection(text.length, mouseTracking);
+						api.request.copyTerminalSelection({
+							taskId,
+							text,
+							mouseTracking,
+						}).catch((err) => {
+							logCopyEvent("warn", "backend terminal selection copy failed", {
+								len: text.length,
+								error: String(err),
+							});
+						});
+					} catch {
+						// Selection bridge is best effort; ghostty may be disposed.
+					}
+				});
+			}
+
+			document.addEventListener("mousedown", onMouseDown);
+			document.addEventListener("mouseup", onMouseUp);
+			return () => {
+				document.removeEventListener("mousedown", onMouseDown);
+				document.removeEventListener("mouseup", onMouseUp);
+			};
+		}
+
 		// Strip any remaining OSC 52 sequences (already handled server-side)
 		const OSC52_RE =
 			/\x1b\]52;[^;]*;[A-Za-z0-9+/=]*(?:\x07|\x1b\\)/g;
@@ -727,6 +782,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			pendingWrite = "";
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
+			nativeSelectionClipboardCleanup?.();
 			// Dispose terminal event subscriptions (onData, onResize) before
 			// closing the WebSocket or disposing the terminal to prevent
 			// callbacks from firing on a disposed terminal.
