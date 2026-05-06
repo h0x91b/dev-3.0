@@ -359,7 +359,7 @@ export async function activateTask(
 	// flow), not here — activateTask is only used for direct launches that already
 	// have a real description.
 	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
-	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, undefined, undefined, true, isReopen);
+	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
 

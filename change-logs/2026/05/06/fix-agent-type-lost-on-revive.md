@@ -1,0 +1,1 @@
+When reviving a task from completed or cancelled, the agent used for the original session is now correctly restored. Previously, `activateTask` always passed `undefined` for `agentId` to `launchTaskPty`, causing the global default agent to be used instead of the one stored on the task.
