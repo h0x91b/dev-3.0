@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskInfoPanel from "../TaskInfoPanel";
 import { I18nProvider } from "../../i18n";
@@ -27,6 +27,11 @@ vi.mock("../../rpc", () => ({
 			renameTask: vi.fn(),
 			getPortAllocations: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskDropPosition: "top", updateChannel: "stable" }),
+			getAvailableApps: vi.fn().mockResolvedValue([
+				{ id: "finder", name: "Finder", macAppName: "Finder" },
+				{ id: "text-mate", name: "TextMate", macAppName: "TextMate" },
+			]),
+			openInApp: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -263,6 +268,37 @@ describe("TaskInfoPanel", () => {
 				compareLabel: "origin/main",
 				focusFile: "bun.lock",
 			});
+		});
+
+		it("keeps a file Open In menu open after leaving the changed files popup", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 1,
+				diffInsertions: 12,
+				diffDeletions: 4,
+				diffFileNames: ["src/mainview/App.tsx"],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			await user.hover(screen.getByText("1 file").closest("span")!);
+			const changedFilesHeader = await screen.findByText("Changed files");
+			const popover = changedFilesHeader.parentElement!;
+			const fileRow = screen.getByText("src/mainview/App.tsx").closest("div")!;
+			await user.click(within(fileRow).getByRole("button", { name: "Open in..." }));
+
+			expect(screen.getAllByText("Open in...").length).toBeGreaterThanOrEqual(2);
+
+			fireEvent.mouseLeave(popover);
+			await act(async () => {
+				vi.advanceTimersByTime(150);
+			});
+
+			expect(screen.getAllByText("Open in...").length).toBeGreaterThanOrEqual(2);
+			expect(await screen.findByText("TextMate")).toBeInTheDocument();
 		});
 
 		it("skips unknown label IDs", async () => {

@@ -343,7 +343,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	function hideDiffFilesPopover() {
 		diffFilesHoverTimer.current = setTimeout(() => {
 			setDiffFilesHover(false);
-			setFileOpenInMenu(null);
 		}, 150);
 	}
 
