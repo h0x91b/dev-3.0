@@ -2121,6 +2121,30 @@ describe("activateTask", () => {
 		);
 	});
 
+	it("preserves the stored agentId when reviving a completed task", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "completed",
+			description: "original description",
+			worktreePath: null,
+			branchName: null,
+			agentId: "builtin-claude",
+			configId: null,
+		});
+
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+
+		await activateTask(project, task, { isReopen: true });
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
+			"builtin-claude",
+			null,
+			expect.objectContaining({ worktreePath: "/tmp/wt" }),
+			{ resume: true },
+		);
+		expect(agents.resolveCommandForProject).not.toHaveBeenCalled();
+	});
+
 });
 
 // ================================================================
