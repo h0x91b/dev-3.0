@@ -74,6 +74,9 @@ async function reserveMergeCompletionPrompt(project: Project, task: Task, finger
 		return false;
 	}
 
+	// Reserve the slot before awaiting so concurrent callers see the key immediately
+	// and cannot both pass the has() check above.
+	mergeNotifiedPromptKeys.add(promptKey);
 	await data.updateTask(project, task.id, {
 		mergeCompletionPrompt: {
 			fingerprint: fingerprint.fingerprint,
@@ -82,7 +85,6 @@ async function reserveMergeCompletionPrompt(project: Project, task: Task, finger
 			precise: fingerprint.precise,
 		},
 	});
-	mergeNotifiedPromptKeys.add(promptKey);
 	return true;
 }
 

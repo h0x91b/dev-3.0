@@ -128,8 +128,8 @@ export function useTaskBranchStatus({
 							projectId: project.id,
 							fingerprint: status.mergeCompletionFingerprint,
 						});
+						mergeDialogShownRef.current = true;
 						if (promptState.shouldPrompt) {
-							mergeDialogShownRef.current = true;
 							const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
 								api.request.showConfirm({
 									title: t("app.branchMergedTitle"),
