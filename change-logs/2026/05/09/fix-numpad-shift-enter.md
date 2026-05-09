@@ -1,0 +1,1 @@
+Shift+Enter handling in terminals now matches Enter by keyboard meaning instead of only physical key code, so the main Return key and numpad Enter both preserve the newline shortcut on extended keyboards.

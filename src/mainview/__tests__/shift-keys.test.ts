@@ -103,6 +103,18 @@ describe("Shift+key integration (ghostty-web InputHandler)", () => {
 		expect(sent).toEqual(["\x1b\r"]);
 	});
 
+	it("Shift+NumpadEnter sends ESC+CR (newline without submit)", () => {
+		const { sent, fire } = setup();
+		fire(keyEvent("NumpadEnter", "Enter", SHIFT));
+		expect(sent).toEqual(["\x1b\r"]);
+	});
+
+	it("Shift+Enter is matched by key even when code is unexpected", () => {
+		const { sent, fire } = setup();
+		fire(keyEvent("Return", "Enter", SHIFT));
+		expect(sent).toEqual(["\x1b\r"]);
+	});
+
 	it("Shift+Home sends modified Home sequence", () => {
 		const { sent, fire } = setup();
 		fire(keyEvent("Home", "Home", SHIFT));
