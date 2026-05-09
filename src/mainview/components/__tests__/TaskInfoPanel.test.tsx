@@ -18,6 +18,8 @@ vi.mock("../../rpc", () => ({
 			checkDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
 			getBranchStatus: vi.fn(),
+			prepareMergeCompletionPrompt: vi.fn(),
+			dismissMergeCompletionPrompt: vi.fn(),
 			rebaseTask: vi.fn(),
 			mergeTask: vi.fn(),
 			pushTask: vi.fn(),
@@ -104,6 +106,7 @@ const defaultBranchStatus: BranchStatus = {
 	diffFileNames: [],
 	prNumber: null,
 	prUrl: null,
+	mergeCompletionFingerprint: null,
 };
 
 const defaultDevServerStatus: DevServerStatus = {
@@ -157,6 +160,11 @@ describe("TaskInfoPanel", () => {
 		localStorage.clear();
 		// Default: getBranchStatus resolves immediately
 		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
+		mockedApi.request.prepareMergeCompletionPrompt.mockResolvedValue({
+			shouldPrompt: true,
+			fingerprint: "v1:dev3/task-t1:abc123",
+		});
+		mockedApi.request.dismissMergeCompletionPrompt.mockResolvedValue(makeTask());
 		// Default: getResolvedProject returns the project as-is
 		mockedApi.request.getResolvedProject.mockResolvedValue(project);
 	});
@@ -1699,6 +1707,79 @@ describe("TaskInfoPanel", () => {
 					newStatus: "completed",
 				});
 			});
+		});
+
+		it("does not show a second merge-complete dialog while one is already open", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-user" });
+			let resolveConfirm: (value: boolean) => void = () => {};
+
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
+			});
+			mockedApi.request.showConfirm.mockReturnValue(
+				new Promise<boolean>((resolve) => {
+					resolveConfirm = resolve;
+				}),
+			);
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalledTimes(1);
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:gitOpCompleted", {
+						detail: { taskId: "t1", operation: "merge", ok: true },
+					}),
+				);
+			});
+
+			expect(mockedApi.request.showConfirm).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				resolveConfirm(false);
+			});
+			await waitFor(() => {
+				expect(mockedApi.request.dismissMergeCompletionPrompt).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					fingerprint: "v1:dev3/task-t1:abc123",
+				});
+			});
+		});
+
+		it("does not ask when backend suppresses the merge-completion prompt", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-user" });
+
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
+			});
+			mockedApi.request.prepareMergeCompletionPrompt.mockResolvedValue({
+				shouldPrompt: false,
+				fingerprint: "v1:dev3/task-t1:abc123",
+			});
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.prepareMergeCompletionPrompt).toHaveBeenCalled();
+			});
+			expect(mockedApi.request.showConfirm).not.toHaveBeenCalled();
+			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
 		it("sets movedAt when auto-completing after merge", async () => {

@@ -14,6 +14,7 @@ export {
 	startMergeDetectionPoller,
 	stopMergeDetectionPoller,
 	clearMergeNotification,
+	_resetMergePollerState,
 	startPRDetectionPoller,
 	stopPRDetectionPoller,
 	_resetPRPollerState,

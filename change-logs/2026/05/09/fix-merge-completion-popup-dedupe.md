@@ -1,0 +1,1 @@
+Deduplicate merge-completion prompts by persisting the last prompted task-branch fingerprint. Dismissing the prompt now suppresses repeats until the task branch changes, with a one-hour fallback when the exact branch head cannot be read.

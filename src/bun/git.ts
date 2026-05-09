@@ -883,6 +883,12 @@ export async function getCurrentBranch(worktreePath: string): Promise<string | n
 	return result.stdout;
 }
 
+export async function getHeadSha(worktreePath: string): Promise<string | null> {
+	const result = await run(["git", "rev-parse", "HEAD"], worktreePath);
+	if (!result.ok) return null;
+	return result.stdout.trim() || null;
+}
+
 export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
 	const result = await run(["git", "status", "--porcelain"], worktreePath);
 	if (!result.ok) return false;
