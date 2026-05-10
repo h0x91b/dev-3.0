@@ -405,7 +405,7 @@ function GlobalSettings() {
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6">
+				<div className="max-w-4xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6">
 					<AppearanceSettingsSection
 						t={t}
 						locale={locale}

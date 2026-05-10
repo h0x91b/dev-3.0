@@ -35,6 +35,8 @@ const settings = {
 	"settings.moveAgentDown": "Опустить агента",
 	"settings.moveConfigUp": "Поднять конфигурацию",
 	"settings.moveConfigDown": "Опустить конфигурацию",
+	"settings.dragAgent": "Перетащить агента",
+	"settings.dragConfig": "Перетащить конфигурацию",
 	"settings.commandPreview": "Итоговая команда",
 	"settings.defaultBadge": "По умолчанию",
 	"settings.configPermissionMode": "Режим разрешений",

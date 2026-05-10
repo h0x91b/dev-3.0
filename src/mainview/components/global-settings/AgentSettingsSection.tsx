@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type DragEvent } from "react";
 import type {
 	AgentCheckResult,
 	AgentConfiguration,
@@ -12,32 +12,64 @@ import { ListEditor } from "../ListEditor";
 import { api } from "../../rpc";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
-import { buildCommandPreview, moveItem } from "./utils";
+import {
+	buildCommandPreview,
+	moveItem,
+	reorderToTarget,
+	type DropSide,
+} from "./utils";
 
 const ARROW_UP_GLYPH = "\uF062";
 const ARROW_DOWN_GLYPH = "\uF063";
+const GRIP_GLYPH = "\u{F01DB}";
 
-function ReorderButtons({
+function ReorderControls({
+	dragHandleProps,
 	canMoveUp,
 	canMoveDown,
 	onMoveUp,
 	onMoveDown,
+	dragTitle,
 	upTitle,
 	downTitle,
 	size = "sm",
 }: {
+	dragHandleProps: {
+		draggable: boolean;
+		onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
+		onDragEnd: () => void;
+	};
 	canMoveUp: boolean;
 	canMoveDown: boolean;
 	onMoveUp: () => void;
 	onMoveDown: () => void;
+	dragTitle: string;
 	upTitle: string;
 	downTitle: string;
 	size?: "sm" | "md";
 }) {
 	const fontSize = size === "md" ? "text-[0.875rem]" : "text-[0.75rem]";
+	const gripSize = size === "md" ? "text-[1rem]" : "text-[0.875rem]";
 	const padding = size === "md" ? "p-1.5" : "p-1";
 	return (
 		<div className="flex items-center gap-0.5 shrink-0">
+			<button
+				type="button"
+				onClick={(event) => event.stopPropagation()}
+				draggable={dragHandleProps.draggable}
+				onDragStart={dragHandleProps.onDragStart}
+				onDragEnd={dragHandleProps.onDragEnd}
+				className={`${padding} rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors cursor-grab active:cursor-grabbing`}
+				title={dragTitle}
+				aria-label={dragTitle}
+			>
+				<span
+					className={`${gripSize} leading-none`}
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{GRIP_GLYPH}
+				</span>
+			</button>
 			<button
 				type="button"
 				onClick={(event) => {
@@ -106,6 +138,20 @@ export default function AgentSettingsSection({
 	);
 	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
 	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
+	const [draggedAgentId, setDraggedAgentId] = useState<string | null>(null);
+	const [agentDropTarget, setAgentDropTarget] = useState<{
+		id: string;
+		side: DropSide;
+	} | null>(null);
+	const [draggedConfig, setDraggedConfig] = useState<{
+		agentId: string;
+		configId: string;
+	} | null>(null);
+	const [configDropTarget, setConfigDropTarget] = useState<{
+		agentId: string;
+		configId: string;
+		side: DropSide;
+	} | null>(null);
 
 	const selectedDefaultAgent = agents.find(
 		(agent) => agent.id === globalSettings.defaultAgentId,
@@ -238,6 +284,74 @@ export default function AgentSettingsSection({
 		persistAgents(updated);
 	}
 
+	function handleAgentDragOver(
+		event: DragEvent<HTMLDivElement>,
+		agentId: string,
+	) {
+		if (!draggedAgentId || draggedAgentId === agentId) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "move";
+		const rect = event.currentTarget.getBoundingClientRect();
+		const side: DropSide =
+			event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+		setAgentDropTarget({ id: agentId, side });
+	}
+
+	function handleAgentDrop(agentId: string) {
+		const sourceId = draggedAgentId;
+		const side = agentDropTarget?.id === agentId ? agentDropTarget.side : "before";
+		setDraggedAgentId(null);
+		setAgentDropTarget(null);
+		if (!sourceId || sourceId === agentId) return;
+		persistAgents(
+			reorderToTarget(agents, sourceId, agentId, side, (a) => a.id),
+		);
+	}
+
+	function handleConfigDragOver(
+		event: DragEvent<HTMLDivElement>,
+		agentId: string,
+		configId: string,
+	) {
+		if (!draggedConfig) return;
+		if (draggedConfig.agentId !== agentId) return;
+		if (draggedConfig.configId === configId) return;
+		event.preventDefault();
+		event.stopPropagation();
+		event.dataTransfer.dropEffect = "move";
+		const rect = event.currentTarget.getBoundingClientRect();
+		const side: DropSide =
+			event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+		setConfigDropTarget({ agentId, configId, side });
+	}
+
+	function handleConfigDrop(agentId: string, configId: string) {
+		const source = draggedConfig;
+		const side =
+			configDropTarget?.agentId === agentId &&
+			configDropTarget?.configId === configId
+				? configDropTarget.side
+				: "before";
+		setDraggedConfig(null);
+		setConfigDropTarget(null);
+		if (!source || source.agentId !== agentId) return;
+		if (source.configId === configId) return;
+		const updated = agents.map((agent) => {
+			if (agent.id !== agentId) return agent;
+			return {
+				...agent,
+				configurations: reorderToTarget(
+					agent.configurations,
+					source.configId,
+					configId,
+					side,
+					(c) => c.id,
+				),
+			};
+		});
+		persistAgents(updated);
+	}
+
 	return (
 		<SettingsSection title={t("settings.agents")}>
 			<div>
@@ -308,11 +422,34 @@ export default function AgentSettingsSection({
 							setExpandedAgentId(isExpanded ? null : agent.id);
 							setExpandedConfigId(null);
 						};
+						const isDragged = draggedAgentId === agent.id;
+						const showDropBefore =
+							agentDropTarget?.id === agent.id &&
+							agentDropTarget.side === "before";
+						const showDropAfter =
+							agentDropTarget?.id === agent.id &&
+							agentDropTarget.side === "after";
 						return (
 							<div
 								key={agent.id}
-								className="bg-raised border border-edge rounded-xl overflow-hidden"
+								className={`relative bg-raised border border-edge rounded-xl overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
+								onDragOver={(event) => handleAgentDragOver(event, agent.id)}
+								onDragLeave={() =>
+									setAgentDropTarget((current) =>
+										current?.id === agent.id ? null : current,
+									)
+								}
+								onDrop={(event) => {
+									event.preventDefault();
+									handleAgentDrop(agent.id);
+								}}
 							>
+								{showDropBefore ? (
+									<div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />
+								) : null}
+								{showDropAfter ? (
+									<div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />
+								) : null}
 								<div
 									role="button"
 									tabIndex={0}
@@ -325,11 +462,27 @@ export default function AgentSettingsSection({
 									}}
 									className="w-full flex items-center gap-3 px-4 py-3 hover:bg-raised-hover transition-colors text-left cursor-pointer"
 								>
-									<ReorderButtons
+									<ReorderControls
+										dragHandleProps={{
+											draggable: true,
+											onDragStart: (event) => {
+												setDraggedAgentId(agent.id);
+												event.dataTransfer.setData(
+													"text/plain",
+													`agent:${agent.id}`,
+												);
+												event.dataTransfer.effectAllowed = "move";
+											},
+											onDragEnd: () => {
+												setDraggedAgentId(null);
+												setAgentDropTarget(null);
+											},
+										}}
 										canMoveUp={agentIndex > 0}
 										canMoveDown={agentIndex < agents.length - 1}
 										onMoveUp={() => moveAgent(agent.id, -1)}
 										onMoveDown={() => moveAgent(agent.id, 1)}
+										dragTitle={t("settings.dragAgent")}
 										upTitle={t("settings.moveAgentUp")}
 										downTitle={t("settings.moveAgentDown")}
 										size="md"
@@ -577,6 +730,17 @@ export default function AgentSettingsSection({
 												{agent.configurations.map((config, configIndex) => {
 													const isConfigExpanded =
 														expandedConfigId === config.id;
+													const isConfigDragged =
+														draggedConfig?.agentId === agent.id &&
+														draggedConfig?.configId === config.id;
+													const showConfigDropBefore =
+														configDropTarget?.agentId === agent.id &&
+														configDropTarget?.configId === config.id &&
+														configDropTarget.side === "before";
+													const showConfigDropAfter =
+														configDropTarget?.agentId === agent.id &&
+														configDropTarget?.configId === config.id &&
+														configDropTarget.side === "after";
 													return (
 														<ConfigEditor
 															key={config.id}
@@ -589,6 +753,44 @@ export default function AgentSettingsSection({
 																configIndex <
 																agent.configurations.length - 1
 															}
+															isDragged={isConfigDragged}
+															showDropBefore={showConfigDropBefore}
+															showDropAfter={showConfigDropAfter}
+															onDragStart={(event) => {
+																setDraggedConfig({
+																	agentId: agent.id,
+																	configId: config.id,
+																});
+																event.dataTransfer.setData(
+																	"text/plain",
+																	`config:${config.id}`,
+																);
+																event.dataTransfer.effectAllowed = "move";
+															}}
+															onDragEnd={() => {
+																setDraggedConfig(null);
+																setConfigDropTarget(null);
+															}}
+															onDragOver={(event) =>
+																handleConfigDragOver(
+																	event,
+																	agent.id,
+																	config.id,
+																)
+															}
+															onDragLeave={() =>
+																setConfigDropTarget((current) =>
+																	current?.agentId === agent.id &&
+																	current?.configId === config.id
+																		? null
+																		: current,
+																)
+															}
+															onDrop={(event) => {
+																event.preventDefault();
+																event.stopPropagation();
+																handleConfigDrop(agent.id, config.id);
+															}}
 															onToggle={() =>
 																setExpandedConfigId(
 																	isConfigExpanded ? null : config.id,
@@ -778,6 +980,14 @@ function ConfigEditor({
 	canDelete,
 	canMoveUp,
 	canMoveDown,
+	isDragged,
+	showDropBefore,
+	showDropAfter,
+	onDragStart,
+	onDragEnd,
+	onDragOver,
+	onDragLeave,
+	onDrop,
 	onToggle,
 	onChange,
 	onDelete,
@@ -791,6 +1001,14 @@ function ConfigEditor({
 	canDelete: boolean;
 	canMoveUp: boolean;
 	canMoveDown: boolean;
+	isDragged: boolean;
+	showDropBefore: boolean;
+	showDropAfter: boolean;
+	onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
+	onDragEnd: () => void;
+	onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+	onDragLeave: () => void;
+	onDrop: (event: DragEvent<HTMLDivElement>) => void;
 	onToggle: () => void;
 	onChange: (patch: Partial<AgentConfiguration>) => void;
 	onDelete: () => void;
@@ -802,7 +1020,18 @@ function ConfigEditor({
 	const baseCommandName = agentBaseCommand.split("/").pop() ?? agentBaseCommand;
 
 	return (
-		<div className="bg-elevated border border-edge rounded-lg overflow-hidden">
+		<div
+			className={`relative bg-elevated border border-edge rounded-lg overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
+			onDragOver={onDragOver}
+			onDragLeave={onDragLeave}
+			onDrop={onDrop}
+		>
+			{showDropBefore ? (
+				<div className="absolute top-0 left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
+			) : null}
+			{showDropAfter ? (
+				<div className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
+			) : null}
 			<div
 				role="button"
 				tabIndex={0}
@@ -815,11 +1044,17 @@ function ConfigEditor({
 				}}
 				className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated-hover transition-colors text-left cursor-pointer"
 			>
-				<ReorderButtons
+				<ReorderControls
+					dragHandleProps={{
+						draggable: true,
+						onDragStart,
+						onDragEnd,
+					}}
 					canMoveUp={canMoveUp}
 					canMoveDown={canMoveDown}
 					onMoveUp={onMoveUp}
 					onMoveDown={onMoveDown}
+					dragTitle={t("settings.dragConfig")}
 					upTitle={t("settings.moveConfigUp")}
 					downTitle={t("settings.moveConfigDown")}
 				/>

@@ -3,6 +3,7 @@ import {
 	buildCommandPreview,
 	moveItem,
 	normalizeExternalApps,
+	reorderToTarget,
 	resolveTheme,
 	toStoredDiffViewMode,
 	toStoredTaskOpenMode,
@@ -71,6 +72,42 @@ describe("global-settings utils", () => {
 			const result = moveItem(items, 0, 2);
 			expect(items).toEqual(["a", "b", "c"]);
 			expect(result).toEqual(["b", "c", "a"]);
+		});
+	});
+
+	describe("reorderToTarget", () => {
+		const items = [
+			{ id: "a" },
+			{ id: "b" },
+			{ id: "c" },
+			{ id: "d" },
+		];
+		const getId = (x: { id: string }) => x.id;
+
+		it("inserts before target", () => {
+			expect(reorderToTarget(items, "d", "b", "before", getId)).toEqual([
+				{ id: "a" },
+				{ id: "d" },
+				{ id: "b" },
+				{ id: "c" },
+			]);
+		});
+
+		it("inserts after target", () => {
+			expect(reorderToTarget(items, "a", "c", "after", getId)).toEqual([
+				{ id: "b" },
+				{ id: "c" },
+				{ id: "a" },
+				{ id: "d" },
+			]);
+		});
+
+		it("returns unchanged when source equals target", () => {
+			expect(reorderToTarget(items, "b", "b", "before", getId)).toBe(items);
+		});
+
+		it("returns unchanged when source is missing", () => {
+			expect(reorderToTarget(items, "x", "b", "before", getId)).toBe(items);
 		});
 	});
 

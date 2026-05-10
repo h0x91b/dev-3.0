@@ -35,6 +35,8 @@ const settings = {
 	"settings.moveAgentDown": "Mover agente abajo",
 	"settings.moveConfigUp": "Mover configuración arriba",
 	"settings.moveConfigDown": "Mover configuración abajo",
+	"settings.dragAgent": "Arrastrar para reordenar agente",
+	"settings.dragConfig": "Arrastrar para reordenar configuración",
 	"settings.commandPreview": "Vista previa del comando",
 	"settings.defaultBadge": "Predeterminado",
 	"settings.configPermissionMode": "Modo de permisos",
