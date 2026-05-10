@@ -6,7 +6,7 @@ describe("ensureCodexConfig", () => {
 	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
 
 	describe("when config does not exist", () => {
-		it("creates config with project trust, workspace default permissions, permissions.dev3, and themed dev3 profiles", () => {
+		it("creates config with project trust, workspace default permissions, permissions.dev3, and dev3 profiles", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain('trust_level = "trusted"');
@@ -29,9 +29,9 @@ describe("ensureCodexConfig", () => {
 			expect(result).toContain("[profiles.dev3]");
 			expect(result).toContain('web_search = "live"');
 			expect(result).toContain("[profiles.dev3-light]");
-			expect(result).toContain('tui.theme = "github"');
 			expect(result).toContain("[profiles.dev3-dark]");
-			expect(result).toContain('tui.theme = "dracula"');
+			expect(result).not.toContain('tui.theme = "github"');
+			expect(result).not.toContain('tui.theme = "dracula"');
 			expect(result).toContain("[features]");
 			expect(result).toContain("codex_hooks = true");
 		});
@@ -134,11 +134,11 @@ web_search = "live"
 
 [profiles.dev3-light]
 web_search = "live"
-tui.theme = "github"
+# tui.theme = "github"
 
 [profiles.dev3-dark]
 web_search = "live"
-tui.theme = "dracula"
+# tui.theme = "dracula"
 
 [features]
 codex_hooks = true
@@ -160,7 +160,7 @@ codex_hooks = true
 	});
 
 	describe("when themed dev3 profiles exist with stale values", () => {
-		it("updates them to the managed theme ids", () => {
+		it("comments out stale profile theme settings", () => {
 			const existing = `[profiles.dev3-light]
 web_search = "disabled"
 tui.theme = "old-light"
@@ -172,11 +172,10 @@ tui.theme = "old-dark"
 
 			expect(result).toContain("[profiles.dev3-light]");
 			expect(result).toContain('web_search = "live"');
-			expect(result).toContain('tui.theme = "github"');
 			expect(result).toContain("[profiles.dev3-dark]");
-			expect(result).toContain('tui.theme = "dracula"');
-			expect(result).not.toContain('tui.theme = "old-light"');
-			expect(result).not.toContain('tui.theme = "old-dark"');
+			expect(result).toContain('# tui.theme = "old-light"');
+			expect(result).toContain('# tui.theme = "old-dark"');
+			expect(result).not.toMatch(/^tui\.theme =/m);
 		});
 	});
 

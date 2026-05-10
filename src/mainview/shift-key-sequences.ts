@@ -11,9 +11,11 @@
  *
  * Keys are KeyboardEvent.code values (physical key identifiers).
  */
+export const SHIFT_ENTER_SEQUENCE = "\x1b\r";
+
 export const SHIFT_KEY_SEQUENCES: Record<string, string> = {
 	Tab:      "\x1b[Z",       // Back-tab (CBT)
-	Enter:    "\x1b\r",        // ESC+CR — Claude Code recognizes this as "insert newline" through tmux
+	Enter:    SHIFT_ENTER_SEQUENCE, // ESC+CR — Claude Code recognizes this as "insert newline" through tmux
 	Home:     "\x1b[1;2H",
 	End:      "\x1b[1;2F",
 	Insert:   "\x1b[2;2~",
@@ -41,5 +43,10 @@ export const SHIFT_KEY_SEQUENCES: Record<string, string> = {
 export function getShiftKeySequence(event: KeyboardEvent): string | null {
 	if (event.type !== "keydown" || !event.shiftKey) return null;
 	if (event.ctrlKey || event.altKey || event.metaKey) return null;
+
+	// Both the main Return key and numpad Enter report key="Enter", while
+	// code differs across physical keys and can vary in embedded WebKit.
+	if (event.key === "Enter") return SHIFT_ENTER_SEQUENCE;
+
 	return SHIFT_KEY_SEQUENCES[event.code] ?? null;
 }

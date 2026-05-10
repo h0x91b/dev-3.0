@@ -1,0 +1,1 @@
+Shift+Enter handling in terminals now matches Enter by keyboard meaning instead of only physical key code, so the main Return key and numpad Enter both preserve the newline shortcut on extended keyboards. dev3 also stops writing the now-invalid Codex profile `tui.theme` setting and comments out stale managed theme lines in existing Codex configs.
