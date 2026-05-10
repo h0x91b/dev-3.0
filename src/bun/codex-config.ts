@@ -66,6 +66,7 @@ export function ensureCodexConfig(
 
 	// --- 0. Clean up legacy sections ---
 	config = cleanupLegacySections(config);
+	config = commentOutManagedProfileThemeLines(config);
 	// Re-parse after cleanup
 	if (config.trim().length > 0) {
 		try {
@@ -205,11 +206,13 @@ export function ensureCodexConfig(
 	});
 	config = ensureProfileSettings(config, DEV3_CODEX_LIGHT_PROFILE, {
 		web_search: '"live"',
-		"tui.theme": '"github"',
+		// Codex 0.130 rejects `tui.theme` inside profiles. Leave theme
+		// wiring disabled until we map the new Codex theme schema.
 	});
 	config = ensureProfileSettings(config, DEV3_CODEX_DARK_PROFILE, {
 		web_search: '"live"',
-		"tui.theme": '"dracula"',
+		// Codex 0.130 rejects `tui.theme` inside profiles. Leave theme
+		// wiring disabled until we map the new Codex theme schema.
 	});
 
 	// --- 5. Ensure [features] codex_hooks = true ---
@@ -237,6 +240,26 @@ function cleanupLegacySections(content: string): string {
 		content = removeSectionByHeader(content, "[permissions.network]");
 	}
 	return content;
+}
+
+function commentOutManagedProfileThemeLines(content: string): string {
+	const managedHeaders = new Set([
+		`[profiles.${DEV3_CODEX_LIGHT_PROFILE}]`,
+		`[profiles.${DEV3_CODEX_DARK_PROFILE}]`,
+	]);
+	const lines = content.split("\n");
+	let inManagedProfile = false;
+
+	return lines.map((line) => {
+		const trimmed = line.trim();
+		if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+			inManagedProfile = managedHeaders.has(trimmed);
+		}
+		if (inManagedProfile && trimmed.startsWith("tui.theme")) {
+			return `${line.slice(0, line.indexOf("tui.theme"))}# ${trimmed}`;
+		}
+		return line;
+	}).join("\n");
 }
 
 /**
