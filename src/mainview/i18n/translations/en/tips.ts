@@ -226,6 +226,8 @@ const tips = {
 	"tip.sidebarGlobalScope.body": "Flip the toggle next to Active Tasks to switch between this project only and every active task in dev-3.0 — click any card to jump straight into its project.",
 	"tip.scratchTask.title": "Just need a terminal?",
 	"tip.scratchTask.body": "Click Scratch Task in the New Task modal to spin up a worktree + agent with no prompt — the agent greets you and renames the task itself once you say what you need.",
+	"tip.reorderAgentConfigs.title": "Reorder agent configurations",
+	"tip.reorderAgentConfigs.body": "In Settings → Coding Agents use the ↑/↓ buttons next to each agent and configuration to group them however you like — e.g. keep all Plan Mode configs together.",
 } as const;
 
 export default tips;

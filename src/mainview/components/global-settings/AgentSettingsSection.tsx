@@ -12,7 +12,71 @@ import { ListEditor } from "../ListEditor";
 import { api } from "../../rpc";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
-import { buildCommandPreview } from "./utils";
+import { buildCommandPreview, moveItem } from "./utils";
+
+const ARROW_UP_GLYPH = "\uF062";
+const ARROW_DOWN_GLYPH = "\uF063";
+
+function ReorderButtons({
+	canMoveUp,
+	canMoveDown,
+	onMoveUp,
+	onMoveDown,
+	upTitle,
+	downTitle,
+	size = "sm",
+}: {
+	canMoveUp: boolean;
+	canMoveDown: boolean;
+	onMoveUp: () => void;
+	onMoveDown: () => void;
+	upTitle: string;
+	downTitle: string;
+	size?: "sm" | "md";
+}) {
+	const fontSize = size === "md" ? "text-[0.875rem]" : "text-[0.75rem]";
+	const padding = size === "md" ? "p-1.5" : "p-1";
+	return (
+		<div className="flex items-center gap-0.5 shrink-0">
+			<button
+				type="button"
+				onClick={(event) => {
+					event.stopPropagation();
+					onMoveUp();
+				}}
+				className={`${padding} rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent`}
+				title={upTitle}
+				aria-label={upTitle}
+				disabled={!canMoveUp}
+			>
+				<span
+					className={`${fontSize} leading-none`}
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{ARROW_UP_GLYPH}
+				</span>
+			</button>
+			<button
+				type="button"
+				onClick={(event) => {
+					event.stopPropagation();
+					onMoveDown();
+				}}
+				className={`${padding} rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent`}
+				title={downTitle}
+				aria-label={downTitle}
+				disabled={!canMoveDown}
+			>
+				<span
+					className={`${fontSize} leading-none`}
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{ARROW_DOWN_GLYPH}
+				</span>
+			</button>
+		</div>
+	);
+}
 
 interface AgentSettingsSectionProps {
 	t: TFunction;
@@ -149,6 +213,31 @@ export default function AgentSettingsSection({
 		}
 	}
 
+	function moveAgent(agentId: string, direction: -1 | 1) {
+		const fromIndex = agents.findIndex((agent) => agent.id === agentId);
+		if (fromIndex === -1) return;
+		const toIndex = fromIndex + direction;
+		if (toIndex < 0 || toIndex >= agents.length) return;
+		persistAgents(moveItem(agents, fromIndex, toIndex));
+	}
+
+	function moveConfig(agentId: string, configId: string, direction: -1 | 1) {
+		const updated = agents.map((agent) => {
+			if (agent.id !== agentId) return agent;
+			const fromIndex = agent.configurations.findIndex(
+				(config) => config.id === configId,
+			);
+			if (fromIndex === -1) return agent;
+			const toIndex = fromIndex + direction;
+			if (toIndex < 0 || toIndex >= agent.configurations.length) return agent;
+			return {
+				...agent,
+				configurations: moveItem(agent.configurations, fromIndex, toIndex),
+			};
+		});
+		persistAgents(updated);
+	}
+
 	return (
 		<SettingsSection title={t("settings.agents")}>
 			<div>
@@ -210,23 +299,41 @@ export default function AgentSettingsSection({
 
 			<div>
 				<div className="space-y-2 mb-3">
-					{agents.map((agent) => {
+					{agents.map((agent, agentIndex) => {
 						const isExpanded = expandedAgentId === agent.id;
 						const availability = agentAvailability.find(
 							(item) => item.agentId === agent.id,
 						);
+						const toggle = () => {
+							setExpandedAgentId(isExpanded ? null : agent.id);
+							setExpandedConfigId(null);
+						};
 						return (
 							<div
 								key={agent.id}
 								className="bg-raised border border-edge rounded-xl overflow-hidden"
 							>
-								<button
-									onClick={() => {
-										setExpandedAgentId(isExpanded ? null : agent.id);
-										setExpandedConfigId(null);
+								<div
+									role="button"
+									tabIndex={0}
+									onClick={toggle}
+									onKeyDown={(event) => {
+										if (event.key === "Enter" || event.key === " ") {
+											event.preventDefault();
+											toggle();
+										}
 									}}
-									className="w-full flex items-center gap-3 px-4 py-3 hover:bg-raised-hover transition-colors text-left"
+									className="w-full flex items-center gap-3 px-4 py-3 hover:bg-raised-hover transition-colors text-left cursor-pointer"
 								>
+									<ReorderButtons
+										canMoveUp={agentIndex > 0}
+										canMoveDown={agentIndex < agents.length - 1}
+										onMoveUp={() => moveAgent(agent.id, -1)}
+										onMoveDown={() => moveAgent(agent.id, 1)}
+										upTitle={t("settings.moveAgentUp")}
+										downTitle={t("settings.moveAgentDown")}
+										size="md"
+									/>
 									<span className="text-fg-3 text-xs">
 										{isExpanded ? "▼" : "▶"}
 									</span>
@@ -258,7 +365,7 @@ export default function AgentSettingsSection({
 											{t("settings.defaultBadge")}
 										</span>
 									) : null}
-								</button>
+								</div>
 
 								{isExpanded ? (
 									<div className="border-t border-edge px-4 py-4 space-y-4">
@@ -467,7 +574,7 @@ export default function AgentSettingsSection({
 												{t("settings.configurations")}
 											</label>
 											<div className="space-y-2">
-												{agent.configurations.map((config) => {
+												{agent.configurations.map((config, configIndex) => {
 													const isConfigExpanded =
 														expandedConfigId === config.id;
 													return (
@@ -477,6 +584,11 @@ export default function AgentSettingsSection({
 															agentBaseCommand={agent.baseCommand}
 															isExpanded={isConfigExpanded}
 															canDelete={agent.configurations.length > 1}
+															canMoveUp={configIndex > 0}
+															canMoveDown={
+																configIndex <
+																agent.configurations.length - 1
+															}
 															onToggle={() =>
 																setExpandedConfigId(
 																	isConfigExpanded ? null : config.id,
@@ -487,6 +599,12 @@ export default function AgentSettingsSection({
 															}
 															onDelete={() =>
 																deleteConfig(agent.id, config.id)
+															}
+															onMoveUp={() =>
+																moveConfig(agent.id, config.id, -1)
+															}
+															onMoveDown={() =>
+																moveConfig(agent.id, config.id, 1)
 															}
 															t={t}
 														/>
@@ -658,18 +776,26 @@ function ConfigEditor({
 	agentBaseCommand,
 	isExpanded,
 	canDelete,
+	canMoveUp,
+	canMoveDown,
 	onToggle,
 	onChange,
 	onDelete,
+	onMoveUp,
+	onMoveDown,
 	t,
 }: {
 	config: AgentConfiguration;
 	agentBaseCommand: string;
 	isExpanded: boolean;
 	canDelete: boolean;
+	canMoveUp: boolean;
+	canMoveDown: boolean;
 	onToggle: () => void;
 	onChange: (patch: Partial<AgentConfiguration>) => void;
 	onDelete: () => void;
+	onMoveUp: () => void;
+	onMoveDown: () => void;
 	t: TFunction;
 }) {
 	const preview = buildCommandPreview(agentBaseCommand, config);
@@ -677,10 +803,26 @@ function ConfigEditor({
 
 	return (
 		<div className="bg-elevated border border-edge rounded-lg overflow-hidden">
-			<button
+			<div
+				role="button"
+				tabIndex={0}
 				onClick={onToggle}
-				className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated-hover transition-colors text-left"
+				onKeyDown={(event) => {
+					if (event.key === "Enter" || event.key === " ") {
+						event.preventDefault();
+						onToggle();
+					}
+				}}
+				className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated-hover transition-colors text-left cursor-pointer"
 			>
+				<ReorderButtons
+					canMoveUp={canMoveUp}
+					canMoveDown={canMoveDown}
+					onMoveUp={onMoveUp}
+					onMoveDown={onMoveDown}
+					upTitle={t("settings.moveConfigUp")}
+					downTitle={t("settings.moveConfigDown")}
+				/>
 				<span className="text-fg-3 text-xs">{isExpanded ? "▼" : "▶"}</span>
 				<span className="text-fg text-sm flex-1">{config.name}</span>
 				{config.model ? (
@@ -688,7 +830,7 @@ function ConfigEditor({
 						{config.model}
 					</span>
 				) : null}
-			</button>
+			</div>
 
 			{isExpanded ? (
 				<div className="border-t border-edge px-3 py-3 space-y-3">

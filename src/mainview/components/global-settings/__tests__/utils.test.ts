@@ -1,6 +1,7 @@
 import type { AgentConfiguration, ExternalApp } from "../../../../shared/types";
 import {
 	buildCommandPreview,
+	moveItem,
 	normalizeExternalApps,
 	resolveTheme,
 	toStoredDiffViewMode,
@@ -31,6 +32,46 @@ describe("global-settings utils", () => {
 		expect(normalizeExternalApps(apps)).toEqual([
 			{ id: "1", name: "Finder", macAppName: "Finder" },
 		]);
+	});
+
+	describe("moveItem", () => {
+		it("moves an item up in the list", () => {
+			expect(moveItem(["a", "b", "c", "d"], 2, 1)).toEqual([
+				"a",
+				"c",
+				"b",
+				"d",
+			]);
+		});
+
+		it("moves an item down in the list", () => {
+			expect(moveItem(["a", "b", "c", "d"], 1, 2)).toEqual([
+				"a",
+				"c",
+				"b",
+				"d",
+			]);
+		});
+
+		it("returns the same reference when from === to", () => {
+			const items = ["a", "b", "c"];
+			expect(moveItem(items, 1, 1)).toBe(items);
+		});
+
+		it("ignores out-of-range indices", () => {
+			const items = ["a", "b", "c"];
+			expect(moveItem(items, -1, 0)).toBe(items);
+			expect(moveItem(items, 3, 0)).toBe(items);
+			expect(moveItem(items, 0, -1)).toBe(items);
+			expect(moveItem(items, 0, 3)).toBe(items);
+		});
+
+		it("does not mutate the input array", () => {
+			const items = ["a", "b", "c"];
+			const result = moveItem(items, 0, 2);
+			expect(items).toEqual(["a", "b", "c"]);
+			expect(result).toEqual(["b", "c", "a"]);
+		});
 	});
 
 	it("builds preview commands for Claude and Cursor-style agents", () => {
