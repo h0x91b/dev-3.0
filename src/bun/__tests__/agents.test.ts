@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeWithDefaults, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
+import { DEFAULT_AGENTS } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
 
 const makeAgent = (overrides?: Partial<CodingAgent>): CodingAgent => ({
@@ -550,3 +551,101 @@ describe("buildResumeCommand", () => {
 		expect(buildResumeCommand("/usr/local/bin/claude", "sid-5")).toBe("/usr/local/bin/claude --resume sid-5");
 	});
 });
+
+describe("mergeWithDefaults — preserves user-defined order", () => {
+	it("returns DEFAULT_AGENTS as-is when no stored agents", () => {
+		const result = mergeWithDefaults([]);
+		expect(result.map((a) => a.id)).toEqual(DEFAULT_AGENTS.map((a) => a.id));
+	});
+
+	it("preserves user-reordered agents", () => {
+		// User dragged Codex above Claude.
+		const stored: CodingAgent[] = [
+			{ ...DEFAULT_AGENTS[1] }, // Codex
+			{ ...DEFAULT_AGENTS[0] }, // Claude
+		];
+		const result = mergeWithDefaults(stored);
+		expect(result[0].id).toBe("builtin-codex");
+		expect(result[1].id).toBe("builtin-claude");
+	});
+
+	it("preserves user-reordered configurations within an agent", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		// Reverse a few default configs.
+		const reorderedConfigs = [
+			claude.configurations.find((c) => c.id === "claude-plan")!,
+			claude.configurations.find((c) => c.id === "claude-plan-sonnet")!,
+			claude.configurations.find((c) => c.id === "claude-default")!,
+		];
+		// Plus the rest unchanged.
+		const others = claude.configurations.filter(
+			(c) => !["claude-plan", "claude-plan-sonnet", "claude-default"].includes(c.id),
+		);
+		const stored: CodingAgent[] = [
+			{ ...claude, configurations: [...reorderedConfigs, ...others] },
+		];
+		const result = mergeWithDefaults(stored);
+		const claudeResult = result.find((a) => a.id === "builtin-claude")!;
+		expect(claudeResult.configurations[0].id).toBe("claude-plan");
+		expect(claudeResult.configurations[1].id).toBe("claude-plan-sonnet");
+		expect(claudeResult.configurations[2].id).toBe("claude-default");
+	});
+
+	it("appends newly added default agents at the end without disturbing stored order", () => {
+		// Stored has only Codex; defaults have Claude+Codex+others. New defaults should append.
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const stored: CodingAgent[] = [{ ...codex }];
+		const result = mergeWithDefaults(stored);
+		expect(result[0].id).toBe("builtin-codex");
+		// All other defaults present somewhere in result.
+		for (const def of DEFAULT_AGENTS) {
+			expect(result.some((a) => a.id === def.id)).toBe(true);
+		}
+	});
+
+	it("appends newly added default configurations within an agent without disturbing stored order", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		// Stored has only the first 3 configs of Claude (older snapshot).
+		const stored: CodingAgent[] = [
+			{ ...claude, configurations: claude.configurations.slice(0, 3) },
+		];
+		const result = mergeWithDefaults(stored);
+		const claudeResult = result.find((a) => a.id === "builtin-claude")!;
+		// First 3 unchanged.
+		expect(claudeResult.configurations[0].id).toBe(claude.configurations[0].id);
+		expect(claudeResult.configurations[1].id).toBe(claude.configurations[1].id);
+		expect(claudeResult.configurations[2].id).toBe(claude.configurations[2].id);
+		// All default configs present.
+		for (const def of claude.configurations) {
+			expect(claudeResult.configurations.some((c) => c.id === def.id)).toBe(true);
+		}
+	});
+
+	it("keeps user-created configurations in their original position", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		const userCfg: AgentConfiguration = {
+			id: "user-custom-1",
+			name: "My Plan Variant",
+			model: "sonnet",
+			permissionMode: "plan",
+		};
+		// Place user config between Plan and Bypass groups.
+		const planIdx = claude.configurations.findIndex((c) => c.id === "claude-plan-sonnet");
+		const stored: CodingAgent[] = [
+			{
+				...claude,
+				configurations: [
+					...claude.configurations.slice(0, planIdx + 1),
+					userCfg,
+					...claude.configurations.slice(planIdx + 1),
+				],
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const claudeResult = result.find((a) => a.id === "builtin-claude")!;
+		const userIdx = claudeResult.configurations.findIndex((c) => c.id === "user-custom-1");
+		const planSonnetIdx = claudeResult.configurations.findIndex((c) => c.id === "claude-plan-sonnet");
+		expect(userIdx).toBe(planSonnetIdx + 1);
+	});
+});
+
