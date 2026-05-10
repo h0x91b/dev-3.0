@@ -440,20 +440,20 @@ describe("mergeWithDefaults", () => {
 		}
 	});
 
-	it("preserves user-created (non-default) agents after defaults", () => {
+	it("preserves user-created (non-default) agents in their stored position", () => {
 		const userAgent = makeAgent({ id: "user-aider", name: "Aider", baseCommand: "aider" });
 		const stored: CodingAgent[] = [userAgent];
 		const result = mergeWithDefaults(stored);
 
-		// All defaults come first
-		for (let i = 0; i < DEFAULT_AGENTS.length; i++) {
-			expect(result[i].id).toBe(DEFAULT_AGENTS[i].id);
+		// Stored agent keeps its position; missing defaults are appended after.
+		expect(result[0].id).toBe("user-aider");
+		expect(result[0].name).toBe("Aider");
+		expect(result[0].isDefault).toBeUndefined();
+
+		// All defaults are still present somewhere in the result.
+		for (const def of DEFAULT_AGENTS) {
+			expect(result.some((a) => a.id === def.id)).toBe(true);
 		}
-		// User agent is at the end
-		const last = result[result.length - 1];
-		expect(last.id).toBe("user-aider");
-		expect(last.name).toBe("Aider");
-		expect(last.isDefault).toBeUndefined();
 	});
 
 	it("adds missing default agents when only some are stored", () => {

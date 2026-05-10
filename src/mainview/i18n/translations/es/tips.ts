@@ -226,6 +226,8 @@ const tips = {
 	"tip.sidebarGlobalScope.body": "El interruptor junto a Active Tasks alterna entre solo este proyecto y todas las tareas activas de dev-3.0 — haz clic en una tarjeta para saltar a su proyecto.",
 	"tip.scratchTask.title": "¿Solo necesitas un terminal?",
 	"tip.scratchTask.body": "Pulsa Scratch Task en la ventana de nueva tarea para lanzar un worktree + agente sin prompt — el agente te saluda y renombra la tarea en cuanto le dices qué quieres.",
+	"tip.reorderAgentConfigs.title": "Reordenar configuraciones de agentes",
+	"tip.reorderAgentConfigs.body": "En Ajustes → Agentes de código usa los botones ↑/↓ junto a cada agente y configuración para agruparlos como prefieras — por ejemplo, mantener todas las configuraciones de Plan Mode juntas.",
 };
 
 export default tips;

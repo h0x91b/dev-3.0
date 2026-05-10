@@ -26,84 +26,86 @@ const DEPRECATED_CONFIG_IDS = new Set([
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
- *  For default agents, new predefined configurations are appended if not already present. */
+ *  Stored order is preserved (user can drag-reorder agents and configs).
+ *  Newly added defaults (agents or configs) are appended at the end so they
+ *  surface to the user without disturbing their chosen order. */
 export function mergeWithDefaults(stored: CodingAgent[]): CodingAgent[] {
-	const byId = new Map(stored.map((a) => [a.id, a]));
+	const defAgentById = new Map(DEFAULT_AGENTS.map((a) => [a.id, a]));
+	const storedAgentById = new Map(stored.map((a) => [a.id, a]));
 	const result: CodingAgent[] = [];
 
-	// Ensure all defaults are present
-	for (const def of DEFAULT_AGENTS) {
-		const existing = byId.get(def.id);
-		if (existing) {
-			// Build a map of default configs for field-level merging
-			const defConfigById = new Map(def.configurations.map((c) => [c.id, c]));
-
-			// Build a map of stored configs that survived deprecation and match a default
-			const storedConfigById = new Map<string, AgentConfiguration>();
-			for (const storedCfg of existing.configurations) {
-				if (DEPRECATED_CONFIG_IDS.has(storedCfg.id)) continue; // drop deprecated
-				storedConfigById.set(storedCfg.id, storedCfg);
-			}
-
-			// Merge existing configs: use default as base, user overrides on top.
-			// When the default config has a higher version than stored, reset
-			// additionalArgs, model, and name to the new defaults (preset was updated).
-			function mergeConfig(storedCfg: AgentConfiguration): AgentConfiguration {
-				const defCfg = defConfigById.get(storedCfg.id);
-				if (!defCfg) return storedCfg; // user-created config, keep as-is
-
-				const storedVersion = storedCfg.version ?? 0;
-				const defVersion = defCfg.version ?? 0;
-				const presetUpdated = defVersion > storedVersion;
-
-				const userOverrides = stripUndefined(storedCfg);
-				if (presetUpdated) {
-					// Preset was bumped — reset to new defaults
-					delete userOverrides.additionalArgs;
-					delete userOverrides.model;
-					delete userOverrides.name;
-					delete userOverrides.version;
-				}
-
-				return { ...defCfg, ...userOverrides };
-			}
-
-			// Rebuild configurations in the default-defined order:
-			// 1. Default configs first (in their defined order), merged with stored overrides
-			// 2. User-created configs appended at the end
-			const defConfigIds = new Set(def.configurations.map((c) => c.id));
-			const ordered: AgentConfiguration[] = [];
-
-			for (const defCfg of def.configurations) {
-				const storedCfg = storedConfigById.get(defCfg.id);
-				ordered.push(storedCfg ? mergeConfig(storedCfg) : defCfg);
-			}
-
-			// Append user-created configs (not in defaults, not deprecated)
-			for (const storedCfg of existing.configurations) {
-				if (!defConfigIds.has(storedCfg.id) && !DEPRECATED_CONFIG_IDS.has(storedCfg.id)) {
-					ordered.push(storedCfg);
-				}
-			}
-
-			const merged = {
-				...existing,
-				isDefault: true,
-				configurations: ordered,
-			};
-			result.push(merged);
-			byId.delete(def.id);
+	// 1. Walk stored agents first to preserve user-defined order.
+	for (const existing of stored) {
+		const def = defAgentById.get(existing.id);
+		if (def) {
+			result.push(mergeAgentWithDefault(existing, def));
 		} else {
+			// User-created agent — keep as-is.
+			result.push(existing);
+		}
+	}
+
+	// 2. Append default agents that aren't in stored at all (newly added defaults
+	//    or first-run install).
+	for (const def of DEFAULT_AGENTS) {
+		if (!storedAgentById.has(def.id)) {
 			result.push({ ...def });
 		}
 	}
 
-	// Add remaining user-created agents
-	for (const [, agent] of byId) {
-		result.push(agent);
+	return result;
+}
+
+function mergeAgentWithDefault(
+	existing: CodingAgent,
+	def: CodingAgent,
+): CodingAgent {
+	const defConfigById = new Map(def.configurations.map((c) => [c.id, c]));
+	const storedConfigById = new Map<string, AgentConfiguration>();
+	for (const storedCfg of existing.configurations) {
+		if (DEPRECATED_CONFIG_IDS.has(storedCfg.id)) continue;
+		storedConfigById.set(storedCfg.id, storedCfg);
 	}
 
-	return result;
+	function mergeConfig(storedCfg: AgentConfiguration): AgentConfiguration {
+		const defCfg = defConfigById.get(storedCfg.id);
+		if (!defCfg) return storedCfg; // user-created config, keep as-is
+
+		const storedVersion = storedCfg.version ?? 0;
+		const defVersion = defCfg.version ?? 0;
+		const presetUpdated = defVersion > storedVersion;
+
+		const userOverrides = stripUndefined(storedCfg);
+		if (presetUpdated) {
+			delete userOverrides.additionalArgs;
+			delete userOverrides.model;
+			delete userOverrides.name;
+			delete userOverrides.version;
+		}
+
+		return { ...defCfg, ...userOverrides };
+	}
+
+	// 1. Walk stored configs first to preserve user-defined order
+	//    (covers default configs reordered AND user-created configs interleaved).
+	const ordered: AgentConfiguration[] = [];
+	for (const storedCfg of existing.configurations) {
+		if (DEPRECATED_CONFIG_IDS.has(storedCfg.id)) continue;
+		ordered.push(mergeConfig(storedCfg));
+	}
+
+	// 2. Append default configs that aren't in stored (newly added presets).
+	for (const defCfg of def.configurations) {
+		if (!storedConfigById.has(defCfg.id)) {
+			ordered.push(defCfg);
+		}
+	}
+
+	return {
+		...existing,
+		isDefault: true,
+		configurations: ordered,
+	};
 }
 
 /** Remove keys with undefined values so they don't shadow defaults in spread. */

@@ -35,6 +35,37 @@ export function toStoredDiffViewMode(
 	return mode === "unified" ? "unified" : undefined;
 }
 
+export function moveItem<T>(items: T[], from: number, to: number): T[] {
+	if (from === to) return items;
+	if (from < 0 || from >= items.length) return items;
+	if (to < 0 || to >= items.length) return items;
+	const next = items.slice();
+	const [moved] = next.splice(from, 1);
+	next.splice(to, 0, moved);
+	return next;
+}
+
+export type DropSide = "before" | "after";
+
+export function reorderToTarget<T>(
+	items: T[],
+	sourceId: string,
+	targetId: string,
+	side: DropSide,
+	getId: (item: T) => string,
+): T[] {
+	if (sourceId === targetId) return items;
+	const sourceIndex = items.findIndex((item) => getId(item) === sourceId);
+	if (sourceIndex === -1) return items;
+	const without = items.slice();
+	const [moved] = without.splice(sourceIndex, 1);
+	const targetIndex = without.findIndex((item) => getId(item) === targetId);
+	if (targetIndex === -1) return items;
+	const insertAt = side === "after" ? targetIndex + 1 : targetIndex;
+	without.splice(insertAt, 0, moved);
+	return without;
+}
+
 export function normalizeExternalApps(
 	apps: ExternalApp[],
 ): ExternalApp[] | undefined {

@@ -708,6 +708,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.scratchTask.body",
 		icon: "\u{F018D}", // nf-md-console
 	},
+	// Batch 34: agent config reorder
+	{
+		id: "reorder-agent-configs",
+		titleKey: "tip.reorderAgentConfigs.title",
+		bodyKey: "tip.reorderAgentConfigs.body",
+		icon: "\u{F0140}", // nf-md-arrow_up_down
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
