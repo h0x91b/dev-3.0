@@ -67,6 +67,7 @@ vi.mock("../git", () => ({
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
+	getHeadSha: vi.fn(),
 	isWorktreeDirty: vi.fn(),
 	listBranches: vi.fn(),
 	pullOrigin: vi.fn(),
@@ -227,6 +228,7 @@ const {
 	getPushMessageLocal,
 	checkOpenPRsForPromotion,
 	_resetPRPollerState,
+	_resetMergePollerState,
 	startMergeDetectionPoller,
 	stopMergeDetectionPoller,
 	startPRDetectionPoller,
@@ -2807,7 +2809,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null, prUrl: null });
+		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null });
 	});
 
 	it("returns branch status with canRebase=true when behind", async () => {
@@ -5307,10 +5309,15 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
 		stopMergeDetectionPoller();
+		_resetMergePollerState();
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		vi.mocked(data.updateTask).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => makeTask(patch));
 	});
 
 	afterEach(() => {
 		stopMergeDetectionPoller();
+		_resetMergePollerState();
+		vi.mocked(data.updateTask).mockReset();
 		vi.useRealTimers();
 	});
 
@@ -5367,6 +5374,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			projectId: project.id,
 			taskTitle: task.title,
 			branchName: "dev3/task-test",
+			fingerprint: "v1:dev3/task-test:abc123",
 		});
 	});
 
@@ -5396,7 +5404,113 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			projectId: project.id,
 			taskTitle: task.title,
 			branchName: "dev3/task-test",
+			fingerprint: "v1:dev3/task-test:abc123",
 		});
+	});
+
+	it("does not notify again for the same branch head after the prompt was reserved", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: "2026-05-09T08:00:00.000Z",
+				dismissedAt: "2026-05-09T08:01:00.000Z",
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("notifies again when the task branch head changes", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: "2026-05-09T08:00:00.000Z",
+				dismissedAt: "2026-05-09T08:01:00.000Z",
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		vi.mocked(git.getHeadSha).mockResolvedValue("def456");
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", {
+			taskId: task.id,
+			projectId: project.id,
+			taskTitle: task.title,
+			branchName: "dev3/task-test",
+			fingerprint: "v1:dev3/task-test:def456",
+		});
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:def456",
+				promptedAt: expect.any(String),
+				dismissedAt: null,
+				precise: true,
+			},
+		});
+	});
+
+	it("suppresses fallback fingerprints for one hour", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "fallback:dev3/task-test",
+				promptedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+				dismissedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+				precise: false,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		vi.mocked(git.getHeadSha).mockResolvedValue(null);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
 	});
 
 	it("does not notify about merged AI Review tasks", async () => {

@@ -598,6 +598,12 @@ export interface Task {
 	/** Persisted agent session state for recovery after tmux/app crash. */
 	sessionState?: TaskSessionState | null;
 	/**
+	 * Last merge-completion prompt shown for this task. The fingerprint tracks
+	 * the task branch state, so dismissing the prompt suppresses repeats until
+	 * the branch changes.
+	 */
+	mergeCompletionPrompt?: MergeCompletionPromptState | null;
+	/**
 	 * True when the task was created via the "Scratch Task" button with no
 	 * initial prompt. The `description` holds only a `Scratch — HH:mm`
 	 * placeholder used for the title; at launch time the agent receives an
@@ -605,6 +611,13 @@ export interface Task {
 	 * source todo task into every variant spawned from it.
 	 */
 	scratch?: boolean;
+}
+
+export interface MergeCompletionPromptState {
+	fingerprint: string;
+	promptedAt: string;
+	dismissedAt?: string | null;
+	precise: boolean;
 }
 
 export type PreparingStage =
@@ -700,6 +713,7 @@ export interface BranchStatus {
 	diffFileNames: string[]; // list of changed file paths in branch vs base
 	prNumber: number | null; // open PR number for this branch, null if none
 	prUrl: string | null; // full GitHub PR URL, null if no PR
+	mergeCompletionFingerprint: string | null; // stable key for deduping the merged-branch completion prompt
 }
 
 export type TaskDiffMode = "branch" | "uncommitted" | "unpushed";
@@ -1069,6 +1083,14 @@ export type AppRPCSchema = {
 				params: { title: string; message: string };
 				response: boolean;
 			};
+			prepareMergeCompletionPrompt: {
+				params: { taskId: string; projectId: string; fingerprint?: string | null };
+				response: { shouldPrompt: boolean; fingerprint: string | null };
+			};
+			dismissMergeCompletionPrompt: {
+				params: { taskId: string; projectId: string; fingerprint: string | null };
+				response: Task;
+			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
 				response: { url: string } | { recoverable: true; sessionState: TaskSessionState };
@@ -1382,7 +1404,7 @@ export type AppRPCSchema = {
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
-			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string };
+			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			updateDownloadProgress: { status: string; progress?: number };

@@ -9,6 +9,7 @@ import type { AppAction, Route } from "../../state";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { trackEvent } from "../../analytics";
+import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
 
 interface UseTaskBranchStatusParams {
 	task: Task;
@@ -122,19 +123,34 @@ export function useTaskBranchStatus({
 						MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) &&
 						!mergeDialogShownRef.current
 					) {
+						const promptState = await api.request.prepareMergeCompletionPrompt({
+							taskId: task.id,
+							projectId: project.id,
+							fingerprint: status.mergeCompletionFingerprint,
+						});
 						mergeDialogShownRef.current = true;
-							const shouldComplete = await api.request.showConfirm({
-								title: t("app.branchMergedTitle"),
-								message: t("app.branchMergedMessage", {
-									taskTitle: task.customTitle || task.title,
-									branchName: task.branchName || "",
+						if (promptState.shouldPrompt) {
+							const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
+								api.request.showConfirm({
+									title: t("app.branchMergedTitle"),
+									message: t("app.branchMergedMessage", {
+										taskTitle: task.customTitle || task.title,
+										branchName: task.branchName || "",
+									}),
 								}),
-							});
+							);
 							if (shouldComplete) {
 								completeTask(task.status);
+							} else if (shouldComplete === false) {
+								await api.request.dismissMergeCompletionPrompt({
+									taskId: task.id,
+									projectId: project.id,
+									fingerprint: promptState.fingerprint,
+								});
 							}
 						}
 					}
+				}
 			} catch {
 				// Polling retries on the next tick.
 			}
@@ -197,12 +213,14 @@ export function useTaskBranchStatus({
 				return;
 			}
 
+			let refreshedStatus: BranchStatus | null = null;
 			try {
 				const status = await api.request.getBranchStatus({
 					taskId: task.id,
 					projectId: project.id,
 					compareRef: compareRef || undefined,
 				});
+				refreshedStatus = status;
 				setBranchStatus(status);
 			} catch {
 				// Keep existing state when refresh fails.
@@ -215,12 +233,27 @@ export function useTaskBranchStatus({
 			}
 
 			if (detail.operation === "merge" && detail.ok) {
-				const shouldComplete = await api.request.showConfirm({
-					title: t("infoPanel.mergeComplete"),
-					message: t("infoPanel.mergeCompleteMessage"),
+				const promptState = await api.request.prepareMergeCompletionPrompt({
+					taskId: task.id,
+					projectId: project.id,
+					fingerprint: refreshedStatus?.mergeCompletionFingerprint,
 				});
+				if (!promptState.shouldPrompt) return;
+
+				const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
+					api.request.showConfirm({
+						title: t("infoPanel.mergeComplete"),
+						message: t("infoPanel.mergeCompleteMessage"),
+					}),
+				);
 				if (shouldComplete) {
 					completeTask(task.status);
+				} else if (shouldComplete === false) {
+					await api.request.dismissMergeCompletionPrompt({
+						taskId: task.id,
+						projectId: project.id,
+						fingerprint: promptState.fingerprint,
+					});
 				}
 			}
 		}

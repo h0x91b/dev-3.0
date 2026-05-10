@@ -1,6 +1,9 @@
 import {
 	type BranchStatus,
+	type MergeCompletionPromptState,
 	type PRInfo,
+	type Project,
+	type Task,
 	type TaskDiffMode,
 	type TaskDiffResponse,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
@@ -13,9 +16,106 @@ import { spawn } from "../spawn";
 import { getPushMessage, log } from "./shared";
 
 const gitOpPaneIds = new Map<string, string>();
-const mergeNotifiedTasks = new Set<string>();
+const mergeNotifiedPromptKeys = new Set<string>();
 const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 const prPromotedTasks = new Set<string>();
+const MERGE_PROMPT_FALLBACK_SUPPRESS_MS = 60 * 60 * 1000;
+
+interface MergeCompletionFingerprint {
+	fingerprint: string;
+	precise: boolean;
+}
+
+function mergePromptKey(taskId: string, fingerprint: string | null): string {
+	return `${taskId}:${fingerprint || "unknown"}`;
+}
+
+function parseTime(value: string | null | undefined): number | null {
+	if (!value) return null;
+	const time = Date.parse(value);
+	return Number.isFinite(time) ? time : null;
+}
+
+function shouldSuppressMergePrompt(state: MergeCompletionPromptState | null | undefined, fingerprint: MergeCompletionFingerprint, nowMs: number): boolean {
+	if (!state || state.fingerprint !== fingerprint.fingerprint) return false;
+	if (fingerprint.precise && state.precise) return true;
+
+	const lastPromptTime = Math.max(
+		parseTime(state.promptedAt) ?? 0,
+		parseTime(state.dismissedAt) ?? 0,
+	);
+	return lastPromptTime > 0 && nowMs - lastPromptTime < MERGE_PROMPT_FALLBACK_SUPPRESS_MS;
+}
+
+async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "worktreePath" | "branchName">, branchName: string | null): Promise<MergeCompletionFingerprint> {
+	const resolvedBranchName = branchName || task.branchName || task.id;
+	if (task.worktreePath) {
+		const headSha = await git.getHeadSha(task.worktreePath);
+		if (headSha) {
+			return {
+				fingerprint: `v1:${resolvedBranchName}:${headSha}`,
+				precise: true,
+			};
+		}
+	}
+	return {
+		fingerprint: `fallback:${resolvedBranchName}`,
+		precise: false,
+	};
+}
+
+async function reserveMergeCompletionPrompt(project: Project, task: Task, fingerprint: MergeCompletionFingerprint, now = new Date()): Promise<boolean> {
+	const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
+	if (mergeNotifiedPromptKeys.has(promptKey)) return false;
+
+	const nowMs = now.getTime();
+	if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) {
+		mergeNotifiedPromptKeys.add(promptKey);
+		return false;
+	}
+
+	// Reserve the slot before awaiting so concurrent callers see the key immediately
+	// and cannot both pass the has() check above.
+	mergeNotifiedPromptKeys.add(promptKey);
+	await data.updateTask(project, task.id, {
+		mergeCompletionPrompt: {
+			fingerprint: fingerprint.fingerprint,
+			promptedAt: now.toISOString(),
+			dismissedAt: null,
+			precise: fingerprint.precise,
+		},
+	});
+	return true;
+}
+
+async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null }): Promise<{ shouldPrompt: boolean; fingerprint: string | null }> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const fingerprint = params.fingerprint
+		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
+		: await getMergeCompletionFingerprint(task, task.branchName);
+	const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint);
+	return { shouldPrompt, fingerprint: fingerprint.fingerprint };
+}
+
+async function dismissMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint: string | null }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const fingerprint = params.fingerprint
+		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
+		: await getMergeCompletionFingerprint(task, task.branchName);
+	const now = new Date().toISOString();
+	const existing = task.mergeCompletionPrompt;
+	const updated = await data.updateTask(project, task.id, {
+		mergeCompletionPrompt: {
+			fingerprint: fingerprint.fingerprint,
+			promptedAt: existing?.fingerprint === fingerprint.fingerprint ? existing.promptedAt : now,
+			dismissedAt: now,
+			precise: fingerprint.precise,
+		},
+	});
+	return updated;
+}
 
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
@@ -144,14 +244,15 @@ async function checkMergedBranches(): Promise<void> {
 
 	const projects = await data.loadProjects();
 
-	if (mergeNotifiedTasks.size > 0 || prPromotedTasks.size > 0) {
+	if (mergeNotifiedPromptKeys.size > 0 || prPromotedTasks.size > 0) {
 		const allTaskIds = new Set<string>();
 		for (const project of projects) {
 			const tasks = await data.loadTasks(project);
 			for (const task of tasks) allTaskIds.add(task.id);
 		}
-		for (const id of mergeNotifiedTasks) {
-			if (!allTaskIds.has(id)) mergeNotifiedTasks.delete(id);
+		for (const key of mergeNotifiedPromptKeys) {
+			const taskId = key.slice(0, key.indexOf(":"));
+			if (!allTaskIds.has(taskId)) mergeNotifiedPromptKeys.delete(key);
 		}
 		for (const id of prPromotedTasks) {
 			if (!allTaskIds.has(id)) prPromotedTasks.delete(id);
@@ -161,7 +262,7 @@ async function checkMergedBranches(): Promise<void> {
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
-			(task) => MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) && task.worktreePath && !mergeNotifiedTasks.has(task.id),
+			(task) => MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) && task.worktreePath,
 		);
 
 		if (reviewTasks.length === 0) continue;
@@ -185,13 +286,17 @@ async function checkMergedBranches(): Promise<void> {
 				const merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
 				if (!merged) continue;
 
-				mergeNotifiedTasks.add(task.id);
+				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
+				const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint);
+				if (!shouldPrompt) continue;
+
 				log.info("Branch merge detected", { taskId: task.id.slice(0, 8), branch: branchName });
 				pushMessage("branchMerged", {
 					taskId: task.id,
 					projectId: project.id,
 					taskTitle: task.customTitle || task.title,
 					branchName,
+					fingerprint: fingerprint.fingerprint,
 				});
 			} catch (err) {
 				log.warn("Merge check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
@@ -201,7 +306,13 @@ async function checkMergedBranches(): Promise<void> {
 }
 
 export function clearMergeNotification(taskId: string): void {
-	mergeNotifiedTasks.delete(taskId);
+	for (const key of mergeNotifiedPromptKeys) {
+		if (key.startsWith(`${taskId}:`)) mergeNotifiedPromptKeys.delete(key);
+	}
+}
+
+export function _resetMergePollerState(): void {
+	mergeNotifiedPromptKeys.clear();
 }
 
 let prPollerInterval: ReturnType<typeof setInterval> | null = null;
@@ -295,7 +406,7 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 export function cleanupTaskGitState(taskId: string): void {
 	gitOpPaneIds.delete(taskId);
-	mergeNotifiedTasks.delete(taskId);
+	clearMergeNotification(taskId);
 	prPromotedTasks.delete(taskId);
 	branchStatusInFlight.delete(taskId);
 }
@@ -305,7 +416,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const task = await data.getTask(project, params.taskId);
 
 	if (!task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null, prUrl: null };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileNames: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null };
 	}
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
@@ -350,12 +461,16 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const prUrl = prInfo?.url ?? null;
 	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
-	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref, project) : false;
+	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref, project) === true : false;
+	const mergeCompletionFingerprint = mergedByContent
+		? (await getMergeCompletionFingerprint(task, branchForPush)).fingerprint
+		: null;
 
 	const result = {
 		...status, canRebase, ...uncommitted, unpushed, mergedByContent,
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileNames: branchDiff.fileNames,
 		prNumber, prUrl,
+		mergeCompletionFingerprint,
 	};
 	log.info("← getBranchStatus", result);
 
@@ -791,6 +906,8 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 export const gitOperationHandlers = {
 	getBranchStatus,
 	getTaskDiff,
+	prepareMergeCompletionPrompt,
+	dismissMergeCompletionPrompt,
 	rebaseTask,
 	mergeTask,
 	pushTask,

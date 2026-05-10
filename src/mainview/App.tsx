@@ -26,6 +26,7 @@ import ViewportLab from "./components/ViewportLab";
 import { ErrorToast } from "./components/ErrorToast";
 import FolderPickerHost from "./components/FolderPickerModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
+import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
@@ -361,16 +362,21 @@ function App() {
 				projectId: string;
 				taskTitle: string;
 				branchName: string;
+				fingerprint?: string | null;
 			};
-			let shouldComplete = false;
-			try {
-				shouldComplete = await api.request.showConfirm({
-					title: t("app.branchMergedTitle"),
-					message: t("app.branchMergedMessage", { taskTitle, branchName }),
-				});
-			} catch (err) {
-				console.error("[App] showConfirm (branch-merged) failed:", err);
-			}
+			const fingerprint = ((e as CustomEvent).detail as { fingerprint?: string | null }).fingerprint ?? null;
+			const shouldComplete = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
+				try {
+					return await api.request.showConfirm({
+						title: t("app.branchMergedTitle"),
+						message: t("app.branchMergedMessage", { taskTitle, branchName }),
+					});
+				} catch (err) {
+					console.error("[App] showConfirm (branch-merged) failed:", err);
+					return false;
+				}
+			});
+			if (shouldComplete === null) return;
 			if (shouldComplete) {
 				dispatch({
 					type: "updateTask",
@@ -398,6 +404,12 @@ function App() {
 						force: true,
 					}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
 				});
+			} else {
+				api.request.dismissMergeCompletionPrompt({
+					taskId,
+					projectId,
+					fingerprint,
+				}).catch((err) => console.error("dismissMergeCompletionPrompt failed:", err));
 			}
 		}
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
