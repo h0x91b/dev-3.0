@@ -434,11 +434,13 @@ export default function AgentSettingsSection({
 								key={agent.id}
 								className={`relative bg-raised border border-edge rounded-xl overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
 								onDragOver={(event) => handleAgentDragOver(event, agent.id)}
-								onDragLeave={() =>
-									setAgentDropTarget((current) =>
-										current?.id === agent.id ? null : current,
-									)
-								}
+								onDragLeave={(event) => {
+									if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+										setAgentDropTarget((current) =>
+											current?.id === agent.id ? null : current,
+										);
+									}
+								}}
 								onDrop={(event) => {
 									event.preventDefault();
 									handleAgentDrop(agent.id);
@@ -778,14 +780,16 @@ export default function AgentSettingsSection({
 																	config.id,
 																)
 															}
-															onDragLeave={() =>
-																setConfigDropTarget((current) =>
-																	current?.agentId === agent.id &&
-																	current?.configId === config.id
-																		? null
-																		: current,
-																)
-															}
+															onDragLeave={(event) => {
+																if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+																	setConfigDropTarget((current) =>
+																		current?.agentId === agent.id &&
+																		current?.configId === config.id
+																			? null
+																			: current,
+																	);
+																}
+															}}
 															onDrop={(event) => {
 																event.preventDefault();
 																event.stopPropagation();
@@ -1007,7 +1011,7 @@ function ConfigEditor({
 	onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
 	onDragEnd: () => void;
 	onDragOver: (event: DragEvent<HTMLDivElement>) => void;
-	onDragLeave: () => void;
+	onDragLeave: (event: DragEvent<HTMLDivElement>) => void;
 	onDrop: (event: DragEvent<HTMLDivElement>) => void;
 	onToggle: () => void;
 	onChange: (patch: Partial<AgentConfiguration>) => void;
