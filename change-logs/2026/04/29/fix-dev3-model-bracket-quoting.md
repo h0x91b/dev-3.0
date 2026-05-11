@@ -1,0 +1,1 @@
+Shell-quote the `--model` argument value when building the agent run script so that model names containing special characters (e.g. `sonnet[1m]` with square brackets) are not misinterpreted as glob patterns by zsh.

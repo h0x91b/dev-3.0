@@ -137,7 +137,7 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).toMatch(/^codex resume --last/);
-		expect(cmd).toContain("--model gpt-5");
+		expect(cmd).toContain("--model 'gpt-5'");
 		expect(cmd).not.toContain("--permission-mode");
 		expect(cmd).not.toContain("--effort");
 		expect(cmd).not.toContain("--max-budget-usd");
@@ -293,6 +293,16 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("--append-system-prompt");
 	});
 
+	it("Claude: shell-quotes model names with special chars (e.g. brackets)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig({ model: "claude-sonnet-4-6[1m]" }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("--model 'claude-sonnet-4-6[1m]'");
+	});
+
 	// ---- OpenCode ----
 	it("OpenCode: adds --continue when resume=true", () => {
 		const cmd = resolveAgentCommand(
@@ -315,7 +325,7 @@ describe("resolveAgentCommand — resume", () => {
 
 		expect(cmd).toContain("--prompt");
 		expect(cmd).toContain("Fix the login bug");
-		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
+		expect(cmd).toContain("--model 'anthropic/claude-opus-4-6'");
 	});
 
 	it("OpenCode: injects generic system prompt (not Claude hooks variant)", () => {
@@ -367,7 +377,7 @@ describe("resolveAgentCommand — resume", () => {
 		);
 
 		expect(cmd).toContain("--agent sisyphus");
-		expect(cmd).toContain("--model anthropic/claude-opus-4-6");
+		expect(cmd).toContain("--model 'anthropic/claude-opus-4-6'");
 		expect(cmd).toContain("--prompt");
 	});
 
