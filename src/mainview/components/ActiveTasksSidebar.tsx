@@ -401,6 +401,24 @@ function ActiveTasksSidebar({
 												</div>
 											)}
 
+												{/* Project badge (global scope only) */}
+												{showProjectBadge && (
+													<div
+														className="mb-1 inline-flex items-center gap-1 max-w-full text-[0.6875rem] font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
+														title={projectBadgeName}
+														data-testid={`sidebar-project-badge-${task.id}`}
+													>
+														<span
+															aria-hidden
+															style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+															className="leading-none text-[0.75rem]"
+														>
+															{"\uEB01"}
+														</span>
+														<span className="truncate">{projectBadgeName}</span>
+													</div>
+												)}
+
 												<div className="mb-1 flex items-center gap-1.5 min-w-0">
 													{agent && <AgentLauncherBadge agent={agent} size={14} />}
 													<div
@@ -420,24 +438,6 @@ function ActiveTasksSidebar({
 														/>
 													)}
 												</div>
-
-												{/* Project badge (global scope only) */}
-												{showProjectBadge && (
-													<div
-														className="mb-1 inline-flex items-center gap-1 max-w-full text-[0.5625rem] text-fg-3 bg-fg/5 rounded px-1 py-[1px]"
-														title={projectBadgeName}
-														data-testid={`sidebar-project-badge-${task.id}`}
-													>
-														<span
-															aria-hidden
-															style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-															className="leading-none"
-														>
-															{"\uEB01"}
-														</span>
-														<span className="truncate">{projectBadgeName}</span>
-													</div>
-												)}
 
 												{/* Title */}
 												<div className={`text-xs leading-snug break-words ${

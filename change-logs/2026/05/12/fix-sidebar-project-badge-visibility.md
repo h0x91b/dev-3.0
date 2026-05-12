@@ -1,0 +1,1 @@
+Made the project name badge in the Active Tasks sidebar much more visible in global scope. The badge is now larger, uses the accent color with a subtle background and border, and is rendered as the first line of each cross-project task card so the project is the first thing the user reads when scanning tasks from all projects.
