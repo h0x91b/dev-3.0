@@ -555,6 +555,10 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			throw new Error(`tmux new-session failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
 		}
 
+		// Detached session: tmux update-environment runs on client attach only,
+		// so we must explicitly seed auth env on the freshly created session.
+		pty.propagateAuthEnvToTmux(socket, devSession);
+
 		const taskSession = `dev3-${task.id.slice(0, 8)}`;
 		const tmuxKill = socket
 			? `tmux -L "${socket}" kill-session -t "${devSession}" 2>/dev/null`

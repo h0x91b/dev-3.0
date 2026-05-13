@@ -21,7 +21,7 @@ import {
 import { loadSettings, loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
-import { buildScriptRunnerCommand, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
+import { buildScriptRunnerCommand, getPushMessage, isActive, log, notifyWatchedTaskStatusChange, shellQuote } from "./shared";
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
 import { resolveOperationalProjectConfig } from "./settings-config";
 import { cleanupTaskTmuxState, killDevServerSession, launchColumnAgent, launchTaskPty } from "./tmux-pty";
@@ -450,7 +450,13 @@ export async function runCleanupScript(
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
 	const userShell = getUserShell();
 
-	await Bun.write(scriptPath, `#!/bin/bash\n${script}\n`);
+	// Prepend auth env exports so ssh/gpg-backed cleanup commands (push, fetch,
+	// signed commits) don't hang waiting for an unreachable agent.
+	const authExports = Object.entries(pty.getAuthEnv())
+		.map(([k, v]) => `export ${k}=${shellQuote(v)}`)
+		.join("\n");
+	const scriptBody = authExports ? `${authExports}\n${script}` : script;
+	await Bun.write(scriptPath, `#!/bin/bash\n${scriptBody}\n`);
 
 	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
 

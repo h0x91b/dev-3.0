@@ -87,6 +87,16 @@ setw -g monitor-bell on
 set -g allow-passthrough on
 set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
+# Auth-related env vars must follow client env on attach.
+# SSH_AUTH_SOCK and DISPLAY are tmux defaults but listed here for clarity.
+set -ga update-environment SSH_AUTH_SOCK
+set -ga update-environment SSH_AGENT_PID
+set -ga update-environment SSH_CONNECTION
+set -ga update-environment SSH_CLIENT
+set -ga update-environment SSH_TTY
+set -ga update-environment DISPLAY
+set -ga update-environment GPG_AGENT_INFO
+set -ga update-environment GPG_TTY
 
 # Shell prompt — redirect zsh to dev3 ZDOTDIR for short worktree paths
 set-environment -g ZDOTDIR /tmp/dev3-shell
@@ -169,6 +179,58 @@ export function tmuxArgs(socket: string, ...args: string[]): string[] {
 }
 
 const log = createLogger("pty");
+
+/**
+ * Auth-related env vars that must follow the user from the host shell into
+ * every tmux session. Without these, ssh/git/gpg silently fall back to
+ * interactive prompts (which hang in a non-tty pane).
+ *
+ * The tmux server's global env is captured once when it starts and may be
+ * stale across app restarts. We must explicitly propagate these via
+ * `tmux set-environment -t <session>` on every session we create.
+ */
+export const AUTH_ENV_KEYS = [
+	"SSH_AUTH_SOCK",
+	"SSH_AGENT_PID",
+	"SSH_CONNECTION",
+	"SSH_CLIENT",
+	"SSH_TTY",
+	"DISPLAY",
+	"GPG_AGENT_INFO",
+	"GPG_TTY",
+] as const;
+
+export function getAuthEnv(): Record<string, string> {
+	const result: Record<string, string> = {};
+	for (const key of AUTH_ENV_KEYS) {
+		const val = process.env[key];
+		if (val) result[key] = val;
+	}
+	return result;
+}
+
+/**
+ * Propagate auth-related env vars (SSH agent socket, GPG agent, X display)
+ * from process.env to the given tmux session. Must be called after the
+ * session exists. Safe to call multiple times.
+ */
+export function propagateAuthEnvToTmux(socket: string, sessionName: string): void {
+	const authEnv = getAuthEnv();
+	const keys = Object.keys(authEnv);
+	if (keys.length === 0) return;
+	for (const [key, value] of Object.entries(authEnv)) {
+		try {
+			spawnSync(tmuxArgs(socket, "set-environment", "-t", sessionName, key, value));
+		} catch (err) {
+			log.warn("Failed to propagate auth env to tmux session", {
+				sessionName,
+				key,
+				error: String(err),
+			});
+		}
+	}
+	log.info("Propagated auth env to tmux session", { sessionName, keys });
+}
 
 let ptyWsPort = 0;
 
@@ -749,6 +811,10 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			configureTmux(tmuxSessionName, session.tmuxSocket);
 			// Set DEV3_WORKTREE_ROOT so the shell prompt shows short paths
 			spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd));
+			// Propagate auth env (ssh-agent, gpg-agent, X display) from the
+			// host shell. Required before any pane spawned via split-window
+			// runs git/ssh/gpg, otherwise they hang on stale/missing agents.
+			propagateAuthEnvToTmux(session.tmuxSocket, tmuxSessionName);
 			const envKeys = Object.keys(session.env);
 			for (const [key, value] of Object.entries(session.env)) {
 				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));

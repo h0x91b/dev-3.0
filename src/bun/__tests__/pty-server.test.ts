@@ -45,6 +45,9 @@ import {
 	setOnBell,
 	setOnOsc52Copy,
 	TMUX_CONF_PATH,
+	AUTH_ENV_KEYS,
+	getAuthEnv,
+	propagateAuthEnvToTmux,
 } from "../pty-server";
 
 // ---- Typed mock handles ----
@@ -823,6 +826,136 @@ describe("pty-server", () => {
 			});
 
 			expect(() => vi.advanceTimersByTime(200)).not.toThrow();
+
+			vi.useRealTimers();
+		});
+	});
+
+	// ------- Auth env propagation -------
+
+	describe("getAuthEnv", () => {
+		const originalEnv = { ...process.env };
+
+		afterEach(() => {
+			for (const key of AUTH_ENV_KEYS) {
+				if (originalEnv[key] === undefined) delete process.env[key];
+				else process.env[key] = originalEnv[key];
+			}
+		});
+
+		it("returns SSH and GPG vars present in process.env", () => {
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+			process.env.SSH_AUTH_SOCK = "/tmp/ssh-agent.sock";
+			process.env.GPG_AGENT_INFO = "/tmp/gpg:1234:1";
+			process.env.GPG_TTY = "/dev/ttys000";
+
+			expect(getAuthEnv()).toEqual({
+				SSH_AUTH_SOCK: "/tmp/ssh-agent.sock",
+				GPG_AGENT_INFO: "/tmp/gpg:1234:1",
+				GPG_TTY: "/dev/ttys000",
+			});
+		});
+
+		it("omits unset vars and returns empty object when none set", () => {
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+			expect(getAuthEnv()).toEqual({});
+		});
+
+		it("omits empty-string values", () => {
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+			process.env.SSH_AUTH_SOCK = "";
+			process.env.DISPLAY = ":0";
+			expect(getAuthEnv()).toEqual({ DISPLAY: ":0" });
+		});
+	});
+
+	describe("propagateAuthEnvToTmux", () => {
+		const originalEnv = { ...process.env };
+
+		afterEach(() => {
+			for (const key of AUTH_ENV_KEYS) {
+				if (originalEnv[key] === undefined) delete process.env[key];
+				else process.env[key] = originalEnv[key];
+			}
+		});
+
+		it("calls tmux set-environment for each auth var present in process.env", () => {
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+			process.env.SSH_AUTH_SOCK = "/tmp/ssh-agent.sock";
+			process.env.SSH_AGENT_PID = "12345";
+
+			mockSpawnSync.mockClear();
+			propagateAuthEnvToTmux("dev3", "dev3-test");
+
+			const setEnvCalls = mockSpawnSync.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+			);
+			expect(setEnvCalls).toHaveLength(2);
+
+			const sshSockCall = setEnvCalls.find((c) => c[0].includes("SSH_AUTH_SOCK"));
+			expect(sshSockCall).toBeDefined();
+			expect(sshSockCall![0]).toEqual(
+				expect.arrayContaining(["tmux", "-L", "dev3", "set-environment", "-t", "dev3-test", "SSH_AUTH_SOCK", "/tmp/ssh-agent.sock"]),
+			);
+
+			const sshPidCall = setEnvCalls.find((c) => c[0].includes("SSH_AGENT_PID"));
+			expect(sshPidCall).toBeDefined();
+			expect(sshPidCall![0]).toEqual(
+				expect.arrayContaining(["tmux", "-L", "dev3", "set-environment", "-t", "dev3-test", "SSH_AGENT_PID", "12345"]),
+			);
+		});
+
+		it("is a no-op when process.env has no auth vars", () => {
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+
+			mockSpawnSync.mockClear();
+			propagateAuthEnvToTmux("dev3", "dev3-test");
+
+			const setEnvCalls = mockSpawnSync.mock.calls.filter(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment"),
+			);
+			expect(setEnvCalls).toHaveLength(0);
+		});
+
+		it("does not throw when set-environment fails", () => {
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+			process.env.SSH_AUTH_SOCK = "/tmp/ssh-agent.sock";
+
+			mockSpawnSync.mockImplementation(() => {
+				throw new Error("tmux not available");
+			});
+
+			expect(() => propagateAuthEnvToTmux("dev3", "dev3-test")).not.toThrow();
+		});
+	});
+
+	describe("spawnPty auth env propagation", () => {
+		const originalEnv = { ...process.env };
+
+		afterEach(() => {
+			for (const key of AUTH_ENV_KEYS) {
+				if (originalEnv[key] === undefined) delete process.env[key];
+				else process.env[key] = originalEnv[key];
+			}
+		});
+
+		it("propagates SSH_AUTH_SOCK via set-environment after session is created", () => {
+			vi.useFakeTimers();
+			for (const key of AUTH_ENV_KEYS) delete process.env[key];
+			process.env.SSH_AUTH_SOCK = "/tmp/agent.sock";
+
+			const id = track("task-auth-01");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "auth-sock");
+			mockSpawnSync.mockClear();
+
+			vi.advanceTimersByTime(200);
+
+			const sshSockCall = mockSpawnSync.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("SSH_AUTH_SOCK"),
+			);
+			expect(sshSockCall).toBeDefined();
+			expect(sshSockCall![0]).toContain("/tmp/agent.sock");
+			expect(sshSockCall![0]).toContain("auth-sock");
 
 			vi.useRealTimers();
 		});
