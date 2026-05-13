@@ -1,6 +1,7 @@
-import type { Dispatch } from "react";
+import type { Dispatch, MutableRefObject } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
+import type { NavigationGuard } from "../navigation-guard";
 import TaskTerminal from "./TaskTerminal";
 import TaskDiffViewer from "./TaskDiffViewer";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
@@ -14,6 +15,7 @@ interface TaskWorkspacePaneProps {
 	dispatch: Dispatch<AppAction>;
 	inlineDiffRequest: TaskInlineDiffRequest | null;
 	onCloseInlineDiff: () => void;
+	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
 function TaskWorkspacePane({
@@ -25,6 +27,7 @@ function TaskWorkspacePane({
 	dispatch,
 	inlineDiffRequest,
 	onCloseInlineDiff,
+	navigationGuardRef,
 }: TaskWorkspacePaneProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -58,6 +61,7 @@ function TaskWorkspacePane({
 						project={project}
 						request={inlineDiffRequest}
 						onBack={onCloseInlineDiff}
+						navigationGuardRef={navigationGuardRef}
 					/>
 				</div>
 			)}

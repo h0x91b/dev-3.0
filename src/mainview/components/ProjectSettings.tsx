@@ -7,6 +7,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { ListEditor } from "./ListEditor";
 import { matchesBranchQuery } from "./BranchSelector";
+import type { NavigationGuard } from "../navigation-guard";
 
 const DEFAULT_REVIEW_AGENT_ID = "builtin-claude";
 const DEFAULT_REVIEW_CONFIG_ID = "claude-bypass-sonnet";
@@ -836,11 +837,6 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 
 type ConfigTab = "global" | "project" | "worktree";
 type WorktreeSubTab = "repo" | "local";
-
-interface NavigationGuard {
-	isDirty: () => boolean;
-	onSave: () => Promise<void>;
-}
 
 /**
  * Strip empty strings from clonePaths and sparseCheckoutPaths before saving.

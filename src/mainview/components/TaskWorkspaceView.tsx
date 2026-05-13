@@ -1,6 +1,7 @@
-import type { Dispatch } from "react";
+import type { Dispatch, MutableRefObject } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
+import type { NavigationGuard } from "../navigation-guard";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
@@ -12,6 +13,7 @@ interface TaskWorkspaceViewProps {
 	projects: Project[];
 	navigate: (route: Route) => void;
 	dispatch: Dispatch<AppAction>;
+	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
 function TaskWorkspaceView({
@@ -21,6 +23,7 @@ function TaskWorkspaceView({
 	projects,
 	navigate,
 	dispatch,
+	navigationGuardRef,
 }: TaskWorkspaceViewProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -48,6 +51,7 @@ function TaskWorkspaceView({
 					dispatch={dispatch}
 					inlineDiffRequest={inlineDiff.request}
 					onCloseInlineDiff={inlineDiff.close}
+					navigationGuardRef={navigationGuardRef}
 				/>
 			</div>
 		</div>

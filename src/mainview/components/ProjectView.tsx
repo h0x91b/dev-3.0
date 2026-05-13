@@ -1,6 +1,7 @@
-import { useEffect, type Dispatch } from "react";
+import { useEffect, type Dispatch, type MutableRefObject } from "react";
 import type { CodingAgent, PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
 import type { AppAction, Route } from "../state";
+import type { NavigationGuard } from "../navigation-guard";
 import { api, isElectrobun } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
 import TaskInfoPanel from "./TaskInfoPanel";
@@ -33,6 +34,7 @@ interface ProjectViewProps {
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
+	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
 function ProjectView({
@@ -45,6 +47,7 @@ function ProjectView({
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
+	navigationGuardRef,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -118,6 +121,7 @@ function ProjectView({
 							dispatch={dispatch}
 							inlineDiffRequest={inlineDiff.request}
 							onCloseInlineDiff={inlineDiff.close}
+							navigationGuardRef={navigationGuardRef}
 						/>
 					</div>
 				</div>
@@ -178,6 +182,7 @@ function ProjectView({
 							dispatch={dispatch}
 							inlineDiffRequest={inlineDiff.request}
 							onCloseInlineDiff={inlineDiff.close}
+							navigationGuardRef={navigationGuardRef}
 						/>
 					}
 					mode={sidebarMode}

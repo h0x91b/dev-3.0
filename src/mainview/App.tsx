@@ -27,6 +27,7 @@ import { ErrorToast } from "./components/ErrorToast";
 import FolderPickerHost from "./components/FolderPickerModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import type { NavigationGuard } from "./navigation-guard";
 
 const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 
@@ -112,11 +113,8 @@ function App() {
 		checkRequirements();
 	}, [checkRequirements]);
 
-	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings)
-	const navigationGuardRef = useRef<{
-		isDirty: () => boolean;
-		onSave: () => Promise<void>;
-	} | null>(null);
+	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)
+	const navigationGuardRef = useRef<NavigationGuard | null>(null);
 	const [pendingNavigation, setPendingNavigation] = useState<Route | null>(null);
 
 	const navigate = useCallback(
@@ -954,6 +952,7 @@ function App() {
 						taskPorts={state.taskPorts}
 						taskResourceUsage={state.taskResourceUsage}
 						activeTaskId={route.activeTaskId}
+						navigationGuardRef={navigationGuardRef}
 					/>
 				);
 			case "project-terminal": {
@@ -983,6 +982,7 @@ function App() {
 						projects={state.projects}
 						navigate={navigate}
 						dispatch={dispatch}
+						navigationGuardRef={navigationGuardRef}
 					/>
 				);
 			case "project-settings":

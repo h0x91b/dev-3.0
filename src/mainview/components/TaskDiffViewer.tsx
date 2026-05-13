@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MutableRefObject, type ReactNode } from "react";
+import type { NavigationGuard } from "../navigation-guard";
 import type {
 	Project,
 	Task,
@@ -109,6 +110,7 @@ interface TaskDiffViewerProps {
 	project: Project;
 	request: TaskInlineDiffRequest;
 	onBack: () => void;
+	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
 interface TaskDiffFileSectionProps {
@@ -1288,7 +1290,7 @@ function TaskDiffFileSection({
 	);
 }
 
-function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps) {
+function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: TaskDiffViewerProps) {
 	const t = useT();
 	const resolvedTheme = useResolvedTheme();
 	const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -1348,6 +1350,32 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			})
 			.catch(() => {});
 	}, [onBack, t]);
+
+	const reviewExportXmlRef = useRef("");
+	useEffect(() => {
+		reviewExportXmlRef.current = reviewExportXml;
+	}, [reviewExportXml]);
+
+	useEffect(() => {
+		if (!navigationGuardRef) {
+			return;
+		}
+		navigationGuardRef.current = {
+			isDirty: () => hasUnsavedReviewRef.current,
+			onSave: async () => {
+				const xml = reviewExportXmlRef.current;
+				if (!xml) return;
+				try {
+					await navigator.clipboard.writeText(xml);
+				} catch {
+					/* clipboard not available — leaving navigation flow intact */
+				}
+			},
+		};
+		return () => {
+			navigationGuardRef.current = null;
+		};
+	}, [navigationGuardRef]);
 
 	const isInitialRequestSyncRef = useRef(true);
 

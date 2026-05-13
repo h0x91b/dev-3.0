@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, Task, TaskDiffResponse } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
+import type { NavigationGuard } from "../../navigation-guard";
 import TaskDiffViewer from "../TaskDiffViewer";
 
 vi.mock("../../rpc", () => ({
@@ -1550,6 +1551,46 @@ describe("TaskDiffViewer", () => {
 			expect(onBack).toHaveBeenCalledTimes(1);
 		});
 		expect(showConfirm).toHaveBeenCalledTimes(2);
+	});
+
+	it("registers a navigation guard that blocks app-level navigation and copies XML on save", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+		const guardRef: { current: NavigationGuard | null } = { current: null };
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+					navigationGuardRef={guardRef}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		expect(guardRef.current).not.toBeNull();
+		expect(guardRef.current?.isDirty()).toBe(false);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "guard me");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await waitFor(() => {
+			expect(guardRef.current?.isDirty()).toBe(true);
+		});
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+
+		expect(writeText).toHaveBeenCalledTimes(1);
+		expect(writeText.mock.calls[0][0]).toContain("<comment>guard me</comment>");
 	});
 
 	it("confirms before closing via the back button when unsaved review exists", async () => {
