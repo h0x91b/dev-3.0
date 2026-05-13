@@ -5,6 +5,7 @@ import {
 	getCodexSkillContent,
 	getGenericSkillContent,
 	getProjectConfigSkillContent,
+	getTmuxSkillContent,
 } from "../agent-skills";
 
 describe("dev3 skill content", () => {
@@ -41,19 +42,60 @@ describe("dev3 skill content", () => {
 		expect(getGenericSkillContent()).toContain("If you started the dev server only for verification, stop it afterwards");
 	});
 
-	it("teaches the agent to use the dev3 tmux session proactively", () => {
+	it("teaches the agent to use the dev3 tmux session proactively (short summary)", () => {
 		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## tmux — use it proactively");
-			expect(skill).toContain("Socket: `dev3`");
+			expect(skill).toContain("socket `dev3`");
 			expect(skill).toContain("dev3-<first 8 chars of task ID>");
 			expect(skill).toContain("tmux -L dev3 display-message -p '#S #I #P'");
-			expect(skill).toContain("tmux -L dev3 split-window -h");
-			expect(skill).toContain("tmux -L dev3 send-keys");
-			expect(skill).toContain("tmux -L dev3 new-window");
-			expect(skill).toContain("Helping the user organize tmux");
+			expect(skill).toContain("list-windows");
+			expect(skill).toContain("list-panes");
 			expect(skill).toContain("Always use `-L dev3`");
-			expect(skill).toContain("you must pass `Enter` as a separate argument");
+			expect(skill).toContain("pass `Enter` as a separate argument");
+			// Short version points to the full skill for deeper guidance
+			expect(skill).toContain("/dev3-tmux");
 		}
+	});
+
+	it("keeps the main /dev3 tmux summary short (does not duplicate the full reference)", () => {
+		// The detailed command reference must live in the separate /dev3-tmux skill,
+		// not be duplicated inline in the main skill body.
+		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).not.toContain("Open a pane or window and run a command");
+			expect(skill).not.toContain("Resize a pane — absolute width / height");
+			expect(skill).not.toContain("Re-tile all panes in the window");
+		}
+	});
+});
+
+describe("dev3-tmux skill content", () => {
+	it("contains the full tmux command reference", () => {
+		const skill = getTmuxSkillContent();
+		expect(skill).toContain("# dev3-tmux — Full tmux reference");
+		expect(skill).toContain("## 1. Session layout");
+		expect(skill).toContain("## 2. Discovery");
+		expect(skill).toContain("## 3. When to use a tmux pane vs inline Bash");
+		expect(skill).toContain("## 4. Open a pane or window and run a command");
+		expect(skill).toContain("## 5. Organize windows and panes");
+		expect(skill).toContain("## 6. Read what is happening in a pane");
+		expect(skill).toContain("## 7. Common pitfalls");
+		expect(skill).toContain("tmux -L dev3 split-window -h");
+		expect(skill).toContain("tmux -L dev3 split-window -v");
+		expect(skill).toContain("tmux -L dev3 new-window");
+		expect(skill).toContain("tmux -L dev3 send-keys");
+		expect(skill).toContain("tmux -L dev3 swap-window");
+		expect(skill).toContain("tmux -L dev3 move-window");
+		expect(skill).toContain("tmux -L dev3 resize-pane");
+		expect(skill).toContain("tmux -L dev3 capture-pane");
+		expect(skill).toContain("tmux -L dev3 kill-pane");
+	});
+
+	it("warns about the most common pitfalls", () => {
+		const skill = getTmuxSkillContent();
+		expect(skill).toContain("Forgetting `-L dev3`");
+		expect(skill).toContain("Forgetting `Enter` in `send-keys`");
+		expect(skill).toContain("Caching pane ids");
+		expect(skill).toContain("Running the canonical dev server in an ad-hoc pane");
 	});
 });
 

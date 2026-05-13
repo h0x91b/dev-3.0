@@ -46,12 +46,21 @@ describe("installAgentSkills", () => {
 			"legacy project config",
 			"utf-8",
 		);
+		mkdirSync(join(tempHome, ".gemini/skills/dev3-tmux"), { recursive: true });
+		writeFileSync(
+			join(tempHome, ".gemini/skills/dev3-tmux/SKILL.md"),
+			"legacy tmux",
+			"utf-8",
+		);
 
 		const { installAgentSkills, ensureCodexConfigFile } = await loadModule();
 		installAgentSkills();
 
 		expect(existsSync(join(tempHome, ".agents/skills/dev3/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-project-config/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".agents/skills/dev3-tmux/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".claude/skills/dev3-tmux/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".codex/skills/dev3-tmux/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-bug-hunter/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".claude/skills/dev3-bug-hunter/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".codex/skills/dev3-bug-hunter/SKILL.md"))).toBe(true);
@@ -59,11 +68,13 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-project-config/agents/openai.yaml"))).toBe(
 			true,
 		);
+		expect(existsSync(join(tempHome, ".agents/skills/dev3-tmux/agents/openai.yaml"))).toBe(true);
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-bug-hunter/agents/openai.yaml"))).toBe(
 			true,
 		);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3"))).toBe(false);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-project-config"))).toBe(false);
+		expect(existsSync(join(tempHome, ".gemini/skills/dev3-tmux"))).toBe(false);
 		expect(ensureCodexConfigFile).toHaveBeenCalledWith(tempHome);
 	});
 });

@@ -129,63 +129,22 @@ For ANY question about project configuration — setting up scripts (setup, dev,
 const SKILL_TMUX = `
 ## tmux — use it proactively
 
-You are running **inside a tmux session** managed by dev-3.0. The user can see this pane in the app's terminal UI. Use tmux actively — it is one of the most useful tools you have.
+You are running **inside a tmux session** managed by dev-3.0 (socket \`dev3\`, session name \`dev3-<first 8 chars of task ID>\`). The user sees this pane live in the app's terminal UI.
 
-**Session location:**
-- Socket: \`dev3\` (always use \`tmux -L dev3 ...\`)
-- Session name: \`dev3-<first 8 chars of task ID>\` (e.g. for task \`e563e48f-...\` → session \`dev3-e563e48f\`)
-- Discover your own session/pane at any time:
-  \`tmux -L dev3 display-message -p '#S #I #P'\`  (session, window, pane)
-- List everything: \`tmux -L dev3 list-sessions\` / \`list-windows -t <session>\` / \`list-panes -t <session>:<window>\`
+**Discover where you are:**
 
-### When to use tmux proactively
+- \`tmux -L dev3 display-message -p '#S #I #P'\` — your session, window, pane id
+- \`tmux -L dev3 list-windows -t <session>\` / \`list-panes -t <session>\` — see all tabs and panes
+- \`tmux -L dev3 list-sessions\` — see all dev3 sessions
 
-Run a command **in a separate tmux pane (not inline via Bash tool)** when:
-- It is **long-running** and the user benefits from watching live output (dev server, build watcher, log tail, test watcher).
-- It produces **streaming logs** the user might want to inspect later.
-- You want to **demo or debug interactively** — let the user see exactly what is happening, not a summary after the fact.
-- The user explicitly asks to "run it in a pane / tab" or "so I can see it".
+**Be proactive:**
 
-Keep using inline Bash for quick, one-shot commands (file reads, short git commands, type-checks, single test runs) where streaming visibility adds nothing.
+- For long-running or streaming commands (dev server, log tail, watcher, debug loop), open a pane and run it there — the user can watch it live. Quick one-shot commands stay inline.
+- If the user asks to open/split/reorder/resize tabs or panes — just do it via \`tmux -L dev3 ...\`, do not ask which terminal.
+- Always use \`-L dev3\` (the default socket is a different tmux server and will not see dev3 sessions).
+- For \`send-keys\`, pass \`Enter\` as a separate argument — otherwise the command is typed but not executed.
 
-### How to open a pane / window and run a command
-
-Split the current window vertically (new pane on the right) and run a command in it:
-
-\`\`\`bash
-SESSION="dev3-$(tmux -L dev3 display-message -p '#S' | sed 's/^dev3-//')"
-# Or just use the known session name directly: SESSION="dev3-<task-short-id>"
-
-# Vertical split (pane on the right), keep the CWD, give it a label
-tmux -L dev3 split-window -h -t "$SESSION" -c "$PWD" -P -F '#{pane_id}'
-# → prints the new pane id, e.g. %42
-
-# Send a command into that pane (note the literal Enter to execute)
-tmux -L dev3 send-keys -t %42 'bun run dev' Enter
-\`\`\`
-
-Useful variants:
-- New window (tab): \`tmux -L dev3 new-window -t "$SESSION:" -c "$PWD" -n "dev-server"\`
-- Horizontal split (pane below): \`tmux -L dev3 split-window -v -t "$SESSION" -c "$PWD"\`
-- Rename a window: \`tmux -L dev3 rename-window -t "$SESSION:<idx>" "<name>"\`
-- Resize a pane: \`tmux -L dev3 resize-pane -t %ID -x 100\` (width in cols) or \`-y 20\` (height in rows)
-- Swap/reorder windows: \`tmux -L dev3 swap-window -s "$SESSION:1" -t "$SESSION:2"\`
-- Move window to position: \`tmux -L dev3 move-window -s "$SESSION:5" -t "$SESSION:2"\`
-- Kill a pane: \`tmux -L dev3 kill-pane -t %ID\`
-- Read what is in a pane (last N lines): \`tmux -L dev3 capture-pane -p -t %ID -S -200\`
-
-### Helping the user organize tmux
-
-If the user asks to "open a tab on the right", "split vertically", "reorder tabs", "resize this pane", "name this window X" — **just do it via \`tmux -L dev3 ...\`**. Do not push back, do not ask which terminal — the answer is always the dev3 tmux session.
-
-Before destructive operations on user-created panes/windows (kill, swap), briefly state what you are about to do. For creating new panes/windows and running commands in them — just do it and tell the user where to look ("opened pane %42 on the right, running \`bun run dev\` there").
-
-### Caveats
-
-- Always use \`-L dev3\`. The default tmux socket is a different server and will not see dev3 sessions.
-- Pane ids (\`%42\`) and window indices change over time. Re-query with \`list-panes\` / \`list-windows\` rather than caching them across long sessions.
-- When sending a command via \`send-keys\`, you must pass \`Enter\` as a separate argument to actually execute it; otherwise it just types the text.
-- Do not use tmux as a substitute for the dev-server controls (\`dev3 dev-server start\`) — those exist for a reason and integrate with the project's \`devScript\`. Use a pane for ad-hoc commands the user wants to watch, not for the canonical dev server.
+**For the full command reference** (open pane, send keys, rename / swap / move windows, resize, capture output, common pitfalls) — load the \`/dev3-tmux\` skill before doing anything beyond the basics above.
 `;
 
 const SKILL_SCRATCH_TASK = `
@@ -476,6 +435,168 @@ const PROJECT_CONFIG_OPENAI_YAML = `interface:
   default_prompt: "Use $dev3-project-config to inspect a repo and configure .dev3 project settings."
 `;
 
+// ---- dev3-tmux skill ----
+
+const TMUX_SKILL_DESCRIPTION =
+	"Full tmux reference for dev-3.0 agents. Use when you need to open new panes/windows for long-running commands, reorganize the user's tabs (split, swap, resize, rename), capture pane output, or do anything beyond the basics covered in the main /dev3 skill. Trigger: the user asks for tab/pane manipulation, you want to run a streaming command the user should see live, or the /dev3 skill points you here.";
+
+const TMUX_SKILL_BODY = `# dev3-tmux — Full tmux reference for dev-3.0 agents
+
+You are running inside a tmux session managed by the dev-3.0 desktop app. The user sees this session live in the app's terminal UI — every pane, every keystroke, every line of output.
+
+This skill is the **full reference**. The main \`/dev3\` skill carries only a short summary and a pointer here.
+
+## 1. Session layout
+
+- **Socket:** \`dev3\` — always pass \`-L dev3\` to every tmux invocation. The default socket is a different server and will not see dev-3.0 sessions.
+- **Session name:** \`dev3-<first 8 chars of task ID>\` — e.g. for task id \`e563e48f-0f45-...\`, the session is \`dev3-e563e48f\`.
+- **Windows = tabs**, **panes = splits inside a window**. Window indices (\`0\`, \`1\`, …) and pane ids (\`%17\`, \`%42\`, …) are how you target things.
+
+## 2. Discovery — where am I, what is around me
+
+\`\`\`bash
+# Your own session, window index, pane index
+tmux -L dev3 display-message -p '#S #I #P'
+
+# All dev3 sessions on this machine
+tmux -L dev3 list-sessions
+
+# All windows in a session, with index and name
+tmux -L dev3 list-windows -t dev3-<short-id> -F '#{window_index}: #{window_name}'
+
+# All panes in the current window, with pane_id and command
+tmux -L dev3 list-panes -t dev3-<short-id> -F '#{pane_id} #{pane_current_command} #{pane_width}x#{pane_height}'
+
+# Pane id of the focused pane in a session
+tmux -L dev3 display-message -p -t dev3-<short-id> '#{pane_id}'
+\`\`\`
+
+Re-query \`list-panes\` / \`list-windows\` whenever you need a pane id — cached ids go stale after splits, swaps, and kills.
+
+## 3. When to use a tmux pane vs inline Bash
+
+Run a command **in a separate tmux pane** when at least one of these is true:
+
+- It is **long-running** and the user benefits from watching live (dev server, build watcher, log tail, test watcher).
+- It produces **streaming logs** that the user might want to scroll through later.
+- You want to **demo or debug interactively** — let the user see exactly what happened, not a post-hoc summary.
+- The user explicitly says "run it in a pane / tab / window" or "so I can see it".
+
+Keep using **inline Bash** for quick one-shot commands (file reads, short git, type-checks, single test runs) where streaming visibility adds nothing.
+
+**Do NOT use a tmux pane as a substitute for the canonical dev server** — the project has \`dev3 dev-server start\` for that, which is wired to \`devScript\` and the UI. Use ad-hoc panes for things the user wants to *watch alongside* the dev server, not to replace it.
+
+## 4. Open a pane or window and run a command
+
+### Vertical split (new pane on the right)
+
+\`\`\`bash
+SESSION=dev3-<short-id>
+
+PANE=$(tmux -L dev3 split-window -h -t "$SESSION" -c "$PWD" -P -F '#{pane_id}')
+echo "new pane: $PANE"      # e.g. %42
+tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
+\`\`\`
+
+### Horizontal split (new pane below)
+
+\`\`\`bash
+PANE=$(tmux -L dev3 split-window -v -t "$SESSION" -c "$PWD" -P -F '#{pane_id}')
+\`\`\`
+
+### New window (new tab)
+
+\`\`\`bash
+tmux -L dev3 new-window -t "$SESSION:" -c "$PWD" -n "dev-server"
+# Target the newly-created window's pane:
+PANE=$(tmux -L dev3 display-message -p -t "$SESSION:dev-server" '#{pane_id}')
+tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
+\`\`\`
+
+### Sending input
+
+- \`send-keys ... Enter\` — typed text + execute. Without \`Enter\` you just type without pressing return.
+- Multiple lines: pass them as separate args, each followed by \`Enter\`.
+- Special keys: \`C-c\` (Ctrl-C), \`C-d\` (Ctrl-D), \`Escape\`, \`Up\`, \`Down\`, \`Tab\`. Example: \`tmux -L dev3 send-keys -t %42 C-c\` cancels the running command.
+
+## 5. Organize windows and panes (user-driven)
+
+When the user says things like "open a tab on the right", "split vertically", "reorder tabs", "make this pane bigger", "rename window 2" — just do it. Do not ask which terminal. The answer is always the dev3 session.
+
+\`\`\`bash
+# Rename a window
+tmux -L dev3 rename-window -t "$SESSION:1" "logs"
+
+# Swap two windows (keeps focus on the moved one)
+tmux -L dev3 swap-window -s "$SESSION:1" -t "$SESSION:2"
+
+# Move window 5 to position 2 (shifts others)
+tmux -L dev3 move-window -s "$SESSION:5" -t "$SESSION:2"
+
+# Resize a pane — absolute width / height
+tmux -L dev3 resize-pane -t %42 -x 100    # 100 columns wide
+tmux -L dev3 resize-pane -t %42 -y 20     # 20 rows tall
+
+# Resize relative (grow right by 10 cols)
+tmux -L dev3 resize-pane -t %42 -R 10
+
+# Re-tile all panes in the window (cleanup after many splits)
+tmux -L dev3 select-layout -t "$SESSION" tiled
+
+# Kill a pane / window
+tmux -L dev3 kill-pane -t %42
+tmux -L dev3 kill-window -t "$SESSION:3"
+\`\`\`
+
+Before destructive operations on user-created panes/windows (kill, swap, move) — briefly state what you are about to do. For creating new panes/windows you opened yourself, just do it and tell the user where to look: *"opened pane %42 on the right, running \`bun run dev\` there"*.
+
+## 6. Read what is happening in a pane
+
+\`\`\`bash
+# Last 200 lines of pane %42, with ANSI stripped to plain text
+tmux -L dev3 capture-pane -p -t %42 -S -200
+
+# Last 200 lines with ANSI colour codes preserved (use sparingly — noisy)
+tmux -L dev3 capture-pane -p -e -t %42 -S -200
+
+# Full scrollback
+tmux -L dev3 capture-pane -p -t %42 -S -
+\`\`\`
+
+Useful when you start a watcher in a pane and want to verify a few minutes later that it is healthy. Prefer \`-S -N\` (last N lines) over the full scrollback — keeps the output you read tiny.
+
+## 7. Common pitfalls
+
+- **Forgetting \`-L dev3\`.** Without it, every command targets the default socket and either silently fails or talks to a different tmux server. If \`list-sessions\` shows nothing or unrelated sessions, that is the cause.
+- **Forgetting \`Enter\` in \`send-keys\`.** The command is typed but not executed. Then you wonder why nothing happened.
+- **Caching pane ids.** After splits, kills, or swaps the topology changes. Re-query \`list-panes\` before sending more keys to a specific pane.
+- **Killing user-owned panes/windows.** The user may have things running you cannot see (a debugger, a REPL, a long upload). Default to creating new panes; only destroy what you created yourself, or what the user explicitly asked you to remove.
+- **Running the canonical dev server in an ad-hoc pane.** Use \`dev3 dev-server start\` instead — it integrates with the UI and \`devScript\`. Ad-hoc panes are for things the user wants to *watch on the side*.
+- **Long-running commands stealing your tool slot.** Inline \`bun run dev\` from the Bash tool blocks your tool call for a long time. A tmux pane fires-and-forgets and you get your next tool call back immediately.
+`;
+
+const CLAUDE_TMUX_SKILL = `---
+name: dev3-tmux
+description: "${TMUX_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${TMUX_SKILL_BODY}`;
+
+const GENERIC_TMUX_SKILL = `---
+name: dev3-tmux
+description: "${TMUX_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${TMUX_SKILL_BODY}`;
+
+const TMUX_OPENAI_YAML = `interface:
+  display_name: "dev3 tmux"
+  short_description: "Full tmux reference for opening panes, organizing tabs, and running long commands inside the dev-3.0 session"
+  default_prompt: "Use $dev3-tmux for the full tmux command reference inside the dev-3.0 session."
+`;
+
 // ---- dev3 Bug Hunter skill ----
 
 const BUG_HUNTER_SKILL_DESCRIPTION =
@@ -673,6 +794,10 @@ export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
 }
 
+export function getTmuxSkillContent(): string {
+	return TMUX_SKILL_BODY;
+}
+
 export function getBugHunterSkillContent(): string {
 	return BUG_HUNTER_SKILL_CONTENT;
 }
@@ -701,6 +826,18 @@ const GENERIC_PROJECT_CONFIG_DIRS = [
 	".config/opencode/skills/dev3-project-config",
 ];
 
+/** Claude Code tmux skill directory. */
+const CLAUDE_TMUX_DIR = ".claude/skills/dev3-tmux";
+
+/** Generic agent tmux skill directories. */
+const GENERIC_TMUX_DIRS = [
+	".cursor/skills/dev3-tmux",
+	".agents/skills/dev3-tmux",
+	".codex/skills/dev3-tmux",
+	".opencode/skills/dev3-tmux",
+	".config/opencode/skills/dev3-tmux",
+];
+
 const BUG_HUNTER_SKILL_DIRS = [
 	".claude/skills/dev3-bug-hunter",
 	".cursor/skills/dev3-bug-hunter",
@@ -720,6 +857,10 @@ const SHARED_SKILL_OPENAI_CONFIGS = [
 		content: PROJECT_CONFIG_OPENAI_YAML,
 	},
 	{
+		dir: ".agents/skills/dev3-tmux",
+		content: TMUX_OPENAI_YAML,
+	},
+	{
 		dir: ".agents/skills/dev3-bug-hunter",
 		content: BUG_HUNTER_OPENAI_YAML,
 	},
@@ -733,6 +874,10 @@ const LEGACY_GEMINI_SKILL_DUPLICATES = [
 	{
 		agentsSkillFile: ".agents/skills/dev3-project-config/SKILL.md",
 		geminiSkillDir: ".gemini/skills/dev3-project-config",
+	},
+	{
+		agentsSkillFile: ".agents/skills/dev3-tmux/SKILL.md",
+		geminiSkillDir: ".gemini/skills/dev3-tmux",
 	},
 ];
 
@@ -952,6 +1097,36 @@ export function installAgentSkills(): void {
 			log.info("Agent project-config skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install agent project-config skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	// Install Claude-specific tmux skill
+	const claudeTmuxDir = `${home}/${CLAUDE_TMUX_DIR}`;
+	const claudeTmuxFile = `${claudeTmuxDir}/SKILL.md`;
+	try {
+		mkdirSync(claudeTmuxDir, { recursive: true });
+		writeFileSync(claudeTmuxFile, CLAUDE_TMUX_SKILL, "utf-8");
+		log.info("Claude tmux skill installed", { path: claudeTmuxFile });
+	} catch (err) {
+		log.warn("Failed to install Claude tmux skill (non-fatal)", {
+			path: claudeTmuxFile,
+			error: String(err),
+		});
+	}
+
+	// Install generic tmux skill for all other agents
+	for (const dir of GENERIC_TMUX_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, GENERIC_TMUX_SKILL, "utf-8");
+			log.info("Agent tmux skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install agent tmux skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});
