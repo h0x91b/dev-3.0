@@ -1,0 +1,1 @@
+Added a "tmux — use it proactively" section to the dev3 agent skill so Claude/Codex/Gemini agents know they run inside a `tmux -L dev3` session and how to use it. The section covers when to open a pane for long-running commands, how to split/window/send-keys/resize/reorder, and how to help the user organize tabs and panes on demand.

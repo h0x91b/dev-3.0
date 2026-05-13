@@ -126,6 +126,68 @@ const SKILL_PROJECT_CONFIG_REDIRECT = `
 For ANY question about project configuration — setting up scripts (setup, dev, cleanup), clone paths, base branch, sparse checkout, or anything related to \`.dev3/config.json\` / \`.dev3/config.local.json\` — you MUST invoke the \`/dev3-project-config\` skill. Do NOT attempt to configure the project without it. The dedicated skill knows the full schema, auto-detection logic, and correct workflow.
 `;
 
+const SKILL_TMUX = `
+## tmux — use it proactively
+
+You are running **inside a tmux session** managed by dev-3.0. The user can see this pane in the app's terminal UI. Use tmux actively — it is one of the most useful tools you have.
+
+**Session location:**
+- Socket: \`dev3\` (always use \`tmux -L dev3 ...\`)
+- Session name: \`dev3-<first 8 chars of task ID>\` (e.g. for task \`e563e48f-...\` → session \`dev3-e563e48f\`)
+- Discover your own session/pane at any time:
+  \`tmux -L dev3 display-message -p '#S #I #P'\`  (session, window, pane)
+- List everything: \`tmux -L dev3 list-sessions\` / \`list-windows -t <session>\` / \`list-panes -t <session>:<window>\`
+
+### When to use tmux proactively
+
+Run a command **in a separate tmux pane (not inline via Bash tool)** when:
+- It is **long-running** and the user benefits from watching live output (dev server, build watcher, log tail, test watcher).
+- It produces **streaming logs** the user might want to inspect later.
+- You want to **demo or debug interactively** — let the user see exactly what is happening, not a summary after the fact.
+- The user explicitly asks to "run it in a pane / tab" or "so I can see it".
+
+Keep using inline Bash for quick, one-shot commands (file reads, short git commands, type-checks, single test runs) where streaming visibility adds nothing.
+
+### How to open a pane / window and run a command
+
+Split the current window vertically (new pane on the right) and run a command in it:
+
+\`\`\`bash
+SESSION="dev3-$(tmux -L dev3 display-message -p '#S' | sed 's/^dev3-//')"
+# Or just use the known session name directly: SESSION="dev3-<task-short-id>"
+
+# Vertical split (pane on the right), keep the CWD, give it a label
+tmux -L dev3 split-window -h -t "$SESSION" -c "$PWD" -P -F '#{pane_id}'
+# → prints the new pane id, e.g. %42
+
+# Send a command into that pane (note the literal Enter to execute)
+tmux -L dev3 send-keys -t %42 'bun run dev' Enter
+\`\`\`
+
+Useful variants:
+- New window (tab): \`tmux -L dev3 new-window -t "$SESSION:" -c "$PWD" -n "dev-server"\`
+- Horizontal split (pane below): \`tmux -L dev3 split-window -v -t "$SESSION" -c "$PWD"\`
+- Rename a window: \`tmux -L dev3 rename-window -t "$SESSION:<idx>" "<name>"\`
+- Resize a pane: \`tmux -L dev3 resize-pane -t %ID -x 100\` (width in cols) or \`-y 20\` (height in rows)
+- Swap/reorder windows: \`tmux -L dev3 swap-window -s "$SESSION:1" -t "$SESSION:2"\`
+- Move window to position: \`tmux -L dev3 move-window -s "$SESSION:5" -t "$SESSION:2"\`
+- Kill a pane: \`tmux -L dev3 kill-pane -t %ID\`
+- Read what is in a pane (last N lines): \`tmux -L dev3 capture-pane -p -t %ID -S -200\`
+
+### Helping the user organize tmux
+
+If the user asks to "open a tab on the right", "split vertically", "reorder tabs", "resize this pane", "name this window X" — **just do it via \`tmux -L dev3 ...\`**. Do not push back, do not ask which terminal — the answer is always the dev3 tmux session.
+
+Before destructive operations on user-created panes/windows (kill, swap), briefly state what you are about to do. For creating new panes/windows and running commands in them — just do it and tell the user where to look ("opened pane %42 on the right, running \`bun run dev\` there").
+
+### Caveats
+
+- Always use \`-L dev3\`. The default tmux socket is a different server and will not see dev3 sessions.
+- Pane ids (\`%42\`) and window indices change over time. Re-query with \`list-panes\` / \`list-windows\` rather than caching them across long sessions.
+- When sending a command via \`send-keys\`, you must pass \`Enter\` as a separate argument to actually execute it; otherwise it just types the text.
+- Do not use tmux as a substitute for the dev-server controls (\`dev3 dev-server start\`) — those exist for a reason and integrate with the project's \`devScript\`. Use a pane for ad-hoc commands the user wants to watch, not for the canonical dev server.
+`;
+
 const SKILL_SCRATCH_TASK = `
 ## Scratch tasks
 
@@ -187,9 +249,9 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 

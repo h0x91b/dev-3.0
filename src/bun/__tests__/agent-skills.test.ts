@@ -40,6 +40,21 @@ describe("dev3 skill content", () => {
 		expect(getClaudeSkillContent()).toContain("Before doing so, briefly tell the user what you are about to do.");
 		expect(getGenericSkillContent()).toContain("If you started the dev server only for verification, stop it afterwards");
 	});
+
+	it("teaches the agent to use the dev3 tmux session proactively", () => {
+		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("## tmux — use it proactively");
+			expect(skill).toContain("Socket: `dev3`");
+			expect(skill).toContain("dev3-<first 8 chars of task ID>");
+			expect(skill).toContain("tmux -L dev3 display-message -p '#S #I #P'");
+			expect(skill).toContain("tmux -L dev3 split-window -h");
+			expect(skill).toContain("tmux -L dev3 send-keys");
+			expect(skill).toContain("tmux -L dev3 new-window");
+			expect(skill).toContain("Helping the user organize tmux");
+			expect(skill).toContain("Always use `-L dev3`");
+			expect(skill).toContain("you must pass `Enter` as a separate argument");
+		}
+	});
 });
 
 describe("dev3-project-config skill content", () => {
