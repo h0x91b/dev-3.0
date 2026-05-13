@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTaskDiff: vi.fn(),
 			getGlobalSettings: vi.fn(),
+			showConfirm: vi.fn(),
 		},
 	},
 }));
@@ -1487,5 +1488,97 @@ describe("TaskDiffViewer", () => {
 
 		window.requestAnimationFrame = originalRequestAnimationFrame;
 		window.cancelAnimationFrame = originalCancelAnimationFrame;
+	});
+
+	it("closes immediately on Escape when there are no review comments", async () => {
+		const user = userEvent.setup();
+		const onBack = vi.fn();
+		const showConfirm = vi.mocked(api.request.showConfirm);
+		showConfirm.mockResolvedValue(true);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={onBack}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.keyboard("{Escape}");
+
+		expect(showConfirm).not.toHaveBeenCalled();
+		expect(onBack).toHaveBeenCalledTimes(1);
+	});
+
+	it("shows a confirm dialog before discarding unsaved review comments on Escape", async () => {
+		const user = userEvent.setup();
+		const onBack = vi.fn();
+		const showConfirm = vi.mocked(api.request.showConfirm);
+		showConfirm.mockResolvedValueOnce(false);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={onBack}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "important note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await user.keyboard("{Escape}");
+
+		await waitFor(() => {
+			expect(showConfirm).toHaveBeenCalledTimes(1);
+		});
+		expect(onBack).not.toHaveBeenCalled();
+
+		showConfirm.mockResolvedValueOnce(true);
+		await user.keyboard("{Escape}");
+
+		await waitFor(() => {
+			expect(onBack).toHaveBeenCalledTimes(1);
+		});
+		expect(showConfirm).toHaveBeenCalledTimes(2);
+	});
+
+	it("confirms before closing via the back button when unsaved review exists", async () => {
+		const user = userEvent.setup();
+		const onBack = vi.fn();
+		const showConfirm = vi.mocked(api.request.showConfirm);
+		showConfirm.mockResolvedValue(true);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={onBack}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
+
+		await waitFor(() => {
+			expect(showConfirm).toHaveBeenCalledTimes(1);
+			expect(onBack).toHaveBeenCalledTimes(1);
+		});
 	});
 });

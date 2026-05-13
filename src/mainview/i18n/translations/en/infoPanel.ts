@@ -134,6 +134,8 @@ const infoPanel = {
 	"infoPanel.diffReviewSave": "Save comment",
 	"infoPanel.diffReviewBefore": "Before",
 	"infoPanel.diffReviewAfter": "After",
+	"infoPanel.diffDiscardReviewTitle": "Discard review notes?",
+	"infoPanel.diffDiscardReviewMessage": "You have unsaved review comments. If you leave now, they will be lost. Are you sure you want to exit?",
 } as const;
 
 export default infoPanel;

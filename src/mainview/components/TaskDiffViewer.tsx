@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import type {
 	Project,
 	Task,
@@ -478,6 +478,19 @@ function extractReviewSnippet(
 	return side === "oldFile"
 		? { before: selected, after: null }
 		: { before: null, after: selected };
+}
+
+function hasAnyInlineComments(state: InlineDiffCommentsState): boolean {
+	for (const fileData of Object.values(state)) {
+		for (const sideMap of [fileData.oldFile, fileData.newFile]) {
+			for (const slot of Object.values(sideMap)) {
+				if (slot.data.comments.length > 0) {
+					return true;
+				}
+			}
+		}
+	}
+	return false;
 }
 
 function buildInlineReviewExportEntries(
@@ -1314,6 +1327,28 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 	);
 	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
+	const hasUnsavedReviewRef = useRef(false);
+	useEffect(() => {
+		hasUnsavedReviewRef.current = hasAnyInlineComments(inlineComments);
+	}, [inlineComments]);
+
+	const requestClose = useCallback(() => {
+		if (!hasUnsavedReviewRef.current) {
+			onBack();
+			return;
+		}
+		api.request.showConfirm({
+			title: t("infoPanel.diffDiscardReviewTitle"),
+			message: t("infoPanel.diffDiscardReviewMessage"),
+		})
+			.then((confirmed) => {
+				if (confirmed) {
+					onBack();
+				}
+			})
+			.catch(() => {});
+	}, [onBack, t]);
+
 	const isInitialRequestSyncRef = useRef(true);
 
 	useEffect(() => {
@@ -1384,12 +1419,12 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			event.preventDefault();
 			event.stopPropagation();
 			event.stopImmediatePropagation?.();
-			onBack();
+			requestClose();
 		};
 
 		window.addEventListener("keydown", onKeyDown, { capture: true });
 		return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
-	}, [isSearchOpen, onBack, searchQuery]);
+	}, [isSearchOpen, requestClose, searchQuery]);
 
 	useEffect(() => () => {
 		if (pendingScrollFrameRef.current !== null) {
@@ -2169,7 +2204,7 @@ function TaskDiffViewer({ task, project, request, onBack }: TaskDiffViewerProps)
 			<div ref={toolbarRef} className="sticky top-0 z-10 border-b border-edge bg-base/95 backdrop-blur px-4 py-2" data-testid="inline-diff-toolbar">
 				<div className="flex flex-wrap items-center gap-2">
 					<button
-						onClick={onBack}
+						onClick={requestClose}
 						className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
 					>
 						<span className="text-[0.95rem] leading-none">{"\u2190"}</span>

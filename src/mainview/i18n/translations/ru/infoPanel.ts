@@ -140,6 +140,8 @@ const infoPanel = {
 	"infoPanel.diffReviewSave": "Сохранить комментарий",
 	"infoPanel.diffReviewBefore": "Было",
 	"infoPanel.diffReviewAfter": "Стало",
+	"infoPanel.diffDiscardReviewTitle": "Сбросить заметки ревью?",
+	"infoPanel.diffDiscardReviewMessage": "Есть несохранённые комментарии ревью. Если выйти сейчас, они будут потеряны. Точно хотите выйти?",
 };
 
 export default infoPanel;

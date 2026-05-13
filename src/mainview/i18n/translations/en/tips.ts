@@ -228,6 +228,8 @@ const tips = {
 	"tip.scratchTask.body": "Click Scratch Task in the New Task modal to spin up a worktree + agent with no prompt — the agent greets you and renames the task itself once you say what you need.",
 	"tip.reorderAgentConfigs.title": "Reorder agent configurations",
 	"tip.reorderAgentConfigs.body": "In Settings → Coding Agents use the ↑/↓ buttons next to each agent and configuration to group them however you like — e.g. keep all Plan Mode configs together.",
+	"tip.reviewDiscardGuard.title": "Your review notes are safe",
+	"tip.reviewDiscardGuard.body": "If you press Esc or hit Back while leaving inline comments on a diff, dev-3.0 asks before discarding them — accidental exits no longer wipe an in-progress review.",
 } as const;
 
 export default tips;

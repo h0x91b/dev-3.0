@@ -228,6 +228,8 @@ const tips = {
 	"tip.scratchTask.body": "Pulsa Scratch Task en la ventana de nueva tarea para lanzar un worktree + agente sin prompt — el agente te saluda y renombra la tarea en cuanto le dices qué quieres.",
 	"tip.reorderAgentConfigs.title": "Reordenar configuraciones de agentes",
 	"tip.reorderAgentConfigs.body": "En Ajustes → Agentes de código usa los botones ↑/↓ junto a cada agente y configuración para agruparlos como prefieras — por ejemplo, mantener todas las configuraciones de Plan Mode juntas.",
+	"tip.reviewDiscardGuard.title": "Tus notas de revisión están a salvo",
+	"tip.reviewDiscardGuard.body": "Si pulsas Esc o Atrás con comentarios de revisión en curso sobre un diff, dev-3.0 pedirá confirmación antes de descartarlos — una salida accidental ya no borra una revisión a medias.",
 };
 
 export default tips;

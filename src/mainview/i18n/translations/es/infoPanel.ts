@@ -134,6 +134,8 @@ const infoPanel = {
 	"infoPanel.diffReviewSave": "Guardar comentario",
 	"infoPanel.diffReviewBefore": "Antes",
 	"infoPanel.diffReviewAfter": "Después",
+	"infoPanel.diffDiscardReviewTitle": "¿Descartar notas de revisión?",
+	"infoPanel.diffDiscardReviewMessage": "Tienes comentarios de revisión sin guardar. Si sales ahora, se perderán. ¿Seguro que quieres salir?",
 };
 
 export default infoPanel;

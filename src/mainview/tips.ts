@@ -715,6 +715,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.reorderAgentConfigs.body",
 		icon: "\u{F0140}", // nf-md-arrow_up_down
 	},
+	// Batch 35: confirm before discarding review notes
+	{
+		id: "review-discard-guard",
+		titleKey: "tip.reviewDiscardGuard.title",
+		bodyKey: "tip.reviewDiscardGuard.body",
+		icon: "\u{F0156}", // nf-md-shield_check
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
