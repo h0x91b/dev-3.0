@@ -1622,4 +1622,168 @@ describe("TaskDiffViewer", () => {
 			expect(onBack).toHaveBeenCalledTimes(1);
 		});
 	});
+
+	it("closes without prompting after the review XML has been copied to the clipboard", async () => {
+		const user = userEvent.setup();
+		const onBack = vi.fn();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+		const showConfirm = vi.mocked(api.request.showConfirm);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={onBack}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "looks good");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await user.click(screen.getByRole("button", { name: /Copy to Clipboard/i }));
+		await waitFor(() => {
+			expect(writeText).toHaveBeenCalledTimes(1);
+		});
+
+		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
+
+		await waitFor(() => {
+			expect(onBack).toHaveBeenCalledTimes(1);
+		});
+		expect(showConfirm).not.toHaveBeenCalled();
+	});
+
+	it("re-arms the unsaved-review prompt when comments change after a clipboard copy", async () => {
+		const user = userEvent.setup();
+		const onBack = vi.fn();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+		const showConfirm = vi.mocked(api.request.showConfirm);
+		showConfirm.mockResolvedValue(false);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={onBack}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "first note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await user.click(screen.getByRole("button", { name: /Copy to Clipboard/i }));
+		await waitFor(() => {
+			expect(writeText).toHaveBeenCalledTimes(1);
+		});
+
+		await user.click(within(diffs[1] ?? diffs[0]).getAllByRole("button", { name: "Open inline comment composer" })[0]);
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "second note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
+
+		await waitFor(() => {
+			expect(showConfirm).toHaveBeenCalledTimes(1);
+		});
+		expect(onBack).not.toHaveBeenCalled();
+	});
+
+	it("opens the diff viewer in uncommitted mode by default even when the caller requested branch mode", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(expect.objectContaining({
+				mode: "uncommitted",
+			}));
+		});
+	});
+
+	it("remembers the most recently selected diff mode across opens", async () => {
+		const user = userEvent.setup();
+
+		const first = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await user.click(screen.getByRole("button", { name: "Unpushed" }));
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(expect.objectContaining({
+				mode: "unpushed",
+			}));
+		});
+
+		first.unmount();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(expect.objectContaining({
+				mode: "unpushed",
+			}));
+		});
+	});
+
+	it("honors caller-provided mode when a specific file is requested (focusFile)", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFile: "src/app.ts" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(expect.objectContaining({
+				mode: "branch",
+			}));
+		});
+	});
 });
