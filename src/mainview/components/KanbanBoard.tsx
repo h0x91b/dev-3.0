@@ -80,7 +80,7 @@ function KanbanBoard({
 
 	// Load tip state on mount + auto-rotate every 60s
 	const tipMountedRef = useRef(true);
-	const tipTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const tipTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	useEffect(() => {
 		tipMountedRef.current = true;
 		if (globalSettings.tipsDisabled) return;
