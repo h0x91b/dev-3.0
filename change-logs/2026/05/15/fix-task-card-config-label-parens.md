@@ -1,0 +1,1 @@
+Removed outer parentheses around the config label on task cards. The config name already includes its own parentheses (e.g. "Bypass (Opus 4.7)"), so wrapping it produced an awkward "(Bypass (Opus 4.7))" with an unbalanced look.
