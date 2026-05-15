@@ -2527,6 +2527,23 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
 						<div className="h-full overflow-auto px-3 py-2">
 							<div className="sticky top-0 z-10 bg-raised/35 pb-2">
+								<button
+									type="button"
+									onClick={toggleFilesCollapsed}
+									aria-label={t("infoPanel.diffFilesCollapse")}
+									title={t("infoPanel.diffFilesCollapse")}
+									data-testid="diff-files-collapse-button"
+									className="mb-2 inline-flex h-7 w-full items-center justify-center gap-2 rounded-md border border-edge bg-base/60 text-[0.6875rem] font-semibold uppercase tracking-wider text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg"
+								>
+									<span
+										aria-hidden="true"
+										className="text-[0.95rem] leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"«"}
+									</span>
+									<span>{t("infoPanel.diffFilesCollapse")}</span>
+								</button>
 								<div className="space-y-2">
 									<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-2">
 										<div className="flex items-start justify-between gap-3">
@@ -2623,27 +2640,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 										<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
 											{t("infoPanel.diffFiles")}
 										</span>
-										<div className="flex items-center gap-2">
-											<span className="text-[0.6875rem] text-fg-3 font-mono">
-												{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
-											</span>
-											<button
-												type="button"
-												onClick={toggleFilesCollapsed}
-												aria-label={t("infoPanel.diffFilesCollapse")}
-												title={t("infoPanel.diffFilesCollapse")}
-												data-testid="diff-files-collapse-button"
-												className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
-											>
-												<span
-													aria-hidden="true"
-													className="text-[0.85rem] leading-none"
-													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-												>
-													{"‹"}
-												</span>
-											</button>
-										</div>
+										<span className="text-[0.6875rem] text-fg-3 font-mono">
+											{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
+										</span>
 									</div>
 									<div className="grid grid-cols-2 gap-2">
 										<button
