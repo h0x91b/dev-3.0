@@ -30,7 +30,7 @@
 		"@headless-tree/core": "^1.6.3",
 		"@headless-tree/react": "^1.6.3",
 		"@lobehub/icons": "^5.2.0",
-		"electrobun": "1.14.4",
+		"electrobun": "1.18.1",
 		"ghostty-web": "^0.4.0",
 		"js-toml": "^1.0.2",
 		"qrcode": "^1.5.4",
