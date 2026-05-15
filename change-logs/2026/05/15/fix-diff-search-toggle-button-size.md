@@ -1,0 +1,1 @@
+Make the diff toolbar search-toggle button match the size of the other mode buttons (Branch / Uncommitted / Unpushed / Unified / Split). It now uses the same compact padding and text size, so it no longer towers over its neighbors. The expanded search input panel itself is unchanged.

@@ -2386,7 +2386,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 							}}
 							aria-label={t("infoPanel.diffSearchOpen")}
 							title={`${t("infoPanel.diffSearchOpen")} (⌘F)`}
-							className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+							className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-md border text-[0.6875rem] font-semibold transition-colors ${
 								isSearchOpen
 									? "border-accent bg-accent text-white"
 									: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
@@ -2394,7 +2394,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						>
 							<span
 								aria-hidden="true"
-								className="text-[0.95rem] leading-none"
+								className="text-[0.8125rem] leading-none"
 								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							>
 								{"\uF002"}
