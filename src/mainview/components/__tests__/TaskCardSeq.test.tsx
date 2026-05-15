@@ -95,7 +95,7 @@ describe("TaskCard — seq display", () => {
 		}));
 		expect(screen.getByText("#3 · Variant 2")).toBeInTheDocument();
 		expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
-		expect(screen.getByText("(Default · sonnet)")).toBeInTheDocument();
+		expect(screen.getByText("Default · sonnet")).toBeInTheDocument();
 	});
 
 	it("seq number is visible for todo task", () => {

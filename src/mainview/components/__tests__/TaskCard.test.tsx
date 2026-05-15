@@ -190,7 +190,7 @@ describe("TaskCard", () => {
 			}));
 			expect(screen.getByText("#5 · Variant 1")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
-			expect(screen.getByText("(Default · sonnet)")).toBeInTheDocument();
+			expect(screen.getByText("Default · sonnet")).toBeInTheDocument();
 		});
 
 		it("shows badge with config name without model", () => {
@@ -206,7 +206,7 @@ describe("TaskCard", () => {
 			}));
 			expect(screen.getByText("#5 · Variant 2")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Codex" })).toBeInTheDocument();
-			expect(screen.getByText("(Default)")).toBeInTheDocument();
+			expect(screen.getByText("Default")).toBeInTheDocument();
 		});
 
 		it("shows seq and attempt when agent not found", () => {
@@ -271,7 +271,7 @@ describe("TaskCard", () => {
 				</I18nProvider>,
 			);
 			expect(screen.getByText("#2 · Variant 1 · Custom")).toBeInTheDocument();
-			expect(screen.getByText("(First · fast)")).toBeInTheDocument();
+			expect(screen.getByText("First · fast")).toBeInTheDocument();
 		});
 	});
 

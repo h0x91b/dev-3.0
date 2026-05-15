@@ -522,7 +522,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					? agent.configurations.find((c) => c.id === task.configId)
 					: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
 				const configLabel = config
-					? (config.model ? `(${config.name} · ${config.model})` : `(${config.name})`)
+					? (config.model ? `${config.name} · ${config.model}` : config.name)
 					: "";
 				const prefixLabel = `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`;
 				const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
