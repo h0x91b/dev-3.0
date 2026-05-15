@@ -383,6 +383,8 @@ bun run test:watch    # Watch mode
 
 > **Rule:** Always run both `bun run lint` **and** `bun run test` before committing. A commit that breaks type-checking is not acceptable, even if tests pass. Fix all TypeScript errors before pushing.
 
+> **Hard rule for AI agents — full test suite before push / PR:** Before `git push` (or `gh pr create`, or enabling auto-merge), you MUST run `bun run test` and see it green end-to-end. Running only the test file you just edited is NOT sufficient — code in one component is often asserted against from sibling test files (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). Targeted runs miss those. If `bun run test` fails, fix the failures (or update the affected assertions) and re-run until green BEFORE pushing. Do not push first and then watch CI go red — that's a wasted CI run and a noisy PR history.
+
 ### Coverage requirements
 
 Overall thresholds: **70% lines, 65% branches, 70% functions**.
