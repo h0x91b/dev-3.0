@@ -72,7 +72,7 @@ function GlobalSettings() {
 	const [tipsResetDone, setTipsResetDone] = useState(false);
 	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
 
-	const resetTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const resetTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const globalSettingsRef = useRef<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
 	const pendingAgentsSaveRef = useRef<CodingAgent[] | null>(null);
 	const agentsSaveInFlightRef = useRef(false);

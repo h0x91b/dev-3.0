@@ -1,0 +1,1 @@
+Bumped React 18.3.1 → 19.2.6 (react, react-dom, @types/react, @types/react-dom). Fixed three TypeScript errors caused by stricter @types/react@19: useRef<T>() now requires an initial value (two call sites) and the global `JSX` namespace was replaced with `ReactElement` (one call site in TaskDiffViewer). Lint clean, full test suite green (1130 mainview + 1105 bun).

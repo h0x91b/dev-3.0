@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MutableRefObject, type ReactElement, type ReactNode } from "react";
 import type { NavigationGuard } from "../navigation-guard";
 import type {
 	Project,
@@ -2157,7 +2157,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		? (searchMatches.length > 0 ? `${activeSearchIndex + 1} / ${searchMatches.length}` : t("infoPanel.diffSearchNoMatches"))
 		: null;
 
-	function renderFileTreeNode(node: DiffTreeNode, depth = 0): JSX.Element {
+	function renderFileTreeNode(node: DiffTreeNode, depth = 0): ReactElement {
 		if (node.type === "folder") {
 			const collapsed = collapsedFolders[node.key] ?? false;
 			const isCurrentPathMatch = currentSearchMatch?.kind === "path" && currentSearchMatch.filePath === node.path;
