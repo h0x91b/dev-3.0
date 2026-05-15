@@ -4,11 +4,17 @@ import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import TaskCard from "./TaskCard";
 import TipCard from "./TipCard";
 import type { Tip } from "../tips";
 
 const COLUMN_TASK_LIMIT = 15;
+
+// Empty-column compact mode: kicks in below this viewport width
+const COMPACT_VIEWPORT_PX = 1400;
+// Hover dwell before an empty compact column expands to full width
+const COMPACT_DWELL_MS = 300;
 
 // Module-level variable: set synchronously on dragstart, cleared on dragend.
 // Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
@@ -118,11 +124,22 @@ function KanbanColumn({
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [editValue, setEditValue] = useState("");
+	const [compactExpanded, setCompactExpanded] = useState(false);
 	const renameInputRef = useRef<HTMLInputElement>(null);
 	const infoBtnRef = useRef<HTMLButtonElement>(null);
 	const infoPopupRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
 	const infoHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const compactDwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const isNarrowViewport = useNarrowViewport(COMPACT_VIEWPORT_PX);
+	const isAnyDragActive =
+		dragFromStatus !== null || (dragFromCustomColumnId ?? null) !== null;
+	// Compact = narrow viewport, empty column, not the Todo column (it always shows + New Task),
+	// not in the explicitly-collapsed vertical state.
+	const isCompact =
+		isNarrowViewport && tasks.length === 0 && !collapsed && status !== "todo";
+	const isCompactNarrow = isCompact && !compactExpanded;
 
 	// Auto-collapse when column identity changes (e.g. project switch)
 	const columnKey = `${status}:${customColumnId ?? ""}`;
@@ -134,6 +151,45 @@ function KanbanColumn({
 	useEffect(() => {
 		return () => { if (infoHideTimer.current) clearTimeout(infoHideTimer.current); };
 	}, []);
+
+	// Cleanup compact dwell timer on unmount
+	useEffect(() => {
+		return () => { if (compactDwellTimer.current) clearTimeout(compactDwellTimer.current); };
+	}, []);
+
+	// Cancel compact-expand mid-flight when a drag starts, and force-collapse
+	// any already-expanded compact column so the board doesn't shift during DnD.
+	useEffect(() => {
+		if (isAnyDragActive) {
+			if (compactDwellTimer.current) {
+				clearTimeout(compactDwellTimer.current);
+				compactDwellTimer.current = null;
+			}
+			setCompactExpanded(false);
+		}
+	}, [isAnyDragActive]);
+
+	// Leaving compact mode entirely (task added / viewport widened) resets the latch
+	useEffect(() => {
+		if (!isCompact) setCompactExpanded(false);
+	}, [isCompact]);
+
+	function handleCompactPointerEnter() {
+		if (!isCompact || isAnyDragActive) return;
+		if (compactDwellTimer.current) clearTimeout(compactDwellTimer.current);
+		compactDwellTimer.current = setTimeout(() => {
+			setCompactExpanded(true);
+			compactDwellTimer.current = null;
+		}, COMPACT_DWELL_MS);
+	}
+
+	function handleCompactPointerLeave() {
+		if (compactDwellTimer.current) {
+			clearTimeout(compactDwellTimer.current);
+			compactDwellTimer.current = null;
+		}
+		if (compactExpanded) setCompactExpanded(false);
+	}
 
 	function showInfoHover() {
 		if (infoHideTimer.current) { clearTimeout(infoHideTimer.current); infoHideTimer.current = null; }
@@ -373,7 +429,9 @@ function KanbanColumn({
 	return (
 		<>
 		<div
-			className={`group/col relative flex flex-col flex-shrink-0 w-[17.5rem] glass-column column-glow rounded-2xl border transition-colors ${
+			className={`group/col relative flex flex-col flex-shrink-0 glass-column column-glow rounded-2xl border transition-colors ${
+				isCompactNarrow ? "w-auto min-w-[6.5rem] max-w-[11rem]" : "w-[17.5rem]"
+			} ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
 					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
@@ -387,6 +445,8 @@ function KanbanColumn({
 				...(columnDragSide === "before" && { boxShadow: "-4px 0 0 0 rgb(var(--accent))" }),
 				...(columnDragSide === "after" && { boxShadow: "4px 0 0 0 rgb(var(--accent))" }),
 			} as React.CSSProperties}
+			onPointerEnter={handleCompactPointerEnter}
+			onPointerLeave={handleCompactPointerLeave}
 			onDragOver={handleDragOver}
 			onDragEnter={(e) => {
 				handleDragEnter(e);
@@ -407,7 +467,7 @@ function KanbanColumn({
 				style={{ borderBottom: `2px solid ${color}30` }}
 			>
 				<div className="flex items-center gap-1.5">
-					{isCustomColumn && (
+					{isCustomColumn && !isCompactNarrow && (
 						<div
 							className="cursor-grab active:cursor-grabbing text-fg-muted hover:text-fg-3 flex-shrink-0 select-none"
 							draggable
@@ -458,7 +518,7 @@ function KanbanColumn({
 							{label}
 						</span>
 					)}
-					{!editing && onRenameColumn && (
+					{!editing && onRenameColumn && !isCompactNarrow && (
 						<button
 							onClick={startEditing}
 							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
@@ -469,7 +529,7 @@ function KanbanColumn({
 							{"\u{F11E7}"}
 						</button>
 					)}
-					{description && (
+					{description && !isCompactNarrow && (
 						<button
 							ref={infoBtnRef}
 							onMouseEnter={showInfoHover}
@@ -492,7 +552,7 @@ function KanbanColumn({
 							{tasks.length}
 						</span>
 					)}
-					{onCollapseToggle && (
+					{onCollapseToggle && !isCompactNarrow && (
 						<button
 							onClick={(e) => { e.stopPropagation(); onCollapseToggle(); }}
 							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
@@ -566,7 +626,7 @@ function KanbanColumn({
 					</button>
 				)}
 
-				{tasks.length === 0 && !tip && (
+				{tasks.length === 0 && !tip && !isCompactNarrow && (
 					<div className="text-fg-muted text-sm text-center py-8">
 						{t("kanban.noTasks")}
 					</div>

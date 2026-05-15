@@ -1,0 +1,1 @@
+Empty Kanban columns shrink to fit their title on narrow viewports (<1400px), reclaiming horizontal space. Hover dwell of 300ms expands the column back to full width; drag-and-drop never triggers the expansion so the board stays stable during a drag. Todo stays full width because of the always-visible "+ New Task" button.

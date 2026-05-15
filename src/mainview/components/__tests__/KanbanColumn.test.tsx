@@ -31,6 +31,25 @@ vi.mock("../../utils/ansi-to-html", () => ({ ansiToHtml: vi.fn((s: string) => s)
 vi.mock("../TaskDetailModal", () => ({ default: () => null }));
 vi.mock("../LabelPicker", () => ({ default: () => null }));
 
+// Default viewport in happy-dom is 1024px which would trigger the compact-empty
+// column mode and hide chrome these tests assert against. Force a desktop width.
+beforeAll(() => {
+	Object.defineProperty(window, "innerWidth", { configurable: true, value: 1920 });
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		value: (query: string) => ({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		}),
+	});
+});
+
 const project: Project = {
 	id: "p1",
 	name: "Test",
@@ -530,5 +549,70 @@ describe("built-in column as column-reorder drop target", () => {
 		dispatch(getBuiltinColumn(), "drop");
 		expect(onColumnDrop).toHaveBeenCalledTimes(1);
 		expect(onColumnDrop).toHaveBeenCalledWith("before");
+	});
+});
+
+describe("KanbanColumn — compact empty column on narrow viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	function setViewport(width: number) {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: width < 1400,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	}
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("collapses an empty in-progress column to content width when viewport is narrow", () => {
+		setViewport(1200);
+		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress" });
+		const column = container.querySelector(".glass-column") as HTMLElement;
+		expect(column.className).toMatch(/w-auto/);
+		expect(column.className).not.toMatch(/w-\[17\.5rem\]/);
+		// "No tasks" placeholder is hidden in compact mode
+		expect(screen.queryByText("No tasks")).toBeNull();
+	});
+
+	it("keeps the Todo column at full width even when empty and narrow", () => {
+		setViewport(1200);
+		const { container } = renderBuiltinColumn({ status: "todo", label: "To Do" });
+		const column = container.querySelector(".glass-column") as HTMLElement;
+		expect(column.className).toMatch(/w-\[17\.5rem\]/);
+	});
+
+	it("stays full width when viewport is wide, even if the column is empty", () => {
+		setViewport(1920);
+		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress" });
+		const column = container.querySelector(".glass-column") as HTMLElement;
+		expect(column.className).toMatch(/w-\[17\.5rem\]/);
+		expect(screen.getByText("No tasks")).toBeInTheDocument();
+	});
+
+	it("stays full width when the column has tasks, regardless of viewport", () => {
+		setViewport(1200);
+		const task: Task = {
+			id: "t1", projectId: "p1", seq: 1, title: "Test", description: "",
+			status: "in-progress", baseBranch: "main", worktreePath: null, branchName: null,
+			groupId: null, variantIndex: null, agentId: null, configId: null,
+			createdAt: "2025-01-01T00:00:00Z", updatedAt: "2025-01-01T00:00:00Z",
+		};
+		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress", tasks: [task] });
+		const column = container.querySelector(".glass-column") as HTMLElement;
+		expect(column.className).toMatch(/w-\[17\.5rem\]/);
 	});
 });
