@@ -5,6 +5,7 @@ import type {
 	Task,
 	TaskDiffFile,
 	TaskDiffFileStatus,
+	TaskDiffMode,
 	TaskDiffResponse,
 	TaskDiffSkippedFile,
 } from "../../shared/types";
@@ -17,7 +18,43 @@ import "@git-diff-view/react/styles/diff-view-pure.css";
 import "./TaskDiffViewer.css";
 
 const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
+const LS_DIFF_MODE_PREFERENCE = "dev3-inline-diff-mode-v1";
+const DEFAULT_DIFF_MODE: TaskDiffMode = "uncommitted";
 const EAGER_FILE_COUNT = 2;
+
+function readPreferredDiffMode(): TaskDiffMode {
+	try {
+		const stored = localStorage.getItem(LS_DIFF_MODE_PREFERENCE);
+		if (stored === "branch" || stored === "uncommitted" || stored === "unpushed") {
+			return stored;
+		}
+	} catch {
+		/* localStorage unavailable — fall through to default */
+	}
+	return DEFAULT_DIFF_MODE;
+}
+
+function writePreferredDiffMode(mode: TaskDiffMode): void {
+	try {
+		localStorage.setItem(LS_DIFF_MODE_PREFERENCE, mode);
+	} catch {
+		/* ignore quota / privacy-mode errors */
+	}
+}
+
+function applyPreferredDiffMode(request: TaskInlineDiffRequest): TaskInlineDiffRequest {
+	// When the caller pinpoints a specific file (e.g. clicked from the branch-diff list),
+	// honor their intent — the file may not exist in another mode. Otherwise, use the
+	// user's last selection (or uncommitted as the new default).
+	if (request.focusFile) {
+		return request;
+	}
+	const preferred = readPreferredDiffMode();
+	if (preferred === request.mode) {
+		return request;
+	}
+	return { ...request, mode: preferred };
+}
 
 type DiffViewMode = "unified" | "split";
 
@@ -1303,7 +1340,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const commentRefs = useRef<Record<string, HTMLDivElement | null>>({});
 	const [diffLib, setDiffLib] = useState<DiffLibrary | null>(null);
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
-	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(request);
+	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(() => applyPreferredDiffMode(request));
 	const [requestVersion, setRequestVersion] = useState(0);
 	const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 	const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
@@ -1330,9 +1367,16 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
 	const hasUnsavedReviewRef = useRef(false);
+	// Tracks the XML that the user explicitly copied to clipboard. Once they hit "Copy",
+	// the review is no longer "unsaved" — exporting via clipboard *is* the save action
+	// for inline reviews. Becomes dirty again only if comments change after the copy.
+	const lastCopiedReviewXmlRef = useRef<string | null>(null);
 	useEffect(() => {
-		hasUnsavedReviewRef.current = hasAnyInlineComments(inlineComments);
-	}, [inlineComments]);
+		const hasComments = hasAnyInlineComments(inlineComments);
+		const copiedAlready = lastCopiedReviewXmlRef.current !== null
+			&& lastCopiedReviewXmlRef.current === reviewExportXml;
+		hasUnsavedReviewRef.current = hasComments && !copiedAlready;
+	}, [inlineComments, reviewExportXml]);
 
 	const requestClose = useCallback(() => {
 		if (!hasUnsavedReviewRef.current) {
@@ -1367,6 +1411,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				if (!xml) return;
 				try {
 					await navigator.clipboard.writeText(xml);
+					lastCopiedReviewXmlRef.current = xml;
+					hasUnsavedReviewRef.current = false;
 				} catch {
 					/* clipboard not available — leaving navigation flow intact */
 				}
@@ -1380,7 +1426,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const isInitialRequestSyncRef = useRef(true);
 
 	useEffect(() => {
-		setCurrentRequest(request);
+		setCurrentRequest(applyPreferredDiffMode(request));
 		if (isInitialRequestSyncRef.current) {
 			isInitialRequestSyncRef.current = false;
 			return;
@@ -1619,7 +1665,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	}
 
 	function handleCopyReviewXml() {
-		navigator.clipboard.writeText(reviewExportXml).then(() => {
+		const snapshot = reviewExportXml;
+		navigator.clipboard.writeText(snapshot).then(() => {
+			lastCopiedReviewXmlRef.current = snapshot;
+			hasUnsavedReviewRef.current = false;
 			setCopiedReviewXml(true);
 			window.setTimeout(() => setCopiedReviewXml(false), 1500);
 		}).catch(() => {});
@@ -2183,6 +2232,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		if (mode === currentRequest.mode) {
 			return;
 		}
+		writePreferredDiffMode(mode);
 		if (mode === "uncommitted") {
 			setCurrentRequest({
 				mode: "uncommitted",
