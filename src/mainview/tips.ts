@@ -168,6 +168,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0198}", // nf-md-content_copy
 	},
 	{
+		id: "inline-diff-collapse-files",
+		titleKey: "tip.inlineDiffCollapseFiles.title",
+		bodyKey: "tip.inlineDiffCollapseFiles.body",
+		icon: "\u{F0157}", // nf-md-view_split_horizontal
+	},
+	{
 		id: "diff-binary-files",
 		titleKey: "tip.diffBinaryFiles.title",
 		bodyKey: "tip.diffBinaryFiles.body",

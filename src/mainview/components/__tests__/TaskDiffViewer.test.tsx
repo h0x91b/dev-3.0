@@ -1786,4 +1786,58 @@ describe("TaskDiffViewer", () => {
 			}));
 		});
 	});
+
+	it("collapses the files panel and persists the preference in localStorage", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		// Default: files panel visible, no expand strip.
+		expect(screen.queryByTestId("diff-files-expand-strip")).toBeNull();
+		const collapseBtn = screen.getByTestId("diff-files-collapse-button");
+
+		await user.click(collapseBtn);
+
+		// After collapse: expand strip is shown, files panel button is gone.
+		expect(screen.queryByTestId("diff-files-collapse-button")).toBeNull();
+		expect(screen.getByTestId("diff-files-expand-strip")).toBeInTheDocument();
+		expect(localStorage.getItem("dev3-inline-diff-files-collapsed-v1")).toBe("1");
+
+		// Expand again via the strip.
+		await user.click(screen.getByTestId("diff-files-expand-strip"));
+		expect(screen.queryByTestId("diff-files-expand-strip")).toBeNull();
+		expect(screen.getByTestId("diff-files-collapse-button")).toBeInTheDocument();
+		expect(localStorage.getItem("dev3-inline-diff-files-collapsed-v1")).toBe("0");
+	});
+
+	it("restores the collapsed files panel state from localStorage on mount", async () => {
+		localStorage.setItem("dev3-inline-diff-files-collapsed-v1", "1");
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		expect(screen.getByTestId("diff-files-expand-strip")).toBeInTheDocument();
+		expect(screen.queryByTestId("diff-files-collapse-button")).toBeNull();
+	});
 });

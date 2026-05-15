@@ -98,6 +98,8 @@ const infoPanel = {
 	"infoPanel.diffSearchNext": "Next match",
 	"infoPanel.diffSearchNoMatches": "No matches",
 	"infoPanel.diffFiles": "Files",
+	"infoPanel.diffFilesCollapse": "Collapse files panel",
+	"infoPanel.diffFilesExpand": "Expand files panel",
 	"infoPanel.diffRead": "Read",
 	"infoPanel.diffReadFile": "Mark {file} as read",
 	"infoPanel.diffMarkAllRead": "Mark all read",

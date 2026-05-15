@@ -56,6 +56,8 @@ const tips = {
 	"tip.inlineDiffReviewExport.body": "La barra lateral arma un bloque XML desde tus comentarios inline para pegarlo directo en el chat del agente.",
 	"tip.inlineDiffCopyPath.title": "Copia rutas del diff",
 	"tip.inlineDiffCopyPath.body": "Pulsa el icono de copiar junto al nombre del diff para copiar su ruta completa del worktree antes de pegarla en el chat o terminal.",
+	"tip.inlineDiffCollapseFiles.title": "Contrae el panel de archivos",
+	"tip.inlineDiffCollapseFiles.body": "Pulsa el chevron en la cabecera de la lista de archivos para ocultarla y dar todo el ancho al diff side-by-side — la preferencia se recuerda.",
 	"tip.diffBinaryFiles.title": "Archivos binarios en el diff",
 	"tip.diffBinaryFiles.body": "Las imágenes y otros binarios ahora aparecen en una lista al final del diff, con estado y tamaños «antes → después».",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",

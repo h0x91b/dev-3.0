@@ -19,8 +19,25 @@ import "./TaskDiffViewer.css";
 
 const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
 const LS_DIFF_MODE_PREFERENCE = "dev3-inline-diff-mode-v1";
+const LS_DIFF_FILES_COLLAPSED = "dev3-inline-diff-files-collapsed-v1";
 const DEFAULT_DIFF_MODE: TaskDiffMode = "uncommitted";
 const EAGER_FILE_COUNT = 2;
+
+function readFilesCollapsed(): boolean {
+	try {
+		return localStorage.getItem(LS_DIFF_FILES_COLLAPSED) === "1";
+	} catch {
+		return false;
+	}
+}
+
+function writeFilesCollapsed(collapsed: boolean): void {
+	try {
+		localStorage.setItem(LS_DIFF_FILES_COLLAPSED, collapsed ? "1" : "0");
+	} catch {
+		/* ignore quota / privacy-mode errors */
+	}
+}
 
 function readPreferredDiffMode(): TaskDiffMode {
 	try {
@@ -1357,6 +1374,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+	const [filesCollapsed, setFilesCollapsed] = useState<boolean>(() => readFilesCollapsed());
+	const toggleFilesCollapsed = useCallback(() => {
+		setFilesCollapsed((prev) => {
+			const next = !prev;
+			writeFilesCollapsed(next);
+			return next;
+		});
+	}, []);
 	const fileTree = payload ? buildDiffTree(payload.files, payload.skippedFiles) : [];
 	const reviewExportEntries = payload ? buildInlineReviewExportEntries(payload.files, inlineComments) : [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
@@ -2470,7 +2495,35 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			</div>
 
 			<div className="flex-1 min-h-0 flex overflow-hidden">
-				{!error && !isBusy && payload && totalFileCount > 0 && (
+				{!error && !isBusy && payload && totalFileCount > 0 && filesCollapsed && (
+					<button
+						type="button"
+						onClick={toggleFilesCollapsed}
+						aria-label={t("infoPanel.diffFilesExpand")}
+						title={t("infoPanel.diffFilesExpand")}
+						data-testid="diff-files-expand-strip"
+						className="group flex w-7 shrink-0 flex-col items-center gap-2 border-r border-edge bg-raised/35 py-2 text-fg-3 transition-colors hover:bg-raised/60 hover:text-fg"
+					>
+						<span
+							aria-hidden="true"
+							className="text-[1rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F0645}"}
+						</span>
+						<span
+							aria-hidden="true"
+							className="text-[0.85rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"›"}
+						</span>
+						<span className="rotate-180 text-[0.625rem] font-semibold uppercase tracking-wider [writing-mode:vertical-rl]">
+							{t("infoPanel.diffFiles")}
+						</span>
+					</button>
+				)}
+				{!error && !isBusy && payload && totalFileCount > 0 && !filesCollapsed && (
 					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
 						<div className="h-full overflow-auto px-3 py-2">
 							<div className="sticky top-0 z-10 bg-raised/35 pb-2">
@@ -2570,9 +2623,27 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 										<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
 											{t("infoPanel.diffFiles")}
 										</span>
-										<span className="text-[0.6875rem] text-fg-3 font-mono">
-											{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
-										</span>
+										<div className="flex items-center gap-2">
+											<span className="text-[0.6875rem] text-fg-3 font-mono">
+												{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
+											</span>
+											<button
+												type="button"
+												onClick={toggleFilesCollapsed}
+												aria-label={t("infoPanel.diffFilesCollapse")}
+												title={t("infoPanel.diffFilesCollapse")}
+												data-testid="diff-files-collapse-button"
+												className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
+											>
+												<span
+													aria-hidden="true"
+													className="text-[0.85rem] leading-none"
+													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+												>
+													{"‹"}
+												</span>
+											</button>
+										</div>
 									</div>
 									<div className="grid grid-cols-2 gap-2">
 										<button

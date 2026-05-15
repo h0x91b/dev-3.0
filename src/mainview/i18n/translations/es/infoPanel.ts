@@ -98,6 +98,8 @@ const infoPanel = {
 	"infoPanel.diffSearchNext": "Siguiente coincidencia",
 	"infoPanel.diffSearchNoMatches": "Sin coincidencias",
 	"infoPanel.diffFiles": "Archivos",
+	"infoPanel.diffFilesCollapse": "Contraer panel de archivos",
+	"infoPanel.diffFilesExpand": "Expandir panel de archivos",
 	"infoPanel.diffRead": "Read",
 	"infoPanel.diffReadFile": "Marcar {file} como leído",
 	"infoPanel.diffMarkAllRead": "Marcar todo como leído",
