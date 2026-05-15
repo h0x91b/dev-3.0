@@ -233,7 +233,7 @@ const tips = {
 	"tip.reviewDiscardGuard.title": "Your review notes are safe",
 	"tip.reviewDiscardGuard.body": "If you press Esc, click Back, or follow a breadcrumb while you have inline diff comments, dev-3.0 asks before discarding them — and the Save button there copies the review XML to your clipboard so you can paste it into the agent chat.",
 	"tip.compactEmptyColumns.title": "Empty columns shrink on narrow screens",
-	"tip.compactEmptyColumns.body": "When your window is below ~1400px, empty Kanban columns collapse to the width of their title. Hover for a beat and they expand back; during a drag they stay compact so the board never shifts under your cursor.",
+	"tip.compactEmptyColumns.body": "When your window is below ~1400px, empty Kanban columns collapse to a slim fixed strip with the title truncated. Hover for a beat and they expand back; during a drag they stay compact so the board never shifts under your cursor.",
 } as const;
 
 export default tips;

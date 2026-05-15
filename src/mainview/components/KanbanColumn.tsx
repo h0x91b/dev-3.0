@@ -430,7 +430,7 @@ function KanbanColumn({
 		<>
 		<div
 			className={`group/col relative flex flex-col flex-shrink-0 glass-column column-glow rounded-2xl border transition-colors ${
-				isCompactNarrow ? "w-auto min-w-[6.5rem] max-w-[11rem]" : "w-[17.5rem]"
+				isCompactNarrow ? "w-[6.125rem]" : "w-[17.5rem]"
 			} ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"

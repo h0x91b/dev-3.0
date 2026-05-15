@@ -9,8 +9,8 @@ On narrow viewports (laptops, sub-1440px windows) the Kanban board's fixed 17.5r
 Added a "compact-narrow" render path inside `KanbanColumn.tsx`:
 
 - A column is compact when `useNarrowViewport(1400)` is true, `tasks.length === 0`, the column is not the Todo column (which always shows "+ New Task"), and is not in the existing fully-collapsed vertical state.
-- Width becomes `w-auto min-w-[6.5rem] max-w-[11rem]` — content-driven by the title label, clamped so very long names still fit.
-- All header chrome (rename / info / collapse / drag-handle) is unmounted in compact-narrow mode, so it doesn't claim layout width; only the color dot + label remain visible.
+- Width is a fixed `w-[6.125rem]` (~35% of the standard 17.5rem). A fixed width keeps all empty columns visually aligned — content-driven widths produced uneven gaps that looked sloppy. The title relies on the existing `truncate` Tailwind class to fall back to `text-overflow: ellipsis`.
+- All header chrome (rename / info / collapse / drag-handle) is unmounted in compact-narrow mode; only the color dot + truncated label remain visible.
 - Hover expansion is gated by a 300ms `setTimeout` dwell (`compactDwellTimer`) — accidental cursor passes while scrolling do not trigger expansion. Mouse leave clears the timer and resets the state.
 - When `dragFromStatus` or `dragFromCustomColumnId` becomes non-null, an effect cancels the dwell timer and force-collapses any in-flight expansion, so dropping into the narrow strip never causes the board to shift.
 - After a drop, `tasks.length > 0` removes the column from the compact path and it renders at the normal 17.5rem width naturally.
@@ -28,3 +28,4 @@ New hook: `src/mainview/hooks/useNarrowViewport.ts` — reactive `window.matchMe
 - **Floating overlay** that expands over neighbors without layout shift — rejected because it overlaps the adjacent column and confuses drop targeting.
 - **Click-to-expand instead of hover** — rejected because the user explicitly asked for hover behavior. Dwell + drag-disable solves the jitter problem.
 - **Pure CSS `:hover` width transition** — rejected because it would expand on accidental cursor passes during scroll and during drag-over, exactly the failure mode the user called out.
+- **Content-driven width** (`max-content` clamped between min/max) — tried first, rejected because empty columns ended up at slightly different widths depending on title length ("AI Review" vs "Has Questions"), which looked uneven.

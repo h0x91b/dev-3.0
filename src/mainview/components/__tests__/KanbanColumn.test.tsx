@@ -578,11 +578,11 @@ describe("KanbanColumn — compact empty column on narrow viewport", () => {
 		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
 	});
 
-	it("collapses an empty in-progress column to content width when viewport is narrow", () => {
+	it("collapses an empty in-progress column to a slim fixed width when viewport is narrow", () => {
 		setViewport(1200);
 		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress" });
 		const column = container.querySelector(".glass-column") as HTMLElement;
-		expect(column.className).toMatch(/w-auto/);
+		expect(column.className).toMatch(/w-\[6\.125rem\]/);
 		expect(column.className).not.toMatch(/w-\[17\.5rem\]/);
 		// "No tasks" placeholder is hidden in compact mode
 		expect(screen.queryByText("No tasks")).toBeNull();
