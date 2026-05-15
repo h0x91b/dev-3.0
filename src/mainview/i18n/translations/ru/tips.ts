@@ -56,6 +56,8 @@ const tips = {
 	"tip.inlineDiffReviewExport.body": "Сайдбар собирает XML-блок из ваших inline comments, чтобы его можно было сразу вставить обратно агенту.",
 	"tip.inlineDiffCopyPath.title": "Копируйте пути файлов из diff",
 	"tip.inlineDiffCopyPath.body": "Нажмите на copy-иконку рядом с именем diff-файла, чтобы скопировать его полный путь в worktree для чата или терминала.",
+	"tip.inlineDiffCollapseFiles.title": "Сворачивайте панель файлов",
+	"tip.inlineDiffCollapseFiles.body": "Кликните по шеврону в заголовке списка файлов diff, чтобы убрать его и отдать всё горизонтальное место side-by-side диффу — состояние запоминается.",
 	"tip.diffBinaryFiles.title": "Бинарные файлы в diff",
 	"tip.diffBinaryFiles.body": "Картинки и прочая бинарщина теперь видна отдельным списком внизу diff — со статусом и размерами «было → стало».",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",

@@ -104,6 +104,8 @@ const infoPanel = {
 	"infoPanel.diffSearchNext": "Следующее совпадение",
 	"infoPanel.diffSearchNoMatches": "Совпадений нет",
 	"infoPanel.diffFiles": "Файлы",
+	"infoPanel.diffFilesCollapse": "Свернуть панель файлов",
+	"infoPanel.diffFilesExpand": "Развернуть панель файлов",
 	"infoPanel.diffRead": "Read",
 	"infoPanel.diffReadFile": "Отметить {file} как прочитанный",
 	"infoPanel.diffMarkAllRead": "Отметить все как прочитанные",
