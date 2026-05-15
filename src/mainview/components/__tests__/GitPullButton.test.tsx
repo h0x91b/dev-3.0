@@ -183,6 +183,79 @@ describe("GitPullButton", () => {
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("up-to-date"));
 	});
 
+	it("clears the success flash and error modal when projectId changes (project switch)", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+		});
+		(api.request.pullProjectMain as any).mockResolvedValue({
+			ok: true,
+			branch: "main",
+			output: "Updating abc..def\nFast-forward\n",
+			error: "",
+		});
+		let rerender: ReturnType<typeof render>["rerender"];
+		await act(async () => {
+			const r = render(
+				<I18nProvider>
+					<GitPullButton projectId="p1" />
+				</I18nProvider>,
+			);
+			rerender = r.rerender;
+		});
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		await userEvent.click(btn);
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
+		// Switch project — flash must reset immediately, not stick around for 3 seconds
+		await act(async () => {
+			rerender!(
+				<I18nProvider>
+					<GitPullButton projectId="p2" />
+				</I18nProvider>,
+			);
+		});
+		await waitFor(() =>
+			expect(screen.getByTestId("git-pull-button").getAttribute("data-pull-flash")).toBeNull(),
+		);
+	});
+
+	it("clears the error modal when projectId changes (project switch)", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+		});
+		(api.request.pullProjectMain as any).mockResolvedValue({
+			ok: false,
+			branch: "main",
+			output: "",
+			error: "fatal: boom",
+		});
+		let rerender: ReturnType<typeof render>["rerender"];
+		await act(async () => {
+			const r = render(
+				<I18nProvider>
+					<GitPullButton projectId="p1" />
+				</I18nProvider>,
+			);
+			rerender = r.rerender;
+		});
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		await userEvent.click(btn);
+		await screen.findByTestId("git-pull-error-text");
+		await act(async () => {
+			rerender!(
+				<I18nProvider>
+					<GitPullButton projectId="p2" />
+				</I18nProvider>,
+			);
+		});
+		await waitFor(() => expect(screen.queryByTestId("git-pull-error-text")).toBeNull());
+	});
+
 	it("closes the error modal when Close is clicked", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",

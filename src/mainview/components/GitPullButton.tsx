@@ -59,6 +59,18 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 		};
 	}, [refreshBranch]);
 
+	// Reset transient state (flash, modal, branch) when the user switches projects —
+	// otherwise the green/red flash leaks across projects and so does the error modal.
+	useEffect(() => {
+		setBranch(undefined);
+		setLastResult(null);
+		setPullError(null);
+		if (flashTimerRef.current) {
+			clearTimeout(flashTimerRef.current);
+			flashTimerRef.current = null;
+		}
+	}, [projectId]);
+
 	const flashResult = useCallback((result: PullResult) => {
 		setLastResult(result);
 		if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
