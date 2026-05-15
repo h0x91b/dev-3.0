@@ -133,6 +133,8 @@ const kanban = {
 	"kanban.gitPullDisabledUnknown": "Определяю текущую ветку…",
 	"kanban.gitPullFailedTitle": "Pull провалился на {branch}",
 	"kanban.gitPullFailedUnknown": "неизвестная ошибка",
+	"kanban.gitPullErrorRetry": "Попробовать ещё раз",
+	"kanban.gitPullErrorClose": "Закрыть",
 
 	// Git pull — post-operation flash state on the button (~3s)
 	"kanban.gitPullFlashPulledLabel": "Pulled",

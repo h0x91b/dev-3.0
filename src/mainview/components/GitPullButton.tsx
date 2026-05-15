@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import GitPullErrorModal from "./GitPullErrorModal";
 
 interface GitPullButtonProps {
 	projectId: string;
+}
+
+interface PullError {
+	branch: string;
+	error: string;
 }
 
 const PULLABLE_BRANCHES = new Set(["main", "master"]);
@@ -25,6 +31,7 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 	const [branch, setBranch] = useState<string | null | undefined>(undefined);
 	const [pulling, setPulling] = useState(false);
 	const [lastResult, setLastResult] = useState<PullResult | null>(null);
+	const [pullError, setPullError] = useState<PullError | null>(null);
 	const mountedRef = useRef(true);
 	const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,8 +72,7 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 	const canPull = typeof branch === "string" && PULLABLE_BRANCHES.has(branch);
 	const disabled = !canPull || pulling;
 
-	async function handleClick() {
-		if (disabled) return;
+	const runPull = useCallback(async () => {
 		// Clear any previous flash immediately so user sees the new pull start fresh
 		if (flashTimerRef.current) {
 			clearTimeout(flashTimerRef.current);
@@ -80,24 +86,36 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 			if (result.ok) {
 				const kind = classifySuccess(result.output);
 				flashResult({ kind, branch: displayBranch });
+				setPullError(null);
 				// Success path is silent — the button flash is the feedback.
 				// Details are available via the worktree git log if the user wants them.
 			} else {
 				flashResult({ kind: "failed", branch: displayBranch });
 				const errorMsg = result.error.trim() || t("kanban.gitPullFailedUnknown");
-				alert(`${t("kanban.gitPullFailedTitle", { branch: displayBranch })}\n\n${errorMsg}`);
+				setPullError({ branch: displayBranch, error: errorMsg });
 			}
 			refreshBranch();
 		} catch (err) {
 			flashResult({ kind: "failed", branch: branch ?? "?" });
-			alert(
-				`${t("kanban.gitPullFailedTitle", { branch: branch ?? "?" })}\n\n${String(err)}`,
-			);
+			setPullError({ branch: branch ?? "?", error: String(err) });
 		} finally {
 			if (mountedRef.current) {
 				setPulling(false);
 			}
 		}
+	}, [branch, flashResult, projectId, refreshBranch, t]);
+
+	function handleClick() {
+		if (disabled) return;
+		void runPull();
+	}
+
+	function handleRetry() {
+		void runPull();
+	}
+
+	function handleCloseError() {
+		setPullError(null);
 	}
 
 	// Compute visuals: pulling > flash > normal
@@ -156,25 +174,36 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 	}
 
 	return (
-		<button
-			type="button"
-			onClick={handleClick}
-			disabled={disabled}
-			data-testid="git-pull-button"
-			data-pull-flash={lastResult?.kind ?? undefined}
-			className={`${baseClass} ${stateClass}`}
-			title={title}
-			aria-label={title}
-		>
-			<span
-				className={`text-[1.125rem] leading-none${iconSpin ? " animate-spin inline-block" : ""}`}
-				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				aria-hidden="true"
+		<>
+			<button
+				type="button"
+				onClick={handleClick}
+				disabled={disabled}
+				data-testid="git-pull-button"
+				data-pull-flash={lastResult?.kind ?? undefined}
+				className={`${baseClass} ${stateClass}`}
+				title={title}
+				aria-label={title}
 			>
-				{icon}
-			</span>
-			<span className="text-[0.6875rem] font-medium">{label}</span>
-		</button>
+				<span
+					className={`text-[1.125rem] leading-none${iconSpin ? " animate-spin inline-block" : ""}`}
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					aria-hidden="true"
+				>
+					{icon}
+				</span>
+				<span className="text-[0.6875rem] font-medium">{label}</span>
+			</button>
+			{pullError && (
+				<GitPullErrorModal
+					branch={pullError.branch}
+					error={pullError.error}
+					retrying={pulling}
+					onRetry={handleRetry}
+					onClose={handleCloseError}
+				/>
+			)}
+		</>
 	);
 }
 

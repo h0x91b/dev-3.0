@@ -1,0 +1,1 @@
+Replaced the plain `alert()` shown when the Kanban Git Pull button fails with a proper modal — same surface style as the Create Task dialog — that displays the full scrollable error text and offers Retry and Close buttons. The button's existing success/error flash animation is unchanged; the modal opens on top of it.

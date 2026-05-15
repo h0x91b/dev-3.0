@@ -128,7 +128,7 @@ describe("GitPullButton", () => {
 		expect(alertMock).not.toHaveBeenCalled();
 	});
 
-	it("flashes 'Failed' and shows failure alert when pullProjectMain reports ok=false", async () => {
+	it("flashes 'Failed' and opens the error modal with the error text when pullProjectMain reports ok=false", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",
 			isBaseBranch: true,
@@ -146,10 +146,65 @@ describe("GitPullButton", () => {
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("failed"));
 		expect(btn.textContent || "").toMatch(/Failed/);
-		await waitFor(() => expect(alertMock).toHaveBeenCalled());
-		const alertText = alertMock.mock.calls[0][0] as string;
-		expect(alertText).toMatch(/failed|Pull failed/i);
-		expect(alertText).toMatch(/fatal: unable to access origin/);
+		// New behaviour: a modal opens instead of alert()
+		const errorText = await screen.findByTestId("git-pull-error-text");
+		expect(errorText.textContent || "").toMatch(/fatal: unable to access origin/);
+		expect(alertMock).not.toHaveBeenCalled();
+	});
+
+	it("retries the pull when the retry button is clicked", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+		});
+		(api.request.pullProjectMain as any)
+			.mockResolvedValueOnce({
+				ok: false,
+				branch: "main",
+				output: "",
+				error: "fatal: network is unreachable",
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				branch: "main",
+				output: "Already up to date.",
+				error: "",
+			});
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		await userEvent.click(btn);
+		const retry = await screen.findByTestId("git-pull-error-retry");
+		await userEvent.click(retry);
+		await waitFor(() => expect(api.request.pullProjectMain).toHaveBeenCalledTimes(2));
+		// On success the modal closes
+		await waitFor(() => expect(screen.queryByTestId("git-pull-error-text")).toBeNull());
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("up-to-date"));
+	});
+
+	it("closes the error modal when Close is clicked", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+		});
+		(api.request.pullProjectMain as any).mockResolvedValue({
+			ok: false,
+			branch: "main",
+			output: "",
+			error: "boom",
+		});
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		await userEvent.click(btn);
+		const errorText = await screen.findByTestId("git-pull-error-text");
+		expect(errorText).toBeTruthy();
+		const closeBtn = screen.getAllByRole("button").find((b) => b.textContent?.trim() === "Close");
+		expect(closeBtn).toBeTruthy();
+		await userEvent.click(closeBtn!);
+		await waitFor(() => expect(screen.queryByTestId("git-pull-error-text")).toBeNull());
 	});
 
 	it("does not call pullProjectMain when disabled", async () => {

@@ -131,6 +131,8 @@ const kanban = {
 	"kanban.gitPullDisabledUnknown": "Detectando rama actual…",
 	"kanban.gitPullFailedTitle": "Pull falló en {branch}",
 	"kanban.gitPullFailedUnknown": "error desconocido",
+	"kanban.gitPullErrorRetry": "Reintentar",
+	"kanban.gitPullErrorClose": "Cerrar",
 
 	// Git pull — post-operation flash state on the button (~3s)
 	"kanban.gitPullFlashPulledLabel": "Pulled",
