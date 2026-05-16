@@ -1,0 +1,1 @@
+Tightened the Overview section in the dev3 agent skill to discourage long-form overviews. Replaced "one paragraph / ~400 chars" with a sticky-note framing, a 1–2 sentence / ~150 char target, and a good/bad example. Hard cap stays at 500 chars (enforced by CLI).

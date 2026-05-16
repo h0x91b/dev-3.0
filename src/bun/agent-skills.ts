@@ -85,20 +85,28 @@ Use \`dev3 note add "..."\` to record important findings, decisions, or context.
 const SKILL_OVERVIEW = `
 ## Overview (MANDATORY)
 
-Every task MUST have a one-paragraph \`overview\` written by you. The \`description\` field is the **original user request** (often long, messy) — it's NOT a substitute for \`overview\`. The overview is a concise, clean summary that lets the user re-enter focus in 5 seconds after not touching the task for days.
+Every task MUST have an \`overview\` written by you. Think **sticky note** or hover tooltip — not a paragraph. Its job: let the user re-enter focus in 5 seconds after days away. The \`description\` field is the **original user request** (often long, messy) — it's NOT a substitute for \`overview\`.
+
+**Length — keep it tight:**
+- Target: **1–2 short sentences, ~150 chars**. Most tasks fit in one line.
+- Hard cap 500 chars — that's a ceiling, not a target. If you hit 300+, you're writing a story, not an overview.
+- No nuance, no "why", no caveats. Just: what we're doing + where we are.
+
+**Good:** \`"Fixing auth race condition in login flow; reproduced, working on the lock."\`
+**Bad:**  \`"This task involves investigating and resolving an authentication race condition that occurs during the login flow when multiple concurrent requests..."\`
 
 **Language — IMPORTANT:** Write the overview in the **same language the user is using with you in this task**. If the user writes in Russian, the overview is in Russian. If in Spanish, in Spanish. If in English, in English. Look at the task \`description\` and the user's messages in this session — match that language. Do NOT default to English.
 
 **When to set it:**
-- Within the first minute after starting a task — write an initial overview based on what you understood
+- Within the first minute after starting a task — initial overview based on what you understood
 - Re-set it whenever the direction changes materially
-- Refresh it roughly every 5 user↔agent exchanges so it stays current (easy to forget otherwise)
+- Refresh roughly every 5 user↔agent exchanges so it stays current
 
 **How:**
 
-    dev3 overview set "One clean paragraph, in the user's language. What the task is about and current state."
+    dev3 overview set "1–2 sentences, user's language. What we're doing + current state."
 
-Keep it under ~400 chars. Plain text, no markdown headers. Think: "what would the user want to read in a hover tooltip on day 3, in their own language?"
+Plain text, no markdown headers.
 `;
 
 const SKILL_DEV_SERVER_CONTROL = `
