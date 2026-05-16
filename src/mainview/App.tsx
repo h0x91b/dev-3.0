@@ -117,6 +117,13 @@ function App() {
 	const navigationGuardRef = useRef<NavigationGuard | null>(null);
 	const [pendingNavigation, setPendingNavigation] = useState<Route | null>(null);
 
+	// Latest route mirror — async event handlers read this to make routing decisions
+	// without re-subscribing every navigation.
+	const routeRef = useRef<Route>(state.route);
+	useEffect(() => {
+		routeRef.current = state.route;
+	}, [state.route]);
+
 	const navigate = useCallback(
 		(route: Route) => {
 			if (navigationGuardRef.current?.isDirty()) {
@@ -376,6 +383,14 @@ function App() {
 			});
 			if (shouldComplete === null) return;
 			if (shouldComplete) {
+				// If the user is currently inside this task's full screen, navigate them
+				// back to the Kanban view BEFORE the worktree is destroyed. Otherwise
+				// TaskTerminal reacts to ptyDied / missing worktree and shows the
+				// "session ended / restart session" screen.
+				const currentRoute = routeRef.current;
+				if (currentRoute.screen === "task" && currentRoute.taskId === taskId) {
+					navigate({ screen: "project", projectId });
+				}
 				dispatch({
 					type: "updateTask",
 					task: {
@@ -412,7 +427,7 @@ function App() {
 		}
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
-	}, [dispatch, t]);
+	}, [dispatch, navigate, t]);
 
 	// Listen for silent update ready notification
 	useEffect(() => {
