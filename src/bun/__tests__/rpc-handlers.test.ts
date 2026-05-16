@@ -239,6 +239,9 @@ const {
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
+	consumeRecentWatchedNotification,
+	_resetWatchedNotificationState,
+	NOTIFICATION_CLICK_TTL_MS,
 	emitTaskSound,
 	runCleanupScript,
 } = await import("../rpc-handlers");
@@ -6099,6 +6102,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 describe("notifyWatchedTaskStatusChange", () => {
 	beforeEach(() => {
 		vi.mocked(Utils.showNotification).mockClear();
+		_resetWatchedNotificationState();
 	});
 
 	it("calls Utils.showNotification when task is watched and status changed", () => {
@@ -6129,6 +6133,60 @@ describe("notifyWatchedTaskStatusChange", () => {
 		const task = makeTask({ watched: true });
 		notifyWatchedTaskStatusChange(task, "in-progress", "in-progress", "MyProject");
 		expect(Utils.showNotification).not.toHaveBeenCalled();
+	});
+
+	it("records the notification target so it can be consumed on window focus", () => {
+		const task = makeTask({ watched: true, projectId: "proj-7" });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+
+		const consumed = consumeRecentWatchedNotification();
+		expect(consumed).toEqual({ taskId: task.id, projectId: "proj-7" });
+	});
+
+	it("does not record the notification target when the task is not watched", () => {
+		const task = makeTask({ watched: false });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+		expect(consumeRecentWatchedNotification()).toBeNull();
+	});
+});
+
+describe("consumeRecentWatchedNotification", () => {
+	beforeEach(() => {
+		vi.mocked(Utils.showNotification).mockClear();
+		_resetWatchedNotificationState();
+	});
+
+	it("returns null when nothing has been recorded", () => {
+		expect(consumeRecentWatchedNotification()).toBeNull();
+	});
+
+	it("returns and clears the stored target on first call", () => {
+		const task = makeTask({ watched: true, projectId: "proj-A" });
+		notifyWatchedTaskStatusChange(task, "todo", "in-progress", "P");
+
+		expect(consumeRecentWatchedNotification()).toEqual({ taskId: task.id, projectId: "proj-A" });
+		// Second call must yield null — the slot is one-shot.
+		expect(consumeRecentWatchedNotification()).toBeNull();
+	});
+
+	it("returns null and clears the slot when the stored target is older than the TTL", () => {
+		const task = makeTask({ watched: true, projectId: "proj-X" });
+		notifyWatchedTaskStatusChange(task, "todo", "in-progress", "P");
+
+		// Simulate a focus event arriving long after the notification.
+		const farFuture = Date.now() + NOTIFICATION_CLICK_TTL_MS + 1000;
+		expect(consumeRecentWatchedNotification(farFuture)).toBeNull();
+		// Slot is cleared even on TTL miss — a stale entry must not bleed into a later focus.
+		expect(consumeRecentWatchedNotification()).toBeNull();
+	});
+
+	it("each new notification overwrites the previous unconsumed target", () => {
+		const taskA = makeTask({ id: "a", watched: true, projectId: "p" });
+		const taskB = makeTask({ id: "b", watched: true, projectId: "p" });
+		notifyWatchedTaskStatusChange(taskA, "todo", "in-progress", "P");
+		notifyWatchedTaskStatusChange(taskB, "todo", "in-progress", "P");
+
+		expect(consumeRecentWatchedNotification()).toEqual({ taskId: "b", projectId: "p" });
 	});
 });
 

@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -441,6 +441,24 @@ mainWindow.on("close", () => {
 	stopSocketServer();
 	stopTunnel();
 	Utils.quit();
+});
+
+// Click-to-open for watched-task notifications.
+// Electrobun's Utils.showNotification has no click callback, so we use a focus heuristic:
+// macOS activates our app when the user clicks a notification, which fires this `focus` event.
+// If a watched notification fired in the recent past, we treat the focus as a click-through
+// and navigate the renderer to that task.
+mainWindow.on("focus", () => {
+	const recent = consumeRecentWatchedNotification();
+	if (!recent) return;
+	log.info("Watched notification click-through detected, navigating renderer", {
+		taskId: recent.taskId.slice(0, 8),
+	});
+	try {
+		(mainWindow.webview.rpc as any).send.openTaskFromNotification?.(recent);
+	} catch (err) {
+		log.error("Failed to push openTaskFromNotification", { error: String(err) });
+	}
 });
 
 // Open DevTools automatically on dev channel

@@ -440,6 +440,19 @@ function App() {
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
 	}, []);
 
+	// Click-to-open for watched-task notifications.
+	// Bun observes the main window's `focus` event after a notification fires and pushes us
+	// the target taskId/projectId. We navigate straight into the task.
+	useEffect(() => {
+		function onOpenTaskFromNotification(e: Event) {
+			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
+			if (!taskId || !projectId) return;
+			navigate({ screen: "task", projectId, taskId });
+		}
+		window.addEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
+		return () => window.removeEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
+	}, [navigate]);
+
 	// Notify user when a column-agent launch fails (custom columns have no automatic fallback)
 	useEffect(() => {
 		function onColumnAgentFailed(e: Event) {
