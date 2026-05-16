@@ -4671,6 +4671,141 @@ describe("handlers.tmuxAction", () => {
 });
 
 // ================================================================
+// handlers.exitCopyModeAllPanes
+// ================================================================
+
+describe("handlers.exitCopyModeAllPanes", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	// Spawn router: matches by tmux subcommand so individual tests can declare
+	// what each tmux command should return without ordering fragility.
+	function setupSpawnRouter(routes: {
+		hasSession?: number; // exit code for has-session (dev-server check)
+		listTaskPanes?: { exit: number; out: string };
+		listDevPanes?: { exit: number; out: string };
+	}) {
+		mockSpawn.mockImplementation((args: string[]) => {
+			const sub = args[3]; // ["tmux", "-L", "dev3", <subcommand>, ...]
+			const sessionArg = args[args.indexOf("-t") + 1] ?? "";
+
+			if (sub === "has-session") {
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("").body,
+					exited: Promise.resolve(routes.hasSession ?? 1),
+				};
+			}
+			if (sub === "list-panes") {
+				const route = sessionArg.startsWith("dev3-dev-") ? routes.listDevPanes : routes.listTaskPanes;
+				return {
+					stderr: new Response("").body,
+					stdout: new Response(route?.out ?? "").body,
+					exited: Promise.resolve(route?.exit ?? 0),
+				};
+			}
+			// send-keys etc. — always succeed
+			return {
+				stderr: new Response("").body,
+				stdout: new Response("").body,
+				exited: Promise.resolve(0),
+			};
+		});
+	}
+
+	it("sends -X cancel only to panes currently in copy-mode", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		setupSpawnRouter({
+			hasSession: 1, // dev-server not running
+			listTaskPanes: { exit: 0, out: "%0 1\n%1 0\n%2 1\n" },
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 2 });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-abcd1234", "-F", "#{pane_id} #{pane_in_mode}"],
+			expect.any(Object),
+		);
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%0", "-X", "cancel"],
+			expect.any(Object),
+		);
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%2", "-X", "cancel"],
+			expect.any(Object),
+		);
+		// %1 was not in copy-mode → no cancel sent for it
+		expect(mockSpawn).not.toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%1", "-X", "cancel"],
+			expect.any(Object),
+		);
+	});
+
+	it("also cleans the dev-server session (dev3-dev-<id>)", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		setupSpawnRouter({
+			hasSession: 0, // dev-server IS running
+			listTaskPanes: { exit: 0, out: "%10 0\n" },
+			listDevPanes: { exit: 0, out: "%99 1\n" }, // dev-server pane in copy-mode
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 1 });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-dev-abcd1234", "-F", "#{pane_id} #{pane_in_mode}"],
+			expect.any(Object),
+		);
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%99", "-X", "cancel"],
+			expect.any(Object),
+		);
+	});
+
+	it("no-op when neither task nor dev-server session exists", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		setupSpawnRouter({ hasSession: 1 });
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 0 });
+		// Only the has-session check (for dev-server) was spawned; no list-panes
+		expect(mockSpawn).not.toHaveBeenCalledWith(
+			expect.arrayContaining(["list-panes"]),
+			expect.any(Object),
+		);
+	});
+
+	it("returns zero when no pane is in copy-mode", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		setupSpawnRouter({
+			hasSession: 1,
+			listTaskPanes: { exit: 0, out: "%0 0\n%1 0\n" },
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 0 });
+		expect(mockSpawn).not.toHaveBeenCalledWith(
+			expect.arrayContaining(["send-keys"]),
+			expect.any(Object),
+		);
+	});
+
+	it("returns zero when list-panes fails", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		setupSpawnRouter({
+			hasSession: 1,
+			listTaskPanes: { exit: 1, out: "" },
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 0 });
+	});
+});
+
+// ================================================================
 // handlers.getProjectPtyUrl / destroyProjectTerminal
 // ================================================================
 
