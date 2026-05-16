@@ -22,6 +22,9 @@ vi.mock("../rpc", () => ({
 				taskDropPosition: "top",
 				updateChannel: "stable",
 			}),
+			showConfirm: vi.fn().mockResolvedValue(false),
+			moveTask: vi.fn().mockResolvedValue({}),
+			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -503,6 +506,94 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(screen.getByText("Session Expired")).toBeInTheDocument();
 			});
+		});
+	});
+
+	describe("branch-merged completion popup", () => {
+		const fireBranchMerged = (taskId: string, projectId: string, fingerprint: string) =>
+			act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:branchMerged", {
+						detail: {
+							taskId,
+							projectId,
+							taskTitle: "Some task",
+							branchName: "feat/whatever",
+							fingerprint,
+						},
+					}),
+				);
+			});
+
+		it("navigates from full task screen back to project view when user confirms completion", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(api.request.showConfirm).mockResolvedValue(true);
+			vi.mocked(api.request.moveTask).mockResolvedValue({} as never);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireBranchMerged("t1", "p1", "fp-confirm-1");
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			});
+			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
+			expect(api.request.moveTask).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", projectId: "p1", newStatus: "completed" }),
+			);
+		});
+
+		it("stays on task screen when user declines the popup", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(api.request.showConfirm).mockResolvedValue(false);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireBranchMerged("t1", "p1", "fp-decline-1");
+
+			// Give event handlers a tick to resolve
+			await waitFor(() => {
+				expect(api.request.dismissMergeCompletionPrompt).toHaveBeenCalled();
+			});
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("project-screen")).not.toBeInTheDocument();
+			expect(api.request.moveTask).not.toHaveBeenCalled();
+		});
+
+		it("does not navigate when user is on a different task's screen", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t2" }),
+			});
+			vi.mocked(api.request.showConfirm).mockResolvedValue(true);
+			vi.mocked(api.request.moveTask).mockResolvedValue({} as never);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			// Event is for t1, but user is viewing t2
+			await fireBranchMerged("t1", "p1", "fp-other-task-1");
+
+			await waitFor(() => {
+				expect(api.request.moveTask).toHaveBeenCalled();
+			});
+			// Still on task screen (for t2)
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("project-screen")).not.toBeInTheDocument();
 		});
 	});
 });

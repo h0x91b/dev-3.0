@@ -1,0 +1,1 @@
+Fix the "Branch merged → mark as completed?" popup so it navigates the user back to the Kanban view when they confirm from inside the full task screen. Previously the worktree was destroyed while the task screen was still mounted, causing the TaskTerminal to flip to its "session ended / restart session" error state.
