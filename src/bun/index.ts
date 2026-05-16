@@ -458,7 +458,7 @@ mainWindow.on("close", () => {
 // navigate. Subsequent signals find the slot empty and no-op.
 function tryNavigateFromRecentNotification(source: string): void {
 	const recent = consumeRecentWatchedNotification();
-	log.info(`[notif] activation signal received (${source})`, {
+	log.debug(`[notif] activation signal received (${source})`, {
 		hadRecent: !!recent,
 		taskId: recent?.taskId?.slice(0, 8) ?? null,
 	});
