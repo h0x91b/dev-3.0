@@ -1,0 +1,1 @@
+Auto-exit tmux copy-mode in every pane of a task's session whenever the terminal becomes the visible view — entering a task from the dashboard, switching between tasks, or returning from the inline diff. Prevents the silent "copy-mode at scroll position 0" state where a pane looks live but swallows keystrokes.

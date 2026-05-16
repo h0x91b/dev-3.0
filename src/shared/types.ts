@@ -1283,6 +1283,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV" };
 				response: void;
 			};
+			exitCopyModeAllPanes: {
+				params: { taskId: string };
+				response: { panesExited: number };
+			};
 			copyTerminalSelection: {
 				params: { taskId: string; text: string; mouseTracking: boolean };
 				response: { ok: boolean; tool: string | null };

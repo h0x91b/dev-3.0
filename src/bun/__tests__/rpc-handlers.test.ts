@@ -4671,6 +4671,89 @@ describe("handlers.tmuxAction", () => {
 });
 
 // ================================================================
+// handlers.exitCopyModeAllPanes
+// ================================================================
+
+describe("handlers.exitCopyModeAllPanes", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("sends -X cancel only to panes currently in copy-mode", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+
+		let spawnCall = 0;
+		mockSpawn.mockImplementation(() => {
+			spawnCall += 1;
+			return {
+				stderr: new Response("").body,
+				stdout: new Response(spawnCall === 1 ? "%0 1\n%1 0\n%2 1\n" : "").body,
+				exited: Promise.resolve(0),
+			};
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 2 });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-abcd1234", "-F", "#{pane_id} #{pane_in_mode}"],
+			expect.any(Object),
+		);
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%0", "-X", "cancel"],
+			expect.any(Object),
+		);
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%2", "-X", "cancel"],
+			expect.any(Object),
+		);
+		// %1 was not in copy-mode → no cancel sent for it
+		expect(mockSpawn).not.toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "send-keys", "-t", "%1", "-X", "cancel"],
+			expect.any(Object),
+		);
+	});
+
+	it("no-op when tmux session does not exist", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 0 });
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("returns zero when no pane is in copy-mode", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+
+		mockSpawn.mockReturnValueOnce({
+			stderr: new Response("").body,
+			stdout: new Response("%0 0\n%1 0\n").body,
+			exited: Promise.resolve(0),
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 0 });
+		// Only list-panes was spawned — no send-keys calls
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns zero when list-panes fails", async () => {
+		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+
+		mockSpawn.mockReturnValueOnce({
+			stderr: new Response("error").body,
+			stdout: new Response("").body,
+			exited: Promise.resolve(1),
+		});
+
+		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
+
+		expect(result).toEqual({ panesExited: 0 });
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ================================================================
 // handlers.getProjectPtyUrl / destroyProjectTerminal
 // ================================================================
 

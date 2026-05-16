@@ -1295,6 +1295,47 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 }
 
+async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panesExited: number }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+
+	if (!pty.tmuxSessionExists(params.taskId, socket)) {
+		return { panesExited: 0 };
+	}
+
+	const listProc = spawn(
+		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
+		{ stdout: "pipe", stderr: "pipe" },
+	);
+	const listOutput = await new Response(listProc.stdout).text();
+	const listExit = await listProc.exited;
+	if (listExit !== 0) {
+		return { panesExited: 0 };
+	}
+
+	const panesInMode: string[] = [];
+	for (const line of listOutput.trim().split("\n")) {
+		if (!line) continue;
+		const [paneId, inMode] = line.split(" ");
+		if (paneId && inMode === "1") {
+			panesInMode.push(paneId);
+		}
+	}
+
+	for (const paneId of panesInMode) {
+		const cancelProc = spawn(
+			pty.tmuxArgs(socket, "send-keys", "-t", paneId, "-X", "cancel"),
+			{ stdout: "pipe", stderr: "pipe" },
+		);
+		await cancelProc.exited;
+	}
+
+	if (panesInMode.length > 0) {
+		log.info("Exited copy-mode in panes", { taskId: params.taskId.slice(0, 8), count: panesInMode.length });
+	}
+	return { panesExited: panesInMode.length };
+}
+
 async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null }): Promise<void> {
 	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId });
 
@@ -1459,6 +1500,7 @@ export const tmuxPtyHandlers = {
 	listTmuxSessions,
 	killTmuxSession,
 	tmuxAction,
+	exitCopyModeAllPanes,
 	spawnAgentInTask,
 	resumeTask,
 	restartTask,
