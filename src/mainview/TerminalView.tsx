@@ -59,6 +59,40 @@ const LIGHT_TERMINAL_THEME = {
 
 const TERMINAL_BASE_FONT_SIZE = 14;
 
+// ghostty-web 0.4.0 FitAddon reserves 15px on width for a native scrollbar
+// that never appears — ghostty draws its scrollbar overlaid on the canvas.
+// The reservation eats ~2 columns of usable terminal width. This drop-in
+// replacement mirrors the upstream logic minus that subtraction.
+function proposeDimensionsWithoutScrollbarReserve(
+	this: FitAddon,
+): { cols: number; rows: number } | undefined {
+	const self = this as unknown as {
+		_terminal?: {
+			element?: HTMLElement;
+			renderer?: { getMetrics: () => { width: number; height: number } | null };
+		};
+	};
+	const terminal = self._terminal;
+	const renderer = terminal?.renderer;
+	const element = terminal?.element;
+	if (!terminal || !renderer || !element || typeof renderer.getMetrics !== "function") return undefined;
+	const metrics = renderer.getMetrics();
+	if (!metrics || metrics.width === 0 || metrics.height === 0) return undefined;
+	const cw = element.clientWidth;
+	const ch = element.clientHeight;
+	if (cw === 0 || ch === 0) return undefined;
+	const styles = window.getComputedStyle(element);
+	const padTop = parseInt(styles.getPropertyValue("padding-top"), 10) || 0;
+	const padBot = parseInt(styles.getPropertyValue("padding-bottom"), 10) || 0;
+	const padLeft = parseInt(styles.getPropertyValue("padding-left"), 10) || 0;
+	const padRight = parseInt(styles.getPropertyValue("padding-right"), 10) || 0;
+	const availW = cw - padLeft - padRight;
+	const availH = ch - padTop - padBot;
+	const cols = Math.max(2, Math.floor(availW / metrics.width));
+	const rows = Math.max(1, Math.floor(availH / metrics.height));
+	return { cols, rows };
+}
+
 /**
  * Build the two-stage resize-dance WebSocket messages that force tmux to
  * redraw on reconnect — including the same-size reconnect case where the
@@ -256,6 +290,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 
 			console.log("[TerminalView] Terminal created, loading FitAddon...");
 			fitAddon = new FitAddon();
+			fitAddon.proposeDimensions = proposeDimensionsWithoutScrollbarReserve.bind(fitAddon);
 			fitAddonRef.current = fitAddon;
 			term.loadAddon(fitAddon);
 

@@ -699,7 +699,7 @@ function App() {
 					onDismiss={() => setGhWarning(null)}
 				/>
 			)}
-			<div className="flex-1 min-h-0 flex flex-col overflow-hidden pb-7">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
 			{showAddProjectModal && (
 				<AddProjectModal
 					dispatch={dispatch}
