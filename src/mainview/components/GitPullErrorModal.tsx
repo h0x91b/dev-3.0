@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 
 interface GitPullErrorModalProps {
@@ -23,7 +24,12 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 		return () => window.removeEventListener("keydown", handleKey, true);
 	}, [onClose]);
 
-	return (
+	// Render through a portal into document.body — the kanban GlobalHeader uses
+	// `backdrop-filter`, which establishes a containing block for `position:
+	// fixed` descendants. Without the portal, `fixed inset-0` would be relative
+	// to the (~50px tall) header bar, pushing the modal off the top of the
+	// viewport. See decisions/-stacking-context-fixed-positioning.md.
+	return createPortal(
 		<div
 			data-git-pull-error-modal="true"
 			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -95,7 +101,8 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 					</button>
 				</div>
 			</div>
-		</div>
+		</div>,
+		document.body,
 	);
 }
 
