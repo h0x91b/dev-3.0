@@ -728,6 +728,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.reviewDiscardGuard.body",
 		icon: "\u{F0156}", // nf-md-shield_check
 	},
+	// Batch 36: compact empty columns on narrow screens
+	{
+		id: "compact-empty-columns",
+		titleKey: "tip.compactEmptyColumns.title",
+		bodyKey: "tip.compactEmptyColumns.body",
+		icon: "\u{F0571}", // nf-md-arrow_collapse_horizontal
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

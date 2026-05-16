@@ -232,6 +232,8 @@ const tips = {
 	"tip.reorderAgentConfigs.body": "En Ajustes → Agentes de código usa los botones ↑/↓ junto a cada agente y configuración para agruparlos como prefieras — por ejemplo, mantener todas las configuraciones de Plan Mode juntas.",
 	"tip.reviewDiscardGuard.title": "Tus notas de revisión están a salvo",
 	"tip.reviewDiscardGuard.body": "Si tienes comentarios de revisión sobre un diff y pulsas Esc, Atrás o una migaja de pan, dev-3.0 pedirá confirmación — y el botón Guardar de ese diálogo copia el XML de la revisión al portapapeles para pegarlo en el chat del agente.",
+	"tip.compactEmptyColumns.title": "Las columnas vacías se encogen en pantallas estrechas",
+	"tip.compactEmptyColumns.body": "Cuando tu ventana mide menos de ~1400px, las columnas vacías del Kanban se reducen a una franja fina de ancho fijo con el título recortado con puntos suspensivos. Pasa el ratón un instante y se expanden de nuevo; durante un arrastre permanecen compactas para que el tablero no se mueva bajo el cursor.",
 };
 
 export default tips;
