@@ -27,6 +27,7 @@ import ViewportLab from "./components/ViewportLab";
 import { ErrorToast } from "./components/ErrorToast";
 import StuckPreparationModal from "./components/StuckPreparationModal";
 import FolderPickerHost from "./components/FolderPickerModal";
+import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
@@ -53,6 +54,14 @@ function App() {
 		window.addEventListener("rpc:menuAction", onMenuAction);
 		return () => window.removeEventListener("rpc:menuAction", onMenuAction);
 	}, [state, dispatch, setLocale]);
+
+	// Tmux cheat sheet modal (Terminal > Show Tmux Cheat Sheet / Help > Tmux Cheat Sheet).
+	const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
+	useEffect(() => {
+		function onShow() { setCheatSheetOpen(true); }
+		window.addEventListener("menu:show-tmux-cheat-sheet", onShow);
+		return () => window.removeEventListener("menu:show-tmux-cheat-sheet", onShow);
+	}, []);
 
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
@@ -972,6 +981,7 @@ function App() {
 			<ErrorToast />
 			<StuckPreparationModal tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
+			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
 		</div>
 	);
 
