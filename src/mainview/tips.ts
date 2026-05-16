@@ -64,24 +64,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F02FC}", // nf-md-information_outline
 	},
 	{
-		id: "active-task-overview-inline",
-		titleKey: "tip.activeTaskOverviewInline.title",
-		bodyKey: "tip.activeTaskOverviewInline.body",
-		icon: "\u{F02FC}", // nf-md-information_outline
-	},
-	{
 		id: "user-overview-override",
 		titleKey: "tip.userOverviewOverride.title",
 		bodyKey: "tip.userOverviewOverride.body",
 		icon: "\u{F040}", // nf-md-pencil
 	},
-	// Batch 1: split-view, multi-variant, labels, search, PR
-	{
-		id: "split-view-escape",
-		titleKey: "tip.splitViewEscape.title",
-		bodyKey: "tip.splitViewEscape.body",
-		icon: "\u{F12B7}", // nf-md-keyboard_esc
-	},
+	// Batch 1: multi-variant, labels, search, PR
 	{
 		id: "multi-variant-tasks",
 		titleKey: "tip.multiVariantTasks.title",
@@ -105,12 +93,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.pushAndCreatePr.title",
 		bodyKey: "tip.pushAndCreatePr.body",
 		icon: "\u{F0544}", // nf-md-source_pull
-	},
-	{
-		id: "pr-awareness",
-		titleKey: "tip.prAwareness.title",
-		bodyKey: "tip.prAwareness.body",
-		icon: "\u{F0408}", // nf-md-source_pull
 	},
 	{
 		id: "project-github-account",
@@ -144,12 +126,6 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0156}", // nf-md-view_split_vertical
 	},
 	{
-		id: "inline-diff-bulk-review",
-		titleKey: "tip.inlineDiffBulkReview.title",
-		bodyKey: "tip.inlineDiffBulkReview.body",
-		icon: "\u{F04E3}", // nf-md-check_all
-	},
-	{
 		id: "inline-diff-comments",
 		titleKey: "tip.inlineDiffComments.title",
 		bodyKey: "tip.inlineDiffComments.body",
@@ -160,24 +136,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.inlineDiffReviewExport.title",
 		bodyKey: "tip.inlineDiffReviewExport.body",
 		icon: "\u{F0198}", // nf-md-content_copy
-	},
-	{
-		id: "inline-diff-copy-path",
-		titleKey: "tip.inlineDiffCopyPath.title",
-		bodyKey: "tip.inlineDiffCopyPath.body",
-		icon: "\u{F0198}", // nf-md-content_copy
-	},
-	{
-		id: "inline-diff-collapse-files",
-		titleKey: "tip.inlineDiffCollapseFiles.title",
-		bodyKey: "tip.inlineDiffCollapseFiles.body",
-		icon: "\u{F0157}", // nf-md-view_split_horizontal
-	},
-	{
-		id: "diff-binary-files",
-		titleKey: "tip.diffBinaryFiles.title",
-		bodyKey: "tip.diffBinaryFiles.body",
-		icon: "\u{F0219}", // nf-md-file_image_outline
 	},
 	{
 		id: "unpushed-diff",
@@ -311,12 +269,6 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0F09}", // nf-md-alert_circle_outline
 	},
 	{
-		id: "completed-task-modal",
-		titleKey: "tip.completedTaskModal.title",
-		bodyKey: "tip.completedTaskModal.body",
-		icon: "\u{F0150}", // nf-md-checkbox_marked_circle_outline
-	},
-	{
 		id: "cow-clone-paths",
 		titleKey: "tip.cowClonePaths.title",
 		bodyKey: "tip.cowClonePaths.body",
@@ -327,18 +279,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.keyboardShortcuts.title",
 		bodyKey: "tip.keyboardShortcuts.body",
 		icon: "\u{F030D}", // nf-md-keyboard
-	},
-	{
-		id: "project-reorder",
-		titleKey: "tip.projectReorder.title",
-		bodyKey: "tip.projectReorder.body",
-		icon: "\u{F0140}", // nf-md-arrow_up_down
-	},
-	{
-		id: "system-theme",
-		titleKey: "tip.systemTheme.title",
-		bodyKey: "tip.systemTheme.body",
-		icon: "\u{F0498}", // nf-md-theme_light_dark
 	},
 	// Batch 8: tmux manager, CLI, snapshots, sound, siblings
 	{
@@ -366,12 +306,6 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0804}", // nf-md-history
 	},
 	{
-		id: "task-complete-sound",
-		titleKey: "tip.taskCompleteSound.title",
-		bodyKey: "tip.taskCompleteSound.body",
-		icon: "\u{F075D}", // nf-md-volume_high
-	},
-	{
 		id: "sibling-variant-visibility",
 		titleKey: "tip.siblingVariantVisibility.title",
 		bodyKey: "tip.siblingVariantVisibility.body",
@@ -385,24 +319,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F062C}", // nf-md-source_branch
 	},
 	{
-		id: "vertical-dnd-reorder",
-		titleKey: "tip.verticalDndReorder.title",
-		bodyKey: "tip.verticalDndReorder.body",
-		icon: "\u{F0140}", // nf-md-arrow_up_down
-	},
-	{
 		id: "resume-conversation-on-reopen",
 		titleKey: "tip.resumeConversationOnReopen.title",
 		bodyKey: "tip.resumeConversationOnReopen.body",
 		icon: "\u{F040A}", // nf-md-restore
 	},
-	// Batch 10: i18n, setup scripts, task titles
-	{
-		id: "language-switching",
-		titleKey: "tip.languageSwitching.title",
-		bodyKey: "tip.languageSwitching.body",
-		icon: "\u{F1AB7}", // nf-md-translate
-	},
+	// Batch 10: setup scripts, task titles
 	{
 		id: "setup-script-panes",
 		titleKey: "tip.setupScriptPanes.title",
@@ -440,13 +362,6 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiVariantInspiration.body",
 		icon: "\u{F0EB4}", // nf-md-lightbulb_outline
 	},
-	// Batch 12: modal dismiss
-	{
-		id: "modal-quick-dismiss",
-		titleKey: "tip.modalQuickDismiss.title",
-		bodyKey: "tip.modalQuickDismiss.body",
-		icon: "\u{F12B7}", // nf-md-keyboard_esc
-	},
 	// Batch 13: branch start choice
 	{
 		id: "branch-start-choice",
@@ -468,12 +383,6 @@ const ALL_TIPS: Tip[] = [
 	},
 	// Batch 14: task drop position
 	{
-		id: "collapsible-columns",
-		titleKey: "tip.collapsibleColumns.title",
-		bodyKey: "tip.collapsibleColumns.body",
-		icon: "\u{F0142}", // nf-md-arrow_collapse_horizontal
-	},
-	{
 		id: "task-drop-position",
 		titleKey: "tip.taskDropPosition.title",
 		bodyKey: "tip.taskDropPosition.body",
@@ -485,12 +394,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.restartTaskFromScratch.title",
 		bodyKey: "tip.restartTaskFromScratch.body",
 		icon: "\u{F0450}", // nf-md-refresh
-	},
-	{
-		id: "column-load-more",
-		titleKey: "tip.columnLoadMore.title",
-		bodyKey: "tip.columnLoadMore.body",
-		icon: "\u{F0063}", // nf-md-arrow_down
 	},
 	// Batch 16: shell after agent exit
 	{
@@ -504,12 +407,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.worktreeFileFilter.title",
 		bodyKey: "tip.worktreeFileFilter.body",
 		icon: "\u{F024B}", // nf-md-filter
-	},
-	{
-		id: "async-task-launch",
-		titleKey: "tip.asyncTaskLaunch.title",
-		bodyKey: "tip.asyncTaskLaunch.body",
-		icon: "\u{F0F26}", // nf-md-rocket_launch
 	},
 	// Batch 17: repo-local config
 	{
@@ -551,13 +448,6 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.renameBuiltinColumns.body",
 		icon: "\u{F0B5B}", // nf-md-pencil
 	},
-	// Batch 21: agent binary detection
-	{
-		id: "agent-install-status",
-		titleKey: "tip.agentInstallStatus.title",
-		bodyKey: "tip.agentInstallStatus.body",
-		icon: "\u{F0219}", // nf-md-robot
-	},
 	// Batch 22: project config hierarchy
 	{
 		id: "config-hierarchy",
@@ -591,40 +481,10 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0489}", // nf-md-console
 	},
 	{
-		id: "project-terminal-dashboard",
-		titleKey: "tip.projectTerminalDashboard.title",
-		bodyKey: "tip.projectTerminalDashboard.body",
-		icon: "\u{F0489}", // nf-md-console
-	},
-	{
 		id: "home-terminal",
 		titleKey: "tip.homeTerminal.title",
 		bodyKey: "tip.homeTerminal.body",
 		icon: "\u{F02DC}", // nf-md-home
-	},
-	{
-		id: "activity-project-actions",
-		titleKey: "tip.activityProjectActions.title",
-		bodyKey: "tip.activityProjectActions.body",
-		icon: "\u{F0493}", // nf-md-tune
-	},
-	{
-		id: "add-project-menu",
-		titleKey: "tip.addProjectMenu.title",
-		bodyKey: "tip.addProjectMenu.body",
-		icon: "\u{F0415}", // nf-md-plus_box
-	},
-	{
-		id: "new-task-menu",
-		titleKey: "tip.newTaskMenu.title",
-		bodyKey: "tip.newTaskMenu.body",
-		icon: "\u{F0415}", // nf-md-plus_box
-	},
-	{
-		id: "open-logs-menu",
-		titleKey: "tip.openLogsMenu.title",
-		bodyKey: "tip.openLogsMenu.body",
-		icon: "\u{F024B}", // nf-md-folder_open
 	},
 	{
 		id: "port-allocation",
@@ -699,12 +559,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.initNewProject.title",
 		bodyKey: "tip.initNewProject.body",
 		icon: "\u{F0415}", // nf-md-plus_box
-	},
-	{
-		id: "folder-picker-new-folder",
-		titleKey: "tip.folderPickerNewFolder.title",
-		bodyKey: "tip.folderPickerNewFolder.body",
-		icon: "\u{F0770}", // nf-md-folder_open
 	},
 	// Batch 32: sidebar global task scope toggle
 	{
