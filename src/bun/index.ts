@@ -618,6 +618,19 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}
+	} else if (e.data.action === MENU_ACTIONS.helpGithub) {
+		Utils.openExternal("https://github.com/h0x91b/dev-3.0");
+	} else if (e.data.action === MENU_ACTIONS.helpReportBug) {
+		Utils.openExternal("https://github.com/h0x91b/dev-3.0/issues/new");
+	} else if (e.data.action === MENU_ACTIONS.helpDocumentation) {
+		Utils.openExternal("https://h0x91b.github.io/dev-3.0/");
+	} else {
+		// Everything else (task / project / view / terminal actions that the
+		// renderer is responsible for) goes through the universal `menuAction`
+		// push channel. The renderer's `menuRouter` (App.tsx listener) decides
+		// what to do based on its current state.
+		log.debug("Routing menu action to renderer", { action: e.data.action });
+		mainWindow.webview.rpc?.send("menuAction", { action: e.data.action });
 	}
 });
 

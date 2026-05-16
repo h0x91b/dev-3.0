@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
-import { useT } from "./i18n";
+import { useT, useLocale } from "./i18n";
+import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -35,7 +36,23 @@ const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
+	const [, setLocale] = useLocale();
 	useViewport(state.route);
+
+	// Listen for menu actions routed from the bun side. Any menu item that the
+	// renderer is responsible for arrives here as `rpc:menuAction` with
+	// `{ action: <string> }`. The router in `menuRouter.ts` handles dispatch.
+	useEffect(() => {
+		function onMenuAction(e: Event) {
+			const detail = (e as CustomEvent).detail;
+			if (!detail?.action) return;
+			handleMenuAction(detail.action, { state, dispatch, setLocale }).catch((err) => {
+				console.error("[App] handleMenuAction failed", err);
+			});
+		}
+		window.addEventListener("rpc:menuAction", onMenuAction);
+		return () => window.removeEventListener("rpc:menuAction", onMenuAction);
+	}, [state, dispatch, setLocale]);
 
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
