@@ -1,0 +1,1 @@
+Trimmed the "Did you know?" tips registry from 115 to 91 entries by removing 24 low-value tips: duplicates of overview/PR/menu features, self-evident UI behaviors (ESC closes dialogs, drag reorders), and trivial micro-features (binary files in diff, column "Show more", task complete sound). Kept zoom-support and other genuinely hidden features.
