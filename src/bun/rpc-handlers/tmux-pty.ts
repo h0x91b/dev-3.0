@@ -1295,14 +1295,7 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 }
 
-async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panesExited: number }> {
-	const socket = pty.getSessionSocket(params.taskId);
-	const tmuxSession = pty.getSessionTmuxName(params.taskId);
-
-	if (!pty.tmuxSessionExists(params.taskId, socket)) {
-		return { panesExited: 0 };
-	}
-
+async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
 	const listProc = spawn(
 		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
 		{ stdout: "pipe", stderr: "pipe" },
@@ -1310,7 +1303,7 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 	const listOutput = await new Response(listProc.stdout).text();
 	const listExit = await listProc.exited;
 	if (listExit !== 0) {
-		return { panesExited: 0 };
+		return 0;
 	}
 
 	const panesInMode: string[] = [];
@@ -1330,10 +1323,33 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 		await cancelProc.exited;
 	}
 
-	if (panesInMode.length > 0) {
-		log.info("Exited copy-mode in panes", { taskId: params.taskId.slice(0, 8), count: panesInMode.length });
+	return panesInMode.length;
+}
+
+async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panesExited: number }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const taskSession = pty.getSessionTmuxName(params.taskId);
+	const devSession = devServerSessionName(params.taskId);
+
+	// dev-server lives in a separate tmux session (dev3-dev-<id>) — the user's
+	// scroll-mode is typically there, not in the agent session. Hit both.
+	const sessions: string[] = [];
+	if (pty.tmuxSessionExists(params.taskId, socket)) {
+		sessions.push(taskSession);
 	}
-	return { panesExited: panesInMode.length };
+	if (await isDevServerRunning(params.taskId, socket)) {
+		sessions.push(devSession);
+	}
+
+	let total = 0;
+	for (const session of sessions) {
+		total += await exitCopyModeInSession(socket, session);
+	}
+
+	if (total > 0) {
+		log.info("Exited copy-mode in panes", { taskId: params.taskId.slice(0, 8), count: total, sessions });
+	}
+	return { panesExited: total };
 }
 
 async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null }): Promise<void> {
