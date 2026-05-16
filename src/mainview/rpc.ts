@@ -17,6 +17,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	resourceUsageUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:resourceUsageUpdated", { detail: payload })),
 	updateDownloadProgress: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateDownloadProgress", { detail: payload })),
 	columnAgentFailed: (payload) => window.dispatchEvent(new CustomEvent("rpc:columnAgentFailed", { detail: payload })),
+	openTaskFromNotification: (payload) => window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", { detail: payload })),
 	openCreateTaskModal: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
 	navigateToSettings: () => window.dispatchEvent(new CustomEvent("rpc:navigateToSettings")),
 	navigateToGaugeDemo: () => window.dispatchEvent(new CustomEvent("rpc:navigateToGaugeDemo")),

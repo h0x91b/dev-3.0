@@ -83,6 +83,16 @@ export function getSystemRequirements(): RequirementCheckResult[] {
 	return SYSTEM_REQUIREMENTS.map((req) => ({ ...req }));
 }
 
+/**
+ * Window in which a window-focus event is treated as "user clicked the notification".
+ * macOS activates the app when a notification is clicked, which fires our BrowserWindow
+ * `focus` event. We use this as a proxy for click-to-open since Electrobun's
+ * `Utils.showNotification` does not expose a click callback.
+ */
+export const NOTIFICATION_CLICK_TTL_MS = 5000;
+
+let lastWatchedNotification: { taskId: string; projectId: string; timestamp: number } | null = null;
+
 export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
 	if (!task.watched || oldStatus === newStatus) return;
 	Utils.showNotification({
@@ -91,6 +101,31 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 		subtitle: projectName,
 		silent: true,
 	});
+	lastWatchedNotification = {
+		taskId: task.id,
+		projectId: task.projectId,
+		timestamp: Date.now(),
+	};
+}
+
+/**
+ * If a watched-task notification fired within the last `NOTIFICATION_CLICK_TTL_MS`,
+ * return its target (taskId + projectId) and clear the slot. Otherwise return null.
+ *
+ * Called from the window-focus listener in `src/bun/index.ts` to implement
+ * click-to-open for watched-task notifications.
+ */
+export function consumeRecentWatchedNotification(now: number = Date.now()): { taskId: string; projectId: string } | null {
+	const recent = lastWatchedNotification;
+	if (!recent) return null;
+	lastWatchedNotification = null;
+	if (now - recent.timestamp > NOTIFICATION_CLICK_TTL_MS) return null;
+	return { taskId: recent.taskId, projectId: recent.projectId };
+}
+
+/** For tests only — resets the last-watched-notification slot. */
+export function _resetWatchedNotificationState(): void {
+	lastWatchedNotification = null;
 }
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {

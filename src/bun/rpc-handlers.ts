@@ -9,6 +9,9 @@ export {
 	isActive,
 	resolveBinaryPath,
 	notifyWatchedTaskStatusChange,
+	consumeRecentWatchedNotification,
+	_resetWatchedNotificationState,
+	NOTIFICATION_CLICK_TTL_MS,
 } from "./rpc-handlers/shared";
 export {
 	startMergeDetectionPoller,

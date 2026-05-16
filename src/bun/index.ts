@@ -8,7 +8,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings } from "./settings";
 import { createLogger, getLogPath } from "./logger";
@@ -442,6 +442,36 @@ mainWindow.on("close", () => {
 	stopTunnel();
 	Utils.quit();
 });
+
+// Click-to-open for watched-task notifications.
+// Electrobun's Utils.showNotification has no click callback, so we treat any "app became
+// foreground" signal that arrives shortly after a notification fired as a click-through.
+//
+// We listen on multiple events because none of them fire reliably in every scenario:
+//   - `window.focus`            — fires on windowDidBecomeKey: (does NOT re-fire if the
+//                                  window was already key, e.g. another app was just on top)
+//   - `app.reopen` (global)     — fires on applicationShouldHandleReopen: (dock click,
+//                                  some notification-activation paths on macOS)
+//   - `webview.dom-focus` proxy — fires when the WKWebView regains focus inside the window
+//
+// On the first signal we consume the recent-notification slot and tell the renderer to
+// navigate. Subsequent signals find the slot empty and no-op.
+function tryNavigateFromRecentNotification(source: string): void {
+	const recent = consumeRecentWatchedNotification();
+	log.debug(`[notif] activation signal received (${source})`, {
+		hadRecent: !!recent,
+		taskId: recent?.taskId?.slice(0, 8) ?? null,
+	});
+	if (!recent) return;
+	try {
+		(mainWindow.webview.rpc as any).send.openTaskFromNotification?.(recent);
+	} catch (err) {
+		log.error("Failed to push openTaskFromNotification", { error: String(err) });
+	}
+}
+
+mainWindow.on("focus", () => tryNavigateFromRecentNotification("window-focus"));
+Electrobun.events.on("reopen", () => tryNavigateFromRecentNotification("app-reopen"));
 
 // Open DevTools automatically on dev channel
 mainWindow.webview.on("dom-ready", async () => {

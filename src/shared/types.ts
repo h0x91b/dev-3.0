@@ -1414,6 +1414,11 @@ export type AppRPCSchema = {
 			updateDownloadProgress: { status: string; progress?: number };
 			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */
 			columnAgentFailed: { taskId: string; projectId: string; columnName: string; error: string };
+			/**
+			 * Emitted when the main window gains focus shortly after a watched-task notification fired.
+			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
+			 */
+			openTaskFromNotification: { taskId: string; projectId: string };
 		};
 	}>;
 	webview: RPCSchema<{

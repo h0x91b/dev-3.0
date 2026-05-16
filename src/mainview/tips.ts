@@ -646,6 +646,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskWatch.body",
 		icon: "\u{F009A}", // nf-md-bell
 	},
+	{
+		id: "watched-notification-click",
+		titleKey: "tip.watchedNotificationClick.title",
+		bodyKey: "tip.watchedNotificationClick.body",
+		icon: "\u{F009B}", // nf-md-bell_ring
+	},
 	// Batch 26: prevent sleep
 	{
 		id: "prevent-sleep",
