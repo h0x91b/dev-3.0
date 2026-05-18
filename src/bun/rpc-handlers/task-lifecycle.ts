@@ -53,6 +53,7 @@ function preparingResetUpdates(): Partial<Task> {
 		preparing: false,
 		preparingStage: null,
 		preparingProgress: null,
+		preparingStartedAt: null,
 		worktreePath: null,
 		branchName: null,
 		customColumnId: null,
@@ -61,11 +62,12 @@ function preparingResetUpdates(): Partial<Task> {
 
 const INITIAL_PREPARING_STAGE: PreparingStage = "resolving-config";
 
-function clearPreparingState(): Pick<Task, "preparing" | "preparingStage" | "preparingProgress"> {
+function clearPreparingState(): Pick<Task, "preparing" | "preparingStage" | "preparingProgress" | "preparingStartedAt"> {
 	return {
 		preparing: false,
 		preparingStage: null,
 		preparingProgress: null,
+		preparingStartedAt: null,
 	};
 }
 
@@ -819,6 +821,7 @@ async function spawnVariants(params: {
 				preparing: needsWorktree,
 				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
+				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
 				watched: sourceTask.watched,
 				// Scratch tasks keep the `Scratch — HH:mm` placeholder as title
 				// on every variant, but the flag tells the launch path (see
@@ -917,6 +920,7 @@ async function addAttempts(params: {
 				preparing: needsWorktree,
 				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
+				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
 				watched: sourceTask.watched,
 			},
 		);

@@ -24,6 +24,7 @@ import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
 import { ErrorToast } from "./components/ErrorToast";
+import StuckPreparationModal from "./components/StuckPreparationModal";
 import FolderPickerHost from "./components/FolderPickerModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
@@ -952,6 +953,7 @@ function App() {
 				</div>
 			)}
 			<ErrorToast />
+			<StuckPreparationModal tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
 		</div>
 	);

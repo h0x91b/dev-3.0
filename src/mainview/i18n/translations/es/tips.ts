@@ -188,6 +188,8 @@ const tips = {
 	"tip.compactEmptyColumns.body": "Cuando tu ventana mide menos de ~1400px, las columnas vacías del Kanban se reducen a una franja fina de ancho fijo con el título recortado con puntos suspensivos. Pasa el ratón un instante y se expanden de nuevo; durante un arrastre permanecen compactas para que el tablero no se mueva bajo el cursor.",
 	"tip.watchedNotificationClick.title": "Haz clic en una notificación para abrir la tarea",
 	"tip.watchedNotificationClick.body": "Cuando una tarea vigilada cambia de columna y haces clic en la notificación del sistema, dev-3.0 pasa al frente y abre directamente esa tarea.",
+	"tip.fdaStuckPrep.title": "¿El clon se queda colgado en macOS? Da Acceso completo al disco",
+	"tip.fdaStuckPrep.body": "Si las tareas nuevas se quedan minutos atascadas en «Fetching origin», macOS probablemente revocó el acceso a git/tmux. Añade dev-3.0 en System Settings → Privacy & Security → Acceso completo al disco y reinicia; los procesos hijos también heredarán el permiso.",
 };
 
 export default tips;

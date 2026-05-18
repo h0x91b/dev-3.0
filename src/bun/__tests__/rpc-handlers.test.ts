@@ -2420,6 +2420,7 @@ describe("handlers.spawnVariants", () => {
 				preparing: false,
 				preparingStage: null,
 				preparingProgress: null,
+				preparingStartedAt: null,
 			});
 		});
 
@@ -2453,6 +2454,7 @@ describe("handlers.spawnVariants", () => {
 				preparing: false,
 				preparingStage: null,
 				preparingProgress: null,
+				preparingStartedAt: null,
 			});
 		});
 	});
@@ -2663,6 +2665,7 @@ describe("handlers.addAttempts", () => {
 				preparing: false,
 				preparingStage: null,
 				preparingProgress: null,
+				preparingStartedAt: null,
 			});
 		});
 
@@ -2707,6 +2710,7 @@ describe("handlers.addAttempts", () => {
 				preparing: false,
 				preparingStage: null,
 				preparingProgress: null,
+				preparingStartedAt: null,
 			});
 
 		await handlers.addAttempts({
@@ -2725,6 +2729,7 @@ describe("handlers.addAttempts", () => {
 			preparing: false,
 			preparingStage: null,
 			preparingProgress: null,
+			preparingStartedAt: null,
 		});
 		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-3", {
 			worktreePath: "/tmp/attempt-3",
@@ -2732,6 +2737,7 @@ describe("handlers.addAttempts", () => {
 			preparing: false,
 			preparingStage: null,
 			preparingProgress: null,
+			preparingStartedAt: null,
 		});
 	});
 });
@@ -2787,6 +2793,7 @@ describe("handlers.cancelTaskPreparation", () => {
 			preparing: false,
 			preparingStage: null,
 			preparingProgress: null,
+			preparingStartedAt: null,
 			worktreePath: null,
 			branchName: null,
 			customColumnId: null,

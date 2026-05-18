@@ -188,6 +188,8 @@ const tips = {
 	"tip.compactEmptyColumns.body": "When your window is below ~1400px, empty Kanban columns collapse to a slim fixed strip with the title truncated. Hover for a beat and they expand back; during a drag they stay compact so the board never shifts under your cursor.",
 	"tip.watchedNotificationClick.title": "Click a watch notification to open the task",
 	"tip.watchedNotificationClick.body": "When a watched task moves between columns and you click the system notification, dev-3.0 brings itself forward and jumps straight into that task.",
+	"tip.fdaStuckPrep.title": "Clone hangs on macOS? Grant Full Disk Access",
+	"tip.fdaStuckPrep.body": "If new tasks freeze on \"Fetching origin\" for minutes, macOS likely revoked file access for git/tmux. Add dev-3.0 to System Settings → Privacy & Security → Full Disk Access and relaunch — child processes inherit the permission too.",
 } as const;
 
 export default tips;

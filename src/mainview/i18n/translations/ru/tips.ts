@@ -188,6 +188,8 @@ const tips = {
 	"tip.compactEmptyColumns.body": "Когда окно меньше ~1400px, пустые Kanban-колонки схлопываются в узкую полоску фиксированной ширины — заголовок обрезается многоточием. Подержи курсор — колонка раскрывается обратно. Во время перетаскивания таски колонка остаётся узкой, чтобы доска не дёргалась.",
 	"tip.watchedNotificationClick.title": "Клик по нотификации открывает таск",
 	"tip.watchedNotificationClick.body": "Когда watched-таск меняет колонку и ты кликаешь по системной нотификации, dev-3.0 поднимается на передний план и сразу открывает эту таску.",
+	"tip.fdaStuckPrep.title": "Клон висит на macOS? Дай Full Disk Access",
+	"tip.fdaStuckPrep.body": "Если новые таски минутами висят на «Fetching origin» — macOS, скорее всего, отозвал доступ у git/tmux. Добавь dev-3.0 в System Settings → Privacy & Security → Full Disk Access и перезапусти; дочерние процессы тоже получат права.",
 };
 
 export default tips;
