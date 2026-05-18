@@ -959,6 +959,24 @@ function getFileDiffStats(file: TaskDiffFile): { insertions: number; deletions: 
 	};
 }
 
+function diffFileFullPath(file: TaskDiffFile | TaskDiffSkippedFile): string {
+	return file.newPath ?? file.oldPath ?? file.displayPath;
+}
+
+// The backend assembles `files` by concatenating tracked-modified entries with untracked entries
+// (see git.ts: `[...entries, ...untrackedEntries]`). This makes the right-panel list order out of
+// sync with the alphabetical file tree on the left. Sorting both lists by their full path keeps
+// the tree click → right-panel scroll mapping monotonic.
+function sortTaskDiffResponse(response: TaskDiffResponse): TaskDiffResponse {
+	const byPath = (left: TaskDiffFile | TaskDiffSkippedFile, right: TaskDiffFile | TaskDiffSkippedFile) =>
+		diffFileFullPath(left).localeCompare(diffFileFullPath(right));
+	return {
+		...response,
+		files: [...response.files].sort(byPath),
+		skippedFiles: [...response.skippedFiles].sort(byPath),
+	};
+}
+
 function buildDiffTree(files: TaskDiffFile[], skippedFiles: TaskDiffSkippedFile[]): DiffTreeNode[] {
 	const root: DiffTreeNode[] = [];
 
@@ -1596,7 +1614,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			if (cancelled) {
 				return;
 			}
-			setPayload(result);
+			setPayload(sortTaskDiffResponse(result));
 			setLoading(false);
 		}).catch((err) => {
 			if (cancelled) {
