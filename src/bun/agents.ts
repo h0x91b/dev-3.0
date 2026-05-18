@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
@@ -669,8 +670,15 @@ const TRUST_ENTRY = {
  * Ensure a directory is marked as trusted in ~/.claude.json so that
  * `claude` CLI skips the "Do you trust this folder?" dialog.
  * Resolves symlinks (e.g. /tmp → /private/tmp on macOS).
+ *
+ * If `projectPath` is provided and the worktree contains a `.mcp.json`,
+ * also pre-approves the project's MCP servers by writing
+ * `enableAllProjectMcpServers: true` (mirroring the user's "yes_all" choice)
+ * into `<worktreePath>/.claude/settings.local.json`. Any explicit
+ * approvals/rejections from `<projectPath>/.claude/settings.local.json` or
+ * `<projectPath>/.claude/settings.json` are preserved.
  */
-export async function ensureClaudeTrust(dirPath: string): Promise<void> {
+export async function ensureClaudeTrust(dirPath: string, projectPath?: string): Promise<void> {
 	try {
 		// Resolve symlinks so the path matches what claude sees
 		const resolved = await realpath(dirPath);
@@ -685,20 +693,130 @@ export async function ensureClaudeTrust(dirPath: string): Promise<void> {
 			data.projects = {};
 		}
 
-		if (data.projects[resolved]?.hasTrustDialogAccepted) {
-			return; // already trusted
+		if (!data.projects[resolved]?.hasTrustDialogAccepted) {
+			data.projects[resolved] = {
+				...TRUST_ENTRY,
+				...(data.projects[resolved] || {}),
+				hasTrustDialogAccepted: true,
+			};
+
+			await Bun.write(CLAUDE_JSON, JSON.stringify(data, null, 2));
+			log.info("Registered worktree as trusted in ~/.claude.json", { path: resolved });
 		}
-
-		data.projects[resolved] = {
-			...TRUST_ENTRY,
-			...(data.projects[resolved] || {}),
-			hasTrustDialogAccepted: true,
-		};
-
-		await Bun.write(CLAUDE_JSON, JSON.stringify(data, null, 2));
-		log.info("Registered worktree as trusted in ~/.claude.json", { path: resolved });
 	} catch (err) {
 		// Non-fatal — worst case the user sees the trust dialog
 		log.warn("Failed to register worktree trust", { error: String(err) });
 	}
+
+	try {
+		ensureClaudeMcpApproved(dirPath, projectPath);
+	} catch (err) {
+		log.warn("Failed to pre-approve Claude MCP servers", { error: String(err) });
+	}
+}
+
+/**
+ * Pre-approve project-scoped MCP servers (from `.mcp.json`) so that Claude
+ * Code does not prompt the user every time a new worktree spawns.
+ *
+ * Claude Code reads approvals from `<cwd>/.claude/settings.local.json`
+ * (the `localSettings` source). Worktrees are fresh checkouts; the gitignored
+ * `settings.local.json` is never carried over, so without seeding it the user
+ * faces the "N new MCP servers found in .mcp.json" prompt on every launch.
+ *
+ * Strategy:
+ *   1. If the worktree has no `.mcp.json` → nothing to do.
+ *   2. Compute the desired payload by merging (in order, later wins):
+ *        - default: `{ enableAllProjectMcpServers: true }`
+ *        - any MCP-related fields from `<projectPath>/.claude/settings.json`
+ *        - any MCP-related fields from `<projectPath>/.claude/settings.local.json`
+ *      This preserves explicit approvals/rejections the user already made
+ *      in the project root, while defaulting to "trust everything" — which
+ *      matches the trust level dev3 already grants the worktree via the
+ *      trust dialog bypass.
+ *   3. Merge into the worktree's existing `.claude/settings.local.json`
+ *      (if any) and write back.
+ */
+function ensureClaudeMcpApproved(worktreePath: string, projectPath?: string): void {
+	const mcpJsonPath = join(worktreePath, ".mcp.json");
+	if (!existsSync(mcpJsonPath)) return;
+
+	const localSettingsPath = join(worktreePath, ".claude", "settings.local.json");
+	const projectSources: Array<string | undefined> = projectPath
+		? [join(projectPath, ".claude", "settings.json"), join(projectPath, ".claude", "settings.local.json")]
+		: [];
+
+	const existing: Record<string, unknown> = safeReadJson(localSettingsPath) ?? {};
+
+	const merged = mergeMcpApproval(existing, projectSources.map(safeReadJson));
+	if (jsonEqual(existing, merged)) return;
+
+	mkdirSync(dirname(localSettingsPath), { recursive: true });
+	writeFileSync(localSettingsPath, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
+	log.info("Pre-approved Claude MCP servers in worktree settings.local.json", {
+		path: localSettingsPath,
+		enableAllProjectMcpServers: merged.enableAllProjectMcpServers,
+		enabled: merged.enabledMcpjsonServers,
+		disabled: merged.disabledMcpjsonServers,
+	});
+}
+
+/** Pure merge: existing worktree settings + project-source settings → result.
+ *  Exported for unit testing. */
+export function mergeMcpApproval(
+	existing: Record<string, unknown>,
+	projectSources: Array<Record<string, unknown> | null>,
+): Record<string, unknown> {
+	const result: Record<string, unknown> = { ...existing };
+
+	const collected: {
+		enableAll?: boolean;
+		enabled: Set<string>;
+		disabled: Set<string>;
+	} = {
+		enableAll: undefined,
+		enabled: new Set(asStringArray(existing.enabledMcpjsonServers)),
+		disabled: new Set(asStringArray(existing.disabledMcpjsonServers)),
+	};
+	if (typeof existing.enableAllProjectMcpServers === "boolean") {
+		collected.enableAll = existing.enableAllProjectMcpServers;
+	}
+
+	for (const src of projectSources) {
+		if (!src) continue;
+		if (typeof src.enableAllProjectMcpServers === "boolean") {
+			collected.enableAll = src.enableAllProjectMcpServers;
+		}
+		for (const name of asStringArray(src.enabledMcpjsonServers)) collected.enabled.add(name);
+		for (const name of asStringArray(src.disabledMcpjsonServers)) collected.disabled.add(name);
+	}
+
+	// Fallback default: approve everything. Matches the implicit trust granted
+	// to a dev3 worktree (we already bypass the trust dialog). An explicit
+	// `false` in any project source above wins over this default.
+	if (collected.enableAll === undefined) collected.enableAll = true;
+
+	result.enableAllProjectMcpServers = collected.enableAll;
+	if (collected.enabled.size > 0) result.enabledMcpjsonServers = [...collected.enabled];
+	if (collected.disabled.size > 0) result.disabledMcpjsonServers = [...collected.disabled];
+	return result;
+}
+
+function asStringArray(v: unknown): string[] {
+	return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+function safeReadJson(path: string | undefined): Record<string, unknown> | null {
+	if (!path) return null;
+	if (!existsSync(path)) return null;
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf-8"));
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+	} catch {
+		return null;
+	}
+}
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a) === JSON.stringify(b);
 }
