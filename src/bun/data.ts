@@ -426,6 +426,7 @@ export async function addTask(
 		preparing?: boolean;
 		preparingStage?: Task["preparingStage"];
 		preparingProgress?: Task["preparingProgress"];
+		preparingStartedAt?: Task["preparingStartedAt"];
 		watched?: boolean;
 		scratch?: boolean;
 	},
@@ -458,6 +459,7 @@ export async function addTask(
 			...(extras?.preparing ? { preparing: true } : {}),
 			...(extras?.preparingStage ? { preparingStage: extras.preparingStage } : {}),
 			...(typeof extras?.preparingProgress === "number" ? { preparingProgress: extras.preparingProgress } : {}),
+			...(extras?.preparingStartedAt ? { preparingStartedAt: extras.preparingStartedAt } : {}),
 			...(extras?.watched ? { watched: true } : {}),
 			...(extras?.scratch ? { scratch: true } : {}),
 		};

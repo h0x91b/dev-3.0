@@ -77,6 +77,17 @@ const common = {
 	"folderPicker.create": "Crear",
 	"folderPicker.creating": "Creando…",
 
+	// Stuck preparation modal (clone hangs on Fetching origin)
+	"stuckPrep.title": "La preparación de la tarea está tardando demasiado",
+	"stuckPrep.intro": "La tarea «{taskTitle}» lleva más de {minutes} minutos intentando hacer fetch del origen. Lo más probable es que el clon se haya colgado.",
+	"stuckPrep.bulletNetworkTitle": "Red o VPN",
+	"stuckPrep.bulletNetworkBody": "Comprueba tu conexión a internet, la VPN o el acceso al remoto de git. Si es un problema de red, el mismo fetch también fallará desde una terminal normal.",
+	"stuckPrep.bulletFdaTitle": "macOS — Acceso completo al disco",
+	"stuckPrep.bulletFdaBody": "macOS a veces revoca silenciosamente el acceso de los procesos hijos git y tmux (cambios de TCC tras una actualización del sistema o de seguridad). Conceder Acceso completo al disco a dev-3.0 lo soluciona.",
+	"stuckPrep.openGuide": "Abrir la guía",
+	"stuckPrep.openSettings": "Abrir Acceso completo al disco",
+	"stuckPrep.dismiss": "Cerrar",
+
 	// Unsaved changes guard
 	"unsavedChanges.title": "Cambios sin guardar",
 	"unsavedChanges.message": "Tienes cambios sin guardar en la configuración del proyecto. ¿Qué deseas hacer?",

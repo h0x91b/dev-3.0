@@ -595,6 +595,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.compactEmptyColumns.body",
 		icon: "\u{F0571}", // nf-md-arrow_collapse_horizontal
 	},
+	// Batch 37: macOS Full Disk Access for git/tmux
+	{
+		id: "fda-stuck-prep",
+		titleKey: "tip.fdaStuckPrep.title",
+		bodyKey: "tip.fdaStuckPrep.body",
+		icon: "\u{F0156}", // nf-md-shield_check
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

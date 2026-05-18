@@ -77,6 +77,17 @@ const common = {
 	"folderPicker.create": "Создать",
 	"folderPicker.creating": "Создание…",
 
+	// Stuck preparation modal (clone hangs on Fetching origin)
+	"stuckPrep.title": "Подготовка задачи занимает слишком долго",
+	"stuckPrep.intro": "Задача «{taskTitle}» уже больше {minutes} минут пытается выполнить fetch с origin. Скорее всего, клон завис.",
+	"stuckPrep.bulletNetworkTitle": "Сеть или VPN",
+	"stuckPrep.bulletNetworkBody": "Проверьте интернет, VPN и доступ к git remote. Если дело в сети, тот же fetch не сработает и в обычном терминале.",
+	"stuckPrep.bulletFdaTitle": "macOS — Full Disk Access",
+	"stuckPrep.bulletFdaBody": "macOS иногда молча отзывает права у git и tmux, запущенных из приложения (TCC меняет разрешения после обновления ОС или агента безопасности). Выдача Full Disk Access для dev-3.0 чинит это.",
+	"stuckPrep.openGuide": "Открыть инструкцию",
+	"stuckPrep.openSettings": "Открыть Full Disk Access",
+	"stuckPrep.dismiss": "Закрыть",
+
 	// Unsaved changes guard
 	"unsavedChanges.title": "Несохранённые изменения",
 	"unsavedChanges.message": "В настройках проекта есть несохранённые изменения. Что сделать?",

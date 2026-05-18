@@ -593,6 +593,8 @@ export interface Task {
 	preparingStage?: PreparingStage | null;
 	/** Compact 0-100 progress value for the current preparation stage. */
 	preparingProgress?: number | null;
+	/** ISO timestamp when preparation started. Used to detect stuck clones. */
+	preparingStartedAt?: string | null;
 	/** When true, native macOS notifications fire on status changes. */
 	watched?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */
@@ -640,6 +642,14 @@ export const PREPARING_STAGE_PROGRESS: Record<PreparingStage, number> = {
 export function getPreparingStageProgress(stage: PreparingStage): number {
 	return PREPARING_STAGE_PROGRESS[stage];
 }
+
+/**
+ * If a task spends longer than this on `fetching-origin`, the renderer shows
+ * the stuck-preparation modal pointing the user at the README troubleshooting
+ * section (most common cause on macOS is Full Disk Access being revoked for
+ * git/tmux child processes).
+ */
+export const STUCK_PREPARATION_FETCH_THRESHOLD_MS = 3 * 60 * 1000;
 
 /** Per-pane session info for recovery. */
 export interface PaneSessionEntry {
@@ -1314,6 +1324,15 @@ export type AppRPCSchema = {
 			openInApp: {
 				params: { appName: string; path: string };
 				response: void;
+			};
+			/**
+			 * Open a specific macOS System Settings pane. On non-darwin platforms
+			 * this is a no-op and returns `{ ok: false }`. Used by the stuck-
+			 * preparation modal to deep-link to Full Disk Access.
+			 */
+			openSystemSettings: {
+				params: { pane: "fullDiskAccess" };
+				response: { ok: boolean };
 			};
 			getAvailableApps: {
 				params: void;

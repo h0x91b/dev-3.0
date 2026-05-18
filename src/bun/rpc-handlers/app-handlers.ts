@@ -564,6 +564,24 @@ async function openFolder(params: { path: string }): Promise<void> {
 	Utils.openPath(params.path);
 }
 
+async function openSystemSettings(params: { pane: "fullDiskAccess" }): Promise<{ ok: boolean }> {
+	log.info("→ openSystemSettings", { pane: params.pane, platform: process.platform });
+	if (process.platform !== "darwin") {
+		log.warn("openSystemSettings: ignored on non-darwin platform", { platform: process.platform });
+		return { ok: false };
+	}
+	const urls: Record<string, string> = {
+		fullDiskAccess: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+	};
+	const url = urls[params.pane];
+	if (!url) {
+		log.warn("openSystemSettings: unknown pane", { pane: params.pane });
+		return { ok: false };
+	}
+	Utils.openExternal(url);
+	return { ok: true };
+}
+
 async function openInApp(params: { appName: string; path: string }): Promise<void> {
 	log.info("→ openInApp", { appName: params.appName, path: params.path });
 	if (!params.path.startsWith("/") || params.path.includes("..")) {
@@ -657,6 +675,7 @@ export const appHandlers = {
 	openImageFile,
 	openFolder,
 	openInApp,
+	openSystemSettings,
 	getAvailableApps,
 	getTipState,
 	updateTipState,

@@ -215,20 +215,28 @@ See [agent-support-matrix.md](agent-support-matrix.md) for feature compatibility
 
 ## Troubleshooting
 
-### Git errors inside worktrees (`fatal: not a git repository`)
+### macOS — Full Disk Access required for `git` / `tmux`
 
-dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system may block file access for these processes even if the app itself has folder permissions. Symptoms:
+dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system can silently start blocking file access for these spawned binaries even after they worked fine — usually triggered by an OS update, a TCC database change, or other security-agent activity. It doesn't happen to everyone, and once it kicks in you can't `git` inside dev-3.0 task terminals at all.
 
-- `git status` fails with `fatal: not a git repository: .../.git/worktrees/...`
-- Commands work in a regular terminal but fail inside dev-3.0 task terminals
+Symptoms:
 
-**Fix:** Grant **Full Disk Access** to the dev-3.0 app:
+- New task is stuck on **`PREPARING… Fetching origin`** forever — the clone phase hangs and never completes.
+- Any `git` command that talks to a remote — `git fetch`, `git pull`, `git push`, `git clone`, `git ls-remote` — hangs indefinitely when run inside a dev-3.0 task terminal. Local-only commands (`git status`, `git log`, `git diff`) keep working.
+- The exact same `git fetch` works fine in a regular terminal (iTerm, Terminal.app) — only hangs when spawned from dev-3.0.
+
+**Fix:** Grant **Full Disk Access** to the dev-3.0 app, then restart it.
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**
-2. Click **+** and add `dev-3.0` (from `/Applications` or your build directory)
-3. Restart dev-3.0
+2. Click **+** and add `dev-3.0` (from `/Applications` or wherever you installed it)
+3. Make sure the toggle next to `dev-3.0` is **on**
+4. Quit and relaunch dev-3.0
 
-This is needed because macOS evaluates file access per-binary — `tmux` and `git` spawned by the app don't inherit the app's folder permissions. Full Disk Access covers the app and all its child processes.
+<p align="center">
+  <img src="docs/screenshots/full-disk-access.jpg" width="700" alt="System Settings → Privacy & Security → Full Disk Access with dev-3.0 toggled on">
+</p>
+
+Why this happens: macOS evaluates permissions per-binary, and TCC (the system permissions database) can silently revoke network/file access for `git`/`tmux` spawned by another app — typically after an OS update or background security-agent activity. Granting Full Disk Access to dev-3.0 covers the app and all its child processes, so `git fetch` to remotes works again.
 
 ## Star History
 
