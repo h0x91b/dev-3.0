@@ -286,7 +286,7 @@ export async function launchTaskPty(
 	}
 
 	try {
-		await agents.ensureClaudeTrust(worktreePath);
+		await agents.ensureClaudeTrust(worktreePath, project.path);
 		log.info("Claude trust ensured", { worktreePath });
 	} catch (err) {
 		log.error("ensureClaudeTrust failed (non-fatal)", {

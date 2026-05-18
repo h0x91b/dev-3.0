@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeWithDefaults, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
@@ -646,6 +646,64 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		const userIdx = claudeResult.configurations.findIndex((c) => c.id === "user-custom-1");
 		const planSonnetIdx = claudeResult.configurations.findIndex((c) => c.id === "claude-plan-sonnet");
 		expect(userIdx).toBe(planSonnetIdx + 1);
+	});
+});
+
+describe("mergeMcpApproval", () => {
+	it("defaults to enableAllProjectMcpServers when no inputs", () => {
+		const result = mergeMcpApproval({}, []);
+		expect(result.enableAllProjectMcpServers).toBe(true);
+		expect(result.enabledMcpjsonServers).toBeUndefined();
+		expect(result.disabledMcpjsonServers).toBeUndefined();
+	});
+
+	it("defaults to enableAll when project sources are all null", () => {
+		const result = mergeMcpApproval({}, [null, null]);
+		expect(result.enableAllProjectMcpServers).toBe(true);
+	});
+
+	it("preserves existing worktree settings unrelated to MCP", () => {
+		const result = mergeMcpApproval({ permissions: { allow: ["Bash(ls *)"] } }, []);
+		expect(result.permissions).toEqual({ allow: ["Bash(ls *)"] });
+		expect(result.enableAllProjectMcpServers).toBe(true);
+	});
+
+	it("respects explicit enableAll=false from project source", () => {
+		const result = mergeMcpApproval({}, [{ enableAllProjectMcpServers: false }]);
+		expect(result.enableAllProjectMcpServers).toBe(false);
+	});
+
+	it("merges enabled/disabled server names from project sources", () => {
+		const result = mergeMcpApproval({}, [
+			{ enabledMcpjsonServers: ["nile-docs", "nile"], disabledMcpjsonServers: ["scary"] },
+			{ enabledMcpjsonServers: ["nile-reports"] },
+		]);
+		expect(result.enabledMcpjsonServers).toEqual(["nile-docs", "nile", "nile-reports"]);
+		expect(result.disabledMcpjsonServers).toEqual(["scary"]);
+	});
+
+	it("later project source overrides earlier enableAll boolean", () => {
+		const result = mergeMcpApproval({}, [
+			{ enableAllProjectMcpServers: true },
+			{ enableAllProjectMcpServers: false },
+		]);
+		expect(result.enableAllProjectMcpServers).toBe(false);
+	});
+
+	it("keeps existing enabled/disabled lists from worktree settings", () => {
+		const result = mergeMcpApproval(
+			{ enabledMcpjsonServers: ["a"], disabledMcpjsonServers: ["b"] },
+			[{ enabledMcpjsonServers: ["c"] }],
+		);
+		expect(result.enabledMcpjsonServers).toEqual(["a", "c"]);
+		expect(result.disabledMcpjsonServers).toEqual(["b"]);
+	});
+
+	it("ignores non-string entries in *McpjsonServers arrays", () => {
+		const result = mergeMcpApproval({}, [
+			{ enabledMcpjsonServers: ["a", 42, null, "b"] as unknown[] },
+		]);
+		expect(result.enabledMcpjsonServers).toEqual(["a", "b"]);
 	});
 });
 
