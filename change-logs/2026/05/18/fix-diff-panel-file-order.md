@@ -1,0 +1,1 @@
+Fix file ordering mismatch between the diff file tree (left panel) and the diff section list (right panel). Untracked files were appended at the end of the right-panel list by the backend, while the tree showed them in their alphabetical position. Both panels now use the same alphabetical full-path order.

@@ -241,14 +241,14 @@ const diffPayload: TaskDiffResponse = {
 			hunks: ["diff --git a/src/utils/format.ts b/src/utils/format.ts\n@@ -0,0 +1 @@\n+export const ok = true;\n"],
 		},
 		{
-			id: "docs/readme.md",
+			id: "zzz/readme.md",
 			status: "modified",
-			displayPath: "docs/readme.md",
-			oldPath: "docs/readme.md",
-			newPath: "docs/readme.md",
+			displayPath: "zzz/readme.md",
+			oldPath: "zzz/readme.md",
+			newPath: "zzz/readme.md",
 			oldContent: "old\n",
 			newContent: "new\n",
-			hunks: ["diff --git a/docs/readme.md b/docs/readme.md\n@@ -1 +1 @@\n-old\n+new\n"],
+			hunks: ["diff --git a/zzz/readme.md b/zzz/readme.md\n@@ -1 +1 @@\n-old\n+new\n"],
 		},
 	],
 	skippedFiles: [],
@@ -352,6 +352,72 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
+	});
+
+	it("sorts the right-panel file list alphabetically by full path", async () => {
+		// Regression: git.ts assembles `files` as `[...trackedEntries, ...untrackedEntries]`,
+		// so untracked files always end up at the bottom of the right panel while the left tree
+		// shows them in their alphabetical position. The right panel must match the tree order.
+		vi.mocked(api.request.getTaskDiff).mockResolvedValue({
+			mode: "uncommitted",
+			compareRef: null,
+			compareLabel: "Working tree",
+			fallbackReason: null,
+			summary: { files: 3, insertions: 0, deletions: 0 },
+			files: [
+				{
+					id: "src/management/handler.ts",
+					status: "modified",
+					displayPath: "src/management/handler.ts",
+					oldPath: "src/management/handler.ts",
+					newPath: "src/management/handler.ts",
+					oldContent: "x\n",
+					newContent: "y\n",
+					hunks: ["diff --git a/src/management/handler.ts b/src/management/handler.ts\n@@ -1 +1 @@\n-x\n+y\n"],
+				},
+				{
+					id: "src/utils/helper.ts",
+					status: "modified",
+					displayPath: "src/utils/helper.ts",
+					oldPath: "src/utils/helper.ts",
+					newPath: "src/utils/helper.ts",
+					oldContent: "a\n",
+					newContent: "b\n",
+					hunks: ["diff --git a/src/utils/helper.ts b/src/utils/helper.ts\n@@ -1 +1 @@\n-a\n+b\n"],
+				},
+				// Backend appends untracked entries last — must be re-sorted into alphabetical position.
+				{
+					id: "src/migrations/0001_init.ts",
+					status: "untracked",
+					displayPath: "src/migrations/0001_init.ts",
+					oldPath: null,
+					newPath: "src/migrations/0001_init.ts",
+					oldContent: "",
+					newContent: "export {};\n",
+					hunks: ["diff --git a/src/migrations/0001_init.ts b/src/migrations/0001_init.ts\n@@ -0,0 +1 @@\n+export {};\n"],
+				},
+			],
+			skippedFiles: [],
+		});
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "uncommitted" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-file-id]"));
+		expect(sections.map((node) => node.dataset.fileId)).toEqual([
+			"src/management/handler.ts",
+			"src/migrations/0001_init.ts",
+			"src/utils/helper.ts",
+		]);
 	});
 
 	it("renders binary and oversized skipped files with status, old→new sizes and reason badges", async () => {
@@ -1047,7 +1113,7 @@ describe("TaskDiffViewer", () => {
 			}),
 		});
 
-		const targetSection = document.querySelector('[data-file-id="docs/readme.md"]') as HTMLDivElement | null;
+		const targetSection = document.querySelector('[data-file-id="zzz/readme.md"]') as HTMLDivElement | null;
 		expect(targetSection).not.toBeNull();
 		let targetRectCall = 0;
 		Object.defineProperty(targetSection as HTMLDivElement, "getBoundingClientRect", {
@@ -1069,7 +1135,7 @@ describe("TaskDiffViewer", () => {
 			},
 		});
 
-		await user.click(screen.getByRole("button", { name: /open diff file docs\/readme\.md/i }));
+		await user.click(screen.getByRole("button", { name: /open diff file zzz\/readme\.md/i }));
 
 		while (rafQueue.length > 0) {
 			const callback = rafQueue.shift();
