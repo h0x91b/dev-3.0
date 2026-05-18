@@ -1,0 +1,1 @@
+Expanded the macOS Full Disk Access troubleshooting section in README with the reported "stuck on `Fetching origin`" symptom and a screenshot of the System Settings panel showing the dev-3.0 toggle. Helps users hit by sudden TCC changes resolve the issue without opening an issue.

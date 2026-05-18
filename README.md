@@ -215,18 +215,26 @@ See [agent-support-matrix.md](agent-support-matrix.md) for feature compatibility
 
 ## Troubleshooting
 
-### Git errors inside worktrees (`fatal: not a git repository`)
+### macOS — Full Disk Access required for `git` / `tmux`
 
-dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system may block file access for these processes even if the app itself has folder permissions. Symptoms:
+dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system can silently start blocking file access for these spawned binaries even after they worked fine — usually triggered by an OS update, a TCC database change, or other security-agent activity. It doesn't happen to everyone, and once it kicks in you can't `git` inside dev-3.0 task terminals at all.
 
-- `git status` fails with `fatal: not a git repository: .../.git/worktrees/...`
-- Commands work in a regular terminal but fail inside dev-3.0 task terminals
+Symptoms:
 
-**Fix:** Grant **Full Disk Access** to the dev-3.0 app:
+- New task is stuck on **`PREPARING… Fetching origin`** for more than a minute (or forever) — clone never finishes.
+- Inside a worktree terminal, `git status` fails with `fatal: not a git repository: .../.git/worktrees/...`.
+- The exact same `git` command works fine in a normal terminal (iTerm, Terminal.app) — only fails when spawned from dev-3.0.
+
+**Fix:** Grant **Full Disk Access** to the dev-3.0 app, then restart it.
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**
-2. Click **+** and add `dev-3.0` (from `/Applications` or your build directory)
-3. Restart dev-3.0
+2. Click **+** and add `dev-3.0` (from `/Applications` or wherever you installed it)
+3. Make sure the toggle next to `dev-3.0` is **on**
+4. Quit and relaunch dev-3.0
+
+<p align="center">
+  <img src="docs/screenshots/full-disk-access.jpg" width="700" alt="System Settings → Privacy & Security → Full Disk Access with dev-3.0 toggled on">
+</p>
 
 This is needed because macOS evaluates file access per-binary — `tmux` and `git` spawned by the app don't inherit the app's folder permissions. Full Disk Access covers the app and all its child processes.
 
