@@ -1388,6 +1388,15 @@ export type AppRPCSchema = {
 				params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" };
 				response: void;
 			};
+			/**
+			 * Pushed by the renderer whenever the current route changes; the bun
+			 * side uses it to rebuild the native menu so context-aware items
+			 * (task / project / terminal) render disabled when irrelevant.
+			 */
+			updateMenuContext: {
+				params: { hasTask: boolean; hasProject: boolean; hasTerminal: boolean };
+				response: void;
+			};
 			checkCaffeinateAvailable: {
 				params: void;
 				response: { available: boolean };

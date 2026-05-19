@@ -14,6 +14,15 @@ import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
 import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent } from "./shared";
+import { applyMenuContext, type MenuContext } from "../application-menu";
+
+async function updateMenuContext(params: MenuContext): Promise<void> {
+	applyMenuContext({
+		hasTask: Boolean(params.hasTask),
+		hasProject: Boolean(params.hasProject),
+		hasTerminal: Boolean(params.hasTerminal),
+	});
+}
 
 async function quitApp(): Promise<void> {
 	log.info("→ quitApp (Cmd+Q from renderer)");
@@ -658,6 +667,7 @@ export const appHandlers = {
 	quitApp,
 	hideApp,
 	showConfirm,
+	updateMenuContext,
 	getProjects,
 	reorderProjects,
 	listDirectory,

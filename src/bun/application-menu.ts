@@ -305,11 +305,165 @@ type Item = {
 };
 
 /**
- * Shorthand for an actionable menu item. Items whose action is in
- * NOT_YET_IMPLEMENTED auto-render disabled.
+ * Context-aware enable rules. Each menu action either has no context
+ * requirement (always enabled unless on the roadmap), or it requires the user
+ * to be in a specific view — a task is in scope, a project is in scope, or a
+ * terminal is visible on screen.
+ *
+ * The renderer pushes the current `MenuContext` whenever the route changes
+ * (`api.request.updateMenuContext({...})`) and the bun side rebuilds the menu.
+ * That keeps native-menu items grey when they wouldn't do anything useful.
+ */
+export interface MenuContext {
+	/** A current task is selected (task view, or a project view with an activeTaskId). */
+	hasTask: boolean;
+	/** A current project is selected (any project-scoped view). */
+	hasProject: boolean;
+	/** A terminal is visible on screen (task / project-terminal / home-terminal). */
+	hasTerminal: boolean;
+}
+
+export const EMPTY_MENU_CONTEXT: MenuContext = {
+	hasTask: false,
+	hasProject: false,
+	hasTerminal: false,
+};
+
+const REQUIRES_TASK: ReadonlySet<MenuAction> = new Set<MenuAction>([
+	MENU_ACTIONS.taskRename,
+	MENU_ACTIONS.taskSetOverview,
+	MENU_ACTIONS.taskAddNote,
+	MENU_ACTIONS.taskMoveToDo,
+	MENU_ACTIONS.taskMoveInProgress,
+	MENU_ACTIONS.taskMoveUserQuestions,
+	MENU_ACTIONS.taskMoveReviewAi,
+	MENU_ACTIONS.taskMoveReviewUser,
+	MENU_ACTIONS.taskMarkCompleted,
+	MENU_ACTIONS.taskMarkCancelled,
+	MENU_ACTIONS.taskToggleWatch,
+	MENU_ACTIONS.taskSpawnVariants,
+	MENU_ACTIONS.taskAddAttempts,
+	MENU_ACTIONS.taskDuplicate,
+	MENU_ACTIONS.taskDelete,
+	MENU_ACTIONS.taskOpenInIde,
+	MENU_ACTIONS.taskOpenInFinder,
+	MENU_ACTIONS.taskCopyWorktreePath,
+	// Task-scoped project ops (need a task branch to push / create-PR)
+	MENU_ACTIONS.projectCreatePr,
+	MENU_ACTIONS.projectPushBranch,
+	MENU_ACTIONS.projectPushAndCreatePr,
+	MENU_ACTIONS.projectMergeToMain,
+	MENU_ACTIONS.projectRebaseOnMain,
+	MENU_ACTIONS.projectShowBranchStatus,
+	MENU_ACTIONS.projectDevServerStart,
+	MENU_ACTIONS.projectDevServerStop,
+	MENU_ACTIONS.projectDevServerRestart,
+	MENU_ACTIONS.projectDevServerStatus,
+]);
+
+const REQUIRES_PROJECT: ReadonlySet<MenuAction> = new Set<MenuAction>([
+	MENU_ACTIONS.revealProjectFolder,
+	MENU_ACTIONS.projectPullMain,
+	MENU_ACTIONS.projectSettings,
+	MENU_ACTIONS.projectCustomColumns,
+	MENU_ACTIONS.projectCustomLabels,
+	MENU_ACTIONS.termToggleProjectTerminal,
+]);
+
+const REQUIRES_TERMINAL: ReadonlySet<MenuAction> = new Set<MenuAction>([
+	MENU_ACTIONS.termSplitH,
+	MENU_ACTIONS.termSplitV,
+	MENU_ACTIONS.termClosePane,
+	MENU_ACTIONS.termZoomPane,
+	MENU_ACTIONS.termShowPaneNumbers,
+	MENU_ACTIONS.termSetPaneTitle,
+	MENU_ACTIONS.termLastPane,
+	MENU_ACTIONS.termSelectNext,
+	MENU_ACTIONS.termSelectPrev,
+	MENU_ACTIONS.termSelectUp,
+	MENU_ACTIONS.termSelectDown,
+	MENU_ACTIONS.termSelectLeft,
+	MENU_ACTIONS.termSelectRight,
+	MENU_ACTIONS.termChoosePane,
+	MENU_ACTIONS.termMarkPane,
+	MENU_ACTIONS.termSwapMarked,
+	MENU_ACTIONS.termSwapNext,
+	MENU_ACTIONS.termSwapPrev,
+	MENU_ACTIONS.termRotateCw,
+	MENU_ACTIONS.termRotateCcw,
+	MENU_ACTIONS.termResizeWiden,
+	MENU_ACTIONS.termResizeNarrow,
+	MENU_ACTIONS.termResizeTaller,
+	MENU_ACTIONS.termResizeShorter,
+	MENU_ACTIONS.termBreakPane,
+	MENU_ACTIONS.termJoinPane,
+	MENU_ACTIONS.termSyncPanes,
+	MENU_ACTIONS.termSendToAll,
+	MENU_ACTIONS.termCapturePane,
+	MENU_ACTIONS.termStartRecording,
+	MENU_ACTIONS.termStopRecording,
+	MENU_ACTIONS.termRespawnPane,
+	MENU_ACTIONS.termKillOtherPanes,
+	MENU_ACTIONS.termLayoutTiled,
+	MENU_ACTIONS.termLayoutEvenH,
+	MENU_ACTIONS.termLayoutEvenV,
+	MENU_ACTIONS.termLayoutMainH,
+	MENU_ACTIONS.termLayoutMainV,
+	MENU_ACTIONS.termLayoutCycle,
+	MENU_ACTIONS.termLayoutSave,
+	MENU_ACTIONS.termLayoutReset,
+	MENU_ACTIONS.termNewWindow,
+	MENU_ACTIONS.termRenameWindow,
+	MENU_ACTIONS.termCloseWindow,
+	MENU_ACTIONS.termNextWindow,
+	MENU_ACTIONS.termPrevWindow,
+	MENU_ACTIONS.termLastWindow,
+	MENU_ACTIONS.termFindWindow,
+	MENU_ACTIONS.termMarkWindow,
+	MENU_ACTIONS.termSwapMarkedWindow,
+	MENU_ACTIONS.termMoveWindow,
+	MENU_ACTIONS.termRenumberWindows,
+	MENU_ACTIONS.termRenameSession,
+	MENU_ACTIONS.termDetach,
+	MENU_ACTIONS.termEnterCopyMode,
+	MENU_ACTIONS.termCopyFindForward,
+	MENU_ACTIONS.termCopyFindBackward,
+	MENU_ACTIONS.termListBuffers,
+	MENU_ACTIONS.termChooseBuffer,
+	MENU_ACTIONS.termSaveBuffer,
+	MENU_ACTIONS.termClearBuffers,
+	MENU_ACTIONS.termToggleMouse,
+	MENU_ACTIONS.termKeymapDefault,
+	MENU_ACTIONS.termKeymapIterm2,
+	MENU_ACTIONS.termResumeRestart,
+	MENU_ACTIONS.termClearBuffer,
+	MENU_ACTIONS.termSoftReset,
+	MENU_ACTIONS.termHardReset,
+]);
+
+function meetsContext(action: MenuAction, ctx: MenuContext): boolean {
+	if (REQUIRES_TERMINAL.has(action) && !ctx.hasTerminal) return false;
+	if (REQUIRES_TASK.has(action) && !ctx.hasTask) return false;
+	if (REQUIRES_PROJECT.has(action) && !ctx.hasProject) return false;
+	return true;
+}
+
+// Mutated by `buildApplicationMenu` right before menu construction so every
+// `item()` call inside the per-menu builders can see the current context
+// without threading it through every nested helper.
+let currentContext: MenuContext = EMPTY_MENU_CONTEXT;
+
+/**
+ * Shorthand for an actionable menu item. Items render disabled when either:
+ *   1. Their action is in `NOT_YET_IMPLEMENTED` (roadmap placeholder), or
+ *   2. The current `MenuContext` doesn't satisfy the action's requirement
+ *      (e.g. tmux pane splits with no terminal visible).
  */
 function item(spec: Item): ApplicationMenuItemConfig {
-	const enabled = spec.action ? !NOT_YET_IMPLEMENTED.has(spec.action) : true;
+	const action = spec.action;
+	const inRoadmap = action ? NOT_YET_IMPLEMENTED.has(action) : false;
+	const contextOk = action ? meetsContext(action, currentContext) : true;
+	const enabled = !inRoadmap && contextOk;
 	return {
 		label: spec.label,
 		...(spec.action ? { action: spec.action } : {}),
@@ -672,8 +826,9 @@ function helpMenu(): ApplicationMenuItemConfig {
 	};
 }
 
-export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
-	return [
+export function buildApplicationMenu(context: MenuContext = EMPTY_MENU_CONTEXT): ApplicationMenuItemConfig[] {
+	currentContext = context;
+	const menu = [
 		appMenu(),
 		fileMenu(),
 		editMenu(),
@@ -684,4 +839,33 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
 		windowMenu(),
 		helpMenu(),
 	];
+	currentContext = EMPTY_MENU_CONTEXT;
+	return menu;
+}
+
+// ── Live menu-context store ──────────────────────────────────────────────
+//
+// The renderer pushes a fresh `MenuContext` every time the route changes via
+// the `updateMenuContext` RPC. The handler stores it here and notifies any
+// listener (registered by `src/bun/index.ts`) so the native menu can be
+// rebuilt with the new enabled/disabled state.
+
+let liveContext: MenuContext = EMPTY_MENU_CONTEXT;
+let contextListener: ((ctx: MenuContext) => void) | null = null;
+
+export function getMenuContext(): MenuContext {
+	return liveContext;
+}
+
+export function applyMenuContext(ctx: MenuContext): void {
+	const changed =
+		ctx.hasTask !== liveContext.hasTask ||
+		ctx.hasProject !== liveContext.hasProject ||
+		ctx.hasTerminal !== liveContext.hasTerminal;
+	liveContext = ctx;
+	if (changed) contextListener?.(ctx);
+}
+
+export function onMenuContextChange(fn: (ctx: MenuContext) => void): void {
+	contextListener = fn;
 }

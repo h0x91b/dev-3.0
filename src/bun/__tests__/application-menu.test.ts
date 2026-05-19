@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildApplicationMenu, MENU_ACTIONS } from "../application-menu";
+import { buildApplicationMenu, MENU_ACTIONS, type MenuContext } from "../application-menu";
+
+const FULL_CONTEXT: MenuContext = { hasTask: true, hasProject: true, hasTerminal: true };
+const PROJECT_ONLY: MenuContext = { hasTask: false, hasProject: true, hasTerminal: false };
 
 type AnyMenuItem = {
 	label?: string;
@@ -84,14 +87,35 @@ describe("buildApplicationMenu", () => {
 		]);
 	});
 
-	it("exposes core tmux pane operations as enabled in the Terminal menu", () => {
-		const menu = buildApplicationMenu() as AnyMenuItem[];
+	it("exposes core tmux pane operations as enabled when a terminal is on screen", () => {
+		const menu = buildApplicationMenu(FULL_CONTEXT) as AnyMenuItem[];
 		expect(findItemByAction(menu, MENU_ACTIONS.termSplitH)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termSplitV)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termZoomPane)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termClosePane)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutTiled)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutCycle)?.enabled).toBe(true);
+	});
+
+	it("greys out tmux pane operations when no terminal is visible", () => {
+		const menu = buildApplicationMenu(PROJECT_ONLY) as AnyMenuItem[];
+		expect(findItemByAction(menu, MENU_ACTIONS.termSplitH)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.termSplitV)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutTiled)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutCycle)?.enabled).toBe(false);
+		// Toggling the project terminal still works in a project-only context.
+		expect(findItemByAction(menu, MENU_ACTIONS.termToggleProjectTerminal)?.enabled).toBe(true);
+		// Toggle home terminal and cheat sheet are always available.
+		expect(findItemByAction(menu, MENU_ACTIONS.termToggleHomeTerminal)?.enabled).toBe(true);
+		expect(findItemByAction(menu, MENU_ACTIONS.termCheatSheet)?.enabled).toBe(true);
+	});
+
+	it("greys out task / project items when no task / project is in scope", () => {
+		const menu = buildApplicationMenu() as AnyMenuItem[]; // empty context
+		expect(findItemByAction(menu, MENU_ACTIONS.taskOpenInFinder)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.taskCopyWorktreePath)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.projectPullMain)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.projectSettings)?.enabled).toBe(false);
 	});
 
 	it("renders the mark/swap pane roadmap as disabled until follow-up", () => {
@@ -109,8 +133,8 @@ describe("buildApplicationMenu", () => {
 		expect(helpCheat?.enabled).toBe(true);
 	});
 
-	it("provides project git ops in the Project menu", () => {
-		const menu = buildApplicationMenu() as AnyMenuItem[];
+	it("provides project git ops in the Project menu when context is in scope", () => {
+		const menu = buildApplicationMenu(FULL_CONTEXT) as AnyMenuItem[];
 		expect(findItemByAction(menu, MENU_ACTIONS.projectPullMain)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.projectCreatePr)?.enabled).toBe(true);
 		// Follow-up commits will wire push-branch / push-and-create-pr.

@@ -63,6 +63,20 @@ function App() {
 		return () => window.removeEventListener("menu:show-tmux-cheat-sheet", onShow);
 	}, []);
 
+	// Push the current MenuContext to the bun side on every route change so the
+	// native menu can grey out task / project / terminal items that don't apply.
+	useEffect(() => {
+		const r = state.route;
+		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
+		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
+		const hasTerminal = r.screen === "task" || r.screen === "project-terminal" || r.screen === "home-terminal";
+		try {
+			void api.request.updateMenuContext?.({ hasTask, hasProject, hasTerminal })?.catch(() => {});
+		} catch {
+			// In tests `api.request` is mocked without this method; safe to ignore.
+		}
+	}, [state.route]);
+
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);

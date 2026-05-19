@@ -20,7 +20,7 @@ import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
-import { buildApplicationMenu, MENU_ACTIONS } from "./application-menu";
+import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
@@ -255,7 +255,14 @@ log.info("RPC handlers registered");
 
 // --- Application Menu ---
 
-ApplicationMenu.setApplicationMenu(buildApplicationMenu());
+ApplicationMenu.setApplicationMenu(buildApplicationMenu(getMenuContext()));
+
+// Rebuild the menu whenever the renderer pushes a new context (route change).
+// Items that require a task / project / terminal toggle their enabled state.
+onMenuContextChange((ctx) => {
+	log.debug("Menu context changed, rebuilding native menu", { hasTask: ctx.hasTask, hasProject: ctx.hasProject, hasTerminal: ctx.hasTerminal });
+	ApplicationMenu.setApplicationMenu(buildApplicationMenu(ctx));
+});
 
 // --- Main Window ---
 
