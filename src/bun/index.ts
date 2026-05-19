@@ -20,7 +20,7 @@ import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
-import { buildApplicationMenu, MENU_ACTIONS } from "./application-menu";
+import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
@@ -255,7 +255,14 @@ log.info("RPC handlers registered");
 
 // --- Application Menu ---
 
-ApplicationMenu.setApplicationMenu(buildApplicationMenu());
+ApplicationMenu.setApplicationMenu(buildApplicationMenu(getMenuContext()));
+
+// Rebuild the menu whenever the renderer pushes a new context (route change).
+// Items that require a task / project / terminal toggle their enabled state.
+onMenuContextChange((ctx) => {
+	log.debug("Menu context changed, rebuilding native menu", { hasTask: ctx.hasTask, hasProject: ctx.hasProject, hasTerminal: ctx.hasTerminal });
+	ApplicationMenu.setApplicationMenu(buildApplicationMenu(ctx));
+});
 
 // --- Main Window ---
 
@@ -618,6 +625,19 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}
+	} else if (e.data.action === MENU_ACTIONS.helpGithub) {
+		Utils.openExternal("https://github.com/h0x91b/dev-3.0");
+	} else if (e.data.action === MENU_ACTIONS.helpReportBug) {
+		Utils.openExternal("https://github.com/h0x91b/dev-3.0/issues/new");
+	} else if (e.data.action === MENU_ACTIONS.helpDocumentation) {
+		Utils.openExternal("https://h0x91b.github.io/dev-3.0/");
+	} else {
+		// Everything else (task / project / view / terminal actions that the
+		// renderer is responsible for) goes through the universal `menuAction`
+		// push channel. The renderer's `menuRouter` (App.tsx listener) decides
+		// what to do based on its current state.
+		log.debug("Routing menu action to renderer", { action: e.data.action });
+		mainWindow.webview.rpc?.send("menuAction", { action: e.data.action });
 	}
 });
 

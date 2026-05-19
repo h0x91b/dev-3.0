@@ -30,6 +30,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	osc52Clipboard: (payload) => window.dispatchEvent(new CustomEvent("rpc:osc52Clipboard", { detail: payload })),
 	showRemoteAccessQR: (payload) => window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: payload })),
 	qrTokenConsumed: () => window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed")),
+	menuAction: (payload) => window.dispatchEvent(new CustomEvent("rpc:menuAction", { detail: payload })),
 };
 
 /**

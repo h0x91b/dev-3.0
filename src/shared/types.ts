@@ -1388,6 +1388,15 @@ export type AppRPCSchema = {
 				params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" };
 				response: void;
 			};
+			/**
+			 * Pushed by the renderer whenever the current route changes; the bun
+			 * side uses it to rebuild the native menu so context-aware items
+			 * (task / project / terminal) render disabled when irrelevant.
+			 */
+			updateMenuContext: {
+				params: { hasTask: boolean; hasProject: boolean; hasTerminal: boolean };
+				response: void;
+			};
 			checkCaffeinateAvailable: {
 				params: void;
 				response: { available: boolean };
@@ -1456,6 +1465,17 @@ export type AppRPCSchema = {
 			osc52Clipboard: { taskId: string; text: string; len: number };
 			qrTokenConsumed: {};
 			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
+			/**
+			 * Universal menu-action dispatch. The bun side fires this whenever the
+			 * native menu emits an `application-menu-clicked` event whose action is
+			 * routed to the renderer (most of them are). The renderer's `menuRouter`
+			 * picks it up and dispatches into the relevant flow (modal, navigation,
+			 * RPC call, state mutation) based on its `current` view/task/project.
+			 *
+			 * Bun-side side effects (open external URL, dialog, display-popup) do
+			 * not go through this channel — they execute in `src/bun/index.ts`.
+			 */
+			menuAction: { action: string };
 		};
 	}>;
 };

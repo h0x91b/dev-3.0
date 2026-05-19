@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAppState, type Route } from "./state";
 import { api } from "./rpc";
-import { useT } from "./i18n";
+import { useT, useLocale } from "./i18n";
+import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -26,6 +27,7 @@ import ViewportLab from "./components/ViewportLab";
 import { ErrorToast } from "./components/ErrorToast";
 import StuckPreparationModal from "./components/StuckPreparationModal";
 import FolderPickerHost from "./components/FolderPickerModal";
+import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
@@ -35,7 +37,45 @@ const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
+	const [, setLocale] = useLocale();
 	useViewport(state.route);
+
+	// Listen for menu actions routed from the bun side. Any menu item that the
+	// renderer is responsible for arrives here as `rpc:menuAction` with
+	// `{ action: <string> }`. The router in `menuRouter.ts` handles dispatch.
+	useEffect(() => {
+		function onMenuAction(e: Event) {
+			const detail = (e as CustomEvent).detail;
+			if (!detail?.action) return;
+			handleMenuAction(detail.action, { state, dispatch, setLocale }).catch((err) => {
+				console.error("[App] handleMenuAction failed", err);
+			});
+		}
+		window.addEventListener("rpc:menuAction", onMenuAction);
+		return () => window.removeEventListener("rpc:menuAction", onMenuAction);
+	}, [state, dispatch, setLocale]);
+
+	// Tmux cheat sheet modal (Terminal > Show Tmux Cheat Sheet / Help > Tmux Cheat Sheet).
+	const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
+	useEffect(() => {
+		function onShow() { setCheatSheetOpen(true); }
+		window.addEventListener("menu:show-tmux-cheat-sheet", onShow);
+		return () => window.removeEventListener("menu:show-tmux-cheat-sheet", onShow);
+	}, []);
+
+	// Push the current MenuContext to the bun side on every route change so the
+	// native menu can grey out task / project / terminal items that don't apply.
+	useEffect(() => {
+		const r = state.route;
+		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
+		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
+		const hasTerminal = r.screen === "task" || r.screen === "project-terminal" || r.screen === "home-terminal";
+		try {
+			void api.request.updateMenuContext?.({ hasTask, hasProject, hasTerminal })?.catch(() => {});
+		} catch {
+			// In tests `api.request` is mocked without this method; safe to ignore.
+		}
+	}, [state.route]);
 
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
@@ -955,6 +995,7 @@ function App() {
 			<ErrorToast />
 			<StuckPreparationModal tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
+			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
 		</div>
 	);
 

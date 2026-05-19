@@ -1,0 +1,5 @@
+Redesigned the native macOS menu bar from 5 to 9 top-level menus (App, File, Edit, Task, Project, View, Terminal, Window, Help), exposing ~70 features that were previously hidden inside the renderer. Tmux pane / window / session / layout operations now have a discoverability surface and the mark+swap pattern is part of the roadmap. Items that still need backend wiring ship as disabled (visible but greyed out) so users see what is coming without misfiring no-op clicks.
+
+Adds the Tmux Cheat Sheet — a localised modal (en / ru / es) reachable from Terminal > Show Tmux Cheat Sheet and Help > Tmux Cheat Sheet, organised by panes / layout / windows / sessions / copy mode / misc.
+
+Native menu items now toggle their enabled state based on the current view: Task items grey out when no task is open, Project items grey out when no project is selected, and tmux pane / layout operations grey out when no terminal is visible. The renderer pushes the live `MenuContext` to the bun side on every route change.
