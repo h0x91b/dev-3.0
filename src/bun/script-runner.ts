@@ -296,6 +296,41 @@ export function cleanupTaskScripts(taskId: string): void {
 }
 
 /**
+ * Register an externally-managed entry in the script registry.
+ * Used by Dev Server to expose itself in the unified Scripts panel.
+ */
+export function registerExternalScript(params: {
+	taskId: string;
+	scriptName: string;
+	displayName: string;
+	command: string;
+	paneId: string;
+}): void {
+	const m = getOrCreateTaskMap(params.taskId);
+	m.set(params.scriptName, {
+		taskId: params.taskId,
+		scriptName: params.scriptName,
+		displayName: params.displayName,
+		command: params.command,
+		runner: "npm",
+		placement: "right",
+		paneId: params.paneId,
+		status: "running",
+		startedAt: new Date().toISOString(),
+		external: true,
+	});
+	broadcastStates(params.taskId);
+}
+
+export function unregisterExternalScript(taskId: string, scriptName: string): void {
+	const m = registry.get(taskId);
+	if (!m) return;
+	if (m.delete(scriptName)) {
+		broadcastStates(taskId);
+	}
+}
+
+/**
  * Returns the effective placement for a script:
  *   override → default → null
  */

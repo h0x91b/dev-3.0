@@ -6,7 +6,7 @@ import type {
 	ScriptPlacementPrefs,
 	Task,
 } from "../../shared/types";
-import { SCRIPT_PLACEMENTS, SCRIPT_RUNNERS } from "../../shared/types";
+import { SCRIPT_PLACEMENTS, SCRIPT_RUNNERS, DEV_SERVER_SCRIPT_NAME } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
 import { parsePackageScripts } from "../package-scripts";
@@ -16,7 +16,9 @@ import {
 	killScriptPane as killScriptPaneInRegistry,
 	focusScriptPane as focusScriptPaneInRegistry,
 	getScriptStates as getScriptStatesInRegistry,
+	getCachedScriptStates,
 } from "../script-runner";
+import { stopDevServer, killDevServerSession } from "./tmux-pty";
 import { log } from "./shared-pure";
 
 async function parsePackageScriptsHandler(params: {
@@ -88,7 +90,19 @@ async function runScriptHandler(params: {
 	return state;
 }
 
+function findExternalState(taskId: string, scriptName: string): ScriptState | undefined {
+	const cached = getCachedScriptStates(taskId);
+	return cached.find((s) => s.scriptName === scriptName && s.external);
+}
+
 async function stopScriptHandler(params: { taskId: string; scriptName: string }): Promise<{ ok: true }> {
+	if (params.scriptName === DEV_SERVER_SCRIPT_NAME || findExternalState(params.taskId, params.scriptName)) {
+		const task = await findTaskSomehow(params.taskId);
+		if (task) {
+			await stopDevServer({ taskId: task.id, projectId: task.projectId });
+		}
+		return { ok: true };
+	}
 	const task = await findTaskSomehow(params.taskId);
 	const socket = task?.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await stopScriptInRegistry(params.taskId, params.scriptName, socket);
@@ -96,6 +110,12 @@ async function stopScriptHandler(params: { taskId: string; scriptName: string })
 }
 
 async function killScriptPaneHandler(params: { taskId: string; scriptName: string }): Promise<{ ok: true }> {
+	if (params.scriptName === DEV_SERVER_SCRIPT_NAME || findExternalState(params.taskId, params.scriptName)) {
+		const task = await findTaskSomehow(params.taskId);
+		const socket = task?.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		await killDevServerSession(params.taskId, socket);
+		return { ok: true };
+	}
 	const task = await findTaskSomehow(params.taskId);
 	const socket = task?.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killScriptPaneInRegistry(params.taskId, params.scriptName, socket);

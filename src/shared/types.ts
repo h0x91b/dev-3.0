@@ -669,7 +669,19 @@ export interface ScriptState {
 	startedAt: string;
 	exitedAt?: string;
 	exitCode?: number | null;
+	/**
+	 * When true, the entry is owned by a different subsystem (e.g. Dev Server)
+	 * and its lifecycle (start/stop/kill) is handled by that subsystem.
+	 * The Scripts UI surfaces these so users can focus / stop them from one
+	 * place, but routes Stop/Kill to the owning RPC.
+	 */
+	external?: boolean;
+	/** Display label override for external entries (e.g. "Dev Server"). */
+	displayName?: string;
 }
+
+/** Synthetic script name reserved for the project's Dev Server entry in the registry. */
+export const DEV_SERVER_SCRIPT_NAME = "__dev_server__";
 
 export interface MergeCompletionPromptState {
 	fingerprint: string;

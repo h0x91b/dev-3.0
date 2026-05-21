@@ -328,7 +328,11 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 									key={s.scriptName}
 									state={s}
 									t={t}
-									onFocus={() => onRowClick(s.scriptName)}
+									onFocus={async () => {
+										try {
+											await api.request.focusScriptPane({ taskId: task.id, scriptName: s.scriptName });
+										} catch { /* noop */ }
+									}}
 									onStop={() => onStop(s.scriptName)}
 									onKill={() => onKill(s.scriptName)}
 								/>
@@ -510,14 +514,17 @@ function RunningRow({
 	onKill: () => void;
 	t: ReturnType<typeof useT>;
 }) {
+	const label = state.displayName ?? state.scriptName;
 	return (
 		<div className="px-3 py-1.5 flex items-center gap-2 hover:bg-elevated transition-colors group">
-			<span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
+			<span className={`w-2 h-2 rounded-full flex-shrink-0 ${state.external ? "bg-accent" : "bg-success"}`} />
 			<button onClick={onFocus} className="flex-1 min-w-0 text-left flex items-center gap-2">
-				<span className="text-sm text-fg font-medium truncate">{state.scriptName}</span>
+				<span className="text-sm text-fg font-medium truncate">{label}</span>
 				<span className="text-xs text-fg-3 truncate">{state.command}</span>
 			</button>
-			<span className="text-xs text-fg-3 opacity-60 group-hover:opacity-100">{PLACEMENT_GLYPH[state.placement]}</span>
+			{!state.external && (
+				<span className="text-xs text-fg-3 opacity-60 group-hover:opacity-100">{PLACEMENT_GLYPH[state.placement]}</span>
+			)}
 			<button
 				onClick={onFocus}
 				className="text-[0.625rem] px-1.5 py-0.5 rounded border border-edge text-fg-3 hover:text-fg hover:border-edge-active opacity-0 group-hover:opacity-100 transition-opacity"
