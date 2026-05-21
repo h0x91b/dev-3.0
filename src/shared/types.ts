@@ -613,6 +613,62 @@ export interface Task {
 	 * source todo task into every variant spawned from it.
 	 */
 	scratch?: boolean;
+	/** Per-task placement preferences for package.json scripts. */
+	scriptPlacement?: ScriptPlacementPrefs;
+}
+
+// ---- Package scripts runner ----
+
+export type ScriptPlacement = "left" | "top" | "right" | "bottom" | "window";
+
+export const SCRIPT_PLACEMENTS: readonly ScriptPlacement[] = ["left", "top", "right", "bottom", "window"] as const;
+
+export interface ScriptPlacementPrefs {
+	/** Placement used when a script has no override; set on first script launch in the task. */
+	default?: ScriptPlacement;
+	/** Per-script overrides, keyed by script name. */
+	overrides?: Record<string, ScriptPlacement>;
+}
+
+export type ScriptRunner = "bun" | "pnpm" | "yarn" | "npm";
+
+export const SCRIPT_RUNNERS: readonly ScriptRunner[] = ["bun", "pnpm", "yarn", "npm"] as const;
+
+export interface PackageScriptEntry {
+	name: string;
+	command: string;
+}
+
+export interface PackageScripts {
+	/** True if a parseable package.json exists in the worktree. */
+	exists: boolean;
+	/** Worktree-relative path to the parsed package.json (e.g. "package.json"). */
+	path: string | null;
+	scripts: PackageScriptEntry[];
+	runner: ScriptRunner;
+	/** Runner was auto-detected from a lockfile (vs falling back to npm). */
+	runnerAutoDetected: boolean;
+	/** Multiple lockfiles found — runner is ambiguous. */
+	multipleLockfiles: boolean;
+	/** Lockfiles actually present in the worktree. */
+	lockfiles: string[];
+	/** Reason the package.json could not be used, if any (file missing / parse error / no scripts). */
+	error: string | null;
+}
+
+export type ScriptStatus = "running" | "exited" | "failed" | "stale";
+
+export interface ScriptState {
+	taskId: string;
+	scriptName: string;
+	command: string;
+	runner: ScriptRunner;
+	placement: ScriptPlacement;
+	paneId: string | null;
+	status: ScriptStatus;
+	startedAt: string;
+	exitedAt?: string;
+	exitCode?: number | null;
 }
 
 export interface MergeCompletionPromptState {
@@ -1145,6 +1201,45 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: DevServerStatus;
 			};
+			parsePackageScripts: {
+				params: { taskId: string; projectId: string };
+				response: PackageScripts;
+			};
+			getScriptStates: {
+				params: { taskId: string };
+				response: ScriptState[];
+			};
+			runScript: {
+				params: {
+					taskId: string;
+					projectId: string;
+					scriptName: string;
+					placement?: ScriptPlacement;
+					runner?: ScriptRunner;
+				};
+				response: ScriptState;
+			};
+			stopScript: {
+				params: { taskId: string; scriptName: string };
+				response: { ok: true };
+			};
+			killScriptPane: {
+				params: { taskId: string; scriptName: string };
+				response: { ok: true };
+			};
+			focusScriptPane: {
+				params: { taskId: string; scriptName: string };
+				response: { ok: true };
+			};
+			setTaskScriptPlacement: {
+				params: {
+					taskId: string;
+					projectId: string;
+					default?: ScriptPlacement | null;
+					override?: { scriptName: string; placement: ScriptPlacement | null };
+				};
+				response: Task;
+			};
 			openFileBrowser: {
 				params: { taskId: string; projectId: string };
 				response: { notInstalled: true; installCommand: string; linuxHint?: boolean } | void;
@@ -1447,6 +1542,7 @@ export type AppRPCSchema = {
 			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
 			 */
 			openTaskFromNotification: { taskId: string; projectId: string };
+			scriptStateChanged: { taskId: string; states: ScriptState[] };
 		};
 	}>;
 	webview: RPCSchema<{

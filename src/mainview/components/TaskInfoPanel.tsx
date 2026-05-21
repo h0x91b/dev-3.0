@@ -18,6 +18,7 @@ import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
 import SpawnAgentModal from "./SpawnAgentModal";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
+import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
 import TaskNotes from "./task-info-panel/TaskNotes";
@@ -549,6 +550,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
 						<TaskTmuxControls taskId={task.id} />
 						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 						{worktreeSettingsButton}
 						<button
 							onClick={() => isFullPage
@@ -604,6 +606,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 							<TaskTmuxControls taskId={task.id} />
 							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 							<button
 								onClick={() => isFullPage
 									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })

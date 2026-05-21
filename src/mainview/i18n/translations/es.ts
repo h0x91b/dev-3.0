@@ -10,6 +10,7 @@ import columns from "./es/columns";
 import tips from "./es/tips";
 import gaugeDemo from "./es/gaugeDemo";
 import overview from "./es/overview";
+import scripts from "./es/scripts";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -23,6 +24,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...tips,
 	...gaugeDemo,
 	...overview,
+	...scripts,
 };
 
 export default es;
