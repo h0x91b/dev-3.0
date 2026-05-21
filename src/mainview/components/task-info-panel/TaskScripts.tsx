@@ -11,6 +11,7 @@ import type {
 import { SCRIPT_PLACEMENTS } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
+import RunScriptsBatchModal from "../RunScriptsBatchModal";
 
 interface TaskScriptsProps {
 	task: Task;
@@ -57,6 +58,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	const [pickerFor, setPickerFor] = useState<{ scriptName: string; firstTime: boolean } | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [batchOpen, setBatchOpen] = useState(false);
 
 	const runningCount = useMemo(() => states.filter((s) => s.status === "running").length, [states]);
 	const failedScript = useMemo(() => states.find((s) => s.status === "failed"), [states]);
@@ -95,28 +97,42 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	}, [task.id]);
 
 	useEffect(() => {
+		function onOpenDropdown(e: Event) {
+			const detail = (e as CustomEvent).detail as { taskId: string };
+			if (detail.taskId !== task.id) return;
+			openDropdown();
+		}
+		function onOpenBatch(e: Event) {
+			const detail = (e as CustomEvent).detail as { taskId: string };
+			if (detail.taskId !== task.id) return;
+			setBatchOpen(true);
+			setOpen(false);
+		}
+		window.addEventListener("menu:task-run-script", onOpenDropdown);
+		window.addEventListener("menu:task-run-multiple-scripts", onOpenBatch);
+		return () => {
+			window.removeEventListener("menu:task-run-script", onOpenDropdown);
+			window.removeEventListener("menu:task-run-multiple-scripts", onOpenBatch);
+		};
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [task.id, isTaskActive]);
+
+	useEffect(() => {
 		if (open) refresh();
 	}, [open, refresh]);
 
 	useEffect(() => {
 		if (!open) return;
-		function onClick(e: MouseEvent) {
-			const target = e.target as Node;
-			if (btnRef.current?.contains(target)) return;
-			if ((target as HTMLElement).closest?.("[data-task-scripts-popover]")) return;
-			setOpen(false);
-			setPickerFor(null);
-		}
+		// Click-outside handled by the backdrop element rendered with the popover.
+		// We only need keyboard Escape support at the document level.
 		function onKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				if (pickerFor) setPickerFor(null);
 				else setOpen(false);
 			}
 		}
-		document.addEventListener("mousedown", onClick);
 		document.addEventListener("keydown", onKey);
 		return () => {
-			document.removeEventListener("mousedown", onClick);
 			document.removeEventListener("keydown", onKey);
 		};
 	}, [open, pickerFor]);
@@ -243,113 +259,146 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		return "text-fg-3 border-edge hover:bg-elevated hover:text-fg";
 	})();
 
+	function closeDropdown() {
+		setOpen(false);
+		setPickerFor(null);
+	}
+
 	const dropdown = open ? createPortal(
-		<div
-			data-task-scripts-popover
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active w-[24rem] py-1"
-			style={{ top: pos.top, left: pos.left }}
-			onClick={(e) => e.stopPropagation()}
-		>
-			{/* Header */}
-			<div className="flex items-center justify-between px-3 py-2 border-b border-edge">
-				<div className="text-xs text-fg-3 truncate">
-					{pkg?.exists
-						? t("scripts.dropdown.header", { count: pkg.scripts.length })
-						: pkg?.error === "no-package-json"
-							? t("scripts.empty.noPackageJson")
-							: pkg?.error === "no-scripts"
-								? t("scripts.empty.noScripts")
-								: pkg?.error?.startsWith("parse-failed")
-									? t("scripts.empty.parseError", { error: pkg.error })
-									: t("scripts.empty.noPackageJson")}
+		<>
+			{/* Backdrop captures clicks anywhere outside the popover (including over WKWebView terminals) */}
+			<div
+				className="fixed inset-0 z-40"
+				onMouseDown={closeDropdown}
+				data-task-scripts-backdrop
+			/>
+			<div
+				data-task-scripts-popover
+				className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active w-[24rem] flex flex-col"
+				style={{
+					top: pos.top,
+					left: pos.left,
+					maxHeight: `calc(100vh - ${pos.top + 16}px)`,
+				}}
+				onMouseDown={(e) => e.stopPropagation()}
+				onClick={(e) => e.stopPropagation()}
+			>
+				{/* Sticky header */}
+				<div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-edge">
+					<div className="text-xs text-fg-3 truncate">
+						{pkg?.exists
+							? t("scripts.dropdown.header", { count: pkg.scripts.length })
+							: pkg?.error === "no-package-json"
+								? t("scripts.empty.noPackageJson")
+								: pkg?.error === "no-scripts"
+									? t("scripts.empty.noScripts")
+									: pkg?.error?.startsWith("parse-failed")
+										? t("scripts.empty.parseError", { error: pkg.error })
+										: t("scripts.empty.noPackageJson")}
+					</div>
+					{pkg?.exists && (
+						<RunnerChip
+							runner={runner ?? pkg.runner}
+							pkg={pkg}
+							onSelect={setRunner}
+						/>
+					)}
 				</div>
-				{pkg?.exists && (
-					<RunnerChip
-						runner={runner ?? pkg.runner}
-						pkg={pkg}
-						onSelect={setRunner}
-					/>
+				{pkg?.multipleLockfiles && (
+					<div className="flex-shrink-0 px-3 py-1.5 text-xs text-warning bg-warning/10 border-b border-warning/20">
+						⚠ {t("scripts.warning.multipleLockfiles")}: {pkg.lockfiles.join(", ")}
+					</div>
+				)}
+				{error && (
+					<div className="flex-shrink-0 px-3 py-1.5 text-xs text-danger bg-danger/10 border-b border-danger/20">
+						{error}
+					</div>
+				)}
+
+				{/* Scrollable body */}
+				<div className="overflow-y-auto py-1 min-h-0">
+					{/* Running section */}
+					{states.filter((s) => s.status === "running").length > 0 && (
+						<>
+							<div className="px-3 py-1.5 text-[0.625rem] uppercase tracking-wider font-semibold text-fg-3">
+								{t("scripts.section.running")}
+							</div>
+							{states.filter((s) => s.status === "running").map((s) => (
+								<RunningRow
+									key={s.scriptName}
+									state={s}
+									t={t}
+									onFocus={() => onRowClick(s.scriptName)}
+									onStop={() => onStop(s.scriptName)}
+									onKill={() => onKill(s.scriptName)}
+								/>
+							))}
+						</>
+					)}
+
+					{/* Scripts section */}
+					{pkg?.scripts && pkg.scripts.length > 0 && (
+						<>
+							<div className="px-3 py-1.5 mt-1 text-[0.625rem] uppercase tracking-wider font-semibold text-fg-3 border-t border-edge">
+								{t("scripts.section.scripts")}
+							</div>
+							{pkg.scripts.map((s) => (
+								<ScriptRow
+									key={s.name}
+									name={s.name}
+									command={s.command}
+									state={stateByName.get(s.name)}
+									lastPlacement={effectivePlacement(s.name)}
+									busy={busy === s.name}
+									onClick={() => onRowClick(s.name)}
+									onRunIn={() => setPickerFor({ scriptName: s.name, firstTime: false })}
+									onStop={() => onStop(s.name)}
+									onKill={() => onKill(s.name)}
+									onResetPlacement={() => onResetPlacement(s.name)}
+									t={t}
+								/>
+							))}
+						</>
+					)}
+				</div>
+
+				{/* Sticky inline picker (does not scroll away) */}
+				{pickerFor && (
+					<div className="flex-shrink-0 border-t border-edge px-3 py-3 bg-raised">
+						<div className="text-xs text-fg-2 mb-2">
+							{pickerFor.firstTime
+								? t("scripts.picker.titleFirstTime")
+								: t("scripts.picker.title", { name: pickerFor.scriptName })}
+						</div>
+						<div className="flex items-center gap-1.5">
+							{SCRIPT_PLACEMENTS.map((p) => (
+								<button
+									key={p}
+									onClick={() => onPickerConfirm(p)}
+									className="flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-elevated border border-edge hover:border-accent hover:bg-accent/10 transition-colors"
+									title={placementLabel(t, p)}
+								>
+									<PlacementGlyph placement={p} />
+									<span className="text-[0.625rem] text-fg-3">{placementLabel(t, p)}</span>
+								</button>
+							))}
+						</div>
+					</div>
+				)}
+
+				{/* Sticky footer */}
+				{pkg?.exists && pkg.scripts.length > 0 && (
+					<div className="flex-shrink-0 border-t border-edge px-3 py-2 flex items-center justify-between">
+						<button
+							onClick={() => { setBatchOpen(true); setOpen(false); }}
+							className="text-xs text-accent hover:text-accent-hover font-medium"
+						>
+							{t("scripts.footer.runMultiple")}
+						</button>
+					</div>
 				)}
 			</div>
-			{pkg?.multipleLockfiles && (
-				<div className="px-3 py-1.5 text-xs text-warning bg-warning/10 border-b border-warning/20">
-					⚠ {t("scripts.warning.multipleLockfiles")}: {pkg.lockfiles.join(", ")}
-				</div>
-			)}
-			{error && (
-				<div className="px-3 py-1.5 text-xs text-danger bg-danger/10 border-b border-danger/20">
-					{error}
-				</div>
-			)}
-
-			{/* Running section */}
-			{states.length > 0 && (
-				<>
-					<div className="px-3 py-1.5 text-[0.625rem] uppercase tracking-wider font-semibold text-fg-3">
-						{t("scripts.section.running")}
-					</div>
-					{states.filter((s) => s.status === "running").map((s) => (
-						<RunningRow
-							key={s.scriptName}
-							state={s}
-							t={t}
-							onFocus={() => onRowClick(s.scriptName)}
-							onStop={() => onStop(s.scriptName)}
-							onKill={() => onKill(s.scriptName)}
-						/>
-					))}
-				</>
-			)}
-
-			{/* Scripts section */}
-			{pkg?.scripts && pkg.scripts.length > 0 && (
-				<>
-					<div className="px-3 py-1.5 mt-1 text-[0.625rem] uppercase tracking-wider font-semibold text-fg-3 border-t border-edge">
-						{t("scripts.section.scripts")}
-					</div>
-					{pkg.scripts.map((s) => (
-						<ScriptRow
-							key={s.name}
-							name={s.name}
-							command={s.command}
-							state={stateByName.get(s.name)}
-							lastPlacement={effectivePlacement(s.name)}
-							busy={busy === s.name}
-							onClick={() => onRowClick(s.name)}
-							onRunIn={() => setPickerFor({ scriptName: s.name, firstTime: false })}
-							onStop={() => onStop(s.name)}
-							onKill={() => onKill(s.name)}
-							onResetPlacement={() => onResetPlacement(s.name)}
-							t={t}
-						/>
-					))}
-				</>
-			)}
-
-			{/* Inline picker */}
-			{pickerFor && (
-				<div className="border-t border-edge px-3 py-3 bg-raised">
-					<div className="text-xs text-fg-2 mb-2">
-						{pickerFor.firstTime
-							? t("scripts.picker.titleFirstTime")
-							: t("scripts.picker.title", { name: pickerFor.scriptName })}
-					</div>
-					<div className="flex items-center gap-1.5">
-						{SCRIPT_PLACEMENTS.map((p) => (
-							<button
-								key={p}
-								onClick={() => onPickerConfirm(p)}
-								className="flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-elevated border border-edge hover:border-accent hover:bg-accent/10 transition-colors"
-								title={placementLabel(t, p)}
-							>
-								<PlacementGlyph placement={p} />
-								<span className="text-[0.625rem] text-fg-3">{placementLabel(t, p)}</span>
-							</button>
-						))}
-					</div>
-				</div>
-			)}
-		</div>,
+		</>,
 		document.body,
 	) : null;
 
@@ -370,6 +419,16 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				)}
 			</button>
 			{dropdown}
+			{batchOpen && pkg?.exists && (
+				<RunScriptsBatchModal
+					task={task}
+					project={project}
+					pkg={pkg}
+					runner={runner ?? pkg.runner}
+					states={states}
+					onClose={() => setBatchOpen(false)}
+				/>
+			)}
 		</>
 	);
 }

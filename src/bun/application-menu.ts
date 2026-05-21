@@ -53,6 +53,10 @@ export const MENU_ACTIONS = {
 	taskOpenInIde: "task-open-in-ide",
 	taskOpenInFinder: "task-open-in-finder",
 	taskCopyWorktreePath: "task-copy-worktree-path",
+	taskRunScript: "task-run-script",
+	taskRunMultipleScripts: "task-run-multiple-scripts",
+	taskFocusRunningScript: "task-focus-running-script",
+	taskStopRunningScript: "task-stop-running-script",
 
 	// ── Project ──
 	projectPullMain: "project-pull-main",
@@ -348,6 +352,10 @@ const REQUIRES_TASK: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.taskOpenInIde,
 	MENU_ACTIONS.taskOpenInFinder,
 	MENU_ACTIONS.taskCopyWorktreePath,
+	MENU_ACTIONS.taskRunScript,
+	MENU_ACTIONS.taskRunMultipleScripts,
+	MENU_ACTIONS.taskFocusRunningScript,
+	MENU_ACTIONS.taskStopRunningScript,
 	// Task-scoped project ops (need a task branch to push / create-PR)
 	MENU_ACTIONS.projectCreatePr,
 	MENU_ACTIONS.projectPushBranch,
@@ -576,6 +584,11 @@ function taskMenu(): ApplicationMenuItemConfig {
 			item({ label: "Open in IDE…", action: MENU_ACTIONS.taskOpenInIde }),
 			item({ label: "Reveal Worktree in Finder", action: MENU_ACTIONS.taskOpenInFinder }),
 			item({ label: "Copy Worktree Path", action: MENU_ACTIONS.taskCopyWorktreePath }),
+			SEP,
+			item({ label: "Run Script…", action: MENU_ACTIONS.taskRunScript, accelerator: "r" }),
+			item({ label: "Run Multiple Scripts…", action: MENU_ACTIONS.taskRunMultipleScripts, accelerator: "shift+r" }),
+			item({ label: "Focus Running Script", action: MENU_ACTIONS.taskFocusRunningScript }),
+			item({ label: "Stop Running Script", action: MENU_ACTIONS.taskStopRunningScript }),
 		],
 	};
 }

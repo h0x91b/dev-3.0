@@ -45,6 +45,19 @@ const scripts = {
 	"scripts.menu.focusRunning": "Открыть pane скрипта…",
 	"scripts.menu.stopRunning": "Остановить скрипт…",
 	"scripts.error.runFailed": "Не удалось запустить \"{name}\": {error}",
+	"scripts.batch.title": "Запустить несколько скриптов",
+	"scripts.batch.script": "Скрипт",
+	"scripts.batch.placement": "Размещение",
+	"scripts.batch.pick": "выбери скрипт",
+	"scripts.batch.addRow": "Добавить скрипт",
+	"scripts.batch.removeRow": "Убрать",
+	"scripts.batch.alreadyRunning": "Уже запущен — будет сфокусирован существующий pane.",
+	"scripts.batch.launching": "Запускаю…",
+	"scripts.batch.launchN_one": "Запустить {count} скрипт",
+	"scripts.batch.launchN_few": "Запустить {count} скрипта",
+	"scripts.batch.launchN_many": "Запустить {count} скриптов",
+	"scripts.batch.launchN_other": "Запустить {count} скриптов",
+	"scripts.batch.error.empty": "Выбери хотя бы один скрипт.",
 };
 
 export default scripts;

@@ -43,6 +43,17 @@ const scripts = {
 	"scripts.menu.focusRunning": "Focus Running Script…",
 	"scripts.menu.stopRunning": "Stop Running Script…",
 	"scripts.error.runFailed": "Failed to run \"{name}\": {error}",
+	"scripts.batch.title": "Run multiple scripts",
+	"scripts.batch.script": "Script",
+	"scripts.batch.placement": "Placement",
+	"scripts.batch.pick": "pick a script",
+	"scripts.batch.addRow": "Add script",
+	"scripts.batch.removeRow": "Remove",
+	"scripts.batch.alreadyRunning": "Already running — will focus the existing pane.",
+	"scripts.batch.launching": "Launching…",
+	"scripts.batch.launchN_one": "Launch {count} script",
+	"scripts.batch.launchN_other": "Launch {count} scripts",
+	"scripts.batch.error.empty": "Pick at least one script.",
 };
 
 export default scripts;
