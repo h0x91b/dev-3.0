@@ -67,20 +67,28 @@ function readAccountShell(): string | null {
 	return null;
 }
 
-// Cached across the app lifetime. The user's login shell does not change while
-// dev-3.0 is running; reading it via `dscl` (macOS) on every call adds a sync
-// spawn to every task launch / cleanup script run. Tests can reset via
-// `_resetUserShellCacheForTests`.
+// Cached with a 1-hour TTL. The user's login shell is stable but not immutable
+// — some users keep dev-3.0 open for days/weeks, and they may change their
+// shell mid-session (e.g. `chsh`). Reading it via `dscl` on every call adds a
+// sync spawn to every task launch / cleanup script run, which is the actual
+// cost we're avoiding. One refresh per hour is a fine compromise.
+const USER_SHELL_TTL_MS = 60 * 60 * 1000;
 let cachedUserShell: string | null = null;
+let cachedUserShellAt = 0;
 
 export function getUserShell(): string {
-	if (cachedUserShell) return cachedUserShell;
+	const now = Date.now();
+	if (cachedUserShell && now - cachedUserShellAt < USER_SHELL_TTL_MS) {
+		return cachedUserShell;
+	}
 	cachedUserShell = readAccountShell() || process.env.SHELL || "/bin/zsh";
+	cachedUserShellAt = now;
 	return cachedUserShell;
 }
 
 export function _resetUserShellCacheForTests(): void {
 	cachedUserShell = null;
+	cachedUserShellAt = 0;
 }
 
 /**
