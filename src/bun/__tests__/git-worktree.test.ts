@@ -183,6 +183,32 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("feature/login-v1");
 		expect(branches).toContain("feature/login");
 	});
+
+	it("still deletes the branch when worktree directory was already removed externally", async () => {
+		// Regression: `git rev-parse --abbrev-ref HEAD` was being spawned with
+		// cwd=task.worktreePath. When the directory was gone, Bun.spawn threw
+		// ENOENT and the function aborted before deleting the branch. Result:
+		// stale branch on disk, and the next attempt to revive the task from
+		// completed/cancelled failed with "branch already exists".
+		const wtPath = join(repo.dir, "worktree-removed-externally");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+
+		// Simulate the directory being deleted out from under git (e.g. cleanup
+		// script `rm -rf`, manual cleanup, or filesystem inconsistency).
+		rmSync(wtPath, { recursive: true, force: true });
+		expect(existsSync(wtPath)).toBe(false);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "dev3/task-aaaaaaaa",
+		});
+
+		await removeWorktree(project, task);
+
+		const branches = g("git branch", repo.local);
+		expect(branches).not.toContain("dev3/task-aaaaaaaa");
+	});
 });
 
 // ─── createWorktree ──────────────────────────────────────────────────────────
@@ -515,6 +541,49 @@ describe("createWorktree edge cases", () => {
 			await expect(createWorktree(project, task)).rejects.toThrow(
 				'Branch "main" does not exist',
 			);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("self-heals a stale dev3/task-* branch left behind from a failed cleanup", async () => {
+		// Regression: when a previous move-to-completed failed to delete the
+		// branch (e.g. because the worktree dir was gone, so removeWorktree
+		// aborted), the next revive of the same task from completed/cancelled
+		// was failing with "a branch named '...' already exists".
+		const r = createLocalOnlyRepo("main");
+		try {
+			const project = makeProject(r.local);
+			const task = makeTask({ id: "44444444-5555-6666-7777-888888888888" });
+
+			// Pre-create the stale branch as if a prior cleanup had left it behind.
+			g("git branch dev3/task-44444444 main", r.local);
+
+			const result = await createWorktree(project, task);
+			expect(existsSync(result.worktreePath)).toBe(true);
+			expect(result.branchName).toBe("dev3/task-44444444");
+		} finally {
+			cleanupLocal(r);
+		}
+	});
+
+	it("self-heals a stale worktree directory left behind from a failed cleanup", async () => {
+		const r = createLocalOnlyRepo("main");
+		try {
+			const project = makeProject(r.local);
+			const task = makeTask({ id: "55555555-6666-7777-8888-999999999999" });
+
+			// Pre-create the worktree at the path createWorktree will pick, then
+			// detach it so the path is "stale" (directory present, branch removed).
+			const stalePath = join("/tmp/dev3-test", "worktrees", "tmp-repo", "55555555", "worktree");
+			mkdirSync(stalePath, { recursive: true });
+			writeFileSync(join(stalePath, "leftover.txt"), "leftover\n");
+
+			const result = await createWorktree(project, task);
+			expect(existsSync(result.worktreePath)).toBe(true);
+			expect(result.branchName).toBe("dev3/task-55555555");
+			// The leftover file should be gone — the directory was reclaimed.
+			expect(existsSync(join(result.worktreePath, "leftover.txt"))).toBe(false);
 		} finally {
 			cleanupLocal(r);
 		}

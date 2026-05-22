@@ -354,6 +354,9 @@ describe("handleBellAutoStatus", () => {
 describe("runCleanupScript", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Default: pretend the worktree directory exists. Individual tests
+		// override this to exercise the missing-directory branch.
+		vi.mocked(existsSync).mockReturnValue(true);
 		mockSpawn.mockReturnValue({
 			stdout: new Response(""),
 			stderr: new Response(""),
@@ -369,16 +372,11 @@ describe("runCleanupScript", () => {
 			worktreePath: "/tmp/test-worktree",
 			status: "in-progress",
 		});
-		// runCleanupScript now uses async `Bun.file(path).exists()` instead of
-		// `existsSync` — stub the worktree check so the function reaches spawn.
-		const fileSpy = vi.spyOn(Bun, "file").mockReturnValue({ exists: () => Promise.resolve(true) } as any);
 
 		await runCleanupScript(task, project, {
 			fromStatus: "in-progress",
 			toStatus: "completed",
 		});
-
-		fileSpy.mockRestore();
 
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
@@ -395,6 +393,44 @@ describe("runCleanupScript", () => {
 				DEV3_TASK_TO_STATUS: "completed",
 			}),
 		});
+	});
+
+	it("uses existsSync (not Bun.file) so worktree directory detection works", async () => {
+		// Regression: a previous iteration used `Bun.file(dir).exists()` which
+		// always returns false for directories — silently skipping cleanup on
+		// every task move-to-done/cancel. We assert that an unmocked Bun.file
+		// is NOT consulted: existsSync alone decides.
+		const fileSpy = vi.spyOn(Bun, "file");
+		const project = makeProject({ path: "/tmp/project-root", cleanupScript: "echo cleanup" });
+		const task = makeTask({
+			id: "task-existsSync",
+			worktreePath: "/tmp/test-worktree",
+			status: "in-progress",
+		});
+
+		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "completed" });
+
+		expect(vi.mocked(existsSync)).toHaveBeenCalledWith("/tmp/test-worktree");
+		// Bun.file may still be used by Bun.write for the script body, but
+		// must not be the gate that decides whether the worktree exists.
+		const dirChecks = fileSpy.mock.calls.filter(([arg]) => String(arg) === "/tmp/test-worktree");
+		expect(dirChecks).toHaveLength(0);
+		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		fileSpy.mockRestore();
+	});
+
+	it("skips cleanup when worktree directory is missing", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		const project = makeProject({ path: "/tmp/project-root", cleanupScript: "echo cleanup" });
+		const task = makeTask({
+			id: "task-missing",
+			worktreePath: "/tmp/already-gone",
+			status: "in-progress",
+		});
+
+		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "completed" });
+
+		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 });
 

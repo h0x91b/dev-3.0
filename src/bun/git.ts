@@ -1,6 +1,6 @@
 import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSkippedFile, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
-import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { reportCurrentPreparationStage } from "./preparation-runtime";
 import { spawn } from "./spawn";
@@ -754,14 +754,51 @@ export async function createWorktree(
 
 	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 
-	const result = await measureGitStep(
+	const tryWorktreeAdd = () => run(
+		["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
+		project.path,
+	);
+
+	let result = await measureGitStep(
 		"createWorktree.default.worktreeAdd",
 		{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
-		() => run(
-			["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
-			project.path,
-		),
+		tryWorktreeAdd,
 	);
+
+	// Self-heal stale leftovers from a prior failed cleanup. The branch and
+	// worktree path are owned by dev3 (derived from task.id), so reclaiming
+	// them is safe. This unblocks reviving a task from completed/cancelled
+	// when removeWorktree previously didn't finish cleanly.
+	if (!result.ok) {
+		const dirAlreadyExists = result.stderr.includes("already exists") && result.stderr.includes(wtPath);
+		const branchAlreadyExists = result.stderr.includes(`a branch named '${branch}' already exists`);
+		if (dirAlreadyExists || branchAlreadyExists) {
+			log.warn("Worktree creation hit stale leftovers, attempting auto-cleanup", {
+				taskId: task.id.slice(0, 8),
+				dirAlreadyExists,
+				branchAlreadyExists,
+				stderr: result.stderr,
+			});
+
+			if (dirAlreadyExists && existsSync(wtPath)) {
+				await run(["git", "worktree", "remove", "--force", wtPath], project.path);
+				if (existsSync(wtPath)) {
+					rmSync(wtPath, { recursive: true, force: true });
+				}
+				await run(["git", "worktree", "prune"], project.path);
+			}
+
+			if (branchAlreadyExists) {
+				await run(["git", "branch", "-D", branch], project.path);
+			}
+
+			result = await measureGitStep(
+				"createWorktree.default.worktreeAddRetry",
+				{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
+				tryWorktreeAdd,
+			);
+		}
+	}
 
 	if (!result.ok) {
 		log.error("Failed to create worktree", { stderr: result.stderr, taskId: task.id });
@@ -1606,15 +1643,27 @@ export async function removeWorktree(
 
 	log.info("Removing worktree", { path: task.worktreePath, taskId: task.id });
 
+	const worktreeDirPresent = existsSync(task.worktreePath);
+
 	// Read live branch name before removing — it may differ from task.branchName
 	// if the agent renamed the branch (e.g. `git branch -m dev3/task-xxx dev3/fix-login`).
-	const liveBranch = await getCurrentBranch(task.worktreePath);
+	// Skip if the directory is already gone; spawning git with a missing cwd would
+	// throw ENOENT and leave the branch undeleted.
+	const liveBranch = worktreeDirPresent ? await getCurrentBranch(task.worktreePath) : null;
 	const branchToDelete = liveBranch ?? task.branchName;
 
-	await run(
-		["git", "worktree", "remove", "--force", task.worktreePath],
-		project.path,
-	);
+	if (worktreeDirPresent) {
+		await run(
+			["git", "worktree", "remove", "--force", task.worktreePath],
+			project.path,
+		);
+	} else {
+		log.info("Worktree directory already missing, pruning git metadata", {
+			path: task.worktreePath,
+			taskId: task.id,
+		});
+		await run(["git", "worktree", "prune"], project.path);
+	}
 
 	if (branchToDelete) {
 		// Delete branches that dev3 created. We check task.branchName (the original name
