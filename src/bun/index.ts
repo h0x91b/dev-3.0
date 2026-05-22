@@ -22,6 +22,7 @@ import { installAgentSkills } from "./agent-skills";
 import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
+import { startLoopMonitor } from "./loop-monitor";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
@@ -312,6 +313,11 @@ await startRemoteAccessServer({
 		getPushMessage()?.("qrTokenConsumed", {});
 	},
 });
+
+// Diagnostic: log whenever the Bun event loop is blocked for >500ms.
+// Silent during normal operation — only fires on stalls (e.g. accidental
+// sync I/O, GC pauses, runaway regex).
+startLoopMonitor();
 
 // Start background merge detection poller
 startMergeDetectionPoller();

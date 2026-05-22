@@ -341,7 +341,7 @@ async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dar
 		resolvedTheme: params.theme,
 	});
 	setCurrentUiTheme(params.theme);
-	pty.applyTmuxTheme(params.theme);
+	await pty.applyTmuxTheme(params.theme);
 }
 
 export const settingsConfigHandlers = {

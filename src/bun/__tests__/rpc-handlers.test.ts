@@ -369,12 +369,16 @@ describe("runCleanupScript", () => {
 			worktreePath: "/tmp/test-worktree",
 			status: "in-progress",
 		});
-		vi.mocked(existsSync).mockReturnValue(true);
+		// runCleanupScript now uses async `Bun.file(path).exists()` instead of
+		// `existsSync` — stub the worktree check so the function reaches spawn.
+		const fileSpy = vi.spyOn(Bun, "file").mockReturnValue({ exists: () => Promise.resolve(true) } as any);
 
 		await runCleanupScript(task, project, {
 			fromStatus: "in-progress",
 			toStatus: "completed",
 		});
+
+		fileSpy.mockRestore();
 
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
@@ -3077,7 +3081,7 @@ describe("handlers.getPtyUrl", () => {
 
 	it("returns URL directly when session exists", async () => {
 		vi.mocked(pty.hasSession).mockReturnValue(true);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
@@ -3091,7 +3095,7 @@ describe("handlers.getPtyUrl", () => {
 
 		// hasSession: true (log), true (stale check), false (after destroy)
 		vi.mocked(pty.hasSession).mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValueOnce(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3106,7 +3110,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3120,7 +3124,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3136,7 +3140,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", sessionState });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3151,7 +3155,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3167,7 +3171,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/deleted" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(existsSync).mockReturnValue(false);
@@ -3204,7 +3208,7 @@ describe("handlers.getPtyUrl", () => {
 
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3219,7 +3223,7 @@ describe("handlers.getPtyUrl", () => {
 	it("does not destroy session when resume=true but session is alive", async () => {
 		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
 		vi.mocked(pty.hasSession).mockReturnValue(true);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
@@ -3236,7 +3240,7 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
 		// hasSession: true (log), true (stale check), false (after destroy)
 		vi.mocked(pty.hasSession).mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValueOnce(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3256,7 +3260,7 @@ describe("handlers.getPtyUrl", () => {
 		});
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3282,7 +3286,7 @@ describe("handlers.getPtyUrl", () => {
 
 		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3303,7 +3307,7 @@ describe("handlers.getPtyUrl", () => {
 		});
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3328,7 +3332,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3358,7 +3362,7 @@ describe("handlers.getPtyUrl", () => {
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project1, project2]);
 		vi.mocked(data.getTask)
@@ -3376,7 +3380,7 @@ describe("handlers.getPtyUrl", () => {
 
 		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
 		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.getTask).mockResolvedValue(task);
@@ -3397,14 +3401,14 @@ describe("handlers.getTerminalPreview", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it("delegates to pty.capturePane", async () => {
-		vi.mocked(pty.capturePane).mockReturnValue("terminal output");
+		vi.mocked(pty.capturePane).mockResolvedValue("terminal output");
 		const result = await handlers.getTerminalPreview({ taskId: "task-1" });
 		expect(result).toBe("terminal output");
 		expect(pty.capturePane).toHaveBeenCalledWith("task-1");
 	});
 
 	it("returns null when no session", async () => {
-		vi.mocked(pty.capturePane).mockReturnValue(null);
+		vi.mocked(pty.capturePane).mockResolvedValue(null);
 		const result = await handlers.getTerminalPreview({ taskId: "task-1" });
 		expect(result).toBeNull();
 	});
@@ -4681,11 +4685,19 @@ describe("handlers.tmuxAction", () => {
 
 	it("killPane refuses to kill the last remaining pane in the session", async () => {
 		// list-panes returns a single pane → killPane must NOT call kill-pane
-		mockSpawnSync.mockImplementation((args: string[]) => {
+		mockSpawn.mockImplementation((args: string[]) => {
 			if (args.includes("list-panes")) {
-				return { exitCode: 0, stdout: new TextEncoder().encode("%1\n"), stderr: new Uint8Array() };
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("%1\n").body,
+					exited: Promise.resolve(0),
+				};
 			}
-			return { exitCode: 0, stdout: new Uint8Array(), stderr: new Uint8Array() };
+			return {
+				stderr: new Response("").body,
+				stdout: new Response("").body,
+				exited: Promise.resolve(0),
+			};
 		});
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
@@ -4695,19 +4707,26 @@ describe("handlers.tmuxAction", () => {
 	});
 
 	it("killPane proceeds normally when more than one pane exists", async () => {
-		mockSpawnSync.mockImplementation((args: string[]) => {
+		mockSpawn.mockImplementation((args: string[]) => {
 			if (args.includes("list-panes")) {
-				return { exitCode: 0, stdout: new TextEncoder().encode("%1\n%2\n"), stderr: new Uint8Array() };
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("%1\n%2\n").body,
+					exited: Promise.resolve(0),
+				};
 			}
 			if (args.includes("display-message")) {
-				return { exitCode: 0, stdout: new TextEncoder().encode("%2\n"), stderr: new Uint8Array() };
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("%2\n").body,
+					exited: Promise.resolve(0),
+				};
 			}
-			return { exitCode: 0, stdout: new Uint8Array(), stderr: new Uint8Array() };
-		});
-		mockSpawn.mockReturnValue({
-			stderr: new Response(""),
-			stdout: new Response(""),
-			exited: Promise.resolve(0),
+			return {
+				stderr: new Response("").body,
+				stdout: new Response("").body,
+				exited: Promise.resolve(0),
+			};
 		});
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
@@ -4762,7 +4781,7 @@ describe("handlers.exitCopyModeAllPanes", () => {
 	}
 
 	it("sends -X cancel only to panes currently in copy-mode", async () => {
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		setupSpawnRouter({
 			hasSession: 1, // dev-server not running
 			listTaskPanes: { exit: 0, out: "%0 1\n%1 0\n%2 1\n" },
@@ -4791,7 +4810,7 @@ describe("handlers.exitCopyModeAllPanes", () => {
 	});
 
 	it("also cleans the dev-server session (dev3-dev-<id>)", async () => {
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		setupSpawnRouter({
 			hasSession: 0, // dev-server IS running
 			listTaskPanes: { exit: 0, out: "%10 0\n" },
@@ -4812,7 +4831,7 @@ describe("handlers.exitCopyModeAllPanes", () => {
 	});
 
 	it("no-op when neither task nor dev-server session exists", async () => {
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
 		setupSpawnRouter({ hasSession: 1 });
 
 		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
@@ -4826,7 +4845,7 @@ describe("handlers.exitCopyModeAllPanes", () => {
 	});
 
 	it("returns zero when no pane is in copy-mode", async () => {
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		setupSpawnRouter({
 			hasSession: 1,
 			listTaskPanes: { exit: 0, out: "%0 0\n%1 0\n" },
@@ -4842,7 +4861,7 @@ describe("handlers.exitCopyModeAllPanes", () => {
 	});
 
 	it("returns zero when list-panes fails", async () => {
-		vi.mocked(pty.tmuxSessionExists).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		setupSpawnRouter({
 			hasSession: 1,
 			listTaskPanes: { exit: 1, out: "" },

@@ -108,7 +108,7 @@ async function main() {
 		await new Promise(r => setTimeout(r, 600));
 
 		// Verify two panes exist: setup pane + agent pane
-		const panesBefore = pty.listPaneIds(TASK_ID, TEST_SOCKET);
+		const panesBefore = await pty.listPaneIds(TASK_ID, TEST_SOCKET);
 		console.log(`panes after launch: ${JSON.stringify(panesBefore)}`);
 		assert(panesBefore.length === 2, `expected 2 panes, got ${panesBefore.length}`);
 
@@ -134,7 +134,7 @@ async function main() {
 		assert(reconciled[0].paneId != null, "paneId should be assigned");
 
 		// The assigned paneId should be a live pane
-		const liveAfter = pty.listPaneIds(TASK_ID, TEST_SOCKET);
+		const liveAfter = await pty.listPaneIds(TASK_ID, TEST_SOCKET);
 		assert(liveAfter.includes(reconciled[0].paneId!),
 			`paneId ${reconciled[0].paneId} not in live ${JSON.stringify(liveAfter)}`);
 

@@ -1,6 +1,6 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
-import { spawn, spawnSync } from "./spawn";
+import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
 import { writeShellInit } from "./shell-init";
@@ -125,7 +125,7 @@ writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte"));
  * Sources the corresponding config file, which re-sets all theme variables
  * and re-applies every setting that depends on them.
  */
-export function applyTmuxTheme(theme: "dark" | "light"): void {
+export async function applyTmuxTheme(theme: "dark" | "light"): Promise<void> {
 	TMUX_CONF_PATH = theme === "light" ? TMUX_CONF_LIGHT_PATH : TMUX_CONF_DARK_PATH;
 	// Source the themed config on every known socket (typically just "dev3")
 	const sockets = new Set<string>();
@@ -134,14 +134,17 @@ export function applyTmuxTheme(theme: "dark" | "light"): void {
 	}
 	// Always include the default socket even if no sessions exist yet
 	sockets.add(DEFAULT_TMUX_SOCKET);
-	for (const socket of sockets) {
-		try {
-			spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
-			log.info("tmux theme applied", { theme, socket, configPath: TMUX_CONF_PATH });
-		} catch (err) {
-			log.warn("Failed to apply tmux theme", { theme, socket, error: String(err) });
-		}
-	}
+	await Promise.all(
+		Array.from(sockets).map(async (socket) => {
+			try {
+				const proc = spawn(tmuxArgs(socket, "source-file", TMUX_CONF_PATH), { stdout: "pipe", stderr: "pipe" });
+				await proc.exited;
+				log.info("tmux theme applied", { theme, socket, configPath: TMUX_CONF_PATH });
+			} catch (err) {
+				log.warn("Failed to apply tmux theme", { theme, socket, error: String(err) });
+			}
+		}),
+	);
 }
 
 // Default tmux socket name — all dev3 sessions live here.
@@ -168,20 +171,24 @@ export function _resetTmuxBinaryLoggedForTests(): void {
 function logTmuxBinaryOnce(taskId: string): void {
 	if (tmuxBinaryLogged) return;
 	tmuxBinaryLogged = true;
-	try {
-		const which = spawnSync(["which", "tmux"]);
-		const tmuxPath = new TextDecoder().decode(which.stdout).trim();
-		log.info("tmux binary found", {
-			taskId: shortId(taskId),
-			path: tmuxPath,
-			exitCode: which.exitCode,
-		});
-	} catch (err) {
-		log.error("tmux binary NOT found — this will crash", {
-			taskId: shortId(taskId),
-			error: String(err),
-		});
-	}
+	// Fire-and-forget — purely diagnostic, never block the spawn path on it.
+	(async () => {
+		try {
+			const proc = spawn(["which", "tmux"], { stdout: "pipe", stderr: "pipe" });
+			const stdout = await new Response(proc.stdout).text();
+			const exitCode = await proc.exited;
+			log.info("tmux binary found", {
+				taskId: shortId(taskId),
+				path: stdout.trim(),
+				exitCode,
+			});
+		} catch (err) {
+			log.error("tmux binary NOT found — this will crash", {
+				taskId: shortId(taskId),
+				error: String(err),
+			});
+		}
+	})();
 }
 
 /**
@@ -393,16 +400,19 @@ export function hasDeadSession(taskId: string): boolean {
 	return !!session && session.proc === null;
 }
 
-export function capturePane(taskId: string): string | null {
+export async function capturePane(taskId: string): Promise<string | null> {
 	const session = sessions.get(taskId);
 	const socket = session?.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const tmuxSessionName = session?.tmuxSessionName ?? computeTmuxSessionName(taskId, "task");
 	try {
-		const result = spawnSync(
+		const proc = spawn(
 			tmuxArgs(socket, "capture-pane", "-p", "-e", "-t", tmuxSessionName),
+			{ stdout: "pipe", stderr: "pipe" },
 		);
-		if (result.exitCode === 0 && result.stdout.length > 0) {
-			return new TextDecoder().decode(result.stdout);
+		const stdout = await new Response(proc.stdout).text();
+		const exitCode = await proc.exited;
+		if (exitCode === 0 && stdout.length > 0) {
+			return stdout;
 		}
 	} catch {
 		// Non-critical
@@ -451,18 +461,22 @@ function shortId(taskId: string): string {
  * Create an additional pane in an existing tmux session by splitting, and run a command in it.
  * Returns the new pane ID, or null on failure.
  */
-export function splitAndRunCommand(taskId: string, socket: string, command: string, cwd: string): string | null {
+export async function splitAndRunCommand(taskId: string, socket: string, command: string, cwd: string): Promise<string | null> {
 	const tmuxSessionName = `dev3-${shortId(taskId)}`;
 	try {
-		const result = spawnSync(
+		const splitProc = spawn(
 			tmuxArgs(socket, "split-window", "-v", "-t", tmuxSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", command),
+			{ stdout: "pipe", stderr: "pipe" },
 		);
-		if (result.exitCode !== 0) {
-			log.warn("splitAndRunCommand failed", { taskId: shortId(taskId), exitCode: result.exitCode });
+		const stdout = await new Response(splitProc.stdout).text();
+		const exitCode = await splitProc.exited;
+		if (exitCode !== 0) {
+			log.warn("splitAndRunCommand failed", { taskId: shortId(taskId), exitCode });
 			return null;
 		}
-		const paneId = new TextDecoder().decode(result.stdout).trim();
-		spawnSync(tmuxArgs(socket, "select-layout", "-t", tmuxSessionName, "tiled"));
+		const paneId = stdout.trim();
+		const layoutProc = spawn(tmuxArgs(socket, "select-layout", "-t", tmuxSessionName, "tiled"), { stdout: "pipe", stderr: "pipe" });
+		await layoutProc.exited;
 		return paneId || null;
 	} catch (err) {
 		log.warn("splitAndRunCommand error", { taskId: shortId(taskId), error: String(err) });
@@ -474,14 +488,17 @@ export function splitAndRunCommand(taskId: string, socket: string, command: stri
  * List all pane IDs in a tmux session.
  * Returns an array of pane IDs (e.g. ["%0", "%5"]), or empty on failure / session gone.
  */
-export function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): string[] {
+export async function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): Promise<string[]> {
 	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
 	try {
-		const result = spawnSync(
+		const proc = spawn(
 			tmuxArgs(socket, "list-panes", "-t", tmuxSessionName, "-F", "#{pane_id}"),
+			{ stdout: "pipe", stderr: "pipe" },
 		);
-		if (result.exitCode !== 0) return [];
-		return new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
+		const stdout = await new Response(proc.stdout).text();
+		const exitCode = await proc.exited;
+		if (exitCode !== 0) return [];
+		return stdout.trim().split("\n").filter(Boolean);
 	} catch {
 		return [];
 	}
@@ -490,11 +507,12 @@ export function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_SOCKET
 /**
  * Check if a tmux session exists on the given socket.
  */
-export function tmuxSessionExists(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): boolean {
+export async function tmuxSessionExists(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): Promise<boolean> {
 	const tmuxSessionName = computeTmuxSessionName(taskId, "task");
 	try {
-		const result = spawnSync(tmuxArgs(socket, "has-session", "-t", tmuxSessionName));
-		return result.exitCode === 0;
+		const proc = spawn(tmuxArgs(socket, "has-session", "-t", tmuxSessionName), { stdout: "pipe", stderr: "pipe" });
+		const exitCode = await proc.exited;
+		return exitCode === 0;
 	} catch {
 		return false;
 	}
@@ -609,10 +627,15 @@ function enqueuePtyData(session: PtySession, data: string): void {
 	}
 }
 
-function configureTmux(tmuxSessionName: string, socket: string): void {
+async function configureTmux(tmuxSessionName: string, socket: string): Promise<void> {
 	// Re-source the config in case the tmux server was already running
 	// (the -f flag on new-session only applies when starting a fresh server)
-	spawnSync(tmuxArgs(socket, "source-file", TMUX_CONF_PATH));
+	try {
+		const sourceProc = spawn(tmuxArgs(socket, "source-file", TMUX_CONF_PATH), { stdout: "pipe", stderr: "pipe" });
+		await sourceProc.exited;
+	} catch (err) {
+		log.warn("tmux source-file failed (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
+	}
 
 	// Set pane-exited hook — when any pane in this session exits, notify the app
 	// via HTTP so the dead pane entry can be removed from sessionState.
@@ -622,9 +645,10 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
 	// Single quotes around the URL prevent shell interpretation of &.
 	// || true prevents errors if the app isn't running (e.g. during shutdown).
 	try {
-		spawnSync(tmuxArgs(socket, "set-hook", "-wt", tmuxSessionName, "pane-exited",
+		const hookProc = spawn(tmuxArgs(socket, "set-hook", "-wt", tmuxSessionName, "pane-exited",
 			`run-shell "curl -s 'http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}' || true"`,
-		));
+		), { stdout: "pipe", stderr: "pipe" });
+		await hookProc.exited;
 	} catch (err) {
 		log.warn("Failed to set pane-exited hook (non-fatal)", { tmuxSession: tmuxSessionName, error: String(err) });
 	}
@@ -637,12 +661,14 @@ function configureTmux(tmuxSessionName: string, socket: string): void {
  * Only runs if the session currently has exactly one pane (i.e. freshly created).
  * Uses `select-layout tiled` to avoid pane-index arithmetic.
  */
-function setupTiledLayout(session: PtySession): void {
+async function setupTiledLayout(session: PtySession): Promise<void> {
 	const s = session.tmuxSessionName;
 	const sock = session.tmuxSocket;
 	try {
-		const listResult = spawnSync(tmuxArgs(sock, "list-panes", "-t", s));
-		const paneCount = new TextDecoder().decode(listResult.stdout).trim().split("\n").filter(Boolean).length;
+		const listProc = spawn(tmuxArgs(sock, "list-panes", "-t", s), { stdout: "pipe", stderr: "pipe" });
+		const listStdout = await new Response(listProc.stdout).text();
+		await listProc.exited;
+		const paneCount = listStdout.trim().split("\n").filter(Boolean).length;
 		if (paneCount !== 1) {
 			log.info("Tiled layout: session already has multiple panes, skipping", { tmuxSession: s, paneCount });
 			return;
@@ -652,13 +678,16 @@ function setupTiledLayout(session: PtySession): void {
 		// so pane-base-index setting doesn't matter.
 		// -c sets the working directory — without it, new panes inherit the
 		// tmux server's start dir (e.g. /Applications/dev-3.0.app/Contents/MacOS/).
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd));
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd));
-		spawnSync(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd));
+		for (let i = 0; i < 3; i++) {
+			const splitProc = spawn(tmuxArgs(sock, "split-window", "-v", "-t", s, "-c", session.cwd), { stdout: "pipe", stderr: "pipe" });
+			await splitProc.exited;
+		}
 		// tiled layout arranges 4 panes as a 2×2 grid automatically
-		spawnSync(tmuxArgs(sock, "select-layout", "-t", s, "tiled"));
+		const layoutProc = spawn(tmuxArgs(sock, "select-layout", "-t", s, "tiled"), { stdout: "pipe", stderr: "pipe" });
+		await layoutProc.exited;
 		// Return focus to pane 1 (base-index 1 in tmux config)
-		spawnSync(tmuxArgs(sock, "select-pane", "-t", `${s}:1.1`));
+		const selectProc = spawn(tmuxArgs(sock, "select-pane", "-t", `${s}:1.1`), { stdout: "pipe", stderr: "pipe" });
+		await selectProc.exited;
 		log.info("Tiled 2×2 layout created", { tmuxSession: s, sessionType: session.sessionType });
 	} catch (err) {
 		log.error("Failed to create tiled terminal layout", {
@@ -672,14 +701,14 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = session.tmuxSessionName;
 	const tmuxCmd = session.tmuxCommand || getUserShell();
 
-	if (!existsSync(session.cwd)) {
-		log.error("Cannot spawn PTY — cwd does not exist", {
-			taskId: shortId(session.taskId),
-			cwd: session.cwd,
-		});
-		onPtyDiedCallback?.(session.taskId);
-		return;
-	}
+	// cwd existence is checked asynchronously (best-effort log) — if cwd is
+	// missing, the child fork will fail and `proc.exited` will fire with a
+	// non-zero exit, triggering onPtyDiedCallback. We do NOT block here.
+	Bun.file(session.cwd).exists().then((exists) => {
+		if (!exists) {
+			log.error("PTY cwd missing", { taskId: shortId(session.taskId), cwd: session.cwd });
+		}
+	}).catch(() => {});
 
 	log.info("Spawning PTY process", {
 		tmuxSession: tmuxSessionName,
@@ -690,13 +719,14 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	});
 
 	// Diagnostic: log the resolved tmux binary path once per app run.
-	// `which tmux` is a sync spawn — repeating it on every PTY launch added
-	// blocking I/O to the task-start hot path.
 	logTmuxBinaryOnce(session.taskId);
 
 	let proc: ReturnType<typeof Bun.spawn>;
+	const spawnStartedAt = Date.now();
+	let firstOutputLogged = false;
 	try {
 		const newSessionArgs = tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd);
+		log.debug("PTY: calling Bun.spawn", { taskId: shortId(session.taskId), tmuxSession: tmuxSessionName });
 		proc = spawn(
 			newSessionArgs,
 			{
@@ -714,6 +744,14 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 									: session.decoder.decode(data, { stream: true });
 							session.lastOutputTime = Date.now();
 							session.idleNotified = false;
+							if (!firstOutputLogged) {
+								firstOutputLogged = true;
+								log.info("PTY first output", {
+									taskId: shortId(session.taskId),
+									msSinceSpawn: Date.now() - spawnStartedAt,
+									bytes: typeof data === "string" ? data.length : data.byteLength,
+								});
+							}
 								const cleaned = handleOsc52(str, session);
 								checkForBell(cleaned, session.taskId);
 								if (cleaned && session.clients.size > 0) {
@@ -740,6 +778,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				cwd: session.cwd,
 			},
 		);
+		log.debug("PTY: Bun.spawn returned", { taskId: shortId(session.taskId), pid: proc.pid, msSinceSpawn: Date.now() - spawnStartedAt });
 	} catch (err) {
 		log.error("Bun.spawn FAILED for tmux", {
 			taskId: shortId(session.taskId),
@@ -776,29 +815,30 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	// (split windows) inherit them — the env passed to Bun.spawn only
 	// affects the initial tmux client, not the tmux server's stored env.
 	setTimeout(() => {
-		try {
-			configureTmux(tmuxSessionName, session.tmuxSocket);
-			// Set DEV3_WORKTREE_ROOT so the shell prompt shows short paths
-			spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd));
-			const envKeys = Object.keys(session.env);
-			for (const [key, value] of Object.entries(session.env)) {
-				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));
+		(async () => {
+			try {
+				await configureTmux(tmuxSessionName, session.tmuxSocket);
+				// Set DEV3_WORKTREE_ROOT so the shell prompt shows short paths
+				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd));
+				const envKeys = Object.keys(session.env);
+				for (const [key, value] of Object.entries(session.env)) {
+					spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));
+				}
+				if (envKeys.length > 0) {
+					log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
+				}
+				if (session.sessionType === "project" || session.sessionType === "home") {
+					await setupTiledLayout(session);
+				}
+			} catch (err) {
+				log.error("configureTmux failed", {
+					taskId: shortId(session.taskId),
+					tmuxSession: tmuxSessionName,
+					error: String(err),
+					stack: (err as Error)?.stack ?? "no stack",
+				});
 			}
-			if (envKeys.length > 0) {
-				log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
-			}
-			if (session.sessionType === "project" || session.sessionType === "home") {
-				setupTiledLayout(session);
-			}
-
-		} catch (err) {
-			log.error("configureTmux failed", {
-				taskId: shortId(session.taskId),
-				tmuxSession: tmuxSessionName,
-				error: String(err),
-				stack: (err as Error)?.stack ?? "no stack",
-			});
-		}
+		})();
 	}, 200);
 }
 

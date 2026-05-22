@@ -11,7 +11,7 @@ import { getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scan
 import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
-import { spawn, spawnSync } from "../spawn";
+import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
 import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -456,7 +456,8 @@ export async function launchColumnAgent(
 		if (oldPaneId) {
 			log.info("launchColumnAgent: killing old pane", { paneId: oldPaneId });
 			const killArgs = pty.tmuxArgs(socket, "kill-pane", "-t", oldPaneId);
-			spawnSync(killArgs, { stdout: "pipe", stderr: "pipe" });
+			const killProc = spawn(killArgs, { stdout: "pipe", stderr: "pipe" });
+			await killProc.exited;
 		}
 	} catch {}
 
@@ -486,7 +487,8 @@ export async function launchColumnAgent(
 
 	try {
 		const focusArgs = pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.0`);
-		spawnSync(focusArgs, { stdout: "pipe", stderr: "pipe" });
+		const focusProc = spawn(focusArgs, { stdout: "pipe", stderr: "pipe" });
+		await focusProc.exited;
 	} catch {}
 
 	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8) });
@@ -644,8 +646,9 @@ export async function getDevServerStatus(params: { taskId: string; projectId: st
 async function openFileBrowser(params: { taskId: string; projectId: string }): Promise<{ notInstalled: true; installCommand: string; linuxHint?: boolean } | void> {
 	log.info("→ openFileBrowser", params);
 	try {
-		const yaziCheck = spawnSync(["which", "yazi"]);
-		if (yaziCheck.exitCode !== 0) {
+		const yaziCheckProc = spawn(["which", "yazi"], { stdout: "pipe", stderr: "pipe" });
+		const yaziCheckExit = await yaziCheckProc.exited;
+		if (yaziCheckExit !== 0) {
 			const brewCmd = "brew install yazi ffmpegthumbnailer sevenzip jq poppler fd ripgrep fzf zoxide imagemagick chafa";
 			const installCommand = process.platform === "win32"
 				? "scoop install yazi ffmpeg 7zip jq poppler fd ripgrep fzf zoxide imagemagick chafa"
@@ -749,7 +752,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	// not have exited yet — but `has-session` is the ground truth.
 	if (pty.hasSession(params.taskId)) {
 		const socket = pty.getSessionSocket(params.taskId);
-		if (!pty.tmuxSessionExists(params.taskId, socket)) {
+		if (!(await pty.tmuxSessionExists(params.taskId, socket))) {
 			log.info("Session in memory but tmux session gone — destroying for recovery", {
 				taskId: params.taskId.slice(0, 8),
 			});
@@ -767,7 +770,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 			const socket = foundTask.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-			const tmuxAlive = pty.tmuxSessionExists(params.taskId, socket);
+			const tmuxAlive = await pty.tmuxSessionExists(params.taskId, socket);
 
 			if (tmuxAlive) {
 				// Tmux session exists — just reconnect (no resume needed).
@@ -870,11 +873,11 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		const maxWaitMs = 3000;
 		const pollMs = 100;
 		let waited = 0;
-		while (!pty.tmuxSessionExists(params.taskId, socket) && waited < maxWaitMs) {
+		while (!(await pty.tmuxSessionExists(params.taskId, socket)) && waited < maxWaitMs) {
 			await new Promise(r => setTimeout(r, pollMs));
 			waited += pollMs;
 		}
-		if (!pty.tmuxSessionExists(params.taskId, socket)) {
+		if (!(await pty.tmuxSessionExists(params.taskId, socket))) {
 			log.warn("Tmux session not ready after wait — skipping extra pane resume", { taskId: params.taskId.slice(0, 8) });
 		} else {
 			const ctx: agents.TemplateContext = {
@@ -902,7 +905,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					const scriptPath = `/tmp/dev3-${params.taskId}-resume-pane-${i}.sh`;
 					await Bun.write(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
-					const newPaneId = pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
+					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId });
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
@@ -1228,9 +1231,11 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	let killedPaneId: string | null = null;
 	if (params.action === "killPane") {
 		try {
-			const countResult = spawnSync(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"));
-			if (countResult.exitCode === 0) {
-				const paneCount = new TextDecoder().decode(countResult.stdout).trim().split("\n").filter((l) => l.length > 0).length;
+			const countProc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+			const countStdout = await new Response(countProc.stdout).text();
+			const countExit = await countProc.exited;
+			if (countExit === 0) {
+				const paneCount = countStdout.trim().split("\n").filter((l) => l.length > 0).length;
 				if (paneCount <= 1) {
 					log.info("tmuxAction killPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
 					return;
@@ -1239,9 +1244,11 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 		} catch { /* best effort — if counting fails, fall through to the normal kill */ }
 
 		try {
-			const idResult = spawnSync(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"));
-			if (idResult.exitCode === 0) {
-				killedPaneId = new TextDecoder().decode(idResult.stdout).trim() || null;
+			const idProc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+			const idStdout = await new Response(idProc.stdout).text();
+			const idExit = await idProc.exited;
+			if (idExit === 0) {
+				killedPaneId = idStdout.trim() || null;
 			}
 		} catch { /* best effort */ }
 	}
@@ -1347,7 +1354,7 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 	// dev-server lives in a separate tmux session (dev3-dev-<id>) — the user's
 	// scroll-mode is typically there, not in the agent session. Hit both.
 	const sessions: string[] = [];
-	if (pty.tmuxSessionExists(params.taskId, socket)) {
+	if (await pty.tmuxSessionExists(params.taskId, socket)) {
 		sessions.push(taskSession);
 	}
 	if (await isDevServerRunning(params.taskId, socket)) {
@@ -1477,7 +1484,7 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		if (!panes.length) return;
 
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-		const livePaneIds = new Set(pty.listPaneIds(taskId, socket));
+		const livePaneIds = new Set(await pty.listPaneIds(taskId, socket));
 
 		// Step 1: remove entries with a known paneId that is no longer alive
 		let surviving = panes.filter(p => !p.paneId || livePaneIds.has(p.paneId));

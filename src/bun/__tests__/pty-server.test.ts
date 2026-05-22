@@ -87,6 +87,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	// Always restore real timers in case a test forgot — fake timers leaking
+	// into the next test causes mysterious hangs on async code paths.
+	vi.useRealTimers();
 	for (const id of activeSessions) {
 		if (hasSession(id)) destroySession(id);
 	}
@@ -130,12 +133,14 @@ describe("pty-server", () => {
 			expect(hasSession(id)).toBe(true);
 		});
 
-		it("spawns tmux new-session via spawn", () => {
+		it("spawns tmux new-session via spawn", async () => {
 			const id = track("task-spawn-01");
 			createSession(id, "proj-1", "/tmp/test-cwd", "bash", {});
 
-			// spawnSync for "which tmux" check
-			expect(mockSpawnSync).toHaveBeenCalledWith(["which", "tmux"]);
+			// `which tmux` diagnostic now runs as a fire-and-forget async spawn
+			// — flush microtasks so the IIFE has a chance to register the call.
+			await Promise.resolve();
+			expect(mockSpawn).toHaveBeenCalledWith(["which", "tmux"], expect.any(Object));
 
 			// spawn for tmux new-session
 			const tmuxCall = mockSpawn.mock.calls.find(
@@ -177,15 +182,18 @@ describe("pty-server", () => {
 			expect(tmuxCall![0][tmuxCall![0].length - 1]).toBe("/bin/zsh");
 		});
 
-		it("calls onPtyDied when cwd does not exist", () => {
+		it("logs a warning when cwd does not exist but still spawns (fork will fail)", () => {
+			// The pre-flight `existsSync(cwd)` check was removed (it was sync I/O
+			// in the hot path). A missing cwd now manifests as a failed fork —
+			// the child exits non-zero and `proc.exited` fires onPtyDied via the
+			// normal exit path. The synchronous early-return was the bottleneck.
 			mockExistsSync.mockReturnValue(false);
-			const diedCb = vi.fn();
-			setOnPtyDied(diedCb);
-
 			const id = track("task-nocwd-01");
-			createSession(id, "proj-1", "/tmp/nonexistent", "bash", {});
-
-			expect(diedCb).toHaveBeenCalledWith(id);
+			expect(() => createSession(id, "proj-1", "/tmp/nonexistent", "bash", {})).not.toThrow();
+			// spawn was still attempted (fork would fail in production, but the
+			// mocked spawn returns a healthy proc — so no onPtyDied callback fires
+			// here unless we wire up an actually-exiting proc, which other tests do).
+			expect(mockSpawn).toHaveBeenCalled();
 		});
 
 		it("calls onPtyDied when spawn throws", () => {
@@ -214,8 +222,11 @@ describe("pty-server", () => {
 			createSession(id, "proj-1", "/tmp/cwd", "bash", env, "my-socket");
 			mockSpawn.mockClear();
 
-			// Advance past the 200ms setTimeout
-			vi.advanceTimersByTime(300);
+			// Advance past the 200ms setTimeout AND flush the async configureTmux
+			// chain (the IIFE awaits source-file/set-hook before reaching set-environment).
+			await vi.advanceTimersByTimeAsync(300);
+			await Promise.resolve();
+			await Promise.resolve();
 
 			// Check that set-environment was called for each env var
 			const setEnvCalls = mockSpawn.mock.calls.filter(
@@ -244,7 +255,9 @@ describe("pty-server", () => {
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
 			mockSpawn.mockClear();
 
-			vi.advanceTimersByTime(300);
+			await vi.advanceTimersByTimeAsync(300);
+			await Promise.resolve();
+			await Promise.resolve();
 
 			// DEV3_WORKTREE_ROOT is always set, but no user env vars should be set
 			const setEnvCalls = mockSpawn.mock.calls.filter(
@@ -255,13 +268,15 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("always sets DEV3_WORKTREE_ROOT in tmux session env", () => {
+		it("always sets DEV3_WORKTREE_ROOT in tmux session env", async () => {
 			vi.useFakeTimers();
 			const id = track("task-env-root");
 			createSession(id, "proj-1", "/tmp/my-worktree", "bash", {}, "root-sock");
 			mockSpawn.mockClear();
 
-			vi.advanceTimersByTime(300);
+			await vi.advanceTimersByTimeAsync(300);
+			await Promise.resolve();
+			await Promise.resolve();
 
 			const rootCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("DEV3_WORKTREE_ROOT"),
@@ -460,31 +475,47 @@ describe("pty-server", () => {
 	// ------- capturePane -------
 
 	describe("capturePane", () => {
-		it("returns pane content on success", () => {
+		// capturePane became async (it uses Bun.spawn + proc.exited under the hood
+		// instead of spawnSync). The tests below mock `spawn` to return a fake
+		// proc with the desired stdout + exit code.
+		function makeCaptureProc(stdout: string | Uint8Array, exitCode: number): any {
+			const bytes: Uint8Array = typeof stdout === "string" ? new TextEncoder().encode(stdout) : stdout;
+			// Wrap bytes in a Blob → Response (Blob is an acceptable BodyInit in the TS
+			// lib types, raw Uint8Array isn't).
+			return {
+				pid: 999,
+				kill: vi.fn(),
+				stdout: new Response(new Blob([bytes as BlobPart])).body,
+				exited: Promise.resolve(exitCode),
+			};
+		}
+
+		it("returns pane content on success", async () => {
 			const id = track("task-cap-01");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 
 			const content = "Hello, world!\n";
-			mockSpawnSync.mockReturnValue({
-				exitCode: 0,
-				stdout: new TextEncoder().encode(content),
-			} as any);
+			mockSpawn.mockImplementation((cmd: any) =>
+				Array.isArray(cmd) && cmd.includes("capture-pane")
+					? makeCaptureProc(content, 0)
+					: (defaultSpawnReturn() as any),
+			);
 
-			expect(capturePane(id)).toBe(content);
+			expect(await capturePane(id)).toBe(content);
 		});
 
-		it("uses session socket for tmux command", () => {
+		it("uses session socket for tmux command", async () => {
 			const id = track("task-cap-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "cap-sock");
+			mockSpawn.mockImplementation((cmd: any) =>
+				Array.isArray(cmd) && cmd.includes("capture-pane")
+					? makeCaptureProc("data", 0)
+					: (defaultSpawnReturn() as any),
+			);
 
-			mockSpawnSync.mockReturnValue({
-				exitCode: 0,
-				stdout: new TextEncoder().encode("data"),
-			} as any);
+			await capturePane(id);
 
-			capturePane(id);
-
-			const captureCall = mockSpawnSync.mock.calls.find(
+			const captureCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("capture-pane"),
 			);
 			expect(captureCall).toBeDefined();
@@ -492,48 +523,49 @@ describe("pty-server", () => {
 			expect(captureCall![0]).toContain("cap-sock");
 		});
 
-		it("returns null on non-zero exit code", () => {
+		it("returns null on non-zero exit code", async () => {
 			const id = track("task-cap-03");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			mockSpawn.mockImplementation((cmd: any) =>
+				Array.isArray(cmd) && cmd.includes("capture-pane")
+					? makeCaptureProc("error", 1)
+					: (defaultSpawnReturn() as any),
+			);
 
-			mockSpawnSync.mockReturnValue({
-				exitCode: 1,
-				stdout: new TextEncoder().encode("error"),
-			} as any);
-
-			expect(capturePane(id)).toBeNull();
+			expect(await capturePane(id)).toBeNull();
 		});
 
-		it("returns null on empty stdout", () => {
+		it("returns null on empty stdout", async () => {
 			const id = track("task-cap-04");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
+			mockSpawn.mockImplementation((cmd: any) =>
+				Array.isArray(cmd) && cmd.includes("capture-pane")
+					? makeCaptureProc(new Uint8Array(0), 0)
+					: (defaultSpawnReturn() as any),
+			);
 
-			mockSpawnSync.mockReturnValue({
-				exitCode: 0,
-				stdout: new Uint8Array(0),
-			} as any);
-
-			expect(capturePane(id)).toBeNull();
+			expect(await capturePane(id)).toBeNull();
 		});
 
-		it("returns null on spawnSync error", () => {
+		it("returns null on spawn error", async () => {
 			const id = track("task-cap-05");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-
-			mockSpawnSync.mockImplementation(() => {
-				throw new Error("tmux error");
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("capture-pane")) throw new Error("tmux error");
+				return defaultSpawnReturn() as any;
 			});
 
-			expect(capturePane(id)).toBeNull();
+			expect(await capturePane(id)).toBeNull();
 		});
 
-		it("works even without an active session (uses null socket)", () => {
-			mockSpawnSync.mockReturnValue({
-				exitCode: 1,
-				stdout: new Uint8Array(0),
-			} as any);
+		it("works even without an active session (uses null socket)", async () => {
+			mockSpawn.mockImplementation((cmd: any) =>
+				Array.isArray(cmd) && cmd.includes("capture-pane")
+					? makeCaptureProc(new Uint8Array(0), 1)
+					: (defaultSpawnReturn() as any),
+			);
 
-			expect(capturePane("no-such-session")).toBeNull();
+			expect(await capturePane("no-such-session")).toBeNull();
 		});
 	});
 
@@ -759,17 +791,19 @@ describe("pty-server", () => {
 	// ------- configureTmux via spawnPty (setTimeout) -------
 
 	describe("configureTmux via spawnPty", () => {
-		it("sources tmux config after timeout when socket is provided", () => {
+		it("sources tmux config after timeout when socket is provided", async () => {
 			vi.useFakeTimers();
 
 			const id = track("task-conf-01");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "conf-socket");
-			mockSpawnSync.mockClear();
 			mockSpawn.mockClear();
 
-			vi.advanceTimersByTime(200);
+			await vi.advanceTimersByTimeAsync(200);
+			await Promise.resolve();
+			await Promise.resolve();
 
-			const sourceCall = mockSpawnSync.mock.calls.find(
+			// configureTmux now uses async `spawn` rather than `spawnSync`.
+			const sourceCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
 			);
 			expect(sourceCall).toBeDefined();
@@ -780,14 +814,16 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("sets tmux PATH when env.PATH is provided", () => {
+		it("sets tmux PATH when env.PATH is provided", async () => {
 			vi.useFakeTimers();
 
 			const id = track("task-conf-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", { PATH: "/usr/local/bin" }, "path-sock");
 			mockSpawn.mockClear();
 
-			vi.advanceTimersByTime(200);
+			await vi.advanceTimersByTimeAsync(200);
+			await Promise.resolve();
+			await Promise.resolve();
 
 			const envCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
@@ -799,16 +835,18 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("always sources config with default socket", () => {
+		it("always sources config with default socket", async () => {
 			vi.useFakeTimers();
 
 			const id = track("task-conf-03");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			mockSpawnSync.mockClear();
+			mockSpawn.mockClear();
 
-			vi.advanceTimersByTime(200);
+			await vi.advanceTimersByTimeAsync(200);
+			await Promise.resolve();
+			await Promise.resolve();
 
-			const sourceCall = mockSpawnSync.mock.calls.find(
+			const sourceCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
 			);
 			expect(sourceCall).toBeDefined();
@@ -818,16 +856,19 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("does not throw when configureTmux fails", () => {
+		it("does not throw when configureTmux fails", async () => {
 			vi.useFakeTimers();
 
 			const id = track("task-conf-04");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "err-sock");
-			mockSpawnSync.mockImplementation(() => {
-				throw new Error("source-file failed");
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("source-file")) {
+					throw new Error("source-file failed");
+				}
+				return defaultSpawnReturn() as any;
 			});
 
-			expect(() => vi.advanceTimersByTime(200)).not.toThrow();
+			await expect(vi.advanceTimersByTimeAsync(200)).resolves.not.toThrow();
 
 			vi.useRealTimers();
 		});
@@ -896,36 +937,37 @@ describe("pty-server", () => {
 			expect(killCall![0]).toContain("dev3-pt-cccccccc");
 		});
 
-		it("creates split panes with correct cwd (-c flag)", () => {
+		it("creates split panes with correct cwd (-c flag)", async () => {
 			vi.useFakeTimers();
 			const key = track("project-eeeeeeee-1111-2222-3333-444444444444");
-			// Simulate single-pane session (freshly created)
-			mockSpawnSync.mockImplementation((cmd: any) => {
-				if (Array.isArray(cmd) && cmd.includes("list-panes")) {
-					return {
-						exitCode: 0,
-						stdout: new TextEncoder().encode("0: [200x50]\n"),
-					} as any;
-				}
-				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
+			// setupTiledLayout now uses async `spawn`. Route list-panes to a
+			// single-pane response so the tiled layout branch runs; everything
+			// else gets a benign exit-0 proc.
+			const singlePane = () => ({
+				pid: 99,
+				kill: vi.fn(),
+				stdout: new Response(new TextEncoder().encode("0: [200x50]\n")).body,
+				exited: Promise.resolve(0),
+			});
+			const benign = () => defaultSpawnReturn() as any;
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("list-panes")) return singlePane();
+				return benign();
 			});
 
 			createSession(key, "eeeeeeee", "/tmp/my-project-root", "bash", {}, "dev3", "project");
-			mockSpawnSync.mockClear();
-			mockSpawnSync.mockImplementation((cmd: any) => {
-				if (Array.isArray(cmd) && cmd.includes("list-panes")) {
-					return {
-						exitCode: 0,
-						stdout: new TextEncoder().encode("0: [200x50]\n"),
-					} as any;
-				}
-				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
+			mockSpawn.mockClear();
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("list-panes")) return singlePane();
+				return benign();
 			});
 
-			vi.advanceTimersByTime(300);
+			await vi.advanceTimersByTimeAsync(300);
+			// Tiled layout chains several awaited spawns — flush microtasks.
+			for (let i = 0; i < 10; i++) await Promise.resolve();
 
 			// All three split-window calls must include -c with the project root
-			const splitCalls = mockSpawnSync.mock.calls.filter(
+			const splitCalls = mockSpawn.mock.calls.filter(
 				(c) => Array.isArray(c[0]) && c[0].includes("split-window"),
 			);
 			expect(splitCalls).toHaveLength(3);
@@ -937,19 +979,26 @@ describe("pty-server", () => {
 			vi.useRealTimers();
 		});
 
-		it("capturePane works for project sessions", () => {
+		it("capturePane works for project sessions", async () => {
 			const key = track("project-dddddddd-1111-2222-3333-444444444444");
 			createSession(key, "dddddddd", "/tmp/root", "bash", {}, "dev3", "project");
-			mockSpawnSync.mockReturnValue({
-				exitCode: 0,
-				stdout: new TextEncoder().encode("project terminal content"),
-			} as any);
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("capture-pane")) {
+					return {
+						pid: 999,
+						kill: vi.fn(),
+						stdout: new Response(new TextEncoder().encode("project terminal content")).body,
+						exited: Promise.resolve(0),
+					} as any;
+				}
+				return defaultSpawnReturn() as any;
+			});
 
-			const result = capturePane(key);
+			const result = await capturePane(key);
 			expect(result).toBe("project terminal content");
 
 			// Verify capture used the correct tmux session name
-			const captureCall = mockSpawnSync.mock.calls.find(
+			const captureCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("capture-pane"),
 			);
 			expect(captureCall).toBeDefined();
