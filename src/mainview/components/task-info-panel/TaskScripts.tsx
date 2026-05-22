@@ -12,6 +12,8 @@ import { SCRIPT_PLACEMENTS } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 
+const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
+
 interface TaskScriptsProps {
 	task: Task;
 	project: Project;
@@ -52,6 +54,10 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	const [query, setQuery] = useState("");
 	const [activeIdx, setActiveIdx] = useState(0);
 	const [placementIdx, setPlacementIdx] = useState(0);
+	const placementIdxRef = useRef(0);
+	placementIdxRef.current = placementIdx;
+	const taskRef = useRef(task);
+	taskRef.current = task;
 
 	const refresh = useCallback(async () => {
 		try {
@@ -171,18 +177,18 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		}
 	}
 
-	// When entering the placement picker, pre-select the last used placement for this script
-	// (or default to "right" if there's no history).
 	useEffect(() => {
 		if (!pickerFor) return;
-		const last = task.scriptLastPlacement?.[pickerFor];
+		// Read the last placement off the latest task ref so a server-side echo of
+		// scriptLastPlacement doesn't reset the user's mid-picker arrow key navigation.
+		const last = taskRef.current.scriptLastPlacement?.[pickerFor];
 		const idx = last ? SCRIPT_PLACEMENTS.indexOf(last) : -1;
-		setPlacementIdx(idx >= 0 ? idx : SCRIPT_PLACEMENTS.indexOf("right"));
-	}, [pickerFor, task.scriptLastPlacement]);
+		setPlacementIdx(idx >= 0 ? idx : DEFAULT_PLACEMENT_IDX);
+	}, [pickerFor]);
 
-	// Keyboard navigation inside the placement picker.
 	useEffect(() => {
 		if (!open || !pickerFor) return;
+		const scriptName = pickerFor;
 		function onKey(e: KeyboardEvent) {
 			if (e.key === "ArrowLeft") {
 				e.preventDefault();
@@ -190,20 +196,16 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			} else if (e.key === "ArrowRight") {
 				e.preventDefault();
 				setPlacementIdx((i) => Math.min(SCRIPT_PLACEMENTS.length - 1, i + 1));
-			} else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-				// 5 buttons rendered in a single row — up/down are no-ops, but swallow them
-				// so the underlying scroll handlers don't fire.
-				e.preventDefault();
 			} else if (e.key === "Enter") {
 				e.preventDefault();
-				const p = SCRIPT_PLACEMENTS[placementIdx];
-				if (p && pickerFor) void launch(pickerFor, p);
+				const p = SCRIPT_PLACEMENTS[placementIdxRef.current];
+				if (p) void launch(scriptName, p);
 			}
 		}
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [open, pickerFor, placementIdx]);
+	}, [open, pickerFor]);
 
 	function onSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
 		if (e.key === "ArrowDown") {
