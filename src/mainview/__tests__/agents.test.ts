@@ -880,55 +880,55 @@ describe("resolveAgentCommand", () => {
 		it("escapes single quotes in task description", () => {
 			const c = makeCtx({ taskDescription: "Fix it's broken flow" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Fix it'\\''s broken flow'");
+			expect(cmd).toBe("bash-agent -- 'Fix it'\\''s broken flow'");
 		});
 
 		it("preserves double quotes in task description (safe inside single quotes)", () => {
 			const c = makeCtx({ taskDescription: 'Fix the "login" page' });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Fix the \"login\" page'");
+			expect(cmd).toBe("bash-agent -- 'Fix the \"login\" page'");
 		});
 
 		it("preserves dollar signs in task description", () => {
 			const c = makeCtx({ taskDescription: "Check $HOME and $PATH vars" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Check $HOME and $PATH vars'");
+			expect(cmd).toBe("bash-agent -- 'Check $HOME and $PATH vars'");
 		});
 
 		it("preserves backticks in task description", () => {
 			const c = makeCtx({ taskDescription: "Run `whoami` and check" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Run `whoami` and check'");
+			expect(cmd).toBe("bash-agent -- 'Run `whoami` and check'");
 		});
 
 		it("preserves command substitution syntax in task description", () => {
 			const c = makeCtx({ taskDescription: "Value is $(cat /etc/passwd)" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Value is $(cat /etc/passwd)'");
+			expect(cmd).toBe("bash-agent -- 'Value is $(cat /etc/passwd)'");
 		});
 
 		it("preserves semicolons and pipes in task description", () => {
 			const c = makeCtx({ taskDescription: "step1; step2 | step3" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'step1; step2 | step3'");
+			expect(cmd).toBe("bash-agent -- 'step1; step2 | step3'");
 		});
 
 		it("preserves backslashes in task description", () => {
 			const c = makeCtx({ taskDescription: "path\\to\\file" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'path\\to\\file'");
+			expect(cmd).toBe("bash-agent -- 'path\\to\\file'");
 		});
 
 		it("preserves newlines in task description", () => {
 			const c = makeCtx({ taskDescription: "line1\nline2\nline3" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'line1\nline2\nline3'");
+			expect(cmd).toBe("bash-agent -- 'line1\nline2\nline3'");
 		});
 
 		it("handles injection attempt via single-quote breakout", () => {
 			const c = makeCtx({ taskDescription: "'; rm -rf / #" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent ''\\''; rm -rf / #'");
+			expect(cmd).toBe("bash-agent -- ''\\''; rm -rf / #'");
 		});
 
 		it("handles complex real-world task with mixed special chars", () => {
@@ -936,32 +936,32 @@ describe("resolveAgentCommand", () => {
 			const c = makeCtx({ taskDescription: desc });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
 			expect(cmd).toBe(
-				"bash-agent 'Fix the \"login\" bug (it'\\''s broken); check $PATH & `env` | grep HOME'",
+				"bash-agent -- 'Fix the \"login\" bug (it'\\''s broken); check $PATH & `env` | grep HOME'",
 			);
 		});
 
 		it("handles unicode and emoji in task description", () => {
 			const c = makeCtx({ taskDescription: "Исправь баг 🐛 в компоненте" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Исправь баг 🐛 в компоненте'");
+			expect(cmd).toBe("bash-agent -- 'Исправь баг 🐛 в компоненте'");
 		});
 
 		it("escapes task description with only single quotes", () => {
 			const c = makeCtx({ taskDescription: "'''" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent ''\\'''\\'''\\'''");
+			expect(cmd).toBe("bash-agent -- ''\\'''\\'''\\'''");
 		});
 
 		it("preserves redirect operators in task description", () => {
 			const c = makeCtx({ taskDescription: "output > /dev/null 2>&1" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'output > /dev/null 2>&1'");
+			expect(cmd).toBe("bash-agent -- 'output > /dev/null 2>&1'");
 		});
 
 		it("preserves glob patterns in task description", () => {
 			const c = makeCtx({ taskDescription: "Fix *.ts files in src/**/" });
 			const cmd = resolveAgentCommand(simpleAgent, undefined, c);
-			expect(cmd).toBe("bash-agent 'Fix *.ts files in src/**/'");
+			expect(cmd).toBe("bash-agent -- 'Fix *.ts files in src/**/'");
 		});
 	});
 
@@ -987,7 +987,7 @@ describe("resolveAgentCommand", () => {
 			});
 			const cmd = resolveAgentCommand(simpleAgent, config, c);
 			// The interpolated prompt "Title: Fix it's problem" gets shellEscape'd
-			expect(cmd).toBe("bash-agent 'Title: Fix it'\\''s problem'");
+			expect(cmd).toBe("bash-agent -- 'Title: Fix it'\\''s problem'");
 		});
 
 		it("escapes task title with dollar signs when interpolated via template", () => {
@@ -1001,7 +1001,7 @@ describe("resolveAgentCommand", () => {
 				taskDescription: "",
 			});
 			const cmd = resolveAgentCommand(simpleAgent, config, c);
-			expect(cmd).toBe("bash-agent 'Work on: Check $HOME path'");
+			expect(cmd).toBe("bash-agent -- 'Work on: Check $HOME path'");
 		});
 
 		it("escapes combined description + appendPrompt with special chars", () => {
@@ -1017,7 +1017,7 @@ describe("resolveAgentCommand", () => {
 			const cmd = resolveAgentCommand(simpleAgent, config, c);
 			// Description + \n\n + interpolated appendPrompt, all shellEscape'd
 			expect(cmd).toBe(
-				"bash-agent 'The $user can'\\''t login\n\nTitle: Fix '\\''auth'\\'' bug'",
+				"bash-agent -- 'The $user can'\\''t login\n\nTitle: Fix '\\''auth'\\'' bug'",
 			);
 		});
 	});
