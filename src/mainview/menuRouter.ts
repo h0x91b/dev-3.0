@@ -177,12 +177,6 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			window.dispatchEvent(new CustomEvent("menu:task-run-script", { detail: { taskId } }));
 			return;
 		}
-		case "task-run-multiple-scripts": {
-			const taskId = currentTaskId(state);
-			if (!taskId) return;
-			window.dispatchEvent(new CustomEvent("menu:task-run-multiple-scripts", { detail: { taskId } }));
-			return;
-		}
 		// ── Task: backend ops we can run with just an id ──
 		case "task-open-in-finder": {
 			const task = currentTask(state);

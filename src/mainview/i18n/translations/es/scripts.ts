@@ -9,6 +9,8 @@ const scripts = {
 	"scripts.empty.noPackageJson": "No se encontró package.json en este worktree.",
 	"scripts.empty.noScripts": "package.json no tiene campo \"scripts\".",
 	"scripts.empty.parseError": "No se pudo analizar package.json: {error}",
+	"scripts.search.placeholder": "Buscar scripts…",
+	"scripts.search.noMatches": "Sin coincidencias.",
 	"scripts.picker.title": "¿Dónde abrir \"{name}\"?",
 	"scripts.picker.left": "Izquierda",
 	"scripts.picker.top": "Arriba",
@@ -17,18 +19,7 @@ const scripts = {
 	"scripts.picker.window": "Nueva pestaña",
 	"scripts.picker.cancel": "Cancelar",
 	"scripts.picker.back": "Atrás",
-	"scripts.footer.runMultiple": "Ejecutar varios scripts…",
 	"scripts.error.runFailed": "Error al ejecutar \"{name}\": {error}",
-	"scripts.batch.title": "Ejecutar varios scripts",
-	"scripts.batch.script": "Script",
-	"scripts.batch.placement": "Ubicación",
-	"scripts.batch.pick": "elige un script",
-	"scripts.batch.addRow": "Añadir script",
-	"scripts.batch.removeRow": "Quitar",
-	"scripts.batch.launching": "Lanzando…",
-	"scripts.batch.launchN_one": "Lanzar {count} script",
-	"scripts.batch.launchN_other": "Lanzar {count} scripts",
-	"scripts.batch.error.empty": "Elige al menos un script.",
 };
 
 export default scripts;

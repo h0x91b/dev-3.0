@@ -54,7 +54,6 @@ export const MENU_ACTIONS = {
 	taskOpenInFinder: "task-open-in-finder",
 	taskCopyWorktreePath: "task-copy-worktree-path",
 	taskRunScript: "task-run-script",
-	taskRunMultipleScripts: "task-run-multiple-scripts",
 
 	// ── Project ──
 	projectPullMain: "project-pull-main",
@@ -351,7 +350,6 @@ const REQUIRES_TASK: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.taskOpenInFinder,
 	MENU_ACTIONS.taskCopyWorktreePath,
 	MENU_ACTIONS.taskRunScript,
-	MENU_ACTIONS.taskRunMultipleScripts,
 	// Task-scoped project ops (need a task branch to push / create-PR)
 	MENU_ACTIONS.projectCreatePr,
 	MENU_ACTIONS.projectPushBranch,
@@ -582,7 +580,6 @@ function taskMenu(): ApplicationMenuItemConfig {
 			item({ label: "Copy Worktree Path", action: MENU_ACTIONS.taskCopyWorktreePath }),
 			SEP,
 			item({ label: "Run Script…", action: MENU_ACTIONS.taskRunScript, accelerator: "r" }),
-			item({ label: "Run Multiple Scripts…", action: MENU_ACTIONS.taskRunMultipleScripts, accelerator: "shift+r" }),
 		],
 	};
 }

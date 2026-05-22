@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import fuzzysort from "fuzzysort";
 import type {
 	PackageScripts,
 	Project,
@@ -10,7 +11,6 @@ import type {
 import { SCRIPT_PLACEMENTS } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
-import RunScriptsBatchModal from "../RunScriptsBatchModal";
 
 interface TaskScriptsProps {
 	task: Task;
@@ -41,6 +41,7 @@ function placementLabel(t: ReturnType<typeof useT>, p: ScriptPlacement): string 
 export default function TaskScripts({ task, project, isTaskActive }: TaskScriptsProps) {
 	const t = useT();
 	const btnRef = useRef<HTMLButtonElement>(null);
+	const searchRef = useRef<HTMLInputElement>(null);
 	const [open, setOpen] = useState(false);
 	const [pos, setPos] = useState<DropdownPosition>({ top: 0, left: 0 });
 	const [pkg, setPkg] = useState<PackageScripts | null>(null);
@@ -48,7 +49,8 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	const [pickerFor, setPickerFor] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [batchOpen, setBatchOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const [activeIdx, setActiveIdx] = useState(0);
 
 	const refresh = useCallback(async () => {
 		try {
@@ -80,6 +82,15 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		};
 	}, [open, pickerFor]);
 
+	// Auto-focus the search input as soon as the dropdown opens (and not in picker mode).
+	useEffect(() => {
+		if (open && !pickerFor) {
+			// Allow portal to mount first.
+			const timer = setTimeout(() => searchRef.current?.focus(), 0);
+			return () => clearTimeout(timer);
+		}
+	}, [open, pickerFor]);
+
 	// Sort scripts: most recently run first, then keep package.json order for the rest.
 	const sortedScripts = useMemo(() => {
 		if (!pkg?.scripts) return [];
@@ -94,6 +105,22 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		return indexed.map((x) => x.s);
 	}, [pkg?.scripts, task.scriptLastRunAt]);
 
+	// Apply fuzzy filter on top of the sorted list.
+	const filteredScripts = useMemo(() => {
+		if (!query.trim()) return sortedScripts;
+		const targets = sortedScripts.map((s) => ({ ...s, key: `${s.name} ${s.command}` }));
+		const results = fuzzysort.go(query, targets, { key: "key", threshold: -10000 });
+		return results.map((r) => ({ name: r.obj.name, command: r.obj.command }));
+	}, [query, sortedScripts]);
+
+	// Clamp active index whenever the filtered list changes.
+	useEffect(() => {
+		setActiveIdx((i) => {
+			if (filteredScripts.length === 0) return 0;
+			return Math.min(i, filteredScripts.length - 1);
+		});
+	}, [filteredScripts.length]);
+
 	function openDropdown() {
 		if (!isTaskActive) return;
 		const rect = btnRef.current?.getBoundingClientRect();
@@ -102,6 +129,8 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		setPos({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
 		setOpen(true);
 		setPickerFor(null);
+		setQuery("");
+		setActiveIdx(0);
 	}
 
 	function closeDropdown() {
@@ -134,17 +163,9 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			if (detail.taskId !== task.id) return;
 			openDropdown();
 		}
-		function onOpenBatch(e: Event) {
-			const detail = (e as CustomEvent).detail as { taskId: string };
-			if (detail.taskId !== task.id) return;
-			setBatchOpen(true);
-			setOpen(false);
-		}
 		window.addEventListener("menu:task-run-script", onOpenDropdown);
-		window.addEventListener("menu:task-run-multiple-scripts", onOpenBatch);
 		return () => {
 			window.removeEventListener("menu:task-run-script", onOpenDropdown);
-			window.removeEventListener("menu:task-run-multiple-scripts", onOpenBatch);
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [task.id, isTaskActive]);
@@ -165,6 +186,20 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			setError(t("scripts.error.runFailed", { name: scriptName, error: String(err) }));
 		} finally {
 			setBusy(false);
+		}
+	}
+
+	function onSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			setActiveIdx((i) => Math.min(i + 1, filteredScripts.length - 1));
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			setActiveIdx((i) => Math.max(i - 1, 0));
+		} else if (e.key === "Enter") {
+			e.preventDefault();
+			const picked = filteredScripts[activeIdx];
+			if (picked) setPickerFor(picked.name);
 		}
 	}
 
@@ -252,32 +287,41 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 					</div>
 				) : (
 					<>
+						{/* Search input */}
+						{pkg?.exists && pkg.scripts.length > 0 && (
+							<div className="flex-shrink-0 px-3 py-2 border-b border-edge">
+								<input
+									ref={searchRef}
+									type="text"
+									value={query}
+									onChange={(e) => { setQuery(e.target.value); setActiveIdx(0); }}
+									onKeyDown={onSearchKey}
+									placeholder={t("scripts.search.placeholder")}
+									className="w-full bg-base border border-edge rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder:text-fg-muted focus:outline-none focus:border-accent"
+								/>
+							</div>
+						)}
+
 						{/* Scrollable list */}
 						<div className="overflow-y-auto py-1 min-h-0">
-							{sortedScripts.map((s) => (
+							{filteredScripts.length === 0 && query.trim() && (
+								<div className="px-3 py-4 text-xs text-fg-3 text-center">
+									{t("scripts.search.noMatches")}
+								</div>
+							)}
+							{filteredScripts.map((s, idx) => (
 								<button
 									key={s.name}
 									onClick={() => setPickerFor(s.name)}
+									onMouseEnter={() => setActiveIdx(idx)}
 									disabled={busy}
-									className="w-full text-left px-3 py-1.5 flex flex-col hover:bg-elevated transition-colors disabled:opacity-50"
+									className={`w-full text-left px-3 py-1.5 flex flex-col transition-colors disabled:opacity-50 ${idx === activeIdx ? "bg-elevated" : "hover:bg-elevated"}`}
 								>
 									<span className="text-sm text-fg font-medium truncate">{s.name}</span>
 									<span className="text-xs text-fg-3 truncate">{s.command}</span>
 								</button>
 							))}
 						</div>
-
-						{/* Sticky footer */}
-						{pkg?.exists && pkg.scripts.length > 0 && (
-							<div className="flex-shrink-0 border-t border-edge px-3 py-2">
-								<button
-									onClick={() => { setBatchOpen(true); setOpen(false); }}
-									className="text-xs text-accent hover:text-accent-hover font-medium"
-								>
-									{t("scripts.footer.runMultiple")}
-								</button>
-							</div>
-						)}
 					</>
 				)}
 			</div>
@@ -301,15 +345,6 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("scripts.button")}</span>
 			</button>
 			{dropdown}
-			{batchOpen && pkg?.exists && (
-				<RunScriptsBatchModal
-					task={task}
-					project={project}
-					pkg={pkg}
-					runner={runner ?? pkg.runner}
-					onClose={() => setBatchOpen(false)}
-				/>
-			)}
 		</>
 	);
 }

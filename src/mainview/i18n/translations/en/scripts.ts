@@ -9,6 +9,8 @@ const scripts = {
 	"scripts.empty.noPackageJson": "No package.json found in this worktree.",
 	"scripts.empty.noScripts": "package.json has no \"scripts\" field.",
 	"scripts.empty.parseError": "package.json could not be parsed: {error}",
+	"scripts.search.placeholder": "Search scripts…",
+	"scripts.search.noMatches": "No matching scripts.",
 	"scripts.picker.title": "Where to open \"{name}\"?",
 	"scripts.picker.left": "Left",
 	"scripts.picker.top": "Top",
@@ -17,18 +19,7 @@ const scripts = {
 	"scripts.picker.window": "New tab",
 	"scripts.picker.cancel": "Cancel",
 	"scripts.picker.back": "Back",
-	"scripts.footer.runMultiple": "Run multiple scripts…",
 	"scripts.error.runFailed": "Failed to run \"{name}\": {error}",
-	"scripts.batch.title": "Run multiple scripts",
-	"scripts.batch.script": "Script",
-	"scripts.batch.placement": "Placement",
-	"scripts.batch.pick": "pick a script",
-	"scripts.batch.addRow": "Add script",
-	"scripts.batch.removeRow": "Remove",
-	"scripts.batch.launching": "Launching…",
-	"scripts.batch.launchN_one": "Launch {count} script",
-	"scripts.batch.launchN_other": "Launch {count} scripts",
-	"scripts.batch.error.empty": "Pick at least one script.",
 };
 
 export default scripts;
