@@ -1,0 +1,1 @@
+Refuse to kill the last remaining tmux pane in a task session. Repeated clicks on the red kill-pane button no longer take down the agent's own pane — once a single pane is left, the action becomes a no-op.

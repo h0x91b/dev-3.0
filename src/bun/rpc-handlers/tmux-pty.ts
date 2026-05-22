@@ -1223,8 +1223,21 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 
 	// For killPane, capture the active pane ID before killing — kill-pane
 	// does NOT trigger tmux's pane-exited hook, so we must clean up sessionState here.
+	// Also refuse to kill the last remaining pane in the session — otherwise repeated
+	// clicks on the red button take down the agent's own pane.
 	let killedPaneId: string | null = null;
 	if (params.action === "killPane") {
+		try {
+			const countResult = spawnSync(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"));
+			if (countResult.exitCode === 0) {
+				const paneCount = new TextDecoder().decode(countResult.stdout).trim().split("\n").filter((l) => l.length > 0).length;
+				if (paneCount <= 1) {
+					log.info("tmuxAction killPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
+					return;
+				}
+			}
+		} catch { /* best effort — if counting fails, fall through to the normal kill */ }
+
 		try {
 			const idResult = spawnSync(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"));
 			if (idResult.exitCode === 0) {
