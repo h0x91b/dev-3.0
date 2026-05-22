@@ -615,6 +615,8 @@ export interface Task {
 	scratch?: boolean;
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
+	/** Last-used placement per package.json script — pre-selects it in the placement picker. */
+	scriptLastPlacement?: Record<string, ScriptPlacement>;
 }
 
 // ---- Package scripts runner ----

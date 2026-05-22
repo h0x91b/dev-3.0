@@ -56,10 +56,15 @@ async function runScriptHandler(params: {
 		socket,
 	});
 
-	// Persist last-run timestamp for sort-by-recent in the dropdown.
+	// Persist last-run timestamp + placement so the dropdown can sort and pre-select.
 	const lastRun = { ...(task.scriptLastRunAt ?? {}) };
 	lastRun[params.scriptName] = new Date().toISOString();
-	await data.updateTask(project, task.id, { scriptLastRunAt: lastRun });
+	const lastPlacement = { ...(task.scriptLastPlacement ?? {}) };
+	lastPlacement[params.scriptName] = params.placement;
+	await data.updateTask(project, task.id, {
+		scriptLastRunAt: lastRun,
+		scriptLastPlacement: lastPlacement,
+	});
 	return { ok: true };
 }
 

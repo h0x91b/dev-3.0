@@ -51,6 +51,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	const [error, setError] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [activeIdx, setActiveIdx] = useState(0);
+	const [placementIdx, setPlacementIdx] = useState(0);
 
 	const refresh = useCallback(async () => {
 		try {
@@ -138,25 +139,6 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		setPickerFor(null);
 	}
 
-	// Hover-open with 250ms delay so brushing past the button doesn't pop the menu.
-	const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	function handleHoverEnter() {
-		if (open) return;
-		if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-		hoverTimerRef.current = setTimeout(() => {
-			openDropdown();
-		}, 250);
-	}
-	function handleHoverLeave() {
-		if (hoverTimerRef.current) {
-			clearTimeout(hoverTimerRef.current);
-			hoverTimerRef.current = null;
-		}
-	}
-	useEffect(() => () => {
-		if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-	}, []);
-
 	useEffect(() => {
 		function onOpenDropdown(e: Event) {
 			const detail = (e as CustomEvent).detail as { taskId: string };
@@ -188,6 +170,40 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			setBusy(false);
 		}
 	}
+
+	// When entering the placement picker, pre-select the last used placement for this script
+	// (or default to "right" if there's no history).
+	useEffect(() => {
+		if (!pickerFor) return;
+		const last = task.scriptLastPlacement?.[pickerFor];
+		const idx = last ? SCRIPT_PLACEMENTS.indexOf(last) : -1;
+		setPlacementIdx(idx >= 0 ? idx : SCRIPT_PLACEMENTS.indexOf("right"));
+	}, [pickerFor, task.scriptLastPlacement]);
+
+	// Keyboard navigation inside the placement picker.
+	useEffect(() => {
+		if (!open || !pickerFor) return;
+		function onKey(e: KeyboardEvent) {
+			if (e.key === "ArrowLeft") {
+				e.preventDefault();
+				setPlacementIdx((i) => Math.max(0, i - 1));
+			} else if (e.key === "ArrowRight") {
+				e.preventDefault();
+				setPlacementIdx((i) => Math.min(SCRIPT_PLACEMENTS.length - 1, i + 1));
+			} else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+				// 5 buttons rendered in a single row — up/down are no-ops, but swallow them
+				// so the underlying scroll handlers don't fire.
+				e.preventDefault();
+			} else if (e.key === "Enter") {
+				e.preventDefault();
+				const p = SCRIPT_PLACEMENTS[placementIdx];
+				if (p && pickerFor) void launch(pickerFor, p);
+			}
+		}
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [open, pickerFor, placementIdx]);
 
 	function onSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
 		if (e.key === "ArrowDown") {
@@ -264,12 +280,17 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 							{pkg?.scripts.find((s) => s.name === pickerFor)?.command}
 						</div>
 						<div className="grid grid-cols-5 gap-1.5">
-							{SCRIPT_PLACEMENTS.map((p) => (
+							{SCRIPT_PLACEMENTS.map((p, idx) => (
 								<button
 									key={p}
 									onClick={() => launch(pickerFor, p)}
+									onMouseEnter={() => setPlacementIdx(idx)}
 									disabled={busy}
-									className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg bg-elevated border border-edge hover:border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+									className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg transition-colors disabled:opacity-50 ${
+										idx === placementIdx
+											? "bg-accent/15 border border-accent"
+											: "bg-elevated border border-edge hover:border-accent hover:bg-accent/10"
+									}`}
 									title={placementLabel(t, p)}
 								>
 									<PlacementGlyph placement={p} />
@@ -334,15 +355,13 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			<button
 				ref={btnRef}
 				onClick={openDropdown}
-				onMouseEnter={handleHoverEnter}
-				onMouseLeave={handleHoverLeave}
-				className="flex items-center gap-1 px-2 py-1 rounded-lg border border-edge text-fg-3 hover:bg-elevated hover:text-fg transition-colors flex-shrink-0"
+				className="flex items-center justify-center p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg flex-shrink-0"
 				title={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")}
+				aria-label={t("scripts.button")}
 			>
-				<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "0.875rem", lineHeight: 1 }}>
-					{"\u{F040A}"}
+				<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "1rem", lineHeight: 1 }}>
+					{"\u{F0295}"}
 				</span>
-				<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("scripts.button")}</span>
 			</button>
 			{dropdown}
 		</>

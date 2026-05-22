@@ -549,8 +549,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
 						<TaskTmuxControls taskId={task.id} />
+						<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
-							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 						{worktreeSettingsButton}
 						<button
 							onClick={() => isFullPage
@@ -605,8 +605,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 							<TaskTmuxControls taskId={task.id} />
-							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
 							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
 							<button
 								onClick={() => isFullPage
 									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
