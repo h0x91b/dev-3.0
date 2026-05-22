@@ -4678,6 +4678,45 @@ describe("handlers.tmuxAction", () => {
 			handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" }),
 		).rejects.toThrow("tmux zoom failed");
 	});
+
+	it("killPane refuses to kill the last remaining pane in the session", async () => {
+		// list-panes returns a single pane → killPane must NOT call kill-pane
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes")) {
+				return { exitCode: 0, stdout: new TextEncoder().encode("%1\n"), stderr: new Uint8Array() };
+			}
+			return { exitCode: 0, stdout: new Uint8Array(), stderr: new Uint8Array() };
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
+
+		const spawnCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(spawnCalls.some((a) => a.includes("kill-pane"))).toBe(false);
+	});
+
+	it("killPane proceeds normally when more than one pane exists", async () => {
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes")) {
+				return { exitCode: 0, stdout: new TextEncoder().encode("%1\n%2\n"), stderr: new Uint8Array() };
+			}
+			if (args.includes("display-message")) {
+				return { exitCode: 0, stdout: new TextEncoder().encode("%2\n"), stderr: new Uint8Array() };
+			}
+			return { exitCode: 0, stdout: new Uint8Array(), stderr: new Uint8Array() };
+		});
+		mockSpawn.mockReturnValue({
+			stderr: new Response(""),
+			stdout: new Response(""),
+			exited: Promise.resolve(0),
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
+
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["tmux", "-L", "dev3", "kill-pane", "-t", "dev3-abcd1234"],
+			expect.any(Object),
+		);
+	});
 });
 
 // ================================================================
