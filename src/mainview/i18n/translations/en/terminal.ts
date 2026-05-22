@@ -95,7 +95,7 @@ const terminal = {
 	"tmuxSessions.refresh": "Refresh",
 
 	// Spawn Agent
-	"tmux.spawnExtraAgent": "Spawn Extra Agent",
+	"tmux.spawnExtraAgent": "Add agent",
 	"tmux.spawnExtraAgentDesc": "Spawn another agent in a new pane",
 
 	// Ports

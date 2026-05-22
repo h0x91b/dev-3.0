@@ -78,15 +78,15 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 					<button
 						onClick={handleFileBrowser}
 						disabled={!isTaskActive}
-						className={`flex items-center justify-center p-1 rounded-lg transition-colors ${
+						className={`flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 							!isTaskActive
-								? "text-fg-muted/50 cursor-not-allowed"
+								? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
 								: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
 						}`}
 						title={t("header.fileBrowser")}
 						aria-label={t("header.fileBrowser")}
 					>
-						<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
+						<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "1.125rem", lineHeight: 1 }}>{"\u{F0645}"}</span>
 					</button>
 					{yaziInstallPopup && createPortal(
 						<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setYaziInstallPopup(false)}>
