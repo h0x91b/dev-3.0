@@ -43,6 +43,11 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 	const socket = opts.socket ?? pty.DEFAULT_TMUX_SOCKET;
 	const session = taskSessionName(taskId);
 	const command = resolveRunnerCommand(runner, scriptName);
+	// Keep the pane alive after the script exits so the user can read the tail
+	// of the output. They press Enter (or any key) to close the pane.
+	// Single quotes around the inner script protect against the outer shell —
+	// `command` is built from a safe-name validator so it cannot contain quotes.
+	const wrapped = `bash -c '${command}; __EC=$?; printf "\\n\\033[2m[exited %s — press Enter to close]\\033[0m " "$__EC"; read'`;
 	const { kind, args } = placementToTmuxArgs(placement);
 
 	const tmuxArgs = kind === "split"
@@ -56,7 +61,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 			"-P",
 			"-F",
 			"#{pane_id}",
-			command,
+			wrapped,
 		)
 		: pty.tmuxArgs(
 			socket,
@@ -70,7 +75,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 			"-P",
 			"-F",
 			"#{pane_id}",
-			command,
+			wrapped,
 		);
 
 	const proc = spawn(tmuxArgs, { stdout: "pipe", stderr: "pipe" });

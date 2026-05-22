@@ -109,6 +109,25 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		setPickerFor(null);
 	}
 
+	// Hover-open with 250ms delay so brushing past the button doesn't pop the menu.
+	const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	function handleHoverEnter() {
+		if (open) return;
+		if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+		hoverTimerRef.current = setTimeout(() => {
+			openDropdown();
+		}, 250);
+	}
+	function handleHoverLeave() {
+		if (hoverTimerRef.current) {
+			clearTimeout(hoverTimerRef.current);
+			hoverTimerRef.current = null;
+		}
+	}
+	useEffect(() => () => {
+		if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+	}, []);
+
 	useEffect(() => {
 		function onOpenDropdown(e: Event) {
 			const detail = (e as CustomEvent).detail as { taskId: string };
@@ -271,6 +290,8 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			<button
 				ref={btnRef}
 				onClick={openDropdown}
+				onMouseEnter={handleHoverEnter}
+				onMouseLeave={handleHoverLeave}
 				className="flex items-center gap-1 px-2 py-1 rounded-lg border border-edge text-fg-3 hover:bg-elevated hover:text-fg transition-colors flex-shrink-0"
 				title={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")}
 			>
