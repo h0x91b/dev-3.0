@@ -436,7 +436,9 @@ export function resolveAgentCommand(
 			if (openCodeAgent) {
 				args.push("--prompt", shellEscape(prompt));
 			} else {
-				args.push(shellEscape(prompt));
+				// `--` terminates option parsing so prompts starting with "---"
+				// (e.g. markdown frontmatter) are not treated as unknown flags.
+				args.push("--", shellEscape(prompt));
 			}
 		}
 	}

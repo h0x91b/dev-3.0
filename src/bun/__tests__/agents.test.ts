@@ -388,6 +388,70 @@ describe("resolveAgentCommand — resume", () => {
 	});
 });
 
+describe("resolveAgentCommand — positional prompt separator (-- guard)", () => {
+	// Regression: GitHub #570. Task descriptions starting with "---" (markdown
+	// frontmatter, horizontal rules) were treated as long options by the
+	// agent CLI (commander/clap/yargs) and the agent process exited immediately
+	// with "error: unknown option '---…'". A literal "--" before the positional
+	// prompt terminates option parsing.
+
+	it.each(["claude", "codex", "gemini", "agent"])(
+		"%s: emits `-- <prompt>` so a '---'-prefixed description is not parsed as a flag",
+		(baseCmd) => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: baseCmd }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "---hello frontmatter" }),
+			baseCmd === "claude" ? { sessionId: "11111111-1111-1111-1111-111111111111" } : undefined,
+		);
+
+		// Codex / Cursor agents append skill bodies onto the prompt, so we
+		// match the prefix `-- '---hello frontmatter` (no closing quote).
+		expect(cmd).toContain("-- '---hello frontmatter");
+		// The prompt token must not be at the head of args where it could be
+		// scanned as an option — it must come strictly after the "--" guard.
+		const dashDashIdx = cmd.indexOf(" -- '");
+		const promptIdx = cmd.indexOf("'---hello frontmatter");
+		expect(dashDashIdx).toBeGreaterThan(0);
+		expect(promptIdx).toBeGreaterThan(dashDashIdx);
+		},
+	);
+
+	it("OpenCode: uses --prompt <value>, so no -- separator is added (value form is unambiguous)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "---hello frontmatter" }),
+		);
+
+		expect(cmd).toContain("--prompt");
+		expect(cmd).toContain("'---hello frontmatter");
+		expect(cmd).not.toMatch(/ -- '/);
+	});
+
+	it("Claude: -- guard is still present for plain descriptions (no regression for normal prompts)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Fix the login bug" }),
+		);
+
+		expect(cmd).toContain("-- 'Fix the login bug'");
+	});
+
+	it("does not add -- when resuming (no positional prompt is emitted on resume)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "---hello frontmatter" }),
+			{ resume: true, sessionId: "11111111-1111-1111-1111-111111111111" },
+		);
+
+		expect(cmd).not.toContain("---hello frontmatter");
+		expect(cmd).not.toMatch(/ -- '/);
+	});
+});
+
 describe("resolveAgentCommand — sessionId", () => {
 	it("Claude: injects --session-id for fresh launch", () => {
 		const cmd = resolveAgentCommand(
