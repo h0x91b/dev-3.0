@@ -357,11 +357,16 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			<button
 				ref={btnRef}
 				onClick={openDropdown}
-				className="flex items-center justify-center p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg flex-shrink-0"
+				disabled={!isTaskActive}
+				className={`flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+					!isTaskActive
+						? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
+						: "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+				}`}
 				title={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")}
 				aria-label={t("scripts.button")}
 			>
-				<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "1rem", lineHeight: 1 }}>
+				<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "1.125rem", lineHeight: 1 }}>
 					{"\u{F0295}"}
 				</span>
 			</button>
