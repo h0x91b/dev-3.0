@@ -110,6 +110,77 @@ describe("github", () => {
 		});
 	});
 
+	it("falls back to plain gh auth status when --json flag is unsupported (old gh)", async () => {
+		whichMock.mockResolvedValue("/usr/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc("", "unknown flag: --json\n\nUsage:\n  gh auth status [flags]\n", 1);
+			}
+			if (cmd.join(" ") === "gh auth status") {
+				// Old gh writes auth status output to stderr.
+				const text =
+					"github.com\n" +
+					"  ✓ Logged in to github.com as h0x91b (oauth_token)\n" +
+					"  ✓ Git operations for github.com configured to use https protocol.\n" +
+					"  ✓ Token: gho_******\n";
+				return fakeProc("", text, 0);
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubCliStatus } = await import("../github");
+		await expect(getGitHubCliStatus()).resolves.toEqual({
+			authStatus: "authenticated",
+			binaryPath: "/usr/bin/gh",
+			accounts: [{ login: "h0x91b", host: "github.com", active: true }],
+		});
+	});
+
+	it("fallback parses plain output written to stdout instead of stderr", async () => {
+		whichMock.mockResolvedValue("/usr/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc("", "unknown flag: --json\n", 1);
+			}
+			if (cmd.join(" ") === "gh auth status") {
+				const text =
+					"github.com\n" +
+					"  ✓ Logged in to github.com as h0x91b-wix (keyring)\n" +
+					"  ✓ Logged in to github.com as h0x91b (oauth_token)\n";
+				return fakeProc(text, "", 0);
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubCliStatus } = await import("../github");
+		const status = await getGitHubCliStatus();
+		expect(status.authStatus).toBe("authenticated");
+		expect(status.accounts).toEqual([
+			{ login: "h0x91b-wix", host: "github.com", active: true },
+			{ login: "h0x91b", host: "github.com", active: false },
+		]);
+	});
+
+	it("returns not_authenticated when fallback gh auth status also fails", async () => {
+		whichMock.mockResolvedValue("/usr/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc("", "unknown flag: --json\n", 1);
+			}
+			if (cmd.join(" ") === "gh auth status") {
+				return fakeProc("", "You are not logged into any GitHub hosts.\n", 1);
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubCliStatus } = await import("../github");
+		await expect(getGitHubCliStatus()).resolves.toEqual({
+			authStatus: "not_authenticated",
+			binaryPath: "/usr/bin/gh",
+			accounts: [],
+		});
+	});
+
 	it("builds shell exports for the resolved account", async () => {
 		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
 		spawnMock.mockReturnValue(fakeProc(JSON.stringify({

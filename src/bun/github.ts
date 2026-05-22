@@ -70,6 +70,31 @@ async function runGh(
 	};
 }
 
+const UNSUPPORTED_JSON_FLAG_PATTERN = /unknown (flag|command|option)/i;
+
+function isJsonFlagUnsupported(result: GitHubCommandResult): boolean {
+	if (result.ok) return false;
+	return UNSUPPORTED_JSON_FLAG_PATTERN.test(result.stderr);
+}
+
+function parsePlainAuthStatus(output: string): GitHubAccount[] {
+	const accounts: GitHubAccount[] = [];
+	const seen = new Set<string>();
+	const loggedInPattern = /Logged in to (\S+) as ([^\s(]+)/g;
+	let match: RegExpExecArray | null;
+	let isFirst = true;
+	while ((match = loggedInPattern.exec(output)) !== null) {
+		const host = match[1];
+		const login = match[2];
+		const key = `${host}\0${login}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		accounts.push({ host, login, active: isFirst });
+		isFirst = false;
+	}
+	return accounts;
+}
+
 function parseAccounts(payload: GhAuthStatusResponse): GitHubAccount[] {
 	const seen = new Set<string>();
 	const accounts: GitHubAccount[] = [];
@@ -111,6 +136,29 @@ export async function getGitHubCliStatus(): Promise<GitHubCliStatus> {
 	}
 
 	const result = await runGh(["auth", "status", "--json", "hosts"]);
+
+	// Older gh versions (e.g. v2.45.0) don't support --json. Fall back to plain text parsing.
+	if (isJsonFlagUnsupported(result)) {
+		log.info("gh --json unsupported, falling back to plain `gh auth status`", { stderr: result.stderr });
+		const fallback = await runGh(["auth", "status"]);
+		// Old gh writes auth status to stderr; newer versions to stdout. Check both.
+		const text = `${fallback.stdout}\n${fallback.stderr}`;
+		const accounts = parsePlainAuthStatus(text);
+		if (accounts.length === 0) {
+			log.warn("gh auth status (plain) reported no accounts", { code: fallback.code, stderr: fallback.stderr });
+			return {
+				authStatus: "not_authenticated",
+				binaryPath,
+				accounts: [],
+			};
+		}
+		return {
+			authStatus: "authenticated",
+			binaryPath,
+			accounts,
+		};
+	}
+
 	if (!result.ok || !result.stdout) {
 		log.warn("gh auth status failed", { code: result.code, stderr: result.stderr });
 		return {
