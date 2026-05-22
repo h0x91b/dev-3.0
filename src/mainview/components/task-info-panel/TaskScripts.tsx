@@ -90,13 +90,15 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	}, [open, pickerFor]);
 
 	// Auto-focus the search input as soon as the dropdown opens (and not in picker mode).
+	// On the very first open `pkg` is still null while parsePackageScripts runs, so the
+	// input isn't mounted yet — we also re-run once the input becomes available.
+	const searchInputMounted = !!(pkg?.exists && pkg.scripts.length > 0);
 	useEffect(() => {
-		if (open && !pickerFor) {
-			// Allow portal to mount first.
+		if (open && !pickerFor && searchInputMounted) {
 			const timer = setTimeout(() => searchRef.current?.focus(), 0);
 			return () => clearTimeout(timer);
 		}
-	}, [open, pickerFor]);
+	}, [open, pickerFor, searchInputMounted]);
 
 	// Sort scripts: most recently run first, then keep package.json order for the rest.
 	const sortedScripts = useMemo(() => {
