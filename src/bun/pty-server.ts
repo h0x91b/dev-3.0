@@ -159,6 +159,31 @@ export function getTmuxBinary(): string {
 	return tmuxBinary;
 }
 
+let tmuxBinaryLogged = false;
+
+export function _resetTmuxBinaryLoggedForTests(): void {
+	tmuxBinaryLogged = false;
+}
+
+function logTmuxBinaryOnce(taskId: string): void {
+	if (tmuxBinaryLogged) return;
+	tmuxBinaryLogged = true;
+	try {
+		const which = spawnSync(["which", "tmux"]);
+		const tmuxPath = new TextDecoder().decode(which.stdout).trim();
+		log.info("tmux binary found", {
+			taskId: shortId(taskId),
+			path: tmuxPath,
+			exitCode: which.exitCode,
+		});
+	} catch (err) {
+		log.error("tmux binary NOT found — this will crash", {
+			taskId: shortId(taskId),
+			error: String(err),
+		});
+	}
+}
+
 /**
  * Build a tmux command array with our custom socket.
  * All tmux invocations in the app MUST use this helper to ensure
@@ -295,31 +320,14 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 		socket,
 	});
 
-	// Kill the tmux session explicitly — proc.kill() only disconnects the
-	// attached client, the session itself keeps running on the tmux server.
-	// Use spawnSync to ensure the kill completes before we proceed.
 	const tmuxSessionName = session?.tmuxSessionName ?? computeTmuxSessionName(taskId, "task");
-	try {
-		const result = spawnSync(tmuxArgs(socket, "kill-session", "-t", tmuxSessionName));
-		if (result.exitCode !== 0) {
-			const stderr = new TextDecoder().decode(result.stderr).trim();
-			log.warn("tmux kill-session exited non-zero", {
-				taskId: taskId.slice(0, 8),
-				exitCode: result.exitCode,
-				stderr,
-			});
-		} else {
-			log.info("tmux kill-session succeeded", { taskId: taskId.slice(0, 8), tmuxSessionName });
-		}
-	} catch (err) {
-		log.warn("tmux kill-session failed (best-effort)", {
-			taskId: taskId.slice(0, 8),
-			error: String(err),
-		});
-	}
 
+	// Clean up local state synchronously FIRST so callers (e.g. hasSession,
+	// reconnect logic) see a consistent empty slot immediately. The tmux
+	// server cleanup happens in the background — blocking the event loop on
+	// `tmux kill-session` was the cause of UI freezes when moving tasks to
+	// done (see fix/dev3-unblock-task-lifecycle).
 	if (session) {
-		// Clear batch timer to prevent flushing after destruction
 		if (session.batchTimer) {
 			clearTimeout(session.batchTimer);
 			session.batchTimer = null;
@@ -338,6 +346,40 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 		}
 		session.clients.clear();
 		sessions.delete(taskId);
+	}
+
+	// Kill the tmux session asynchronously — proc.kill() above only closes
+	// our attached client; the tmux server keeps the session alive until
+	// `kill-session` lands. Fire-and-forget with logging.
+	try {
+		const proc = spawn(tmuxArgs(socket, "kill-session", "-t", tmuxSessionName), {
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		proc.exited
+			.then(async (code) => {
+				if (code !== 0) {
+					const stderr = (await new Response(proc.stderr).text()).trim();
+					log.warn("tmux kill-session exited non-zero", {
+						taskId: taskId.slice(0, 8),
+						exitCode: code,
+						stderr,
+					});
+				} else {
+					log.info("tmux kill-session succeeded", { taskId: taskId.slice(0, 8), tmuxSessionName });
+				}
+			})
+			.catch((err) => {
+				log.warn("tmux kill-session promise rejected", {
+					taskId: taskId.slice(0, 8),
+					error: String(err),
+				});
+			});
+	} catch (err) {
+		log.warn("tmux kill-session spawn failed (best-effort)", {
+			taskId: taskId.slice(0, 8),
+			error: String(err),
+		});
 	}
 }
 
@@ -647,21 +689,10 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		rows,
 	});
 
-	// Check if tmux binary is accessible
-	try {
-		const which = spawnSync(["which", "tmux"]);
-		const tmuxPath = new TextDecoder().decode(which.stdout).trim();
-		log.info("tmux binary found", {
-			taskId: shortId(session.taskId),
-			path: tmuxPath,
-			exitCode: which.exitCode,
-		});
-	} catch (err) {
-		log.error("tmux binary NOT found — this will crash", {
-			taskId: shortId(session.taskId),
-			error: String(err),
-		});
-	}
+	// Diagnostic: log the resolved tmux binary path once per app run.
+	// `which tmux` is a sync spawn — repeating it on every PTY launch added
+	// blocking I/O to the task-start hot path.
+	logTmuxBinaryOnce(session.taskId);
 
 	let proc: ReturnType<typeof Bun.spawn>;
 	try {

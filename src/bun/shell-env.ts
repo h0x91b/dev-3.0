@@ -67,8 +67,20 @@ function readAccountShell(): string | null {
 	return null;
 }
 
+// Cached across the app lifetime. The user's login shell does not change while
+// dev-3.0 is running; reading it via `dscl` (macOS) on every call adds a sync
+// spawn to every task launch / cleanup script run. Tests can reset via
+// `_resetUserShellCacheForTests`.
+let cachedUserShell: string | null = null;
+
 export function getUserShell(): string {
-	return readAccountShell() || process.env.SHELL || "/bin/zsh";
+	if (cachedUserShell) return cachedUserShell;
+	cachedUserShell = readAccountShell() || process.env.SHELL || "/bin/zsh";
+	return cachedUserShell;
+}
+
+export function _resetUserShellCacheForTests(): void {
+	cachedUserShell = null;
 }
 
 /**

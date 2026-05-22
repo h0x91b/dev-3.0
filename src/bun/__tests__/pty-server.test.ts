@@ -45,6 +45,7 @@ import {
 	setOnBell,
 	setOnOsc52Copy,
 	TMUX_CONF_PATH,
+	_resetTmuxBinaryLoggedForTests,
 } from "../pty-server";
 
 // ---- Typed mock handles ----
@@ -80,6 +81,9 @@ beforeEach(() => {
 	mockExistsSync.mockReturnValue(true);
 	mockSpawn.mockReturnValue(defaultSpawnReturn() as any);
 	mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new Uint8Array(0) } as any);
+	// `which tmux` now runs only once per app lifetime — reset the cache so each
+	// test that expects it can observe the spawnSync call.
+	_resetTmuxBinaryLoggedForTests();
 });
 
 afterEach(() => {
@@ -282,15 +286,15 @@ describe("pty-server", () => {
 			expect(hasSession(id)).toBe(false);
 		});
 
-		it("kills tmux session via spawnSync", () => {
+		it("kills tmux session via async spawn (non-blocking)", () => {
 			const id = track("task-dstr-02");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
-			mockSpawnSync.mockClear();
+			mockSpawn.mockClear();
 
 			destroySession(id);
 			activeSessions.splice(activeSessions.indexOf(id), 1);
 
-			const killCall = mockSpawnSync.mock.calls.find(
+			const killCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
 			expect(killCall).toBeDefined();
@@ -319,12 +323,13 @@ describe("pty-server", () => {
 			const id = track("task-dstr-04");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 
-			// Make kill-session throw
-			mockSpawnSync.mockImplementation((cmd: any) => {
+			// Make the kill-session spawn throw — the destroy must still finish
+			// cleaning up the local session map (it's a fire-and-forget kill now).
+			mockSpawn.mockImplementation((cmd: any) => {
 				if (Array.isArray(cmd) && cmd.includes("kill-session")) {
 					throw new Error("tmux kill failed");
 				}
-				return { exitCode: 0, stdout: new Uint8Array(0) } as any;
+				return defaultSpawnReturn() as any;
 			});
 
 			expect(() => destroySession(id)).not.toThrow();
@@ -332,12 +337,12 @@ describe("pty-server", () => {
 		});
 
 		it("kills tmux session even when not in memory map (fallback socket)", () => {
-			mockSpawnSync.mockClear();
+			mockSpawn.mockClear();
 
 			// Destroy a session that was never created in the Map
 			destroySession("unknown-task-id-1234", "dev3");
 
-			const killCall = mockSpawnSync.mock.calls.find(
+			const killCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
 			expect(killCall).toBeDefined();
@@ -347,11 +352,11 @@ describe("pty-server", () => {
 		});
 
 		it("uses fallback socket 'dev3' when no session and no fallback provided", () => {
-			mockSpawnSync.mockClear();
+			mockSpawn.mockClear();
 
 			destroySession("orphan-task-id-5678");
 
-			const killCall = mockSpawnSync.mock.calls.find(
+			const killCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
 			expect(killCall).toBeDefined();
@@ -884,7 +889,7 @@ describe("pty-server", () => {
 			expect(hasSession(key)).toBe(false);
 
 			// Verify tmux kill-session used the correct session name
-			const killCall = mockSpawnSync.mock.calls.find(
+			const killCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("kill-session"),
 			);
 			expect(killCall).toBeDefined();

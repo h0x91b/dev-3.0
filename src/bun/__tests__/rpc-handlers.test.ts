@@ -5048,7 +5048,13 @@ describe("handlers.spawnAgentInTask", () => {
 });
 
 describe("launchTaskPty", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		// getUserShell caches the resolved login shell module-wide. Tests in
+		// this block toggle process.env.SHELL, so reset the cache to honor it.
+		const shellEnv = await import("../shell-env");
+		shellEnv._resetUserShellCacheForTests();
+	});
 
 	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {
 		const project = makeProject({ autoReviewEnabled: true });
