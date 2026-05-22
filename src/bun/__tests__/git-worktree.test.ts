@@ -588,6 +588,33 @@ describe("createWorktree edge cases", () => {
 			cleanupLocal(r);
 		}
 	});
+
+	it("self-heals when BOTH a stale dir and a stale branch are present", async () => {
+		// Regression for a real user log on PR #571: stale branch +
+		// post-side-effect stale dir caused a retry-based fix to fail because
+		// the first attempt cleaned only one condition and the second tripped
+		// on the other. Proactive cleanup must handle both in a single pass.
+		const r = createLocalOnlyRepo("main");
+		try {
+			const project = makeProject(r.local);
+			const task = makeTask({ id: "66666666-7777-8888-9999-aaaaaaaaaaaa" });
+
+			// Stale branch.
+			g("git branch dev3/task-66666666 main", r.local);
+
+			// Stale worktree directory at the exact path createWorktree will pick.
+			const stalePath = join("/tmp/dev3-test", "worktrees", "tmp-repo", "66666666", "worktree");
+			mkdirSync(stalePath, { recursive: true });
+			writeFileSync(join(stalePath, "leftover.txt"), "leftover\n");
+
+			const result = await createWorktree(project, task);
+			expect(existsSync(result.worktreePath)).toBe(true);
+			expect(result.branchName).toBe("dev3/task-66666666");
+			expect(existsSync(join(result.worktreePath, "leftover.txt"))).toBe(false);
+		} finally {
+			cleanupLocal(r);
+		}
+	});
 });
 
 // ─── isGitRepo ──────────────────────────────────────────────────────────────

@@ -754,51 +754,51 @@ export async function createWorktree(
 
 	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 
-	const tryWorktreeAdd = () => run(
-		["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
+	// Proactively reclaim stale leftovers from a prior failed cleanup before
+	// invoking `git worktree add`. Stderr-driven retries don't work here: the
+	// first attempt creates the worktree directory as a side effect even when
+	// it fails on the branch check, so a second attempt then trips on
+	// "directory already exists". The branch and the worktree path are both
+	// owned by dev3 (derived from task.id), so reclaiming them is safe.
+	const dirExistsBeforeAdd = existsSync(wtPath);
+	const branchExistsBeforeAdd = (await run(
+		["git", "rev-parse", "--verify", `refs/heads/${branch}`],
 		project.path,
-	);
+	)).ok;
 
-	let result = await measureGitStep(
-		"createWorktree.default.worktreeAdd",
-		{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
-		tryWorktreeAdd,
-	);
+	if (dirExistsBeforeAdd || branchExistsBeforeAdd) {
+		log.warn("Found stale leftovers from prior failed cleanup, reclaiming", {
+			taskId: task.id.slice(0, 8),
+			wtPath,
+			branch,
+			dirExists: dirExistsBeforeAdd,
+			branchExists: branchExistsBeforeAdd,
+		});
 
-	// Self-heal stale leftovers from a prior failed cleanup. The branch and
-	// worktree path are owned by dev3 (derived from task.id), so reclaiming
-	// them is safe. This unblocks reviving a task from completed/cancelled
-	// when removeWorktree previously didn't finish cleanly.
-	if (!result.ok) {
-		const dirAlreadyExists = result.stderr.includes("already exists") && result.stderr.includes(wtPath);
-		const branchAlreadyExists = result.stderr.includes(`a branch named '${branch}' already exists`);
-		if (dirAlreadyExists || branchAlreadyExists) {
-			log.warn("Worktree creation hit stale leftovers, attempting auto-cleanup", {
-				taskId: task.id.slice(0, 8),
-				dirAlreadyExists,
-				branchAlreadyExists,
-				stderr: result.stderr,
-			});
-
-			if (dirAlreadyExists && existsSync(wtPath)) {
-				await run(["git", "worktree", "remove", "--force", wtPath], project.path);
-				if (existsSync(wtPath)) {
-					rmSync(wtPath, { recursive: true, force: true });
-				}
-				await run(["git", "worktree", "prune"], project.path);
+		if (dirExistsBeforeAdd) {
+			// Try `git worktree remove` first (handles the case where the path
+			// is still registered as a worktree); fall back to plain rmSync if
+			// the directory remains.
+			await run(["git", "worktree", "remove", "--force", wtPath], project.path);
+			if (existsSync(wtPath)) {
+				rmSync(wtPath, { recursive: true, force: true });
 			}
+			await run(["git", "worktree", "prune"], project.path);
+		}
 
-			if (branchAlreadyExists) {
-				await run(["git", "branch", "-D", branch], project.path);
-			}
-
-			result = await measureGitStep(
-				"createWorktree.default.worktreeAddRetry",
-				{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
-				tryWorktreeAdd,
-			);
+		if (branchExistsBeforeAdd) {
+			await run(["git", "branch", "-D", branch], project.path);
 		}
 	}
+
+	const result = await measureGitStep(
+		"createWorktree.default.worktreeAdd",
+		{ taskId: task.id.slice(0, 8), wtPath, branch, resolvedBase },
+		() => run(
+			["git", "worktree", "add", "-b", branch, wtPath, resolvedBase],
+			project.path,
+		),
+	);
 
 	if (!result.ok) {
 		log.error("Failed to create worktree", { stderr: result.stderr, taskId: task.id });
