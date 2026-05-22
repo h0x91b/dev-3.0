@@ -183,35 +183,6 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			window.dispatchEvent(new CustomEvent("menu:task-run-multiple-scripts", { detail: { taskId } }));
 			return;
 		}
-		case "task-focus-running-script": {
-			const taskId = currentTaskId(state);
-			if (!taskId) return;
-			try {
-				const states = await api.request.getScriptStates({ taskId });
-				const running = states.find((s) => s.status === "running");
-				if (running) {
-					await api.request.focusScriptPane({ taskId, scriptName: running.scriptName });
-				}
-			} catch (err) {
-				console.error("[menu] focus running script failed", err);
-			}
-			return;
-		}
-		case "task-stop-running-script": {
-			const taskId = currentTaskId(state);
-			if (!taskId) return;
-			try {
-				const states = await api.request.getScriptStates({ taskId });
-				const running = states.find((s) => s.status === "running");
-				if (running) {
-					await api.request.stopScript({ taskId, scriptName: running.scriptName });
-				}
-			} catch (err) {
-				console.error("[menu] stop running script failed", err);
-			}
-			return;
-		}
-
 		// ── Task: backend ops we can run with just an id ──
 		case "task-open-in-finder": {
 			const task = currentTask(state);

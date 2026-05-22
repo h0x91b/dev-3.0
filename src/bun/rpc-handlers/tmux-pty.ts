@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import type { ColumnAgentConfig, DevServerStatus, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
-import { getTaskTitle, DEV_SERVER_SCRIPT_NAME } from "../../shared/types";
-import { registerExternalScript, unregisterExternalScript } from "../script-runner";
+import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
@@ -68,7 +67,6 @@ export async function killDevServerSession(taskId: string, socket: string): Prom
 	await killDevServerViewerPane(taskId, taskSession, devSession, socket);
 	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 	await kill.exited;
-	unregisterExternalScript(taskId, DEV_SERVER_SCRIPT_NAME);
 	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
 }
 
@@ -586,13 +584,6 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			devViewerPaneIds.set(task.id, viewerPaneId);
 			spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)")).exited.catch(() => {});
 			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top")).exited.catch(() => {});
-			registerExternalScript({
-				taskId: task.id,
-				scriptName: DEV_SERVER_SCRIPT_NAME,
-				displayName: "Dev Server",
-				command: resolved.devScript.trim().split("\n")[0].slice(0, 80),
-				paneId: viewerPaneId,
-			});
 		}
 
 		log.info("← runDevServer done", { devSession, viewerPaneId });

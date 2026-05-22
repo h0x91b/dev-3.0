@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type {
 	PackageScripts,
 	Project,
 	ScriptPlacement,
 	ScriptRunner,
-	ScriptState,
 	Task,
 } from "../../shared/types";
 import { SCRIPT_PLACEMENTS } from "../../shared/types";
@@ -21,7 +20,6 @@ interface Props {
 	project: Project;
 	pkg: PackageScripts;
 	runner: ScriptRunner;
-	states: ScriptState[];
 	onClose: () => void;
 }
 
@@ -33,13 +31,11 @@ const PLACEMENT_LABELS: Record<ScriptPlacement, string> = {
 	window: "scripts.picker.window",
 };
 
-export default function RunScriptsBatchModal({ task, project, pkg, runner, states, onClose }: Props) {
+export default function RunScriptsBatchModal({ task, project, pkg, runner, onClose }: Props) {
 	const t = useT();
-	const [rows, setRows] = useState<BatchRow[]>([{ scriptName: "", placement: task.scriptPlacement?.default ?? "right" }]);
+	const [rows, setRows] = useState<BatchRow[]>([{ scriptName: "", placement: "right" }]);
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-
-	const runningNames = useMemo(() => new Set(states.filter((s) => s.status === "running").map((s) => s.scriptName)), [states]);
 
 	useEffect(() => {
 		function onKey(e: KeyboardEvent) {
@@ -54,7 +50,7 @@ export default function RunScriptsBatchModal({ task, project, pkg, runner, state
 	}
 
 	function addRow() {
-		setRows((r) => [...r, { scriptName: "", placement: task.scriptPlacement?.default ?? "right" }]);
+		setRows((r) => [...r, { scriptName: "", placement: "right" }]);
 	}
 
 	function removeRow(i: number) {
@@ -102,7 +98,6 @@ export default function RunScriptsBatchModal({ task, project, pkg, runner, state
 				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-xl mx-4 max-h-[80vh] flex flex-col"
 				onClick={(e) => e.stopPropagation()}
 			>
-				{/* Header */}
 				<div className="flex-shrink-0 px-6 py-4 border-b border-edge flex items-center justify-between">
 					<div className="min-w-0">
 						<h2 className="text-fg text-lg font-semibold">{t("scripts.batch.title")}</h2>
@@ -113,81 +108,69 @@ export default function RunScriptsBatchModal({ task, project, pkg, runner, state
 					</span>
 				</div>
 
-				{/* Body */}
 				<div className="overflow-y-auto px-6 py-4 space-y-3 min-h-0">
-					{rows.map((row, i) => {
-						const conflict = row.scriptName && runningNames.has(row.scriptName);
-						return (
-							<div
-								key={i}
-								className="p-3 bg-raised rounded-xl border border-edge"
-							>
-								<div className="flex items-start gap-3">
-									<span className="text-accent font-bold text-sm w-6 flex-shrink-0 mt-1">#{i + 1}</span>
+					{rows.map((row, i) => (
+						<div
+							key={i}
+							className="p-3 bg-raised rounded-xl border border-edge"
+						>
+							<div className="flex items-start gap-3">
+								<span className="text-accent font-bold text-sm w-6 flex-shrink-0 mt-1">#{i + 1}</span>
 
-									<div className="flex-1 min-w-0 space-y-2">
-										{/* Script select */}
-										<div>
-											<label className="text-[0.6875rem] text-fg-3 block mb-1">{t("scripts.batch.script")}</label>
-											<select
-												value={row.scriptName}
-												onChange={(e) => updateRow(i, { scriptName: e.target.value })}
-												className="w-full bg-base border border-edge rounded-lg px-2 py-1.5 text-sm text-fg focus:outline-none focus:border-accent"
-											>
-												<option value="">— {t("scripts.batch.pick")} —</option>
-												{pkg.scripts.map((s) => (
-													<option key={s.name} value={s.name}>{s.name}</option>
-												))}
-											</select>
-											{row.scriptName && (
-												<div className="text-[0.6875rem] text-fg-3 mt-1 font-mono truncate">
-													{pkg.scripts.find((s) => s.name === row.scriptName)?.command}
-												</div>
-											)}
-										</div>
-
-										{/* Placement segmented */}
-										<div>
-											<label className="text-[0.6875rem] text-fg-3 block mb-1">{t("scripts.batch.placement")}</label>
-											<div className="flex items-center gap-1">
-												{SCRIPT_PLACEMENTS.map((p) => (
-													<button
-														key={p}
-														onClick={() => updateRow(i, { placement: p })}
-														className={`flex-1 px-2 py-1.5 rounded-md text-[0.625rem] border transition-colors ${
-															row.placement === p
-																? "border-accent bg-accent/10 text-accent"
-																: "border-edge text-fg-3 hover:border-edge-active"
-														}`}
-													>
-														{t(PLACEMENT_LABELS[p] as never)}
-													</button>
-												))}
-											</div>
-										</div>
-
-										{conflict && (
-											<div className="text-[0.6875rem] text-warning">
-												⚠ {t("scripts.batch.alreadyRunning")}
+								<div className="flex-1 min-w-0 space-y-2">
+									<div>
+										<label className="text-[0.6875rem] text-fg-3 block mb-1">{t("scripts.batch.script")}</label>
+										<select
+											value={row.scriptName}
+											onChange={(e) => updateRow(i, { scriptName: e.target.value })}
+											className="w-full bg-base border border-edge rounded-lg px-2 py-1.5 text-sm text-fg focus:outline-none focus:border-accent"
+										>
+											<option value="">— {t("scripts.batch.pick")} —</option>
+											{pkg.scripts.map((s) => (
+												<option key={s.name} value={s.name}>{s.name}</option>
+											))}
+										</select>
+										{row.scriptName && (
+											<div className="text-[0.6875rem] text-fg-3 mt-1 font-mono truncate">
+												{pkg.scripts.find((s) => s.name === row.scriptName)?.command}
 											</div>
 										)}
 									</div>
 
-									{rows.length > 1 && (
-										<button
-											onClick={() => removeRow(i)}
-											className="text-fg-muted hover:text-danger mt-1 p-1"
-											title={t("scripts.batch.removeRow")}
-										>
-											<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-											</svg>
-										</button>
-									)}
+									<div>
+										<label className="text-[0.6875rem] text-fg-3 block mb-1">{t("scripts.batch.placement")}</label>
+										<div className="flex items-center gap-1">
+											{SCRIPT_PLACEMENTS.map((p) => (
+												<button
+													key={p}
+													onClick={() => updateRow(i, { placement: p })}
+													className={`flex-1 px-2 py-1.5 rounded-md text-[0.625rem] border transition-colors ${
+														row.placement === p
+															? "border-accent bg-accent/10 text-accent"
+															: "border-edge text-fg-3 hover:border-edge-active"
+													}`}
+												>
+													{t(PLACEMENT_LABELS[p] as never)}
+												</button>
+											))}
+										</div>
+									</div>
 								</div>
+
+								{rows.length > 1 && (
+									<button
+										onClick={() => removeRow(i)}
+										className="text-fg-muted hover:text-danger mt-1 p-1"
+										title={t("scripts.batch.removeRow")}
+									>
+										<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+										</svg>
+									</button>
+								)}
 							</div>
-						);
-					})}
+						</div>
+					))}
 
 					<button
 						onClick={addRow}
@@ -203,7 +186,6 @@ export default function RunScriptsBatchModal({ task, project, pkg, runner, state
 					</div>
 				)}
 
-				{/* Footer */}
 				<div className="flex-shrink-0 px-6 py-4 border-t border-edge flex items-center justify-end gap-3">
 					<button
 						onClick={onClose}
