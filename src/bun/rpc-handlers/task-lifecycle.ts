@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -437,7 +438,9 @@ export async function runCleanupScript(
 ): Promise<void> {
 	if (!task.worktreePath) return;
 
-	if (!(await Bun.file(task.worktreePath).exists())) {
+	// Use existsSync, not Bun.file(...).exists(): the latter always returns
+	// false for directories.
+	if (!existsSync(task.worktreePath)) {
 		log.warn("Skipping cleanup script — worktree directory missing", {
 			worktreePath: task.worktreePath,
 			taskId: task.id,
