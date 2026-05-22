@@ -8,7 +8,7 @@ import * as data from "../data";
 import * as pty from "../pty-server";
 import { parsePackageScripts } from "../package-scripts";
 import { runScript as runScriptInTmux } from "../script-runner";
-import { log } from "./shared-pure";
+import { getPushMessage, log } from "./shared-pure";
 
 async function parsePackageScriptsHandler(params: {
 	taskId: string;
@@ -56,7 +56,7 @@ async function runScriptHandler(params: {
 		socket,
 	});
 
-	await data.updateTaskWith(project, task.id, (t) => ({
+	const { task: updated } = await data.updateTaskWith(project, task.id, (t) => ({
 		updates: {
 			scriptLastRunAt: {
 				...(t.scriptLastRunAt ?? {}),
@@ -69,6 +69,7 @@ async function runScriptHandler(params: {
 		},
 		result: undefined,
 	}));
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	return { ok: true };
 }
 
