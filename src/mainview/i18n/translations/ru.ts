@@ -10,6 +10,7 @@ import columns from "./ru/columns";
 import tips from "./ru/tips";
 import gaugeDemo from "./ru/gaugeDemo";
 import overview from "./ru/overview";
+import scripts from "./ru/scripts";
 
 const ru: TranslationRecord & Record<string, string> = {
 	...common,
@@ -23,6 +24,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	...tips,
 	...gaugeDemo,
 	...overview,
+	...scripts,
 };
 
 export default ru;

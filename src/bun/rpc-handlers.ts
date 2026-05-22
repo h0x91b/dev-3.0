@@ -46,6 +46,7 @@ import { gitOperationHandlers } from "./rpc-handlers/git-operations";
 import { tmuxPtyHandlers } from "./rpc-handlers/tmux-pty";
 import { notesLabelsHandlers } from "./rpc-handlers/notes-labels";
 import { remoteAccessHandlers } from "./rpc-handlers/remote-access";
+import { scriptsHandlers } from "./rpc-handlers/scripts";
 
 export const handlers = {
 	...appHandlers,
@@ -55,4 +56,5 @@ export const handlers = {
 	...tmuxPtyHandlers,
 	...notesLabelsHandlers,
 	...remoteAccessHandlers,
+	...scriptsHandlers,
 };

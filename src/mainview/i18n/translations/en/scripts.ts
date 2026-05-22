@@ -1,0 +1,25 @@
+const scripts = {
+	"scripts.button": "Scripts",
+	"scripts.tooltip": "Run package.json script",
+	"scripts.tooltip.disabled": "No package.json in this worktree",
+	"scripts.dropdown.header": "package.json · {count} scripts",
+	"scripts.dropdown.runner.tooltip": "Detected from {lockfile}",
+	"scripts.dropdown.runner.fallback": "No lockfile detected — using npm",
+	"scripts.warning.multipleLockfiles": "Multiple lockfiles detected",
+	"scripts.empty.noPackageJson": "No package.json found in this worktree.",
+	"scripts.empty.noScripts": "package.json has no \"scripts\" field.",
+	"scripts.empty.parseError": "package.json could not be parsed: {error}",
+	"scripts.search.placeholder": "Search scripts…",
+	"scripts.search.noMatches": "No matching scripts.",
+	"scripts.picker.title": "Where to open \"{name}\"?",
+	"scripts.picker.left": "Left",
+	"scripts.picker.top": "Top",
+	"scripts.picker.right": "Right",
+	"scripts.picker.bottom": "Bottom",
+	"scripts.picker.window": "New tab",
+	"scripts.picker.cancel": "Cancel",
+	"scripts.picker.back": "Back",
+	"scripts.error.runFailed": "Failed to run \"{name}\": {error}",
+};
+
+export default scripts;

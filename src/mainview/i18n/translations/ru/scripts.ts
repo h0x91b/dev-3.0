@@ -1,0 +1,25 @@
+const scripts = {
+	"scripts.button": "Scripts",
+	"scripts.tooltip": "Запустить скрипт из package.json",
+	"scripts.tooltip.disabled": "В этом worktree нет package.json",
+	"scripts.dropdown.header": "package.json · {count} скриптов",
+	"scripts.dropdown.runner.tooltip": "Определено по {lockfile}",
+	"scripts.dropdown.runner.fallback": "Lockfile не найден — используется npm",
+	"scripts.warning.multipleLockfiles": "Найдено несколько lockfile",
+	"scripts.empty.noPackageJson": "В этом worktree нет package.json.",
+	"scripts.empty.noScripts": "В package.json отсутствует поле \"scripts\".",
+	"scripts.empty.parseError": "Не удалось разобрать package.json: {error}",
+	"scripts.search.placeholder": "Поиск по скриптам…",
+	"scripts.search.noMatches": "Ничего не нашлось.",
+	"scripts.picker.title": "Где открыть \"{name}\"?",
+	"scripts.picker.left": "Слева",
+	"scripts.picker.top": "Сверху",
+	"scripts.picker.right": "Справа",
+	"scripts.picker.bottom": "Снизу",
+	"scripts.picker.window": "Новый таб",
+	"scripts.picker.cancel": "Отмена",
+	"scripts.picker.back": "Назад",
+	"scripts.error.runFailed": "Не удалось запустить \"{name}\": {error}",
+};
+
+export default scripts;
