@@ -189,6 +189,13 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	useEffect(() => {
 		if (!open || !pickerFor) return;
 		const scriptName = pickerFor;
+		// Arm Enter on the next tick so the keystroke that *opened* the picker
+		// (typed in the search input) doesn't also fire launch here.
+		let armed = false;
+		const armId = setTimeout(() => { armed = true; }, 0);
+		// Move focus away from any newly-mounted picker button so a focused
+		// button doesn't turn Enter into a synthetic click → launch.
+		(document.activeElement as HTMLElement | null)?.blur?.();
 		function onKey(e: KeyboardEvent) {
 			if (e.key === "ArrowLeft") {
 				e.preventDefault();
@@ -197,13 +204,17 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				e.preventDefault();
 				setPlacementIdx((i) => Math.min(SCRIPT_PLACEMENTS.length - 1, i + 1));
 			} else if (e.key === "Enter") {
+				if (!armed) return;
 				e.preventDefault();
 				const p = SCRIPT_PLACEMENTS[placementIdxRef.current];
 				if (p) void launch(scriptName, p);
 			}
 		}
 		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
+		return () => {
+			clearTimeout(armId);
+			document.removeEventListener("keydown", onKey);
+		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [open, pickerFor]);
 
