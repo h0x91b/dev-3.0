@@ -24,10 +24,11 @@ function formatDate(iso: string): string {
 }
 
 function printTask(task: Task): void {
+	const titleMarker = task.customTitle?.trim() ? " (user-edited — do NOT rename)" : "";
 	const fields: Array<[string, string]> = [
 		["ID:", task.id],
 		["Seq:", String(task.seq)],
-		["Title:", getTaskTitle(task)],
+		["Title:", `${getTaskTitle(task)}${titleMarker}`],
 		["Status:", STATUS_LABELS[task.status] || task.status],
 	];
 
@@ -113,7 +114,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "force"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> --title '...' [--description '...']");
@@ -138,6 +139,9 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (rawDesc !== undefined) {
 		params.description = rawDesc.trim();
 	}
+	if (args.flags.force === "true") {
+		params.force = true;
+	}
 
 	if (params.title === undefined && params.description === undefined) {
 		exitUsage("Provide --title or --description to update");
@@ -146,7 +150,14 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const resp = await sendRequest(socketPath, "task.update", params);
 	if (!resp.ok) exitError(resp.error || "Failed to update task");
 
-	const task = resp.data as Task;
+	const result = resp.data as Task | { task: Task; titlePreserved?: boolean };
+	const task = "task" in result ? result.task : result;
+	const titlePreserved = "task" in result ? Boolean(result.titlePreserved) : false;
+	if (titlePreserved) {
+		process.stderr.write(
+			`Note: title preserved — task ${task.id.slice(0, 8)} has a user-edited title that the CLI will not overwrite. Pass --force to override.\n`,
+		);
+	}
 	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
 }
 

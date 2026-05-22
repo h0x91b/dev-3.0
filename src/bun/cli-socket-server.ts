@@ -207,8 +207,22 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const updates: Partial<Task> = {};
+		const force = Boolean(params.force);
+		let titlePreserved = false;
 		if (params.title !== undefined) {
-			updates.customTitle = (params.title as string) || null;
+			const newTitle = (params.title as string) || null;
+			const existing = task.customTitle?.trim() || "";
+			// Defensive guard: refuse to overwrite a user-edited customTitle from
+			// the CLI unless --force is passed. The agent skill instructs agents
+			// to leave user-edited titles alone, and this is the backstop.
+			// Empty string (--title "") is treated as an explicit reset and still
+			// goes through, since clearing customTitle restores the auto-generated
+			// title rather than overwriting the user's wording.
+			if (newTitle && existing && newTitle !== existing && !force) {
+				titlePreserved = true;
+			} else {
+				updates.customTitle = newTitle;
+			}
 		}
 		if (params.description !== undefined) {
 			updates.description = params.description as string;
@@ -218,13 +232,16 @@ const handlers: Record<string, Handler> = {
 			}
 		}
 
-		if (Object.keys(updates).length === 0) {
+		if (Object.keys(updates).length === 0 && !titlePreserved) {
 			throw new Error("Nothing to update. Provide --title or --description.");
 		}
 
-		const updated = await data.updateTask(project, task.id, updates);
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		return updated;
+		let updated = task;
+		if (Object.keys(updates).length > 0) {
+			updated = await data.updateTask(project, task.id, updates);
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		}
+		return { task: updated, titlePreserved };
 	},
 
 	"overview.set": async (params) => {

@@ -50,6 +50,14 @@ longer than ~6 words, synthesize a concise title and update it:
 Good titles: "Fix auth race condition", "Map missing keyboard bindings", "Add drag-to-reorder support"
 Bad titles: copies of the description, vague summaries, titles with ellipsis
 
+**Respect user-edited titles.** If \`dev3 current\` shows the title marked
+\`(user-edited — do NOT rename)\`, the user has explicitly set it via the UI.
+**Skip the rename step entirely** — do NOT call \`dev3 task update --title\`,
+regardless of length or wording. The user's title must be preserved for the
+entire task lifetime. As a backstop, the CLI also silently refuses to overwrite
+a user-edited title; \`--force\` exists for diagnostics only and you must never
+pass it.
+
 When targeting a task other than the auto-detected current worktree task, pass
 \`--task <id>\` or \`--task-id <id>\` explicitly. This works for \`task show\`,
 \`task update\`, \`task move\`, \`note\`, \`overview\`, and \`label set\`.

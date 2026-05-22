@@ -32,6 +32,7 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				const task = resp.data as Task;
 				const project = readProjectDirect(context.projectId);
 				const displayTitle = getTaskTitle(task);
+				const titleMarker = task.customTitle?.trim() ? " (user-edited — do NOT rename)" : "";
 
 				const statusDisplay = task.customColumnId
 					? `${STATUS_LABELS[task.status] || task.status} (in custom column)`
@@ -42,7 +43,7 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 					["Project ID:", context.projectId],
 					["Task ID:", task.id],
 					["Seq:", String(task.seq)],
-					["Title:", displayTitle],
+					["Title:", `${displayTitle}${titleMarker}`],
 					["Status:", statusDisplay],
 				];
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
@@ -106,9 +107,10 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 	if (task) {
 		const displayTask = task as Pick<Task, "title" | "customTitle">;
 		const displayTitle = getTaskTitle(displayTask as Task);
+		const titleMarker = displayTask.customTitle?.trim() ? " (user-edited — do NOT rename)" : "";
 
 		if (task.seq !== undefined) fields.push(["Seq:", String(task.seq)]);
-		if (displayTitle) fields.push(["Title:", displayTitle]);
+		if (displayTitle) fields.push(["Title:", `${displayTitle}${titleMarker}`]);
 		if (task.status) fields.push(["Status:", STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] || (task.status as string)]);
 		if (task.branchName) fields.push(["Branch:", task.branchName as string]);
 		if (task.worktreePath) fields.push(["Worktree:", task.worktreePath as string]);

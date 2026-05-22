@@ -579,6 +579,88 @@ describe("task.update", () => {
 		expect(call.description).toBe("New desc");
 		expect(call.title).toBeUndefined();
 	});
+
+	// Issue #564 — agent following its skill must not overwrite a title the user
+	// already set via the UI. The CLI is the agent-facing entry point; refuse to
+	// overwrite a non-empty customTitle unless --force is passed.
+	it("preserves user-edited customTitle when --title is provided without --force", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "User-set title" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", {
+				taskId: task.id,
+				projectId: "proj-1",
+				title: "Agent-proposed rename",
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		// updateTask must NOT be called — nothing to write.
+		expect(data.updateTask).not.toHaveBeenCalled();
+		const result = resp.data as { task: Task; titlePreserved: boolean };
+		expect(result.titlePreserved).toBe(true);
+		expect(result.task.customTitle).toBe("User-set title");
+	});
+
+	it("overwrites user-edited customTitle when --force is set", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "User-set title" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: "Agent override" });
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", {
+				taskId: task.id,
+				projectId: "proj-1",
+				title: "Agent override",
+				force: true,
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		const call = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(call.customTitle).toBe("Agent override");
+		const result = resp.data as { task: Task; titlePreserved: boolean };
+		expect(result.titlePreserved).toBe(false);
+	});
+
+	it("still allows --title to clear customTitle (--title \"\") without --force", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "User-set title" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: null });
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "" }),
+		);
+		expect(resp.ok).toBe(true);
+		const call = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(call.customTitle).toBeNull();
+	});
+
+	it("returns task in new envelope shape", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const updated = { ...task, customTitle: "Updated" };
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: task.id, projectId: "proj-1", title: "Updated" }),
+		);
+		expect(resp.ok).toBe(true);
+		const result = resp.data as { task: Task; titlePreserved: boolean };
+		expect(result.task.id).toBe(task.id);
+		expect(result.titlePreserved).toBe(false);
+	});
 });
 
 describe("note.add", () => {

@@ -285,6 +285,55 @@ describe("task update", () => {
 		).rejects.toThrow("EXIT_3");
 	});
 
+	it("--force flag passes force=true to the server", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { title: "T", force: "true" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.force).toBe(true);
+	});
+
+	it("prints a notice when the server reports titlePreserved=true (issue #564)", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, customTitle: "User-set title" },
+			titlePreserved: true,
+		}));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { title: "Agent rename attempt" }),
+			SOCKET,
+			null,
+		);
+
+		expect(stderrOutput).toContain("title preserved");
+		expect(stderrOutput).toContain("user-edited");
+		expect(stdoutOutput).toContain("Updated task");
+		expect(stdoutOutput).toContain("User-set title");
+	});
+
+	it("accepts legacy Task-shape response without envelope", async () => {
+		// Backward compatibility while old servers may still return Task directly.
+		const updated = { ...FAKE_TASK, customTitle: "Renamed" };
+		mockSend.mockResolvedValue(okResp(updated));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { title: "Renamed" }),
+			SOCKET,
+			null,
+		);
+
+		expect(stdoutOutput).toContain("Renamed");
+		expect(stderrOutput).not.toContain("title preserved");
+	});
+
 	it("--project flag overrides context projectId", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 

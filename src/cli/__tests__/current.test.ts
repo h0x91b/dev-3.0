@@ -132,6 +132,22 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("Test 1");
 			expect(stdoutOutput).not.toContain("Implement auth");
+			// Issue #564 — agent must see that the title is user-edited.
+			expect(stdoutOutput).toContain("user-edited");
+		});
+
+		it("does not mark the title as user-edited when customTitle is absent", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: SOCKET,
+			});
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).not.toContain("user-edited");
 		});
 
 		it("shows description when different from title", async () => {
