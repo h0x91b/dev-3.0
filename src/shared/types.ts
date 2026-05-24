@@ -1340,8 +1340,12 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			tmuxAction: {
-				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV" };
+				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV"; force?: boolean };
 				response: void;
+			};
+			tmuxPaneCount: {
+				params: { taskId: string };
+				response: { count: number };
 			};
 			exitCopyModeAllPanes: {
 				params: { taskId: string };

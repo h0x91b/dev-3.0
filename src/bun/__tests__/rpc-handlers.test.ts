@@ -4772,6 +4772,88 @@ describe("handlers.tmuxAction", () => {
 			expect.any(Object),
 		);
 	});
+
+	it("killPane with force=true kills even the last remaining pane and skips the pane-count check", async () => {
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("display-message")) {
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("%1\n").body,
+					exited: Promise.resolve(0),
+				};
+			}
+			return {
+				stderr: new Response("").body,
+				stdout: new Response("").body,
+				exited: Promise.resolve(0),
+			};
+		});
+
+		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane", force: true });
+
+		const spawnCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(spawnCalls.some((a) => a.includes("list-panes"))).toBe(false);
+		expect(spawnCalls.some((a) => a.includes("kill-pane"))).toBe(true);
+	});
+});
+
+// ================================================================
+// handlers.tmuxPaneCount
+// ================================================================
+
+describe("handlers.tmuxPaneCount", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("returns the number of panes reported by list-panes", async () => {
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes")) {
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("%1\n%2\n%3\n").body,
+					exited: Promise.resolve(0),
+				};
+			}
+			return {
+				stderr: new Response("").body,
+				stdout: new Response("").body,
+				exited: Promise.resolve(1),
+			};
+		});
+
+		const result = await handlers.tmuxPaneCount({ taskId: "abcd1234-full-id" });
+		expect(result).toEqual({ count: 3 });
+	});
+
+	it("returns 1 when only one pane exists", async () => {
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes")) {
+				return {
+					stderr: new Response("").body,
+					stdout: new Response("%1\n").body,
+					exited: Promise.resolve(0),
+				};
+			}
+			return {
+				stderr: new Response("").body,
+				stdout: new Response("").body,
+				exited: Promise.resolve(1),
+			};
+		});
+
+		const result = await handlers.tmuxPaneCount({ taskId: "abcd1234-full-id" });
+		expect(result).toEqual({ count: 1 });
+	});
+
+	it("returns 0 when list-panes fails", async () => {
+		mockSpawn.mockImplementation(() => ({
+			stderr: new Response("session not found").body,
+			stdout: new Response("").body,
+			exited: Promise.resolve(1),
+		}));
+
+		const result = await handlers.tmuxPaneCount({ taskId: "abcd1234-full-id" });
+		expect(result).toEqual({ count: 0 });
+	});
 });
 
 // ================================================================

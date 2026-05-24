@@ -1219,29 +1219,32 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 	log.info("← killTmuxSession done", { sessionName: params.sessionName });
 }
 
-async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV" }): Promise<void> {
-	log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action });
+async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV"; force?: boolean }): Promise<void> {
+	log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action, force: params.force === true });
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
 
 	// For killPane, capture the active pane ID before killing — kill-pane
 	// does NOT trigger tmux's pane-exited hook, so we must clean up sessionState here.
-	// Also refuse to kill the last remaining pane in the session — otherwise repeated
-	// clicks on the red button take down the agent's own pane.
+	// By default refuse to kill the last remaining pane in the session — otherwise an
+	// accidental click on the red button takes down the agent's own pane. The frontend
+	// can pass `force: true` after explicit user confirmation to allow it.
 	let killedPaneId: string | null = null;
 	if (params.action === "killPane") {
-		try {
-			const countProc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-			const countStdout = await new Response(countProc.stdout).text();
-			const countExit = await countProc.exited;
-			if (countExit === 0) {
-				const paneCount = countStdout.trim().split("\n").filter((l) => l.length > 0).length;
-				if (paneCount <= 1) {
-					log.info("tmuxAction killPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
-					return;
+		if (!params.force) {
+			try {
+				const countProc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+				const countStdout = await new Response(countProc.stdout).text();
+				const countExit = await countProc.exited;
+				if (countExit === 0) {
+					const paneCount = countStdout.trim().split("\n").filter((l) => l.length > 0).length;
+					if (paneCount <= 1) {
+						log.info("tmuxAction killPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
+						return;
+					}
 				}
-			}
-		} catch { /* best effort — if counting fails, fall through to the normal kill */ }
+			} catch { /* best effort — if counting fails, fall through to the normal kill */ }
+		}
 
 		try {
 			const idProc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
@@ -1313,6 +1316,23 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	}
 
 	log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
+}
+
+async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: number }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+	try {
+		const proc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+		const stdout = await new Response(proc.stdout).text();
+		const exitCode = await proc.exited;
+		if (exitCode !== 0) {
+			return { count: 0 };
+		}
+		const count = stdout.trim().split("\n").filter((l) => l.length > 0).length;
+		return { count };
+	} catch {
+		return { count: 0 };
+	}
 }
 
 async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
@@ -1536,6 +1556,7 @@ export const tmuxPtyHandlers = {
 	listTmuxSessions,
 	killTmuxSession,
 	tmuxAction,
+	tmuxPaneCount,
 	exitCopyModeAllPanes,
 	spawnAgentInTask,
 	resumeTask,
