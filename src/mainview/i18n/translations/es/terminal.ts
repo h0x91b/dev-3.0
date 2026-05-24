@@ -31,6 +31,8 @@ const terminal = {
 	"tmux.layoutMainHDesc": "Principal + abajo",
 	"tmux.layoutMainVDesc": "Principal + derecha",
 	"tmux.closePaneDesc": "Cerrar panel",
+	"tmux.closePaneConfirmTitle": "¿Cerrar panel?",
+	"tmux.closePaneConfirmMessage": "Esto terminará el proceso que se ejecuta en el panel tmux actual. ¿Estás seguro?",
 	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
 	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",
 	"tmux.keyboardMode": "Modo de teclado",

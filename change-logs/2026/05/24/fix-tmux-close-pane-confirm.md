@@ -1,0 +1,1 @@
+Add a confirmation dialog before the red "Close pane" button in the task tmux controls fires. Prevents accidental clicks (especially double clicks) from terminating the agent's running process — the backend already refuses to kill the last pane, but for every other pane the kill was instant and silent.

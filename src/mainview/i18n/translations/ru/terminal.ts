@@ -31,6 +31,8 @@ const terminal = {
 	"tmux.layoutMainHDesc": "Главная + низ",
 	"tmux.layoutMainVDesc": "Главная + право",
 	"tmux.closePaneDesc": "Закрыть панель",
+	"tmux.closePaneConfirmTitle": "Закрыть панель?",
+	"tmux.closePaneConfirmMessage": "Это завершит процесс, запущенный в текущей tmux-панели. Уверены?",
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
 	"tmux.keyboardMode": "Режим клавиш",
