@@ -1823,10 +1823,44 @@ describe("TaskInfoPanel", () => {
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
 		});
 
-		it("shows an error and skips the optimistic completion when both completion RPC attempts fail", async () => {
+		it("optimistically completes after merge even while the move RPC is still pending", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-user" });
+			mockedApi.request.showConfirm.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockReturnValue(new Promise(() => {}) as never);
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:gitOpCompleted", {
+						detail: { taskId: "t1", operation: "merge", ok: true },
+					}),
+				);
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			});
+
+			await waitFor(() => {
+				const completedUpdate = dispatch.mock.calls.find(
+					(call: unknown[]) => (call[0] as AppAction).type === "updateTask"
+						&& ((call[0] as { task: Task }).task).status === "completed",
+				);
+				expect(completedUpdate).toBeDefined();
+			});
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+		});
+
+		it("keeps the optimistic completion when both background completion RPC attempts fail", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const alertSpy = vi.fn();
+			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 			const task = makeTask({ status: "review-by-user" });
 
 			window.alert = alertSpy;
@@ -1853,17 +1887,17 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
 			});
-			await waitFor(() => {
-				expect(alertSpy).toHaveBeenCalled();
-			});
 
 			const completedUpdate = dispatch.mock.calls.find(
 				(call: unknown[]) => (call[0] as AppAction).type === "updateTask"
 					&& ((call[0] as { task: Task }).task).status === "completed",
 			);
 
-			expect(completedUpdate).toBeUndefined();
-			expect(navigate).not.toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(completedUpdate).toBeDefined();
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(alertSpy).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalled();
+			consoleErrorSpy.mockRestore();
 		});
 	});
 
