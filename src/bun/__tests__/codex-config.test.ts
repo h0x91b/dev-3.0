@@ -136,6 +136,22 @@ codex_hooks = true
 			expect(result).not.toMatch(/^codex_hooks\s*=/m);
 		});
 
+		it("drops duplicate codex_hooks when hooks already exists for newer Codex", () => {
+			const existing = `[features]
+  codex_hooks = true
+hooks = true
+js_repl = false
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.133.0",
+			});
+
+			expect(result).toContain("hooks = true");
+			expect(result).toContain("js_repl = false");
+			expect(result).not.toContain("codex_hooks");
+			expect(result.match(/^[ \t]*hooks\s*=/gm)).toHaveLength(1);
+		});
+
 		it("migrates managed current keys back for older Codex versions", () => {
 			const existing = `[permissions.workspace.filesystem]
 ":minimal" = "read"
@@ -161,6 +177,22 @@ hooks = true
 			expect(result).toContain("codex_hooks = true");
 			expect(result).not.toContain(":workspace_roots");
 			expect(result).not.toMatch(/^hooks\s*=/m);
+		});
+
+		it("drops duplicate hooks when codex_hooks already exists for older Codex", () => {
+			const existing = `[features]
+  hooks = true
+codex_hooks = true
+js_repl = false
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.128.0",
+			});
+
+			expect(result).toContain("codex_hooks = true");
+			expect(result).toContain("js_repl = false");
+			expect(result).not.toMatch(/^[ \t]*hooks\s*=/m);
+			expect(result.match(/^[ \t]*codex_hooks\s*=/gm)).toHaveLength(1);
 		});
 	});
 

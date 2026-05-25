@@ -368,14 +368,14 @@ function migrateHooksFeatureSyntax(
 	if (!sectionPattern.test(content)) return content;
 
 	return content.replace(sectionPattern, (_match, header: string, body: string) => {
-		const desiredPattern = new RegExp(`^${desiredKey}\\s*=\\s*.*$`, "m");
-		const obsoletePattern = new RegExp(`^${obsoleteKey}\\s*=\\s*.*$`, "m");
+		const desiredPattern = new RegExp(`^[ \\t]*${desiredKey}[ \\t]*=`, "m");
+		const obsoleteLinePattern = new RegExp(`^[ \\t]*${obsoleteKey}[ \\t]*=[^\\n]*\\n?`, "m");
 
-		if (!obsoletePattern.test(body)) return `${header}${body}`;
+		if (!obsoleteLinePattern.test(body)) return `${header}${body}`;
 		if (desiredPattern.test(body)) {
-			return `${header}${body.replace(obsoletePattern, "").replace(/\n{3,}/g, "\n\n")}`;
+			return `${header}${body.replace(obsoleteLinePattern, "").replace(/\n{3,}/g, "\n\n")}`;
 		}
-		return `${header}${body.replace(obsoletePattern, `${desiredKey} = true`)}`;
+		return `${header}${body.replace(obsoleteLinePattern, (line) => line.replace(obsoleteKey, desiredKey))}`;
 	});
 }
 
