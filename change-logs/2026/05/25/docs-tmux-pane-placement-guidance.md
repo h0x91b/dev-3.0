@@ -1,0 +1,1 @@
+Clarified the tmux guidance in the dev3 agent skills: spelled out that "open a pane" means splitting the agent's current dev3 tmux pane, and added a short placement hint (check `list-panes` first, default to the right of the agent, fall back to below or a new window). Applied to both the short `/dev3` summary and the full `/dev3-tmux` reference.
