@@ -254,16 +254,19 @@ function cleanupLegacySections(content: string): string {
 
 	// Codex 0.133+ renamed `[features].codex_hooks` → `[features].hooks`
 	// (`codex_hooks` is still parsed as a deprecated alias but emits a warning).
-	content = renameFeaturesKey(content, "codex_hooks", "hooks");
+	content = migrateCodexHooksKey(content);
 
 	return content;
 }
 
 /**
- * Rename a key inside the [features] table, preserving its value. No-op if
- * the section or key does not exist, or if the new key already exists.
+ * Migrate the deprecated `[features].codex_hooks` key to `[features].hooks`.
+ * - If only `codex_hooks` exists: rename it.
+ * - If both exist (Codex 0.133+ silently mirrors the alias into `hooks`):
+ *   delete the `codex_hooks` line so Codex stops warning.
+ * - If neither or only `hooks` exists: no-op.
  */
-function renameFeaturesKey(content: string, oldKey: string, newKey: string): string {
+function migrateCodexHooksKey(content: string): string {
 	const featuresHeader = "[features]";
 	const headerIdx = content.indexOf(featuresHeader);
 	if (headerIdx === -1) return content;
@@ -273,13 +276,14 @@ function renameFeaturesKey(content: string, oldKey: string, newKey: string): str
 	const sectionEnd = nextSection === -1 ? content.length : nextSection;
 	const section = content.slice(sectionStart, sectionEnd);
 
-	const newKeyPattern = new RegExp(`^\\s*${newKey}\\s*=`, "m");
-	if (newKeyPattern.test(section)) return content;
+	const codexHooksLinePattern = /^[ \t]*codex_hooks[ \t]*=[^\n]*\n?/m;
+	if (!codexHooksLinePattern.test(section)) return content;
 
-	const oldKeyPattern = new RegExp(`^(\\s*)${oldKey}(\\s*=)`, "m");
-	if (!oldKeyPattern.test(section)) return content;
+	const hooksPresent = /^[ \t]*hooks[ \t]*=/m.test(section);
+	const updatedSection = hooksPresent
+		? section.replace(codexHooksLinePattern, "")
+		: section.replace(codexHooksLinePattern, (line) => line.replace("codex_hooks", "hooks"));
 
-	const updatedSection = section.replace(oldKeyPattern, `$1${newKey}$2`);
 	return content.slice(0, sectionStart) + updatedSection + content.slice(sectionEnd);
 }
 

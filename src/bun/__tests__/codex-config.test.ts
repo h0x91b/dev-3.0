@@ -211,6 +211,22 @@ codex_hooks = true
 			expect(result).toContain("hooks = true");
 			expect(result).not.toContain("codex_hooks");
 		});
+
+		it("drops codex_hooks when hooks is already present alongside it", () => {
+			// Codex 0.133+ silently mirrors the deprecated alias into `hooks`,
+			// so both keys can end up in the file at once.
+			const existing = `[features]
+codex_hooks = true
+hooks = true
+js_repl = false
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH);
+
+			expect(result).toContain("hooks = true");
+			expect(result).toContain("js_repl = false");
+			expect(result).not.toContain("codex_hooks");
+			expect(result.match(/^hooks\s*=/gm)).toHaveLength(1);
+		});
 	});
 
 	describe("legacy :project_roots migration", () => {
