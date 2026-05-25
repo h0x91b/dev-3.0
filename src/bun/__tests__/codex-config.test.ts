@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureCodexConfig } from "../codex-config";
+import { ensureCodexConfig, getCodexSyntaxForVersion, parseCodexVersion } from "../codex-config";
 
 describe("ensureCodexConfig", () => {
 	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
@@ -53,6 +53,114 @@ describe("ensureCodexConfig", () => {
 
 			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
 			expect(result).toContain(`[projects."${worktreePath}"]`);
+		});
+	});
+
+	describe("Codex version compatibility", () => {
+		it("parses Codex CLI version output", () => {
+			expect(parseCodexVersion("codex-cli 0.133.0")).toEqual({
+				major: 0,
+				minor: 133,
+				patch: 0,
+			});
+			expect(parseCodexVersion("OpenAI Codex (v0.131.2)")).toEqual({
+				major: 0,
+				minor: 131,
+				patch: 2,
+			});
+		});
+
+		it("selects hooks before workspace_roots during the transition window", () => {
+			expect(getCodexSyntaxForVersion("codex-cli 0.128.9")).toEqual({
+				filesystemRootKey: ":project_roots",
+				hooksFeatureKey: "codex_hooks",
+			});
+			expect(getCodexSyntaxForVersion("codex-cli 0.130.0")).toEqual({
+				filesystemRootKey: ":project_roots",
+				hooksFeatureKey: "hooks",
+			});
+			expect(getCodexSyntaxForVersion("codex-cli 0.131.0")).toEqual({
+				filesystemRootKey: ":workspace_roots",
+				hooksFeatureKey: "hooks",
+			});
+		});
+
+		it("uses workspace_roots and hooks for Codex 0.131+", () => {
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.133.0",
+			});
+
+			expect(result).toContain('[permissions.workspace.filesystem.":workspace_roots"]');
+			expect(result).toContain('[permissions.dev3.filesystem.":workspace_roots"]');
+			expect(result).toContain("hooks = true");
+			expect(result).not.toContain(":project_roots");
+			expect(result).not.toMatch(/^codex_hooks\s*=/m);
+		});
+
+		it("keeps project_roots but uses hooks for Codex 0.129-0.130", () => {
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.130.0",
+			});
+
+			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain('[permissions.dev3.filesystem.":project_roots"]');
+			expect(result).toContain("hooks = true");
+			expect(result).not.toContain(":workspace_roots");
+			expect(result).not.toMatch(/^codex_hooks\s*=/m);
+		});
+
+		it("migrates managed legacy keys to current Codex syntax", () => {
+			const existing = `[permissions.workspace.filesystem]
+":minimal" = "read"
+
+[permissions.workspace.filesystem.":project_roots"]
+"." = "write"
+
+[permissions.dev3.filesystem]
+":minimal" = "read"
+
+[permissions.dev3.filesystem.":project_roots"]
+"." = "write"
+
+[features]
+codex_hooks = true
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.133.0",
+			});
+
+			expect(result).toContain('[permissions.workspace.filesystem.":workspace_roots"]');
+			expect(result).toContain('[permissions.dev3.filesystem.":workspace_roots"]');
+			expect(result).toContain("hooks = true");
+			expect(result).not.toContain(":project_roots");
+			expect(result).not.toMatch(/^codex_hooks\s*=/m);
+		});
+
+		it("migrates managed current keys back for older Codex versions", () => {
+			const existing = `[permissions.workspace.filesystem]
+":minimal" = "read"
+
+[permissions.workspace.filesystem.":workspace_roots"]
+"." = "write"
+
+[permissions.dev3.filesystem]
+":minimal" = "read"
+
+[permissions.dev3.filesystem.":workspace_roots"]
+"." = "write"
+
+[features]
+hooks = true
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.128.0",
+			});
+
+			expect(result).toContain('[permissions.workspace.filesystem.":project_roots"]');
+			expect(result).toContain('[permissions.dev3.filesystem.":project_roots"]');
+			expect(result).toContain("codex_hooks = true");
+			expect(result).not.toContain(":workspace_roots");
+			expect(result).not.toMatch(/^hooks\s*=/m);
 		});
 	});
 

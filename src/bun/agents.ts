@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
-import { ensureCodexConfig } from "./codex-config";
+import { detectCodexVersion, ensureCodexConfig } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
@@ -638,7 +638,9 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 			// File doesn't exist yet — create with defaults below.
 		}
 
-		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved]);
+		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved], {
+			codexVersion: detectCodexVersion(),
+		});
 		if (updated === content) {
 			return;
 		}

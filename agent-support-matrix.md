@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-04-13
+Last updated: 2026-05-25
 
 ## Agents
 
@@ -47,7 +47,7 @@ Injected into `.claude/settings.local.json`.
 
 ### Codex
 
-Injected into `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] codex_hooks = true`).
+Injected into `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that).
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
@@ -83,5 +83,5 @@ For Gemini CLI specifically, dev-3.0 installs these managed skills only via the 
 | `~/.agents/AGENTS.md` | All (fallback) | Appended rule block for agents that read `AGENTS.md` |
 | `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds `Bash(~/.dev3.0/bin/dev3 *)` permission |
-| `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables `codex_hooks` |
+| `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names |
 | `<worktree>/.codex/hooks.json` | Codex | Auto-installs SessionStart/UserPromptSubmit/PreToolUse(Bash)/Stop lifecycle hooks |

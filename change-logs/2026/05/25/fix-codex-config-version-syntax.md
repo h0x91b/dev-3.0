@@ -1,0 +1,1 @@
+Made dev3 detect the installed Codex CLI version before patching `~/.codex/config.toml`, using `hooks`/`:workspace_roots` for newer Codex and `codex_hooks`/`:project_roots` for older versions. Existing managed keys are migrated in either direction so switching Codex versions does not leave stale warning-producing config behind.

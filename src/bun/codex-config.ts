@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { load } from "js-toml";
 import { createLogger } from "./logger";
+import { spawnSync } from "./spawn";
 import { DEV3_CODEX_DARK_PROFILE, DEV3_CODEX_LIGHT_PROFILE } from "./theme-state";
 
 const log = createLogger("codex-config");
@@ -29,6 +30,72 @@ interface CodexConfig {
 	permissions?: Record<string, CodexPermissionsProfile | undefined>;
 }
 
+interface CodexConfigOptions {
+	codexVersion?: string | null;
+}
+
+interface CodexVersion {
+	major: number;
+	minor: number;
+	patch: number;
+}
+
+interface CodexSyntax {
+	filesystemRootKey: ":project_roots" | ":workspace_roots";
+	hooksFeatureKey: "codex_hooks" | "hooks";
+}
+
+const LEGACY_CODEX_SYNTAX: CodexSyntax = {
+	filesystemRootKey: ":project_roots",
+	hooksFeatureKey: "codex_hooks",
+};
+
+const CODEX_HOOKS_RENAME_VERSION: CodexVersion = { major: 0, minor: 129, patch: 0 };
+const CODEX_WORKSPACE_ROOTS_RENAME_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
+
+export function parseCodexVersion(output: string): CodexVersion | null {
+	const match = output.match(/\bv?(\d+)\.(\d+)\.(\d+)\b/);
+	if (match == null) return null;
+
+	return {
+		major: Number(match[1]),
+		minor: Number(match[2]),
+		patch: Number(match[3]),
+	};
+}
+
+function isVersionAtLeast(version: CodexVersion | null, threshold: CodexVersion): boolean {
+	if (version == null) return false;
+	if (version.major !== threshold.major) return version.major > threshold.major;
+	if (version.minor !== threshold.minor) return version.minor > threshold.minor;
+	return version.patch >= threshold.patch;
+}
+
+export function getCodexSyntaxForVersion(versionText: string | null | undefined): CodexSyntax {
+	const version = versionText != null ? parseCodexVersion(versionText) : null;
+	return {
+		filesystemRootKey: isVersionAtLeast(version, CODEX_WORKSPACE_ROOTS_RENAME_VERSION)
+			? ":workspace_roots"
+			: LEGACY_CODEX_SYNTAX.filesystemRootKey,
+		hooksFeatureKey: isVersionAtLeast(version, CODEX_HOOKS_RENAME_VERSION)
+			? "hooks"
+			: LEGACY_CODEX_SYNTAX.hooksFeatureKey,
+	};
+}
+
+export function detectCodexVersion(): string | null {
+	try {
+		const result = spawnSync(["codex", "--version"], { stdout: "pipe", stderr: "pipe" });
+		if (result.exitCode !== 0) return null;
+
+		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
+		const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : "";
+		return stdout.trim() || stderr.trim() || null;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Ensure the Codex config.toml has:
  * 1. The dev3 worktree project trusted
@@ -48,9 +115,11 @@ export function ensureCodexConfig(
 	worktreesPath: string,
 	socketsPath: string,
 	trustedPaths: string[] = [],
+	options: CodexConfigOptions = {},
 ): string {
 	let config = content ?? "";
 	let parsed: CodexConfig = {};
+	const syntax = getCodexSyntaxForVersion(options.codexVersion);
 	// Derive absolute paths from worktreesPath (e.g. /Users/x/.dev3.0/worktrees)
 	const dev3Home = dirname(worktreesPath); // /Users/x/.dev3.0
 	const userHome = dirname(dev3Home); // /Users/x
@@ -67,6 +136,7 @@ export function ensureCodexConfig(
 	// --- 0. Clean up legacy sections ---
 	config = cleanupLegacySections(config);
 	config = commentOutManagedProfileThemeLines(config);
+	config = migrateManagedCodexSyntax(config, syntax);
 	// Re-parse after cleanup
 	if (config.trim().length > 0) {
 		try {
@@ -97,7 +167,7 @@ export function ensureCodexConfig(
 			`"${userHome}/.agents/skills" = "read"`,
 			`"${dev3Home}" = "write"`,
 			"",
-			`[permissions.${DEV3_CODEX_PROFILE}.filesystem.":project_roots"]`,
+			filesystemRootsHeader(DEV3_CODEX_PROFILE, syntax.filesystemRootKey),
 			'"." = "write"',
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.network]`,
@@ -151,13 +221,14 @@ export function ensureCodexConfig(
 				config = insertAfterSectionHeader(config, fsHeader, fsLine);
 			}
 		}
+		config = ensureFilesystemRootAccess(config, DEV3_CODEX_PROFILE, syntax.filesystemRootKey);
 	}
 
 	// --- 3. Ensure default_permissions points to a valid generic workspace profile ---
 	if (parsed.default_permissions == null) {
 		const workspacePerm = parsed.permissions?.[WORKSPACE_CODEX_PROFILE] as CodexPermissionsProfile | undefined;
 		const workspaceFsHeader = `[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem]`;
-		const workspaceProjectRootsHeader = `[permissions.${WORKSPACE_CODEX_PROFILE}.filesystem.":project_roots"]`;
+		const workspaceProjectRootsHeader = filesystemRootsHeader(WORKSPACE_CODEX_PROFILE, syntax.filesystemRootKey);
 		const workspaceNetworkHeader = `[permissions.${WORKSPACE_CODEX_PROFILE}.network]`;
 
 		if (workspacePerm == null) {
@@ -215,14 +286,14 @@ export function ensureCodexConfig(
 		// wiring disabled until we map the new Codex theme schema.
 	});
 
-	// --- 5. Ensure [features] codex_hooks = true ---
-	const codexHooksEnabled = parsed.features?.codex_hooks === true;
+	// --- 5. Ensure [features] hooks/codex_hooks = true ---
+	const codexHooksEnabled = parsed.features?.[syntax.hooksFeatureKey] === true;
 	if (!codexHooksEnabled) {
 		const featuresHeader = "[features]";
 		if (!config.includes(featuresHeader)) {
-			config = appendBlock(config, `\n${featuresHeader}\ncodex_hooks = true\n`);
+			config = appendBlock(config, `\n${featuresHeader}\n${syntax.hooksFeatureKey} = true\n`);
 		} else {
-			config = upsertSectionLine(config, featuresHeader, "codex_hooks", "true");
+			config = upsertSectionLine(config, featuresHeader, syntax.hooksFeatureKey, "true");
 		}
 	}
 
@@ -260,6 +331,64 @@ function commentOutManagedProfileThemeLines(content: string): string {
 		}
 		return line;
 	}).join("\n");
+}
+
+function filesystemRootsHeader(profileName: string, key: CodexSyntax["filesystemRootKey"]): string {
+	return `[permissions.${profileName}.filesystem."${key}"]`;
+}
+
+function migrateManagedCodexSyntax(content: string, syntax: CodexSyntax): string {
+	content = migrateFilesystemRootSyntax(content, DEV3_CODEX_PROFILE, syntax.filesystemRootKey);
+	content = migrateFilesystemRootSyntax(content, WORKSPACE_CODEX_PROFILE, syntax.filesystemRootKey);
+	content = migrateHooksFeatureSyntax(content, syntax.hooksFeatureKey);
+	return content;
+}
+
+function migrateFilesystemRootSyntax(
+	content: string,
+	profileName: string,
+	desiredKey: CodexSyntax["filesystemRootKey"],
+): string {
+	const obsoleteKey = desiredKey === ":workspace_roots" ? ":project_roots" : ":workspace_roots";
+	const desiredHeader = filesystemRootsHeader(profileName, desiredKey);
+	const obsoleteHeader = filesystemRootsHeader(profileName, obsoleteKey);
+
+	if (!content.includes(obsoleteHeader)) return content;
+	if (content.includes(desiredHeader)) return removeSectionByHeader(content, obsoleteHeader);
+	return content.replaceAll(obsoleteHeader, desiredHeader);
+}
+
+function migrateHooksFeatureSyntax(
+	content: string,
+	desiredKey: CodexSyntax["hooksFeatureKey"],
+): string {
+	const obsoleteKey = desiredKey === "hooks" ? "codex_hooks" : "hooks";
+	const sectionPattern = /(\[features\]\n)([\s\S]*?)(?=\n\[|$)/;
+
+	if (!sectionPattern.test(content)) return content;
+
+	return content.replace(sectionPattern, (_match, header: string, body: string) => {
+		const desiredPattern = new RegExp(`^${desiredKey}\\s*=\\s*.*$`, "m");
+		const obsoletePattern = new RegExp(`^${obsoleteKey}\\s*=\\s*.*$`, "m");
+
+		if (!obsoletePattern.test(body)) return `${header}${body}`;
+		if (desiredPattern.test(body)) {
+			return `${header}${body.replace(obsoletePattern, "").replace(/\n{3,}/g, "\n\n")}`;
+		}
+		return `${header}${body.replace(obsoletePattern, `${desiredKey} = true`)}`;
+	});
+}
+
+function ensureFilesystemRootAccess(
+	config: string,
+	profileName: string,
+	key: CodexSyntax["filesystemRootKey"],
+): string {
+	const header = filesystemRootsHeader(profileName, key);
+	if (!config.includes(header)) {
+		return appendBlock(config, `\n${header}\n"." = "write"\n`);
+	}
+	return upsertSectionLine(config, header, '"."', '"write"');
 }
 
 /**
@@ -421,7 +550,9 @@ export function ensureCodexConfigFile(homePath: string): void {
 			// File doesn't exist — will create with defaults
 		}
 
-		const updated = ensureCodexConfig(content, worktreesPath, socketsPath);
+		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [], {
+			codexVersion: detectCodexVersion(),
+		});
 
 		if (updated !== content) {
 			writeFileSync(configPath, updated, "utf-8");

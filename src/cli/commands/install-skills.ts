@@ -33,5 +33,5 @@ export async function handleInstallSkills(): Promise<void> {
 	process.stdout.write(`  ~/.agents/skills/*/agents/openai.yaml (managed skill metadata)\n`);
 	process.stdout.write(`  ~/.agents/AGENTS.md (dev3 block)\n`);
 	process.stdout.write(`  ~/.claude/settings.json (Bash permission)\n`);
-	process.stdout.write(`  ~/.codex/config.toml (trust + socket access + codex_hooks)\n`);
+	process.stdout.write(`  ~/.codex/config.toml (trust + socket access + Codex hook feature)\n`);
 }
