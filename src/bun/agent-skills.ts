@@ -155,7 +155,7 @@ You are running **inside a tmux session** managed by dev-3.0 (socket \`dev3\`, s
 
 **Be proactive:**
 
-- For long-running or streaming commands (dev server, log tail, watcher, debug loop), open a pane and run it there — the user can watch it live. Quick one-shot commands stay inline.
+- For long-running or streaming commands (dev server, log tail, watcher, debug loop), **split your current dev3 tmux pane and run the command in the new one** — the user watches it live next to your agent. Check the existing layout with \`list-panes\` first and pick a sensible spot (usually right of the agent; below if the right is taken). Quick one-shot commands stay inline.
 - If the user asks to open/split/reorder/resize tabs or panes — just do it via \`tmux -L dev3 ...\`, do not ask which terminal.
 - Always use \`-L dev3\` (the default socket is a different tmux server and will not see dev3 sessions).
 - For \`send-keys\`, pass \`Enter\` as a separate argument — otherwise the command is typed but not executed.
@@ -503,6 +503,8 @@ Keep using **inline Bash** for quick one-shot commands (file reads, short git, t
 **Do NOT use a tmux pane as a substitute for the canonical dev server** — the project has \`dev3 dev-server start\` for that, which is wired to \`devScript\` and the UI. Use ad-hoc panes for things the user wants to *watch alongside* the dev server, not to replace it.
 
 ## 4. Open a pane or window and run a command
+
+**Pick the location before splitting.** Run \`list-panes\` first to see what's already open. Default: split to the right of your agent pane. If the right is occupied, split below or open a new window. Prefer splits over new windows unless the user asks for a tab or the window is already full.
 
 ### Vertical split (new pane on the right)
 
