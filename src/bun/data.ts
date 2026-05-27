@@ -429,6 +429,7 @@ export async function addTask(
 		preparingStartedAt?: Task["preparingStartedAt"];
 		watched?: boolean;
 		scratch?: boolean;
+		customTitle?: string | null;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -462,6 +463,7 @@ export async function addTask(
 			...(extras?.preparingStartedAt ? { preparingStartedAt: extras.preparingStartedAt } : {}),
 			...(extras?.watched ? { watched: true } : {}),
 			...(extras?.scratch ? { scratch: true } : {}),
+			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 		};
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);
