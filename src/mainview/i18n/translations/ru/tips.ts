@@ -192,6 +192,10 @@ const tips = {
 	"tip.watchedNotificationClick.body": "Когда watched-таск меняет колонку и ты кликаешь по системной нотификации, dev-3.0 поднимается на передний план и сразу открывает эту таску.",
 	"tip.fdaStuckPrep.title": "Клон висит на macOS? Дай Full Disk Access",
 	"tip.fdaStuckPrep.body": "Если новые таски минутами висят на «Fetching origin» — macOS, скорее всего, отозвал доступ у git/tmux. Добавь dev-3.0 в System Settings → Privacy & Security → Full Disk Access и перезапусти; дочерние процессы тоже получат права.",
+	"tip.bugHunters.title": "Запусти рой охотников за багами",
+	"tip.bugHunters.body": "Жми красную кнопку «Найти баги» в заголовке таски — откроется лайтбокс, выбери количество (по умолчанию 3), и рой read-only агентов расщепится в правую панель, каждый со своим seeded-стратегией /dev3-bug-hunter.",
+	"tip.bugHuntersReadOnly.title": "Охотники за багами никогда не правят код",
+	"tip.bugHuntersReadOnly.body": "Скилл /dev3-bug-hunter только читает — никаких коммитов и патчей. После находок агент сам спросит, превращать ли critical/medium баги в новые dev3-таски.",
 };
 
 export default tips;

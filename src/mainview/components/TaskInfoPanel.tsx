@@ -17,6 +17,7 @@ import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
 import SpawnAgentModal from "./SpawnAgentModal";
+import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
@@ -80,6 +81,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const [statusMenuVisible, setStatusMenuVisible] = useState(false);
 	const [movingStatus, setMovingStatus] = useState(false);
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
+	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
 	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const [diffFilesHover, setDiffFilesHover] = useState(false);
@@ -571,6 +573,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		</button>
 	) : null;
 
+	const bugHuntersButton = isTaskActive && task.worktreePath ? (
+		<button
+			onClick={() => setBugHuntersOpen(true)}
+			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-danger hover:text-danger hover:bg-danger/15 border border-danger/30"
+			title={t("bugHunters.buttonTooltip")}
+		>
+			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>
+		</button>
+	) : null;
+
 	const worktreeSettingsButton = task.worktreePath ? (
 		<button
 			onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
@@ -601,6 +614,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{diffIncludeTestsToggle}
 						{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 						<div className="flex-1" />
+						{bugHuntersButton}
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
 						<TaskTmuxControls taskId={task.id} />
@@ -658,6 +672,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{diffIncludeTestsToggle}
 							{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 							<div className="flex-1" />
+							{bugHuntersButton}
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 							<TaskTmuxControls taskId={task.id} />
@@ -889,6 +904,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 
 			{spawnModalOpen && createPortal(
 				<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
+				document.body,
+			)}
+
+			{bugHuntersOpen && createPortal(
+				<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
 				document.body,
 			)}
 		</div>

@@ -192,6 +192,10 @@ const tips = {
 	"tip.watchedNotificationClick.body": "When a watched task moves between columns and you click the system notification, dev-3.0 brings itself forward and jumps straight into that task.",
 	"tip.fdaStuckPrep.title": "Clone hangs on macOS? Grant Full Disk Access",
 	"tip.fdaStuckPrep.body": "If new tasks freeze on \"Fetching origin\" for minutes, macOS likely revoked file access for git/tmux. Add dev-3.0 to System Settings → Privacy & Security → Full Disk Access and relaunch — child processes inherit the permission too.",
+	"tip.bugHunters.title": "Spawn a swarm of bug hunters",
+	"tip.bugHunters.body": "Click the red Find bugs button in the task header to open a lightbox — pick the count (default 3) and a swarm of read-only agents splits into the right pane, each running /dev3-bug-hunter with its own seeded strategy.",
+	"tip.bugHuntersReadOnly.title": "Bug hunters never edit code",
+	"tip.bugHuntersReadOnly.body": "The /dev3-bug-hunter skill is review-only — no commits, no patches. After reporting findings, the agent asks before turning critical/medium bugs into new dev3 tasks for you.",
 } as const;
 
 export default tips;

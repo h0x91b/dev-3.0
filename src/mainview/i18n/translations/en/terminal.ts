@@ -100,6 +100,18 @@ const terminal = {
 	"tmux.spawnExtraAgent": "Add agent",
 	"tmux.spawnExtraAgentDesc": "Spawn another agent in a new pane",
 
+	// Bug Hunters lightbox
+	"bugHunters.buttonLabel": "Find bugs",
+	"bugHunters.buttonTooltip": "Spawn a swarm of read-only bug hunters in the right pane",
+	"bugHunters.title": "Spawn bug hunters",
+	"bugHunters.subtitle": "Read-only agents that hunt bugs in parallel",
+	"bugHunters.countLabel": "How many hunters",
+	"bugHunters.explainer": "Each hunter splits off into the right half of this session and runs /dev3-bug-hunter with a seeded exploration strategy. Read-only — no commits, no edits.",
+	"bugHunters.launch_one": "Launch {count} hunter",
+	"bugHunters.launch_other": "Launch {count} hunters",
+	"bugHunters.launching": "Spawning…",
+	"bugHunters.failed": "Failed to spawn hunters: {error}",
+
 	// Ports
 	"ports.title": "Ports",
 	"ports.empty": "No listening ports",

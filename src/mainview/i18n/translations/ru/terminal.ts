@@ -102,6 +102,20 @@ const terminal = {
 	"tmux.spawnExtraAgent": "Ещё агент",
 	"tmux.spawnExtraAgentDesc": "Запустить ещё одного агента в новой панели",
 
+	// Bug Hunters lightbox
+	"bugHunters.buttonLabel": "Найти баги",
+	"bugHunters.buttonTooltip": "Запустить рой read-only охотников за багами в правой панели",
+	"bugHunters.title": "Запустить охотников за багами",
+	"bugHunters.subtitle": "Read-only агенты ищут баги параллельно",
+	"bugHunters.countLabel": "Сколько охотников",
+	"bugHunters.explainer": "Каждый охотник откроется в правой половине сессии и запустит /dev3-bug-hunter со seeded-стратегией. Только чтение — никаких коммитов и правок.",
+	"bugHunters.launch_one": "Запустить {count} охотника",
+	"bugHunters.launch_few": "Запустить {count} охотников",
+	"bugHunters.launch_many": "Запустить {count} охотников",
+	"bugHunters.launch_other": "Запустить {count} охотников",
+	"bugHunters.launching": "Запускаем…",
+	"bugHunters.failed": "Не удалось запустить охотников: {error}",
+
 	// Ports
 	"ports.title": "Порты",
 	"ports.empty": "Нет открытых портов",

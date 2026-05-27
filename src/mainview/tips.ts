@@ -608,6 +608,19 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.fdaStuckPrep.body",
 		icon: "\u{F0156}", // nf-md-shield_check
 	},
+	// Batch 38: Bug hunters lightbox
+	{
+		id: "bug-hunters-lightbox",
+		titleKey: "tip.bugHunters.title",
+		bodyKey: "tip.bugHunters.body",
+		icon: "", // nf-fa-bug
+	},
+	{
+		id: "bug-hunters-read-only",
+		titleKey: "tip.bugHuntersReadOnly.title",
+		bodyKey: "tip.bugHuntersReadOnly.body",
+		icon: "\u{F0E73}", // nf-md-eye_lock_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

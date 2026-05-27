@@ -192,6 +192,10 @@ const tips = {
 	"tip.watchedNotificationClick.body": "Cuando una tarea vigilada cambia de columna y haces clic en la notificación del sistema, dev-3.0 pasa al frente y abre directamente esa tarea.",
 	"tip.fdaStuckPrep.title": "¿El clon se queda colgado en macOS? Da Acceso completo al disco",
 	"tip.fdaStuckPrep.body": "Si las tareas nuevas se quedan minutos atascadas en «Fetching origin», macOS probablemente revocó el acceso a git/tmux. Añade dev-3.0 en System Settings → Privacy & Security → Acceso completo al disco y reinicia; los procesos hijos también heredarán el permiso.",
+	"tip.bugHunters.title": "Lanza un enjambre de cazadores de bugs",
+	"tip.bugHunters.body": "Pulsa el botón rojo «Buscar bugs» en la cabecera de la tarea para abrir un lightbox — elige cuántos (3 por defecto) y un enjambre de agentes de solo lectura se abre en el panel derecho, cada uno ejecuta /dev3-bug-hunter con su propia estrategia semilla.",
+	"tip.bugHuntersReadOnly.title": "Los cazadores nunca tocan el código",
+	"tip.bugHuntersReadOnly.body": "El skill /dev3-bug-hunter es solo de lectura — sin commits, sin parches. Tras reportar hallazgos, el agente pregunta antes de convertir bugs críticos/medianos en nuevas tareas dev3.",
 };
 
 export default tips;

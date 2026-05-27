@@ -1359,6 +1359,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null };
 				response: void;
 			};
+			spawnBugHuntersInTask: {
+				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number };
+				response: { spawned: number };
+			};
 			pasteClipboardImage: {
 				params: { projectId: string };
 				response: { path: string } | null;
