@@ -103,7 +103,7 @@ const defaultBranchStatus: BranchStatus = {
 	diffFiles: 0,
 	diffInsertions: 0,
 	diffDeletions: 0,
-	diffFileNames: [],
+	diffFileStats: [],
 	prNumber: null,
 	prUrl: null,
 	mergeCompletionFingerprint: null,
@@ -213,7 +213,7 @@ describe("TaskInfoPanel", () => {
 				diffFiles: 2,
 				diffInsertions: 12,
 				diffDeletions: 4,
-				diffFileNames: ["bun.lock", "src/mainview/App.tsx"],
+				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:9,deletions:5}],
 			});
 
 			await act(async () => {
@@ -235,7 +235,7 @@ describe("TaskInfoPanel", () => {
 				diffFiles: 2,
 				diffInsertions: 12,
 				diffDeletions: 4,
-				diffFileNames: ["bun.lock", "src/mainview/App.tsx"],
+				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:9,deletions:5}],
 			});
 
 			await act(async () => {
@@ -259,7 +259,7 @@ describe("TaskInfoPanel", () => {
 				diffFiles: 2,
 				diffInsertions: 12,
 				diffDeletions: 4,
-				diffFileNames: ["bun.lock", "src/mainview/App.tsx"],
+				diffFileStats: [{path:"bun.lock",insertions:1,deletions:0},{path:"src/mainview/App.tsx",insertions:9,deletions:5}],
 			});
 
 			await act(async () => {
@@ -285,7 +285,7 @@ describe("TaskInfoPanel", () => {
 				diffFiles: 1,
 				diffInsertions: 12,
 				diffDeletions: 4,
-				diffFileNames: ["src/mainview/App.tsx"],
+				diffFileStats: [{path:"src/mainview/App.tsx",insertions:10,deletions:3}],
 			});
 
 			await act(async () => {

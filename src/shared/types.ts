@@ -756,7 +756,7 @@ export interface BranchStatus {
 	diffFiles: number; // total files changed in branch vs base
 	diffInsertions: number; // total lines added in branch vs base
 	diffDeletions: number; // total lines removed in branch vs base
-	diffFileNames: string[]; // list of changed file paths in branch vs base
+	diffFileStats: Array<{ path: string; insertions: number; deletions: number }>; // per-file stats for branch vs base
 	prNumber: number | null; // open PR number for this branch, null if none
 	prUrl: string | null; // full GitHub PR URL, null if no PR
 	mergeCompletionFingerprint: string | null; // stable key for deduping the merged-branch completion prompt

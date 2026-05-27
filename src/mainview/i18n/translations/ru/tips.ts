@@ -40,6 +40,8 @@ const tips = {
 	"tip.showDiffButton.body": "Нажмите «Show Diff» в панели задачи, чтобы заменить терминал inline diff’ом ветки, а потом нажмите Esc, чтобы вернуться.",
 	"tip.diffDefaultLayout.title": "Выберите diff layout",
 	"tip.diffDefaultLayout.body": "Откройте Глобальные настройки и выберите, должен ли Show Diff стартовать в side-by-side или Unified режиме.",
+	"tip.diffExcludeTests.title": "Спрячьте тесты из diff’а",
+	"tip.diffExcludeTests.body": "Снимите «Include tests» в toolbar diff’а (или в верхней панели задачи), чтобы скрыть тестовые файлы и видеть только продакшен-изменения в +/− суммах.",
 	"tip.inlineDiffModes.title": "Меняйте layout diff’а",
 	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, чтобы быстро менять компактный обзор на side-by-side сравнение.",
 	"tip.inlineDiffComments.title": "Комментируйте прямо в diff",

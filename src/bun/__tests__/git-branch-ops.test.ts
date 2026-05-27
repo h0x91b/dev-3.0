@@ -336,8 +336,7 @@ describe("getUncommittedChanges", () => {
 describe("getTaskDiff", () => {
 	it("builds a branch diff from git blobs", async () => {
 		queueResponse(0, "M\0src/app.ts\0");
-		queueResponse(0, " 1 file changed, 2 insertions(+), 1 deletion(-)");
-		queueResponse(0, "src/app.ts\n");
+		queueResponse(0, "2\t1\tsrc/app.ts\n");
 		queueResponse(0, "13\n");
 		queueResponse(0, "13\n");
 		queueResponse(0, "const a = 1;\n");
@@ -405,8 +404,7 @@ describe("getTaskDiff", () => {
 	it("falls back to branch diff when unpushed mode has no upstream", async () => {
 		queueResponse(128, "", "fatal: no upstream configured");
 		queueResponse(0, "A\0src/new.ts\0");
-		queueResponse(0, " 1 file changed, 4 insertions(+)");
-		queueResponse(0, "src/new.ts\n");
+		queueResponse(0, "4\t0\tsrc/new.ts\n");
 		queueResponse(0, "9\n");
 		queueResponse(0, "export {};\n");
 		queueResponse(0, "diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n@@ -0,0 +1 @@\n+export {};\n");
@@ -431,8 +429,7 @@ describe("getTaskDiff", () => {
 
 	it("reports binary files in skippedFiles with both sides' sizes", async () => {
 		queueResponse(0, "M\0image.png\0");
-		queueResponse(0, " 1 file changed, 0 insertions(+), 0 deletions(-)");
-		queueResponse(0, "image.png\n");
+		queueResponse(0, "-\t-\timage.png\n");
 		queueResponse(0, "120\n");              // cat-file -s old
 		queueResponse(0, "250\n");              // cat-file -s new
 		queueResponse(0, "\0binary-old");       // show old (binary content)
@@ -456,8 +453,7 @@ describe("getTaskDiff", () => {
 
 	it("reports added binary files with null oldSize", async () => {
 		queueResponse(0, "A\0assets/logo.png\0");
-		queueResponse(0, " 1 file changed, 0 insertions(+), 0 deletions(-)");
-		queueResponse(0, "assets/logo.png\n");
+		queueResponse(0, "-\t-\tassets/logo.png\n");
 		queueResponse(0, "64\n");             // cat-file -s new
 		queueResponse(0, "\0png-new-bytes");  // show new (binary)
 

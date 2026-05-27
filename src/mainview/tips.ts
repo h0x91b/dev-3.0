@@ -120,6 +120,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0156}", // nf-md-view_split_vertical
 	},
 	{
+		id: "diff-exclude-tests",
+		titleKey: "tip.diffExcludeTests.title",
+		bodyKey: "tip.diffExcludeTests.body",
+		icon: "\u{F0668}", // nf-md-flask_outline
+	},
+	{
 		id: "inline-diff-modes",
 		titleKey: "tip.inlineDiffModes.title",
 		bodyKey: "tip.inlineDiffModes.body",

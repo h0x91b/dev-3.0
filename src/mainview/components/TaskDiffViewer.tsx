@@ -14,6 +14,8 @@ import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { formatBytes } from "../utils/formatBytes";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
+import { isTestFile } from "../../shared/test-files";
+import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 import "./TaskDiffViewer.css";
 
@@ -1393,6 +1395,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [searchQuery, setSearchQuery] = useState("");
 	const [activeSearchIndex, setActiveSearchIndex] = useState(0);
 	const [filesCollapsed, setFilesCollapsed] = useState<boolean>(() => readFilesCollapsed());
+	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const toggleFilesCollapsed = useCallback(() => {
 		setFilesCollapsed((prev) => {
 			const next = !prev;
@@ -1400,12 +1403,35 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return next;
 		});
 	}, []);
-	const fileTree = payload ? buildDiffTree(payload.files, payload.skippedFiles) : [];
-	const reviewExportEntries = payload ? buildInlineReviewExportEntries(payload.files, inlineComments) : [];
+	const visibleFiles = useMemo(
+		() => (payload ? (includeTests ? payload.files : payload.files.filter((f) => !isTestFile(f.displayPath))) : []),
+		[payload, includeTests],
+	);
+	const visibleSkippedFiles = useMemo(
+		() => (payload ? (includeTests ? payload.skippedFiles : payload.skippedFiles.filter((f) => !isTestFile(f.displayPath))) : []),
+		[payload, includeTests],
+	);
+	const hiddenTestCount = payload
+		? (payload.files.length - visibleFiles.length) + (payload.skippedFiles.length - visibleSkippedFiles.length)
+		: 0;
+	const visibleSummary = useMemo(() => {
+		if (!payload) return { files: 0, insertions: 0, deletions: 0 };
+		if (includeTests) return payload.summary;
+		let insertions = 0;
+		let deletions = 0;
+		for (const file of visibleFiles) {
+			const stats = getFileDiffStats(file);
+			insertions += stats.insertions;
+			deletions += stats.deletions;
+		}
+		return { files: visibleFiles.length, insertions, deletions };
+	}, [payload, includeTests, visibleFiles]);
+	const fileTree = payload ? buildDiffTree(visibleFiles, visibleSkippedFiles) : [];
+	const reviewExportEntries = payload ? buildInlineReviewExportEntries(visibleFiles, inlineComments) : [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
 	const searchMatches = useMemo(
-		() => (payload ? buildDiffSearchMatches(payload.files, searchQuery) : []),
-		[payload, searchQuery],
+		() => (payload ? buildDiffSearchMatches(visibleFiles, searchQuery) : []),
+		[payload, searchQuery, visibleFiles],
 	);
 	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
@@ -2148,9 +2174,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		if (!payload) {
 			return;
 		}
-		setExpandedFiles(
-			Object.fromEntries(payload.files.map((file) => [file.id, nextExpanded])),
-		);
+		setExpandedFiles((prev) => ({
+			...prev,
+			...Object.fromEntries(visibleFiles.map((file) => [file.id, nextExpanded])),
+		}));
 	}
 
 	function setAllFilesRead(nextRead: boolean) {
@@ -2158,7 +2185,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return;
 		}
 		const storedReadState = readStoredReadState();
-		for (const file of payload.files) {
+		for (const file of visibleFiles) {
 			const signature = getFileReadSignature(task.id, file);
 			if (nextRead) {
 				storedReadState[signature] = true;
@@ -2166,7 +2193,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				delete storedReadState[signature];
 			}
 		}
-		for (const skipped of payload.skippedFiles) {
+		for (const skipped of visibleSkippedFiles) {
 			const signature = getSkippedFileReadSignature(task.id, skipped);
 			if (nextRead) {
 				storedReadState[signature] = true;
@@ -2175,25 +2202,31 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			}
 		}
 		writeStoredReadState(storedReadState);
-		const nextReadEntries: Record<string, boolean> = Object.fromEntries(
-			payload.files.map((file) => [file.id, nextRead]),
-		);
-		for (const skipped of payload.skippedFiles) {
-			nextReadEntries[skipped.id] = nextRead;
-		}
-		setReadFiles(nextReadEntries);
-		setExpandedFiles(
-			Object.fromEntries(payload.files.map((file) => [file.id, nextRead ? false : true])),
-		);
+		setReadFiles((prev) => {
+			const next = { ...prev };
+			for (const file of visibleFiles) {
+				next[file.id] = nextRead;
+			}
+			for (const skipped of visibleSkippedFiles) {
+				next[skipped.id] = nextRead;
+			}
+			return next;
+		});
+		setExpandedFiles((prev) => ({
+			...prev,
+			...Object.fromEntries(visibleFiles.map((file) => [file.id, nextRead ? false : true])),
+		}));
 	}
 
-	const totalFileCount = payload ? payload.files.length + payload.skippedFiles.length : 0;
-	const readCount = payload ? Object.values(readFiles).filter(Boolean).length : 0;
-	const allFilesExpanded = payload ? payload.files.every((file) => expandedFiles[file.id] ?? true) : false;
+	const totalFileCount = payload ? visibleFiles.length + visibleSkippedFiles.length : 0;
+	const readCount = payload
+		? [...visibleFiles, ...visibleSkippedFiles].filter((f) => readFiles[f.id]).length
+		: 0;
+	const allFilesExpanded = payload ? visibleFiles.every((file) => expandedFiles[file.id] ?? true) : false;
 	const allFilesRead = payload
 		? totalFileCount > 0
-			&& payload.files.every((file) => readFiles[file.id] ?? false)
-			&& payload.skippedFiles.every((skipped) => readFiles[skipped.id] ?? false)
+			&& visibleFiles.every((file) => readFiles[file.id] ?? false)
+			&& visibleSkippedFiles.every((skipped) => readFiles[skipped.id] ?? false)
 		: false;
 	const hasSearchQuery = searchQuery.trim().length > 0;
 	const searchStatusLabel = hasSearchQuery
@@ -2341,16 +2374,48 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</div>
 					{payload && (
 						<>
-							<span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-[0.6875rem] font-mono">
-								<span>{t.plural("infoPanel.diffFileCount", payload.summary.files)}</span>
-								<span className="text-success">+{payload.summary.insertions}</span>
-								<span className="text-danger">−{payload.summary.deletions}</span>
+							<span
+								className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-[0.6875rem] font-mono"
+								data-testid="diff-toolbar-summary"
+							>
+								<span>{t.plural("infoPanel.diffFileCount", visibleSummary.files)}</span>
+								<span className="text-success">+{visibleSummary.insertions}</span>
+								<span className="text-danger">−{visibleSummary.deletions}</span>
+								{!includeTests && hiddenTestCount > 0 && (
+									<span className="text-fg-muted text-[0.625rem] uppercase tracking-wider">
+										{t("infoPanel.noTestsSuffix")}
+									</span>
+								)}
 							</span>
-							{totalFileCount !== payload.summary.files && (
+							<label
+								className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[0.6875rem] font-mono cursor-pointer transition-colors ${
+									includeTests
+										? "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
+										: "bg-accent/10 text-accent border-accent/30 hover:bg-accent/20"
+								}`}
+								title={hiddenTestCount > 0 || includeTests
+									? t("infoPanel.diffIncludeTestsTooltip")
+									: t("infoPanel.diffIncludeTestsTooltipNoTests")}
+								data-testid="diff-toolbar-include-tests"
+							>
+								<input
+									type="checkbox"
+									className="cursor-pointer"
+									checked={includeTests}
+									onChange={(e) => setIncludeTests(e.target.checked)}
+								/>
+								<span>{t("infoPanel.diffIncludeTests")}</span>
+								{!includeTests && hiddenTestCount > 0 && (
+									<span className="text-[0.625rem] text-fg-muted">
+										({t("infoPanel.diffHiddenTestCount", { count: String(hiddenTestCount) })})
+									</span>
+								)}
+							</label>
+							{totalFileCount !== visibleSummary.files && (
 								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
 									{t("infoPanel.diffShownCount", {
 										shown: String(totalFileCount),
-										total: String(payload.summary.files),
+										total: String(visibleSummary.files),
 									})}
 								</span>
 							)}

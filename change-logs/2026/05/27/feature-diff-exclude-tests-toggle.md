@@ -1,0 +1,1 @@
+Added an "Include tests" toggle to both the diff viewer toolbar and the task info-panel top bar. When unchecked, test files are hidden from the changed-files list and the +/− line counts are recomputed accordingly. The preference is persisted in localStorage and shared between both UIs.

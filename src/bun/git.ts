@@ -1174,27 +1174,42 @@ export async function getUncommittedChanges(
 export async function getBranchDiffStats(
 	worktreePath: string,
 	ref: string,
-): Promise<{ files: number; insertions: number; deletions: number; fileNames: string[] }> {
-	const [statResult, namesResult] = await Promise.all([
-		run(["git", "diff", "--shortstat", `${ref}...HEAD`], worktreePath),
-		run(["git", "diff", "--name-only", `${ref}...HEAD`], worktreePath),
-	]);
-	if (!statResult.ok || !statResult.stdout.trim()) {
-		return { files: 0, insertions: 0, deletions: 0, fileNames: [] };
+): Promise<{ files: number; insertions: number; deletions: number; fileStats: Array<{ path: string; insertions: number; deletions: number }> }> {
+	const result = await run(["git", "diff", "--numstat", `${ref}...HEAD`], worktreePath);
+	if (!result.ok || !result.stdout.trim()) {
+		return { files: 0, insertions: 0, deletions: 0, fileStats: [] };
 	}
-	// Output like: " 3 files changed, 45 insertions(+), 12 deletions(-)"
-	const text = statResult.stdout.trim();
-	const filesMatch = text.match(/(\d+)\s+file/);
-	const insMatch = text.match(/(\d+)\s+insertion/);
-	const delMatch = text.match(/(\d+)\s+deletion/);
-	const fileNames = namesResult.ok && namesResult.stdout.trim()
-		? namesResult.stdout.trim().split("\n")
-		: [];
+	// numstat lines: "<added>\t<removed>\t<path>" — added/removed are "-" for binary.
+	// Renames render as "added\tremoved\told => new" or with {old => new} brace syntax.
+	const fileStats: Array<{ path: string; insertions: number; deletions: number }> = [];
+	let totalInsertions = 0;
+	let totalDeletions = 0;
+	for (const line of result.stdout.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		const parts = trimmed.split("\t");
+		if (parts.length < 3) continue;
+		const added = parts[0] === "-" ? 0 : parseInt(parts[0], 10);
+		const removed = parts[1] === "-" ? 0 : parseInt(parts[1], 10);
+		if (!Number.isFinite(added) || !Number.isFinite(removed)) continue;
+		// For renamed files, prefer the new path. Strip "{old => new}" arrow notation.
+		let path = parts.slice(2).join("\t");
+		const arrowMatch = path.match(/^(.*)\{(.+?) => (.+?)\}(.*)$/);
+		if (arrowMatch) {
+			path = `${arrowMatch[1]}${arrowMatch[3]}${arrowMatch[4]}`;
+		} else if (path.includes(" => ")) {
+			const [, after] = path.split(" => ");
+			if (after) path = after;
+		}
+		fileStats.push({ path, insertions: added, deletions: removed });
+		totalInsertions += added;
+		totalDeletions += removed;
+	}
 	return {
-		files: filesMatch ? parseInt(filesMatch[1], 10) : 0,
-		insertions: insMatch ? parseInt(insMatch[1], 10) : 0,
-		deletions: delMatch ? parseInt(delMatch[1], 10) : 0,
-		fileNames,
+		files: fileStats.length,
+		insertions: totalInsertions,
+		deletions: totalDeletions,
+		fileStats,
 	};
 }
 

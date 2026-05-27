@@ -26,6 +26,8 @@ import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskTmuxControls from "./task-info-panel/TaskTmuxControls";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
+import { isTestFile } from "../../shared/test-files";
+import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -79,6 +81,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const [movingStatus, setMovingStatus] = useState(false);
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
 	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
+	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const [diffFilesHover, setDiffFilesHover] = useState(false);
 	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
 	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
@@ -384,6 +387,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	}
 
 	const metadataBranchStatus = metadataBranchState?.branchStatus ?? null;
+	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
+	const visibleDiffFileStats = includeTests
+		? allDiffFileStats
+		: allDiffFileStats.filter((entry) => !isTestFile(entry.path));
+	const excludedTestCount = allDiffFileStats.length - visibleDiffFileStats.length;
+	const visibleDiffFiles = includeTests
+		? (metadataBranchStatus?.diffFiles ?? 0)
+		: visibleDiffFileStats.length;
+	const visibleDiffInsertions = includeTests
+		? (metadataBranchStatus?.diffInsertions ?? 0)
+		: visibleDiffFileStats.reduce((sum, e) => sum + e.insertions, 0);
+	const visibleDiffDeletions = includeTests
+		? (metadataBranchStatus?.diffDeletions ?? 0)
+		: visibleDiffFileStats.reduce((sum, e) => sum + e.deletions, 0);
+	const diffBadgeTitle = !includeTests && excludedTestCount > 0
+		? t("infoPanel.diffTestsHidden", { count: String(excludedTestCount) })
+		: t("infoPanel.showDiff");
 	const diffSummaryBadge = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<button
 			type="button"
@@ -392,15 +412,42 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			onClick={() => openBranchDiff()}
 			onMouseEnter={showDiffFilesPopover}
 			onMouseLeave={hideDiffFilesPopover}
-			title={t("infoPanel.showDiff")}
+			title={diffBadgeTitle}
+			data-testid="diff-summary-badge"
 		>
 			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
-			<span>{metadataBranchStatus.diffFiles} {metadataBranchStatus.diffFiles === 1 ? "file" : "files"}</span>
-			<span className="text-success">+{metadataBranchStatus.diffInsertions}</span>
-			<span className="text-danger">−{metadataBranchStatus.diffDeletions}</span>
+			<span>{visibleDiffFiles} {visibleDiffFiles === 1 ? "file" : "files"}</span>
+			<span className="text-success">+{visibleDiffInsertions}</span>
+			<span className="text-danger">−{visibleDiffDeletions}</span>
+			{!includeTests && excludedTestCount > 0 && (
+				<span className="text-fg-muted text-[0.625rem] uppercase tracking-wider">
+					{t("infoPanel.noTestsSuffix")}
+				</span>
+			)}
 		</button>
 	) : null;
-	const diffFilesPopover = diffFilesHover && metadataBranchStatus && metadataBranchStatus.diffFileNames.length > 0 && createPortal(
+	const diffIncludeTestsToggle = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+		<button
+			type="button"
+			data-testid="diff-include-tests-toggle"
+			onClick={() => setIncludeTests(!includeTests)}
+			className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[0.6875rem] font-mono flex-shrink-0 transition-colors ${
+				includeTests
+					? "bg-elevated border-edge text-fg-2 hover:bg-elevated-hover"
+					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
+			}`}
+			title={t("infoPanel.diffIncludeTestsTooltip")}
+		>
+			<span
+				className="text-[0.75rem] leading-none"
+				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			>
+				{includeTests ? "☑" : "☐"}
+			</span>
+			<span>{t("infoPanel.diffIncludeTests")}</span>
+		</button>
+	) : null;
+	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
 		<div
 			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 pl-3 pr-1.5 max-w-[25rem] max-h-[20rem] overflow-auto"
 			style={{ top: diffFilesPos.top, left: diffFilesPos.left, zIndex: 9999 }}
@@ -410,9 +457,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			<div className="text-[0.625rem] text-fg-muted font-semibold uppercase tracking-wider mb-1.5">
 				{t("infoPanel.changedFiles")}
 			</div>
-			{metadataBranchStatus.diffFileNames.map((fileName) => (
+			{visibleDiffFileStats.map(({ path: fileName, insertions, deletions }) => (
 				<div key={fileName} className="group/file flex items-center gap-1.5 py-0.5 leading-snug">
 					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{fileName}</span>
+					{(insertions > 0 || deletions > 0) && (
+						<span className="text-[0.625rem] font-mono flex-shrink-0">
+							{insertions > 0 && <span className="text-success">+{insertions}</span>}
+							{insertions > 0 && deletions > 0 && " "}
+							{deletions > 0 && <span className="text-danger">−{deletions}</span>}
+						</span>
+					)}
 					<div className="flex items-center gap-1.5 flex-shrink-0">
 						<button
 							onClick={(event) => handleFileDiff(event, fileName)}
@@ -544,6 +598,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{statusDropdownButton}
 						{statusDropdownPortal}
 						{diffSummaryBadge}
+						{diffIncludeTestsToggle}
 						{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 						<div className="flex-1" />
 						{spawnAgentButton}
@@ -600,6 +655,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{statusDropdownButton}
 							{statusDropdownPortal}
 							{diffSummaryBadge}
+						{diffIncludeTestsToggle}
 							{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 							<div className="flex-1" />
 							{spawnAgentButton}

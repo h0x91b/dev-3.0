@@ -45,7 +45,7 @@ describe("git Unicode filenames", () => {
 		const result = await getBranchDiffStats(repo.local, "origin/main");
 
 		expect(result.files).toBe(1);
-		expect(result.fileNames).toEqual(["Справочник.md"]);
+		expect(result.fileStats.map((f) => f.path)).toEqual(["Справочник.md"]);
 	});
 
 	it("counts untracked Unicode files in uncommitted stats", async () => {
