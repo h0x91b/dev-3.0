@@ -43,15 +43,33 @@ interface CodexVersion {
 interface CodexSyntax {
 	filesystemRootKey: ":project_roots" | ":workspace_roots";
 	hooksFeatureKey: "codex_hooks" | "hooks";
+	/**
+	 * profile-v2: per-profile settings live in `~/.codex/<name>.config.toml`,
+	 * and Codex rejects `[profiles.<name>]` blocks or top-level `profile = "<name>"`
+	 * in the main config when `--profile <name>` is used. See codex PR #22647.
+	 */
+	profileV2: boolean;
 }
 
 const LEGACY_CODEX_SYNTAX: CodexSyntax = {
 	filesystemRootKey: ":project_roots",
 	hooksFeatureKey: "codex_hooks",
+	profileV2: false,
 };
 
 const CODEX_HOOKS_RENAME_VERSION: CodexVersion = { major: 0, minor: 129, patch: 0 };
 const CODEX_WORKSPACE_ROOTS_RENAME_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
+const CODEX_PROFILE_V2_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
+
+const MANAGED_DEV3_PROFILES = [
+	DEV3_CODEX_PROFILE,
+	DEV3_CODEX_LIGHT_PROFILE,
+	DEV3_CODEX_DARK_PROFILE,
+] as const;
+
+const DEV3_PROFILE_SETTINGS: Record<string, string> = {
+	web_search: '"live"',
+};
 
 export function parseCodexVersion(output: string): CodexVersion | null {
 	const match = output.match(/\bv?(\d+)\.(\d+)\.(\d+)\b/);
@@ -80,6 +98,7 @@ export function getCodexSyntaxForVersion(versionText: string | null | undefined)
 		hooksFeatureKey: isVersionAtLeast(version, CODEX_HOOKS_RENAME_VERSION)
 			? "hooks"
 			: LEGACY_CODEX_SYNTAX.hooksFeatureKey,
+		profileV2: isVersionAtLeast(version, CODEX_PROFILE_V2_VERSION),
 	};
 }
 
@@ -135,7 +154,18 @@ export function ensureCodexConfig(
 
 	// --- 0. Clean up legacy sections ---
 	config = cleanupLegacySections(config);
-	config = commentOutManagedProfileThemeLines(config);
+	if (syntax.profileV2) {
+		// Codex ≥0.131 rejects `[profiles.<name>]` blocks and top-level
+		// `profile = "<name>"` selectors when `--profile <name>` is used. Per-profile
+		// settings now live in `~/.codex/<name>.config.toml` (written by
+		// ensureCodexConfigFile). Strip the legacy entries from the main config.
+		for (const name of MANAGED_DEV3_PROFILES) {
+			config = removeSectionByHeader(config, `[profiles.${name}]`);
+		}
+		config = removeManagedTopLevelProfileSelector(config);
+	} else {
+		config = commentOutManagedProfileThemeLines(config);
+	}
 	config = migrateManagedCodexSyntax(config, syntax);
 	// Re-parse after cleanup
 	if (config.trim().length > 0) {
@@ -272,19 +302,14 @@ export function ensureCodexConfig(
 	}
 
 	// --- 4. Ensure [profiles.dev3*] config profiles ---
-	config = ensureProfileSettings(config, DEV3_CODEX_PROFILE, {
-		web_search: '"live"',
-	});
-	config = ensureProfileSettings(config, DEV3_CODEX_LIGHT_PROFILE, {
-		web_search: '"live"',
-		// Codex 0.130 rejects `tui.theme` inside profiles. Leave theme
-		// wiring disabled until we map the new Codex theme schema.
-	});
-	config = ensureProfileSettings(config, DEV3_CODEX_DARK_PROFILE, {
-		web_search: '"live"',
-		// Codex 0.130 rejects `tui.theme` inside profiles. Leave theme
-		// wiring disabled until we map the new Codex theme schema.
-	});
+	// On Codex ≥0.131 these profiles live in separate per-profile files (handled
+	// by ensureCodexConfigFile via ensureCodexProfileFile). For older Codex we
+	// keep the legacy in-main-config form.
+	if (!syntax.profileV2) {
+		for (const name of MANAGED_DEV3_PROFILES) {
+			config = ensureProfileSettings(config, name, DEV3_PROFILE_SETTINGS);
+		}
+	}
 
 	// --- 5. Ensure [features] hooks/codex_hooks = true ---
 	const codexHooksEnabled = parsed.features?.[syntax.hooksFeatureKey] === true;
@@ -311,6 +336,20 @@ function cleanupLegacySections(content: string): string {
 		content = removeSectionByHeader(content, "[permissions.network]");
 	}
 	return content;
+}
+
+/**
+ * Drop a top-level `profile = "dev3"|"dev3-light"|"dev3-dark"` selector. Codex
+ * ≥0.131 rejects it alongside `--profile <name>`, and we never write it from
+ * dev-3.0 — but earlier dev-3.0 versions, Codex itself, or user edits may
+ * have introduced it.
+ */
+function removeManagedTopLevelProfileSelector(content: string): string {
+	const profilePattern = new RegExp(
+		`^[ \\t]*profile[ \\t]*=[ \\t]*"(${MANAGED_DEV3_PROFILES.join("|")})"[ \\t]*\\r?\\n?`,
+		"m",
+	);
+	return content.replace(profilePattern, "");
 }
 
 function commentOutManagedProfileThemeLines(content: string): string {
@@ -533,6 +572,23 @@ function ensureProfileSettings(
 }
 
 /**
+ * Patch a per-profile Codex config file (profile-v2 style: one file per
+ * profile under `~/.codex/<name>.config.toml`). Upserts root-level key/value
+ * pairs while preserving any other content the user may have added.
+ */
+export function ensureCodexProfileFile(
+	content: string | null,
+	settings: Record<string, string>,
+): string {
+	let result = content ?? "";
+	for (const [key, value] of Object.entries(settings)) {
+		result = upsertRootLine(result, key, value);
+	}
+	if (!result.endsWith("\n")) result += "\n";
+	return result;
+}
+
+/**
  * Read, patch, and write the Codex config.toml.
  * Ensures a dedicated dev3 permission profile and config profile.
  * Called on app startup from installAgentSkills().
@@ -541,6 +597,8 @@ export function ensureCodexConfigFile(homePath: string): void {
 	const configPath = `${homePath}/.codex/config.toml`;
 	const worktreesPath = `${homePath}/.dev3.0/worktrees`;
 	const socketsPath = `${homePath}/.dev3.0/sockets`;
+	const codexVersion = detectCodexVersion();
+	const syntax = getCodexSyntaxForVersion(codexVersion);
 
 	try {
 		let content: string | null = null;
@@ -551,7 +609,7 @@ export function ensureCodexConfigFile(homePath: string): void {
 		}
 
 		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [], {
-			codexVersion: detectCodexVersion(),
+			codexVersion,
 		});
 
 		if (updated !== content) {
@@ -562,5 +620,30 @@ export function ensureCodexConfigFile(homePath: string): void {
 		log.warn("Failed to patch Codex config.toml (non-fatal)", {
 			error: String(err),
 		});
+	}
+
+	if (!syntax.profileV2) return;
+
+	for (const profileName of MANAGED_DEV3_PROFILES) {
+		const profilePath = `${homePath}/.codex/${profileName}.config.toml`;
+		try {
+			let existing: string | null = null;
+			try {
+				existing = readFileSync(profilePath, "utf-8");
+			} catch {
+				// Per-profile file doesn't exist yet — will create.
+			}
+
+			const updated = ensureCodexProfileFile(existing, DEV3_PROFILE_SETTINGS);
+			if (updated !== existing) {
+				writeFileSync(profilePath, updated, "utf-8");
+				log.info("Codex per-profile config patched", { path: profilePath });
+			}
+		} catch (err) {
+			log.warn("Failed to patch Codex per-profile config (non-fatal)", {
+				path: profilePath,
+				error: String(err),
+			});
+		}
 	}
 }

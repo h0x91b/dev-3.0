@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { ensureCodexConfig, getCodexSyntaxForVersion, parseCodexVersion } from "../codex-config";
+import {
+	ensureCodexConfig,
+	ensureCodexProfileFile,
+	getCodexSyntaxForVersion,
+	parseCodexVersion,
+} from "../codex-config";
 
 describe("ensureCodexConfig", () => {
 	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
@@ -74,14 +79,17 @@ describe("ensureCodexConfig", () => {
 			expect(getCodexSyntaxForVersion("codex-cli 0.128.9")).toEqual({
 				filesystemRootKey: ":project_roots",
 				hooksFeatureKey: "codex_hooks",
+				profileV2: false,
 			});
 			expect(getCodexSyntaxForVersion("codex-cli 0.130.0")).toEqual({
 				filesystemRootKey: ":project_roots",
 				hooksFeatureKey: "hooks",
+				profileV2: false,
 			});
 			expect(getCodexSyntaxForVersion("codex-cli 0.131.0")).toEqual({
 				filesystemRootKey: ":workspace_roots",
 				hooksFeatureKey: "hooks",
+				profileV2: true,
 			});
 		});
 
@@ -443,6 +451,112 @@ trust_level = "trusted"
 			const broken = "this is not valid toml [[[";
 			const result = ensureCodexConfig(broken, WORKTREES_PATH, SOCKETS_PATH);
 			expect(result).toBe(broken);
+		});
+	});
+
+	describe("profile-v2 (Codex ≥0.131)", () => {
+		it("does not emit [profiles.dev3*] blocks in the main config", () => {
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.134.0",
+			});
+
+			expect(result).not.toMatch(/^\[profiles\.dev3\]/m);
+			expect(result).not.toMatch(/^\[profiles\.dev3-light\]/m);
+			expect(result).not.toMatch(/^\[profiles\.dev3-dark\]/m);
+			// Permissions and trust still patched
+			expect(result).toContain("[permissions.dev3.network]");
+			expect(result).toContain(`[projects."${WORKTREES_PATH}"]`);
+		});
+
+		it("removes pre-existing [profiles.dev3*] blocks when upgrading to v2", () => {
+			const existing = `model = "gpt-5.4"
+
+[profiles.dev3]
+web_search = "live"
+
+[profiles.dev3-light]
+web_search = "live"
+# tui.theme = "github"
+
+[profiles.dev3-dark]
+web_search = "live"
+
+[profiles.ro]
+sandbox_mode = "read-only"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.134.0",
+			});
+
+			expect(result).not.toMatch(/^\[profiles\.dev3\]/m);
+			expect(result).not.toMatch(/^\[profiles\.dev3-light\]/m);
+			expect(result).not.toMatch(/^\[profiles\.dev3-dark\]/m);
+			// User's own profile preserved
+			expect(result).toContain("[profiles.ro]");
+			expect(result).toContain('sandbox_mode = "read-only"');
+		});
+
+		it("strips top-level profile = \"dev3*\" selector when on v2", () => {
+			const existing = `model = "gpt-5.4"
+profile = "dev3-light"
+
+[projects."/Users/testuser/app"]
+trust_level = "trusted"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.134.0",
+			});
+
+			expect(result).not.toMatch(/^profile\s*=\s*"dev3-light"/m);
+			expect(result).toContain('model = "gpt-5.4"');
+			expect(result).toContain('[projects."/Users/testuser/app"]');
+		});
+
+		it("does not strip an unrelated top-level profile selector", () => {
+			const existing = `profile = "my-custom"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.134.0",
+			});
+
+			expect(result).toContain('profile = "my-custom"');
+		});
+
+		it("legacy Codex (<0.131) still gets [profiles.dev3*] in main config", () => {
+			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.130.0",
+			});
+
+			expect(result).toContain("[profiles.dev3]");
+			expect(result).toContain("[profiles.dev3-light]");
+			expect(result).toContain("[profiles.dev3-dark]");
+		});
+	});
+
+	describe("ensureCodexProfileFile", () => {
+		it("creates a per-profile file from null content", () => {
+			const result = ensureCodexProfileFile(null, { web_search: '"live"' });
+			expect(result).toContain('web_search = "live"');
+			expect(result.endsWith("\n")).toBe(true);
+		});
+
+		it("preserves unrelated user content", () => {
+			const existing = `model = "gpt-5.4"
+sandbox_mode = "workspace-write"
+`;
+			const result = ensureCodexProfileFile(existing, { web_search: '"live"' });
+			expect(result).toContain('model = "gpt-5.4"');
+			expect(result).toContain('sandbox_mode = "workspace-write"');
+			expect(result).toContain('web_search = "live"');
+		});
+
+		it("upserts an existing key rather than duplicating it", () => {
+			const existing = `web_search = "disabled"
+`;
+			const result = ensureCodexProfileFile(existing, { web_search: '"live"' });
+			expect(result.match(/^web_search\s*=/gm)).toHaveLength(1);
+			expect(result).toContain('web_search = "live"');
+			expect(result).not.toContain('web_search = "disabled"');
 		});
 	});
 });
