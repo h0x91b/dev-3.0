@@ -829,6 +829,9 @@ async function spawnVariants(params: {
 				// on every variant, but the flag tells the launch path (see
 				// prepareTaskInBackground → launchTaskPty) to blank the prompt.
 				scratch: sourceTask.scratch,
+				// Issue #583 — carry the user-edited title onto every variant
+				// so "Save and Run" does not silently revert to the description prefix.
+				customTitle: sourceTask.customTitle,
 			},
 		);
 
@@ -924,6 +927,9 @@ async function addAttempts(params: {
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
 				watched: sourceTask.watched,
+				// Issue #583 — carry the user-edited title onto every added attempt
+				// so re-running a task does not throw away the title the user typed.
+				customTitle: sourceTask.customTitle,
 			},
 		);
 

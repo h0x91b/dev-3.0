@@ -2534,6 +2534,36 @@ describe("handlers.spawnVariants", () => {
 		});
 		expect(cowClone.clonePaths).toHaveBeenCalledWith(project.path, "/tmp/vwt", ["branch-cache"]);
 	});
+
+	// Issue #583 — spawnVariants used to drop the user-edited customTitle from
+	// the source task. The new variants must inherit it so the title the user
+	// typed in the Create-Task modal survives "Save and Run".
+	it("preserves customTitle from the source task on spawned variants", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, customTitle: "User-set title" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, customTitle: "User-set title" });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", customTitle: "User-set title" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ customTitle: "User-set title" }),
+		);
+	});
 });
 
 describe("handlers.addAttempts", () => {
@@ -2663,6 +2693,50 @@ describe("handlers.addAttempts", () => {
 				undefined,
 			);
 		});
+	});
+
+	// Issue #583 — same root cause as the spawnVariants case: addAttempts must
+	// carry the user-edited customTitle from the source task onto every new
+	// attempt, otherwise re-running a task throws away the title the user typed.
+	it("preserves customTitle from the source task on added attempts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			customTitle: "User-set title",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			customTitle: "User-set title",
+			preparing: true,
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "dev3/x" });
+		vi.mocked(data.updateTask).mockResolvedValue(attemptTask);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ customTitle: "User-set title" }),
+		);
 	});
 
 	it("clears preparing when project config resolution fails before attempt setup starts", async () => {
