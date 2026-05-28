@@ -5313,12 +5313,21 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		expect(layoutCalls.length).toBeGreaterThanOrEqual(1);
 		expect(layoutCalls[0]).toEqual(expect.arrayContaining(["select-layout", "-t", "%10", "even-vertical"]));
 
-		// After 5s the auto-paste of /dev3-bug-hunter happens
+		// After 5s the auto-paste of /dev3-bug-hunter happens. The prompt MUST
+		// lock the hunter to changes in this branch only — otherwise hunters
+		// would roam the whole codebase, which is not the intent in the local
+		// lightbox path.
 		vi.advanceTimersByTime(5100);
 		const sendKeysCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((args) => args.includes("send-keys"));
 		expect(sendKeysCalls).toHaveLength(3);
 		for (const args of sendKeysCalls) {
-			expect(args).toEqual(expect.arrayContaining(["send-keys", "/dev3-bug-hunter", "Enter"]));
+			expect(args[args.length - 1]).toBe("Enter");
+			const prompt = args[args.length - 2];
+			expect(prompt).toContain("/dev3-bug-hunter");
+			expect(prompt).toContain("Scope is locked to THIS branch only");
+			expect(prompt).toContain("git diff --name-only");
+			expect(prompt).toContain("dev3/task-test");
+			expect(prompt).toContain("main");
 		}
 	});
 

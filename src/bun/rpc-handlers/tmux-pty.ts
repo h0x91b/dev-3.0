@@ -1485,8 +1485,21 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
 }
 
-const BUG_HUNTER_PROMPT = "/dev3-bug-hunter";
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
+
+function buildBugHunterPrompt(task: Task, project: Project): string {
+	const base = task.baseBranch || project.defaultBaseBranch || "main";
+	const branch = task.branchName || "HEAD";
+	const compareRef = base.includes("/") ? base : `origin/${base}`;
+	return (
+		`/dev3-bug-hunter ` +
+		`Scope is locked to THIS branch only. ` +
+		`Run \`git diff --name-only ${compareRef}...HEAD\` (fallback \`git diff --name-only ${base}...HEAD\`) to get the file list, ` +
+		`then hunt for bugs ONLY in those changed files and the code paths they touch. ` +
+		`Do NOT inspect unrelated parts of the codebase. ` +
+		`Branch: ${branch}. Base: ${base}.`
+	);
+}
 
 async function spawnSingleBugHunterPane(opts: {
 	project: Project;
@@ -1631,11 +1644,14 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 		await equalize.exited;
 	}
 
-	// After the agents have had time to boot, paste the bug-hunter slash command into each pane.
+	// After the agents have had time to boot, paste the branch-scoped bug-hunter
+	// slash command into each pane. The scope clause is mandatory: hunters must
+	// only inspect files changed in this branch, never the whole codebase.
+	const prompt = buildBugHunterPrompt(task, project);
 	for (const paneId of paneIds) {
 		setTimeout(() => {
 			try {
-				const proc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, BUG_HUNTER_PROMPT, "Enter"), { stdout: "pipe", stderr: "pipe" });
+				const proc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, prompt, "Enter"), { stdout: "pipe", stderr: "pipe" });
 				proc.exited.catch(() => {});
 			} catch (err) {
 				log.warn("send-keys for bug hunter pane failed", { paneId, error: String(err) });
