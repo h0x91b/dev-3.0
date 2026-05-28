@@ -2425,8 +2425,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</span>
 							)}
 							{(() => {
-								const binaryCount = payload.skippedFiles.filter((f) => f.reason === "binary").length;
-								const largeCount = payload.skippedFiles.filter((f) => f.reason === "too-large").length;
+								const binaryCount = visibleSkippedFiles.filter((f) => f.reason === "binary").length;
+								const largeCount = visibleSkippedFiles.filter((f) => f.reason === "too-large").length;
 								return (
 									<>
 										{binaryCount > 0 && (
@@ -2765,14 +2765,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</div>
 				)}
 
-				{!error && !isBusy && payload && payload.files.length === 0 && payload.skippedFiles.length === 0 && renderState(
+				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && renderState(
 					t("infoPanel.diffNoChanges"),
 					t("infoPanel.diffNoChangesBody"),
 				)}
 
-				{!error && !isBusy && payload && diffLib && viewMode && payload.files.length > 0 && (
+				{!error && !isBusy && payload && diffLib && viewMode && visibleFiles.length > 0 && (
 					<div className="space-y-5">
-						{payload.files.map((file, index) => (
+						{visibleFiles.map((file, index) => (
 							<TaskDiffFileSection
 								key={file.id}
 								file={file}
@@ -2805,8 +2805,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</div>
 				)}
 
-				{!error && !isBusy && payload && payload.skippedFiles.length > 0 && (
-					<div className={payload.files.length > 0 ? "mt-5" : ""} data-testid="diff-skipped-files">
+				{!error && !isBusy && payload && visibleSkippedFiles.length > 0 && (
+					<div className={visibleFiles.length > 0 ? "mt-5" : ""} data-testid="diff-skipped-files">
 						<div className="rounded-xl border border-edge bg-raised">
 							<div className="px-3 py-2 border-b border-edge flex items-center gap-2">
 								<span
@@ -2820,11 +2820,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									{t("infoPanel.diffSkippedFilesTitle")}
 								</span>
 								<span className="text-[0.6875rem] text-fg-3 font-mono">
-									{payload.skippedFiles.length}
+									{visibleSkippedFiles.length}
 								</span>
 							</div>
 							<ul className="divide-y divide-edge">
-								{payload.skippedFiles.map((skipped) => {
+								{visibleSkippedFiles.map((skipped) => {
 									const isRead = readFiles[skipped.id] ?? false;
 									const isActive = activeFileId === skipped.id;
 									return (
