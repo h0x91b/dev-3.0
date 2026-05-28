@@ -1486,6 +1486,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 }
 
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
+const BUG_HUNTER_ENTER_DELAY_MS = 800;
 
 function buildBugHunterPrompt(task: Task, project: Project): string {
 	const base = task.baseBranch || project.defaultBaseBranch || "main";
@@ -1617,10 +1618,18 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	});
 	if (firstPaneId) paneIds.push(firstPaneId);
 
-	// Subsequent hunters: split the right column vertically so they stack on top of each other.
+	// Subsequent hunters: split the right column vertically. We compute -p per
+	// split so all panes in the right column end up equal-sized WITHOUT calling
+	// select-layout on the window (that command would also shrink the main left
+	// pane to 1/N of the window, which broke the layout in the first iteration).
+	// Formula: at split i (1-indexed, 1..N-1), the new pane should take
+	// (N-i)/(N-i+1) of the target's current size. For N=3 → 67, 50. For N=6 →
+	// 83, 80, 75, 67, 50.
 	for (let i = 1; i < requestedCount; i++) {
 		const target = paneIds[paneIds.length - 1] ?? firstPaneId;
 		if (!target) break;
+		const remaining = requestedCount - i;
+		const percent = Math.round((remaining / (remaining + 1)) * 100);
 		try {
 			const paneId = await spawnSingleBugHunterPane({
 				project,
@@ -1630,7 +1639,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				worktreePath: task.worktreePath,
 				agentId: params.agentId,
 				configId: params.configId,
-				splitArgs: ["-v", "-t", target],
+				splitArgs: ["-v", "-l", `${percent}%`, "-t", target],
 			});
 			if (paneId) paneIds.push(paneId);
 		} catch (err) {
@@ -1638,24 +1647,32 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 		}
 	}
 
-	// Equalize the right column vertically so every hunter gets the same height.
-	if (paneIds.length > 1) {
-		const equalize = spawn(pty.tmuxArgs(socket, "select-layout", "-t", paneIds[0], "even-vertical"), { stdout: "pipe", stderr: "pipe" });
-		await equalize.exited;
-	}
-
 	// After the agents have had time to boot, paste the branch-scoped bug-hunter
 	// slash command into each pane. The scope clause is mandatory: hunters must
 	// only inspect files changed in this branch, never the whole codebase.
+	//
+	// Prompt paste and Enter are sent as TWO separate send-keys calls with a
+	// delay — Claude Code's input layer can treat a fast send-keys "prompt Enter"
+	// sequence as a single bracketed paste (where the trailing Enter becomes a
+	// newline inside the paste, not a submit). Splitting them guarantees Enter
+	// arrives as a discrete keypress after the paste buffer has been processed.
 	const prompt = buildBugHunterPrompt(task, project);
 	for (const paneId of paneIds) {
 		setTimeout(() => {
 			try {
-				const proc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, prompt, "Enter"), { stdout: "pipe", stderr: "pipe" });
-				proc.exited.catch(() => {});
+				const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, prompt), { stdout: "pipe", stderr: "pipe" });
+				pasteProc.exited.catch(() => {});
 			} catch (err) {
-				log.warn("send-keys for bug hunter pane failed", { paneId, error: String(err) });
+				log.warn("send-keys paste for bug hunter pane failed", { paneId, error: String(err) });
 			}
+			setTimeout(() => {
+				try {
+					const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, "Enter"), { stdout: "pipe", stderr: "pipe" });
+					enterProc.exited.catch(() => {});
+				} catch (err) {
+					log.warn("send-keys Enter for bug hunter pane failed", { paneId, error: String(err) });
+				}
+			}, BUG_HUNTER_ENTER_DELAY_MS);
 		}, BUG_HUNTER_AUTOTYPE_DELAY_MS);
 	}
 
