@@ -25,6 +25,25 @@ describe("dev3 skill content", () => {
 		);
 	});
 
+	it("front-loads a session-start checklist with an event-anchored hard gate", () => {
+		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("## Session-start checklist");
+			// Event-anchored gate, not "session start" which agents race past
+			expect(skill).toContain("finish this checklist before you end your first turn");
+			// Title step explicitly covers the scratch placeholder, the case that fell through
+			expect(skill).toContain("replace a scratch placeholder");
+			// Checklist precedes the detailed sections it points at
+			expect(skill.indexOf("## Session-start checklist")).toBeLessThan(skill.indexOf("## Branch naming"));
+			expect(skill.indexOf("## Session-start checklist")).toBeLessThan(skill.indexOf("## Title generation"));
+		}
+	});
+
+	it("couples title-setting to the initial-overview moment", () => {
+		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("same pass as the title and labels");
+		}
+	});
+
 	it("keeps embedded label guidance consistent across agent variants", () => {
 		expect(getClaudeSkillContent()).toContain("In the same session-start pass, also assign task labels:");
 		expect(getGenericSkillContent()).toContain("In the same session-start pass, also assign task labels:");

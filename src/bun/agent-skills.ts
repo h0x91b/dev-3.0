@@ -12,6 +12,21 @@ const SKILL_HEADER = `# dev3 — Task Lifecycle Protocol
 You are working inside a **dev-3.0 managed worktree** with a Kanban board task assigned to you.
 `;
 
+const SKILL_SESSION_START_CHECKLIST = `
+## Session-start checklist
+
+The moment you understand what the task actually is — usually right after the user's first real message, **not** some separate "setup phase" — run this checklist. A direct, concrete task does **not** cancel it: being handed real work immediately is exactly when these get silently dropped.
+
+**Hard gate: finish this checklist before you end your first turn** (before you report the result of your first piece of work). If you are about to end a turn and have not done it, do it first. The actual work may proceed in the same turn — but none of these may be skipped.
+
+1. **Branch** — rename if it matches \`dev3/task-*\` (Branch naming, below).
+2. **Title** — replace a scratch placeholder (\`Scratch — HH:MM\`) or a truncated / auto-generated title with a concise imperative (Title generation, below). Skip only if the title is user-edited.
+3. **Overview** — set the initial overview (Overview — MANDATORY, below).
+4. **Labels** — assign 1-2 meaningful labels (Title generation, below).
+
+Steps 2-4 run in one pass — share the same moment, do not spread them across turns.
+`;
+
 const SKILL_BRANCH_NAMING = `
 ## Branch naming
 
@@ -35,7 +50,7 @@ git branch -m dev3/task-XXXXXXXX <type>/<slug>
 - If the branch already has a meaningful name (does NOT match \`dev3/task-*\`), skip renaming.
 - If the branch was already pushed, also update the remote: \`git push origin :<old> && git push -u origin <new>\`.
 
-Run this ONCE at session start, right after setting \`in-progress\`.
+Run this as step 1 of the Session-start checklist (above), right after setting \`in-progress\`.
 `;
 
 const SKILL_TITLE_GENERATION = `
@@ -71,7 +86,7 @@ In the same session-start pass, also assign task labels:
 - If the task already has sensible labels, leave them alone unless they are clearly wrong or incomplete.
 - Do not spam labels, create near-duplicates, or use labels for workflow state (\`in-progress\`, \`review\`, \`blocked\`, etc.).
 
-Run this ONCE at session start, before doing any other work.
+Title and labels are steps 2 and 4 of the Session-start checklist (above) — done in one pass, by the time you end your first turn.
 `;
 
 const SKILL_CUSTOM_COLUMNS = `
@@ -106,9 +121,12 @@ Every task MUST have an \`overview\` written by you. Think **sticky note** or ho
 **Language — IMPORTANT:** Write the overview in the **same language the user is using with you in this task**. If the user writes in Russian, the overview is in Russian. If in Spanish, in Spanish. If in English, in English. Look at the task \`description\` and the user's messages in this session — match that language. Do NOT default to English.
 
 **When to set it:**
-- Within the first minute after starting a task — initial overview based on what you understood
-- Re-set it whenever the direction changes materially
-- Refresh roughly every 5 user↔agent exchanges so it stays current
+- Within the first minute after starting a task — initial overview based on what you understood. Set it in the **same pass as the title and labels** (Session-start checklist) — they share one moment, so if you are setting the overview you should already be setting the title too.
+
+**Keeping it current is a standing obligation, not a one-time step.** The overview must always describe what you are doing *right now*:
+- **Before ending any turn in which the task state changed materially** — a fix landed, a hypothesis was confirmed or ruled out, scope shifted, you moved to a new sub-problem, you hit a blocker — update the overview *first* to reflect the new state.
+- **Skip the update if nothing material changed** since the last one. Do NOT refresh every turn just to refresh — over-updating is noise.
+- Litmus test: if your last overview no longer matches what you're actually working on, it's stale — fix it.
 
 **How:**
 
@@ -224,9 +242,9 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
