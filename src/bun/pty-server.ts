@@ -725,7 +725,19 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const spawnStartedAt = Date.now();
 	let firstOutputLogged = false;
 	try {
-		const newSessionArgs = tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", "-s", tmuxSessionName, tmuxCmd);
+		// Pass session env vars to tmux via `-e KEY=VAL` so they land in
+		// session-environment atomically at new-session time. Without this,
+		// the tmux server's global env (set by whichever task started the
+		// server first) leaks into new panes/windows of unrelated sessions
+		// — most visibly, DEV3_TASK_ID from task A appearing in task B's
+		// split-windows. The post-spawn `set-environment` loop below stays
+		// as a fallback for the `-A` (attach to existing) path.
+		const envFlags: string[] = [];
+		for (const [key, value] of Object.entries(session.env)) {
+			envFlags.push("-e", `${key}=${value}`);
+		}
+		envFlags.push("-e", `DEV3_WORKTREE_ROOT=${session.cwd}`);
+		const newSessionArgs = tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", ...envFlags, "-s", tmuxSessionName, tmuxCmd);
 		log.debug("PTY: calling Bun.spawn", { taskId: shortId(session.taskId), tmuxSession: tmuxSessionName });
 		proc = spawn(
 			newSessionArgs,
@@ -811,21 +823,21 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	log.info("PTY process started", { taskId: shortId(session.taskId), pid: proc.pid });
 
 	// Configure tmux (clipboard + bell pass-through) after session is ready.
-	// Propagate ALL custom env vars to the tmux session so that new panes
-	// (split windows) inherit them — the env passed to Bun.spawn only
-	// affects the initial tmux client, not the tmux server's stored env.
+	// Session env vars are now passed atomically via `-e KEY=VAL` flags on
+	// new-session above. The set-environment loop below stays as a safety
+	// net for the `-A` (attach to existing session) path, where `-e` is
+	// ignored by tmux.
 	setTimeout(() => {
 		(async () => {
 			try {
 				await configureTmux(tmuxSessionName, session.tmuxSocket);
-				// Set DEV3_WORKTREE_ROOT so the shell prompt shows short paths
 				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd));
 				const envKeys = Object.keys(session.env);
 				for (const [key, value] of Object.entries(session.env)) {
 					spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));
 				}
 				if (envKeys.length > 0) {
-					log.info("tmux session env vars set", { tmuxSession: tmuxSessionName, keys: envKeys });
+					log.info("tmux session env vars set (post-spawn safety net)", { tmuxSession: tmuxSessionName, keys: envKeys });
 				}
 				if (session.sessionType === "project" || session.sessionType === "home") {
 					await setupTiledLayout(session);

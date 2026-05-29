@@ -465,6 +465,8 @@ export async function launchColumnAgent(
 		socket, "split-window",
 		"-h", "-l", "40%",
 		"-P", "-F", "#{pane_id}",
+		"-e", `DEV3_TASK_ID=${task.id}`,
+		"-e", `DEV3_WORKTREE_ROOT=${worktreePath}`,
 		"-t", tmuxSession,
 		"-c", worktreePath,
 		`bash "${scriptPath}"`,
@@ -542,6 +544,8 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 
 		const proc = spawn(pty.tmuxArgs(socket,
 			"new-session", "-d",
+			"-e", `DEV3_TASK_ID=${task.id}`,
+			"-e", `DEV3_WORKTREE_ROOT=${task.worktreePath}`,
 			"-s", devSession,
 			"-c", task.worktreePath,
 			`bash "${devScriptPath}"`,
@@ -570,6 +574,8 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			: `bash -c 'trap "${tmuxKill}" EXIT; trap "exit" HUP; while TMUX= tmux has-session -t "${devSession}" 2>/dev/null; do TMUX= tmux attach-session -t "${devSession}"; done'`;
 		const viewerProc = spawn(pty.tmuxArgs(socket,
 			"split-window", "-h",
+			"-e", `DEV3_TASK_ID=${task.id}`,
+			"-e", `DEV3_WORKTREE_ROOT=${task.worktreePath}`,
 			"-t", taskSession,
 			"-c", task.worktreePath,
 			"-l", "50%",
@@ -1449,7 +1455,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
-	const args = pty.tmuxArgs(socket, "split-window", "-h", "-P", "-F", "#{pane_id}", "-c", task.worktreePath, "-t", tmuxSession, `bash "${scriptPath}"`);
+	const args = pty.tmuxArgs(socket, "split-window", "-h", "-P", "-F", "#{pane_id}", "-e", `DEV3_TASK_ID=${task.id}`, "-e", `DEV3_WORKTREE_ROOT=${task.worktreePath}`, "-c", task.worktreePath, "-t", tmuxSession, `bash "${scriptPath}"`);
 	const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
 	const [stdout, stderr] = await Promise.all([
 		new Response(proc.stdout).text(),

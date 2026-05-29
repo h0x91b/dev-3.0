@@ -96,6 +96,16 @@ describe("dev3-tmux skill content", () => {
 		expect(skill).toContain("Forgetting `Enter` in `send-keys`");
 		expect(skill).toContain("Caching pane ids");
 		expect(skill).toContain("Running the canonical dev server in an ad-hoc pane");
+		expect(skill).toContain("Opening a new-window for a background process");
+	});
+
+	it("makes split-window the explicit default and restricts new-window to explicit user request", () => {
+		// Background-process bug: agent kept opening a new tmux tab for celery
+		// workers / docker exec instead of splitting a pane next to itself.
+		// The skill must be unambiguous about the default.
+		const skill = getTmuxSkillContent();
+		expect(skill).toContain("Default: split-window (pane). Use new-window only when the user explicitly asks for a tab.");
+		expect(skill).toMatch(/always.*split-window.*never.*new-window/i);
 	});
 });
 

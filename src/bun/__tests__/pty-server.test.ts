@@ -155,6 +155,33 @@ describe("pty-server", () => {
 			expect(tmuxCall![1]).toEqual(expect.objectContaining({ cwd: "/tmp/test-cwd" }));
 		});
 
+		it("passes session env vars to tmux via -e KEY=VAL on new-session (no leak across tasks)", () => {
+			const id = track("task-env-leak-01");
+			createSession(id, "proj-1", "/tmp/test-cwd", "bash", {
+				DEV3_TASK_ID: id,
+				CUSTOM_KEY: "custom-value",
+			});
+
+			const tmuxCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
+			);
+			expect(tmuxCall).toBeDefined();
+			const args = tmuxCall![0] as string[];
+
+			// -e flags must come BEFORE -s in new-session so they apply atomically
+			// to session-environment. This prevents DEV3_TASK_ID from one task
+			// leaking into a sibling task's panes via the tmux server's global env.
+			expect(args).toContain("-e");
+			expect(args).toContain(`DEV3_TASK_ID=${id}`);
+			expect(args).toContain("CUSTOM_KEY=custom-value");
+			expect(args).toContain(`DEV3_WORKTREE_ROOT=/tmp/test-cwd`);
+
+			// Sanity check: DEV3_TASK_ID=... is preceded by -e (not free-floating)
+			const taskIdEnvIndex = args.indexOf(`DEV3_TASK_ID=${id}`);
+			expect(taskIdEnvIndex).toBeGreaterThan(-1);
+			expect(args[taskIdEnvIndex - 1]).toBe("-e");
+		});
+
 		it("uses custom tmux socket when provided", () => {
 			const id = track("task-socket-01");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "my-socket");
