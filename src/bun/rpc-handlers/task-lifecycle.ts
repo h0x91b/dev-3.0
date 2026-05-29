@@ -840,6 +840,7 @@ async function spawnVariants(params: {
 				// Issue #583 — carry the user-edited title onto every variant
 				// so "Save and Run" does not silently revert to the description prefix.
 				customTitle: sourceTask.customTitle,
+				titleEditedByUser: sourceTask.titleEditedByUser,
 			},
 		);
 
@@ -938,6 +939,7 @@ async function addAttempts(params: {
 				// Issue #583 — carry the user-edited title onto every added attempt
 				// so re-running a task does not throw away the title the user typed.
 				customTitle: sourceTask.customTitle,
+				titleEditedByUser: sourceTask.titleEditedByUser,
 			},
 		);
 
@@ -995,7 +997,14 @@ async function renameTask(params: { taskId: string; projectId: string; customTit
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	const trimmed = params.customTitle?.trim() || null;
-	const updated = await data.updateTask(project, task.id, { customTitle: trimmed });
+	// This RPC is invoked only from the UI (Create Task modal + InlineRename) —
+	// so any non-null write here is a real user edit and must lock the title
+	// against future agent renames. Clearing the title (`null`) also clears
+	// the user-edit flag so the auto-generated title is back in play.
+	const updated = await data.updateTask(project, task.id, {
+		customTitle: trimmed,
+		titleEditedByUser: trimmed !== null,
+	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	log.info("← renameTask done", { taskId: task.id });
 	return updated;

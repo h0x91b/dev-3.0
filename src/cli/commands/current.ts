@@ -32,7 +32,7 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				const task = resp.data as Task;
 				const project = readProjectDirect(context.projectId);
 				const displayTitle = getTaskTitle(task);
-				const titleMarker = task.customTitle?.trim() ? " (user-edited — do NOT rename)" : "";
+				const titleMarker = task.titleEditedByUser ? " (user-edited — do NOT rename)" : "";
 
 				const statusDisplay = task.customColumnId
 					? `${STATUS_LABELS[task.status] || task.status} (in custom column)`
@@ -105,7 +105,7 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 	];
 
 	if (task) {
-		const displayTask = task as Pick<Task, "title" | "customTitle">;
+		const displayTask = task as Pick<Task, "title" | "customTitle" | "titleEditedByUser">;
 		const displayTitle = getTaskTitle(displayTask as Task);
 		const titleMarker = displayTask.customTitle?.trim() ? " (user-edited — do NOT rename)" : "";
 

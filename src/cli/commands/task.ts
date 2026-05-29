@@ -24,7 +24,7 @@ function formatDate(iso: string): string {
 }
 
 function printTask(task: Task): void {
-	const titleMarker = task.customTitle?.trim() ? " (user-edited — do NOT rename)" : "";
+	const titleMarker = task.titleEditedByUser ? " (user-edited — do NOT rename)" : "";
 	const fields: Array<[string, string]> = [
 		["ID:", task.id],
 		["Seq:", String(task.seq)],

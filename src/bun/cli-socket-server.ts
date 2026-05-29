@@ -211,17 +211,21 @@ const handlers: Record<string, Handler> = {
 		let titlePreserved = false;
 		if (params.title !== undefined) {
 			const newTitle = (params.title as string) || null;
-			const existing = task.customTitle?.trim() || "";
-			// Defensive guard: refuse to overwrite a user-edited customTitle from
-			// the CLI unless --force is passed. The agent skill instructs agents
-			// to leave user-edited titles alone, and this is the backstop.
-			// Empty string (--title "") is treated as an explicit reset and still
-			// goes through, since clearing customTitle restores the auto-generated
-			// title rather than overwriting the user's wording.
-			if (newTitle && existing && newTitle !== existing && !force) {
+			// Defensive guard: refuse to overwrite a UI-set title from the CLI
+			// unless --force is passed. The agent skill instructs agents to
+			// leave user-edited titles alone, and this is the backstop.
+			// We key off `titleEditedByUser` — NOT `customTitle != null` — so
+			// that titles previously set by another agent (via this same CLI
+			// path) remain rewritable. Empty string (--title "") still goes
+			// through as an explicit reset, even when the user edited it.
+			if (newTitle && task.titleEditedByUser && !force) {
 				titlePreserved = true;
 			} else {
 				updates.customTitle = newTitle;
+				// CLI writes never claim a user edit — only the UI rename RPC does.
+				// When the user explicitly clears their title via --title "" we
+				// also drop the user-edit flag so future agents can rename again.
+				if (!newTitle) updates.titleEditedByUser = false;
 			}
 		}
 		if (params.description !== undefined) {

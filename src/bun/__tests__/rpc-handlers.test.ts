@@ -2026,6 +2026,67 @@ describe("handlers.editTask", () => {
 	});
 });
 
+// ================================================================
+// handlers.renameTask
+// ================================================================
+
+describe("handlers.renameTask", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	// Re-opened #583 — the renameTask RPC is the ONLY entry point that should
+	// mark a title as user-edited, because it is invoked only from the UI
+	// (CreateTaskModal + InlineRename). The CLI `task.update` path must not
+	// touch the flag, so later agents can still rename agent-set titles.
+	it("sets titleEditedByUser=true when the UI writes a non-empty custom title", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const updated = makeTask({ customTitle: "User picked this", titleEditedByUser: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+
+		const result = await handlers.renameTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			customTitle: "User picked this",
+		});
+		expect(result).toEqual(updated);
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			customTitle: "User picked this",
+			titleEditedByUser: true,
+		});
+	});
+
+	it("clears titleEditedByUser when the UI resets the custom title to null", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "Old", titleEditedByUser: true });
+		const updated = makeTask({ customTitle: null, titleEditedByUser: false });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+
+		await handlers.renameTask({ taskId: "task-1", projectId: "proj-1", customTitle: null });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			customTitle: null,
+			titleEditedByUser: false,
+		});
+	});
+
+	it("treats whitespace-only customTitle as a reset", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "Old", titleEditedByUser: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		await handlers.renameTask({ taskId: "task-1", projectId: "proj-1", customTitle: "   " });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			customTitle: null,
+			titleEditedByUser: false,
+		});
+	});
+});
+
 describe("resolveOperationalProjectConfig", () => {
 	beforeEach(() => vi.clearAllMocks());
 
@@ -2568,11 +2629,11 @@ describe("handlers.spawnVariants", () => {
 	// Issue #583 — spawnVariants used to drop the user-edited customTitle from
 	// the source task. The new variants must inherit it so the title the user
 	// typed in the Create-Task modal survives "Save and Run".
-	it("preserves customTitle from the source task on spawned variants", async () => {
+	it("preserves customTitle and titleEditedByUser from the source task on spawned variants", async () => {
 		const project = makeProject();
-		const sourceTask = makeTask({ status: "todo", seq: 5, customTitle: "User-set title" });
-		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, customTitle: "User-set title" });
-		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", customTitle: "User-set title" });
+		const sourceTask = makeTask({ status: "todo", seq: 5, customTitle: "User-set title", titleEditedByUser: true });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, customTitle: "User-set title", titleEditedByUser: true });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", customTitle: "User-set title", titleEditedByUser: true });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
@@ -2591,7 +2652,7 @@ describe("handlers.spawnVariants", () => {
 			project,
 			sourceTask.description,
 			"in-progress",
-			expect.objectContaining({ customTitle: "User-set title" }),
+			expect.objectContaining({ customTitle: "User-set title", titleEditedByUser: true }),
 		);
 	});
 });
@@ -2728,7 +2789,7 @@ describe("handlers.addAttempts", () => {
 	// Issue #583 — same root cause as the spawnVariants case: addAttempts must
 	// carry the user-edited customTitle from the source task onto every new
 	// attempt, otherwise re-running a task throws away the title the user typed.
-	it("preserves customTitle from the source task on added attempts", async () => {
+	it("preserves customTitle and titleEditedByUser from the source task on added attempts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({
 			status: "in-progress",
@@ -2736,6 +2797,7 @@ describe("handlers.addAttempts", () => {
 			groupId: "group-1",
 			variantIndex: 1,
 			customTitle: "User-set title",
+			titleEditedByUser: true,
 		});
 		const attemptTask = makeTask({
 			id: "attempt-2",
@@ -2743,6 +2805,7 @@ describe("handlers.addAttempts", () => {
 			groupId: "group-1",
 			variantIndex: 2,
 			customTitle: "User-set title",
+			titleEditedByUser: true,
 			preparing: true,
 		});
 
@@ -2765,7 +2828,7 @@ describe("handlers.addAttempts", () => {
 			project,
 			sourceTask.description,
 			"in-progress",
-			expect.objectContaining({ customTitle: "User-set title" }),
+			expect.objectContaining({ customTitle: "User-set title", titleEditedByUser: true }),
 		);
 	});
 
