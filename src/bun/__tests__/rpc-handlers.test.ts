@@ -5553,9 +5553,13 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			const prompt = args[args.length - 1];
 			expect(prompt).toContain("/dev3-bug-hunter");
 			expect(prompt).toContain("Scope is locked to THIS branch only");
-			expect(prompt).toContain("git diff --name-only");
+			// Must pin the fork point via merge-base, not diff against the ref
+			// directly — otherwise an un-rebased branch pulls in unrelated files
+			// that were only changed on origin.
+			expect(prompt).toContain("git merge-base origin/main HEAD");
+			expect(prompt).toContain('git diff --name-only "$BASE" HEAD');
+			expect(prompt).not.toContain("origin/main...HEAD");
 			expect(prompt).toContain("dev3/task-test");
-			expect(prompt).toContain("main");
 		}
 
 		// Enter not pressed yet.
@@ -5569,6 +5573,45 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		for (const args of enterCalls) {
 			expect(args[args.length - 1]).toBe("Enter");
 		}
+	});
+
+	it("honors the project's configured compareRef in the hunter prompt", async () => {
+		const project = makeProject({ defaultCompareRef: "upstream/release" });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 });
+
+		vi.advanceTimersByTime(5100);
+		const pasteCalls = mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
+		expect(pasteCalls).toHaveLength(1);
+		const prompt = pasteCalls[0][pasteCalls[0].length - 1];
+		expect(prompt).toContain("git merge-base upstream/release HEAD");
+		expect(prompt).not.toContain("origin/main");
+	});
+
+	it("uses local base branch when defaultCompareRefMode is 'local'", async () => {
+		const project = makeProject({ defaultCompareRefMode: "local" });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 });
+
+		vi.advanceTimersByTime(5100);
+		const pasteCalls = mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
+		const prompt = pasteCalls[0][pasteCalls[0].length - 1];
+		expect(prompt).toContain("git merge-base main HEAD");
+		expect(prompt).not.toContain("origin/main");
 	});
 
 	it("clamps count to 1..6", async () => {
