@@ -155,7 +155,7 @@ You are running **inside a tmux session** managed by dev-3.0 (socket \`dev3\`, s
 
 **Be proactive:**
 
-- For long-running or streaming commands (dev server, log tail, watcher, debug loop), **split your current dev3 tmux pane and run the command in the new one** — the user watches it live next to your agent. Check the existing layout with \`list-panes\` first and pick a sensible spot (usually right of the agent; below if the right is taken). Quick one-shot commands stay inline.
+- For long-running or streaming commands (dev server, log tail, watcher, debug loop, celery worker, docker exec) — **split your current dev3 tmux pane** (\`split-window\`) and run the command in the new pane. The user watches it live next to your agent. Check the existing layout with \`list-panes\` first and pick a sensible spot (usually right of the agent; below if the right is taken). Quick one-shot commands stay inline. **Do NOT use \`new-window\` for background processes** — it hides them behind a tab the user has to click. Open a new window only when the user explicitly asks for a tab.
 - If the user asks to open/split/reorder/resize tabs or panes — just do it via \`tmux -L dev3 ...\`, do not ask which terminal.
 - Always use \`-L dev3\` (the default socket is a different tmux server and will not see dev3 sessions).
 - For \`send-keys\`, pass \`Enter\` as a separate argument — otherwise the command is typed but not executed.
@@ -504,9 +504,13 @@ Keep using **inline Bash** for quick one-shot commands (file reads, short git, t
 
 ## 4. Open a pane or window and run a command
 
-**Pick the location before splitting.** Run \`list-panes\` first to see what's already open. Default: split to the right of your agent pane. If the right is occupied, split below or open a new window. Prefer splits over new windows unless the user asks for a tab or the window is already full.
+**Default: split-window (pane). Use new-window only when the user explicitly asks for a tab.**
 
-### Vertical split (new pane on the right)
+Splits keep the agent and the running process visible in the same view — the user can glance at the output without switching tabs. New windows hide the process behind a tab the user has to click. For **background processes the user wants to watch** (celery worker, docker exec, log tail, dev server, test watcher, build watcher) — **always \`split-window\`, never \`new-window\`**, unless the user said "open a tab" / "new window" / "новый таб".
+
+**Pick the location before splitting.** Run \`list-panes\` first to see what's already open. Default: split to the right of your agent pane. If the right is occupied, split below.
+
+### Vertical split (new pane on the right) — the default
 
 \`\`\`bash
 SESSION=dev3-<short-id>
@@ -522,7 +526,9 @@ tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
 PANE=$(tmux -L dev3 split-window -v -t "$SESSION" -c "$PWD" -P -F '#{pane_id}')
 \`\`\`
 
-### New window (new tab)
+### New window (new tab) — only on explicit user request
+
+Use this **only** when the user says "open a tab", "new window", "новый таб/окно", or the current window is already full of panes.
 
 \`\`\`bash
 tmux -L dev3 new-window -t "$SESSION:" -c "$PWD" -n "dev-server"
@@ -590,6 +596,7 @@ Useful when you start a watcher in a pane and want to verify a few minutes later
 - **Caching pane ids.** After splits, kills, or swaps the topology changes. Re-query \`list-panes\` before sending more keys to a specific pane.
 - **Killing user-owned panes/windows.** The user may have things running you cannot see (a debugger, a REPL, a long upload). Default to creating new panes; only destroy what you created yourself, or what the user explicitly asked you to remove.
 - **Running the canonical dev server in an ad-hoc pane.** Use \`dev3 dev-server start\` instead — it integrates with the UI and \`devScript\`. Ad-hoc panes are for things the user wants to *watch on the side*.
+- **Opening a new-window for a background process.** \`new-window\` hides the process behind a tab — the user has to click to see it. For celery, docker exec, watchers, log tails, dev servers — use \`split-window\` so the output sits next to the agent. Only open a new window when the user explicitly asks for a tab.
 - **Long-running commands stealing your tool slot.** Inline \`bun run dev\` from the Bash tool blocks your tool call for a long time. A tmux pane fires-and-forgets and you get your next tool call back immediately.
 `;
 

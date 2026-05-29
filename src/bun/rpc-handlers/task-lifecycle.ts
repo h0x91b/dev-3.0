@@ -459,7 +459,15 @@ export async function runCleanupScript(
 	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
 
 	const cleanupSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, "-c", task.worktreePath, buildScriptRunnerCommand(scriptPath, { shellPath: userShell }));
+	// Pass env vars via `-e KEY=VAL` so they land in session-environment
+	// atomically. Without this, the tmux server's global env (from whichever
+	// task started the server) leaks in — DEV3_TASK_ID from task A would
+	// run task B's cleanup script against the wrong worktree/container.
+	const cleanupEnvFlags: string[] = [];
+	for (const [key, value] of Object.entries(buildCleanupScriptEnv(task, project, transition))) {
+		cleanupEnvFlags.push("-e", `${key}=${value}`);
+	}
+	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, ...cleanupEnvFlags, "-c", task.worktreePath, buildScriptRunnerCommand(scriptPath, { shellPath: userShell }));
 	const proc = spawn(
 		cleanupArgs,
 		{

@@ -395,6 +395,36 @@ describe("runCleanupScript", () => {
 		});
 	});
 
+	it("passes lifecycle env vars to tmux new-session via -e flags (no leak)", async () => {
+		// Without -e KEY=VAL on new-session, the tmux server's global env (from
+		// whichever task started the server) leaks into the cleanup script —
+		// e.g. cleanup running with DEV3_TASK_ID from a SIBLING task would
+		// destroy the wrong docker container.
+		const project = makeProject({ path: "/tmp/project-root", name: "Alpha Project", cleanupScript: "echo cleanup" });
+		const task = makeTask({
+			id: "task-123",
+			title: "Ship it",
+			worktreePath: "/tmp/test-worktree",
+			status: "in-progress",
+		});
+
+		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "completed" });
+
+		const args = mockSpawn.mock.calls[0]?.[0] as string[];
+		expect(args).toContain("new-session");
+		expect(args).toContain("DEV3_TASK_ID=task-123");
+		expect(args).toContain("DEV3_TASK_TITLE=Ship it");
+		expect(args).toContain("DEV3_PROJECT_NAME=Alpha Project");
+		expect(args).toContain("DEV3_WORKTREE_PATH=/tmp/test-worktree");
+		expect(args).toContain("DEV3_TASK_STATUS=completed");
+		expect(args).toContain("DEV3_TASK_FROM_STATUS=in-progress");
+		expect(args).toContain("DEV3_TASK_TO_STATUS=completed");
+		// Every env var must be preceded by a -e flag. Walk the args array and
+		// confirm at least one DEV3_* sits right after a -e.
+		const taskIdIndex = args.indexOf("DEV3_TASK_ID=task-123");
+		expect(args[taskIdIndex - 1]).toBe("-e");
+	});
+
 	it("uses existsSync (not Bun.file) so worktree directory detection works", async () => {
 		// Regression: a previous iteration used `Bun.file(dir).exists()` which
 		// always returns false for directories — silently skipping cleanup on
@@ -4344,6 +4374,29 @@ describe("handlers.runDevServer", () => {
 		expect(calls.some((a) => a.includes("split-window") && a.some((s) => s.includes("attach-session")))).toBe(true);
 	});
 
+	it("passes DEV3_TASK_ID and DEV3_WORKTREE_ROOT via -e to both new-session and viewer split-window", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const taskId = "abcd1234-0000-0000-0000-000000000000";
+		const task = makeTask({ worktreePath: "/tmp/wt", id: taskId });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.runDevServer({ taskId, projectId: "proj-1" });
+
+		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		const newSessionCall = calls.find((a) => a.includes("new-session") && a.includes("-d"));
+		expect(newSessionCall).toBeDefined();
+		expect(newSessionCall!).toContain(`DEV3_TASK_ID=${taskId}`);
+		expect(newSessionCall!).toContain(`DEV3_WORKTREE_ROOT=/tmp/wt`);
+
+		const viewerSplitCall = calls.find((a) => a.includes("split-window") && a.some((s) => s.includes("attach-session")));
+		expect(viewerSplitCall).toBeDefined();
+		expect(viewerSplitCall!).toContain(`DEV3_TASK_ID=${taskId}`);
+		expect(viewerSplitCall!).toContain(`DEV3_WORKTREE_ROOT=/tmp/wt`);
+	});
+
 	it("returns session and process details after start", async () => {
 		const project = makeProject({ devScript: "bun run dev" });
 		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
@@ -5217,6 +5270,15 @@ describe("handlers.spawnAgentInTask", () => {
 			expect.arrayContaining(["tmux", "-L", "dev3", "split-window", "-h", "-c", "/tmp/wt", "-t", "dev3-abcd1234"]),
 			expect.any(Object),
 		);
+		// split-window must carry -e DEV3_TASK_ID=... so the new column-agent
+		// pane doesn't inherit a stale DEV3_TASK_ID from the tmux server's
+		// global env (which is whichever task started the server first).
+		const splitCall = mockSpawn.mock.calls.find(
+			(c) => Array.isArray(c[0]) && c[0].includes("split-window") && c[0].includes("-h"),
+		);
+		expect(splitCall).toBeDefined();
+		expect(splitCall![0]).toContain("DEV3_TASK_ID=abcd1234-full-id");
+		expect(splitCall![0]).toContain("DEV3_WORKTREE_ROOT=/tmp/wt");
 	});
 
 	it("uses resolveCommandForProject when agentId is null", async () => {
