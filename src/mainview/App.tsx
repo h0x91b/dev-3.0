@@ -107,7 +107,7 @@ function App() {
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-default",
+		defaultConfigId: "claude-auto",
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});

@@ -1,0 +1,1 @@
+Reordered the Claude Opus 4.8 presets so Auto comes first, then Bypass, then Default (Plan/Accept Edits/Don't Ask follow, Opus 4.7 group stays at the bottom), and made the Auto (Opus 4.8) preset the default selection for fresh installs.
