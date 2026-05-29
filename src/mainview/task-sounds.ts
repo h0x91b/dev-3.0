@@ -1,9 +1,15 @@
-import completedSoundUrl from "../assets/sounds/task-completed.mp3";
-import cancelledSoundUrl from "../assets/sounds/task-cancelled.mp3";
+// `?inline` forces Vite to emit these as base64 `data:` URLs instead of files
+// served via the `views://` scheme. WKWebView's media loader (AppleCoreMedia)
+// fetches <audio> sources with a Range request (`bytes=0-1`), which the
+// Electrobun `views://` scheme handler does not satisfy — the request returns no
+// body and playback fails with `NotSupportedError`. A data: URL sidesteps the
+// scheme handler entirely, so playback works in packaged builds on every OS.
+import completedSoundUrl from "../assets/sounds/task-completed.mp3?inline";
+import cancelledSoundUrl from "../assets/sounds/task-cancelled.mp3?inline";
 
 type TaskSoundStatus = "completed" | "cancelled";
 
-const SOUND_DEFS: Record<TaskSoundStatus, { url: string; volume: number }> = {
+export const SOUND_DEFS: Record<TaskSoundStatus, { url: string; volume: number }> = {
 	completed: { url: completedSoundUrl, volume: 0.3 },
 	cancelled: { url: cancelledSoundUrl, volume: 0.7 },
 };
