@@ -1,0 +1,1 @@
+Fixed "Mark all read/unread" in the diff viewer to update read state for hidden test files too. Previously the bulk action iterated only over visible files, so toggling "Include tests" back on revealed previously read test files still marked as read. Now read state in both in-memory and localStorage covers the full payload, while expand/collapse stays scoped to visible files.
