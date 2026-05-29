@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
 import type { ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, TipState } from "../../shared/types";
-import { DEFAULT_EXTERNAL_APPS, extractRepoName } from "../../shared/types";
+import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -591,6 +591,18 @@ async function openSystemSettings(params: { pane: "fullDiskAccess" }): Promise<{
 	return { ok: true };
 }
 
+async function getStuckPreparationThresholdMs(): Promise<{ ms: number }> {
+	const raw = process.env.DEV3_STUCK_PREP_THRESHOLD_SEC;
+	if (raw) {
+		const sec = Number.parseFloat(raw);
+		if (Number.isFinite(sec) && sec > 0) {
+			return { ms: Math.round(sec * 1000) };
+		}
+		log.warn("getStuckPreparationThresholdMs: invalid DEV3_STUCK_PREP_THRESHOLD_SEC, using default", { raw });
+	}
+	return { ms: STUCK_PREPARATION_FETCH_THRESHOLD_MS };
+}
+
 async function openInApp(params: { appName: string; path: string }): Promise<void> {
 	log.info("→ openInApp", { appName: params.appName, path: params.path });
 	if (!params.path.startsWith("/") || params.path.includes("..")) {
@@ -686,6 +698,7 @@ export const appHandlers = {
 	openFolder,
 	openInApp,
 	openSystemSettings,
+	getStuckPreparationThresholdMs,
 	getAvailableApps,
 	getTipState,
 	updateTipState,

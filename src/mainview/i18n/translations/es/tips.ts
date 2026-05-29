@@ -191,7 +191,7 @@ const tips = {
 	"tip.watchedNotificationClick.title": "Haz clic en una notificación para abrir la tarea",
 	"tip.watchedNotificationClick.body": "Cuando una tarea vigilada cambia de columna y haces clic en la notificación del sistema, dev-3.0 pasa al frente y abre directamente esa tarea.",
 	"tip.fdaStuckPrep.title": "¿El clon se queda colgado en macOS? Da Acceso completo al disco",
-	"tip.fdaStuckPrep.body": "Si las tareas nuevas se quedan minutos atascadas en «Fetching origin», macOS probablemente revocó el acceso a git/tmux. Añade dev-3.0 en System Settings → Privacy & Security → Acceso completo al disco y reinicia; los procesos hijos también heredarán el permiso.",
+	"tip.fdaStuckPrep.body": "Si una tarea lleva ~60 s atascada en «Fetching origin», dev-3.0 muestra ahora un popover junto a la tarjeta con un atajo de un clic a System Settings → Privacy & Security → Acceso completo al disco — la solución habitual cuando macOS revoca el permiso a los procesos hijos de git/tmux.",
 	"tip.bugHunters.title": "Lanza un enjambre de cazadores de bugs",
 	"tip.bugHunters.body": "Pulsa el botón rojo «Buscar bugs» en la cabecera de la tarea para abrir un lightbox — elige cuántos (3 por defecto) y un enjambre de agentes de solo lectura se abre en el panel derecho, cada uno ejecuta /dev3-bug-hunter con su propia estrategia semilla.",
 	"tip.bugHuntersReadOnly.title": "Los cazadores nunca tocan el código",
