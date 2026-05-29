@@ -137,7 +137,7 @@ describe("buildApplicationMenu", () => {
 		const menu = buildApplicationMenu(FULL_CONTEXT) as AnyMenuItem[];
 		expect(findItemByAction(menu, MENU_ACTIONS.projectPullMain)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.projectCreatePr)?.enabled).toBe(true);
-		// Follow-up commits will wire push-branch / push-and-create-pr.
+		// Follow-up commits will wire push-branch.
 		expect(findItemByAction(menu, MENU_ACTIONS.projectPushBranch)?.enabled).toBe(false);
 	});
 

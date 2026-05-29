@@ -155,18 +155,6 @@ function KanbanBoard({
 		return () => clearInterval(interval);
 	}, [fetchPRs]);
 
-	// Also refresh PRs when a git operation completes (e.g. PR created)
-	useEffect(() => {
-		function handleGitOp(e: Event) {
-			const detail = (e as CustomEvent).detail;
-			if (detail?.operation === "createPR" && detail?.ok) {
-				setTimeout(fetchPRs, 2000);
-			}
-		}
-		window.addEventListener("rpc:gitOpCompleted", handleGitOp);
-		return () => window.removeEventListener("rpc:gitOpCompleted", handleGitOp);
-	}, [fetchPRs]);
-
 	// Global dragend listener to clear drag state
 	useEffect(() => {
 		function handleDragEnd() {

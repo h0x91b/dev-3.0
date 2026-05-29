@@ -59,7 +59,6 @@ export const MENU_ACTIONS = {
 	projectPullMain: "project-pull-main",
 	projectPushBranch: "project-push-branch",
 	projectCreatePr: "project-create-pr",
-	projectPushAndCreatePr: "project-push-and-create-pr",
 	projectMergeToMain: "project-merge-to-main",
 	projectRebaseOnMain: "project-rebase-on-main",
 	projectShowBranchStatus: "project-show-branch-status",
@@ -219,7 +218,6 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<MenuAction> = new Set<MenuAction>([
 
 	// Project — extras beyond the working git ops + dev server + settings
 	MENU_ACTIONS.projectPushBranch,
-	MENU_ACTIONS.projectPushAndCreatePr,
 	MENU_ACTIONS.projectMergeToMain,
 	MENU_ACTIONS.projectRebaseOnMain,
 	MENU_ACTIONS.projectShowBranchStatus,
@@ -353,7 +351,6 @@ const REQUIRES_TASK: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	// Task-scoped project ops (need a task branch to push / create-PR)
 	MENU_ACTIONS.projectCreatePr,
 	MENU_ACTIONS.projectPushBranch,
-	MENU_ACTIONS.projectPushAndCreatePr,
 	MENU_ACTIONS.projectMergeToMain,
 	MENU_ACTIONS.projectRebaseOnMain,
 	MENU_ACTIONS.projectShowBranchStatus,
@@ -591,7 +588,6 @@ function projectMenu(): ApplicationMenuItemConfig {
 			item({ label: "Pull main", action: MENU_ACTIONS.projectPullMain }),
 			item({ label: "Push Branch", action: MENU_ACTIONS.projectPushBranch }),
 			item({ label: "Create Pull Request…", action: MENU_ACTIONS.projectCreatePr }),
-			item({ label: "Push & Create PR", action: MENU_ACTIONS.projectPushAndCreatePr }),
 			SEP,
 			item({ label: "Merge to main…", action: MENU_ACTIONS.projectMergeToMain }),
 			item({ label: "Rebase on main…", action: MENU_ACTIONS.projectRebaseOnMain }),
