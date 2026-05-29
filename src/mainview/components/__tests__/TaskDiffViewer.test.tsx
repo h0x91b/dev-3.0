@@ -1971,4 +1971,70 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByTestId("diff-files-expand-strip")).toBeInTheDocument();
 		expect(screen.queryByTestId("diff-files-collapse-button")).toBeNull();
 	});
+
+	it("shows a dedicated empty state (not 'No changes') when every file is a hidden test", async () => {
+		// User has previously disabled "Include tests".
+		localStorage.setItem("dev3-diff-include-tests-v1", "0");
+
+		const testsOnlyPayload: TaskDiffResponse = {
+			mode: "branch",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+			fallbackReason: null,
+			summary: { files: 2, insertions: 2, deletions: 0 },
+			files: [
+				{
+					id: "src/foo.test.ts",
+					status: "added",
+					displayPath: "src/foo.test.ts",
+					oldPath: null,
+					newPath: "src/foo.test.ts",
+					oldContent: "",
+					newContent: "export const t = 1;\n",
+					hunks: ["diff --git a/src/foo.test.ts b/src/foo.test.ts\n@@ -0,0 +1 @@\n+export const t = 1;\n"],
+				},
+				{
+					id: "src/__tests__/bar.spec.tsx",
+					status: "added",
+					displayPath: "src/__tests__/bar.spec.tsx",
+					oldPath: null,
+					newPath: "src/__tests__/bar.spec.tsx",
+					oldContent: "",
+					newContent: "export const u = 2;\n",
+					hunks: ["diff --git a/src/__tests__/bar.spec.tsx b/src/__tests__/bar.spec.tsx\n@@ -0,0 +1 @@\n+export const u = 2;\n"],
+				},
+			],
+			skippedFiles: [],
+		};
+		vi.mocked(api.request.getTaskDiff).mockResolvedValue(testsOnlyPayload);
+
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// The dedicated empty state appears — not the generic "No changes to show".
+		const emptyState = await screen.findByTestId("diff-only-tests-empty-state");
+		expect(emptyState).toBeInTheDocument();
+		expect(within(emptyState).getByText(/Only test files in this diff/i)).toBeInTheDocument();
+		expect(within(emptyState).getByText(/2 test files are hidden/i)).toBeInTheDocument();
+		expect(screen.queryByText("No changes to show")).toBeNull();
+		expect(screen.queryByText("This diff is empty for the selected mode.")).toBeNull();
+
+		// Clicking the action button re-enables the tests filter.
+		await user.click(screen.getByTestId("diff-only-tests-enable-button"));
+
+		expect(localStorage.getItem("dev3-diff-include-tests-v1")).toBe("1");
+		await waitFor(() => {
+			expect(screen.queryByTestId("diff-only-tests-empty-state")).toBeNull();
+		});
+		await screen.findAllByTestId("mock-diff");
+	});
 });
