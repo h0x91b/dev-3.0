@@ -422,8 +422,12 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			<span className="text-success">+{visibleDiffInsertions}</span>
 			<span className="text-danger">−{visibleDiffDeletions}</span>
 			{!includeTests && excludedTestCount > 0 && (
-				<span className="text-fg-muted text-[0.625rem] uppercase tracking-wider">
-					{t("infoPanel.noTestsSuffix")}
+				<span
+					className="text-fg-muted text-[0.8rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					title={t("infoPanel.diffTestsHidden", { count: String(excludedTestCount) })}
+				>
+					{"\u{F0912}"}
 				</span>
 			)}
 		</button>
@@ -439,14 +443,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
 			}`}
 			title={t("infoPanel.diffIncludeTestsTooltip")}
+			aria-label={t("infoPanel.diffIncludeTestsAria")}
+			aria-pressed={includeTests}
 		>
+			<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
 			<span
-				className="text-[0.75rem] leading-none"
+				className="text-[0.85rem] leading-none"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 			>
-				{includeTests ? "☑" : "☐"}
+				{"\u{F0668}"}
 			</span>
-			<span>{t("infoPanel.diffIncludeTests")}</span>
 		</button>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
@@ -568,7 +574,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
 			title={t("tmux.spawnExtraAgentDesc")}
 		>
-			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0313}"}</span>
+			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F16A6}"}</span>
 			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>
 		</button>
 	) : null;
@@ -617,6 +623,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{bugHuntersButton}
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
@@ -675,6 +682,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{bugHuntersButton}
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
+							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 							<TaskTmuxControls taskId={task.id} />
 							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />

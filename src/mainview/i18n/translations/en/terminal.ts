@@ -30,6 +30,8 @@ const terminal = {
 	"tmux.layoutEvenVDesc": "Even columns",
 	"tmux.layoutMainHDesc": "Main + bottom",
 	"tmux.layoutMainVDesc": "Main + right",
+	"tmux.layoutMenuTitle": "tmux layouts",
+	"tmux.chooseLayout": "Choose tmux layout",
 	"tmux.closePaneDesc": "Close pane",
 	"tmux.closePaneConfirmTitle": "Close the last pane?",
 	"tmux.closePaneConfirmMessage": "This is the only remaining pane — closing it will tear down the whole tmux session and terminate the agent. Are you sure?",
@@ -97,7 +99,7 @@ const terminal = {
 	"tmuxSessions.refresh": "Refresh",
 
 	// Spawn Agent
-	"tmux.spawnExtraAgent": "Add agent",
+	"tmux.spawnExtraAgent": "+ Agent",
 	"tmux.spawnExtraAgentDesc": "Spawn another agent in a new pane",
 
 	// Bug Hunters lightbox
