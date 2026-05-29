@@ -8,7 +8,7 @@ export type Theme = "dark" | "light" | "system";
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-default",
+	defaultConfigId: "claude-auto",
 	taskDropPosition: "top",
 	updateChannel: "stable",
 };

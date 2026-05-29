@@ -28,7 +28,7 @@ export interface GlobalSettings {
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-default",
+	defaultConfigId: "claude-auto",
 	taskDropPosition: "top",
 	updateChannel: "stable",
 };

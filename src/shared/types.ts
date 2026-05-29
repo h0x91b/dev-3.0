@@ -166,15 +166,15 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			// --- Opus 4.8 (new default) ---
+			// --- Opus 4.8 (new default) — order: Auto, Bypass, Default, then the rest ---
+			{ id: "claude-auto", name: "Auto (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "auto", version: 5 },
+			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet", permissionMode: "auto", version: 1 },
+			{ id: "claude-bypass", name: "Bypass (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
+			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
 			{ id: "claude-default", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
 			{ id: "claude-default-sonnet", name: "Default (Sonnet)", model: "sonnet", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-plan", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 6 },
 			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-bypass", name: "Bypass (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
-			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-auto", name: "Auto (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "auto", version: 5 },
-			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet", permissionMode: "auto", version: 1 },
 			{ id: "claude-approvals", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
 			{ id: "claude-approvals-sonnet", name: "Accept Edits (Sonnet)", model: "sonnet", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
 			{ id: "claude-dontask", name: "Don't Ask (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
@@ -187,7 +187,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-approvals-opus47", name: "Accept Edits (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-dontask-opus47", name: "Don't Ask (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 		],
-		defaultConfigId: "claude-default",
+		defaultConfigId: "claude-auto",
 	},
 	{
 		id: "builtin-codex",

@@ -52,7 +52,7 @@ function KanbanBoard({
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
 		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-default",
+		defaultConfigId: "claude-auto",
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});
