@@ -718,6 +718,13 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 	log.info("← pushTask (pane opened)", { paneId });
 }
 
+/** Delay between typing the prompt and sending Enter — gives the agent's input
+ * layer time to process the paste buffer so Enter lands as a discrete submit. */
+const CREATE_PR_ENTER_DELAY_MS = 800;
+
+const CREATE_PR_AGENT_PROMPT =
+	"Please create a pull request for this branch using the gh CLI (gh pr create). Choose an appropriate title and description based on the work in this conversation.";
+
 async function createPullRequest(params: { taskId: string; projectId: string }): Promise<void> {
 	log.info("→ createPullRequest", params);
 	const project = await data.getProject(params.projectId);
@@ -726,46 +733,41 @@ async function createPullRequest(params: { taskId: string; projectId: string }):
 	if (!task.worktreePath) throw new Error("Task has no worktree");
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-createPR.sh`;
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	await killExistingGitPane(task.id, tmuxSession, socket);
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	const githubEnvExports = await github.getGitHubShellExports(project);
+	// Find the currently focused pane in the task session and ask the agent
+	// running there to create the PR. The agent is a continuation of the user's
+	// conversation, so a generic instruction is enough.
+	let activePane: string | null = null;
+	try {
+		const proc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+		const stdout = await new Response(proc.stdout).text();
+		if ((await proc.exited) === 0) activePane = stdout.trim() || null;
+	} catch { /* best effort */ }
 
-	const script = [
-		`#!/bin/bash`,
-		...githubEnvExports,
-		`set -x`,
-		`gh pr create --base "${baseBranch}" --fill --web 2>&1`,
-		`EXIT_CODE=$?`,
-		`set +x`,
-		`if [ $EXIT_CODE -ne 0 ]; then`,
-		`  echo ""`,
-		`  printf '\\033[1;33m⚠ PR may already exist — trying to open it...\\033[0m\\n'`,
-		`  set -x`,
-		`  gh pr view --web 2>&1`,
-		`  EXIT_CODE=$?`,
-		`  set +x`,
-		`fi`,
-		`echo $EXIT_CODE > "${scriptPath}.exit"`,
-		`echo ""`,
-		`if [ $EXIT_CODE -eq 0 ]; then`,
-		`  printf '\\033[1;32m✓ PR opened in browser\\033[0m\\n'`,
-		`  sleep 5`,
-		`else`,
-		`  printf '\\033[1;31m✗ Failed to create or open PR (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
-		`  echo "Press any key to close."`,
-		`  read -n 1 -s`,
-		`fi`,
-	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
+	if (!activePane) {
+		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8) });
+		return;
+	}
 
-	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
-	monitorGitPane(paneId, task.id, params.projectId, "createPR", socket);
+	const pane = activePane;
+	try {
+		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, CREATE_PR_AGENT_PROMPT), { stdout: "pipe", stderr: "pipe" });
+		pasteProc.exited.catch(() => {});
+	} catch (err) {
+		log.warn("createPullRequest send-keys paste failed", { paneId: pane, error: String(err) });
+		return;
+	}
+	setTimeout(() => {
+		try {
+			const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, "Enter"), { stdout: "pipe", stderr: "pipe" });
+			enterProc.exited.catch(() => {});
+		} catch (err) {
+			log.warn("createPullRequest send-keys Enter failed", { paneId: pane, error: String(err) });
+		}
+	}, CREATE_PR_ENTER_DELAY_MS);
 
-	log.info("← createPullRequest (pane opened)", { paneId });
+	log.info("← createPullRequest (prompt sent to agent)", { paneId: pane });
 }
 
 async function openPullRequest(params: { taskId: string; projectId: string }): Promise<void> {

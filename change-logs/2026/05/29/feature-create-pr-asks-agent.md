@@ -1,0 +1,1 @@
+The "Create PR" button now sends a short instruction to the AI agent in the task's currently focused tmux pane (asking it to run `gh pr create`) instead of opening a separate git-op pane and browser. If no pane is focused, the action is a silent no-op.
