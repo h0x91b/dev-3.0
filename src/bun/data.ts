@@ -302,6 +302,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			if ((task as any).labelIds === undefined) task.labelIds = [];
 			if ((task as any).notes === undefined) task.notes = [];
 			if ((task as any).customTitle === undefined) task.customTitle = null;
+			if ((task as any).titleEditedByUser === undefined) task.titleEditedByUser = false;
 			if ((task as any).customColumnId === undefined) task.customColumnId = null;
 			if ((task as any).overview === undefined) task.overview = null;
 			if ((task as any).userOverview === undefined) task.userOverview = null;
@@ -430,6 +431,7 @@ export async function addTask(
 		watched?: boolean;
 		scratch?: boolean;
 		customTitle?: string | null;
+		titleEditedByUser?: boolean;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -464,6 +466,7 @@ export async function addTask(
 			...(extras?.watched ? { watched: true } : {}),
 			...(extras?.scratch ? { scratch: true } : {}),
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
+			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 		};
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);

@@ -125,6 +125,7 @@ describe("handleCurrent", () => {
 			mockSend.mockResolvedValue(okResp({
 				...FAKE_TASK,
 				customTitle: "Test 1",
+				titleEditedByUser: true,
 			}));
 			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
 
@@ -147,6 +148,28 @@ describe("handleCurrent", () => {
 
 			await handleCurrent(SOCKET);
 
+			expect(stdoutOutput).not.toContain("user-edited");
+		});
+
+		// Re-opened #583 — a customTitle set by a previous agent (no user edit)
+		// must NOT show the "user-edited" marker, otherwise the next agent
+		// believes the title is sacred and never renames it again.
+		it("does not mark the title as user-edited when customTitle is set but titleEditedByUser is false", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: SOCKET,
+			});
+			mockSend.mockResolvedValue(okResp({
+				...FAKE_TASK,
+				customTitle: "Agent-named title",
+				titleEditedByUser: false,
+			}));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toContain("Agent-named title");
 			expect(stdoutOutput).not.toContain("user-edited");
 		});
 
@@ -256,12 +279,14 @@ describe("handleCurrent", () => {
 			mockReadTask.mockReturnValue({
 				...FAKE_TASK,
 				customTitle: "Test 1",
+				titleEditedByUser: true,
 			});
 
 			await handleCurrent(null);
 
 			expect(stdoutOutput).toContain("Test 1");
 			expect(stdoutOutput).not.toContain("Implement auth");
+			expect(stdoutOutput).toContain("user-edited");
 		});
 
 		it("shows minimal info when task data not available offline", async () => {

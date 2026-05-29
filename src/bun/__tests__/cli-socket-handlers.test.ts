@@ -582,10 +582,10 @@ describe("task.update", () => {
 
 	// Issue #564 — agent following its skill must not overwrite a title the user
 	// already set via the UI. The CLI is the agent-facing entry point; refuse to
-	// overwrite a non-empty customTitle unless --force is passed.
-	it("preserves user-edited customTitle when --title is provided without --force", async () => {
+	// overwrite the title when titleEditedByUser is true, unless --force is passed.
+	it("preserves user-edited title when --title is provided without --force", async () => {
 		const project = makeProject();
-		const task = makeTask({ customTitle: "User-set title" });
+		const task = makeTask({ customTitle: "User-set title", titleEditedByUser: true });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(getPushMessage).mockReturnValue(null);
@@ -605,9 +605,36 @@ describe("task.update", () => {
 		expect(result.task.customTitle).toBe("User-set title");
 	});
 
-	it("overwrites user-edited customTitle when --force is set", async () => {
+	// Re-opened #583 — a customTitle set by a previous agent (titleEditedByUser
+	// is false) is NOT protected, otherwise the title gets frozen forever on
+	// whatever the first agent wrote. Later agents must be able to rewrite it.
+	it("overwrites agent-set customTitle (titleEditedByUser=false) without --force", async () => {
 		const project = makeProject();
-		const task = makeTask({ customTitle: "User-set title" });
+		const task = makeTask({ customTitle: "Old agent title", titleEditedByUser: false });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: "New agent title" });
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", {
+				taskId: task.id,
+				projectId: "proj-1",
+				title: "New agent title",
+			}),
+		);
+		expect(resp.ok).toBe(true);
+		const call = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(call.customTitle).toBe("New agent title");
+		// CLI must never claim a user edit — only the UI rename RPC sets that flag.
+		expect(call.titleEditedByUser).toBeUndefined();
+		const result = resp.data as { task: Task; titlePreserved: boolean };
+		expect(result.titlePreserved).toBe(false);
+	});
+
+	it("overwrites user-edited title when --force is set", async () => {
+		const project = makeProject();
+		const task = makeTask({ customTitle: "User-set title", titleEditedByUser: true });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: "Agent override" });
@@ -628,12 +655,12 @@ describe("task.update", () => {
 		expect(result.titlePreserved).toBe(false);
 	});
 
-	it("still allows --title to clear customTitle (--title \"\") without --force", async () => {
+	it("still allows --title to clear customTitle (--title \"\") without --force, and drops the user-edit flag", async () => {
 		const project = makeProject();
-		const task = makeTask({ customTitle: "User-set title" });
+		const task = makeTask({ customTitle: "User-set title", titleEditedByUser: true });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: null });
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: null, titleEditedByUser: false });
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -642,6 +669,7 @@ describe("task.update", () => {
 		expect(resp.ok).toBe(true);
 		const call = vi.mocked(data.updateTask).mock.calls[0][2];
 		expect(call.customTitle).toBeNull();
+		expect(call.titleEditedByUser).toBe(false);
 	});
 
 	it("returns task in new envelope shape", async () => {

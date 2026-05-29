@@ -570,6 +570,16 @@ export interface Task {
 	 */
 	userOverview?: string | null;
 	customTitle?: string | null;
+	/**
+	 * True only when the user typed/edited the title through the UI (Create
+	 * Task modal or inline rename). Titles set by an agent through
+	 * `dev3 task update --title` leave this flag at `false`. The user-edited
+	 * marker shown to agents and the CLI overwrite-guard both key off this
+	 * flag — NOT off `customTitle != null` — so agent-set titles can still
+	 * be re-rewritten by later agents while a real user-typed title is
+	 * preserved for the entire task lifetime.
+	 */
+	titleEditedByUser?: boolean;
 	status: TaskStatus;
 	baseBranch: string;
 	worktreePath: string | null;

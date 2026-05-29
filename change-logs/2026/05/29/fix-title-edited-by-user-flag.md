@@ -1,0 +1,1 @@
+Fixed task titles freezing on whatever the first agent named them: the "user-edited — do NOT rename" lock used to fire on any non-null `customTitle`, including agent renames through `dev3 task update --title`. A new `titleEditedByUser` flag is set only by the UI rename path, so follow-up agents can still refine agent-set titles while real user-typed titles stay protected.
