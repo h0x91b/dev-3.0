@@ -38,6 +38,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	const [activeLayout, setActiveLayout] = useState<LayoutAction | null>(null);
 	const layoutTriggerRef = useRef<HTMLButtonElement>(null);
 	const layoutMenuRef = useRef<HTMLDivElement>(null);
+	const layoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		function onKeymapChanged(event: Event) {
@@ -118,6 +119,33 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 		setHintsVisible(true);
 	}, [hintsOpen]);
 
+	function clearLayoutTimeout() {
+		if (layoutTimeoutRef.current) {
+			clearTimeout(layoutTimeoutRef.current);
+			layoutTimeoutRef.current = null;
+		}
+	}
+
+	function showLayout() {
+		clearLayoutTimeout();
+		if (!layoutOpen && layoutTriggerRef.current) {
+			const rect = layoutTriggerRef.current.getBoundingClientRect();
+			setLayoutPos({ top: rect.bottom + 6, left: rect.right });
+			setLayoutVisible(false);
+			setLayoutOpen(true);
+		}
+	}
+
+	function hideLayout() {
+		clearLayoutTimeout();
+		layoutTimeoutRef.current = setTimeout(() => {
+			setLayoutOpen(false);
+			setLayoutVisible(false);
+		}, 200);
+	}
+
+	useEffect(() => clearLayoutTimeout, []);
+
 	useEffect(() => {
 		if (!layoutOpen) {
 			return;
@@ -130,21 +158,8 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 			}
 		}
 
-		function handlePointer(event: globalThis.MouseEvent) {
-			const target = event.target as Node;
-			if (layoutMenuRef.current?.contains(target) || layoutTriggerRef.current?.contains(target)) {
-				return;
-			}
-			setLayoutOpen(false);
-			setLayoutVisible(false);
-		}
-
 		document.addEventListener("keydown", handleKey);
-		document.addEventListener("mousedown", handlePointer);
-		return () => {
-			document.removeEventListener("keydown", handleKey);
-			document.removeEventListener("mousedown", handlePointer);
-		};
+		return () => document.removeEventListener("keydown", handleKey);
 	}, [layoutOpen]);
 
 	useLayoutEffect(() => {
@@ -237,6 +252,17 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	const popoverDesc = "text-xs text-fg-3";
 	const popoverSection = "text-[0.625rem] text-fg-muted uppercase tracking-wider font-semibold mb-1.5";
 
+	const cycleIcon: ReactNode = (
+		<>
+			<rect x="2" y="10" width="8" height="6" rx="1" stroke="currentColor" />
+			<rect x="14" y="10" width="8" height="6" rx="1" stroke="currentColor" />
+			<path d="M 6 8 C 8 3, 16 3, 18 8" className="text-success" stroke="currentColor" />
+			<path d="M 15 6 L 18 8 L 21 6" className="text-success" stroke="currentColor" />
+			<path d="M 18 18 C 16 23, 8 23, 6 18" className="text-success" stroke="currentColor" />
+			<path d="M 9 20 L 6 18 L 3 20" className="text-success" stroke="currentColor" />
+		</>
+	);
+
 	const layoutIcons: Record<LayoutAction, ReactNode> = {
 		layoutTiled: (
 			<>
@@ -301,19 +327,18 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					</svg>
 				</button>
 
-				<div className="flex items-stretch rounded text-accent bg-accent/10 border border-accent/25 overflow-hidden">
+				<div
+					className="flex items-stretch rounded text-accent bg-accent/10 border border-accent/25 overflow-hidden"
+					onMouseEnter={showLayout}
+					onMouseLeave={hideLayout}
+				>
 					<button
 						className="px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
 						onClick={cycleLayout}
 						title={t("tmux.nextLayoutDesc")}
 						aria-label={t("tmux.nextLayoutDesc")}
 					>
-						<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-							<path d="M 6 8 C 8 3, 16 3, 18 8" stroke="currentColor" />
-							<path d="M 15 6 L 18 8 L 21 6" stroke="currentColor" />
-							<path d="M 18 16 C 16 21, 8 21, 6 16" stroke="currentColor" />
-							<path d="M 9 18 L 6 16 L 3 18" stroke="currentColor" />
-						</svg>
+						<svg {...svgProps}>{cycleIcon}</svg>
 						<span>tmux layout</span>
 					</button>
 					<button
@@ -321,8 +346,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 						className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
 						onClick={(event) => {
 							event.stopPropagation();
-							setLayoutVisible(false);
-							setLayoutOpen((open) => !open);
+							showLayout();
 						}}
 						title={t("tmux.chooseLayout")}
 						aria-label={t("tmux.chooseLayout")}
@@ -380,8 +404,26 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					role="menu"
 					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-2 min-w-[15rem]"
 					style={{ top: layoutPos.top, left: layoutPos.left, visibility: layoutVisible ? "visible" : "hidden" }}
+					onMouseEnter={showLayout}
+					onMouseLeave={hideLayout}
 				>
 					<div className="text-xs font-semibold text-fg px-1.5 pt-1 pb-2">{t("tmux.layoutMenuTitle")}</div>
+					<button
+						role="menuitem"
+						onClick={(event) => {
+							setLayoutOpen(false);
+							setLayoutVisible(false);
+							cycleLayout(event);
+						}}
+						className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
+					>
+						<span className="flex-shrink-0 text-fg-2">
+							<svg {...svgProps}>{cycleIcon}</svg>
+						</span>
+						<span className="text-xs flex-1 text-fg-2">{t("tmux.nextLayoutDesc")}</span>
+						<kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">⌃B ␣</kbd>
+					</button>
+					<div className="my-1 border-t border-edge" />
 					{layouts.map(({ action, descKey, shortcut }) => {
 						const active = activeLayout === action;
 						return (
