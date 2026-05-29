@@ -99,7 +99,7 @@ const terminal = {
 	"tmuxSessions.refresh": "Refresh",
 
 	// Spawn Agent
-	"tmux.spawnExtraAgent": "Add agent",
+	"tmux.spawnExtraAgent": "+ agent",
 	"tmux.spawnExtraAgentDesc": "Spawn another agent in a new pane",
 
 	// Bug Hunters lightbox

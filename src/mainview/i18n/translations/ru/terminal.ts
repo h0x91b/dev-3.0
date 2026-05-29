@@ -101,7 +101,7 @@ const terminal = {
 	"tmuxSessions.refresh": "Обновить",
 
 	// Spawn Agent
-	"tmux.spawnExtraAgent": "Ещё агент",
+	"tmux.spawnExtraAgent": "+ агент",
 	"tmux.spawnExtraAgentDesc": "Запустить ещё одного агента в новой панели",
 
 	// Bug Hunters lightbox
