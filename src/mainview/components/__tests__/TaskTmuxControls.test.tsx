@@ -107,4 +107,40 @@ describe("TaskTmuxControls", () => {
 		expect(api.request.tmuxPaneCount).not.toHaveBeenCalled();
 		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "splitH" });
 	});
+
+	it("cycles tmux layouts from the split-button primary action", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+
+		render(
+			<I18nProvider>
+				<TaskTmuxControls taskId="task-1" />
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTitle("Cycle layouts"));
+
+		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "nextLayout" });
+	});
+
+	it("opens the tmux layout menu and applies the chosen preset", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+
+		render(
+			<I18nProvider>
+				<TaskTmuxControls taskId="task-1" />
+			</I18nProvider>,
+		);
+
+		// Layout presets are hidden behind the dropdown caret, not shown inline.
+		expect(screen.queryByText("Tiled (grid)")).not.toBeInTheDocument();
+
+		await user.click(screen.getByTitle("Choose tmux layout"));
+
+		const tiled = await screen.findByText("Tiled (grid)");
+		await user.click(tiled);
+
+		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "layoutTiled" });
+	});
 });
