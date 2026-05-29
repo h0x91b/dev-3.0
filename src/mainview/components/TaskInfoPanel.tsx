@@ -422,8 +422,12 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			<span className="text-success">+{visibleDiffInsertions}</span>
 			<span className="text-danger">−{visibleDiffDeletions}</span>
 			{!includeTests && excludedTestCount > 0 && (
-				<span className="text-fg-muted text-[0.625rem] uppercase tracking-wider">
-					{t("infoPanel.noTestsSuffix")}
+				<span
+					className="text-fg-muted text-[0.8rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					title={t("infoPanel.diffTestsHidden", { count: String(excludedTestCount) })}
+				>
+					{"\u{F0912}"}
 				</span>
 			)}
 		</button>
@@ -439,14 +443,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
 			}`}
 			title={t("infoPanel.diffIncludeTestsTooltip")}
+			aria-label={t("infoPanel.diffIncludeTestsAria")}
+			aria-pressed={includeTests}
 		>
+			<span>{t("infoPanel.diffIncludeTests")}</span>
 			<span
-				className="text-[0.75rem] leading-none"
+				className="text-[0.85rem] leading-none"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 			>
-				{includeTests ? "☑" : "☐"}
+				{includeTests ? "\u{F0668}" : "\u{F0912}"}
 			</span>
-			<span>{t("infoPanel.diffIncludeTests")}</span>
 		</button>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(

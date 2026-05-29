@@ -2383,8 +2383,12 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								<span className="text-success">+{visibleSummary.insertions}</span>
 								<span className="text-danger">−{visibleSummary.deletions}</span>
 								{!includeTests && hiddenTestCount > 0 && (
-									<span className="text-fg-muted text-[0.625rem] uppercase tracking-wider">
-										{t("infoPanel.noTestsSuffix")}
+									<span
+										className="text-fg-muted text-[0.8rem] leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										title={t("infoPanel.diffTestsHidden", { count: String(hiddenTestCount) })}
+									>
+										{"\u{F0912}"}
 									</span>
 								)}
 							</span>
@@ -2401,11 +2405,18 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 							>
 								<input
 									type="checkbox"
-									className="cursor-pointer"
+									className="sr-only"
 									checked={includeTests}
 									onChange={(e) => setIncludeTests(e.target.checked)}
+									aria-label={t("infoPanel.diffIncludeTestsAria")}
 								/>
 								<span>{t("infoPanel.diffIncludeTests")}</span>
+								<span
+									className="text-[0.85rem] leading-none"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{includeTests ? "\u{F0668}" : "\u{F0912}"}
+								</span>
 								{!includeTests && hiddenTestCount > 0 && (
 									<span className="text-[0.625rem] text-fg-muted">
 										({t("infoPanel.diffHiddenTestCount", { count: String(hiddenTestCount) })})
