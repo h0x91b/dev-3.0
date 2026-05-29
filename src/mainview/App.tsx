@@ -25,7 +25,7 @@ import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
 import { ErrorToast } from "./components/ErrorToast";
-import StuckPreparationModal from "./components/StuckPreparationModal";
+import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
@@ -993,7 +993,7 @@ function App() {
 				</div>
 			)}
 			<ErrorToast />
-			<StuckPreparationModal tasks={state.currentProjectTasks} />
+			<StuckPreparationPopover tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
 			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
 		</div>

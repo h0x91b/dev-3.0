@@ -691,11 +691,15 @@ export function getPreparingStageProgress(stage: PreparingStage): number {
 
 /**
  * If a task spends longer than this on `fetching-origin`, the renderer shows
- * the stuck-preparation modal pointing the user at the README troubleshooting
- * section (most common cause on macOS is Full Disk Access being revoked for
- * git/tmux child processes).
+ * a stuck-preparation popover anchored to the task card pointing macOS users
+ * at Full Disk Access (the most common cause of git/tmux child processes
+ * silently losing access to .git/worktrees/).
+ *
+ * Default 60 s. Overridable at app launch via `DEV3_STUCK_PREP_THRESHOLD_SEC`
+ * (resolved server-side and pushed to the renderer via
+ * `getStuckPreparationThresholdMs` RPC).
  */
-export const STUCK_PREPARATION_FETCH_THRESHOLD_MS = 3 * 60 * 1000;
+export const STUCK_PREPARATION_FETCH_THRESHOLD_MS = 60 * 1000;
 
 /** Per-pane session info for recovery. */
 export interface PaneSessionEntry {
@@ -1401,6 +1405,16 @@ export type AppRPCSchema = {
 			openSystemSettings: {
 				params: { pane: "fullDiskAccess" };
 				response: { ok: boolean };
+			};
+			/**
+			 * Resolved threshold (ms) for the stuck-preparation popover.
+			 * Defaults to {@link STUCK_PREPARATION_FETCH_THRESHOLD_MS} and can be
+			 * overridden by setting `DEV3_STUCK_PREP_THRESHOLD_SEC` when launching
+			 * the app. Read once by the renderer on startup.
+			 */
+			getStuckPreparationThresholdMs: {
+				params: void;
+				response: { ms: number };
 			};
 			getAvailableApps: {
 				params: void;
