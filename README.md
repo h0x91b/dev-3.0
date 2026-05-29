@@ -193,21 +193,21 @@ bun build src/bun/headless-bootstrap.ts --compile --outfile dist/dev3-server
 
 | Component | Technology |
 |---|---|
-| Desktop runtime | [Electrobun](https://electrobun.dev) — native macOS webview, no Chromium |
+| Desktop runtime | [Electrobun](https://electrobun.dev) — native webview (WKWebView on macOS, WebKitGTK on Linux), no Chromium |
 | JS runtime | [Bun](https://bun.sh) |
 | Terminal | [ghostty-web](https://github.com/nichochar/ghostty-web) — GPU-accelerated rendering |
-| Frontend | React 18, Tailwind CSS, Vite |
+| Frontend | React 19, Tailwind CSS, Vite |
 | Multiplexer | tmux |
 
 ## Development
 
 ```bash
 bun install
-bun run dev          # HMR mode (Vite dev server + Electrobun)
+bun run dev          # Build + launch the app locally (no HMR)
 bun run build        # Staging build
 bun run build:prod   # Production build
 bun run lint         # TypeScript type-check
-bun run test         # Run tests
+bun run test         # Run tests (fast subset; use `bun run test:full` for CI parity)
 ```
 
 See [AGENTS.md](AGENTS.md) for full architecture docs and coding guidelines.

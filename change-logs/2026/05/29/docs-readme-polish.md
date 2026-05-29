@@ -1,0 +1,1 @@
+Polish README: bump tech stack row to React 19, clarify that `bun run dev` builds + launches (no HMR), broaden Electrobun description to mention both WKWebView on macOS and WebKitGTK on Linux, and point at `bun run test:full` for CI-parity test runs.
