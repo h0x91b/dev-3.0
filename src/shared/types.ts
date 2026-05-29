@@ -1199,6 +1199,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: DevServerStatus;
 			};
+			restartDevServer: {
+				params: { taskId: string; projectId: string };
+				response: DevServerStatus;
+			};
 			getDevServerStatus: {
 				params: { taskId: string; projectId: string };
 				response: DevServerStatus;

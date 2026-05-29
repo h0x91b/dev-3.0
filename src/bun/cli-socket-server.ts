@@ -3,7 +3,7 @@ import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskS
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
-import { getDevServerStatus, runDevServer, stopDevServer } from "./rpc-handlers/tmux-pty";
+import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
@@ -577,7 +577,7 @@ const handlers: Record<string, Handler> = {
 
 	"devServer.restart": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		return runDevServer({ taskId: task.id, projectId: project.id });
+		return restartDevServer({ taskId: task.id, projectId: project.id });
 	},
 
 	"devServer.status": async (params) => {

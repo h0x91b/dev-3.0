@@ -639,6 +639,21 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 	}
 }
 
+// Restart must fully stop the old server, wait for the OS to release its
+// ports (and for the inner tmux session to tear down), then start fresh.
+// Starting immediately after a kill races the dying dev process — the new
+// server fails to bind or tmux glitches mid-teardown.
+const DEV_SERVER_RESTART_DELAY_MS = 1000;
+
+export async function restartDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
+	log.info("→ restartDevServer", params);
+	await stopDevServer(params);
+	await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_RESTART_DELAY_MS));
+	const status = await runDevServer(params);
+	log.info("← restartDevServer done");
+	return status;
+}
+
 export async function getDevServerStatus(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
 	log.info("→ getDevServerStatus", params);
 	const project = await data.getProject(params.projectId);
@@ -1743,6 +1758,7 @@ export const tmuxPtyHandlers = {
 	runDevServer,
 	checkDevServer,
 	stopDevServer,
+	restartDevServer,
 	getDevServerStatus,
 	openFileBrowser,
 	getTerminalPreview,
