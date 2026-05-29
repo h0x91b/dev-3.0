@@ -2410,18 +2410,13 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									onChange={(e) => setIncludeTests(e.target.checked)}
 									aria-label={t("infoPanel.diffIncludeTestsAria")}
 								/>
-								<span>{t("infoPanel.diffIncludeTests")}</span>
+								<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
 								<span
 									className="text-[0.85rem] leading-none"
 									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 								>
-									{includeTests ? "\u{F0668}" : "\u{F0912}"}
+									{"\u{F0668}"}
 								</span>
-								{!includeTests && hiddenTestCount > 0 && (
-									<span className="text-[0.625rem] text-fg-muted">
-										({t("infoPanel.diffHiddenTestCount", { count: String(hiddenTestCount) })})
-									</span>
-								)}
 							</label>
 							{totalFileCount !== payload.summary.files && (
 								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">

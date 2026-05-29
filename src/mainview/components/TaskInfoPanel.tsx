@@ -446,12 +446,12 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-label={t("infoPanel.diffIncludeTestsAria")}
 			aria-pressed={includeTests}
 		>
-			<span>{t("infoPanel.diffIncludeTests")}</span>
+			<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
 			<span
 				className="text-[0.85rem] leading-none"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 			>
-				{includeTests ? "\u{F0668}" : "\u{F0912}"}
+				{"\u{F0668}"}
 			</span>
 		</button>
 	) : null;
