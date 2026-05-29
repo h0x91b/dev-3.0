@@ -2766,7 +2766,31 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</div>
 				)}
 
-				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && renderState(
+				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && hiddenTestCount > 0 && (
+					<div
+						className="flex-1 min-h-0 flex items-center justify-center p-6"
+						data-testid="diff-only-tests-empty-state"
+					>
+						<div className="max-w-xl w-full bg-raised border border-edge rounded-xl p-6 space-y-3 text-center">
+							<div className="text-[1.1rem] font-semibold text-fg">
+								{t("infoPanel.diffOnlyTestsTitle")}
+							</div>
+							<p className="text-sm text-fg-3">
+								{t.plural("infoPanel.diffOnlyTestsBody", hiddenTestCount)}
+							</p>
+							<button
+								type="button"
+								onClick={() => setIncludeTests(true)}
+								className="inline-flex h-8 items-center justify-center rounded-md border border-accent/30 bg-accent/10 px-3 text-xs font-semibold text-accent transition-colors hover:bg-accent/20"
+								data-testid="diff-only-tests-enable-button"
+							>
+								{t("infoPanel.diffOnlyTestsEnable")}
+							</button>
+						</div>
+					</div>
+				)}
+
+				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && hiddenTestCount === 0 && renderState(
 					t("infoPanel.diffNoChanges"),
 					t("infoPanel.diffNoChangesBody"),
 				)}

@@ -1,0 +1,1 @@
+Diff viewer no longer shows the misleading "No changes to show" empty state when every changed file is a test file and "Include tests" is off. Instead it renders a dedicated card explaining that N test files are hidden, with a button that re-enables the filter in one click.
