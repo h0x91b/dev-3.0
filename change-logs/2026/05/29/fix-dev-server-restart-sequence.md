@@ -1,0 +1,1 @@
+Fixed the dev server Restart button: it now fully stops the running server, waits ~1s for ports and the inner tmux session to release, then starts fresh — instead of starting immediately and racing the dying process.

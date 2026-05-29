@@ -25,6 +25,7 @@ vi.mock("../pty-server", () => ({
 vi.mock("../rpc-handlers/tmux-pty", () => ({
 	runDevServer: vi.fn(),
 	stopDevServer: vi.fn(),
+	restartDevServer: vi.fn(),
 	getDevServerStatus: vi.fn(),
 }));
 
@@ -77,7 +78,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage } from "../rpc-handlers";
-import { runDevServer, stopDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
+import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 
@@ -358,6 +359,25 @@ describe("devServer.*", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(stopDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+	});
+
+	it("restarts via restartDevServer (stop → delay → start), not a bare start", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-abc12345-1111-2222-3333-444444444444" });
+		const status = { taskId: task.id, running: true, devSessionName: "dev3-dev-task-abc1" };
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(restartDevServer).mockResolvedValue(status as any);
+
+		const resp = await handleRequest(makeRequest("devServer.restart", {
+			projectId: "proj-1",
+			taskId: "task-abc1",
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(restartDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+		expect(runDevServer).not.toHaveBeenCalled();
+		expect(resp.data).toEqual(status);
 	});
 
 	it("returns current dev server status", async () => {

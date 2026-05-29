@@ -171,7 +171,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 	async function handleDevServerRestart() {
 		setDevServerMenuOpen(false);
 		try {
-			await api.request.runDevServer({ taskId: task.id, projectId: project.id });
+			await api.request.restartDevServer({ taskId: task.id, projectId: project.id });
 		} catch (err) {
 			alert(t("infoPanel.devServerFailed", { error: String(err) }));
 		}

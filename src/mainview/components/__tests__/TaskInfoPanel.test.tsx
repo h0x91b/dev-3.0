@@ -17,6 +17,7 @@ vi.mock("../../rpc", () => ({
 			runDevServer: vi.fn(),
 			checkDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
+			restartDevServer: vi.fn(),
 			getBranchStatus: vi.fn(),
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
@@ -868,10 +869,10 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
 		});
 
-		it("restarts dev server from running menu", async () => {
+		it("restarts dev server via restartDevServer (stop → delay → start)", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
-			mockedApi.request.runDevServer.mockResolvedValue(defaultDevServerStatus);
+			mockedApi.request.restartDevServer.mockResolvedValue(defaultDevServerStatus);
 
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
@@ -883,10 +884,11 @@ describe("TaskInfoPanel", () => {
 
 			await user.click(screen.getByText("Restart"));
 
-			await waitFor(() => expect(mockedApi.request.runDevServer).toHaveBeenCalledWith({
+			await waitFor(() => expect(mockedApi.request.restartDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 			}));
+			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
 		});
 
 		it("stops dev server from running menu", async () => {
