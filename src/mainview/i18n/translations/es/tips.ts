@@ -39,7 +39,7 @@ const tips = {
 	"tip.showDiffButton.title": "Revisa tu diff en la tarea",
 	"tip.showDiffButton.body": "Pulsa \"Show Diff\" en el panel de la tarea para reemplazar el terminal por un diff inline de la rama, y usa Esc para volver.",
 	"tip.diffDefaultLayout.title": "Elige el layout del diff",
-	"tip.diffDefaultLayout.body": "Abre Ajustes globales y elige si Show Diff empieza en modo lado a lado o Unified.",
+	"tip.diffDefaultLayout.body": "Show Diff ahora se queda en Auto por defecto — Unified en pantallas de portátil, Lado a lado en monitores grandes. Puedes fijarlo en Ajustes globales.",
 	"tip.diffExcludeTests.title": "Oculta los tests del diff",
 	"tip.diffExcludeTests.body": "Desmarca \"Include tests\" en la toolbar del diff (o en la barra de la tarea) para ocultar archivos de tests y ver solo los cambios de código de producción en los totales +/−.",
 	"tip.inlineDiffModes.title": "Cambia el layout del diff",

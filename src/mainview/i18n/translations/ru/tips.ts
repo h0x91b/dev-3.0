@@ -39,7 +39,7 @@ const tips = {
 	"tip.showDiffButton.title": "Просматривайте diff прямо в задаче",
 	"tip.showDiffButton.body": "Нажмите «Show Diff» в панели задачи, чтобы заменить терминал inline diff’ом ветки, а потом нажмите Esc, чтобы вернуться.",
 	"tip.diffDefaultLayout.title": "Выберите diff layout",
-	"tip.diffDefaultLayout.body": "Откройте Глобальные настройки и выберите, должен ли Show Diff стартовать в side-by-side или Unified режиме.",
+	"tip.diffDefaultLayout.body": "Show Diff теперь по умолчанию Auto — Unified на ноутбучных экранах, Side by side на больших мониторах. Можно зафиксировать вручную в Глобальных настройках.",
 	"tip.diffExcludeTests.title": "Спрячьте тесты из diff’а",
 	"tip.diffExcludeTests.body": "Снимите «Include tests» в toolbar diff’а (или в верхней панели задачи), чтобы скрыть тестовые файлы и видеть только продакшен-изменения в +/− суммах.",
 	"tip.inlineDiffModes.title": "Меняйте layout diff’а",

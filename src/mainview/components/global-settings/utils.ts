@@ -29,10 +29,45 @@ export function toStoredTaskOpenMode(
 	return mode === "fullscreen" ? "fullscreen" : undefined;
 }
 
+export type DiffViewModePreference = "split" | "unified" | "auto";
+
 export function toStoredDiffViewMode(
-	mode: "split" | "unified",
+	mode: DiffViewModePreference,
 ): GlobalSettings["defaultDiffViewMode"] {
-	return mode === "unified" ? "unified" : undefined;
+	return mode;
+}
+
+/**
+ * Threshold in CSS pixels separating "laptop" screens from external monitors.
+ * MacBook 13–16" Retina report 1280–1728 CSS px wide; external 24"+ monitors
+ * usually 1920+. 1800 sits in the gap with margin on both sides.
+ */
+export const AUTO_DIFF_VIEW_WIDTH_THRESHOLD = 1800;
+
+/**
+ * Resolves the "auto" diff view preference to a concrete mode based on the
+ * screen width in CSS pixels. WebKit does not expose physical inches, so this
+ * is the best proxy we have: narrow screen → laptop → unified is more readable.
+ */
+export function resolveAutoDiffViewMode(
+	screenWidthCssPx: number,
+): "split" | "unified" {
+	return screenWidthCssPx < AUTO_DIFF_VIEW_WIDTH_THRESHOLD ? "unified" : "split";
+}
+
+/**
+ * Resolves a stored preference (which may be undefined or "auto") into a
+ * concrete diff view mode. `undefined` is treated as "auto" — that is the new
+ * default for users who have never touched the setting.
+ */
+export function resolveDiffViewMode(
+	preference: GlobalSettings["defaultDiffViewMode"],
+	screenWidthCssPx: number,
+): "split" | "unified" {
+	if (preference === "split" || preference === "unified") {
+		return preference;
+	}
+	return resolveAutoDiffViewMode(screenWidthCssPx);
 }
 
 export function moveItem<T>(items: T[], from: number, to: number): T[] {

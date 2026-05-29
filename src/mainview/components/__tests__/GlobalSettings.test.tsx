@@ -237,13 +237,13 @@ describe("GlobalSettings", () => {
 	});
 
 	describe("default diff view mode", () => {
-		it("selects side by side by default", async () => {
+		it("selects auto by default", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			const splitButton = screen.getByText("Side by side").closest("button")!;
-			expect(splitButton.className).toContain("border-accent");
+			const autoButton = screen.getByText("Auto").closest("button")!;
+			expect(autoButton.className).toContain("border-accent");
 		});
 
 		it("switches to unified and saves", async () => {
@@ -256,6 +256,19 @@ describe("GlobalSettings", () => {
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({ defaultDiffViewMode: "unified" }),
+			);
+		});
+
+		it("switches to side by side and saves", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByText("Side by side"));
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ defaultDiffViewMode: "split" }),
 			);
 		});
 	});

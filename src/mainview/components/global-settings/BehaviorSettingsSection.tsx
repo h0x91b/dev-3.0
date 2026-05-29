@@ -11,7 +11,7 @@ interface BehaviorSettingsSectionProps {
 	caffeinateAvailable: boolean;
 	keymapPreset: TerminalKeymapPreset;
 	tipsResetDone: boolean;
-	onDefaultDiffViewModeChange: (mode: "split" | "unified") => void;
+	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
 	onKeymapChange: (preset: TerminalKeymapPreset) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onSoundToggle: (enabled: boolean) => void;
@@ -185,19 +185,21 @@ export default function BehaviorSettingsSection({
 					{t("settings.defaultDiffViewModeDesc")}
 				</p>
 				<div className="flex gap-3">
-					{(["split", "unified"] as const).map((mode) => (
+					{(["auto", "split", "unified"] as const).map((mode) => (
 						<button
 							key={mode}
 							onClick={() => onDefaultDiffViewModeChange(mode)}
 							className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-								(globalSettings.defaultDiffViewMode ?? "split") === mode
+								(globalSettings.defaultDiffViewMode ?? "auto") === mode
 									? "border-accent bg-accent/10 text-accent"
 									: "border-edge bg-raised text-fg hover:border-edge-active"
 							}`}
 						>
 							{mode === "split"
 								? t("settings.defaultDiffViewModeSplit")
-								: t("settings.defaultDiffViewModeUnified")}
+								: mode === "unified"
+									? t("settings.defaultDiffViewModeUnified")
+									: t("settings.defaultDiffViewModeAuto")}
 						</button>
 					))}
 				</div>

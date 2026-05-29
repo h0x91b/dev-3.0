@@ -1,0 +1,1 @@
+Add an "Auto" option (now the default) to the diff layout setting. Auto picks Unified on laptop-sized screens (`window.screen.availWidth < 1800` CSS px) and Side by side on bigger monitors, so the inline diff opens with a layout that actually fits the display. The user can still pin Split or Unified explicitly in Global Settings.

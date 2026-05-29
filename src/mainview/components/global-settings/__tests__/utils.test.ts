@@ -1,9 +1,12 @@
 import type { AgentConfiguration, ExternalApp } from "../../../../shared/types";
 import {
+	AUTO_DIFF_VIEW_WIDTH_THRESHOLD,
 	buildCommandPreview,
 	moveItem,
 	normalizeExternalApps,
 	reorderToTarget,
+	resolveAutoDiffViewMode,
+	resolveDiffViewMode,
 	resolveTheme,
 	toStoredDiffViewMode,
 	toStoredTaskOpenMode,
@@ -16,11 +19,53 @@ describe("global-settings utils", () => {
 		expect(resolveTheme("light", true)).toBe("light");
 	});
 
-	it("stores only non-default task and diff modes", () => {
+	it("stores only non-default task open modes", () => {
 		expect(toStoredTaskOpenMode("split")).toBeUndefined();
 		expect(toStoredTaskOpenMode("fullscreen")).toBe("fullscreen");
-		expect(toStoredDiffViewMode("split")).toBeUndefined();
+	});
+
+	it("stores diff view modes verbatim so 'auto' can be distinguished from unset", () => {
+		expect(toStoredDiffViewMode("split")).toBe("split");
 		expect(toStoredDiffViewMode("unified")).toBe("unified");
+		expect(toStoredDiffViewMode("auto")).toBe("auto");
+	});
+
+	describe("resolveAutoDiffViewMode", () => {
+		it("picks unified on laptop-sized screens", () => {
+			// MacBook 14" Retina is 1512 CSS px wide, well below 1800
+			expect(resolveAutoDiffViewMode(1512)).toBe("unified");
+			expect(resolveAutoDiffViewMode(1280)).toBe("unified");
+			expect(resolveAutoDiffViewMode(1728)).toBe("unified");
+			expect(resolveAutoDiffViewMode(AUTO_DIFF_VIEW_WIDTH_THRESHOLD - 1)).toBe(
+				"unified",
+			);
+		});
+
+		it("picks split on external-monitor-sized screens", () => {
+			expect(resolveAutoDiffViewMode(AUTO_DIFF_VIEW_WIDTH_THRESHOLD)).toBe(
+				"split",
+			);
+			expect(resolveAutoDiffViewMode(1920)).toBe("split");
+			expect(resolveAutoDiffViewMode(2560)).toBe("split");
+			expect(resolveAutoDiffViewMode(3840)).toBe("split");
+		});
+	});
+
+	describe("resolveDiffViewMode", () => {
+		it("honours explicit preferences regardless of screen size", () => {
+			expect(resolveDiffViewMode("split", 1280)).toBe("split");
+			expect(resolveDiffViewMode("unified", 3840)).toBe("unified");
+		});
+
+		it("falls back to auto when preference is undefined", () => {
+			expect(resolveDiffViewMode(undefined, 1512)).toBe("unified");
+			expect(resolveDiffViewMode(undefined, 2560)).toBe("split");
+		});
+
+		it("treats 'auto' explicitly the same as undefined", () => {
+			expect(resolveDiffViewMode("auto", 1512)).toBe("unified");
+			expect(resolveDiffViewMode("auto", 2560)).toBe("split");
+		});
 	});
 
 	it("filters incomplete external apps before persistence", () => {

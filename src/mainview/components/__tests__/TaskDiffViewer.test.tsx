@@ -301,6 +301,13 @@ describe("TaskDiffViewer", () => {
 		});
 		localStorage.clear();
 		document.documentElement.dataset.theme = "dark";
+		// Lock the screen width to a wide external-monitor size so the "auto"
+		// default deterministically resolves to "split". Individual tests can
+		// override this when they need to exercise the narrow-screen branch.
+		Object.defineProperty(window.screen, "availWidth", {
+			configurable: true,
+			value: 2560,
+		});
 		lastScrolledText = null;
 		scrollIntoViewMock = vi.fn(function(this: HTMLElement) {
 			lastScrolledText = this.textContent?.replace(/\s+/g, " ").trim() ?? null;
@@ -577,6 +584,64 @@ describe("TaskDiffViewer", () => {
 
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
+		});
+	});
+
+	it("auto mode picks unified on a laptop-sized screen", async () => {
+		Object.defineProperty(window.screen, "availWidth", {
+			configurable: true,
+			value: 1512,
+		});
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			defaultDiffViewMode: "auto",
+		});
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
+		});
+	});
+
+	it("auto mode picks split on a large external monitor", async () => {
+		Object.defineProperty(window.screen, "availWidth", {
+			configurable: true,
+			value: 2560,
+		});
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			defaultDiffViewMode: "auto",
+		});
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3 theme:dark");
 		});
 	});
 

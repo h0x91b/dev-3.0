@@ -13,6 +13,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { formatBytes } from "../utils/formatBytes";
+import { resolveAutoDiffViewMode, resolveDiffViewMode } from "./global-settings/utils";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
@@ -1509,12 +1510,12 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		api.request.getGlobalSettings()
 			.then((settings) => {
 				if (!cancelled) {
-					setViewMode(settings.defaultDiffViewMode === "unified" ? "unified" : "split");
+					setViewMode(resolveDiffViewMode(settings.defaultDiffViewMode, window.screen.availWidth));
 				}
 			})
 			.catch(() => {
 				if (!cancelled) {
-					setViewMode("split");
+					setViewMode(resolveAutoDiffViewMode(window.screen.availWidth));
 				}
 			});
 
