@@ -938,6 +938,10 @@ async function addAttempts(params: {
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
 				watched: sourceTask.watched,
+				// Carry the scratch flag onto every added attempt — otherwise the
+				// launch path keeps the `Scratch — HH:mm` placeholder as the prompt
+				// (only variantIndex 1 from the original spawnVariants kept it).
+				scratch: sourceTask.scratch,
 				// Issue #583 — carry the user-edited title onto every added attempt
 				// so re-running a task does not throw away the title the user typed.
 				customTitle: sourceTask.customTitle,
