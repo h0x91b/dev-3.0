@@ -60,6 +60,7 @@ export function useTerminalPreview() {
 	const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const activeTaskIdRef = useRef<string | null>(null);
+	const isDraggingRef = useRef(false);
 
 	const cancelTimers = useCallback(() => {
 		if (openTimerRef.current) {
@@ -103,6 +104,7 @@ export function useTerminalPreview() {
 	 * (either a ref.current or e.currentTarget).
 	 */
 	function onMouseEnter(taskId: string, anchorEl: HTMLElement) {
+		if (isDraggingRef.current) return;
 		cancelTimers();
 		if (activeTaskIdRef.current && activeTaskIdRef.current !== taskId) {
 			close();
@@ -164,6 +166,25 @@ export function useTerminalPreview() {
 			}
 		};
 	}, [cancelTimers]);
+
+	// Disable previews while a drag-and-drop is in progress.
+	useEffect(() => {
+		const onDragStart = () => {
+			isDraggingRef.current = true;
+			close();
+		};
+		const onDragEnd = () => {
+			isDraggingRef.current = false;
+		};
+		window.addEventListener("dragstart", onDragStart, true);
+		window.addEventListener("dragend", onDragEnd, true);
+		window.addEventListener("drop", onDragEnd, true);
+		return () => {
+			window.removeEventListener("dragstart", onDragStart, true);
+			window.removeEventListener("dragend", onDragEnd, true);
+			window.removeEventListener("drop", onDragEnd, true);
+		};
+	}, [close]);
 
 	return {
 		state: { open, html, loading, pos, activeTaskId, cancelClose, scheduleClose },
