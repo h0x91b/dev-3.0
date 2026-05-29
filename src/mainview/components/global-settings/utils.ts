@@ -110,6 +110,10 @@ export function normalizeExternalApps(
 	return validApps.length > 0 ? validApps : undefined;
 }
 
+function quoteIfUnsafeForPreview(s: string): string {
+	return /^[A-Za-z0-9_\-./:]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 export function buildCommandPreview(
 	agentBaseCommand: string,
 	config: AgentConfiguration,
@@ -118,7 +122,9 @@ export function buildCommandPreview(
 	const parts: string[] = [baseCmd];
 
 	if (config.model) {
-		parts.push("--model", config.model);
+		// Match the actual launcher: quote when the value would otherwise be
+		// glob-expanded by the shell (e.g. `claude-opus-4-8[1m]`).
+		parts.push("--model", quoteIfUnsafeForPreview(config.model));
 	}
 
 	const cmdName = baseCmd.split("/").pop() ?? "";

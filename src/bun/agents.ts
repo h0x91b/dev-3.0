@@ -246,6 +246,13 @@ export function shellEscape(s: string): string {
 	return "'" + s.replace(/'/g, "'\\''") + "'";
 }
 
+/** Wrap in single quotes only when the value contains shell-unsafe characters.
+ *  Used for short positional values (model names, mode strings) where the raw
+ *  form is more readable when safe. */
+export function quoteIfUnsafe(s: string): string {
+	return /^[A-Za-z0-9_\-./:]+$/.test(s) ? s : shellEscape(s);
+}
+
 function applyCodexThemeProfile(args: string[]): void {
 	const themedProfile = getCodexProfileForCurrentUiTheme();
 	for (let i = 0; i < args.length - 1; i++) {
@@ -359,7 +366,9 @@ export function resolveAgentCommand(
 	}
 
 	if (config?.model) {
-		args.push("--model", config.model);
+		// Model names may contain shell metacharacters (e.g. brackets in
+		// `claude-opus-4-8[1m]`). Quote them so zsh doesn't glob-expand.
+		args.push("--model", quoteIfUnsafe(config.model));
 	}
 
 	const cursorAgent = isCursorCommand(baseCmd);
