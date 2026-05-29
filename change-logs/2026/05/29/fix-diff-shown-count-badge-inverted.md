@@ -1,0 +1,1 @@
+Fixed the diff toolbar "Showing N of M changed files" badge that could render with N > M when "Include tests" was off and the diff contained binary or oversized files. The badge now uses the full payload summary as the total and counts both rendered and skipped files as visible.

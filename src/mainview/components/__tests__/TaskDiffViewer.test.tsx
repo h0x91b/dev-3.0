@@ -562,6 +562,72 @@ describe("TaskDiffViewer", () => {
 		expect(within(treeButton).getByText("logo.png")).toHaveClass("line-through");
 	});
 
+	it("shows 'Showing N of M' badge with N <= M when 'Include tests' is off and there are skipped binary files", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
+			mode,
+			compareRef: mode === "uncommitted" ? null : "origin/main",
+			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
+			fallbackReason: null,
+			summary: { files: 3, insertions: 1, deletions: 1 },
+			files: [
+				{
+					id: "src/app.ts",
+					status: "modified",
+					displayPath: "src/app.ts",
+					oldPath: "src/app.ts",
+					newPath: "src/app.ts",
+					oldContent: "a\n",
+					newContent: "b\n",
+					hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n"],
+				},
+				{
+					id: "src/app.test.ts",
+					status: "modified",
+					displayPath: "src/app.test.ts",
+					oldPath: "src/app.test.ts",
+					newPath: "src/app.test.ts",
+					oldContent: "t\n",
+					newContent: "u\n",
+					hunks: ["diff --git a/src/app.test.ts b/src/app.test.ts\n@@ -1 +1 @@\n-t\n+u\n"],
+				},
+			],
+			skippedFiles: [
+				{
+					id: "assets/logo.png",
+					status: "added",
+					reason: "binary",
+					displayPath: "assets/logo.png",
+					oldPath: null,
+					newPath: "assets/logo.png",
+					oldSize: null,
+					newSize: 12_000,
+				},
+			],
+		}));
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const checkbox = await screen.findByRole("checkbox", { name: /include tests/i });
+		expect(checkbox).toBeChecked();
+		await user.click(checkbox);
+		expect(checkbox).not.toBeChecked();
+
+		// Badge must read "Showing 2 of 3" — 1 code file + 1 skipped binary visible, 1 test file hidden.
+		// Regression: previously rendered "Showing 2 of 1" because the total excluded skipped files.
+		const badge = await screen.findByText(/Showing\s+2\s+of\s+3\s+changed files/i);
+		expect(badge).toBeInTheDocument();
+	});
+
 	it("uses unified as the initial layout when configured in global settings", async () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",

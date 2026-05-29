@@ -1425,8 +1425,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			insertions += stats.insertions;
 			deletions += stats.deletions;
 		}
-		return { files: visibleFiles.length, insertions, deletions };
-	}, [payload, includeTests, visibleFiles]);
+		return { files: visibleFiles.length + visibleSkippedFiles.length, insertions, deletions };
+	}, [payload, includeTests, visibleFiles, visibleSkippedFiles]);
 	const fileTree = payload ? buildDiffTree(visibleFiles, visibleSkippedFiles) : [];
 	const reviewExportEntries = payload ? buildInlineReviewExportEntries(visibleFiles, inlineComments) : [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
@@ -2412,11 +2412,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									</span>
 								)}
 							</label>
-							{totalFileCount !== visibleSummary.files && (
+							{totalFileCount !== payload.summary.files && (
 								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
 									{t("infoPanel.diffShownCount", {
 										shown: String(totalFileCount),
-										total: String(visibleSummary.files),
+										total: String(payload.summary.files),
 									})}
 								</span>
 							)}
