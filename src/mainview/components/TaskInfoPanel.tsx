@@ -623,6 +623,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{bugHuntersButton}
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
@@ -681,6 +682,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{bugHuntersButton}
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
+							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 							<TaskTmuxControls taskId={task.id} />
 							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
