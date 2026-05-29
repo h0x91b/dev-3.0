@@ -251,7 +251,7 @@ function GlobalSettings() {
 	);
 
 	const handleDefaultDiffViewModeChange = useCallback(
-		(mode: "split" | "unified") => {
+		(mode: "split" | "unified" | "auto") => {
 			persistSettingChange(
 				{ defaultDiffViewMode: toStoredDiffViewMode(mode) },
 				{

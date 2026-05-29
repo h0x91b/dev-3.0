@@ -39,7 +39,7 @@ const tips = {
 	"tip.showDiffButton.title": "Review your diff inline",
 	"tip.showDiffButton.body": "Click \"Show Diff\" in the task panel to swap the terminal for an inline branch diff, then press Esc to jump back.",
 	"tip.diffDefaultLayout.title": "Pick your diff layout",
-	"tip.diffDefaultLayout.body": "Open Global Settings and choose whether Show Diff starts in side-by-side or Unified mode.",
+	"tip.diffDefaultLayout.body": "Show Diff now defaults to Auto — Unified on laptop screens, Side by side on big monitors. Override it in Global Settings if you want it pinned.",
 	"tip.diffExcludeTests.title": "Hide tests from the diff",
 	"tip.diffExcludeTests.body": "Uncheck \"Include tests\" in the diff toolbar (or task top bar) to hide test files and see only production-code changes in the +/− totals.",
 	"tip.inlineDiffModes.title": "Switch diff layout fast",
