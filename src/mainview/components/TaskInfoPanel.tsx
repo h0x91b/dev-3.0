@@ -568,14 +568,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
 			title={t("tmux.spawnExtraAgentDesc")}
 		>
-			<svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-				<rect x="4" y="8" width="16" height="11" rx="2" />
-				<path d="M12 8 V4.5" />
-				<circle cx="12" cy="3.2" r="1.2" />
-				<path d="M2 12 v3 M22 12 v3" />
-				<circle cx="9" cy="13.5" r="1.1" />
-				<circle cx="15" cy="13.5" r="1.1" />
-			</svg>
+			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F16A6}"}</span>
 			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>
 		</button>
 	) : null;
