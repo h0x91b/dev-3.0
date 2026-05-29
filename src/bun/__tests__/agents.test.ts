@@ -155,6 +155,17 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("Some task");
 	});
 
+	it("Claude: quotes model names containing shell metacharacters", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig({ model: "claude-opus-4-8[1m]" }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("--model 'claude-opus-4-8[1m]'");
+		expect(cmd).not.toContain("--model claude-opus-4-8[1m]");
+	});
+
 	it("Codex: injects the dev3 reminder into new-session prompts", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),

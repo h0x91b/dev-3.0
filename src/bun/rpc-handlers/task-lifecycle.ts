@@ -354,13 +354,15 @@ export async function activateTask(
 		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
 	}
 	await runCowClones(resolved, wt.worktreePath);
-	// On reopen (completed/cancelled → active), we intentionally blank the description
-	// so the agent starts in a clean session instead of replaying the original prompt.
-	// Original intent: commit a2b87778 ("Skip task prompt when reopening from completed/cancelled").
-	// Scratch-task blanking happens in prepareTaskInBackground (via the Launch Variants
-	// flow), not here — activateTask is only used for direct launches that already
-	// have a real description.
-	const taskForLaunch = isReopen ? { ...task, description: "" } : task;
+	// Blank the description so the agent starts in a clean session instead of
+	// being handed a prompt, in two cases:
+	//   - reopen (completed/cancelled → active): don't replay the original prompt.
+	//     Original intent: commit a2b87778 ("Skip task prompt when reopening …").
+	//   - scratch tasks: `description` is only a `Scratch — HH:mm` placeholder used
+	//     for the card title, never a real instruction. Direct launches land here
+	//     (not just the prepareTaskInBackground / Launch Variants flow), so we must
+	//     blank it here too — otherwise the placeholder is sent as the prompt.
+	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
 	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
@@ -936,6 +938,10 @@ async function addAttempts(params: {
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
 				watched: sourceTask.watched,
+				// Carry the scratch flag onto every added attempt — otherwise the
+				// launch path keeps the `Scratch — HH:mm` placeholder as the prompt
+				// (only variantIndex 1 from the original spawnVariants kept it).
+				scratch: sourceTask.scratch,
 				// Issue #583 — carry the user-edited title onto every added attempt
 				// so re-running a task does not throw away the title the user typed.
 				customTitle: sourceTask.customTitle,

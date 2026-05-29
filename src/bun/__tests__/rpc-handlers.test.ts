@@ -2257,6 +2257,30 @@ describe("activateTask", () => {
 		);
 	});
 
+	it("clears the placeholder description for scratch tasks on direct launch", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "todo",
+			scratch: true,
+			description: "Scratch — 14:52",
+			worktreePath: null,
+			branchName: null,
+		});
+
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+
+		await activateTask(project, task);
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			expect.objectContaining({ id: project.id, path: project.path }),
+			task.title,
+			"",
+			"/tmp/wt",
+			undefined,
+			expect.anything(),
+		);
+	});
+
 	it("preserves the stored agentId when reviving a completed task", async () => {
 		const project = makeProject();
 		const task = makeTask({
@@ -2626,6 +2650,32 @@ describe("handlers.spawnVariants", () => {
 		expect(cowClone.clonePaths).toHaveBeenCalledWith(project.path, "/tmp/vwt", ["branch-cache"]);
 	});
 
+	it("blanks the placeholder prompt when launching a scratch variant", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, scratch: true, description: "Scratch — 14:52" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, scratch: true, description: "Scratch — 14:52" });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", scratch: true });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		await vi.waitFor(() => {
+			expect(agents.resolveCommandForAgent).toHaveBeenCalled();
+		});
+		const ctxArg = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][2];
+		expect(ctxArg.taskDescription).toBe("");
+	});
+
 	// Issue #583 — spawnVariants used to drop the user-edited customTitle from
 	// the source task. The new variants must inherit it so the title the user
 	// typed in the Create-Task modal survives "Save and Run".
@@ -2722,6 +2772,56 @@ describe("handlers.addAttempts", () => {
 				undefined,
 			);
 		});
+	});
+
+	it("propagates the scratch flag and blanks the placeholder prompt for added attempts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			scratch: true,
+			description: "Scratch — 14:52",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			scratch: true,
+			description: "Scratch — 14:52",
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({ ...attemptTask, worktreePath: "/tmp/attempt-2" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "dev3/a2" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		// The new attempt must be persisted with the scratch flag …
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ scratch: true }),
+		);
+
+		// … and the agent must be launched with an empty prompt, not the placeholder.
+		await vi.waitFor(() => {
+			expect(agents.resolveCommandForAgent).toHaveBeenCalled();
+		});
+		const ctxArg = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][2];
+		expect(ctxArg.taskDescription).toBe("");
 	});
 
 	it("falls back to source task baseBranch when existingBranch is missing", async () => {
