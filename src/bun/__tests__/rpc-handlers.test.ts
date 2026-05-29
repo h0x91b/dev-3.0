@@ -2257,6 +2257,30 @@ describe("activateTask", () => {
 		);
 	});
 
+	it("clears the placeholder description for scratch tasks on direct launch", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "todo",
+			scratch: true,
+			description: "Scratch — 14:52",
+			worktreePath: null,
+			branchName: null,
+		});
+
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+
+		await activateTask(project, task);
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			expect.objectContaining({ id: project.id, path: project.path }),
+			task.title,
+			"",
+			"/tmp/wt",
+			undefined,
+			expect.anything(),
+		);
+	});
+
 	it("preserves the stored agentId when reviving a completed task", async () => {
 		const project = makeProject();
 		const task = makeTask({
