@@ -723,7 +723,7 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 const CREATE_PR_ENTER_DELAY_MS = 800;
 
 const CREATE_PR_AGENT_PROMPT =
-	"Please create a pull request for this branch using the gh CLI (gh pr create). Choose an appropriate title and description based on the work in this conversation.";
+	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
 
 async function createPullRequest(params: { taskId: string; projectId: string }): Promise<void> {
 	log.info("→ createPullRequest", params);

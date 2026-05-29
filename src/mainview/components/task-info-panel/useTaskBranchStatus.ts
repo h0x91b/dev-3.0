@@ -47,7 +47,6 @@ export function useTaskBranchStatus({
 	const [pushing, setPushing] = useState(false);
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
-	const pushThenCreatePRRef = useRef(false);
 	const mergeDialogShownRef = useRef(false);
 	const fetchStatusRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -219,12 +218,6 @@ export function useTaskBranchStatus({
 				// Keep existing state when refresh fails.
 			}
 
-			if (detail.operation === "push" && detail.ok && pushThenCreatePRRef.current) {
-				pushThenCreatePRRef.current = false;
-				setPushing(false);
-				await handleCreatePR();
-			}
-
 			if (detail.operation === "merge" && detail.ok) {
 				const promptState = await api.request.prepareMergeCompletionPrompt({
 					taskId: task.id,
@@ -323,11 +316,6 @@ export function useTaskBranchStatus({
 		}
 	}, [branchStatus?.prUrl]);
 
-	const handlePushThenCreatePR = useCallback(() => {
-		pushThenCreatePRRef.current = true;
-		void handlePush();
-	}, [handlePush]);
-
 	function selectCompareRef(nextCompareRef: string) {
 		setCompareRef(nextCompareRef);
 		setBranchStatus(null);
@@ -343,7 +331,6 @@ export function useTaskBranchStatus({
 		handleMerge,
 		handleOpenPR,
 		handlePush,
-		handlePushThenCreatePR,
 		handleRebase,
 		handleRefreshStatus,
 		merging,

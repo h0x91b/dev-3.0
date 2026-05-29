@@ -53,7 +53,6 @@ export default function TaskGitActions({
 		handleMerge,
 		handleOpenPR,
 		handlePush,
-		handlePushThenCreatePR,
 		handleRebase,
 		handleRefreshStatus,
 		merging,
@@ -218,21 +217,17 @@ export default function TaskGitActions({
 			: t("infoPanel.push");
 
 	const hasPR = branchStatus && branchStatus.prNumber !== null;
-	const needsPushBeforePR = !!branchStatus && branchStatus.ahead > 0 && branchStatus.unpushed !== 0;
-	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (!branchStatus || branchStatus.ahead === 0 || creatingPR || pushing);
+	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (!branchStatus || branchStatus.ahead === 0 || creatingPR);
 
 	function getPRButtonLabel(): string {
 		if (creatingPR) return t("infoPanel.creatingPR");
-		if (pushing && needsPushBeforePR) return t("infoPanel.pushingAndCreatingPR");
-		if (needsPushBeforePR) return t("infoPanel.pushAndCreatePR");
 		return t("infoPanel.createPR");
 	}
 
 	function getPRTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
 		if (branchStatus.ahead === 0) return t("infoPanel.createPRDisabledNoCommits");
-		if (needsPushBeforePR) return t("infoPanel.pushAndCreatePR");
-		return t("infoPanel.createPR");
+		return t("infoPanel.createPRAgentTooltip");
 	}
 
 	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.behind > 0 || merging;
@@ -304,20 +299,19 @@ export default function TaskGitActions({
 				</button>
 			) : (
 				<button
-					onClick={() => {
-						if (needsPushBeforePR) {
-							handlePushThenCreatePR();
-						} else {
-							void handleCreatePR();
-						}
-					}}
+					onClick={() => void handleCreatePR()}
 					disabled={createPRDisabled}
 					className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 						createPRDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
 					title={getPRTooltip()}
 				>
-					{getPRButtonLabel()}
+					<span className="inline-flex items-center gap-1.5">
+						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\u{F06A9}"}
+						</span>
+						<span>{getPRButtonLabel()}</span>
+					</span>
 				</button>
 			)}
 			<button

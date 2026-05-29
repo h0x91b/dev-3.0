@@ -92,7 +92,7 @@ const ALL_TIPS: Tip[] = [
 		id: "push-and-create-pr",
 		titleKey: "tip.pushAndCreatePr.title",
 		bodyKey: "tip.pushAndCreatePr.body",
-		icon: "\u{F0544}", // nf-md-source_pull
+		icon: "\u{F06A9}", // nf-md-robot
 	},
 	{
 		id: "project-github-account",
