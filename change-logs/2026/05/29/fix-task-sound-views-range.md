@@ -1,0 +1,1 @@
+Fixed task completion/cancellation sounds silently failing in packaged builds. The MP3s were served via the Electrobun `views://` scheme, which does not honor the Range request WKWebView's media loader issues, so playback failed with `NotSupportedError`. They are now inlined as base64 `data:` URLs (`?inline`), bypassing the scheme handler entirely.
