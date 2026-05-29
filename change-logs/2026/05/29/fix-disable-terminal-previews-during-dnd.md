@@ -1,0 +1,1 @@
+Terminal preview popovers in the active tasks sidebar and on task cards no longer pop up while a drag-and-drop is in progress. A global dragstart listener now closes any open preview and blocks new ones until dragend/drop fires, so previews stop fighting the user's drag.
