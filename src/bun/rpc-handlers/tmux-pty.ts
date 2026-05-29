@@ -1494,17 +1494,32 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
 const BUG_HUNTER_ENTER_DELAY_MS = 800;
 
-function buildBugHunterPrompt(task: Task, project: Project): string {
-	const base = task.baseBranch || project.defaultBaseBranch || "main";
+// Resolve the comparison ref for bug-hunter scoping, mirroring the renderer's
+// getDefaultTaskCompareRef (src/mainview/components/task-info-panel/useTaskBranchStatus.ts)
+// so the lightbox path honors the project's configured compare ref instead of
+// always assuming origin/<base>.
+export function resolveBugHunterCompareRef(task: Task, project: Project): string {
+	const projectBaseBranch = project.defaultBaseBranch || "main";
+	const taskBaseBranch = task.baseBranch || projectBaseBranch;
+	// Task forked from a non-default base → compare against that local branch.
+	if (taskBaseBranch !== projectBaseBranch) return taskBaseBranch;
+	if (project.defaultCompareRef) return project.defaultCompareRef;
+	if (project.defaultCompareRefMode === "local") return taskBaseBranch;
+	return `origin/${taskBaseBranch}`;
+}
+
+export function buildBugHunterPrompt(task: Task, project: Project): string {
+	const ref = resolveBugHunterCompareRef(task, project);
 	const branch = task.branchName || "HEAD";
-	const compareRef = base.includes("/") ? base : `origin/${base}`;
 	return (
 		`/dev3-bug-hunter ` +
-		`Scope is locked to THIS branch only. ` +
-		`Run \`git diff --name-only ${compareRef}...HEAD\` (fallback \`git diff --name-only ${base}...HEAD\`) to get the file list, ` +
-		`then hunt for bugs ONLY in those changed files and the code paths they touch. ` +
-		`Do NOT inspect unrelated parts of the codebase. ` +
-		`Branch: ${branch}. Base: ${base}.`
+		`Scope is locked to THIS branch only — only the changes this branch introduced, never commits pulled in from origin. ` +
+		`First pin the fork point, then list only this branch's own changed files: ` +
+		`run \`BASE=$(git merge-base ${ref} HEAD); git diff --name-only "$BASE" HEAD\`. ` +
+		`Use that merge-base two-dot form — do NOT diff against ${ref} directly, because if this branch is not rebased that pulls in unrelated files changed only on ${ref}. ` +
+		`Hunt for bugs ONLY in those changed files and the code paths they touch. ` +
+		`Do NOT inspect files changed only on ${ref}, and do NOT inspect unrelated parts of the codebase. ` +
+		`Branch: ${branch}. Base: ${ref}.`
 	);
 }
 
