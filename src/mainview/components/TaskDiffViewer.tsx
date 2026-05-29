@@ -2186,7 +2186,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return;
 		}
 		const storedReadState = readStoredReadState();
-		for (const file of visibleFiles) {
+		for (const file of payload.files) {
 			const signature = getFileReadSignature(task.id, file);
 			if (nextRead) {
 				storedReadState[signature] = true;
@@ -2194,7 +2194,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				delete storedReadState[signature];
 			}
 		}
-		for (const skipped of visibleSkippedFiles) {
+		for (const skipped of payload.skippedFiles) {
 			const signature = getSkippedFileReadSignature(task.id, skipped);
 			if (nextRead) {
 				storedReadState[signature] = true;
@@ -2205,10 +2205,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		writeStoredReadState(storedReadState);
 		setReadFiles((prev) => {
 			const next = { ...prev };
-			for (const file of visibleFiles) {
+			for (const file of payload.files) {
 				next[file.id] = nextRead;
 			}
-			for (const skipped of visibleSkippedFiles) {
+			for (const skipped of payload.skippedFiles) {
 				next[skipped.id] = nextRead;
 			}
 			return next;

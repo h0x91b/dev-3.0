@@ -1102,6 +1102,77 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
+	it("'Mark all unread' clears read state for hidden test files too", async () => {
+		// Regression: setAllFilesRead used to iterate only over visibleFiles, so
+		// when "Include tests" was OFF, clicking "Mark all unread" left previously
+		// read test files marked as read in both in-memory state and localStorage.
+		const payloadWithTest: TaskDiffResponse = {
+			mode: "branch",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+			fallbackReason: null,
+			summary: { files: 2, insertions: 2, deletions: 0 },
+			files: [
+				{
+					id: "src/app.ts",
+					status: "modified",
+					displayPath: "src/app.ts",
+					oldPath: "src/app.ts",
+					newPath: "src/app.ts",
+					oldContent: "a\n",
+					newContent: "a\nb\n",
+					hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1,2 @@\n a\n+b\n"],
+				},
+				{
+					id: "src/app.test.ts",
+					status: "modified",
+					displayPath: "src/app.test.ts",
+					oldPath: "src/app.test.ts",
+					newPath: "src/app.test.ts",
+					oldContent: "x\n",
+					newContent: "x\ny\n",
+					hunks: ["diff --git a/src/app.test.ts b/src/app.test.ts\n@@ -1 +1,2 @@\n x\n+y\n"],
+				},
+			],
+			skippedFiles: [],
+		};
+		vi.mocked(api.request.getTaskDiff).mockResolvedValue(payloadWithTest);
+
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		// Step 1: with "Include tests" ON (default), mark all files as read.
+		expect(screen.getByText("0/2 Read")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Mark all read" }));
+		expect(screen.getByText("2/2 Read")).toBeInTheDocument();
+
+		// Step 2: toggle "Include tests" OFF — only the production file is visible.
+		await user.click(screen.getByTestId("diff-toolbar-include-tests").querySelector("input")!);
+		expect(screen.getByText("1/1 Read")).toBeInTheDocument();
+
+		// Step 3: with the test file hidden, click "Mark all unread".
+		await user.click(screen.getByRole("button", { name: "Mark all unread" }));
+		expect(screen.getByText("0/1 Read")).toBeInTheDocument();
+
+		// Step 4: toggle "Include tests" back ON — the previously hidden test
+		// file must also be unread now (this was the bug: it stayed "1/2 Read").
+		await user.click(screen.getByTestId("diff-toolbar-include-tests").querySelector("input")!);
+		expect(screen.getByText("0/2 Read")).toBeInTheDocument();
+	});
+
 	it("retries sidebar file navigation until the target lands under the sticky toolbar", async () => {
 		const user = userEvent.setup();
 		const rafQueue: FrameRequestCallback[] = [];
