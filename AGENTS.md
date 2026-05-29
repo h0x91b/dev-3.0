@@ -40,6 +40,14 @@ Key idea: each project is a git repo, each task gets its own **git worktree** + 
 
 **Design system specification (colors, typography, components, glass morphism, themes):** see [`DESIGN.md`](DESIGN.md). Follow it when generating any UI code.
 
+**UX architecture manifest (object model, navigation, surfaces, action taxonomy, placement rules, complexity budgets):** see [`docs/ux/PRODUCT_UX_BIBLE.md`](docs/ux/PRODUCT_UX_BIBLE.md) and its machine-readable companion [`docs/ux/ux-architecture.yaml`](docs/ux/ux-architecture.yaml). This is the canonical UX reference — where features live, which surface owns which action, and the rules that keep toolbars/inspectors from bloating.
+
+## UI/UX work — always plan with `/ux-principal` (MANDATORY)
+
+**Before designing or implementing anything UI/UX-related** — a new screen, surface, button, modal, toolbar action, navigation change, or any visible control — you MUST first invoke the `/ux-principal` skill. It reads the UX manifest above, classifies the feature, decides correct placement, navigation, action hierarchy, token roles, and complexity budget, and produces an implementation brief. Do NOT add UI controls ad hoc without this step — that is exactly how toolbar/inspector button creep (the project's top UX anti-pattern) happens.
+
+When the manifest itself is stale or missing, use `/ux-create-manifest` to regenerate it. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change.
+
 ## Language policy
 
 **All code-related content MUST be in English — no exceptions.**

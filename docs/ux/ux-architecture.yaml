@@ -1,0 +1,363 @@
+ux_architecture:
+  version: 1
+  updated_at: "2026-05-29"
+  source: "derived_from_repository"
+  confidence: "medium"
+
+  product:
+    name: "dev-3.0"
+    app_type: "full_screen_web_app" # Electrobun desktop shell rendering a React/Vite webview
+    primary_users:
+      - "Developers orchestrating multiple AI coding agents (Claude Code, Codex, Gemini CLI, Cursor) across tasks"
+      - "Power users who live in the terminal and want Kanban-style task tracking on top of git worktrees"
+    primary_jobs:
+      - "Create a task, get an isolated git worktree + tmux terminal running a preconfigured agent command"
+      - "Track task lifecycle across a Kanban board (todo -> in-progress -> review -> completed)"
+      - "Run git operations (pull/push/PR/merge/rebase) and dev servers per task without leaving the app"
+      - "Manage multiple projects, each a git repo, with per-project setup/dev/cleanup scripts"
+
+  evidence:
+    audited_paths:
+      - "src/mainview/state.ts"          # screen-based Route union (the navigation model)
+      - "src/shared/types.ts"            # Project, Task, TaskStatus, Label, CustomColumn, STATUS_COLORS
+      - "src/bun/application-menu.ts"    # native menu = global action surface + action taxonomy
+      - "src/mainview/components/"       # all renderer surfaces (board, cards, panels, modals, popovers)
+      - "src/mainview/index.css"         # design tokens (CSS custom properties, two themes)
+      - "concept.md"                     # product concept + status tracker
+      - "AGENTS.md"                      # styling + i18n + token rules (authoritative project policy)
+      - "DESIGN.md"                      # design system spec
+    key_files:
+      - "src/mainview/App.tsx"
+      - "src/mainview/components/GlobalHeader.tsx"
+      - "src/mainview/components/KanbanBoard.tsx"
+      - "src/mainview/components/KanbanColumn.tsx"
+      - "src/mainview/components/TaskCard.tsx"
+      - "src/mainview/components/TaskInfoPanel.tsx"
+      - "src/mainview/components/ProjectSettings.tsx"
+      - "src/mainview/components/GlobalSettings.tsx"
+      - "tailwind.config.js"
+    ignored_paths:
+      - node_modules
+      - .git
+      - dist
+      - build
+      - views
+      - coverage
+      - vendor-docs
+    limitations:
+      - "No URL router: navigation is a screen-based Route union driven by useReducer (src/mainview/state.ts). 'routes' below are screen ids, not paths."
+      - "No formal Button variant component exists. Buttons are styled inline with semantic Tailwind token classes. Variant table documents semantic role -> token class, not a prop API."
+      - "Many action surfaces are native (Electrobun application menu + context menus) rather than DOM. Action taxonomy spans both."
+      - "Selection/bulk-action model: the board has no multi-select; actions are per-task. 'selection_toolbar' rules below are Proposed, not Observed."
+
+  objects:
+    project:
+      label: "Project"
+      plural: "Projects"
+      observed: true
+      primary_route: "screen:dashboard"      # projects listed on the dashboard
+      detail_route: "screen:project"          # Kanban board for one project
+      owner: "workspace"
+      owns: ["task", "custom_column", "label", "project_settings"]
+      common_actions: ["add", "clone", "open_settings", "reorder", "remove", "pull_main"]
+      evidence: ["src/shared/types.ts (Project)", "src/mainview/components/Dashboard.tsx", "src/mainview/components/ProjectView.tsx", "src/mainview/components/ProjectSettings.tsx"]
+    task:
+      label: "Task"
+      plural: "Tasks"
+      observed: true
+      primary_route: "screen:project"          # appears as a card on the board
+      detail_route: "screen:task"              # full-screen terminal; also screen:project activeTaskId (split)
+      owner: "project"
+      owns: ["note", "task_terminal", "worktree", "variant", "attempt"]
+      lifecycle_states: ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user", "review-by-colleague", "completed", "cancelled"]
+      common_actions: ["create", "move_status", "rename", "set_overview", "add_note", "spawn_variants", "add_attempts", "duplicate", "delete", "watch", "open_in_ide", "git_actions", "dev_server"]
+      evidence: ["src/shared/types.ts (Task, TaskStatus, ALL_STATUSES)", "src/mainview/components/TaskCard.tsx", "src/mainview/components/TaskInfoPanel.tsx", "src/bun/application-menu.ts"]
+    label:
+      label: "Label"
+      plural: "Labels"
+      observed: true
+      owner: "project"
+      common_actions: ["create", "rename", "recolor", "assign", "filter_by"]
+      evidence: ["src/shared/types.ts (Label, LABEL_COLORS)", "src/mainview/components/LabelPicker.tsx", "src/mainview/components/LabelFilterBar.tsx", "src/cli/commands/label.ts"]
+    custom_column:
+      label: "Custom Column"
+      plural: "Custom Columns"
+      observed: true
+      owner: "project"
+      common_actions: ["create", "rename", "recolor", "set_llm_instruction", "attach_agent_config"]
+      evidence: ["src/shared/types.ts (CustomColumn)", "src/mainview/components/KanbanBoard.tsx"]
+    note:
+      label: "Note"
+      plural: "Notes"
+      observed: true
+      owner: "task"
+      common_actions: ["add", "edit", "delete"]
+      evidence: ["src/shared/types.ts (TaskNote)", "src/mainview/components/NoteItem.tsx", "src/mainview/components/task-info-panel/TaskNotes.tsx", "src/cli/commands/note.ts"]
+
+  navigation:
+    model: "screen_router" # observed: useReducer Route union, not URL paths
+    global_nav:
+      purpose: "Move between the few stable destinations of the app."
+      observed_destinations:
+        - "dashboard"        # all projects
+        - "project"          # Kanban board (the home of daily work)
+        - "task"             # full-screen task terminal
+        - "project-terminal" # project-level terminal
+        - "home-terminal"    # global scratch terminal
+        - "settings"         # global settings
+        - "project-settings" # per-project config (tabs: global | project | worktree)
+        - "changelog"        # what's new
+        - "gauge-demo"       # debug/dev surface
+        - "viewport-lab"     # debug/dev surface
+      mechanism: "GlobalHeader breadcrumbs + back/forward history (HISTORY_LIMIT=15) + native application menu 'View'"
+      allowed: ["destination", "workspace", "major_product_area"]
+      forbidden: ["one_off_action", "filter", "temporary_state", "object_specific_control"]
+      max_top_level_items: 7   # proposed budget; debug screens (gauge-demo, viewport-lab) should stay menu-only
+      max_depth: 2
+      status: "observed"
+      evidence: ["src/mainview/state.ts (Route)", "src/mainview/components/GlobalHeader.tsx", "src/bun/application-menu.ts"]
+    breadcrumbs:
+      purpose: "Show location: Dashboard > Project > Task. Project chevron opens a project switcher dropdown."
+      rules:
+        - "Text click navigates; chevron toggles the project-switcher dropdown."
+        - "Breadcrumbs show place, not bulk actions."
+      status: "observed"
+      evidence: ["src/mainview/components/GlobalHeader.tsx (BreadcrumbSegment, project switcher)"]
+    tabs:
+      observed_in: ["project-settings (global | project | worktree)"]
+      max_visible_tabs: 6
+      status: "observed"
+
+  surfaces:
+    global_header:
+      purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
+      allowed: ["breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager"]
+      forbidden: ["task_scoped_action", "dense_filters", "destructive_primary"]
+      evidence: ["src/mainview/components/GlobalHeader.tsx"]
+    application_menu:
+      purpose: "Native macOS/Linux menu bar; canonical home for the full action taxonomy (File / Edit / Task / Project / View / Debug)."
+      allowed: ["destination", "task_action", "project_action", "git_action", "dev_server_action", "destructive", "expert_shortcut"]
+      forbidden: []
+      note: "Native menu is the overflow/expert surface. Frequent actions are mirrored into DOM toolbars."
+      evidence: ["src/bun/application-menu.ts", "src/bun/menu-actions.ts", "src/mainview/menuRouter.ts"]
+    kanban_board:
+      purpose: "Primary work surface: columns by status, task cards, drag-to-move, per-column add."
+      allowed: ["object_card", "create_in_column", "drag_move", "column_config", "label_filter"]
+      forbidden: ["durable_global_configuration"]
+      evidence: ["src/mainview/components/KanbanBoard.tsx", "src/mainview/components/KanbanColumn.tsx", "src/mainview/components/LabelFilterBar.tsx"]
+    task_card:
+      purpose: "Compact object summary on the board with the most relevant per-task affordances."
+      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge"]
+      forbidden: ["full_settings", "global_destination"]
+      visible_budget:
+        max_inline_actions: 2
+        overflow_to: "context_menu"
+      status: "inferred" # card is dense; treat budget as a guardrail
+      evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
+    task_info_panel:
+      purpose: "Inspector for the active task: git actions, dev server, scripts, notes, tmux controls, open-in."
+      allowed: ["object_action", "git_action", "dev_server_action", "metadata", "notes", "secondary_edit"]
+      forbidden: ["global_destination", "cross_project_action"]
+      note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
+      evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+    modal:
+      purpose: "Focused create/confirm flows."
+      allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config"]
+      forbidden: ["primary_navigation", "persistent_dashboard"]
+      observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "GitPullErrorModal", "TmuxCheatSheetModal", "FolderPickerModal"]
+      evidence: ["src/mainview/components/*Modal.tsx"]
+    popover:
+      purpose: "Lightweight contextual preview/hint anchored to an element."
+      allowed: ["preview", "hint", "quick_action", "remediation"]
+      forbidden: ["multi_step_flow", "primary_destination"]
+      observed: ["SiblingPopover", "TerminalPreviewPopover", "StuckPreparationPopover"]
+      evidence: ["src/mainview/components/*Popover.tsx"]
+    context_menu:
+      purpose: "Object-scoped actions on right-click (task card, terminal, sidebar)."
+      allowed: ["object_action", "open_in", "destructive"]
+      forbidden: ["global_destination"]
+      evidence: ["src/mainview/components/OpenInMenu.tsx", "concept/changelog: open-in-context-menu, terminal context menu"]
+    settings:
+      purpose: "Durable configuration. GlobalSettings (app-wide) and ProjectSettings (per-project scripts, columns, labels, gh account)."
+      allowed: ["configuration", "preference", "integration", "permission", "scripts"]
+      forbidden: ["daily_operational_action"]
+      evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx (59.9K)", "src/mainview/components/global-settings/*"]
+    sidebar:
+      purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
+      allowed: ["destination", "task_jump", "terminal_hover_preview", "search"]
+      forbidden: ["durable_configuration"]
+      evidence: ["src/mainview/components/ActiveTasksSidebar.tsx", "src/mainview/components/ActiveTasksStrip.tsx"]
+    toast:
+      purpose: "Transient operation feedback (errors)."
+      allowed: ["status_message", "error"]
+      forbidden: ["persistent_action", "primary_action"]
+      evidence: ["src/mainview/components/ErrorToast.tsx"]
+
+  action_types:
+    primary_action:
+      definition: "The main safe action for the current screen/flow (e.g. Create Task, Add Project)."
+      placement: ["modal.footer", "page_header.primary"]
+      max_visible_per_screen: 1
+      token_role: "primary (bg-accent)"
+    object_action:
+      definition: "Acts on one task/project (rename, set overview, watch, duplicate, open-in)."
+      placement: ["task_info_panel", "task_card.context_menu", "application_menu.Task"]
+    git_action:
+      definition: "Branch/PR operations on a task worktree (pull, push, create PR, merge, rebase, show branch status)."
+      placement: ["task_info_panel (TaskGitActions)", "application_menu.Project", "kanban (git pull button)"]
+      note: "Git ops run in a visible terminal (decision 008). Keep frequent ones inline, rare ones in menu."
+    dev_server_action:
+      definition: "Start/stop/restart/status of a project's dev server."
+      placement: ["task_info_panel (TaskDevServer)", "application_menu.Project.DevServer"]
+      token_role: "neutral; restart/stop carry risk styling where data loss possible"
+    lifecycle_action:
+      definition: "Move task across statuses (mostly hook-driven), complete, cancel."
+      placement: ["kanban drag", "status dropdown", "application_menu.Task.MoveToStatus"]
+    configuration:
+      definition: "Durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account)."
+      placement: ["settings", "project_settings"]
+    destructive:
+      definition: "Delete task, remove project, cancel, reset terminal, hard refresh."
+      placement: ["overflow", "context_menu", "confirmation_dialog", "danger_zone"]
+      token_role: "destructive (text-danger / bg-danger)"
+      requires_confirmation: true
+    expert_shortcut:
+      definition: "Rare known action (debug screens, tmux cheat sheet, gauge/viewport lab, zoom)."
+      placement: ["application_menu.View", "application_menu.Debug", "keyboard_shortcut"]
+
+  design_tokens:
+    note: "Tokens are CSS custom properties in src/mainview/index.css, mapped to Tailwind in tailwind.config.js. NEVER hardcode hex/rgb in components (AGENTS.md). STATUS_COLORS in types.ts are the documented exception (inline status hex)."
+    button_roles:
+      primary:
+        token_class: "bg-accent / hover:bg-accent-hover (text-white)"
+        use_for: "One main safe action for the current screen (Create, Save, Confirm)."
+        max_per_screen: 1
+        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx"]
+      secondary:
+        token_class: "bg-raised / bg-elevated + border-edge, or text-accent bg-accent/10"
+        use_for: "Visible supporting action with lower priority than primary."
+      ghost:
+        token_class: "transparent + hover:bg-raised-hover / hover:bg-elevated-hover"
+        use_for: "Low-emphasis icon/utility buttons in dense toolbars."
+      destructive:
+        token_class: "text-danger / hover:bg-danger/10..15 / border-danger/30 (bg-danger for solid)"
+        use_for: "Delete, remove, cancel, reset. Never use bg-accent primary styling for these."
+        evidence: ["src/mainview/components/TaskInfoPanel.tsx:585", "src/mainview/components/TaskDetailModal.tsx:317"]
+      link:
+        token_class: "text-accent hover:text-accent-hover (no background)"
+        use_for: "Inline navigation / open-in actions."
+    semantic_state_tokens:
+      success:
+        token: "--success / --success-hover (green)"
+        use_for: "Completed, healthy, active dev server."
+      warning:
+        token: "--warning (yellow)"
+        use_for: "Needs attention, degraded, your-review."
+      danger:
+        token: "--danger (red)"
+        use_for: "Failed, destructive risk, cancelled."
+      info:
+        token: "NONE (gap)"
+        use_for: "No dedicated info token; accent (blue) is reused for informational emphasis."
+        status: "proposed" # consider adding --info if informational state needs to differ from accent
+    surface_tokens:
+      levels: ["bg-base", "bg-raised", "bg-elevated", "bg-overlay"]
+      hover: ["bg-raised-hover", "bg-elevated-hover"]
+      text: ["text-fg", "text-fg-2", "text-fg-3", "text-fg-muted"]
+      border: ["border-edge", "border-edge-active"]
+    status_colors:
+      note: "Per-status hex (STATUS_COLORS / STATUS_COLORS_LIGHT) used in inline styles for column headers, card borders, dots. Documented exception to the no-hardcoded-color rule."
+      values_dark: ["todo:#70e3ff", "in-progress:#afbaff", "user-questions:#ffa353", "review-by-ai:#a0aec0", "review-by-user:#ffe55f", "review-by-colleague:#c4a5ff", "completed:#3cf3b0", "cancelled:#ff8282"]
+
+  screen_patterns:
+    list_screen:
+      example: "dashboard (projects), kanban board (tasks)"
+      header: "GlobalHeader breadcrumb + add/create entry"
+      filter: "label filter bar (board); task search (sidebar/dashboard)"
+      item_actions: "context menu on card; open navigates to task"
+      empty_state: "compact empty Kanban columns (decision 047); empty config fallthrough (decision 020)"
+    detail_screen:
+      example: "task (full-screen terminal) / split project+task"
+      header: "two-row task info header"
+      inspector: "TaskInfoPanel (git, dev server, scripts, notes, tmux, open-in)"
+      actions: "object + git + dev-server actions, scoped to the task"
+    settings_screen:
+      example: "GlobalSettings, ProjectSettings"
+      grouping: "sections (Agent, Appearance, Behavior, Workspace, DeveloperTools)"
+      save_apply: "updateProjectSettings / settings RPC handlers"
+      danger_zone: "remove project / destructive cleanup behind confirmation"
+
+  complexity_budgets:
+    global_nav:
+      max_top_level_items: 7
+      max_depth: 2
+    page_header:
+      max_primary_actions: 1
+      max_secondary_actions: 2
+    task_card:
+      max_inline_actions: 2
+      overflow_after: 2     # push extra affordances into the context menu
+    task_info_panel:
+      note: "No hard count, but this is the highest-risk surface. New controls require an explicit budget check + grouping into TaskInfoPanel sub-sections."
+    toolbar:
+      max_visible_actions: 4
+      overflow_after: 4     # the app has a documented history of always-visible git/tmux button creep
+    tabs:
+      max_visible_tabs: 6
+
+  placement_rules:
+    - id: "navigation-destinations-only"
+      when: { feature_class: "destination" }
+      place_in: ["global_header", "application_menu.View", "sidebar"]
+      reject: ["task_card", "modal", "toolbar"]
+      status: "observed"
+      rationale: "Navigation should contain stable places, not one-off commands."
+    - id: "task-scoped-actions-in-inspector-or-menu"
+      when: { feature_class: "object_action", scope: "single_task" }
+      place_in: ["task_info_panel", "task_card.context_menu", "application_menu.Task"]
+      reject: ["global_header", "dashboard"]
+      status: "observed"
+      rationale: "Task actions belong to the task surface, not the app chrome."
+    - id: "git-frequent-inline-rare-in-menu"
+      when: { feature_class: "git_action" }
+      place_in: ["task_info_panel.TaskGitActions (frequent)", "application_menu.Project (rare)"]
+      reject: ["global_header", "task_card_inline (beyond a single status badge)"]
+      status: "inferred"
+      rationale: "Git surface is already dense; protect it from button creep."
+    - id: "configuration-in-settings"
+      when: { feature_class: "configuration" }
+      place_in: ["global_settings", "project_settings"]
+      reject: ["kanban_board", "task_info_panel", "toolbar"]
+      status: "observed"
+      rationale: "Durable behavior changes live in settings, not in operational surfaces."
+    - id: "destructive-needs-friction"
+      when: { feature_class: "destructive" }
+      place_in: ["context_menu", "confirmation_dialog", "danger_zone", "overflow"]
+      reject: ["primary_button", "global_header"]
+      token_role: "destructive"
+      status: "observed"
+      rationale: "Delete/cancel/reset require confirmation and destructive styling (text-danger/bg-danger)."
+    - id: "debug-screens-menu-only"
+      when: { feature_class: "expert_shortcut", example: "gauge-demo / viewport-lab" }
+      place_in: ["application_menu.Debug"]
+      reject: ["global_header", "dashboard", "sidebar"]
+      status: "observed"
+      rationale: "Dev/debug surfaces must not appear in user-facing navigation."
+
+  anti_patterns:
+    - id: "toolbar-button-creep"
+      description: "Adding yet another always-visible git/tmux/dev-server button to TaskInfoPanel or task toolbars without checking the budget. The changelog shows a long history of this (always-visible-git-buttons, tmux-action-buttons, push-button, create-pr-button, etc.). Group or overflow instead."
+    - id: "hardcoded-colors"
+      description: "Using raw hex/rgb in components instead of semantic Tailwind tokens. Forbidden by AGENTS.md except STATUS_COLORS."
+    - id: "untranslated-strings"
+      description: "Hardcoding user-facing strings instead of using t() from useT(). All UI strings must exist in en/ru/es."
+    - id: "actions-in-breadcrumbs"
+      description: "Putting task/project commands into the GlobalHeader breadcrumb area, which is for location + switching only."
+    - id: "debug-surface-leak"
+      description: "Exposing gauge-demo / viewport-lab outside the Debug menu."
+
+  open_questions:
+    - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"
+    - "Should an --info semantic token be added, or is reusing accent (blue) for informational state intentional?"
+    - "TaskInfoPanel (34K) and ProjectSettings (59.9K) are very large. Do they need a documented sub-surface budget or splitting?"
+    - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"
