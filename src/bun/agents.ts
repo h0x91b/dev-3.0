@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
-import { detectCodexVersion, ensureCodexConfig } from "./codex-config";
+import { detectCodexVersion, ensureCodexConfig, getCodexSyntaxForVersion } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
@@ -253,11 +253,40 @@ export function quoteIfUnsafe(s: string): string {
 	return /^[A-Za-z0-9_\-./:]+$/.test(s) ? s : shellEscape(s);
 }
 
+let codexProfileV2Override: boolean | null = null;
+let cachedCodexProfileV2: boolean | undefined;
+
+/** Test-only override for codex profile-v2 detection. Pass `null` to clear. */
+export function __setCodexProfileV2Override(value: boolean | null): void {
+	codexProfileV2Override = value;
+	cachedCodexProfileV2 = undefined;
+}
+
+/**
+ * True when the installed Codex (≥0.131) uses profile-v2 semantics: per-profile
+ * settings live in `~/.codex/<name>.config.toml` and are only loaded via
+ * `--profile-v2 <name>`. Detected once and cached for the process lifetime.
+ */
+function isCodexProfileV2(): boolean {
+	if (codexProfileV2Override !== null) return codexProfileV2Override;
+	if (cachedCodexProfileV2 === undefined) {
+		cachedCodexProfileV2 = getCodexSyntaxForVersion(detectCodexVersion()).profileV2;
+	}
+	return cachedCodexProfileV2;
+}
+
 function applyCodexThemeProfile(args: string[]): void {
 	const themedProfile = getCodexProfileForCurrentUiTheme();
+	const profileV2 = isCodexProfileV2();
 	for (let i = 0; i < args.length - 1; i++) {
 		if ((args[i] === "-p" || args[i] === "--profile") && args[i + 1] === "dev3") {
 			args[i + 1] = themedProfile;
+			// Codex ≥0.131 only loads the per-profile file
+			// `~/.codex/<name>.config.toml` via `--profile-v2 <name>`. The legacy
+			// `-p`/`--profile` flag looks for an in-config `[profiles.<name>]` block
+			// that we no longer write on profile-v2, causing
+			// "config profile `dev3-dark` not found". See decision 055.
+			if (profileV2) args[i] = "--profile-v2";
 			return;
 		}
 	}

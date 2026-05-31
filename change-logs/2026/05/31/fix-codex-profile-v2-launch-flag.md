@@ -1,0 +1,1 @@
+Fix Codex 0.131+ launch failing with "config profile `dev3-dark` not found". dev-3.0 writes per-profile settings to `~/.codex/<name>.config.toml`, which Codex only loads via `--profile-v2 <name>` — but the launch command still passed the legacy `-p`/`--profile` flag. On profile-v2 Codex the flag is now rewritten to `--profile-v2`; older Codex keeps `-p`.

@@ -22,6 +22,12 @@ The existing `getCodexSyntaxForVersion()` in `src/bun/codex-config.ts` already g
 
 A user who already had a per-profile `~/.codex/dev3-light.config.toml` with `web_search` set to a different value will see it overwritten to `"live"`. This matches the previous behavior under the `[profiles.dev3-light]` block, so it is not a regression. The cleanup only strips the three managed `[profiles.dev3*]` sections — user-owned profiles like `[profiles.ro]` are untouched.
 
+## Follow-up: launch flag (the other half)
+
+Writing the per-profile files was only half the fix. Codex exposes **two** flags: `-p`/`--profile <name>` loads an in-config `[profiles.<name>]` block, while `--profile-v2 <name>` layers `$CODEX_HOME/<name>.config.toml` on top of the base config. dev-3.0 launched with `-p dev3-dark`, so on Codex ≥0.131 (where we no longer write the in-config block) Codex reported `config profile dev3-dark not found`.
+
+`applyCodexThemeProfile()` in `src/bun/agents.ts` now rewrites the flag to `--profile-v2` (in addition to swapping the value to the themed profile) when `isCodexProfileV2()` is true. profile-v2 detection is cached per process and overridable in tests via `__setCodexProfileV2Override()`. Legacy Codex keeps `-p`. The base config still carries `default_permissions = "dev3"`, so the `[permissions.dev3]` sandbox/network grants apply regardless of which profile flag is used.
+
 ## Alternatives considered
 
 - **Always use profile-v2** — rejected: older Codex doesn't know about per-profile files, so `--profile dev3-light` would fail on legacy installs.
