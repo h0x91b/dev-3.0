@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, type TemplateContext } from "../agents";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
@@ -31,6 +31,13 @@ const makeCtx = (overrides?: Partial<TemplateContext>): TemplateContext => ({
 
 beforeEach(() => {
 	setCurrentUiTheme("dark");
+	// Default to legacy (pre-0.131) profile semantics so codex theme tests are
+	// deterministic regardless of the Codex version installed on the machine.
+	__setCodexProfileV2Override(false);
+});
+
+afterEach(() => {
+	__setCodexProfileV2Override(null);
 });
 
 describe("isOpenCodeCommand", () => {
@@ -218,6 +225,49 @@ describe("resolveAgentCommand — resume", () => {
 
 		expect(cmd).toContain("-p my-custom-profile");
 		expect(cmd).not.toContain("-p dev3-light");
+	});
+
+	it("Codex: rewrites -p to --profile-v2 on profile-v2 Codex (dark)", () => {
+		setCurrentUiTheme("dark");
+		__setCodexProfileV2Override(true);
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("--profile-v2 dev3-dark");
+		expect(cmd).not.toContain("-p dev3-dark");
+		expect(cmd).not.toContain("-p dev3 ");
+	});
+
+	it("Codex: rewrites --profile to --profile-v2 on profile-v2 Codex (light)", () => {
+		setCurrentUiTheme("light");
+		__setCodexProfileV2Override(true);
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined, additionalArgs: ["--profile", "dev3"] }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("--profile-v2 dev3-light");
+		expect(cmd).not.toContain("--profile dev3-light");
+	});
+
+	it("Codex: leaves custom profile names untouched on profile-v2 Codex", () => {
+		setCurrentUiTheme("dark");
+		__setCodexProfileV2Override(true);
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "my-custom-profile"] }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("-p my-custom-profile");
+		expect(cmd).not.toContain("--profile-v2");
 	});
 
 	// ---- Gemini ----
