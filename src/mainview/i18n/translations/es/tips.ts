@@ -202,6 +202,8 @@ const tips = {
 	"tip.multiWindow.body": "Pulsa Cmd+Shift+N (o Archivo → Nueva ventana) para abrir otra ventana de dev-3.0: un proyecto por monitor, y puedes cerrar cualquier ventana sin salir de la app.",
 	"tip.quitConfirm.title": "Salir pregunta primero",
 	"tip.quitConfirm.body": "Salir con Cmd+Q, el menú o el dock muestra una confirmación para que tus sesiones tmux en segundo plano no desaparezcan por sorpresa.",
+	"tip.sidebarHide.title": "Ocultar el panel de Tareas activas",
+	"tip.sidebarHide.body": "Pulsa el icono de pantalla completa en la cabecera del panel para plegarlo y dar al terminal toda la ventana.",
 };
 
 export default tips;

@@ -282,6 +282,22 @@ function ActiveTasksSidebar({
 							{"\uF0DB"}
 						</span>
 					</button>
+					{activeTaskId && (
+						<button
+							type="button"
+							onClick={() =>
+								navigate({ screen: "task", projectId: project.id, taskId: activeTaskId })
+							}
+							className="inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
+							title={t("sidebar.hide")}
+							data-testid="sidebar-hide"
+						>
+							{/* Mirror the fullscreen/"Zoom" toggle in TaskInfoPanel */}
+							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+							</svg>
+						</button>
+					)}
 				</div>
 			</div>
 

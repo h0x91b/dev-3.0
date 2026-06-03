@@ -202,6 +202,8 @@ const tips = {
 	"tip.multiWindow.body": "Press Cmd+Shift+N (or File → New Window) to open another dev-3.0 window. Put a different project on each monitor and close any window without quitting the app.",
 	"tip.quitConfirm.title": "Quitting asks first",
 	"tip.quitConfirm.body": "Quitting via Cmd+Q, the menu, or the dock shows a confirmation so your background tmux sessions don't vanish by surprise.",
+	"tip.sidebarHide.title": "Hide the Active Tasks panel",
+	"tip.sidebarHide.body": "Click the fullscreen icon in the sidebar header to collapse it and give the terminal the whole window.",
 } as const;
 
 export default tips;

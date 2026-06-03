@@ -49,6 +49,7 @@ const common = {
 	"sidebar.searchPlaceholder": "Поиск задач...",
 	"sidebar.switchToBoard": "Показать доску",
 	"sidebar.switchToSidebar": "Показать панель",
+	"sidebar.hide": "Скрыть панель",
 	"sidebar.scopeProject": "Только этот проект",
 	"sidebar.scopeGlobal": "Все проекты",
 	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",

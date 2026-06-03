@@ -641,6 +641,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.quitConfirm.body",
 		icon: "\u{F0206}", // nf-md-help_circle_outline
 	},
+	// Batch 41: hide sidebar
+	{
+		id: "sidebar-hide",
+		titleKey: "tip.sidebarHide.title",
+		bodyKey: "tip.sidebarHide.body",
+		icon: "\u{F0294}", // nf-md-fullscreen
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -323,4 +323,47 @@ describe("ActiveTasksSidebar", () => {
 		await user.keyboard("{Meta>}f{/Meta}");
 		expect(input).not.toHaveFocus();
 	});
+
+	it("hides the sidebar by navigating to the full-page task view", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={navigate}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("sidebar-hide"));
+		expect(navigate).toHaveBeenCalledWith({ screen: "task", projectId: "p1", taskId: "t1" });
+	});
+
+	it("omits the hide button when no active task is set", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		expect(screen.queryByTestId("sidebar-hide")).not.toBeInTheDocument();
+	});
 });

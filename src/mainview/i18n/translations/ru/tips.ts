@@ -202,6 +202,8 @@ const tips = {
 	"tip.multiWindow.body": "Cmd+Shift+N (или File → New Window) открывает ещё одно окно dev-3.0: по проекту на каждом мониторе, и любое окно можно закрыть, не выходя из приложения.",
 	"tip.quitConfirm.title": "Выход спросит подтверждение",
 	"tip.quitConfirm.body": "Выход через Cmd+Q, меню или док показывает подтверждение, чтобы фоновые tmux-сессии не исчезли внезапно.",
+	"tip.sidebarHide.title": "Скрыть панель Active Tasks",
+	"tip.sidebarHide.body": "Нажмите иконку полноэкранного режима в шапке панели, чтобы свернуть её и отдать всё окно терминалу.",
 };
 
 export default tips;

@@ -1,0 +1,1 @@
+Added a hide button to the Active Tasks sidebar header that collapses the split view into the full-page task terminal, mirroring the existing fullscreen/"Zoom" toggle in the task info panel. Previously the sidebar could only be hidden from the top-right toggle.
