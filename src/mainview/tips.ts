@@ -95,6 +95,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F06A9}", // nf-md-robot
 	},
 	{
+		id: "create-pr-auto-merge",
+		titleKey: "tip.createPrAutoMerge.title",
+		bodyKey: "tip.createPrAutoMerge.body",
+		icon: "\u{F0623}", // nf-md-source_merge
+	},
+	{
 		id: "project-github-account",
 		titleKey: "tip.projectGitHubAccount.title",
 		bodyKey: "tip.projectGitHubAccount.body",

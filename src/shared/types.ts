@@ -1246,7 +1246,7 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			createPullRequest: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; autoMerge?: boolean };
 				response: void;
 			};
 			openPullRequest: {

@@ -32,6 +32,8 @@ const tips = {
 	"tip.taskSearch.body": "Press Ctrl/Cmd+F to search on the board and sidebar by name, #ID, PR number, or description.",
 	"tip.pushAndCreatePr.title": "Let the agent open your PR",
 	"tip.pushAndCreatePr.body": "Click \"Create PR\" and the agent in your task pane pushes the branch and opens a pull request with gh — no extra window.",
+	"tip.createPrAutoMerge.title": "Open a PR and auto-merge it",
+	"tip.createPrAutoMerge.body": "Click \"Create PR + auto-merge\" to push, open the PR, and enable auto-merge so it lands as soon as checks pass.",
 	"tip.projectGitHubAccount.title": "Pick gh per project",
 	"tip.projectGitHubAccount.body": "Open Project Settings and choose the gh account for that repo before creating PRs or checking PR status.",
 	"tip.prBadgeOnCard.title": "PR number on every card",

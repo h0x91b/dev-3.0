@@ -230,6 +230,12 @@ export default function TaskGitActions({
 		return t("infoPanel.createPRAgentTooltip");
 	}
 
+	function getPRAutoMergeTooltip(): string {
+		if (!branchStatus) return t("infoPanel.statusLoading");
+		if (branchStatus.ahead === 0) return t("infoPanel.createPRDisabledNoCommits");
+		return t("infoPanel.createPRAutoMergeTooltip");
+	}
+
 	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.behind > 0 || merging;
 	const mergeTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
@@ -298,21 +304,38 @@ export default function TaskGitActions({
 					{t("infoPanel.openPR")}
 				</button>
 			) : (
-				<button
-					onClick={() => void handleCreatePR()}
-					disabled={createPRDisabled}
-					className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-						createPRDisabled ? disabledBtnClass : enabledBtnClass
-					}`}
-					title={getPRTooltip()}
-				>
-					<span className="inline-flex items-center gap-1.5">
-						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-							{"\u{F16A6}"}
+				<>
+					<button
+						onClick={() => void handleCreatePR(false)}
+						disabled={createPRDisabled}
+						className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+							createPRDisabled ? disabledBtnClass : enabledBtnClass
+						}`}
+						title={getPRTooltip()}
+					>
+						<span className="inline-flex items-center gap-1.5">
+							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{"\u{F16A6}"}
+							</span>
+							<span>{getPRButtonLabel()}</span>
 						</span>
-						<span>{getPRButtonLabel()}</span>
-					</span>
-				</button>
+					</button>
+					<button
+						onClick={() => void handleCreatePR(true)}
+						disabled={createPRDisabled}
+						className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+							createPRDisabled ? disabledBtnClass : enabledBtnClass
+						}`}
+						title={getPRAutoMergeTooltip()}
+					>
+						<span className="inline-flex items-center gap-1.5">
+							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{"\u{F0623}"}
+							</span>
+							<span>{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMerge")}</span>
+						</span>
+					</button>
+				</>
 			)}
 			<button
 				onClick={handleMerge}

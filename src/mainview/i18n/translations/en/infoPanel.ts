@@ -29,6 +29,8 @@ const infoPanel = {
 	"infoPanel.pushing": "Pushing...",
 	"infoPanel.pushFailed": "Push failed: {error}",
 	"infoPanel.createPR": "Create PR",
+	"infoPanel.createPRAutoMerge": "Create PR + auto-merge",
+	"infoPanel.createPRAutoMergeTooltip": "Ask the agent to push, open a PR with gh, and enable auto-merge",
 	"infoPanel.openPR": "Open PR",
 	"infoPanel.openPRTooltip": "Open existing PR #{number}",
 	"infoPanel.openPRFailed": "Open PR failed: {error}",
