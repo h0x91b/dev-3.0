@@ -106,40 +106,49 @@ Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0
 
 Apple Silicon and Intel are both supported. Windows is on the roadmap.
 
-### Linux
+### Linux — remote work (recommended)
 
-Two install paths, pick whichever fits your setup:
+The fastest way to run dev-3.0 on a Linux box (cloud VM, dev server, headless host) is the `dev3` CLI over Homebrew. **Two commands, then `dev3 remote`** — it prints an access URL + QR you open from your laptop. `tmux`, `git`, and `cloudflared` come along as brew dependencies.
 
-- **Homebrew CLI** — installs the `dev3` command-line tool and the headless web UI server. Works on every Linux box, headless or desktop. This is the path most users want.
-- **Desktop GUI bundle** — full Electrobun desktop app for Linux machines with X11/Wayland. Separate tarball download.
+> ⚠️ **Don't run the Homebrew installer as `root`** — it refuses by design. On a fresh VM, create a regular user first: `useradd -m -s /bin/bash dev3 && su - dev3`. Glibc ≥ 2.28 required (Ubuntu 18.04+, Debian 10+, RHEL 8+).
 
-#### Homebrew (recommended)
+**1. Install Homebrew** (one-time). Pick the line matching your shell — the only difference is which rc file gets the PATH:
 
-If you don't have Homebrew on Linux yet, install it first (one-time setup). The official installer works on Linux unchanged — same script, same `brew` command. Glibc ≥ 2.28 is required (Ubuntu 18.04+, Debian 10+, RHEL 8+).
-
-> ⚠️ **Don't run the Homebrew installer as `root`.** It refuses by design. On a fresh cloud VM, create a regular user first: `useradd -m -s /bin/bash dev3 && su - dev3`.
+<details open>
+<summary><strong>bash</strong></summary>
 
 ```bash
-# Prereqs (Debian/Ubuntu — adjust for your distro)
-sudo apt-get install -y build-essential procps curl file git
-
-# Install Homebrew (the official installer detects Linux automatically)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Add brew to your shell PATH (the installer prints this exact block — copy it)
-echo >> ~/.bashrc
-echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+  echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc && \
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 ```
 
-Full Homebrew-on-Linux docs: https://docs.brew.sh/Homebrew-on-Linux
+</details>
 
-Then install dev-3.0 (same tap as macOS, separate command — `tmux` and `git` come along as dependencies):
+<details>
+<summary><strong>zsh</strong></summary>
+
+```zsh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+  echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+```
+
+</details>
+
+**2. Install dev-3.0** (same tap as macOS):
 
 ```sh
-brew tap h0x91b/dev3
-brew install h0x91b/dev3/dev3
+brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
 ```
+
+**3. Go remote:**
+
+```sh
+dev3 remote
+```
+
+That's it. Full Homebrew-on-Linux docs: https://docs.brew.sh/Homebrew-on-Linux
 
 This installs the `dev3` CLI. Three ways to use it:
 
