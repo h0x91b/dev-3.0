@@ -11,6 +11,9 @@ vi.mock("../rpc", () => ({
 			getProjects: vi.fn().mockResolvedValue([]),
 			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
 			quitApp: vi.fn().mockResolvedValue(undefined),
+			requestQuit: vi.fn().mockResolvedValue(undefined),
+			consumePendingQuitDialog: vi.fn().mockResolvedValue(false),
+			openNewWindow: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
@@ -126,33 +129,73 @@ describe("App keyboard shortcuts", () => {
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
 	});
 
-	describe("quit (Cmd+Q / Ctrl+Q)", () => {
-		it("Cmd+Q opens the quit dialog", async () => {
+	// Quit is gated in the bun `before-quit` handler now (covers menu Quit, dock
+	// Quit, and the renderer-initiated Cmd+Q). The bun side pushes
+	// `rpc:showQuitDialog` to ask the renderer to confirm. Cmd+Q is caught in the
+	// renderer (WKWebView swallows the native accelerator) and forwarded to bun
+	// via `requestQuit`, which runs the same gate.
+	describe("quit confirmation dialog", () => {
+		function requestQuitDialog() {
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:showQuitDialog"));
+			});
+		}
+
+		it("opens the quit dialog when bun requests it", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
+			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
 		});
 
-		it("Ctrl+Q opens the quit dialog", async () => {
+		it("shows the dialog on mount when a quit is pending (reopened window)", async () => {
+			vi.mocked(api.request.consumePendingQuitDialog).mockResolvedValueOnce(true);
+			await renderApp();
+			expect(await screen.findByText("Sessions keep running")).toBeInTheDocument();
+		});
+
+		it("does not show the dialog on mount when no quit is pending", async () => {
+			vi.mocked(api.request.consumePendingQuitDialog).mockResolvedValueOnce(false);
+			await renderApp();
+			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
+		});
+
+		it("Cmd+Q forwards to bun via requestQuit (no native accelerator reliance)", async () => {
+			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			expect(api.request.requestQuit).toHaveBeenCalled();
+		});
+
+		it("Ctrl+Q forwards to bun via requestQuit", async () => {
+			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
 			await renderApp();
 			await userEvent.keyboard("{Control>}q{/Control}");
-			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
+			expect(api.request.requestQuit).toHaveBeenCalled();
 		});
 
 		it("Escape closes the quit dialog", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
+			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
 		});
 
-		it("Quit button in dialog calls quitApp", async () => {
+		it("Quit button confirms via quitApp (dontShowAgain=false by default)", async () => {
 			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
 			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
+			requestQuitDialog();
 			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
-			expect(api.request.quitApp).toHaveBeenCalled();
+			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: false });
+		});
+
+		it("Quit with 'don't show again' checked passes dontShowAgain=true", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
+			await renderApp();
+			requestQuitDialog();
+			await userEvent.click(screen.getByRole("checkbox"));
+			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
+			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: true });
 		});
 	});
 
@@ -258,6 +301,29 @@ describe("App keyboard shortcuts", () => {
 				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed" } }));
 			});
 			expect(playTaskSound).toHaveBeenCalledWith("completed");
+		});
+	});
+
+	describe("New Window (Cmd+Shift+N)", () => {
+		it("Cmd+Shift+N opens a new window via openNewWindow", async () => {
+			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}{Shift>}n{/Shift}{/Meta}");
+			expect(api.request.openNewWindow).toHaveBeenCalled();
+		});
+
+		it("Cmd+Shift+N does not open the New Task modal", async () => {
+			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}{Shift>}n{/Shift}{/Meta}");
+			expect(screen.queryByText("New Task")).not.toBeInTheDocument();
+		});
+
+		it("Ctrl+Shift+N opens a new window", async () => {
+			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Control>}{Shift>}n{/Shift}{/Control}");
+			expect(api.request.openNewWindow).toHaveBeenCalled();
 		});
 	});
 

@@ -32,6 +32,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	showRemoteAccessQR: (payload) => window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: payload })),
 	qrTokenConsumed: () => window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed")),
 	menuAction: (payload) => window.dispatchEvent(new CustomEvent("rpc:menuAction", { detail: payload })),
+	showQuitDialog: () => window.dispatchEvent(new CustomEvent("rpc:showQuitDialog")),
 };
 
 /**
@@ -355,6 +356,19 @@ function initBrowserApi(): ApiShape {
 
 		async quitApp(): Promise<void> {
 			// No-op in browser
+		},
+
+		async requestQuit(): Promise<void> {
+			// No-op in browser — you don't quit the host app from a remote tab.
+		},
+
+		async consumePendingQuitDialog(): Promise<boolean> {
+			// Never pending in browser — the reopen-to-confirm flow is desktop-only.
+			return false;
+		},
+
+		async openNewWindow(): Promise<void> {
+			// No-op in browser — native desktop windows don't exist in a remote tab.
 		},
 	};
 

@@ -22,3 +22,7 @@ Documented the new global-header prevent-sleep toggle (`global_header.allowed`) 
 ## 2026-06-03 — TaskInfoPanel 4-bar 2×2 model
 
 Documented the inspector header as a 2×2 quickbar grid (Context / Session-Agent / Git / Runtime), one domain per bar, chrome pinned separately. Added `surfaces.task_info_panel.bar_model` to `ux-architecture.yaml`, a new bible §5.1, a UX decision, and updated the §9 budget + closed the related open question. Implemented the matching redistribution in `TaskInfoPanel.tsx` (dev-server + scripts moved to row-2-right; label strip truncates with `+k`).
+
+## 2026-06-03 — macOS dock-persistence + unified quit-confirmation modal
+
+Added a UX decision documenting `exitOnLastWindowClosed: false` (closing the last window keeps the app in the dock, reopened on dock-click) and the React quit-confirmation modal driven by the main-process `before-quit` gate, covering Cmd+Q (via `requestQuit`), menu Quit, and dock Quit. A window-less quit reopens a window that pulls the pending flag on mount to show the dialog reliably. Plus the Cmd+Shift+N New Window shortcut. No new visible buttons or tokens — conforms to the Modal surface and destructive-button-role policy. Decision records 044, 060, 061.

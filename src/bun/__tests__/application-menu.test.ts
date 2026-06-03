@@ -150,4 +150,15 @@ describe("buildApplicationMenu", () => {
 		expect(roles).toContain("cycleThroughWindows");
 		expect(roles).toContain("close");
 	});
+
+	it("adds File > New Window as the first item", () => {
+		const menu = buildApplicationMenu() as AnyMenuItem[];
+		const fileMenu = findLabeledMenu(menu, "File");
+		const first = fileMenu?.submenu?.[0] as { label?: string; action?: string };
+
+		expect(first).toMatchObject({
+			label: "New Window",
+			action: MENU_ACTIONS.newWindow,
+		});
+	});
 });

@@ -3854,6 +3854,76 @@ describe("handlers.quitApp", () => {
 		await handlers.quitApp();
 		expect(Utils.quit).toHaveBeenCalledOnce();
 	});
+
+	it("does not persist skipQuitDialog when dontShowAgain is absent", async () => {
+		await handlers.quitApp();
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it("persists skipQuitDialog=true when dontShowAgain is set", async () => {
+		await handlers.quitApp({ dontShowAgain: true });
+		expect(saveSettings).toHaveBeenCalledWith(
+			expect.objectContaining({ skipQuitDialog: true }),
+		);
+		expect(Utils.quit).toHaveBeenCalledOnce();
+	});
+});
+
+// ================================================================
+// handlers.requestQuit
+// ================================================================
+
+describe("handlers.requestQuit", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("triggers Utils.quit so the before-quit gate runs (renderer Cmd+Q path)", async () => {
+		await handlers.requestQuit();
+		expect(Utils.quit).toHaveBeenCalledOnce();
+	});
+
+	it("does not persist any setting or confirm the quit itself", async () => {
+		await handlers.requestQuit();
+		// requestQuit only starts the quit; confirmation/persistence happens in
+		// quitApp after the dialog. So no settings write here.
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// handlers.openNewWindow
+// ================================================================
+
+describe("handlers.openNewWindow", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("invokes the registered window-manager openNewWindow callback", async () => {
+		const wm = await import("../window-manager");
+		const spy = vi.fn();
+		wm.setOpenNewWindow(spy);
+		await handlers.openNewWindow();
+		expect(spy).toHaveBeenCalledOnce();
+		wm.setOpenNewWindow(() => {});
+	});
+});
+
+// ================================================================
+// handlers.consumePendingQuitDialog
+// ================================================================
+
+describe("handlers.consumePendingQuitDialog", () => {
+	it("returns true once when a quit is pending, then false", async () => {
+		const { markQuitDialogPending, __resetQuitConfirmedForTests } = await import("../quit-manager");
+		__resetQuitConfirmedForTests();
+		markQuitDialogPending();
+		expect(await handlers.consumePendingQuitDialog()).toBe(true);
+		expect(await handlers.consumePendingQuitDialog()).toBe(false);
+	});
+
+	it("returns false when nothing is pending", async () => {
+		const { __resetQuitConfirmedForTests } = await import("../quit-manager");
+		__resetQuitConfirmedForTests();
+		expect(await handlers.consumePendingQuitDialog()).toBe(false);
+	});
 });
 
 // ================================================================

@@ -7,7 +7,8 @@ import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRep
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { loadSettings } from "../settings";
+import { loadSettings, saveSettings } from "../settings";
+import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
@@ -24,11 +25,45 @@ async function updateMenuContext(params: MenuContext): Promise<void> {
 	});
 }
 
-async function quitApp(): Promise<void> {
-	log.info("→ quitApp (Cmd+Q from renderer)");
+async function quitApp(params?: { dontShowAgain?: boolean }): Promise<void> {
+	log.info("→ quitApp (confirmed by renderer)", { dontShowAgain: params?.dontShowAgain ?? false });
+	if (params?.dontShowAgain) {
+		const settings = await loadSettings();
+		await saveSettings({ ...settings, skipQuitDialog: true });
+	}
+	// Mark the quit as user-confirmed so the `before-quit` gate lets it through
+	// instead of re-asking.
+	markQuitConfirmed();
 	const { shutdownCaffeinate } = await import("../caffeinate");
 	shutdownCaffeinate();
 	Utils.quit();
+}
+
+// Renderer-initiated quit (Cmd+Q). WKWebView swallows the native menu Cmd+Q
+// accelerator when a terminal has focus, so the renderer catches the keystroke
+// itself and asks us to start the quit. We funnel it through `Utils.quit()` so
+// the single `before-quit` gate decides what to do — show the confirmation
+// dialog, or quit straight away if the user opted out (`skipQuitDialog`).
+async function requestQuit(): Promise<void> {
+	log.info("→ requestQuit (Cmd+Q from renderer)");
+	Utils.quit();
+}
+
+// A window reopened solely to host the quit dialog (the app was window-less in
+// the dock when a quit was requested) calls this on mount. Returns true once if
+// a quit is pending, so the renderer shows the confirmation dialog. Pulling on
+// mount avoids the race where a push fires before the renderer's listener is up.
+async function consumePendingQuitDialog(): Promise<boolean> {
+	return consumeQuitDialogPending();
+}
+
+// Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
+// accelerators don't support chord shortcuts (decision 044), so the menu "New
+// Window" item has no accelerator and the renderer drives the keyboard shortcut.
+async function openNewWindow(): Promise<void> {
+	log.info("→ openNewWindow (Cmd+Shift+N from renderer)");
+	const { openNewWindow: open } = await import("../window-manager");
+	open();
 }
 
 async function hideApp(): Promise<void> {
@@ -701,6 +736,9 @@ export const appHandlers = {
 	// TEMP DIAGNOSTIC: remove with logRendererEvent after terminal copy bug cleanup.
 	logRendererEvent,
 	quitApp,
+	requestQuit,
+	consumePendingQuitDialog,
+	openNewWindow,
 	hideApp,
 	showConfirm,
 	updateMenuContext,

@@ -240,6 +240,10 @@ interface PtySession {
 	batchTimer: ReturnType<typeof setTimeout> | null;
 	/** Partial OSC 52 clipboard sequence buffered across PTY chunks. */
 	osc52Buffer: string;
+	/** Size last applied to the shared PTY (min across all clients). Used to
+	 *  detect same-size resizes that need a forced redraw — see applyClientSizes. */
+	appliedCols?: number;
+	appliedRows?: number;
 }
 
 const sessions = new Map<string, PtySession>();
@@ -598,6 +602,81 @@ function checkForBell(data: string, taskId: string): void {
 	}
 }
 
+/**
+ * Resize the single shared PTY to the SMALLEST size requested across all
+ * currently connected clients.
+ *
+ * One PTY (one tmux attach client) is shared by every viewer of a session —
+ * multiple app windows on the same task, plus any remote/browser clients. The
+ * PTY can only be one size, so if two windows of different sizes each sent
+ * their own size we'd flip-flop (last write wins) and every window except the
+ * most recent one would render against the wrong geometry.
+ *
+ * Instead we clamp to the min cols and min rows independently — exactly how
+ * tmux negotiates a session shared by multiple real clients. The smallest
+ * viewer gets a perfect fit; larger viewers letterbox the content (blank
+ * margin on the right / bottom) which is the correct, stable behaviour.
+ *
+ * Each client's last requested size lives on the WS object (`ptyCols`/
+ * `ptyRows`); clients that haven't reported a size yet are ignored so a
+ * freshly-connected window doesn't shrink everyone to the 80x24 default before
+ * its real size arrives.
+ */
+/**
+ * Pure helper: given the sizes reported by each connected client, compute the
+ * geometry to apply to the shared PTY. We take the min cols and min rows
+ * independently (tmux's multi-client negotiation), so the smallest viewer fits
+ * exactly and larger viewers letterbox. Clients with no reported size yet
+ * (undefined / non-positive) are ignored. Returns null when nobody has a size.
+ */
+export function smallestClientSize(
+	sizes: ReadonlyArray<{ cols?: number; rows?: number }>,
+): { cols: number; rows: number } | null {
+	let minCols = Infinity;
+	let minRows = Infinity;
+	for (const { cols, rows } of sizes) {
+		if (typeof cols === "number" && cols > 0) minCols = Math.min(minCols, cols);
+		if (typeof rows === "number" && rows > 0) minRows = Math.min(minRows, rows);
+	}
+	if (minCols === Infinity || minRows === Infinity) return null;
+	return { cols: minCols, rows: minRows };
+}
+
+function applyClientSizes(session: PtySession): void {
+	const term = session.proc?.terminal as { resize(cols: number, rows: number): void } | undefined;
+	if (!term) return;
+	const target = smallestClientSize(
+		Array.from(session.clients, (c) => ({ cols: (c as any).ptyCols, rows: (c as any).ptyRows })),
+	);
+	if (!target) return;
+	const { cols: minCols, rows: minRows } = target;
+
+	if (session.appliedCols === minCols && session.appliedRows === minRows) {
+		// Target size is unchanged — typically a new, equal-or-larger viewer just
+		// connected. tmux does NOT emit a SIGWINCH / redraw for a same-size
+		// resize, so that viewer's freshly-mounted blank terminal would never get
+		// its initial paint. Force a full redraw with a one-row jiggle (same trick
+		// as the WKWebView resize nudge in window-manager.ts).
+		try {
+			term.resize(minCols, Math.max(1, minRows - 1));
+			setTimeout(() => {
+				try { term.resize(minCols, minRows); } catch { /* ignore */ }
+			}, 16);
+		} catch (err) {
+			log.debug("applyClientSizes jiggle failed", { error: String(err) });
+		}
+		return;
+	}
+
+	session.appliedCols = minCols;
+	session.appliedRows = minRows;
+	try {
+		term.resize(minCols, minRows);
+	} catch (err) {
+		log.debug("applyClientSizes resize failed", { error: String(err) });
+	}
+}
+
 /** Flush accumulated PTY data to all connected WebSocket clients in one batch. */
 function flushPendingData(session: PtySession): void {
 	session.batchTimer = null;
@@ -805,10 +884,16 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	}
 
 	session.proc = proc;
+	// Track the geometry the PTY was spawned with so applyClientSizes can tell a
+	// real size change from a same-size resize (which needs a forced redraw).
+	session.appliedCols = cols;
+	session.appliedRows = rows;
 
 	proc.exited.then((code) => {
 		log.info("PTY process exited", { taskId: shortId(session.taskId), exitCode: code });
 		session.proc = null;
+		session.appliedCols = undefined;
+		session.appliedRows = undefined;
 		onPtyDiedCallback?.(session.taskId);
 	}).catch((err) => {
 		log.error("PTY process .exited promise rejected", {
@@ -992,14 +1077,15 @@ const ptyServer = Bun.serve({
 						? message
 						: new TextDecoder().decode(message);
 
-				// Handle resize messages
+				// Handle resize messages. Record this client's requested size and
+				// resize the shared PTY to the smallest across all clients, so
+				// multiple windows on the same task don't fight over the geometry.
 				if (data.startsWith("\x1b]resize;")) {
 					const match = data.match(/\x1b\]resize;(\d+);(\d+)\x07/);
 					if (match) {
-						session.proc.terminal.resize(
-							Number(match[1]),
-							Number(match[2]),
-						);
+						(ws as any).ptyCols = Number(match[1]);
+						(ws as any).ptyRows = Number(match[2]);
+						applyClientSizes(session);
 					}
 					return;
 				}
@@ -1023,6 +1109,9 @@ const ptyServer = Bun.serve({
 				if (session) {
 					// Remove this client — don't kill the PTY
 					session.clients.delete(ws as any);
+					// A viewer left: the smallest-size constraint may have relaxed,
+					// so grow the PTY back to the smallest of the remaining clients.
+					applyClientSizes(session);
 				}
 			} catch (err) {
 				log.error("WS close handler error", {

@@ -33,8 +33,6 @@ import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
 
-const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
-
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
@@ -81,6 +79,34 @@ function App() {
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);
+
+	// The bun `before-quit` gate asks us to confirm before the app actually quits
+	// (Cmd+Q, menu Quit, dock Quit). We just open the dialog; the real quit
+	// happens when the user confirms via `quitApp`.
+	useEffect(() => {
+		function onShowQuitDialog() {
+			setDontShowAgain(false);
+			setShowQuitDialog(true);
+		}
+		window.addEventListener("rpc:showQuitDialog", onShowQuitDialog);
+		return () => window.removeEventListener("rpc:showQuitDialog", onShowQuitDialog);
+	}, []);
+
+	// If this window was reopened solely to host the quit dialog (a quit was
+	// requested while the app sat window-less in the dock), pull the pending flag
+	// on mount and show the dialog. Pulling (rather than the gate pushing) avoids
+	// racing this window's not-yet-registered `rpc:showQuitDialog` listener.
+	useEffect(() => {
+		api.request
+			.consumePendingQuitDialog()
+			.then((pending) => {
+				if (pending) {
+					setDontShowAgain(false);
+					setShowQuitDialog(true);
+				}
+			})
+			.catch(() => {});
+	}, []);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -210,18 +236,25 @@ function App() {
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
-			if ((e.metaKey || e.ctrlKey) && e.key === "q") {
+			if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
+				// WKWebView swallows the native menu Cmd+Q accelerator while a
+				// terminal has focus, so we catch it here (capture phase) and ask
+				// the main process to start the quit. The `before-quit` gate then
+				// pushes `showQuitDialog` back, or quits if the user opted out.
 				e.preventDefault();
 				e.stopPropagation();
-				if (localStorage.getItem(SKIP_QUIT_DIALOG_KEY) === "true") {
-					api.request.quitApp().catch(() => {});
-				} else {
-					setShowQuitDialog(true);
-				}
+				api.request.requestQuit().catch(() => {});
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+				// Cmd+Shift+N — open a new window (the native menu item has no
+				// accelerator because Electrobun can't bind chord shortcuts; see
+				// decision 044). Cmd+N (no shift) opens a new task instead.
+				e.preventDefault();
+				e.stopPropagation();
+				api.request.openNewWindow().catch(() => {});
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
 				if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
 				if (!openCreateTaskModal()) return;
@@ -285,10 +318,7 @@ function App() {
 	);
 
 	function handleConfirmQuit() {
-		if (dontShowAgain) {
-			localStorage.setItem(SKIP_QUIT_DIALOG_KEY, "true");
-		}
-		api.request.quitApp().catch(() => {});
+		api.request.quitApp({ dontShowAgain }).catch(() => {});
 	}
 
 	// Check gh availability after requirements pass (non-blocking)
