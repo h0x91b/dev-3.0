@@ -28,6 +28,27 @@ import { api } from "../../rpc";
 
 const mockedApi = vi.mocked(api, true);
 
+/** Stub window.matchMedia so the compact breakpoint is deterministic in tests. */
+function mockMatchMedia(matches: boolean) {
+	Object.defineProperty(window, "matchMedia", {
+		writable: true,
+		configurable: true,
+		value: vi.fn((query: string) => ({
+			matches,
+			media: query,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		})),
+	});
+}
+
+// Default to the roomy layout (labels visible). happy-dom's default viewport is
+// 1024px, which would otherwise trip the compact breakpoint and hide labels.
+beforeEach(() => mockMatchMedia(false));
+
 const project1: Project = {
 	id: "p1",
 	name: "Project Alpha",
@@ -565,5 +586,44 @@ describe("GlobalHeader — project terminal button", () => {
 			screen: "project",
 			projectId: "p1",
 		});
+	});
+});
+
+describe("GlobalHeader — compact layout", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("hides button text labels when the viewport is narrow", () => {
+		mockMatchMedia(true);
+		renderHeader({ screen: "project", projectId: "p1" });
+		// Buttons stay reachable by title, but their text labels collapse away.
+		expect(screen.getByTitle("Project Terminal (⌘`)")).toBeInTheDocument();
+		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();
+		expect(screen.queryByText("Report")).not.toBeInTheDocument();
+		expect(screen.queryByText("Change Log")).not.toBeInTheDocument();
+	});
+
+	it("folds external actions into an overflow menu when narrow", async () => {
+		mockMatchMedia(true);
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
+
+		const more = screen.getByTitle("More");
+		expect(more).toBeInTheDocument();
+
+		await user.click(more);
+		const changelogItem = screen.getByText("Change Log");
+		await user.click(changelogItem);
+		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
+	});
+
+	it("keeps labels and shows no overflow menu when roomy", () => {
+		mockMatchMedia(false);
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.getByText("Change Log")).toBeInTheDocument();
+		expect(screen.queryByTitle("More")).not.toBeInTheDocument();
 	});
 });
