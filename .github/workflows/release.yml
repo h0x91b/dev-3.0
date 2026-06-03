@@ -429,11 +429,38 @@ jobs:
 
           rm -rf /tmp/homebrew-dev3
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/h0x91b/homebrew-dev3.git" /tmp/homebrew-dev3
+          mkdir -p /tmp/homebrew-dev3/Casks
+
+          # Regenerate the full cask each release (instead of sed-ing
+          # version/sha256). This keeps `depends_on` and other metadata under
+          # version control in this repo's release.yml — single source of truth.
+          cat > /tmp/homebrew-dev3/Casks/dev3.rb <<EOF
+          cask "dev3" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/h0x91b/dev-3.0/releases/download/v#{version}/stable-macos-arm64-dev-3.0.dmg"
+            name "dev-3.0"
+            desc "Terminal-centric project manager for AI coding agents"
+            homepage "https://h0x91b.github.io/dev-3.0/"
+
+            depends_on arch: :arm64
+            depends_on macos: ">= :ventura"
+            depends_on formula: "git"
+            depends_on formula: "tmux"
+            depends_on formula: "cloudflared"
+
+            app "dev-3.0.app"
+
+            zap trash: [
+              "~/Library/Application Support/dev3.electrobun.dev",
+              "~/Library/Preferences/dev3.electrobun.dev.plist",
+              "~/Library/Caches/dev3.electrobun.dev",
+            ]
+          end
+          EOF
+
           cd /tmp/homebrew-dev3
-
-          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/dev3.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/dev3.rb
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/dev3.rb

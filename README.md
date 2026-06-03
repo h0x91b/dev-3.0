@@ -93,7 +93,7 @@ brew tap h0x91b/dev3
 brew install --cask dev3
 ```
 
-Auto-installs the required `git` and `tmux` dependencies.
+Auto-installs the required `git`, `tmux`, and `cloudflared` dependencies (the last one powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal).
 
 ```sh
 brew upgrade --cask dev3   # update
@@ -102,7 +102,7 @@ brew uninstall --cask dev3 # remove
 
 #### Manual download
 
-Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git` and `tmux` are installed.
+Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git`, `tmux`, and `cloudflared` are installed (`brew install cloudflared` for the public-tunnel feature; safe to skip if you don't need it).
 
 Apple Silicon and Intel are both supported. Windows is on the roadmap.
 
