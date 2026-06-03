@@ -7,7 +7,7 @@ import Electrobun, {
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
-import { isQuitConfirmed } from "./quit-manager";
+import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { getShellRcFile, getUserShell, resolveShellEnv } from "./shell-env";
@@ -20,7 +20,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
-import { createAppWindow, broadcastToAllWindows, getFocusedWindow, sendToFocusedWindow, setOpenNewWindow } from "./window-manager";
+import { createAppWindow, broadcastToAllWindows, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow } from "./window-manager";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
@@ -460,12 +460,16 @@ function runGlobalQuitCleanup(): void {
 // window (red X / Cmd+W), updater restart, signals. Fires once per attempt.
 //
 // Unless the user already confirmed (via the React dialog → `quitApp`) or opted
-// out (`skipQuitDialog`), we cancel the quit and ask the focused window to show
-// the confirmation dialog. The actual teardown + exit happens on the second
-// pass, once `quitApp` has set the confirmed flag.
+// out (`skipQuitDialog`), we cancel the quit and ask the renderer to show the
+// confirmation dialog. The actual teardown + exit happens on the second pass,
+// once `quitApp` has set the confirmed flag.
 //
-// If no window is open (the user closed the last one with the X), we don't
-// reopen a window just to ask — we treat it as a deliberate quit and allow it.
+// With `exitOnLastWindowClosed: false`, closing the last window keeps the app
+// alive in the dock — it does NOT trigger a quit. So a quit here is always
+// deliberate (Cmd+Q, menu Quit, dock Quit). If a window is open we push the
+// dialog to it; if none is (the app was sitting window-less in the dock) we
+// reopen one and let it PULL the pending flag on mount — a push would race the
+// not-yet-mounted renderer and get lost.
 Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 	if (isQuitConfirmed()) {
 		runGlobalQuitCleanup();
@@ -482,24 +486,19 @@ Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 		return;
 	}
 
-	// If the last window is already gone (user closed it with the red X, which
-	// Electrobun turns into a quit via `exitOnLastWindowClosed`), there is no
-	// renderer left to host the dialog. The native window-close is not
-	// interceptable, so the only way to show a dialog would be to reopen a window
-	// — which flashes and raced the renderer mount. Instead we treat closing the
-	// last window as a deliberate quit and let it through. The confirmation stays
-	// on the explicit quit paths that DO have a window: Cmd+Q (renderer →
-	// requestQuit), the menu Quit item, and dock Quit.
-	if (!getFocusedWindow()) {
-		log.info("Quit with no window open — allowing (last window closed)");
-		runGlobalQuitCleanup();
-		return;
-	}
-
-	// Cancel this quit and ask the focused window for confirmation.
+	// Cancel this quit and ask for confirmation.
 	e.response = { allow: false };
-	log.info("Quit intercepted — asking renderer to confirm");
-	sendToFocusedWindow("showQuitDialog");
+
+	if (getFocusedWindow()) {
+		log.info("Quit intercepted — asking the focused window to confirm");
+		sendToFocusedWindow("showQuitDialog");
+	} else {
+		// App is window-less in the dock. Reopen a window to host the dialog;
+		// it pulls the pending flag on mount (see quit-manager).
+		log.info("Quit intercepted with no window — reopening one to confirm");
+		markQuitDialogPending();
+		void openMainWindow();
+	}
 });
 
 // Click-to-open for watched-task notifications.
@@ -525,7 +524,17 @@ function tryNavigateFromRecentNotification(source: string): void {
 	sendToFocusedWindow("openTaskFromNotification", recent);
 }
 
-Electrobun.events.on("reopen", () => tryNavigateFromRecentNotification("app-reopen"));
+Electrobun.events.on("reopen", () => {
+	// With `exitOnLastWindowClosed: false` the app can sit window-less in the
+	// dock. A dock-icon click (reopen) should bring a window back, like any mac
+	// app. If a window already exists, treat it as a notification-activation.
+	if (getWindowCount() === 0) {
+		log.info("Reopen with no window — opening a fresh window");
+		void openMainWindow();
+		return;
+	}
+	tryNavigateFromRecentNotification("app-reopen");
+});
 
 // Helper to push update progress to the renderer
 const sendUpdateProgress = (status: string, progress?: number) => {

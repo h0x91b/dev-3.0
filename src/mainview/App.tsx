@@ -81,8 +81,8 @@ function App() {
 	const [dontShowAgain, setDontShowAgain] = useState(false);
 
 	// The bun `before-quit` gate asks us to confirm before the app actually quits
-	// (Cmd+Q, menu Quit, or closing the last window). We just open the dialog;
-	// the real quit happens when the user confirms via `quitApp`.
+	// (Cmd+Q, menu Quit, dock Quit). We just open the dialog; the real quit
+	// happens when the user confirms via `quitApp`.
 	useEffect(() => {
 		function onShowQuitDialog() {
 			setDontShowAgain(false);
@@ -90,6 +90,22 @@ function App() {
 		}
 		window.addEventListener("rpc:showQuitDialog", onShowQuitDialog);
 		return () => window.removeEventListener("rpc:showQuitDialog", onShowQuitDialog);
+	}, []);
+
+	// If this window was reopened solely to host the quit dialog (a quit was
+	// requested while the app sat window-less in the dock), pull the pending flag
+	// on mount and show the dialog. Pulling (rather than the gate pushing) avoids
+	// racing this window's not-yet-registered `rpc:showQuitDialog` listener.
+	useEffect(() => {
+		api.request
+			.consumePendingQuitDialog()
+			.then((pending) => {
+				if (pending) {
+					setDontShowAgain(false);
+					setShowQuitDialog(true);
+				}
+			})
+			.catch(() => {});
 	}, []);
 
 	// Silent update indicator

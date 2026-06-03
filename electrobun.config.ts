@@ -6,6 +6,14 @@ export default {
 		identifier: "dev3.electrobun.dev",
 		version: "1.17.2",
 	},
+	runtime: {
+		// Standard macOS behavior: closing the last window does NOT quit the app —
+		// it stays alive in the dock and is reopened via the `reopen` event.
+		// Quitting goes through the `before-quit` gate (Cmd+Q / menu / dock Quit);
+		// if no window is open at that point we reopen one to host the React quit
+		// confirmation dialog.
+		exitOnLastWindowClosed: false,
+	},
 	release: {
 		baseUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0",
 	},

@@ -8,7 +8,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
-import { markQuitConfirmed } from "../quit-manager";
+import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
@@ -47,6 +47,14 @@ async function quitApp(params?: { dontShowAgain?: boolean }): Promise<void> {
 async function requestQuit(): Promise<void> {
 	log.info("→ requestQuit (Cmd+Q from renderer)");
 	Utils.quit();
+}
+
+// A window reopened solely to host the quit dialog (the app was window-less in
+// the dock when a quit was requested) calls this on mount. Returns true once if
+// a quit is pending, so the renderer shows the confirmation dialog. Pulling on
+// mount avoids the race where a push fires before the renderer's listener is up.
+async function consumePendingQuitDialog(): Promise<boolean> {
+	return consumeQuitDialogPending();
 }
 
 // Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
@@ -729,6 +737,7 @@ export const appHandlers = {
 	logRendererEvent,
 	quitApp,
 	requestQuit,
+	consumePendingQuitDialog,
 	openNewWindow,
 	hideApp,
 	showConfirm,

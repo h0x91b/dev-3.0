@@ -3907,6 +3907,26 @@ describe("handlers.openNewWindow", () => {
 });
 
 // ================================================================
+// handlers.consumePendingQuitDialog
+// ================================================================
+
+describe("handlers.consumePendingQuitDialog", () => {
+	it("returns true once when a quit is pending, then false", async () => {
+		const { markQuitDialogPending, __resetQuitConfirmedForTests } = await import("../quit-manager");
+		__resetQuitConfirmedForTests();
+		markQuitDialogPending();
+		expect(await handlers.consumePendingQuitDialog()).toBe(true);
+		expect(await handlers.consumePendingQuitDialog()).toBe(false);
+	});
+
+	it("returns false when nothing is pending", async () => {
+		const { __resetQuitConfirmedForTests } = await import("../quit-manager");
+		__resetQuitConfirmedForTests();
+		expect(await handlers.consumePendingQuitDialog()).toBe(false);
+	});
+});
+
+// ================================================================
 // handlers.hideApp
 // ================================================================
 

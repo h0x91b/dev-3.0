@@ -12,6 +12,7 @@ vi.mock("../rpc", () => ({
 			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			requestQuit: vi.fn().mockResolvedValue(undefined),
+			consumePendingQuitDialog: vi.fn().mockResolvedValue(false),
 			openNewWindow: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
@@ -144,6 +145,18 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
+		});
+
+		it("shows the dialog on mount when a quit is pending (reopened window)", async () => {
+			vi.mocked(api.request.consumePendingQuitDialog).mockResolvedValueOnce(true);
+			await renderApp();
+			expect(await screen.findByText("Sessions keep running")).toBeInTheDocument();
+		});
+
+		it("does not show the dialog on mount when no quit is pending", async () => {
+			vi.mocked(api.request.consumePendingQuitDialog).mockResolvedValueOnce(false);
+			await renderApp();
+			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
 		});
 
 		it("Cmd+Q forwards to bun via requestQuit (no native accelerator reliance)", async () => {

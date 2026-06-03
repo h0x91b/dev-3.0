@@ -16,7 +16,26 @@ export function isQuitConfirmed(): boolean {
 	return quitConfirmed;
 }
 
+// Set when a quit was requested while NO window was open (app lives in the dock
+// after the last window closed — see `exitOnLastWindowClosed: false`). The gate
+// cancels that quit and reopens a window; the reopened renderer PULLS this flag
+// on mount (a push would race the not-yet-mounted listener and get lost) and
+// shows the confirmation dialog.
+let quitDialogPending = false;
+
+export function markQuitDialogPending(): void {
+	quitDialogPending = true;
+}
+
+/** Read and clear the pending flag — the reopened renderer calls this on mount. */
+export function consumeQuitDialogPending(): boolean {
+	const was = quitDialogPending;
+	quitDialogPending = false;
+	return was;
+}
+
 /** Test-only: reset between cases. */
 export function __resetQuitConfirmedForTests(): void {
 	quitConfirmed = false;
+	quitDialogPending = false;
 }

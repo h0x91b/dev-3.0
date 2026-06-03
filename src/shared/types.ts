@@ -1348,6 +1348,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			consumePendingQuitDialog: {
+				params: void;
+				response: boolean;
+			};
 			openNewWindow: {
 				params: void;
 				response: void;
