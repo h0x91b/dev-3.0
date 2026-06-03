@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
+import { toast } from "../toast";
 import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskStatus, TipState } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
@@ -223,7 +224,7 @@ function KanbanBoard({
 		} catch (err) {
 			// Revert optimistic update on failure
 			dispatch({ type: "updateTask", task });
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 		} finally {
 			setMovingTaskIds((prev) => {
 				const next = new Set(prev);
@@ -254,7 +255,7 @@ function KanbanBoard({
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
 			dispatch({ type: "updateTask", task });
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 		} finally {
 			setMovingTaskIds((prev) => {
 				const next = new Set(prev);
@@ -433,7 +434,7 @@ function KanbanBoard({
 			.filter((c): c is CustomColumn => c !== undefined);
 		dispatch({ type: "updateProject", project: { ...project, customColumns: reorderedCustom, columnOrder: newOrder } });
 		api.request.reorderColumns({ projectId: project.id, columnOrder: newOrder }).catch((err) => {
-			alert(`Failed to reorder columns: ${String(err)}`);
+			toast.error(t("kanban.failedReorderColumns", { error: String(err) }));
 		});
 	}
 

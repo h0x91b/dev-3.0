@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { TerminalPreviewState } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
@@ -101,7 +102,7 @@ function TerminalPreviewPopover({
 			}
 			setEditing(false);
 		} catch (err) {
-			alert(t("overview.saveFailed", { error: String(err) }));
+			toast.error(t("overview.saveFailed", { error: String(err) }));
 		}
 		setSaving(false);
 	}, [taskId, projectId, value, effectiveOverview, aiOverview, t]);
@@ -114,7 +115,7 @@ function TerminalPreviewPopover({
 			setEditing(false);
 			setValue("");
 		} catch (err) {
-			alert(t("overview.saveFailed", { error: String(err) }));
+			toast.error(t("overview.saveFailed", { error: String(err) }));
 		}
 		setSaving(false);
 	}, [taskId, projectId, t]);

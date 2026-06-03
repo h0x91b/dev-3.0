@@ -48,12 +48,18 @@ vi.mock("../../utils/confirmTaskCompletion", () => ({
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
 	ConfirmHost: () => null,
+}));
+
+vi.mock("../../toast", () => ({
+	toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+	ToastHost: () => null,
 }));
 
 const mockedApi = vi.mocked(api, true);
@@ -591,7 +597,7 @@ describe("TaskInfoPanel", () => {
 		it("shows alert when both move attempts fail", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const task = makeTask({ status: "in-progress" });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 
 			mockedApi.request.moveTask
 				.mockRejectedValueOnce(new Error("fail1"))
@@ -762,7 +768,7 @@ describe("TaskInfoPanel", () => {
 		it("shows alert when add note fails", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.addTaskNote.mockRejectedValue(new Error("network error"));
 
 			await act(async () => {
@@ -778,7 +784,7 @@ describe("TaskInfoPanel", () => {
 		it("shows alert when delete note fails", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.deleteTaskNote.mockRejectedValue(new Error("oops"));
 
 			await act(async () => {
@@ -919,7 +925,7 @@ describe("TaskInfoPanel", () => {
 
 		it("shows alert when dev server fails", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
 			mockedApi.request.runDevServer.mockRejectedValue(new Error("port busy"));
 
@@ -1359,7 +1365,7 @@ describe("TaskInfoPanel", () => {
 
 			it("shows alert on rebase failure", async () => {
 				const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-				const alertSpy = vi.fn(); window.alert = alertSpy;
+				const alertSpy = vi.mocked(toast.error);
 				mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				behind: 2,
@@ -1381,7 +1387,7 @@ describe("TaskInfoPanel", () => {
 
 		it("shows alert on push failure", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 1,
@@ -1402,7 +1408,7 @@ describe("TaskInfoPanel", () => {
 
 		it("shows alert on merge failure", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 1,
@@ -1893,11 +1899,10 @@ describe("TaskInfoPanel", () => {
 		it("keeps the optimistic completion when both background completion RPC attempts fail", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
-			const alertSpy = vi.fn();
+			const alertSpy = vi.mocked(toast.error);
 			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 			const task = makeTask({ status: "review-by-user" });
 
-			window.alert = alertSpy;
 			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask
 				.mockRejectedValueOnce(new Error("primary failure"))

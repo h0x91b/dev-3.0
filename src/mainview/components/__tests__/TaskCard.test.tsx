@@ -55,12 +55,18 @@ vi.mock("../LabelPicker", () => ({
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
 	ConfirmHost: () => null,
+}));
+
+vi.mock("../../toast", () => ({
+	toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+	ToastHost: () => null,
 }));
 
 const mockedApi = vi.mocked(api, true);
@@ -173,8 +179,6 @@ describe("TaskCard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedConfirmTaskCompletion.mockResolvedValue(true);
-		// happy-dom doesn't define window.alert
-		window.alert = vi.fn();
 	});
 
 	describe("variant badge", () => {
@@ -906,7 +910,7 @@ describe("TaskCard", () => {
 			await user.click(screen.getByText("Agent is Working"));
 
 			await waitFor(() => {
-				expect(window.alert).toHaveBeenCalledWith(expect.stringContaining("second"));
+				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("second"));
 			});
 		});
 
@@ -959,7 +963,7 @@ describe("TaskCard", () => {
 			await user.click(screen.getByTitle("Delete"));
 
 			await waitFor(() => {
-				expect(window.alert).toHaveBeenCalledWith(expect.stringContaining("delete failed"));
+				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("delete failed"));
 			});
 		});
 	});

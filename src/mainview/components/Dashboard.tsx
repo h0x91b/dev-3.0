@@ -1,4 +1,5 @@
 import type { Dispatch } from "react";
+import { toast } from "../toast";
 import type { Project } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -30,7 +31,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 			dispatch({ type: "removeProject", projectId });
 			trackEvent("project_removed", { project_id: projectId });
 		} catch (err) {
-			alert(t("dashboard.failedRemove", { error: String(err) }));
+			toast.error(t("dashboard.failedRemove", { error: String(err) }));
 		}
 	}
 
@@ -43,7 +44,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 			trackEvent("projects_reordered", { project_count: projectIds.length });
 		} catch (err) {
 			dispatch({ type: "setProjects", projects: previousProjects });
-			alert(t("dashboard.failedReorder", { error: String(err) }));
+			toast.error(t("dashboard.failedReorder", { error: String(err) }));
 		}
 	}
 

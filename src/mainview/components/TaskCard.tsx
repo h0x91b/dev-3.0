@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
+import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, PortInfo, PreparingStage, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
@@ -246,7 +247,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				if (isTerminal) {
 					dispatch({ type: "updateTask", task });
 				}
-				alert(t("task.failedMove", { error: String(retryErr) }));
+				toast.error(t("task.failedMove", { error: String(retryErr) }));
 			}
 		}
 		if (isTerminal) {
@@ -269,7 +270,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onTaskMoved(task.id);
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
 		} catch (err) {
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 		}
 		setMoving(false);
 	}
@@ -290,7 +291,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			dispatch({ type: "removeTask", taskId: task.id });
 			trackEvent("task_deleted", { project_id: project.id });
 		} catch (err) {
-			alert(t("task.failedDelete", { error: String(err) }));
+			toast.error(t("task.failedDelete", { error: String(err) }));
 		}
 	}
 
@@ -305,7 +306,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 			setCancellingPreparation(false);
 			return;
 		}

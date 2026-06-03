@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
+import { toast } from "../toast";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -79,7 +80,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			trackEvent("task_edited", { project_id: project.id });
 			setIsEditing(false);
 		} catch (err) {
-			alert(t("task.failedEdit", { error: String(err) }));
+			toast.error(t("task.failedEdit", { error: String(err) }));
 		}
 		setSaving(false);
 	}
@@ -107,7 +108,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			trackEvent("task_renamed", { project_id: project.id });
 			setIsRenaming(false);
 		} catch (err) {
-			alert(t("task.failedRename", { error: String(err) }));
+			toast.error(t("task.failedRename", { error: String(err) }));
 		}
 		setRenameSaving(false);
 	}
@@ -123,7 +124,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			dispatch({ type: "updateTask", task: updated });
 			setIsRenaming(false);
 		} catch (err) {
-			alert(t("task.failedRename", { error: String(err) }));
+			toast.error(t("task.failedRename", { error: String(err) }));
 		}
 		setRenameSaving(false);
 	}
@@ -161,7 +162,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
 			onClose();
 		} catch (err) {
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 		}
 		setMovingStatus(false);
 	}
@@ -191,7 +192,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
 				onClose();
 			} catch (retryErr) {
-				alert(t("task.failedMove", { error: String(retryErr) }));
+				toast.error(t("task.failedMove", { error: String(retryErr) }));
 			}
 		}
 		setMovingStatus(false);
@@ -209,7 +210,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("notes.failedAdd", { error: String(err) }));
+			toast.error(t("notes.failedAdd", { error: String(err) }));
 		}
 	}
 
@@ -236,7 +237,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("notes.failedDelete", { error: String(err) }));
+			toast.error(t("notes.failedDelete", { error: String(err) }));
 		}
 	}
 

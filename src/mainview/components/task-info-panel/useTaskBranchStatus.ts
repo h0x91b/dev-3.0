@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
+import { toast } from "../../toast";
 import {
 	type BranchStatus,
 	type Project,
@@ -189,7 +190,7 @@ export function useTaskBranchStatus({
 				autoMerge,
 			});
 		} catch (err) {
-			alert(t("infoPanel.createPRFailed", { error: String(err) }));
+			toast.error(t("infoPanel.createPRFailed", { error: String(err) }));
 		}
 		setCreatingPR(false);
 	}, [creatingPR, project.id, task.id, t]);
@@ -273,7 +274,7 @@ export function useTaskBranchStatus({
 				compareRef: compareRef || undefined,
 			});
 		} catch (err) {
-			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
+			toast.error(t("infoPanel.rebaseFailed", { error: String(err) }));
 		}
 		setRebasing(false);
 	}, [compareRef, project.id, rebasing, task.id, t]);
@@ -290,7 +291,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 			});
 		} catch (err) {
-			alert(t("infoPanel.mergeFailed", { error: String(err) }));
+			toast.error(t("infoPanel.mergeFailed", { error: String(err) }));
 		}
 		setMerging(false);
 	}, [merging, project.id, task.id, t]);
@@ -307,7 +308,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 			});
 		} catch (err) {
-			alert(t("infoPanel.pushFailed", { error: String(err) }));
+			toast.error(t("infoPanel.pushFailed", { error: String(err) }));
 		}
 		setPushing(false);
 	}, [project.id, pushing, task.id, t]);

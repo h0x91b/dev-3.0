@@ -6,6 +6,7 @@ import {
 	type Dispatch,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "../toast";
 import type { Label, Project, Task } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -112,7 +113,7 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("labels.failedSetLabels", { error: String(err) }));
+			toast.error(t("labels.failedSetLabels", { error: String(err) }));
 		}
 		setSaving(false);
 	}
@@ -141,7 +142,7 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 			dispatch({ type: "updateTask", task: updated });
 			setQuery("");
 		} catch (err) {
-			alert(t("labels.failedCreate", { error: String(err) }));
+			toast.error(t("labels.failedCreate", { error: String(err) }));
 		}
 		setSaving(false);
 	}

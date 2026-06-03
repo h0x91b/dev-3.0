@@ -283,3 +283,10 @@ body, #root {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
+
+/* ---- Toast auto-dismiss progress bar ---- */
+
+@keyframes toast-shrink {
+	from { width: 100%; }
+	to { width: 0%; }
+}

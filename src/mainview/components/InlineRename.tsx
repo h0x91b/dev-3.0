@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { toast } from "../toast";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import { useT } from "../i18n";
@@ -58,7 +59,7 @@ export default function InlineRename({
 			trackEvent("task_renamed", { project_id: projectId });
 			setEditing(false);
 		} catch (err) {
-			alert(t("task.failedRename", { error: String(err) }));
+			toast.error(t("task.failedRename", { error: String(err) }));
 		}
 		setSaving(false);
 		savingRef.current = false;

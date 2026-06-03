@@ -24,7 +24,7 @@ import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBan
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ViewportLab from "./components/ViewportLab";
-import { ErrorToast } from "./components/ErrorToast";
+import { ToastHost, toast } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
@@ -565,10 +565,9 @@ function App() {
 				columnName: string;
 				error: string;
 			};
-			// Simple alert — the task is parked in the target column with no running agent.
-			// Use alert() to make the failure impossible to miss; the user can then relaunch
-			// the agent by moving the task out and back in, or fix the column config.
-			alert(`Column agent failed to launch for "${columnName}":\n${error}`);
+			// The task is parked in the target column with no running agent; surface the
+			// failure so the user can relaunch (move out and back in) or fix the column config.
+			toast.error(t("kanban.columnAgentFailed", { columnName, error }));
 		}
 		window.addEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
 		return () => window.removeEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
@@ -1056,7 +1055,7 @@ function App() {
 					</div>
 				</div>
 			)}
-			<ErrorToast />
+			<ToastHost />
 			<StuckPreparationPopover tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
 			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
