@@ -9,6 +9,23 @@ interface TaskExposedPortsProps {
 	task: Task;
 }
 
+/** Tiny inline spinner matching the design-token palette — use inside small
+    buttons for async actions (Expose / Stop / shared toggle). */
+function Spinner() {
+	return (
+		<svg
+			className="w-3 h-3 animate-spin"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			aria-hidden="true"
+		>
+			<circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
+			<path d="M21 12a9 9 0 00-9-9" strokeWidth="3" strokeLinecap="round" />
+		</svg>
+	);
+}
+
 /**
  * Toolbar button + dropdown menu for the task's allocated dev-server ports
  * (`$DEV3_PORT0..N` slots from `project.portCount`). Each slot can be shared
@@ -64,17 +81,19 @@ export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
 			<button
 				ref={btnRef}
 				onClick={openMenu}
-				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 border ${
 					activeCount > 0
-						? "text-accent bg-accent/10 hover:bg-accent/20"
-						: "text-fg-3 hover:text-fg hover:bg-elevated"
+						? "text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
+						: "text-fg-2 border-edge hover:bg-elevated hover:text-fg"
 				}`}
 				title={t("tunnel.exposedPortsSection")}
 			>
-				<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-						d="M4 7h11.5a3.5 3.5 0 010 7H8.5a3.5 3.5 0 100 7H20" />
-				</svg>
+				<span
+					className="text-[1.125rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{"\u{F1087}"}
+				</span>
 				<span className="text-[0.6875rem] font-semibold">
 					{activeCount > 0 ? `${t("tunnel.portsLabel")} (${activeCount})` : t("tunnel.portsLabel")}
 				</span>
@@ -111,18 +130,11 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 	const [toast, setToast] = useState<string | null>(null);
 
 	useEffect(() => {
-		function handleClick(event: MouseEvent) {
-			if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose();
-		}
 		function handleKey(event: KeyboardEvent) {
 			if (event.key === "Escape") onClose();
 		}
-		document.addEventListener("mousedown", handleClick);
 		document.addEventListener("keydown", handleKey);
-		return () => {
-			document.removeEventListener("mousedown", handleClick);
-			document.removeEventListener("keydown", handleKey);
-		};
+		return () => document.removeEventListener("keydown", handleKey);
 	}, [onClose]);
 
 	useLayoutEffect(() => {
@@ -201,12 +213,17 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 	}
 
 	return (
-		<div
-			ref={menuRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1 w-[22rem] max-h-[28rem] overflow-y-auto"
-			style={{ top: menuPos.top, left: menuPos.left, visibility: visible ? "visible" : "hidden" }}
-			onClick={(event) => event.stopPropagation()}
-		>
+		<>
+			{/* Transparent backdrop — any click outside the menu closes it.
+			    More reliable than document-mousedown listeners across portal
+			    boundaries, and matches how OS popovers behave. */}
+			<div className="fixed inset-0 z-40" onClick={onClose} />
+			<div
+				ref={menuRef}
+				className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1 w-[22rem] max-h-[28rem] overflow-y-auto"
+				style={{ top: menuPos.top, left: menuPos.left, visibility: visible ? "visible" : "hidden" }}
+				onClick={(event) => event.stopPropagation()}
+			>
 			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold border-b border-edge">
 				{t("tunnel.exposedPortsSection")}
 			</div>
@@ -225,15 +242,18 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 								<div className="flex items-center gap-1 flex-shrink-0">
 									{tunnel ? (
 										tunnel.state === "starting" ? (
-											<span className="text-xs text-fg-3 px-2 py-1">{t("tunnel.starting")}</span>
+											<span className="text-xs text-fg-3 px-2 py-1 inline-flex items-center gap-1.5">
+												<Spinner /> {t("tunnel.starting")}
+											</span>
 										) : tunnel.state === "failed" ? (
 											<span className="text-xs text-danger px-2 py-1">{t("tunnel.failed")}</span>
 										) : (
 											<button
 												onClick={() => handleUnexpose(port)}
 												disabled={isBusy}
-												className="text-xs text-danger hover:bg-danger/10 px-2 py-1 rounded"
+												className="text-xs text-danger border border-danger/30 hover:bg-danger/10 px-2 py-1 rounded inline-flex items-center gap-1.5 disabled:opacity-60"
 											>
+												{isBusy && <Spinner />}
 												{t("tunnel.stopExposing")}
 											</button>
 										)
@@ -241,9 +261,10 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 										<button
 											onClick={() => handleExpose(port)}
 											disabled={isBusy}
-											className="text-xs text-accent bg-accent/10 hover:bg-accent/20 px-2 py-1 rounded"
+											className="text-xs text-accent border border-accent/40 bg-accent/10 hover:bg-accent/20 px-2 py-1 rounded inline-flex items-center gap-1.5 disabled:opacity-60"
 										>
-											{t("tunnel.exposeViaCloudflare")}
+											{isBusy && <Spinner />}
+											{isBusy ? t("tunnel.starting") : t("tunnel.exposeViaCloudflare")}
 										</button>
 									)}
 								</div>
@@ -280,7 +301,7 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 				<div className="border-t border-edge px-3 py-2.5 bg-base/40">
 					<div className="flex items-center justify-between mb-1">
 						<span className="text-xs text-fg-2 font-semibold">{t("tunnel.sharedTunnel")}</span>
-						<button onClick={stopShared} className="text-xs text-danger hover:bg-danger/10 px-2 py-1 rounded">
+						<button onClick={stopShared} className="text-xs text-danger border border-danger/30 hover:bg-danger/10 px-2 py-1 rounded">
 							{t("tunnel.stopExposing")}
 						</button>
 					</div>
@@ -295,7 +316,7 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 						</button>
 					)}
 					{sharedTunnel.state === "starting" && (
-						<span className="text-xs text-fg-3">{t("tunnel.starting")}</span>
+						<span className="text-xs text-fg-3 inline-flex items-center gap-1.5"><Spinner /> {t("tunnel.starting")}</span>
 					)}
 				</div>
 			)}
@@ -309,6 +330,7 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 					{toast}
 				</div>
 			)}
-		</div>
+			</div>
+		</>
 	);
 }
