@@ -66,8 +66,12 @@ function poll() {
 		const sessionNames = discoverTmuxSessions();
 		const activeShortIds = new Set(sessionNames.map((n) => n.slice(5)));
 
-		// Update sleep prevention based on active session count
-		updateCaffeinateState(sessionNames.length);
+		// Keep the machine awake while the app runs (per setting) or while
+		// remote access is active (forced on). Import the remote-access module
+		// lazily so this poller stays free of electrobun-heavy imports.
+		import("./remote-access-server")
+			.then(({ isRemoteAccessActive }) => updateCaffeinateState(isRemoteAccessActive()))
+			.catch(() => updateCaffeinateState(false));
 
 		// Clean up stale cache and notify renderer
 		for (const shortId of usageData.keys()) {

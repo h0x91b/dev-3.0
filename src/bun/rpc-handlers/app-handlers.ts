@@ -659,6 +659,30 @@ async function checkCaffeinateAvailable(): Promise<{ available: boolean }> {
 	return { available };
 }
 
+async function getPreventSleepState(): Promise<{ enabled: boolean; available: boolean; forcedByRemote: boolean }> {
+	const { isCaffeinateAvailable, isPreventSleepEnabled } = await import("../caffeinate");
+	const { isRemoteAccessActive } = await import("../remote-access-server");
+	const available = isCaffeinateAvailable();
+	const forcedByRemote = isRemoteAccessActive();
+	const enabled = isPreventSleepEnabled();
+	log.info("← getPreventSleepState", { enabled, available, forcedByRemote });
+	return { enabled, available, forcedByRemote };
+}
+
+async function setPreventSleep(params: { enabled: boolean }): Promise<{ enabled: boolean }> {
+	log.info("→ setPreventSleep", { enabled: params.enabled });
+	const { loadSettings, saveSettings } = await import("../settings");
+	const settings = await loadSettings();
+	settings.preventSleepWhileRunning = params.enabled;
+	await saveSettings(settings);
+	// Re-evaluate immediately so the inhibit process starts/stops without
+	// waiting for the next resource-monitor poll cycle.
+	const { updateCaffeinateState } = await import("../caffeinate");
+	const { isRemoteAccessActive } = await import("../remote-access-server");
+	updateCaffeinateState(isRemoteAccessActive());
+	return { enabled: params.enabled };
+}
+
 async function copyTerminalSelection(params: { taskId: string; text: string; mouseTracking: boolean }): Promise<{ ok: boolean; tool: string | null }> {
 	if (!params.text) return { ok: false, tool: null };
 	if (process.env.DEV3_HEADLESS === "1") return { ok: false, tool: null };
@@ -704,5 +728,7 @@ export const appHandlers = {
 	updateTipState,
 	resetTipState,
 	checkCaffeinateAvailable,
+	getPreventSleepState,
+	setPreventSleep,
 	copyTerminalSelection,
 };

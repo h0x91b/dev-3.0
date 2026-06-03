@@ -102,7 +102,7 @@ const settings = {
 	"settings.externalAppMacName": "Имя macOS-приложения (для open -a)",
 	"settings.addExternalApp": "Добавить",
 	"settings.preventSleep": "Не давать уснуть",
-	"settings.preventSleepDesc": "Не позволяет системе засыпать, пока работают агенты",
+	"settings.preventSleepDesc": "Не даёт системе уснуть, пока открыт dev-3.0 (форсится при активном удалённом доступе). Также переключается из шапки.",
 	"settings.preventSleepNotAvailable": "Инструмент для блокировки сна не найден (caffeinate на macOS, systemd-inhibit на Linux).",
 	"settings.tipsSection": "Подсказки",
 	"settings.tipsDisabled": "Отключить подсказки",

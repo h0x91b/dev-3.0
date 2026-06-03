@@ -56,6 +56,12 @@ const dashboard = {
 	"header.activeTaskCount_other": "{count} en curso",
 	"header.noActiveTasks": "Sin tareas activas",
 
+	// Prevent-sleep (caffeine) toggle
+	"caffeine.label": "Despierto",
+	"caffeine.tooltipOn": "Evitando la suspensión mientras dev-3.0 está abierto — haz clic para permitir suspender",
+	"caffeine.tooltipOff": "Permitiendo que el equipo se suspenda — haz clic para mantenerlo activo mientras dev-3.0 está abierto",
+	"caffeine.tooltipForced": "Forzado mientras el acceso remoto está activo — la máquina debe seguir accesible",
+
 	// Remote Access QR Modal
 	"remote.title": "Acceso remoto",
 	"remote.subtitle": "Escanea este código QR para abrir la interfaz en tu teléfono u otro dispositivo",

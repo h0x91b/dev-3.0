@@ -8,6 +8,7 @@ import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
 import HomeTerminalIcon from "./HomeTerminalIcon";
+import PreventSleepToggle from "./PreventSleepToggle";
 
 interface GlobalHeaderProps {
 	route: Route;
@@ -404,6 +405,9 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						)}
 					</div>
 				)}
+
+				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs */}
+				<PreventSleepToggle />
 
 				{/* Home Terminal — always visible (rootless tmux in $HOME) */}
 				<button

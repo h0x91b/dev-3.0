@@ -102,7 +102,7 @@ const settings = {
 	"settings.externalAppMacName": "Nombre de app macOS (para open -a)",
 	"settings.addExternalApp": "Agregar",
 	"settings.preventSleep": "Evitar suspensión",
-	"settings.preventSleepDesc": "Mantiene tu sistema despierto mientras los agentes están activos",
+	"settings.preventSleepDesc": "Mantiene el sistema despierto mientras dev-3.0 está abierto (forzado cuando el acceso remoto está activo). También se alterna desde la cabecera.",
 	"settings.preventSleepNotAvailable": "No se encontró herramienta para inhibir suspensión (caffeinate en macOS, systemd-inhibit en Linux).",
 	"settings.tipsSection": "Consejos",
 	"settings.tipsDisabled": "Desactivar consejos de funciones",

@@ -83,7 +83,7 @@ describe("caffeinate", () => {
 	});
 
 	describe("updateCaffeinateState", () => {
-		it("starts caffeinate when sessions active and setting enabled", () => {
+		it("starts caffeinate when the setting is enabled (app running)", () => {
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
 			mockSpawn.mockReturnValue({
 				pid: 99999,
@@ -91,27 +91,35 @@ describe("caffeinate", () => {
 				exited: Promise.resolve(0),
 			});
 
-			updateCaffeinateState(3);
+			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(true);
 		});
 
-		it("stops caffeinate when no sessions active", () => {
-			// First start it
-			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
+		it("does not start when the setting is disabled and remote is inactive", () => {
+			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
 			mockSpawn.mockReturnValue({
 				pid: 99999,
 				kill: vi.fn(),
 				exited: Promise.resolve(0),
 			});
-			updateCaffeinateState(2);
-			expect(isCaffeinateRunning()).toBe(true);
 
-			// Now stop it
-			updateCaffeinateState(0);
+			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(false);
 		});
 
-		it("stops caffeinate when setting is disabled", () => {
+		it("is forced on by remote access even when the setting is disabled", () => {
+			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
+			mockSpawn.mockReturnValue({
+				pid: 99999,
+				kill: vi.fn(),
+				exited: Promise.resolve(0),
+			});
+
+			updateCaffeinateState(true);
+			expect(isCaffeinateRunning()).toBe(true);
+		});
+
+		it("stops caffeinate when the setting is toggled off and remote is inactive", () => {
 			// First start it
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: true });
 			mockSpawn.mockReturnValue({
@@ -119,12 +127,12 @@ describe("caffeinate", () => {
 				kill: vi.fn(),
 				exited: Promise.resolve(0),
 			});
-			updateCaffeinateState(2);
+			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(true);
 
 			// Toggle off
 			mockLoadSettingsSync.mockReturnValue({ preventSleepWhileRunning: false });
-			updateCaffeinateState(2);
+			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(false);
 		});
 
@@ -137,8 +145,8 @@ describe("caffeinate", () => {
 			};
 			mockSpawn.mockReturnValue(proc);
 
-			updateCaffeinateState(1);
-			updateCaffeinateState(2);
+			updateCaffeinateState(false);
+			updateCaffeinateState(false);
 			// spawn should only be called once (not for the second update)
 			expect(mockSpawn).toHaveBeenCalledTimes(1);
 		});
@@ -154,7 +162,7 @@ describe("caffeinate", () => {
 				exited: Promise.resolve(0),
 			});
 
-			updateCaffeinateState(1);
+			updateCaffeinateState(false);
 			expect(isCaffeinateRunning()).toBe(true);
 
 			shutdownCaffeinate();

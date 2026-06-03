@@ -131,7 +131,7 @@ ux_architecture:
   surfaces:
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
-      allowed: ["breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager"]
+      allowed: ["breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle"]
       forbidden: ["task_scoped_action", "dense_filters", "destructive_primary"]
       evidence: ["src/mainview/components/GlobalHeader.tsx"]
     application_menu:
@@ -287,6 +287,9 @@ ux_architecture:
       danger:
         token: "--danger (red)"
         use_for: "Failed, destructive risk, cancelled."
+      awake:
+        token: "--awake / --awake-hover (amber, defined in both themes)"
+        use_for: "Sleep-prevention active (header coffee toggle). A distinct always-on affordance, not a warning. Added 2026-06-03."
       info:
         token: "NONE (gap)"
         use_for: "No dedicated info token; accent (blue) is reused for informational emphasis."

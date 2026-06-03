@@ -69,7 +69,7 @@ Only in `project-settings` (`global | project | worktree`). Budget ≤ 6 visible
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
 |---|---|---|---|---|
-| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
+| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, label filter | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots, open, context menu, git badge | full settings, global destination | `TaskCard.tsx` (large — watch density) |
@@ -138,6 +138,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 | success | `--success` / `--success-hover` (green) | completed, healthy, running dev server |
 | warning | `--warning` (yellow) | needs attention, degraded, your-review |
 | danger | `--danger` (red) | failed, destructive risk, cancelled |
+| awake | `--awake` / `--awake-hover` (amber, both themes) | sleep-prevention active (the header coffee toggle); a distinct "always-on" affordance, not a warning |
 | info | **none** (`Proposed`) | no dedicated token; accent/blue reused |
 
 ### Status colors — documented exception

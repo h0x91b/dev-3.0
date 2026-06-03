@@ -15,6 +15,10 @@ Evidence base: `src/mainview/state.ts`, `src/shared/types.ts`, `src/bun/applicat
 
 Confidence: medium. Key inferred area: complexity budgets (derived from changelog history + component sizes, not from an explicit spec).
 
+## 2026-06-03 — Prevent-sleep header toggle + `--awake` token
+
+Documented the new global-header prevent-sleep toggle (`global_header.allowed`) and added the `awake` semantic token (amber, both themes) to the bible token table and `ux-architecture.yaml`. Added a UX decision and decision record 059.
+
 ## 2026-06-03 — TaskInfoPanel 4-bar 2×2 model
 
 Documented the inspector header as a 2×2 quickbar grid (Context / Session-Agent / Git / Runtime), one domain per bar, chrome pinned separately. Added `surfaces.task_info_panel.bar_model` to `ux-architecture.yaml`, a new bible §5.1, a UX decision, and updated the §9 budget + closed the related open question. Implemented the matching redistribution in `TaskInfoPanel.tsx` (dev-server + scripts moved to row-2-right; label strip truncates with `+k`).

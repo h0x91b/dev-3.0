@@ -14,6 +14,8 @@ vi.mock("../../rpc", () => ({
 			renameTask: vi.fn(),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			pullProjectMain: vi.fn(),
+			getPreventSleepState: vi.fn().mockResolvedValue({ enabled: false, available: false, forcedByRemote: false }),
+			setPreventSleep: vi.fn(),
 		},
 	},
 }));

@@ -102,7 +102,7 @@ const settings = {
 	"settings.externalAppMacName": "macOS app name (used with open -a)",
 	"settings.addExternalApp": "Add App",
 	"settings.preventSleep": "Prevent Sleep",
-	"settings.preventSleepDesc": "Keep your system awake while agents are running",
+	"settings.preventSleepDesc": "Keep your system awake while dev-3.0 is open (forced on while remote access is active). Also toggleable from the header.",
 	"settings.preventSleepNotAvailable": "No sleep inhibitor found (caffeinate on macOS, systemd-inhibit on Linux).",
 	"settings.tipsSection": "Tips",
 	"settings.tipsDisabled": "Disable feature tips",

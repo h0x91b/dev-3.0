@@ -19,7 +19,7 @@ import QRCode from "qrcode";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
-import { getTunnelUrl } from "./cloudflare-tunnel";
+import { getTunnelUrl, getTunnelState } from "./cloudflare-tunnel";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
 
@@ -440,6 +440,23 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 	// Print access URL to console
 	printAccessInfo();
+}
+
+/**
+ * Number of browser RPC clients currently connected over the remote-access
+ * server. Used to keep the machine awake while someone is connected remotely.
+ */
+export function getConnectedClientCount(): number {
+	return rpcClients.size;
+}
+
+/**
+ * Whether the app is currently reachable / being used remotely: either the
+ * Cloudflare tunnel is connected, or at least one browser client is attached.
+ * While true, sleep prevention is forced on regardless of the user setting.
+ */
+export function isRemoteAccessActive(): boolean {
+	return getTunnelState() === "connected" || rpcClients.size > 0;
 }
 
 /**

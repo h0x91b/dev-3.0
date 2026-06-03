@@ -142,13 +142,15 @@ function stopInhibit(): void {
 }
 
 /**
- * Called from resource-monitor's poll cycle with the number of active
- * agent tmux sessions. Starts or stops sleep inhibition based on whether
- * agents are running and the setting is enabled.
+ * Called from resource-monitor's poll cycle. Starts or stops sleep
+ * inhibition. While the setting is enabled, sleep is inhibited for the whole
+ * time the app is running (the recurring poll keeps the inhibit process
+ * alive). When remote access is active, inhibition is forced on regardless of
+ * the setting, since the machine must stay reachable.
  */
-export function updateCaffeinateState(activeSessionCount: number): void {
-	const enabled = isPreventSleepEnabled();
-	if (enabled && activeSessionCount > 0) {
+export function updateCaffeinateState(remoteActive: boolean): void {
+	const enabled = remoteActive || isPreventSleepEnabled();
+	if (enabled) {
 		startInhibit();
 	} else {
 		stopInhibit();

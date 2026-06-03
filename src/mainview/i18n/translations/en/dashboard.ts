@@ -56,6 +56,12 @@ const dashboard = {
 	"header.activeTaskCount_other": "{count} active",
 	"header.noActiveTasks": "No active tasks",
 
+	// Prevent-sleep (caffeine) toggle
+	"caffeine.label": "Awake",
+	"caffeine.tooltipOn": "Keeping the computer awake while dev-3.0 is open — click to allow sleep",
+	"caffeine.tooltipOff": "Letting the computer sleep — click to keep it awake while dev-3.0 runs",
+	"caffeine.tooltipForced": "Forced on while remote access is active — the machine must stay reachable",
+
 	// Remote Access QR Modal
 	"remote.title": "Remote Access",
 	"remote.subtitle": "Scan this QR code to open the UI on your phone or another device",

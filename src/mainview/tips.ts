@@ -529,7 +529,7 @@ const ALL_TIPS: Tip[] = [
 		id: "prevent-sleep",
 		titleKey: "tip.preventSleep.title",
 		bodyKey: "tip.preventSleep.body",
-		icon: "\u{F0425}", // nf-md-sleep_off
+		icon: "\u{F0176}", // nf-md-coffee
 	},
 	// Batch 27: copy worktree path
 	{

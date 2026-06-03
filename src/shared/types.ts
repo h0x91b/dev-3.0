@@ -1495,6 +1495,14 @@ export type AppRPCSchema = {
 				params: void;
 				response: { available: boolean };
 			};
+			getPreventSleepState: {
+				params: void;
+				response: { enabled: boolean; available: boolean; forcedByRemote: boolean };
+			};
+			setPreventSleep: {
+				params: { enabled: boolean };
+				response: { enabled: boolean };
+			};
 			uploadFileBase64: {
 				params: { projectId: string; base64: string; filename?: string; mimeType?: string };
 				response: { path: string } | null;

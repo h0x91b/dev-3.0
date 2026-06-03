@@ -30,6 +30,10 @@ export default {
 				},
 				danger: "rgb(var(--danger) / <alpha-value>)",
 				warning: "rgb(var(--warning) / <alpha-value>)",
+				awake: {
+					DEFAULT: "rgb(var(--awake) / <alpha-value>)",
+					hover: "rgb(var(--awake-hover) / <alpha-value>)",
+				},
 				success: {
 					DEFAULT: "rgb(var(--success) / <alpha-value>)",
 					hover: "rgb(var(--success-hover) / <alpha-value>)",
