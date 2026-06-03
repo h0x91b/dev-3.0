@@ -14,7 +14,7 @@ import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
-import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent } from "./shared";
+import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setAppForeground } from "./shared";
 import { applyMenuContext, type MenuContext } from "../application-menu";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
@@ -69,6 +69,15 @@ async function openNewWindow(): Promise<void> {
 async function hideApp(): Promise<void> {
 	log.info("→ hideApp (Cmd+H from renderer)");
 	hideAppNative();
+}
+
+/**
+ * The renderer reports its window focus state so the backend knows whether the
+ * app is in the foreground. Used to suppress notification click-to-open arming
+ * while the user is already looking at the app (see `notifyWatchedTaskStatusChange`).
+ */
+async function setWindowForeground(params: { focused: boolean }): Promise<void> {
+	setAppForeground(params.focused);
 }
 
 async function showConfirm(params: { title: string; message: string }): Promise<boolean> {
@@ -740,6 +749,7 @@ export const appHandlers = {
 	consumePendingQuitDialog,
 	openNewWindow,
 	hideApp,
+	setWindowForeground,
 	showConfirm,
 	updateMenuContext,
 	getProjects,

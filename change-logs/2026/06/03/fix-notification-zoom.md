@@ -1,0 +1,1 @@
+Fixed watched-task notification click-to-open: it now respects the user's task-open-mode preference (split by default instead of always forcing fullscreen zoom), and no longer fires on an unrelated in-app click. Click-to-open is only armed when the app was in the background when the notification was shown, tracked via a renderer-reported window foreground flag.

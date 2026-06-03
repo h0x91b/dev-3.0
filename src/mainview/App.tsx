@@ -519,11 +519,41 @@ function App() {
 		function onOpenTaskFromNotification(e: Event) {
 			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
 			if (!taskId || !projectId) return;
-			navigate({ screen: "task", projectId, taskId });
+			// Open the task the same way a normal card click does — honoring the user's
+			// `dev3-task-open-mode` preference. Default is "split" (task terminal next to
+			// the board), NOT fullscreen zoom. Only users who chose fullscreen get zoomed.
+			const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+			if (openMode === "fullscreen") {
+				navigate({ screen: "task", projectId, taskId });
+			} else {
+				navigate({ screen: "project", projectId, activeTaskId: taskId });
+			}
 		}
 		window.addEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
 		return () => window.removeEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
 	}, [navigate]);
+
+	// Report window focus state to the backend. It uses this to suppress
+	// notification click-to-open arming while the app is already in the foreground —
+	// otherwise an in-app click that re-keys the window gets misread as a
+	// notification click and zooms the user into the task.
+	useEffect(() => {
+		const report = (focused: boolean) => {
+			// Optional-chained: best-effort telemetry, and some tests mock `api`
+			// without this method.
+			void api.request.setWindowForeground?.({ focused })?.catch?.(() => { /* best-effort */ });
+		};
+		const onFocus = () => report(true);
+		const onBlur = () => report(false);
+		window.addEventListener("focus", onFocus);
+		window.addEventListener("blur", onBlur);
+		// Sync the initial state on mount (the window may already be focused).
+		report(document.hasFocus());
+		return () => {
+			window.removeEventListener("focus", onFocus);
+			window.removeEventListener("blur", onBlur);
+		};
+	}, []);
 
 	// Notify user when a column-agent launch fails (custom columns have no automatic fallback)
 	useEffect(() => {

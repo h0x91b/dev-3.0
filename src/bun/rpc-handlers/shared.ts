@@ -88,10 +88,30 @@ export function getSystemRequirements(): RequirementCheckResult[] {
  * macOS activates the app when a notification is clicked, which fires our BrowserWindow
  * `focus` event. We use this as a proxy for click-to-open since Electrobun's
  * `Utils.showNotification` does not expose a click callback.
+ *
+ * Kept deliberately short: the smaller this window, the smaller the chance that an
+ * unrelated app activation (cmd-tab, dock click) within it is misread as a click-through.
  */
-export const NOTIFICATION_CLICK_TTL_MS = 5000;
+export const NOTIFICATION_CLICK_TTL_MS = 3000;
 
 let lastWatchedNotification: { taskId: string; projectId: string; timestamp: number } | null = null;
+
+/**
+ * Whether the app is currently in the foreground (any window has key focus).
+ * The renderer reports this via `setWindowForeground`; `index.ts`'s window-focus
+ * hook also flips it true. We need it because Electrobun exposes no native
+ * "did resign active" signal — without it the focus proxy below cannot tell a
+ * genuine notification click from an in-app re-focus.
+ */
+let appForeground = false;
+
+export function setAppForeground(value: boolean): void {
+	appForeground = value;
+}
+
+export function isAppForeground(): boolean {
+	return appForeground;
+}
 
 export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
 	if (!task.watched || oldStatus === newStatus) return;
@@ -101,6 +121,12 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 		subtitle: projectName,
 		silent: true,
 	});
+	// Only arm click-to-open when the app is NOT already in the foreground. If the
+	// user is actively looking at the app, the banner is purely informational — a
+	// subsequent in-app click that happens to re-key the window must not be misread
+	// as "clicked the notification" and teleport them to the task. This is the core
+	// fix for the "any click after a notification zooms me into the task" bug.
+	if (appForeground) return;
 	lastWatchedNotification = {
 		taskId: task.id,
 		projectId: task.projectId,
@@ -123,9 +149,10 @@ export function consumeRecentWatchedNotification(now: number = Date.now()): { ta
 	return { taskId: recent.taskId, projectId: recent.projectId };
 }
 
-/** For tests only — resets the last-watched-notification slot. */
+/** For tests only — resets the last-watched-notification slot and foreground flag. */
 export function _resetWatchedNotificationState(): void {
 	lastWatchedNotification = null;
+	appForeground = false;
 }
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {

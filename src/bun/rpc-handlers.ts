@@ -12,6 +12,8 @@ export {
 	consumeRecentWatchedNotification,
 	_resetWatchedNotificationState,
 	NOTIFICATION_CLICK_TTL_MS,
+	setAppForeground,
+	isAppForeground,
 } from "./rpc-handlers/shared";
 export {
 	startMergeDetectionPoller,
