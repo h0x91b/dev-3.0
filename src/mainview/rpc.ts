@@ -32,6 +32,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	showRemoteAccessQR: (payload) => window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: payload })),
 	qrTokenConsumed: () => window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed")),
 	menuAction: (payload) => window.dispatchEvent(new CustomEvent("rpc:menuAction", { detail: payload })),
+	showQuitDialog: () => window.dispatchEvent(new CustomEvent("rpc:showQuitDialog")),
 };
 
 /**

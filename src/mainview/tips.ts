@@ -634,6 +634,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiWindow.body",
 		icon: "\u{F05C2}", // nf-md-window_restore
 	},
+	// Batch 40: quit confirmation
+	{
+		id: "quit-confirm",
+		titleKey: "tip.quitConfirm.title",
+		bodyKey: "tip.quitConfirm.body",
+		icon: "\u{F0206}", // nf-md-help_circle_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

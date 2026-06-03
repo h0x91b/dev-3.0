@@ -6,7 +6,8 @@ import Electrobun, {
 } from "electrobun/bun";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
-import { loadSettings } from "./settings";
+import { loadSettings, loadSettingsSync } from "./settings";
+import { isQuitConfirmed } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { getShellRcFile, getUserShell, resolveShellEnv } from "./shell-env";
@@ -252,6 +253,11 @@ onMenuContextChange((ctx) => {
 
 // --- Main Window ---
 
+// Set by the `before-quit` gate when the last window was already closed and we
+// had to reopen one just to host the quit-confirmation dialog. Consumed in the
+// new window's `onDomReady`.
+let pendingQuitDialog = false;
+
 async function openMainWindow() {
 	return createAppWindow({
 		title: makeTitle(APP_VERSION, lastBuildTime),
@@ -263,6 +269,13 @@ async function openMainWindow() {
 				win.webview.openDevTools();
 			}
 			log.info(`DOM ready [${lastBuildTime}]`);
+			// If this window was reopened solely to host the quit dialog (the user
+			// closed the last window), surface the dialog now that the renderer is
+			// mounted and can receive the push.
+			if (pendingQuitDialog) {
+				pendingQuitDialog = false;
+				sendToFocusedWindow("showQuitDialog");
+			}
 		},
 		onExternalLink: (externalUrl) => {
 			log.info("Opening external URL", { url: externalUrl });
@@ -437,11 +450,7 @@ setOnPaneExited((taskId, paneId) => {
 	});
 });
 
-// Global teardown runs once, when the app is about to quit for any reason
-// (last window closed, Cmd+Q, menu Quit, app shutdown). Per-window close
-// handlers live in the window-manager and only track registry state —
-// Electrobun auto-calls quit() when the last BrowserWindow closes.
-Electrobun.events.on("before-quit", () => {
+function runGlobalQuitCleanup(): void {
 	log.info("App is quitting, running global cleanup");
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
@@ -451,6 +460,45 @@ Electrobun.events.on("before-quit", () => {
 	// would orphan tunnels (and trycloudflare quotas) on app exit.
 	import("./port-tunnels").then(({ cleanupAllTunnels }) => cleanupAllTunnels()).catch(() => { /* shutdown — best-effort */ });
 	try { stopTunnel(); } catch (err) { log.warn("stopTunnel failed", { error: String(err) }); }
+}
+
+// Single quit gate for EVERY quit trigger — Cmd+Q, menu Quit, closing the last
+// window (red X / Cmd+W), updater restart, signals. Fires once per attempt.
+//
+// Unless the user already confirmed (via the React dialog → `quitApp`) or opted
+// out (`skipQuitDialog`), we cancel the quit and ask the renderer to show the
+// confirmation dialog. The actual teardown + exit happens on the second pass,
+// once `quitApp` has set the confirmed flag.
+//
+// When the quit was triggered by closing the LAST window, there is no renderer
+// left to host the dialog, so we reopen one and defer the push to its
+// `onDomReady` (see `pendingQuitDialog`).
+Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
+	if (isQuitConfirmed()) {
+		runGlobalQuitCleanup();
+		return;
+	}
+	let skip = false;
+	try {
+		skip = loadSettingsSync().skipQuitDialog === true;
+	} catch (err) {
+		log.warn("Failed to read skipQuitDialog setting", { error: String(err) });
+	}
+	if (skip) {
+		runGlobalQuitCleanup();
+		return;
+	}
+
+	// Cancel this quit and ask for confirmation.
+	e.response = { allow: false };
+	log.info("Quit intercepted — asking renderer to confirm");
+	if (getFocusedWindow()) {
+		sendToFocusedWindow("showQuitDialog");
+	} else {
+		// Last window already gone — reopen one to host the dialog.
+		pendingQuitDialog = true;
+		void openMainWindow();
+	}
 });
 
 // Click-to-open for watched-task notifications.

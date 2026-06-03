@@ -33,8 +33,6 @@ import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
 
-const SKIP_QUIT_DIALOG_KEY = "dev3-skip-quit-dialog";
-
 function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
@@ -81,6 +79,18 @@ function App() {
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);
+
+	// The bun `before-quit` gate asks us to confirm before the app actually quits
+	// (Cmd+Q, menu Quit, or closing the last window). We just open the dialog;
+	// the real quit happens when the user confirms via `quitApp`.
+	useEffect(() => {
+		function onShowQuitDialog() {
+			setDontShowAgain(false);
+			setShowQuitDialog(true);
+		}
+		window.addEventListener("rpc:showQuitDialog", onShowQuitDialog);
+		return () => window.removeEventListener("rpc:showQuitDialog", onShowQuitDialog);
+	}, []);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -210,15 +220,7 @@ function App() {
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
-			if ((e.metaKey || e.ctrlKey) && e.key === "q") {
-				e.preventDefault();
-				e.stopPropagation();
-				if (localStorage.getItem(SKIP_QUIT_DIALOG_KEY) === "true") {
-					api.request.quitApp().catch(() => {});
-				} else {
-					setShowQuitDialog(true);
-				}
-			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
+			if ((e.metaKey || e.ctrlKey) && e.key === "h") {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
@@ -285,10 +287,7 @@ function App() {
 	);
 
 	function handleConfirmQuit() {
-		if (dontShowAgain) {
-			localStorage.setItem(SKIP_QUIT_DIALOG_KEY, "true");
-		}
-		api.request.quitApp().catch(() => {});
+		api.request.quitApp({ dontShowAgain }).catch(() => {});
 	}
 
 	// Check gh availability after requirements pass (non-blocking)

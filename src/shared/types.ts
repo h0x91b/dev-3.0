@@ -396,6 +396,7 @@ export interface GlobalSettings {
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	defaultDiffViewMode?: "split" | "unified" | "auto"; // default inline diff layout; "auto" picks based on screen size
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
+	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
 }
 
 export interface TipState {
@@ -1340,7 +1341,7 @@ export type AppRPCSchema = {
 				response: ChangelogEntry[];
 			};
 			quitApp: {
-				params: void;
+				params: { dontShowAgain?: boolean } | void;
 				response: void;
 			};
 			hideApp: {
@@ -1633,6 +1634,13 @@ export type AppRPCSchema = {
 			 * not go through this channel — they execute in `src/bun/index.ts`.
 			 */
 			menuAction: { action: string };
+			/**
+			 * Ask the renderer to show the quit-confirmation dialog. Fired from the
+			 * bun `before-quit` gate when a quit was requested (Cmd+Q, menu Quit, or
+			 * closing the last window) and the user hasn't opted out. The actual quit
+			 * only happens after the renderer confirms via `quitApp`.
+			 */
+			showQuitDialog: {};
 		};
 	}>;
 };

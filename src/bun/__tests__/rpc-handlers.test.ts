@@ -3854,6 +3854,19 @@ describe("handlers.quitApp", () => {
 		await handlers.quitApp();
 		expect(Utils.quit).toHaveBeenCalledOnce();
 	});
+
+	it("does not persist skipQuitDialog when dontShowAgain is absent", async () => {
+		await handlers.quitApp();
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it("persists skipQuitDialog=true when dontShowAgain is set", async () => {
+		await handlers.quitApp({ dontShowAgain: true });
+		expect(saveSettings).toHaveBeenCalledWith(
+			expect.objectContaining({ skipQuitDialog: true }),
+		);
+		expect(Utils.quit).toHaveBeenCalledOnce();
+	});
 });
 
 // ================================================================

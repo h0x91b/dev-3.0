@@ -126,33 +126,45 @@ describe("App keyboard shortcuts", () => {
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
 	});
 
-	describe("quit (Cmd+Q / Ctrl+Q)", () => {
-		it("Cmd+Q opens the quit dialog", async () => {
-			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
-			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
-		});
+	// Quit is gated in the bun `before-quit` handler now (covers Cmd+Q, menu
+	// Quit, and closing the last window). The bun side pushes `rpc:showQuitDialog`
+	// to ask the renderer to confirm; the renderer no longer intercepts Cmd+Q.
+	describe("quit confirmation dialog", () => {
+		function requestQuitDialog() {
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:showQuitDialog"));
+			});
+		}
 
-		it("Ctrl+Q opens the quit dialog", async () => {
+		it("opens the quit dialog when bun requests it", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Control>}q{/Control}");
+			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
 		});
 
 		it("Escape closes the quit dialog", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
+			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.queryByText("Sessions keep running")).not.toBeInTheDocument();
 		});
 
-		it("Quit button in dialog calls quitApp", async () => {
+		it("Quit button confirms via quitApp (dontShowAgain=false by default)", async () => {
 			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
 			await renderApp();
-			await userEvent.keyboard("{Meta>}q{/Meta}");
+			requestQuitDialog();
 			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
-			expect(api.request.quitApp).toHaveBeenCalled();
+			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: false });
+		});
+
+		it("Quit with 'don't show again' checked passes dontShowAgain=true", async () => {
+			vi.mocked(api.request.quitApp).mockResolvedValue(undefined);
+			await renderApp();
+			requestQuitDialog();
+			await userEvent.click(screen.getByRole("checkbox"));
+			await userEvent.click(screen.getByRole("button", { name: "Quit" }));
+			expect(api.request.quitApp).toHaveBeenCalledWith({ dontShowAgain: true });
 		});
 	});
 

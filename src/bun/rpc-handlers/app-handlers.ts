@@ -7,7 +7,8 @@ import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRep
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { loadSettings } from "../settings";
+import { loadSettings, saveSettings } from "../settings";
+import { markQuitConfirmed } from "../quit-manager";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
@@ -24,8 +25,15 @@ async function updateMenuContext(params: MenuContext): Promise<void> {
 	});
 }
 
-async function quitApp(): Promise<void> {
-	log.info("→ quitApp (Cmd+Q from renderer)");
+async function quitApp(params?: { dontShowAgain?: boolean }): Promise<void> {
+	log.info("→ quitApp (confirmed by renderer)", { dontShowAgain: params?.dontShowAgain ?? false });
+	if (params?.dontShowAgain) {
+		const settings = await loadSettings();
+		await saveSettings({ ...settings, skipQuitDialog: true });
+	}
+	// Mark the quit as user-confirmed so the `before-quit` gate lets it through
+	// instead of re-asking.
+	markQuitConfirmed();
 	const { shutdownCaffeinate } = await import("../caffeinate");
 	shutdownCaffeinate();
 	Utils.quit();

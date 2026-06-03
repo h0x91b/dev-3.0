@@ -1,6 +1,7 @@
 import { Updater } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isNewerVersion } from "../shared/version";
+import { markQuitConfirmed } from "./quit-manager";
 
 const log = createLogger("updater");
 
@@ -227,6 +228,10 @@ export async function applyUpdate(): Promise<void> {
 		}
 	}
 
+	// The updater restarts the app via Utils.quit(). Mark the quit as confirmed
+	// so the `before-quit` gate lets it through instead of popping the quit
+	// confirmation dialog (this is a relaunch, not a user-initiated quit).
+	markQuitConfirmed();
 	await Updater.applyUpdate();
 }
 

@@ -24,6 +24,7 @@ export interface GlobalSettings {
 	taskOpenMode?: "split" | "fullscreen";
 	defaultDiffViewMode?: "split" | "unified" | "auto";
 	preventSleepWhileRunning?: boolean;
+	skipQuitDialog?: boolean;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -63,6 +64,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 							? "auto"
 							: undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
+			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -110,6 +112,7 @@ export function loadSettingsSync(): GlobalSettings {
 							? "auto"
 							: undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
+			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

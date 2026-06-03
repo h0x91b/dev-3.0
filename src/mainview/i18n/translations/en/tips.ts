@@ -200,6 +200,8 @@ const tips = {
 	"tip.bugHuntersReadOnly.body": "The /dev3-bug-hunter skill is review-only — no commits, no patches. After reporting findings, the agent asks before turning critical/medium bugs into new dev3 tasks for you.",
 	"tip.multiWindow.title": "Spread projects across screens",
 	"tip.multiWindow.body": "Pick File → New Window to open another dev-3.0 window. Put a different project on each monitor and close any window without quitting the app.",
+	"tip.quitConfirm.title": "Closing the last window asks first",
+	"tip.quitConfirm.body": "Quitting — via Cmd+Q, the menu, or closing your last window — now shows a confirmation so your background tmux sessions don't vanish by surprise.",
 } as const;
 
 export default tips;
