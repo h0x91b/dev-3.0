@@ -19,7 +19,7 @@ const LOCK_GLYPH = String.fromCodePoint(0xf033e);
  * since the machine must stay reachable. Hidden when no sleep-inhibit tool
  * (caffeinate / systemd-inhibit) is available on the host.
  */
-function PreventSleepToggle() {
+function PreventSleepToggle({ compact = false }: { compact?: boolean }) {
 	const t = useT();
 	const [state, setState] = useState<SleepState | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -80,7 +80,7 @@ function PreventSleepToggle() {
 			<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 				{COFFEE_GLYPH}
 			</span>
-			<span className="text-[0.6875rem] font-medium">{t("caffeine.label")}</span>
+			{!compact && <span className="text-[0.6875rem] font-medium">{t("caffeine.label")}</span>}
 			{locked && (
 				<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 					{LOCK_GLYPH}

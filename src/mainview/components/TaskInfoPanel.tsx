@@ -31,6 +31,7 @@ import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
+import { useCompact } from "../utils/useCompact";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -80,6 +81,7 @@ function readNumber(key: string, fallback: number): number {
 
 function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
 	const t = useT();
+	const compact = useCompact();
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 	const [copiedPath, setCopiedPath] = useState(false);
@@ -453,7 +455,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-label={t("infoPanel.diffIncludeTestsAria")}
 			aria-pressed={includeTests}
 		>
-			<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
+			{!compact && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
 			<span
 				className="text-[0.85rem] leading-none"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
@@ -542,9 +544,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 				{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
 			</span>
-			<span className="text-[0.6875rem] font-medium">
-				{task.watched ? t("task.watching") : t("task.watch")}
-			</span>
+			{!compact && (
+				<span className="text-[0.6875rem] font-medium">
+					{task.watched ? t("task.watching") : t("task.watch")}
+				</span>
+			)}
 		</button>
 	);
 
@@ -598,7 +602,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			title={t("tmux.spawnExtraAgentDesc")}
 		>
 			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F16A6}"}</span>
-			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>
+			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
 		</button>
 	) : null;
 
@@ -609,7 +613,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			title={t("bugHunters.buttonTooltip")}
 		>
 			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
-			<span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>
+			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
 		</button>
 	) : null;
 
@@ -683,6 +687,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							isTaskActive={isTaskActive}
 							showWorktreeCopy
 							showLoading
+							compact={compact}
 							onBranchStatusChange={setMetadataBranchState}
 							onOpenInlineDiff={onOpenInlineDiff}
 						/>
@@ -744,6 +749,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								navigate={navigate}
 								isTaskActive={isTaskActive}
 								branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
+								compact={compact}
 								onBranchStatusChange={setMetadataBranchState}
 								onOpenInlineDiff={onOpenInlineDiff}
 							/>

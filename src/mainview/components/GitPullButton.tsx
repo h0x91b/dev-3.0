@@ -5,6 +5,7 @@ import GitPullErrorModal from "./GitPullErrorModal";
 
 interface GitPullButtonProps {
 	projectId: string;
+	compact?: boolean;
 }
 
 interface PullError {
@@ -26,7 +27,7 @@ function classifySuccess(output: string): "pulled" | "up-to-date" {
 	return /already up to date/i.test(output) ? "up-to-date" : "pulled";
 }
 
-function GitPullButton({ projectId }: GitPullButtonProps) {
+function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	const t = useT();
 	const [branch, setBranch] = useState<string | null | undefined>(undefined);
 	const [pulling, setPulling] = useState(false);
@@ -204,7 +205,7 @@ function GitPullButton({ projectId }: GitPullButtonProps) {
 				>
 					{icon}
 				</span>
-				<span className="text-[0.6875rem] font-medium">{label}</span>
+				{!compact && <span className="text-[0.6875rem] font-medium">{label}</span>}
 			</button>
 			{pullError && (
 				<GitPullErrorModal

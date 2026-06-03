@@ -21,9 +21,20 @@ interface TaskGitActionsProps {
 	showWorktreeCopy?: boolean;
 	showLoading?: boolean;
 	branchNameClassName?: string;
+	compact?: boolean;
 	onBranchStatusChange?: (meta: TaskBranchStatusMeta) => void;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
+
+// Nerd Font git glyphs used for the icon-only (compact) git action buttons.
+const GIT_GLYPH = {
+	showDiff: "\uEC0B", // cod-git-pull-request-go-to-changes
+	rebase: "\uEAFD", // cod-git-compare
+	push: "\uF062", // fa-arrow-up
+	createPR: "\uEBBC", // cod-git-pull-request-create
+	createPRAutoMerge: "\uF4DB", // oct-git-merge-queue
+	merge: "\uEAFE", // cod-git-merge
+} as const;
 
 export default function TaskGitActions({
 	task,
@@ -34,6 +45,7 @@ export default function TaskGitActions({
 	showWorktreeCopy = false,
 	showLoading = false,
 	branchNameClassName = "text-fg-3 text-xs font-mono flex-shrink-0",
+	compact = false,
 	onBranchStatusChange,
 	onOpenInlineDiff,
 }: TaskGitActionsProps) {
@@ -51,7 +63,6 @@ export default function TaskGitActions({
 		displayRef,
 		handleCreatePR,
 		handleMerge,
-		handleOpenPR,
 		handlePush,
 		handleRebase,
 		handleRefreshStatus,
@@ -251,6 +262,16 @@ export default function TaskGitActions({
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
 
+	const gitGlyph = (glyph: string, spin = false) => (
+		<span
+			className={`text-[0.85rem] leading-none${spin ? " animate-spin inline-block" : ""}`}
+			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			aria-hidden="true"
+		>
+			{glyph}
+		</span>
+	);
+
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
 			<button
@@ -260,17 +281,18 @@ export default function TaskGitActions({
 					compareLabel: displayRef,
 				})}
 				disabled={showDiffDisabled}
-				className={`px-2 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
+				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
 					showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
 				}`}
 				title={showDiffTooltip}
+				aria-label={t("infoPanel.showDiff")}
 			>
-				<span className="inline-flex items-center gap-1.5">
-					<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-						{"\uEC0B"}
+				{compact ? gitGlyph(GIT_GLYPH.showDiff) : (
+					<span className="inline-flex items-center gap-1.5">
+						{gitGlyph(GIT_GLYPH.showDiff)}
+						<span>{t("infoPanel.showDiff")}</span>
 					</span>
-					<span>{t("infoPanel.showDiff")}</span>
-				</span>
+				)}
 			</button>
 			<button
 				onClick={handleRebase}
@@ -279,8 +301,9 @@ export default function TaskGitActions({
 					rebaseDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={rebaseTooltip}
+				aria-label={t("infoPanel.rebase")}
 			>
-				{rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase")}
+				{compact ? gitGlyph(GIT_GLYPH.rebase, rebasing) : (rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"))}
 			</button>
 			<button
 				onClick={handlePush}
@@ -289,21 +312,12 @@ export default function TaskGitActions({
 					pushDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={pushTooltip}
+				aria-label={t("infoPanel.push")}
 			>
-				{pushing ? t("infoPanel.pushing") : t("infoPanel.push")}
+				{compact ? gitGlyph(GIT_GLYPH.push, pushing) : (pushing ? t("infoPanel.pushing") : t("infoPanel.push"))}
 			</button>
-			{hasPR ? (
-				<button
-					onClick={handleOpenPR}
-					disabled={!branchStatus?.prUrl}
-					className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-						!branchStatus?.prUrl ? disabledBtnClass : "text-success hover:bg-success/20 bg-success/10 border border-success/25"
-					}`}
-					title={branchStatus?.prUrl ? `PR #${branchStatus.prNumber}` : ""}
-				>
-					{t("infoPanel.openPR")}
-				</button>
-			) : (
+			{/* When a PR already exists, the "PR #N" badge above already links to it - no Open PR button needed. */}
+			{!hasPR && (
 				<>
 					<button
 						onClick={() => void handleCreatePR(false)}
@@ -312,13 +326,16 @@ export default function TaskGitActions({
 							createPRDisabled ? disabledBtnClass : enabledBtnClass
 						}`}
 						title={getPRTooltip()}
+						aria-label={t("infoPanel.createPR")}
 					>
-						<span className="inline-flex items-center gap-1.5">
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{"\u{F16A6}"}
+						{compact ? gitGlyph(GIT_GLYPH.createPR, creatingPR) : (
+							<span className="inline-flex items-center gap-1.5">
+								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+									{"\u{F16A6}"}
+								</span>
+								<span>{getPRButtonLabel()}</span>
 							</span>
-							<span>{getPRButtonLabel()}</span>
-						</span>
+						)}
 					</button>
 					<button
 						onClick={() => void handleCreatePR(true)}
@@ -327,13 +344,16 @@ export default function TaskGitActions({
 							createPRDisabled ? disabledBtnClass : enabledBtnClass
 						}`}
 						title={getPRAutoMergeTooltip()}
+						aria-label={t("infoPanel.createPRAutoMerge")}
 					>
-						<span className="inline-flex items-center gap-1.5">
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{"\u{F16A6}"}
+						{compact ? gitGlyph(GIT_GLYPH.createPRAutoMerge, creatingPR) : (
+							<span className="inline-flex items-center gap-1.5">
+								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+									{"\u{F16A6}"}
+								</span>
+								<span>{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMerge")}</span>
 							</span>
-							<span>{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMerge")}</span>
-						</span>
+						)}
 					</button>
 				</>
 			)}
@@ -344,8 +364,9 @@ export default function TaskGitActions({
 					mergeDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={mergeTooltip}
+				aria-label={t("infoPanel.merge")}
 			>
-				{merging ? t("infoPanel.merging") : t("infoPanel.merge")}
+				{compact ? gitGlyph(GIT_GLYPH.merge, merging) : (merging ? t("infoPanel.merging") : t("infoPanel.merge"))}
 			</button>
 			<button
 				onClick={handleRefreshStatus}
