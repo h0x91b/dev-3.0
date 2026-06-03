@@ -121,3 +121,29 @@ describe("dev3 remote --port validation", () => {
 		expect(combined).toContain("Unknown flag: --bogus");
 	});
 });
+
+describe("dev3 remote --expose-ports validation", () => {
+	it("rejects --expose-ports without a value", async () => {
+		await expect(handleRemote(undefined, args({ "expose-ports": "true" }))).rejects.toThrow("__exit__");
+		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+		expect(combined).toContain("--expose-ports requires a value");
+	});
+
+	it("rejects non-numeric port in the list", async () => {
+		await expect(handleRemote(undefined, args({ "expose-ports": "3000,abc" }))).rejects.toThrow("__exit__");
+		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+		expect(combined).toContain("invalid port");
+	});
+
+	it("rejects out-of-range port", async () => {
+		await expect(handleRemote(undefined, args({ "expose-ports": "70000" }))).rejects.toThrow("__exit__");
+		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+		expect(combined).toContain("invalid port");
+	});
+
+	it("rejects port with trailing garbage", async () => {
+		await expect(handleRemote(undefined, args({ "expose-ports": "3000abc" }))).rejects.toThrow("__exit__");
+		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+		expect(combined).toContain("invalid port");
+	});
+});

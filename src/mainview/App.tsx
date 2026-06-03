@@ -28,6 +28,7 @@ import { ErrorToast } from "./components/ErrorToast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
+import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
@@ -971,6 +972,8 @@ function App() {
 								</div>
 							)}
 						</div>
+
+						<RemoteAccessExposedPorts />
 
 						<div className="flex items-center justify-center gap-2">
 							<button

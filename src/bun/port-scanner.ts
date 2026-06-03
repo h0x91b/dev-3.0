@@ -2,6 +2,7 @@ import type { PortInfo } from "../shared/types";
 import { spawnSync } from "./spawn";
 import { tmuxArgs } from "./pty-server";
 import { createLogger } from "./logger";
+import { onTaskPortScanUpdate, cleanupTaskTunnels } from "./port-tunnels";
 
 const log = createLogger("port-scanner");
 const decoder = new TextDecoder();
@@ -285,11 +286,14 @@ function poll() {
 		const sessions = getActiveSessionsFn();
 		const activeTaskIds = new Set(sessions.map((s) => s.taskId));
 
-		// Clean up stale cache entries
+		// Clean up stale cache entries. Same hook tears down any port-tunnels
+		// the gone task left behind — no need to wait for the liveness timer
+		// when the whole tmux session is already dead.
 		for (const taskId of portCache.keys()) {
 			if (!activeTaskIds.has(taskId)) {
 				portCache.delete(taskId);
 				portData.delete(taskId);
+				cleanupTaskTunnels(taskId);
 			}
 		}
 
@@ -308,6 +312,9 @@ function poll() {
 					portData.set(taskId, ports);
 					pushMessageFn!("portsUpdated", { taskId, ports });
 				}
+				// Drive port-tunnel liveness off the same poller — no extra timers,
+				// no duplicated lsof. Tunnels auto-stop after 2 consecutive misses.
+				onTaskPortScanUpdate(taskId, ports.map((p) => p.port));
 			} catch (err) {
 				log.warn("Port scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
 			}

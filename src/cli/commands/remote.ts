@@ -7,7 +7,7 @@ import { exitError, exitUsage } from "../output";
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
 
 Usage:
-  dev3 remote [--no-tunnel] [--port <n>] [--views-dir <path>]
+  dev3 remote [--no-tunnel] [--expose-ports=<ports>] [--port <n>] [--views-dir <path>]
 
 What it does:
   Starts a Bun-only dev-3.0 server (no GUI window) and serves the full web UI
@@ -26,6 +26,14 @@ Flags:
       shown. Use this when the machine is already on a trusted network and
       you don't want to expose anything to the public internet, or when
       \`cloudflared\` is unavailable.
+
+  --expose-ports=<csv>
+      Comma-separated list of dev-server ports to expose via Cloudflare quick
+      tunnels at startup (one tunnel per port, each with its own random
+      \`*.trycloudflare.com\` URL). Retries every 2 s for 60 s until the port
+      is actually listening. Useful for headless boxes where you can't click
+      the GUI \`Expose\` button.
+      Example: --expose-ports=3000,5173
 
   --port <n>
       Bind to a fixed TCP port instead of a random one. Useful when running
@@ -53,9 +61,10 @@ Connection options shown on startup:
   http://localhost.
 
 Examples:
-  dev3 remote                   # Cloudflare tunnel + LAN + SSH forwarding
-  dev3 remote --no-tunnel       # LAN + SSH only (no public URL)
-  dev3 remote --port 3000       # fixed port (ideal for Docker -p 3000:3000)
+  dev3 remote                              # Cloudflare tunnel + LAN + SSH forwarding
+  dev3 remote --no-tunnel                  # LAN + SSH only (no public URL)
+  dev3 remote --port 3000                  # fixed port (ideal for Docker -p 3000:3000)
+  dev3 remote --expose-ports=3000,5173     # also expose dev-server ports publicly
 `;
 
 /**
@@ -137,7 +146,7 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 	}
 
 	for (const key of Object.keys(args.flags)) {
-		if (key !== "no-tunnel" && key !== "views-dir" && key !== "static-code" && key !== "port" && key !== "help" && key !== "h") {
+		if (key !== "no-tunnel" && key !== "views-dir" && key !== "static-code" && key !== "port" && key !== "expose-ports" && key !== "help" && key !== "h") {
 			exitUsage(`Unknown flag: --${key}\nRun "dev3 remote --help" for usage.`);
 		}
 	}
@@ -170,6 +179,25 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		childEnv.DEV3_REMOTE_STATIC_CODE = code;
 	} else if (args.flags["static-code"] === "true") {
 		exitUsage(`--static-code requires a value: --static-code=<your-code>`);
+	}
+	if (args.flags["expose-ports"] !== undefined) {
+		if (args.flags["expose-ports"] === "true") {
+			exitUsage(`--expose-ports requires a value: --expose-ports=3000,5173`);
+		}
+		const raw = args.flags["expose-ports"];
+		const ports: number[] = [];
+		for (const part of raw.split(",")) {
+			const trimmed = part.trim();
+			const n = Number.parseInt(trimmed, 10);
+			if (!Number.isFinite(n) || n < 1 || n > 65535 || String(n) !== trimmed) {
+				exitUsage(`--expose-ports: invalid port "${trimmed}" (must be integer in 1-65535)`);
+			}
+			ports.push(n);
+		}
+		if (ports.length === 0) {
+			exitUsage(`--expose-ports: at least one port required`);
+		}
+		childEnv.DEV3_REMOTE_EXPOSE_PORTS = ports.join(",");
 	}
 
 	// Dev mode (bun run src/cli/main.ts) — always re-run source through Bun.

@@ -10,6 +10,7 @@ import tips from "./en/tips";
 import gaugeDemo from "./en/gaugeDemo";
 import overview from "./en/overview";
 import scripts from "./en/scripts";
+import tunnels from "./en/tunnels";
 
 const en = {
 	...common,
@@ -24,6 +25,7 @@ const en = {
 	...gaugeDemo,
 	...overview,
 	...scripts,
+	...tunnels,
 } as const;
 
 export type TranslationKey = keyof typeof en;

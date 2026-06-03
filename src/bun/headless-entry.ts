@@ -23,7 +23,7 @@ import { getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
-import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed } from "./remote-console";
+import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
 import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
 
 const log = createLogger("headless");
@@ -156,6 +156,17 @@ setPushMessage((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// Port-tunnels module needs the same broadcast hook for `exposedPortsChanged`
+// events so connected browsers see new public URLs appear in real time.
+const { setPortTunnelsPushHook, exposeTaskPort, cleanupAllTunnels, HEADLESS_TASK_ID } = await import("./port-tunnels");
+setPortTunnelsPushHook((name, payload) => {
+	pushToBrowserClients(name, payload);
+	// Reprint the URL list in the headless console — keeps users who ran
+	// `dev3 remote --expose-ports=...` or the GUI Expose button from having
+	// to scroll up to find their fresh URL.
+	if (name === "exposedPortsChanged") printExposedPortsLive();
+});
+
 // ── Remote-access HTTP + WebSocket server ──
 await startRemoteAccessServer({
 	rpcHandler: async (method: string, params: unknown) => {
@@ -184,6 +195,58 @@ if (wantTunnel) {
 		} else {
 			console.error("[dev3 remote] Tunnel failed to start — falling back to local-only URL");
 		}
+	}
+}
+
+// ── --expose-ports retry loop ────────────────────────────────────────
+//
+// DEV3_REMOTE_EXPOSE_PORTS=3000,5173 schedules a Cloudflare quick tunnel
+// per port at startup. Ports often aren't listening yet when we run (the
+// user's dev server starts after their tmux session boots), so we poll
+// `lsof -nP -iTCP -sTCP:LISTEN` every 2 s until the port shows up — or
+// give up after 60 s with a warning. Uses HEADLESS_TASK_ID so the
+// port-scan poller's liveness logic does NOT auto-kill the tunnel later.
+const exposePortsRaw = process.env.DEV3_REMOTE_EXPOSE_PORTS;
+if (exposePortsRaw) {
+	const exposeList = exposePortsRaw
+		.split(",")
+		.map((s) => Number.parseInt(s.trim(), 10))
+		.filter((n) => Number.isFinite(n) && n >= 1 && n <= 65535);
+	for (const port of exposeList) {
+		startPortExposeRetry(port).catch((err) => {
+			log.warn("expose-port retry loop failed", { port, error: String(err) });
+		});
+	}
+}
+
+async function startPortExposeRetry(port: number): Promise<void> {
+	const RETRY_INTERVAL_MS = 2_000;
+	const MAX_RETRIES = 30; // 60 s total
+	for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+		if (await isPortListening(port)) {
+			log.info("expose-port: port is listening, starting tunnel", { port, attempt });
+			try {
+				const exposed = await exposeTaskPort(HEADLESS_TASK_ID, port);
+				console.log(`[dev3 remote] Exposed port ${port}: ${exposed.url ?? "(failed)"}`);
+			} catch (err) {
+				log.error("expose-port: tunnel start failed", { port, error: String(err) });
+			}
+			return;
+		}
+		await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
+	}
+	console.error(`[dev3 remote] --expose-ports: port ${port} never started listening within 60 s — giving up`);
+}
+
+async function isPortListening(port: number): Promise<boolean> {
+	const { spawnSync } = await import("./spawn");
+	try {
+		// `lsof -i :PORT -sTCP:LISTEN -nP -t` prints PIDs (empty when nothing).
+		const result = spawnSync(["lsof", "-i", `:${port}`, "-sTCP:LISTEN", "-nP", "-t"]);
+		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
+		return stdout.trim().length > 0;
+	} catch {
+		return false;
 	}
 }
 
@@ -289,6 +352,7 @@ function shutdown(signal: string): void {
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopSocketServer();
+	cleanupAllTunnels();
 	stopTunnel();
 	process.exit(0);
 }

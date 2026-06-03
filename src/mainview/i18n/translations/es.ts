@@ -11,6 +11,7 @@ import tips from "./es/tips";
 import gaugeDemo from "./es/gaugeDemo";
 import overview from "./es/overview";
 import scripts from "./es/scripts";
+import tunnels from "./es/tunnels";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -25,6 +26,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...gaugeDemo,
 	...overview,
 	...scripts,
+	...tunnels,
 };
 
 export default es;

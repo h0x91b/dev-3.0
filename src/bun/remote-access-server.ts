@@ -19,7 +19,7 @@ import QRCode from "qrcode";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
-import { getTunnelUrl, getTunnelState } from "./cloudflare-tunnel";
+import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
 
@@ -212,6 +212,42 @@ function proxyToPty(clientWs: any, sessionId: string): void {
 	(clientWs as any)._ptyUpstream = upstream;
 }
 
+/**
+ * Open a WebSocket against the localhost dev server for a shared-tunnel
+ * `/p/<subtoken>/<port>/<path>` upgrade, and wire bidirectional message
+ * forwarding. Same shape as `proxyToPty` but targets an arbitrary dev port
+ * rather than the PTY server. Used by Vite/Next HMR, live-reload, etc.
+ */
+function proxyToSharedUpstream(clientWs: any, upstreamUrl: string): void {
+	const upstream = new WebSocket(upstreamUrl);
+
+	upstream.addEventListener("open", () => {
+		log.info("Shared proxy WS upstream connected", { url: upstreamUrl });
+	});
+
+	upstream.addEventListener("message", (event) => {
+		try {
+			if (typeof event.data === "string") {
+				clientWs.sendText(event.data);
+			} else {
+				clientWs.send(event.data);
+			}
+		} catch {
+			// Client disconnected — error will surface via close handler.
+		}
+	});
+
+	upstream.addEventListener("close", () => {
+		try { clientWs.close(); } catch { /* already closed */ }
+	});
+
+	upstream.addEventListener("error", () => {
+		try { clientWs.close(4003, "Shared upstream error"); } catch { /* ignore */ }
+	});
+
+	(clientWs as any)._proxyUpstream = upstream;
+}
+
 // ── RPC ─────────────────────────────────────────────────────────────
 
 type RpcRequestHandler = (method: string, params: any) => Promise<any>;
@@ -243,8 +279,82 @@ async function handleRpcMessage(ws: any, raw: string | ArrayBuffer): Promise<voi
 // ── Server ──────────────────────────────────────────────────────────
 
 interface WsData {
-	type: "rpc" | "pty";
+	type: "rpc" | "pty" | "shared-proxy";
 	sessionId?: string;
+	/** For `shared-proxy`: the upstream `ws://localhost:<port>/<path>` URL to dial. */
+	proxyUpstreamUrl?: string;
+}
+
+// ── Shared-tunnel reverse proxy helpers ───────────────────────────────
+
+/**
+ * Headers we must not forward end-to-end. RFC 9110 hop-by-hop list plus
+ * `host` (we set our own) and `content-length` (Bun's fetch recomputes it
+ * from the body). Leaving `connection: keep-alive` in place can wedge Bun's
+ * client when the upstream sends `Connection: close`.
+ */
+const HOP_BY_HOP_HEADERS = new Set([
+	"connection",
+	"keep-alive",
+	"proxy-authenticate",
+	"proxy-authorization",
+	"te",
+	"trailers",
+	"transfer-encoding",
+	"upgrade",
+	"host",
+	"content-length",
+]);
+
+function stripHopByHop(headers: Headers): Headers {
+	const out = new Headers();
+	for (const [k, v] of headers.entries()) {
+		if (!HOP_BY_HOP_HEADERS.has(k.toLowerCase())) out.append(k, v);
+	}
+	return out;
+}
+
+/**
+ * Parse `/p/<subtoken>/<port>/<rest...>`. `<rest>` may be empty; `<port>`
+ * must be a positive integer in [1, 65535].
+ */
+export function parseSharedProxyPath(pathname: string): { subToken: string; port: number; rest: string } | null {
+	// strip leading "/p/"
+	const tail = pathname.slice(3);
+	const firstSlash = tail.indexOf("/");
+	if (firstSlash <= 0) return null;
+	const subToken = tail.slice(0, firstSlash);
+	const afterToken = tail.slice(firstSlash + 1);
+	const secondSlash = afterToken.indexOf("/");
+	const portStr = secondSlash === -1 ? afterToken : afterToken.slice(0, secondSlash);
+	const rest = secondSlash === -1 ? "" : afterToken.slice(secondSlash + 1);
+	const port = Number.parseInt(portStr, 10);
+	if (!Number.isFinite(port) || port < 1 || port > 65535 || String(port) !== portStr) return null;
+	if (!subToken) return null;
+	return { subToken, port, rest };
+}
+
+async function proxyHttpToLocalhost(req: Request, port: number, rest: string, search: string): Promise<Response> {
+	const upstreamUrl = `http://localhost:${port}/${rest}${search}`;
+	try {
+		const upstream = await fetch(upstreamUrl, {
+			method: req.method,
+			headers: stripHopByHop(req.headers),
+			body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
+			redirect: "manual",
+		});
+		// Stream response back. Strip hop-by-hop headers from the upstream's
+		// response too — Bun would otherwise let `transfer-encoding: chunked`
+		// through to a client that's already running over Cloudflare's HTTP/2.
+		return new Response(upstream.body, {
+			status: upstream.status,
+			statusText: upstream.statusText,
+			headers: stripHopByHop(upstream.headers),
+		});
+	} catch (err) {
+		log.warn("Shared proxy: upstream fetch failed", { port, error: String(err) });
+		return new Response(`Upstream localhost:${port} unreachable`, { status: 502 });
+	}
 }
 
 let serverPort = 0;
@@ -384,6 +494,42 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
+			// ── Shared-tunnel reverse proxy: /p/<subtoken>/<port>/<rest> ──
+			//
+			// A task's shared Cloudflare tunnel resolves a single public origin
+			// (`https://random.trycloudflare.com`) and the user navigates to
+			// `<origin>/p/<subtoken>/<port>/...`. We dispatch the request to
+			// `http://localhost:<port>/...` on this machine. The subtoken is the
+			// capability — a 24-byte random secret minted at tunnel-start and
+			// carried in the URL itself (no JWT plumbing inside the dev server's
+			// HTML/JS, no CORS, no cookies). This is the "URL is the password"
+			// pattern used by Google Docs share links.
+			if (url.pathname.startsWith("/p/")) {
+				const parsed = parseSharedProxyPath(url.pathname);
+				if (!parsed) return new Response("Bad shared-proxy path", { status: 400 });
+				const tunnel = tunnelManager.list({ kind: "task-shared" }).find((t) => t.subToken === parsed.subToken);
+				if (!tunnel) {
+					log.warn("Shared proxy: unknown subtoken", { ip: clientIp });
+					return new Response("Not Found", { status: 404 });
+				}
+				if (!tunnel.ports.includes(parsed.port)) {
+					log.warn("Shared proxy: port not registered", { ip: clientIp, port: parsed.port, registered: tunnel.ports });
+					return new Response("Port not registered for this tunnel", { status: 404 });
+				}
+
+				// WebSocket upgrade (HMR, live-reload, dev-server inspector).
+				const isWsUpgrade = req.headers.get("upgrade")?.toLowerCase() === "websocket";
+				if (isWsUpgrade) {
+					const upstreamUrl = `ws://localhost:${parsed.port}/${parsed.rest}${url.search}`;
+					log.info("Shared proxy WS upgrade", { ip: clientIp, port: parsed.port });
+					if (server.upgrade(req, { data: { type: "shared-proxy", proxyUpstreamUrl: upstreamUrl } as WsData })) return;
+					return new Response("WebSocket upgrade failed", { status: 400 });
+				}
+
+				// Plain HTTP — proxy the request, stream the response back.
+				return proxyHttpToLocalhost(req, parsed.port, parsed.rest, url.search);
+			}
+
 			// ── API endpoints (session token required) ──
 			if (url.pathname === "/health") {
 				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
@@ -397,12 +543,14 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 		},
 		websocket: {
 			open(ws) {
-				const wsData = (ws as any).data as { type: string; sessionId?: string };
+				const wsData = (ws as any).data as { type: string; sessionId?: string; proxyUpstreamUrl?: string };
 				if (wsData.type === "rpc") {
 					rpcClients.add(ws);
 					log.info("Remote RPC client connected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
 					proxyToPty(ws, wsData.sessionId!);
+				} else if (wsData.type === "shared-proxy") {
+					proxyToSharedUpstream(ws, wsData.proxyUpstreamUrl!);
 				}
 			},
 			message(ws, raw) {
@@ -418,6 +566,11 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 						const data = typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer);
 						upstream.send(data);
 					}
+				} else if (wsData.type === "shared-proxy") {
+					const upstream = (ws as any)._proxyUpstream as WebSocket | undefined;
+					if (upstream?.readyState === WebSocket.OPEN) {
+						upstream.send(raw as string | ArrayBuffer);
+					}
 				}
 			},
 			close(ws) {
@@ -427,6 +580,11 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					log.info("Remote RPC client disconnected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
 					const upstream = (ws as any)._ptyUpstream as WebSocket | undefined;
+					if (upstream && upstream.readyState === WebSocket.OPEN) {
+						upstream.close();
+					}
+				} else if (wsData.type === "shared-proxy") {
+					const upstream = (ws as any)._proxyUpstream as WebSocket | undefined;
 					if (upstream && upstream.readyState === WebSocket.OPEN) {
 						upstream.close();
 					}

@@ -47,6 +47,7 @@ import { tmuxPtyHandlers } from "./rpc-handlers/tmux-pty";
 import { notesLabelsHandlers } from "./rpc-handlers/notes-labels";
 import { remoteAccessHandlers } from "./rpc-handlers/remote-access";
 import { scriptsHandlers } from "./rpc-handlers/scripts";
+import { portTunnelHandlers } from "./rpc-handlers/port-tunnels";
 
 export const handlers = {
 	...appHandlers,
@@ -57,4 +58,5 @@ export const handlers = {
 	...notesLabelsHandlers,
 	...remoteAccessHandlers,
 	...scriptsHandlers,
+	...portTunnelHandlers,
 };

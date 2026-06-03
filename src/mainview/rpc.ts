@@ -14,6 +14,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	branchMerged: (payload) => window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: payload })),
 	updateAvailable: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateAvailable", { detail: payload })),
 	portsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:portsUpdated", { detail: payload })),
+	exposedPortsChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:exposedPortsChanged", { detail: payload })),
 	resourceUsageUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:resourceUsageUpdated", { detail: payload })),
 	updateDownloadProgress: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateDownloadProgress", { detail: payload })),
 	columnAgentFailed: (payload) => window.dispatchEvent(new CustomEvent("rpc:columnAgentFailed", { detail: payload })),

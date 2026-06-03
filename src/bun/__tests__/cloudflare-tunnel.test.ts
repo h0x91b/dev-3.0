@@ -22,6 +22,7 @@ import {
 	getTunnelUrl,
 	getTunnelState,
 	parseTunnelUrl,
+	tunnelManager,
 	_resetState,
 } from "../cloudflare-tunnel";
 
@@ -231,6 +232,99 @@ describe("getTunnelState", () => {
 
 	it("returns idle initially", () => {
 		expect(getTunnelState()).toBe("idle");
+	});
+});
+
+// ================================================================
+// tunnelManager — multi-entry coverage
+// ================================================================
+
+describe("tunnelManager", () => {
+	beforeEach(() => {
+		_resetState();
+		vi.clearAllMocks();
+	});
+
+	function mockSpawnReturning(url: string) {
+		const encoder = new TextEncoder();
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill: vi.fn(),
+			exited: new Promise<void>(() => {}),
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(`INF | ${url}\n`));
+					controller.close();
+				},
+			}),
+		});
+	}
+
+	it("tracks multiple tunnels independently by id", async () => {
+		mockSpawnReturning("https://tunnel-a.trycloudflare.com");
+		mockSpawnReturning("https://tunnel-b.trycloudflare.com");
+
+		const a = await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+		const b = await tunnelManager.start({ id: "task:t1:port:5173", kind: "task-port", targetPort: 5173, taskId: "t1" });
+
+		expect(a.url).toBe("https://tunnel-a.trycloudflare.com");
+		expect(b.url).toBe("https://tunnel-b.trycloudflare.com");
+		expect(tunnelManager.list({ taskId: "t1" })).toHaveLength(2);
+	});
+
+	it("filters list by kind and taskId", async () => {
+		mockSpawnReturning("https://main.trycloudflare.com");
+		mockSpawnReturning("https://port-a.trycloudflare.com");
+		mockSpawnReturning("https://port-b.trycloudflare.com");
+
+		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
+		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+		await tunnelManager.start({ id: "task:t2:port:3000", kind: "task-port", targetPort: 3000, taskId: "t2" });
+
+		expect(tunnelManager.list({ kind: "main" })).toHaveLength(1);
+		expect(tunnelManager.list({ kind: "task-port" })).toHaveLength(2);
+		expect(tunnelManager.list({ taskId: "t1" })).toHaveLength(1);
+		expect(tunnelManager.list({ kind: "task-port", taskId: "t2" })).toHaveLength(1);
+	});
+
+	it("stopAll with kind filter leaves other kinds running", async () => {
+		mockSpawnReturning("https://main.trycloudflare.com");
+		mockSpawnReturning("https://port-a.trycloudflare.com");
+
+		await tunnelManager.start({ id: "main", kind: "main", targetPort: 8080 });
+		await tunnelManager.start({ id: "task:t1:port:3000", kind: "task-port", targetPort: 3000, taskId: "t1" });
+
+		tunnelManager.stopAll({ kind: "task-port" });
+
+		expect(tunnelManager.get("main")?.state).toBe("connected");
+		expect(tunnelManager.get("task:t1:port:3000")).toBeUndefined();
+	});
+
+	it("mints a unique subToken per entry", async () => {
+		mockSpawnReturning("https://a.trycloudflare.com");
+		mockSpawnReturning("https://b.trycloudflare.com");
+
+		const a = await tunnelManager.start({ id: "task:t1:shared", kind: "task-shared", targetPort: 8080, taskId: "t1", ports: [3000, 5173] });
+		const b = await tunnelManager.start({ id: "task:t2:shared", kind: "task-shared", targetPort: 8080, taskId: "t2", ports: [3001] });
+
+		expect(a.subToken).toBeTruthy();
+		expect(b.subToken).toBeTruthy();
+		expect(a.subToken).not.toBe(b.subToken);
+		expect(a.ports).toEqual([3000, 5173]);
+		expect(b.ports).toEqual([3001]);
+	});
+
+	it("back-compat startTunnel/stopTunnel operate on main entry", async () => {
+		mockSpawnReturning("https://main-compat.trycloudflare.com");
+
+		const url = await startTunnel(8080);
+		expect(url).toBe("https://main-compat.trycloudflare.com");
+		expect(getTunnelUrl()).toBe("https://main-compat.trycloudflare.com");
+		expect(getTunnelState()).toBe("connected");
+		expect(tunnelManager.get("main")).toBeDefined();
+
+		stopTunnel();
+		expect(getTunnelState()).toBe("idle");
+		expect(tunnelManager.get("main")).toBeUndefined();
 	});
 });
 

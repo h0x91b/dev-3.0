@@ -301,6 +301,15 @@ setPushMessage((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// `exposedPortsChanged` rides its own hook because port-tunnels lives below
+// rpc-handlers — same broadcast target as above.
+import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
+	setPortTunnelsPushHook((name, payload) => {
+		(mainWindow.webview.rpc as any).send[name]?.(payload);
+		pushToBrowserClients(name, payload);
+	});
+}).catch((err) => log.warn("port-tunnels push hook setup failed", { error: String(err) }));
+
 // Start remote access server (serves UI + RPC + PTY proxy on LAN)
 await startRemoteAccessServer({
 	rpcHandler: async (method: string, params: any) => {
@@ -452,6 +461,10 @@ mainWindow.on("close", () => {
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopSocketServer();
+	// Tear down every per-task cloudflared process spawned by the GUI's
+	// `Expose port` button or by `--expose-ports`. Leaving them running
+	// would orphan tunnels (and trycloudflare quotas) on app exit.
+	import("./port-tunnels").then(({ cleanupAllTunnels }) => cleanupAllTunnels()).catch(() => { /* shutdown — best-effort */ });
 	stopTunnel();
 	Utils.quit();
 });

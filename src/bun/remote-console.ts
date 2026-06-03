@@ -13,6 +13,7 @@
 import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import { createLogger } from "./logger";
+import { tunnelManager } from "./cloudflare-tunnel";
 
 const log = createLogger("remote-console");
 
@@ -179,6 +180,56 @@ function printConnectionTips(opts: TipsOptions): void {
 		console.log("");
 	}
 
+	printExposedPortsBlock(ips);
+
 	console.log("  Press Ctrl-C to stop.");
 	console.log("");
+}
+
+/**
+ * Print a section listing every dev-server port that's been exposed (either
+ * via per-port quick tunnels or as part of a shared tunnel). Refreshed on
+ * `exposedPortsChanged` via `printExposedPortsLive()` so the user sees URLs
+ * the moment `--expose-ports` or the GUI brings them up.
+ */
+function printExposedPortsBlock(localIps: string[]): void {
+	const taskPort = tunnelManager.list({ kind: "task-port" });
+	const taskShared = tunnelManager.list({ kind: "task-shared" });
+	if (taskPort.length === 0 && taskShared.length === 0) return;
+
+	const whoami = process.env.USER || "<you>";
+	const firstLan = localIps[0] ?? "<lan-ip>";
+
+	console.log("  ▼ Exposed dev-server ports:");
+	console.log("");
+	for (const entry of taskPort) {
+		const port = entry.targetPort;
+		console.log(`    Port ${port}${entry.taskId ? `  (task ${entry.taskId.slice(0, 8)})` : ""}:`);
+		if (entry.url) console.log(`       🌐 Public:    ${entry.url}`);
+		console.log(`       🏠 LAN:       http://${firstLan}:${port}`);
+		console.log(`       💻 Localhost: http://localhost:${port}  (after ssh -L)`);
+		console.log(`       🔐 SSH:       ssh -L ${port}:localhost:${port} ${whoami}@<host>`);
+		console.log("");
+	}
+	for (const entry of taskShared) {
+		console.log(`    Shared tunnel (task ${entry.taskId?.slice(0, 8) ?? "?"}) → ports ${entry.ports.join(", ")}:`);
+		if (entry.url) {
+			for (const p of entry.ports) {
+				console.log(`       🌐 Port ${p}:  ${entry.url}/p/${entry.subToken}/${p}/`);
+			}
+		}
+		console.log("");
+	}
+}
+
+/**
+ * Reprint a fresh "Exposed dev-server ports" block. Called on the
+ * `exposedPortsChanged` push event so the headless console always shows the
+ * current set of public URLs without forcing the user to scroll up.
+ */
+export function printExposedPortsLive(): void {
+	const ips = getLocalIps();
+	console.log("");
+	console.log("── Exposed ports updated ─────────────────────────────────────");
+	printExposedPortsBlock(ips);
 }

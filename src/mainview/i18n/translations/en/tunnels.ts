@@ -1,0 +1,23 @@
+const tunnels = {
+	"tunnel.exposeViaCloudflare": "Expose via Cloudflare",
+	"tunnel.stopExposing": "Stop exposing",
+	"tunnel.addToShared": "Add to shared tunnel",
+	"tunnel.copySshCommand": "Copy SSH command",
+	"tunnel.copyLan": "Copy LAN URL",
+	"tunnel.copyLocalhost": "Copy localhost URL",
+	"tunnel.copyUrl": "Copy URL",
+	"tunnel.publicWarning": "Public — anyone with this URL can reach this port",
+	"tunnel.starting": "Starting…",
+	"tunnel.failed": "Failed",
+	"tunnel.exposedPortsSection": "Exposed ports",
+	"tunnel.noPortsExposed": "No ports exposed. Use the dev-server menu on a task to expose one.",
+	"tunnel.sharedTunnel": "Shared tunnel",
+	"tunnel.groupIntoOneUrl": "Group these into one URL",
+	"tunnel.customPortInput": "Expose custom port",
+	"tunnel.portsLabel": "Ports",
+	"tunnel.unexposeAll": "Stop all tunnels",
+	"tunnel.urlCopied": "URL copied to clipboard",
+	"tunnel.sshCopied": "SSH command copied",
+} as const;
+
+export default tunnels;

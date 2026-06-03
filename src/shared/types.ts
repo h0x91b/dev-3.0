@@ -852,6 +852,36 @@ export interface PortInfo {
 	processName: string; // "node", "bun", "python3"
 }
 
+// ---- Exposed ports (Cloudflare tunnels for dev servers) ----
+
+export type ExposedPortKind = "quick" | "shared";
+
+/**
+ * A dev-server port (or group of ports) being shared publicly through a
+ * Cloudflare quick-tunnel. `kind: "quick"` is one cloudflared per port
+ * → its own random `*.trycloudflare.com` URL. `kind: "shared"` is one
+ * cloudflared shared between multiple ports of the same task — those ports
+ * are reached via `<url>/p/<port>/...` on the headless server which proxies
+ * the request to localhost:<port>. Shared mode lets a frontend and backend
+ * talk to each other via relative URLs (no CORS, no hardcoded URLs).
+ *
+ * State is runtime-only — never persists to tasks.json. Tunnels are torn
+ * down on explicit stop, after two consecutive port-scan misses (~20 s),
+ * on task removal, and on app shutdown.
+ */
+export interface ExposedPort {
+	taskId: string;
+	kind: ExposedPortKind;
+	/**
+	 * For `quick`, exactly one element — the dev-server port. For `shared`,
+	 * the full set of ports reachable through this tunnel.
+	 */
+	ports: number[];
+	url: string | null;
+	state: "starting" | "connected" | "failed";
+	startedAt: number;
+}
+
 // ---- Resource usage ----
 
 export interface ResourceUsage {
@@ -1527,6 +1557,30 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			exposePort: {
+				params: { taskId: string; port: number };
+				response: ExposedPort;
+			};
+			exposePortsShared: {
+				params: { taskId: string; ports: number[] };
+				response: ExposedPort;
+			};
+			unexposePort: {
+				params: { taskId: string; port: number };
+				response: void;
+			};
+			unexposeShared: {
+				params: { taskId: string };
+				response: void;
+			};
+			listExposedPorts: {
+				params: { taskId?: string };
+				response: ExposedPort[];
+			};
+			getSshForwardCommand: {
+				params: { ports: number[] };
+				response: { command: string; hostGuess: string | null };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
@@ -1540,6 +1594,7 @@ export type AppRPCSchema = {
 			updateAvailable: { version: string };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
+			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			updateDownloadProgress: { status: string; progress?: number };
 			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */

@@ -11,6 +11,7 @@ import tips from "./ru/tips";
 import gaugeDemo from "./ru/gaugeDemo";
 import overview from "./ru/overview";
 import scripts from "./ru/scripts";
+import tunnels from "./ru/tunnels";
 
 const ru: TranslationRecord & Record<string, string> = {
 	...common,
@@ -25,6 +26,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	...gaugeDemo,
 	...overview,
 	...scripts,
+	...tunnels,
 };
 
 export default ru;
