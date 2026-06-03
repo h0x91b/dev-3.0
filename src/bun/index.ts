@@ -5,7 +5,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground } from "./rpc-handlers";
-import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
+import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
 import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
@@ -564,13 +564,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		log.info("Hard refresh — navigating to home page");
 		focused?.webview.loadURL(url);
 	} else if (e.data.action === MENU_ACTIONS.about) {
-		Utils.showMessageBox({
-			type: "info",
-			title: "About",
-			message: `dev-3.0 v${APP_VERSION}`,
-			detail: "Terminal-centric project manager\nBuilt with Electrobun, React, and Bun.",
-			buttons: ["OK"],
-		});
+		sendToFocusedWindow("showAbout", { version: APP_VERSION });
 	} else if (e.data.action === MENU_ACTIONS.openSettings) {
 		sendToFocusedWindow("navigateToSettings");
 	} else if (e.data.action === MENU_ACTIONS.openNewTask) {
@@ -582,75 +576,35 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 	} else if (e.data.action === MENU_ACTIONS.viewportLab) {
 		sendToFocusedWindow("navigateToViewportLab");
 	} else if (e.data.action === MENU_ACTIONS.checkForUpdates) {
+		// Mirror the silent auto-update flow: check, then download in the background.
+		// A ready update surfaces as the existing header "Update ready" plaque
+		// (`updateAvailable`); "up to date" / errors surface as in-app toasts
+		// (`updateCheckOutcome`). No native message boxes — works in remote mode too.
 		try {
 			const settings = await loadSettings();
 			sendUpdateProgress("checking");
 			const result = await checkForUpdateWithChannel(settings.updateChannel);
-			sendUpdateProgress("idle");
 
 			if (result.error) {
-				Utils.showMessageBox({
-					type: "warning",
-					title: "Update Check Failed",
-					message: "Could not check for updates",
-					detail: result.error,
-					buttons: ["OK"],
-				});
+				sendUpdateProgress("idle");
+				sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: result.error });
 			} else if (result.updateAvailable) {
-				const { response } = await Utils.showMessageBox({
-					type: "info",
-					title: "Update Available",
-					message: `Version ${result.version} is available`,
-					detail: "Would you like to download the update?",
-					buttons: ["Download", "Later"],
-					defaultId: 0,
-					cancelId: 1,
-				});
-				if (response === 0) {
-					sendUpdateProgress("downloading", 0);
-					const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
-					if (dlResult.ok) {
-						const { response: restartResponse } = await Utils.showMessageBox({
-							type: "info",
-							title: "Update Downloaded",
-							message: "Update is ready to install",
-							detail: "The app will restart to apply the update.",
-							buttons: ["Restart Now", "Later"],
-							defaultId: 0,
-							cancelId: 1,
-						});
-						if (restartResponse === 0) {
-							await applyUpdate();
-						}
-					} else {
-						Utils.showMessageBox({
-							type: "warning",
-							title: "Download Failed",
-							message: "Could not download the update",
-							detail: dlResult.error || "Unknown error",
-							buttons: ["OK"],
-						});
-					}
+				sendUpdateProgress("downloading", 0);
+				const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
+				if (dlResult.ok) {
+					broadcastToAllWindows("updateAvailable", { version: result.version });
+				} else {
+					sendUpdateProgress("error");
+					sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: dlResult.error || "Download failed" });
 				}
 			} else {
-				Utils.showMessageBox({
-					type: "info",
-					title: "No Updates",
-					message: "You're up to date!",
-					detail: `Current version: ${(await getLocalVersion()).version}`,
-					buttons: ["OK"],
-				});
+				sendUpdateProgress("idle");
+				sendToFocusedWindow("updateCheckOutcome", { status: "none", version: (await getLocalVersion()).version });
 			}
 		} catch (err) {
 			sendUpdateProgress("idle");
 			log.error("Menu check-for-updates failed", { error: String(err) });
-			Utils.showMessageBox({
-				type: "warning",
-				title: "Update Check Failed",
-				message: "Could not check for updates",
-				detail: String(err),
-				buttons: ["OK"],
-			});
+			sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: String(err) });
 		}
 	} else if (e.data.action === "terminal-soft-reset") {
 		sendToFocusedWindow("terminalSoftReset");

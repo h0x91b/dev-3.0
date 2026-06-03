@@ -30,6 +30,7 @@ import FolderPickerHost from "./components/FolderPickerModal";
 import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
+import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
@@ -108,6 +109,9 @@ function App() {
 			})
 			.catch(() => {});
 	}, []);
+
+	// About dialog (opened from the native menu's "About" item via rpc:showAbout)
+	const [aboutVersion, setAboutVersion] = useState<string | null>(null);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -512,6 +516,35 @@ function App() {
 		window.addEventListener("rpc:updateAvailable", onUpdateAvailable);
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
 	}, []);
+
+	// Open the in-app About dialog when the native menu's "About" item is clicked.
+	useEffect(() => {
+		function onShowAbout(e: Event) {
+			const { version } = (e as CustomEvent).detail as { version: string };
+			setAboutVersion(version);
+		}
+		window.addEventListener("rpc:showAbout", onShowAbout);
+		return () => window.removeEventListener("rpc:showAbout", onShowAbout);
+	}, []);
+
+	// Surface the result of a manual "Check for Updates" menu action as a toast.
+	// (Available updates flow through rpc:updateAvailable → the header plaque.)
+	useEffect(() => {
+		function onUpdateCheckOutcome(e: Event) {
+			const { status, version, detail } = (e as CustomEvent).detail as {
+				status: "none" | "error";
+				version?: string;
+				detail?: string;
+			};
+			if (status === "none") {
+				toast.info(t("update.upToDateVersion", { version: version ?? "" }));
+			} else {
+				toast.error(t("update.checkFailedDetail", { error: detail ?? "" }));
+			}
+		}
+		window.addEventListener("rpc:updateCheckOutcome", onUpdateCheckOutcome);
+		return () => window.removeEventListener("rpc:updateCheckOutcome", onUpdateCheckOutcome);
+	}, [t]);
 
 	// Click-to-open for watched-task notifications.
 	// Bun observes the main window's `focus` event after a notification fires and pushes us
@@ -1060,6 +1093,7 @@ function App() {
 			<FolderPickerHost />
 			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
 			<ConfirmHost />
+			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
 		</div>
 	);
 

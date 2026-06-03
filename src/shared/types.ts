@@ -1658,6 +1658,13 @@ export type AppRPCSchema = {
 			 * only happens after the renderer confirms via `quitApp`.
 			 */
 			showQuitDialog: {};
+			/** Open the in-app About modal (replaces the native About message box). */
+			showAbout: { version: string };
+			/**
+			 * Result of a manual "Check for Updates" menu action, surfaced as a toast.
+			 * `available` updates flow through `updateAvailable` instead (header plaque).
+			 */
+			updateCheckOutcome: { status: "none" | "error"; version?: string; detail?: string };
 		};
 	}>;
 };

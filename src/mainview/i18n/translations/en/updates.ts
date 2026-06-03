@@ -17,6 +17,8 @@ const updates = {
 	"update.restarting": "Restarting...",
 	"update.checking": "Checking...",
 	"update.downloading": "Downloading...",
+	"update.upToDateVersion": "You're up to date — v{version}",
+	"update.checkFailedDetail": "Update check failed: {error}",
 
 	// Requirements
 	"requirements.title": "System Requirements",

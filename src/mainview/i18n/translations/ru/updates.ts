@@ -17,6 +17,8 @@ const updates = {
 	"update.restarting": "Перезапуск...",
 	"update.checking": "Проверка...",
 	"update.downloading": "Загрузка...",
+	"update.upToDateVersion": "У вас последняя версия — v{version}",
+	"update.checkFailedDetail": "Не удалось проверить обновления: {error}",
 
 	// Requirements
 	"requirements.title": "Системные требования",
