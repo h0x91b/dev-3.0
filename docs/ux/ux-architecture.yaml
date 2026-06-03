@@ -174,16 +174,16 @@ ux_architecture:
           session_agent:
             position: "row1.right"
             domain: "drive the session & agents"
-            contents: ["spawn_agent", "bug_hunters", "tmux_controls", "open_in"]
+            contents: ["spawn_agent", "bug_hunters", "tmux_controls"]
           git:
             position: "row2.left"
             domain: "branch & PR"
             contents: ["branch_status", "show_diff", "refresh", "copy_worktree_path", "open_pr"]
           runtime:
             position: "row2.right"
-            domain: "project runtime outputs"
-            contents: ["dev_server", "scripts"]
-            note: "Ports/resource usage render as detail in the expanded body, not in the bar."
+            domain: "project runtime outputs + access to them"
+            contents: ["open_in", "scripts", "dev_server"]
+            note: "open-in lives here (opens the produced worktree) and keeps the bar balanced at 3 controls. Ports/resource usage render as detail in the expanded body, not in the bar."
         chrome:
           not_a_bar: true
           position: "row1 far-right edge"

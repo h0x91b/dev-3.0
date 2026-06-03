@@ -90,13 +90,13 @@ The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) i
 | Bar | Position | Domain | Contents | Evidence |
 |---|---|---|---|---|
 | Context | row 1, left | task identity & lifecycle | watch toggle, status dropdown, diff-summary badge, include-tests toggle, label strip | `TaskInfoPanel.tsx` (row 1 left cluster) |
-| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls, open-in (editor/file browser) | `TaskInfoPanel.tsx` (row 1 right cluster), `TaskTmuxControls.tsx`, `TaskOpenIn.tsx` |
+| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls | `TaskInfoPanel.tsx` (row 1 right cluster), `TaskTmuxControls.tsx` |
 | Git | row 2, left | branch & PR | branch name/status, show diff, refresh, copy worktree path, open PR | `task-info-panel/TaskGitActions.tsx` |
-| Runtime | row 2, right | project runtime outputs | dev server (start/stop/restart/status), scripts; ports/resources shown as detail in the expanded body | `task-info-panel/TaskDevServer.tsx`, `task-info-panel/TaskScripts.tsx` |
+| Runtime & access | row 2, right | project runtime outputs + access to them | open-in (editor/file browser), scripts, dev server (start/stop/restart/status); ports/resources shown as detail in the expanded body | `task-info-panel/TaskOpenIn.tsx`, `task-info-panel/TaskScripts.tsx`, `task-info-panel/TaskDevServer.tsx` |
 
 Rules:
 
-- **Row 1 = "Drive"** (what the task is + how I control its session). **Row 2 = "Outputs"** (what the work produces: branch/PR + running server/ports).
+- **Row 1 = "Drive"** (what the task is + how I control its session). **Row 2 = "Outputs"** (what the work produces and how I access it: branch/PR + open-in/scripts/running server). open-in lives here because it opens the produced worktree, and it keeps the Runtime bar balanced (3 controls) instead of leaving it sparse.
 - **Chrome** (collapse/expand, fullscreen toggle, ⚙ worktree-settings) is pinned to the far right edge of row 1 and is **not** counted as a bar or against any bar's budget.
 - A new control must be assigned to exactly one domain and placed in that bar. Do not drop it into whichever bar has room — that is how the pre-2026-06 "everything in row-1-right" dumpster happened.
 - **Label overflow:** the Context bar shows up to `MAX_INLINE_LABELS` (4) chips inline, then a `+k` chip (hover lists the rest). The full label list still renders in the expanded metadata grid, so the inline strip may truncate safely.

@@ -41,7 +41,7 @@ interface TaskInfoPanelProps {
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
-const COLLAPSED_HEIGHT_REM = 3.875;
+const COLLAPSED_HEIGHT_REM = 4.25;
 const DEFAULT_HEIGHT = 200;
 const MIN_HEIGHT = 80;
 const MAX_RATIO = 0.33;
@@ -632,8 +632,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			{diffFilesPopover}
 			{fileOpenInMenuPortal}
 			{collapsed ? (
-				<div className="flex flex-col h-full px-4">
-					<div className="flex items-center gap-1.5 min-w-0 pt-1">
+				<div className="flex flex-col h-full px-4 gap-1 justify-center">
+					<div className="flex items-center gap-1.5 min-w-0">
 						{watchToggleButton}
 						{statusDropdownButton}
 						{statusDropdownPortal}
@@ -643,7 +643,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						<div className="flex-1" />
 						{bugHuntersButton}
 						{spawnAgentButton}
-						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
 						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						{worktreeSettingsButton}
@@ -673,7 +672,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						</button>
 					</div>
 
-					<div className="flex items-center gap-1.5 min-w-0 pb-1">
+					<div className="flex items-center gap-1.5 min-w-0">
 						<TaskGitActions
 							task={task}
 							project={project}
@@ -686,8 +685,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							onOpenInlineDiff={onOpenInlineDiff}
 						/>
 						<div className="flex-1" />
-						<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+						<div className="flex items-center gap-2 flex-shrink-0">
+							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+						</div>
 					</div>
 				</div>
 			) : (
@@ -703,7 +705,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							<div className="flex-1" />
 							{bugHuntersButton}
 							{spawnAgentButton}
-							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 							<TaskTmuxControls taskId={task.id} />
 							<button
@@ -744,8 +745,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								onOpenInlineDiff={onOpenInlineDiff}
 							/>
 							<div className="flex-1" />
-							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							<div className="flex items-center gap-2 flex-shrink-0">
+								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
+								<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+								<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							</div>
 						</div>
 					</div>
 
