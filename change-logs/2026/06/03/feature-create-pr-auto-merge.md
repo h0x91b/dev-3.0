@@ -1,0 +1,1 @@
+Added a "Create PR + auto-merge" button next to "Create PR" in the task git actions. It does the same push + open PR flow via the task pane agent, but also asks the agent to enable auto-merge (gh pr merge --auto) so the PR lands automatically once checks pass.

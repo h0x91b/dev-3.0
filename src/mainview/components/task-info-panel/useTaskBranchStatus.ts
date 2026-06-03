@@ -175,7 +175,7 @@ export function useTaskBranchStatus({
 		t,
 	]);
 
-	const handleCreatePR = useCallback(async () => {
+	const handleCreatePR = useCallback(async (autoMerge = false) => {
 		if (creatingPR) {
 			return;
 		}
@@ -185,6 +185,7 @@ export function useTaskBranchStatus({
 			await api.request.createPullRequest({
 				taskId: task.id,
 				projectId: project.id,
+				autoMerge,
 			});
 		} catch (err) {
 			alert(t("infoPanel.createPRFailed", { error: String(err) }));

@@ -725,7 +725,10 @@ const CREATE_PR_ENTER_DELAY_MS = 800;
 const CREATE_PR_AGENT_PROMPT =
 	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
 
-async function createPullRequest(params: { taskId: string; projectId: string }): Promise<void> {
+const CREATE_PR_AUTO_MERGE_AGENT_PROMPT =
+	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation. Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass.";
+
+async function createPullRequest(params: { taskId: string; projectId: string; autoMerge?: boolean }): Promise<void> {
 	log.info("→ createPullRequest", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -751,8 +754,9 @@ async function createPullRequest(params: { taskId: string; projectId: string }):
 	}
 
 	const pane = activePane;
+	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
 	try {
-		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, CREATE_PR_AGENT_PROMPT), { stdout: "pipe", stderr: "pipe" });
+		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, prompt), { stdout: "pipe", stderr: "pipe" });
 		pasteProc.exited.catch(() => {});
 	} catch (err) {
 		log.warn("createPullRequest send-keys paste failed", { paneId: pane, error: String(err) });

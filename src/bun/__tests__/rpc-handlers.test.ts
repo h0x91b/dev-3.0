@@ -6922,6 +6922,46 @@ describe("handlers.createPullRequest", () => {
 		vi.useRealTimers();
 	});
 
+	it("sends the auto-merge variant prompt when autoMerge is set", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id, autoMerge: true });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]?.some((a) => a.includes("gh pr create"))).toBe(true);
+		expect(paste[0]?.some((a) => a.includes("gh pr merge --auto"))).toBe(true);
+		vi.useRealTimers();
+	});
+
+	it("does not enable auto-merge in the default prompt", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste[0]?.some((a) => a.includes("gh pr merge --auto"))).toBe(false);
+		vi.useRealTimers();
+	});
+
 	it("silently does nothing when there is no active pane", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });

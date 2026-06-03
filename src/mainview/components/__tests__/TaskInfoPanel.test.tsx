@@ -1530,6 +1530,33 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.createPullRequest).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				autoMerge: false,
+			});
+		});
+
+		it("calls createPullRequest with autoMerge when 'PR + auto-merge' is clicked", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				unpushed: 0,
+				prNumber: null,
+			});
+			mockedApi.request.createPullRequest.mockResolvedValue(undefined);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const autoMergeButtons = screen.getAllByText("PR + auto-merge");
+			const enabledBtn = autoMergeButtons.find(b => !b.closest("button")!.disabled);
+			expect(enabledBtn).toBeTruthy();
+			await user.click(enabledBtn!.closest("button")!);
+
+			expect(mockedApi.request.createPullRequest).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				autoMerge: true,
 			});
 		});
 
