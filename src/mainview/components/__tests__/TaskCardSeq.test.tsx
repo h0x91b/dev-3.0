@@ -8,7 +8,6 @@ vi.mock("../../rpc", () => ({
 		request: {
 			moveTask: vi.fn(),
 			deleteTask: vi.fn(),
-			showConfirm: vi.fn(),
 		},
 	},
 }));

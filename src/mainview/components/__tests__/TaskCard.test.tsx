@@ -13,7 +13,6 @@ vi.mock("../../rpc", () => ({
 			cancelTaskPreparation: vi.fn(),
 			moveTaskToCustomColumn: vi.fn(),
 			deleteTask: vi.fn(),
-			showConfirm: vi.fn(),
 			setTaskLabels: vi.fn(),
 			toggleTaskWatch: vi.fn(),
 			getTerminalPreview: vi.fn(),
@@ -55,8 +54,15 @@ vi.mock("../LabelPicker", () => ({
 }));
 
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
+
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(),
+	ConfirmHost: () => null,
+}));
+
 const mockedApi = vi.mocked(api, true);
 const mockedTrackEvent = vi.mocked(trackEvent);
 const mockedConfirmTaskCompletion = vi.mocked(confirmTaskCompletion);
@@ -310,13 +316,13 @@ describe("TaskCard", () => {
 		it("X button asks for confirmation before cancelling", async () => {
 			const user = userEvent.setup();
 			const task = makeTask({ status: "todo" });
-			mockedApi.request.showConfirm.mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			renderCard(task);
 
 			await user.click(screen.getByTitle("Cancel"));
 
-			expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			expect(vi.mocked(confirm)).toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -324,7 +330,7 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "todo" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "cancelled" });
 
 			renderCard(task, { dispatch });
@@ -365,13 +371,13 @@ describe("TaskCard", () => {
 		it("X button asks for confirmation before deleting", async () => {
 			const user = userEvent.setup();
 			const task = makeTask({ status: "cancelled" });
-			mockedApi.request.showConfirm.mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			renderCard(task);
 
 			await user.click(screen.getByTitle("Delete"));
 
-			expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			expect(vi.mocked(confirm)).toHaveBeenCalled();
 			expect(mockedApi.request.deleteTask).not.toHaveBeenCalled();
 		});
 
@@ -379,7 +385,7 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "cancelled" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.deleteTask.mockResolvedValue(undefined);
 
 			renderCard(task, { dispatch });
@@ -908,7 +914,7 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			const task = makeTask({ status: "todo" });
 			const updated = { ...task, status: "cancelled" as TaskStatus };
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue(updated);
 
 			renderCard(task);
@@ -929,7 +935,7 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "cancelled" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.deleteTask.mockResolvedValue(undefined);
 
 			renderCard(task, { dispatch });
@@ -945,7 +951,7 @@ describe("TaskCard", () => {
 		it("alerts when delete fails", async () => {
 			const user = userEvent.setup();
 			const task = makeTask({ status: "cancelled" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.deleteTask.mockRejectedValue(new Error("delete failed"));
 
 			renderCard(task);
@@ -1069,7 +1075,7 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const task = makeTask({ status: "cancelled" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.deleteTask.mockResolvedValue(undefined);
 
 			renderCard(task, { dispatch });
@@ -1086,7 +1092,7 @@ describe("TaskCard", () => {
 			await user.click(dropdownDelete);
 
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {

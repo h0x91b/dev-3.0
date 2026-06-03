@@ -80,18 +80,6 @@ async function setWindowForeground(params: { focused: boolean }): Promise<void> 
 	setAppForeground(params.focused);
 }
 
-async function showConfirm(params: { title: string; message: string }): Promise<boolean> {
-	const { response } = await Utils.showMessageBox({
-		type: "question",
-		title: params.title,
-		message: params.message,
-		buttons: ["OK", "Cancel"],
-		defaultId: 1,
-		cancelId: 1,
-	});
-	return response === 0;
-}
-
 async function getProjects(): Promise<Project[]> {
 	log.info("→ getProjects");
 	const rawProjects = await data.loadProjects();
@@ -750,7 +738,6 @@ export const appHandlers = {
 	openNewWindow,
 	hideApp,
 	setWindowForeground,
-	showConfirm,
 	updateMenuContext,
 	getProjects,
 	reorderProjects,

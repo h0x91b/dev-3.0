@@ -3719,26 +3719,6 @@ describe("handlers.getTerminalPreview", () => {
 	});
 });
 
-// ================================================================
-// handlers.showConfirm
-// ================================================================
-
-describe("handlers.showConfirm", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("returns true when user clicks OK (response=0)", async () => {
-		vi.mocked(Utils.showMessageBox).mockResolvedValue({ response: 0 } as any);
-		const result = await handlers.showConfirm({ title: "Confirm", message: "Are you sure?" });
-		expect(result).toBe(true);
-	});
-
-	it("returns false when user clicks Cancel (response=1)", async () => {
-		vi.mocked(Utils.showMessageBox).mockResolvedValue({ response: 1 } as any);
-		const result = await handlers.showConfirm({ title: "Confirm", message: "Are you sure?" });
-		expect(result).toBe(false);
-	});
-});
-
 describe("handlers.copyTerminalSelection", () => {
 	beforeEach(() => {
 		vi.mocked(systemClipboard.writeSystemClipboard).mockReset();

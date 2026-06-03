@@ -1,0 +1,1 @@
+Replaced the native confirm dialog (Electrobun `Utils.showMessageBox` via the `showConfirm` RPC, with a `window.confirm` browser fallback) with an in-app, promise-based React `confirm()` service that works identically in desktop and remote/browser mode. Migrated all 10 call sites and removed the native RPC. Documented a project-wide ban on native dialogs in AGENTS.md.

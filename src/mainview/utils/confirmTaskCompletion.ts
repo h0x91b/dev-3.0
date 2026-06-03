@@ -1,4 +1,5 @@
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import type { Task, Project, TaskStatus } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
@@ -64,7 +65,7 @@ export async function confirmTaskCompletion(
 		"\n\n" +
 		t("task.warnCompletionFooter");
 
-	return api.request.showConfirm({
+	return confirm({
 		title: t("task.warnCompletionTitle"),
 		message,
 	});

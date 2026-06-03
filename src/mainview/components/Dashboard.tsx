@@ -2,6 +2,7 @@ import type { Dispatch } from "react";
 import type { Project } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import ActivityOverview from "./ActivityOverview";
@@ -18,9 +19,10 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 	const t = useT();
 
 	async function handleRemoveProject(projectId: string) {
-		const confirmed = await api.request.showConfirm({
+		const confirmed = await confirm({
 			title: t("dashboard.remove"),
 			message: t("dashboard.confirmRemove"),
+			danger: true,
 		});
 		if (!confirmed) return;
 		try {

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { TmuxSessionInfo } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 
@@ -168,11 +169,12 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	async function handleKillAll() {
 		if (sessions.length === 0) return;
-		const confirmed = await api.request.showConfirm({
+		const confirmed = await confirm({
 			title: t("tmuxSessions.killAllConfirmTitle"),
 			message: t("tmuxSessions.killAllConfirmMessage", {
 				count: String(sessions.length),
 			}),
+			danger: true,
 		});
 		if (!confirmed) return;
 		for (const session of sessions) {

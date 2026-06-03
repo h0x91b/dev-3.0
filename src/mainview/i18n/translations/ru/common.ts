@@ -11,6 +11,10 @@ const common = {
 	"quit.confirm": "Выйти",
 	"quit.cancel": "Отмена",
 
+	// Generic confirmation dialog (imperative confirm() service)
+	"confirmDialog.confirm": "ОК",
+	"confirmDialog.cancel": "Отмена",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "Агент работает",

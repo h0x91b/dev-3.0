@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactM
 import { createPortal } from "react-dom";
 import { useT } from "../../i18n";
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 import { getKeymapPreset, KEYMAP_CHANGED_EVENT, setKeymapPreset } from "../../terminal-keymaps";
 
 interface TaskTmuxControlsProps {
@@ -208,9 +209,10 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 				// Closing the last pane tears down the whole tmux session — confirm first.
 				let confirmed = false;
 				try {
-					confirmed = await api.request.showConfirm({
+					confirmed = await confirm({
 						title: t("tmux.closePaneConfirmTitle"),
 						message: t("tmux.closePaneConfirmMessage"),
+						danger: true,
 					});
 				} catch {
 					confirmed = false;

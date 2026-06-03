@@ -288,10 +288,6 @@ function initBrowserApi(): ApiShape {
 
 	// ── Browser-side overrides for native-only methods ──────────────
 	const browserOverrides: Record<string, (params: any) => Promise<any>> = {
-		async showConfirm(params: { title: string; message: string }): Promise<boolean> {
-			return confirm(`${params.title}\n\n${params.message}`);
-		},
-
 		async pasteClipboardImage(params: { projectId: string }): Promise<{ path: string } | null> {
 			try {
 				const items = await navigator.clipboard.read();

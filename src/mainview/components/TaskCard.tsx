@@ -4,6 +4,7 @@ import type { CodingAgent, PortInfo, PreparingStage, Project, ResourceUsage, Tas
 import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
@@ -275,9 +276,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	async function handleDelete() {
 		setMenuOpen(false);
-		const confirmed = await api.request.showConfirm({
+		const confirmed = await confirm({
 			title: t("task.delete"),
 			message: t("task.confirmDelete", { title: displayTitle }),
+			danger: true,
 		});
 		if (!confirmed) return;
 		try {
@@ -314,9 +316,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	async function handleDismiss(e: React.MouseEvent) {
 		e.stopPropagation();
 		if (isTodo) {
-			const confirmed = await api.request.showConfirm({
+			const confirmed = await confirm({
 				title: t("task.cancel"),
 				message: t("task.confirmCancel", { title: displayTitle }),
+				danger: true,
 			});
 			if (!confirmed) return;
 			handleMove("cancelled");

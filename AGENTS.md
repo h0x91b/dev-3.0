@@ -48,6 +48,24 @@ Key idea: each project is a git repo, each task gets its own **git worktree** + 
 
 When the manifest itself is stale or missing, use `/ux-create-manifest` to regenerate it. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change.
 
+## No native dialogs — ever (remote/browser mode) (MANDATORY)
+
+The app runs in two modes: the **Electrobun desktop** shell **and** a **headless remote mode served to a browser** (`dev3 remote`). Anything that depends on the native OS shell silently breaks in the browser. **Native blocking dialogs are banned — do not add new ones, and prefer replacing existing ones.**
+
+**Forbidden — never introduce these for user-facing flows:**
+- `Utils.showMessageBox` (Electrobun) — native confirm/info/warning boxes. Runs only in the bun/desktop process; the browser transport cannot render it.
+- `Utils.openFileDialog` (Electrobun) — native file picker. Already replaced by the custom React folder picker (`src/mainview/components/FolderPickerModal.tsx` + `folder-picker.ts`, `listDirectory` RPC). Use that.
+- `window.alert()`, `window.confirm()`, `window.prompt()` — browser-native blocking popups. They technically work in a browser tab but are an ugly, blocking, untheme-able remote UX. Banned all the same.
+
+**Use instead (in-app React, works identically in desktop and browser):**
+- **Confirmation** → the imperative `confirm()` service (`src/mainview/confirm.tsx`, `useConfirm`/module-level `confirm({ title, message, danger? }) => Promise<boolean>`), rendered by a single host mounted in `App.tsx`. Drop-in for the old `showConfirm` RPC.
+- **Errors / info / success feedback** → the toast service (`src/mainview/toast.tsx`, `toast.error()/info()/success()`), not `alert()`.
+- **Anything richer** → a regular React modal (see existing `*Modal.tsx` components).
+
+**Exception — genuinely OS-level, not a dialog:** `Utils.showNotification` (Notification Center) and the native macOS **menu bar** (`application-menu.ts`) are platform chrome, not in-app dialogs — they are allowed (they simply no-op / are absent in browser mode, which is acceptable). Any *dialog* triggered from a menu action must be routed to the renderer via a push message and shown as React UI, never as a `Utils.showMessageBox` in the bun process.
+
+If you catch yourself reaching for any forbidden API: stop, use the React equivalent above.
+
 ## Language policy
 
 **All code-related content MUST be in English — no exceptions.**

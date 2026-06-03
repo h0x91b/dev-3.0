@@ -7,6 +7,7 @@ import {
 } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { trackEvent } from "../../analytics";
 import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
@@ -123,7 +124,7 @@ export function useTaskBranchStatus({
 						mergeDialogShownRef.current = true;
 						if (promptState.shouldPrompt) {
 							const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-								api.request.showConfirm({
+								confirm({
 									title: t("app.branchMergedTitle"),
 									message: t("app.branchMergedMessage", {
 										taskTitle: task.customTitle || task.title,
@@ -228,7 +229,7 @@ export function useTaskBranchStatus({
 				if (!promptState.shouldPrompt) return;
 
 				const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-					api.request.showConfirm({
+					confirm({
 						title: t("infoPanel.mergeComplete"),
 						message: t("infoPanel.mergeCompleteMessage"),
 					}),

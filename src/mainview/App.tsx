@@ -29,6 +29,7 @@ import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
+import { ConfirmHost, confirm } from "./confirm";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
@@ -444,12 +445,12 @@ function App() {
 			const fingerprint = ((e as CustomEvent).detail as { fingerprint?: string | null }).fingerprint ?? null;
 			const shouldComplete = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
 				try {
-					return await api.request.showConfirm({
+					return await confirm({
 						title: t("app.branchMergedTitle"),
 						message: t("app.branchMergedMessage", { taskTitle, branchName }),
 					});
 				} catch (err) {
-					console.error("[App] showConfirm (branch-merged) failed:", err);
+					console.error("[App] confirm (branch-merged) failed:", err);
 					return false;
 				}
 			});
@@ -1059,6 +1060,7 @@ function App() {
 			<StuckPreparationPopover tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
 			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
+			<ConfirmHost />
 		</div>
 	);
 

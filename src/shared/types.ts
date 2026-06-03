@@ -1178,10 +1178,6 @@ export type AppRPCSchema = {
 				};
 				response: Task[];
 			};
-			showConfirm: {
-				params: { title: string; message: string };
-				response: boolean;
-			};
 			prepareMergeCompletionPrompt: {
 				params: { taskId: string; projectId: string; fingerprint?: string | null };
 				response: { shouldPrompt: boolean; fingerprint: string | null };

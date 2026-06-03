@@ -10,7 +10,6 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTaskDiff: vi.fn(),
 			getGlobalSettings: vi.fn(),
-			showConfirm: vi.fn(),
 		},
 	},
 }));
@@ -179,6 +178,12 @@ vi.mock("@git-diff-view/file", () => ({
 }));
 
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
+
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(),
+	ConfirmHost: () => null,
+}));
 
 const project: Project = {
 	id: "p1",
@@ -1762,7 +1767,7 @@ describe("TaskDiffViewer", () => {
 	it("closes immediately on Escape when there are no review comments", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
-		const showConfirm = vi.mocked(api.request.showConfirm);
+		const showConfirm = vi.mocked(confirm);
 		showConfirm.mockResolvedValue(true);
 
 		render(
@@ -1786,7 +1791,7 @@ describe("TaskDiffViewer", () => {
 	it("shows a confirm dialog before discarding unsaved review comments on Escape", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
-		const showConfirm = vi.mocked(api.request.showConfirm);
+		const showConfirm = vi.mocked(confirm);
 		showConfirm.mockResolvedValueOnce(false);
 
 		render(
@@ -1864,7 +1869,7 @@ describe("TaskDiffViewer", () => {
 	it("confirms before closing via the back button when unsaved review exists", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
-		const showConfirm = vi.mocked(api.request.showConfirm);
+		const showConfirm = vi.mocked(confirm);
 		showConfirm.mockResolvedValue(true);
 
 		render(
@@ -1896,7 +1901,7 @@ describe("TaskDiffViewer", () => {
 		const onBack = vi.fn();
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-		const showConfirm = vi.mocked(api.request.showConfirm);
+		const showConfirm = vi.mocked(confirm);
 
 		render(
 			<I18nProvider>
@@ -1932,7 +1937,7 @@ describe("TaskDiffViewer", () => {
 		const onBack = vi.fn();
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-		const showConfirm = vi.mocked(api.request.showConfirm);
+		const showConfirm = vi.mocked(confirm);
 		showConfirm.mockResolvedValue(false);
 
 		render(
