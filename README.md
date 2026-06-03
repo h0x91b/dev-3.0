@@ -118,7 +118,7 @@ The fastest way to run dev-3.0 on a Linux box (cloud VM, dev server, headless ho
 <summary><strong>bash</strong></summary>
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash && \
   echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc && \
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 ```
@@ -129,7 +129,7 @@ The fastest way to run dev-3.0 on a Linux box (cloud VM, dev server, headless ho
 <summary><strong>zsh</strong></summary>
 
 ```zsh
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash && \
   echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 ```
