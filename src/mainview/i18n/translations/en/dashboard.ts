@@ -57,7 +57,7 @@ const dashboard = {
 	"header.noActiveTasks": "No active tasks",
 
 	// Prevent-sleep (caffeine) toggle
-	"caffeine.label": "Awake",
+	"caffeine.label": "No Sleep",
 	"caffeine.tooltipOn": "Keeping the computer awake while dev-3.0 is open — click to allow sleep",
 	"caffeine.tooltipOff": "Letting the computer sleep — click to keep it awake while dev-3.0 runs",
 	"caffeine.tooltipForced": "Forced on while remote access is active — the machine must stay reachable",
