@@ -66,6 +66,27 @@ const mockedApi = vi.mocked(api, true);
 const mockedTrackEvent = vi.mocked(trackEvent);
 const mockedConfirmTaskCompletion = vi.mocked(confirmTaskCompletion);
 
+/** Stub window.matchMedia so the compact breakpoint is deterministic in tests. */
+function mockMatchMedia(matches: boolean) {
+	Object.defineProperty(window, "matchMedia", {
+		writable: true,
+		configurable: true,
+		value: vi.fn((query: string) => ({
+			matches,
+			media: query,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		})),
+	});
+}
+
+// Default to the roomy layout (button text labels visible). happy-dom's default
+// viewport (1024px) would otherwise trip the compact breakpoint and hide labels.
+beforeEach(() => mockMatchMedia(false));
+
 // ---- Fixtures ----
 
 const label1: Label = { id: "lbl1", name: "Bug", color: "#ef4444" };
@@ -1589,7 +1610,9 @@ describe("TaskInfoPanel", () => {
 			expect(btn.title).toContain("42");
 		});
 
-		it("Open PR button is disabled when prUrl is null", async () => {
+		it("PR badge does not open a tab when prUrl is null", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const openSpy = vi.fn(); window.open = openSpy;
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
@@ -1602,9 +1625,33 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			const openPRButtons = screen.getAllByText("Open PR");
-			const allDisabled = openPRButtons.every(b => b.closest("button")!.disabled);
-			expect(allDisabled).toBe(true);
+			// No dedicated "Open PR" button exists anymore — the PR badge is the only entry point.
+			expect(screen.queryByText("Open PR")).not.toBeInTheDocument();
+			const badge = screen.getAllByText(/PR #42/)[0].closest("button")!;
+			await user.click(badge);
+			expect(openSpy).not.toHaveBeenCalled();
+		});
+
+		it("renders git action buttons icon-only (no text) in compact mode", async () => {
+			mockMatchMedia(true);
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				behind: 2,
+				unpushed: 0,
+				prNumber: null,
+				canRebase: true,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			// Labels collapse to glyphs; the actions remain reachable via aria-label/title.
+			expect(screen.queryByText("Create PR")).not.toBeInTheDocument();
+			expect(screen.queryByText("Rebase")).not.toBeInTheDocument();
+			expect(screen.getAllByLabelText("Create PR").length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByLabelText("Merge").length).toBeGreaterThanOrEqual(1);
 		});
 	});
 

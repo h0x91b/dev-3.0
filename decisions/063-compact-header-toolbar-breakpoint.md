@@ -7,6 +7,7 @@ On a 14" MacBook (≤1512pt at default scaling) the top `GlobalHeader` action ro
 Introduced `src/mainview/utils/useCompact.ts` — a `matchMedia("(max-width: 1600px)")` hook built on `useSyncExternalStore` (SSR-safe, reacts to window resize). When compact:
 - `GlobalHeader`: button text labels collapse to icon-only (tooltips kept) for Home/Project Terminal, Prevent-sleep, Pull, Remote, Project settings, Global settings; the low-frequency external actions (Website, Report, Change Log) fold into a single "More" (`\u{F01D9}`) overflow dropdown.
 - `TaskInfoPanel`: labels hide on Watch, Find bugs, Spawn agent, and the include-tests toggle (icon-only + tooltip). The diff badge and status stay labelled.
+- `TaskGitActions`: in compact, Show Diff / Rebase / Push / Create PR / PR+auto-merge / Merge collapse to icon-only Nerd Font glyphs (`GIT_GLYPH` constant; cod/oct git family + fa-arrow-up for push), keeping `aria-label`/`title`. The dedicated "Open PR" button was removed entirely (both layouts) because the always-present "PR #N" badge already opens the PR URL — it was pure duplication.
 
 `1600px` was picked because it cleanly separates a 14" (≤1512) from a 16" (1728) at default scaling and also fires when the window is shrunk on any display.
 

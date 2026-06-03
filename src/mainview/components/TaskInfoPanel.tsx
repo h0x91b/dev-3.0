@@ -687,6 +687,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							isTaskActive={isTaskActive}
 							showWorktreeCopy
 							showLoading
+							compact={compact}
 							onBranchStatusChange={setMetadataBranchState}
 							onOpenInlineDiff={onOpenInlineDiff}
 						/>
@@ -748,6 +749,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								navigate={navigate}
 								isTaskActive={isTaskActive}
 								branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
+								compact={compact}
 								onBranchStatusChange={setMetadataBranchState}
 								onOpenInlineDiff={onOpenInlineDiff}
 							/>
