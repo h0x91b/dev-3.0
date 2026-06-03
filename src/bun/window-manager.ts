@@ -130,6 +130,20 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	return win;
 }
 
+// `openMainWindow` lives in index.ts (it wires app-specific config). We register
+// it here so RPC handlers can open a new window without importing index.ts
+// (which would be a circular dependency). Mirrors the setOnPtyDied/setPushMessage
+// injection pattern.
+let openNewWindowImpl: (() => void) | null = null;
+
+export function setOpenNewWindow(fn: () => void): void {
+	openNewWindowImpl = fn;
+}
+
+export function openNewWindow(): void {
+	openNewWindowImpl?.();
+}
+
 function firstWindow(): BrowserWindow | null {
 	const iter = windows.values().next();
 	return iter.value ? iter.value.window : null;

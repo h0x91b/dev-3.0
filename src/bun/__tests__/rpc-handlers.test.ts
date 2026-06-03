@@ -3890,6 +3890,23 @@ describe("handlers.requestQuit", () => {
 });
 
 // ================================================================
+// handlers.openNewWindow
+// ================================================================
+
+describe("handlers.openNewWindow", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("invokes the registered window-manager openNewWindow callback", async () => {
+		const wm = await import("../window-manager");
+		const spy = vi.fn();
+		wm.setOpenNewWindow(spy);
+		await handlers.openNewWindow();
+		expect(spy).toHaveBeenCalledOnce();
+		wm.setOpenNewWindow(() => {});
+	});
+});
+
+// ================================================================
 // handlers.hideApp
 // ================================================================
 

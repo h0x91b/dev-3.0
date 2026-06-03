@@ -361,6 +361,10 @@ function initBrowserApi(): ApiShape {
 		async requestQuit(): Promise<void> {
 			// No-op in browser — you don't quit the host app from a remote tab.
 		},
+
+		async openNewWindow(): Promise<void> {
+			// No-op in browser — native desktop windows don't exist in a remote tab.
+		},
 	};
 
 	// Proxy: api.request.methodName(params) → override or rpcRequest

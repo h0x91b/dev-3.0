@@ -12,6 +12,7 @@ vi.mock("../rpc", () => ({
 			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			requestQuit: vi.fn().mockResolvedValue(undefined),
+			openNewWindow: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
@@ -287,6 +288,29 @@ describe("App keyboard shortcuts", () => {
 				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed" } }));
 			});
 			expect(playTaskSound).toHaveBeenCalledWith("completed");
+		});
+	});
+
+	describe("New Window (Cmd+Shift+N)", () => {
+		it("Cmd+Shift+N opens a new window via openNewWindow", async () => {
+			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}{Shift>}n{/Shift}{/Meta}");
+			expect(api.request.openNewWindow).toHaveBeenCalled();
+		});
+
+		it("Cmd+Shift+N does not open the New Task modal", async () => {
+			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}{Shift>}n{/Shift}{/Meta}");
+			expect(screen.queryByText("New Task")).not.toBeInTheDocument();
+		});
+
+		it("Ctrl+Shift+N opens a new window", async () => {
+			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Control>}{Shift>}n{/Shift}{/Control}");
+			expect(api.request.openNewWindow).toHaveBeenCalled();
 		});
 	});
 

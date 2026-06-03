@@ -232,6 +232,13 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+				// Cmd+Shift+N — open a new window (the native menu item has no
+				// accelerator because Electrobun can't bind chord shortcuts; see
+				// decision 044). Cmd+N (no shift) opens a new task instead.
+				e.preventDefault();
+				e.stopPropagation();
+				api.request.openNewWindow().catch(() => {});
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
 				if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
 				if (!openCreateTaskModal()) return;

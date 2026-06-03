@@ -1348,6 +1348,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
+			openNewWindow: {
+				params: void;
+				response: void;
+			};
 			hideApp: {
 				params: void;
 				response: void;

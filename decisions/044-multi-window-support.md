@@ -23,7 +23,11 @@ individual windows.
   pollers).
 - Electrobun's menu accelerators documented today only support single-character
   keys (Cmd-prefix automatic). Modifier chords like `Shift+N` aren't covered, so
-  File → New Window is shipped without a keyboard shortcut — click-only for now.
+  the File → New Window menu item carries no native accelerator. The Cmd+Shift+N
+  shortcut is instead handled in the renderer (`App.tsx` `useGlobalShortcut`,
+  capture phase) → `openNewWindow` RPC → `window-manager.openNewWindow()`, the
+  same path the menu item uses. Renderer keydown handlers have no chord
+  restriction.
 
 ## Decision
 

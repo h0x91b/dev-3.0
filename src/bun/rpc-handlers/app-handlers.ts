@@ -49,6 +49,15 @@ async function requestQuit(): Promise<void> {
 	Utils.quit();
 }
 
+// Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
+// accelerators don't support chord shortcuts (decision 044), so the menu "New
+// Window" item has no accelerator and the renderer drives the keyboard shortcut.
+async function openNewWindow(): Promise<void> {
+	log.info("→ openNewWindow (Cmd+Shift+N from renderer)");
+	const { openNewWindow: open } = await import("../window-manager");
+	open();
+}
+
 async function hideApp(): Promise<void> {
 	log.info("→ hideApp (Cmd+H from renderer)");
 	hideAppNative();
@@ -720,6 +729,7 @@ export const appHandlers = {
 	logRendererEvent,
 	quitApp,
 	requestQuit,
+	openNewWindow,
 	hideApp,
 	showConfirm,
 	updateMenuContext,

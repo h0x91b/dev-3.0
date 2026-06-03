@@ -20,7 +20,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
-import { createAppWindow, broadcastToAllWindows, getFocusedWindow, sendToFocusedWindow } from "./window-manager";
+import { createAppWindow, broadcastToAllWindows, getFocusedWindow, sendToFocusedWindow, setOpenNewWindow } from "./window-manager";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
@@ -273,6 +273,12 @@ async function openMainWindow() {
 	});
 }
 
+// Let RPC handlers (renderer Cmd+Shift+N) open a new window without importing
+// this module.
+setOpenNewWindow(() => {
+	void openMainWindow();
+});
+
 await openMainWindow();
 log.info("Main window created");
 
@@ -478,10 +484,12 @@ Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 
 	// If the last window is already gone (user closed it with the red X, which
 	// Electrobun turns into a quit via `exitOnLastWindowClosed`), there is no
-	// renderer left to host the dialog. Reopening one just to ask is jarring, so
-	// we treat closing the last window as a deliberate quit and let it through.
-	// The confirmation dialog stays on the explicit quit paths that DO have a
-	// window: Cmd+Q (renderer → requestQuit), the menu Quit item, and dock Quit.
+	// renderer left to host the dialog. The native window-close is not
+	// interceptable, so the only way to show a dialog would be to reopen a window
+	// — which flashes and raced the renderer mount. Instead we treat closing the
+	// last window as a deliberate quit and let it through. The confirmation stays
+	// on the explicit quit paths that DO have a window: Cmd+Q (renderer →
+	// requestQuit), the menu Quit item, and dock Quit.
 	if (!getFocusedWindow()) {
 		log.info("Quit with no window open — allowing (last window closed)");
 		runGlobalQuitCleanup();
