@@ -93,7 +93,7 @@ export default function RemoteAccessExposedPorts() {
 						</div>
 						<button
 							onClick={() => stopItem(item)}
-							className="text-danger hover:bg-danger/15 px-2 py-1 rounded flex-shrink-0"
+							className="text-danger hover:bg-danger/10 px-2 py-1 rounded flex-shrink-0"
 						>
 							{t("tunnel.stopExposing")}
 						</button>
@@ -101,7 +101,7 @@ export default function RemoteAccessExposedPorts() {
 				))}
 			</div>
 			{toast && (
-				<div className="absolute -bottom-7 left-1/2 -translate-x-1/2 px-3 py-1 bg-accent text-white text-xs rounded shadow-lg">
+				<div className="absolute -bottom-7 left-1/2 -translate-x-1/2 px-3 py-1 bg-elevated border border-edge text-fg text-xs rounded shadow-lg whitespace-nowrap">
 					{toast}
 				</div>
 			)}

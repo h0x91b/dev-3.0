@@ -19,6 +19,7 @@ import PipelineDropdown from "./PipelineDropdown";
 import SpawnAgentModal from "./SpawnAgentModal";
 import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
+import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
@@ -689,6 +690,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
 							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							<TaskExposedPorts task={task} />
 						</div>
 					</div>
 				</div>
@@ -749,6 +751,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 								<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
 								<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								<TaskExposedPorts task={task} />
 							</div>
 						</div>
 					</div>

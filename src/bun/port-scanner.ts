@@ -2,7 +2,7 @@ import type { PortInfo } from "../shared/types";
 import { spawnSync } from "./spawn";
 import { tmuxArgs } from "./pty-server";
 import { createLogger } from "./logger";
-import { onTaskPortScanUpdate, cleanupTaskTunnels } from "./port-tunnels";
+import { cleanupTaskTunnels } from "./port-tunnels";
 
 const log = createLogger("port-scanner");
 const decoder = new TextDecoder();
@@ -312,9 +312,11 @@ function poll() {
 					portData.set(taskId, ports);
 					pushMessageFn!("portsUpdated", { taskId, ports });
 				}
-				// Drive port-tunnel liveness off the same poller — no extra timers,
-				// no duplicated lsof. Tunnels auto-stop after 2 consecutive misses.
-				onTaskPortScanUpdate(taskId, ports.map((p) => p.port));
+				// (Port-tunnel liveness used to be driven here, but tunnels now
+				// operate on the project's allocated `$DEV3_PORT0..N` slots —
+				// not on detected listening ports — so user explicitly starts
+				// and stops them. Autodetect was generating false positives for
+				// the app's own infrastructure ports.)
 			} catch (err) {
 				log.warn("Port scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
 			}
