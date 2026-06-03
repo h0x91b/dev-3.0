@@ -27,6 +27,39 @@ function Spinner() {
 }
 
 /**
+ * Truncated URL + a Nerd-Font copy icon button (matches the worktree-path
+ * copy affordance in TaskGitActions). The whole row is one button so a
+ * stray click anywhere on the URL still copies; on success the icon
+ * briefly flips to a checkmark and the row reads "Copied".
+ */
+function CopyUrlRow({ url }: { url: string }) {
+	const t = useT();
+	const [copied, setCopied] = useState(false);
+	async function handleClick() {
+		try {
+			await navigator.clipboard.writeText(url);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 1000);
+		} catch { /* clipboard blocked */ }
+	}
+	return (
+		<button
+			onClick={handleClick}
+			className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover w-full text-left rounded px-1 -mx-1 hover:bg-accent/10 transition-colors"
+			title={copied ? t("tunnel.urlCopied") : t("tunnel.copyUrl")}
+		>
+			<span className="truncate flex-1">{copied ? t("tunnel.copied") : url}</span>
+			<span
+				className="text-xs leading-none flex-shrink-0"
+				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			>
+				{copied ? "\u{F012C}" : "\uF0C5"}
+			</span>
+		</button>
+	);
+}
+
+/**
  * Toolbar button + dropdown menu for the task's allocated dev-server ports
  * (`$DEV3_PORT0..N` slots from `project.portCount`). Each slot can be shared
  * publicly via a Cloudflare quick tunnel with one click.
@@ -193,13 +226,6 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 		}
 	}
 
-	async function copyUrl(url: string) {
-		try {
-			await navigator.clipboard.writeText(url);
-			showToast(t("tunnel.urlCopied"));
-		} catch {/* clipboard blocked */}
-	}
-
 	async function copySsh(port: number) {
 		const { command } = await api.request.getSshForwardCommand({ ports: [port] });
 		await navigator.clipboard.writeText(command);
@@ -270,18 +296,15 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 								</div>
 							</div>
 							{tunnel?.state === "connected" && tunnel.url && (
-								<button
-									onClick={() => copyUrl(tunnel.url!)}
-									className="text-xs text-accent hover:text-accent-hover truncate block w-full text-left mt-1.5"
-									title={tunnel.url}
-								>
-									{tunnel.url}
-								</button>
+								<div className="mt-1.5">
+									<CopyUrlRow url={tunnel.url} />
+								</div>
 							)}
 							<div className="flex items-center gap-3 mt-1.5">
 								<button
 									onClick={() => handleAddToShared(port)}
 									className="text-[0.6875rem] text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
+									title={t("tunnel.sharedDescription")}
 								>
 									{t("tunnel.addToShared")}
 								</button>
@@ -305,15 +328,10 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 							{t("tunnel.stopExposing")}
 						</button>
 					</div>
+					<div className="text-[0.6875rem] text-fg-muted mb-1.5 leading-snug">{t("tunnel.sharedDescription")}</div>
 					<div className="text-xs text-fg-3 mb-1.5">{t("tunnel.portsLabel")}: {sharedTunnel.ports.join(", ")}</div>
 					{sharedTunnel.state === "connected" && sharedTunnel.url && (
-						<button
-							onClick={() => copyUrl(sharedTunnel.url!)}
-							className="text-xs text-accent hover:text-accent-hover truncate block w-full text-left"
-							title={sharedTunnel.url}
-						>
-							{sharedTunnel.url}
-						</button>
+						<CopyUrlRow url={sharedTunnel.url} />
 					)}
 					{sharedTunnel.state === "starting" && (
 						<span className="text-xs text-fg-3 inline-flex items-center gap-1.5"><Spinner /> {t("tunnel.starting")}</span>

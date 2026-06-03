@@ -18,6 +18,8 @@ const tunnels = {
 	"tunnel.unexposeAll": "Остановить все туннели",
 	"tunnel.urlCopied": "URL скопирован",
 	"tunnel.sshCopied": "SSH-команда скопирована",
+	"tunnel.copied": "Скопировано",
+	"tunnel.sharedDescription": "Объединить несколько портов под одним URL — фронт сможет ходить на бэк через относительные пути (без CORS, без env-переменных).",
 } as const;
 
 export default tunnels;

@@ -18,6 +18,8 @@ const tunnels = {
 	"tunnel.unexposeAll": "Detener todos los túneles",
 	"tunnel.urlCopied": "URL copiada al portapapeles",
 	"tunnel.sshCopied": "Comando SSH copiado",
+	"tunnel.copied": "Copiado",
+	"tunnel.sharedDescription": "Agrupa varios puertos en una URL — el frontend puede llamar al backend con rutas relativas (sin CORS, sin variables de entorno).",
 } as const;
 
 export default tunnels;

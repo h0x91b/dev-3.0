@@ -18,6 +18,8 @@ const tunnels = {
 	"tunnel.unexposeAll": "Stop all tunnels",
 	"tunnel.urlCopied": "URL copied to clipboard",
 	"tunnel.sshCopied": "SSH command copied",
+	"tunnel.copied": "Copied",
+	"tunnel.sharedDescription": "Group several ports under one URL so the frontend can call the backend via relative paths (no CORS, no env vars).",
 } as const;
 
 export default tunnels;
