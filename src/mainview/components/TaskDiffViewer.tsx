@@ -10,6 +10,7 @@ import type {
 	TaskDiffSkippedFile,
 } from "../../shared/types";
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { formatBytes } from "../utils/formatBytes";
@@ -1453,9 +1454,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			onBack();
 			return;
 		}
-		api.request.showConfirm({
+		confirm({
 			title: t("infoPanel.diffDiscardReviewTitle"),
 			message: t("infoPanel.diffDiscardReviewMessage"),
+			danger: true,
 		})
 			.then((confirmed) => {
 				if (confirmed) {

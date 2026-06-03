@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
+import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, PortInfo, PreparingStage, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
@@ -245,7 +247,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				if (isTerminal) {
 					dispatch({ type: "updateTask", task });
 				}
-				alert(t("task.failedMove", { error: String(retryErr) }));
+				toast.error(t("task.failedMove", { error: String(retryErr) }));
 			}
 		}
 		if (isTerminal) {
@@ -268,16 +270,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onTaskMoved(task.id);
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
 		} catch (err) {
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 		}
 		setMoving(false);
 	}
 
 	async function handleDelete() {
 		setMenuOpen(false);
-		const confirmed = await api.request.showConfirm({
+		const confirmed = await confirm({
 			title: t("task.delete"),
 			message: t("task.confirmDelete", { title: displayTitle }),
+			danger: true,
 		});
 		if (!confirmed) return;
 		try {
@@ -288,7 +291,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			dispatch({ type: "removeTask", taskId: task.id });
 			trackEvent("task_deleted", { project_id: project.id });
 		} catch (err) {
-			alert(t("task.failedDelete", { error: String(err) }));
+			toast.error(t("task.failedDelete", { error: String(err) }));
 		}
 	}
 
@@ -303,7 +306,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 			setCancellingPreparation(false);
 			return;
 		}
@@ -314,9 +317,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	async function handleDismiss(e: React.MouseEvent) {
 		e.stopPropagation();
 		if (isTodo) {
-			const confirmed = await api.request.showConfirm({
+			const confirmed = await confirm({
 				title: t("task.cancel"),
 				message: t("task.confirmCancel", { title: displayTitle }),
+				danger: true,
 			});
 			if (!confirmed) return;
 			handleMove("cancelled");

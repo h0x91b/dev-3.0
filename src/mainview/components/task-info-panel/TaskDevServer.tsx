@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
@@ -164,7 +165,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 				await api.request.runDevServer({ taskId: task.id, projectId: project.id });
 			}
 		} catch (err) {
-			alert(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
 		}
 	}
 
@@ -173,7 +174,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 		try {
 			await api.request.restartDevServer({ taskId: task.id, projectId: project.id });
 		} catch (err) {
-			alert(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
 		}
 	}
 
@@ -182,7 +183,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 		try {
 			await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
 		} catch (err) {
-			alert(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
 		}
 	}
 

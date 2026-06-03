@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useT } from "../i18n";
-import { dispatchErrorToast } from "../components/ErrorToast";
+import { toast } from "../toast";
 import { uploadDroppedFile } from "../utils/uploadDroppedFile";
 
 export function useFileDrop(
@@ -53,7 +53,7 @@ export function useFileDrop(
 					}
 				} catch (err) {
 					console.error(`[useFileDrop] file upload failed for "${file.name}":`, err);
-					dispatchErrorToast(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
+					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
 				}
 			}));
 		},

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
+import { toast } from "../../toast";
 import {
 	type BranchStatus,
 	type Project,
@@ -7,6 +8,7 @@ import {
 } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { trackEvent } from "../../analytics";
 import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
@@ -123,7 +125,7 @@ export function useTaskBranchStatus({
 						mergeDialogShownRef.current = true;
 						if (promptState.shouldPrompt) {
 							const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-								api.request.showConfirm({
+								confirm({
 									title: t("app.branchMergedTitle"),
 									message: t("app.branchMergedMessage", {
 										taskTitle: task.customTitle || task.title,
@@ -188,7 +190,7 @@ export function useTaskBranchStatus({
 				autoMerge,
 			});
 		} catch (err) {
-			alert(t("infoPanel.createPRFailed", { error: String(err) }));
+			toast.error(t("infoPanel.createPRFailed", { error: String(err) }));
 		}
 		setCreatingPR(false);
 	}, [creatingPR, project.id, task.id, t]);
@@ -228,7 +230,7 @@ export function useTaskBranchStatus({
 				if (!promptState.shouldPrompt) return;
 
 				const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-					api.request.showConfirm({
+					confirm({
 						title: t("infoPanel.mergeComplete"),
 						message: t("infoPanel.mergeCompleteMessage"),
 					}),
@@ -272,7 +274,7 @@ export function useTaskBranchStatus({
 				compareRef: compareRef || undefined,
 			});
 		} catch (err) {
-			alert(t("infoPanel.rebaseFailed", { error: String(err) }));
+			toast.error(t("infoPanel.rebaseFailed", { error: String(err) }));
 		}
 		setRebasing(false);
 	}, [compareRef, project.id, rebasing, task.id, t]);
@@ -289,7 +291,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 			});
 		} catch (err) {
-			alert(t("infoPanel.mergeFailed", { error: String(err) }));
+			toast.error(t("infoPanel.mergeFailed", { error: String(err) }));
 		}
 		setMerging(false);
 	}, [merging, project.id, task.id, t]);
@@ -306,7 +308,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 			});
 		} catch (err) {
-			alert(t("infoPanel.pushFailed", { error: String(err) }));
+			toast.error(t("infoPanel.pushFailed", { error: String(err) }));
 		}
 		setPushing(false);
 	}, [project.id, pushing, task.id, t]);

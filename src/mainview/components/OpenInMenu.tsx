@@ -1,4 +1,5 @@
 import { useRef, useEffect, useLayoutEffect, useState } from "react";
+import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { ExternalApp } from "../../shared/types";
 import { useAvailableApps } from "../hooks/useAvailableApps";
@@ -85,7 +86,7 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 		try {
 			await api.request.openInApp({ appName: app.macAppName, path });
 		} catch (err) {
-			alert(t("openIn.failedOpen", { app: app.name, error: String(err) }));
+			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }));
 		}
 	}
 

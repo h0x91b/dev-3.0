@@ -24,7 +24,6 @@ vi.mock("../../rpc", () => ({
 			rebaseTask: vi.fn(),
 			mergeTask: vi.fn(),
 			pushTask: vi.fn(),
-			showConfirm: vi.fn(),
 			createPullRequest: vi.fn(),
 			openPullRequest: vi.fn(),
 			renameTask: vi.fn(),
@@ -48,8 +47,20 @@ vi.mock("../../utils/confirmTaskCompletion", () => ({
 }));
 
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
+import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
+
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(),
+	ConfirmHost: () => null,
+}));
+
+vi.mock("../../toast", () => ({
+	toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+	ToastHost: () => null,
+}));
 
 const mockedApi = vi.mocked(api, true);
 const mockedTrackEvent = vi.mocked(trackEvent);
@@ -586,7 +597,7 @@ describe("TaskInfoPanel", () => {
 		it("shows alert when both move attempts fail", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const task = makeTask({ status: "in-progress" });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 
 			mockedApi.request.moveTask
 				.mockRejectedValueOnce(new Error("fail1"))
@@ -757,7 +768,7 @@ describe("TaskInfoPanel", () => {
 		it("shows alert when add note fails", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.addTaskNote.mockRejectedValue(new Error("network error"));
 
 			await act(async () => {
@@ -773,7 +784,7 @@ describe("TaskInfoPanel", () => {
 		it("shows alert when delete note fails", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.deleteTaskNote.mockRejectedValue(new Error("oops"));
 
 			await act(async () => {
@@ -914,7 +925,7 @@ describe("TaskInfoPanel", () => {
 
 		it("shows alert when dev server fails", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
 			mockedApi.request.runDevServer.mockRejectedValue(new Error("port busy"));
 
@@ -1354,7 +1365,7 @@ describe("TaskInfoPanel", () => {
 
 			it("shows alert on rebase failure", async () => {
 				const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-				const alertSpy = vi.fn(); window.alert = alertSpy;
+				const alertSpy = vi.mocked(toast.error);
 				mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				behind: 2,
@@ -1376,7 +1387,7 @@ describe("TaskInfoPanel", () => {
 
 		it("shows alert on push failure", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 1,
@@ -1397,7 +1408,7 @@ describe("TaskInfoPanel", () => {
 
 		it("shows alert on merge failure", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			const alertSpy = vi.fn(); window.alert = alertSpy;
+			const alertSpy = vi.mocked(toast.error);
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 1,
@@ -1669,7 +1680,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -1680,7 +1691,7 @@ describe("TaskInfoPanel", () => {
 				await vi.advanceTimersByTimeAsync(100);
 			});
 
-			expect(mockedApi.request.showConfirm).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -1692,7 +1703,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -1700,7 +1711,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -1719,7 +1730,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -1727,7 +1738,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -1749,7 +1760,7 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			mockedApi.request.showConfirm.mockReturnValue(
+			vi.mocked(confirm).mockReturnValue(
 				new Promise<boolean>((resolve) => {
 					resolveConfirm = resolve;
 				}),
@@ -1760,7 +1771,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalledTimes(1);
+				expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 			});
 
 			await act(async () => {
@@ -1771,7 +1782,7 @@ describe("TaskInfoPanel", () => {
 				);
 			});
 
-			expect(mockedApi.request.showConfirm).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 
 			await act(async () => {
 				resolveConfirm(false);
@@ -1807,7 +1818,7 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => {
 				expect(mockedApi.request.prepareMergeCompletionPrompt).toHaveBeenCalled();
 			});
-			expect(mockedApi.request.showConfirm).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -1815,7 +1826,7 @@ describe("TaskInfoPanel", () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "in-progress" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -1833,7 +1844,7 @@ describe("TaskInfoPanel", () => {
 
 			// Wait for the confirm dialog to resolve
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {
@@ -1856,7 +1867,7 @@ describe("TaskInfoPanel", () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "review-by-user" });
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockReturnValue(new Promise(() => {}) as never);
 
 			await act(async () => {
@@ -1872,7 +1883,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {
@@ -1888,12 +1899,11 @@ describe("TaskInfoPanel", () => {
 		it("keeps the optimistic completion when both background completion RPC attempts fail", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
-			const alertSpy = vi.fn();
+			const alertSpy = vi.mocked(toast.error);
 			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 			const task = makeTask({ status: "review-by-user" });
 
-			window.alert = alertSpy;
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask
 				.mockRejectedValueOnce(new Error("primary failure"))
 				.mockRejectedValueOnce(new Error("forced failure"));
@@ -1911,7 +1921,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);

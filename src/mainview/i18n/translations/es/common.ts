@@ -11,6 +11,17 @@ const common = {
 	"quit.confirm": "Salir",
 	"quit.cancel": "Cancelar",
 
+	// Generic confirmation dialog (imperative confirm() service)
+	"confirmDialog.confirm": "OK",
+	"confirmDialog.cancel": "Cancelar",
+
+	// About dialog (in-app, replaces the native About message box)
+	"about.version": "Versión {version}",
+	"about.tagline": "Gestor de proyectos centrado en la terminal",
+	"about.builtWith": "Hecho con Electrobun, React y Bun.",
+	"about.website": "Sitio web",
+	"about.close": "Cerrar",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "Agente trabajando",

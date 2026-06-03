@@ -5,6 +5,8 @@ const kanban = {
 	"kanban.cancel": "Cancelar",
 	"kanban.newTask": "+ Nueva tarea",
 	"kanban.failedCreate": "Error al crear tarea: {error}",
+	"kanban.columnAgentFailed": "No se pudo iniciar el agente de la columna \"{columnName}\": {error}",
+	"kanban.failedReorderColumns": "No se pudo reordenar las columnas: {error}",
 	"kanban.showMore": "Mostrar más ({count})",
 	"kanban.showLess": "Mostrar menos",
 	"kanban.collapseColumn": "Desanclar columna",

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
+import { toast } from "../toast";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
@@ -1096,7 +1097,7 @@ function ProjectSettings({
 			const updated: Project = { ...project, labels: [...(project.labels ?? []), label] };
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			alert(t("labels.failedCreate", { error: String(err) }));
+			toast.error(t("labels.failedCreate", { error: String(err) }));
 		}
 		setLabelSaving(null);
 	}
@@ -1112,7 +1113,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			alert(t("labels.failedUpdate", { error: String(err) }));
+			toast.error(t("labels.failedUpdate", { error: String(err) }));
 		}
 		setLabelSaving(null);
 	}
@@ -1128,7 +1129,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			alert(t("labels.failedDelete", { error: String(err) }));
+			toast.error(t("labels.failedDelete", { error: String(err) }));
 		}
 		setLabelSaving(null);
 	}
@@ -1141,7 +1142,7 @@ function ProjectSettings({
 			const updated: Project = { ...project, customColumns: [...(project.customColumns ?? []), column] };
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			alert(t("customColumns.failedCreate", { error: String(err) }));
+			toast.error(t("customColumns.failedCreate", { error: String(err) }));
 		}
 		setColumnSaving(null);
 	}
@@ -1157,7 +1158,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			alert(t("customColumns.failedUpdate", { error: String(err) }));
+			toast.error(t("customColumns.failedUpdate", { error: String(err) }));
 		}
 		setColumnSaving(null);
 	}
@@ -1173,7 +1174,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			alert(t("customColumns.failedDelete", { error: String(err) }));
+			toast.error(t("customColumns.failedDelete", { error: String(err) }));
 		}
 		setColumnSaving(null);
 	}
@@ -1199,7 +1200,7 @@ function ProjectSettings({
 			setProjectConfig(toSave);
 			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
 		} catch (err) {
-			alert(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }));
 		}
 		setSavingProject(false);
 	}
@@ -1218,7 +1219,7 @@ function ProjectSettings({
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
-			alert(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }));
 		}
 		setSavingWtRepo(false);
 	}
@@ -1234,7 +1235,7 @@ function ProjectSettings({
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
-			alert(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }));
 		}
 		setSavingWtLocal(false);
 	}

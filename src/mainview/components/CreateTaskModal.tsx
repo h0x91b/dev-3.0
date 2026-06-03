@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
+import { toast } from "../toast";
 import type { Label, Project, Task } from "../../shared/types";
 import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
@@ -205,7 +206,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				onClose();
 			}
 		} catch (err) {
-			alert(t("kanban.failedCreate", { error: String(err) }));
+			toast.error(t("kanban.failedCreate", { error: String(err) }));
 			setCreating(false);
 		}
 	}

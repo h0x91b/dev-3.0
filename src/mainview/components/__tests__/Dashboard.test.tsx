@@ -10,13 +10,18 @@ vi.mock("../../rpc", () => ({
 		request: {
 			removeProject: vi.fn(),
 			reorderProjects: vi.fn(),
-			showConfirm: vi.fn(),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
 		},
 	},
 }));
 
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
+
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(),
+	ConfirmHost: () => null,
+}));
 
 const mockedApi = vi.mocked(api, true);
 
@@ -158,14 +163,14 @@ describe("Dashboard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 
-			mockedApi.request.showConfirm.mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.removeProject.mockResolvedValue(undefined);
 
 			renderDashboard([mockProject], dispatch, vi.fn(), vi.fn());
 			await screen.findByText("My Project");
 			await user.click(screen.getByTitle("Remove"));
 
-			expect(mockedApi.request.showConfirm).toHaveBeenCalled();
+			expect(vi.mocked(confirm)).toHaveBeenCalled();
 			expect(mockedApi.request.removeProject).toHaveBeenCalledWith({
 				projectId: "p1",
 			});
@@ -179,7 +184,7 @@ describe("Dashboard", () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 
-			mockedApi.request.showConfirm.mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			renderDashboard([mockProject], dispatch, vi.fn(), vi.fn());
 			await screen.findByText("My Project");

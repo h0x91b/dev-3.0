@@ -27,7 +27,6 @@ vi.mock("../rpc", () => ({
 				taskDropPosition: "top",
 				updateChannel: "stable",
 			}),
-			showConfirm: vi.fn().mockResolvedValue(false),
 			moveTask: vi.fn().mockResolvedValue({}),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
 		},
@@ -96,6 +95,12 @@ vi.mock("../components/ProjectTerminal", () => ({
 }));
 
 import { api } from "../rpc";
+import { confirm } from "../confirm";
+
+vi.mock("../confirm", () => ({
+	confirm: vi.fn().mockResolvedValue(false),
+	ConfirmHost: () => null,
+}));
 import { initTaskSoundPlayback, playTaskSound } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 
@@ -600,7 +605,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
-			vi.mocked(api.request.showConfirm).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			vi.mocked(api.request.moveTask).mockResolvedValue({} as never);
 
 			await renderApp();
@@ -624,7 +629,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
-			vi.mocked(api.request.showConfirm).mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			await renderApp();
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
@@ -647,7 +652,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t2" }),
 			});
-			vi.mocked(api.request.showConfirm).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			vi.mocked(api.request.moveTask).mockResolvedValue({} as never);
 
 			await renderApp();

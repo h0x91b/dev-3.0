@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
+import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
 import LabelChip from "./LabelChip";
@@ -249,7 +250,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					navigate({ screen: "project", projectId: project.id });
 				}
 			} catch (retryErr) {
-				alert(t("task.failedMove", { error: String(retryErr) }));
+				toast.error(t("task.failedMove", { error: String(retryErr) }));
 			}
 		}
 
@@ -268,7 +269,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
 		} catch (err) {
-			alert(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }));
 		}
 		setMovingStatus(false);
 	}

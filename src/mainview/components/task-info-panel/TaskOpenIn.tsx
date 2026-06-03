@@ -1,4 +1,5 @@
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
@@ -44,7 +45,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 				setYaziInstallPopup(true);
 			}
 		} catch (err) {
-			alert(t("infoPanel.fileBrowserFailed", { error: String(err) }));
+			toast.error(t("infoPanel.fileBrowserFailed", { error: String(err) }));
 		}
 	}
 

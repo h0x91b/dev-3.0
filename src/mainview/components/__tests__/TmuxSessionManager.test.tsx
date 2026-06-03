@@ -10,7 +10,6 @@ vi.mock("../../rpc", () => ({
 		request: {
 			listTmuxSessions: vi.fn(() => Promise.resolve([])),
 			killTmuxSession: vi.fn(() => Promise.resolve()),
-			showConfirm: vi.fn(() => Promise.resolve(false)),
 		},
 	},
 }));

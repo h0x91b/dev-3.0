@@ -1,0 +1,96 @@
+import { useEffect, useState } from "react";
+import { useT } from "./i18n";
+
+export interface ConfirmOptions {
+	title: string;
+	message: string;
+	confirmLabel?: string;
+	cancelLabel?: string;
+	/** Style the confirm button as destructive (red). */
+	danger?: boolean;
+}
+
+interface PendingConfirm extends ConfirmOptions {
+	id: number;
+	resolve: (value: boolean) => void;
+}
+
+let listener: ((req: PendingConfirm | null) => void) | null = null;
+let counter = 0;
+
+/**
+ * Imperative, promise-based confirmation dialog — the in-app replacement for
+ * the old native `showConfirm` RPC (`Utils.showMessageBox`) and `window.confirm`.
+ *
+ * Works identically in the Electrobun desktop shell and in headless remote
+ * (browser) mode because it renders as plain React. Callable from anywhere —
+ * components, hooks, and plain util modules — since it is module-level.
+ *
+ * Requires `<ConfirmHost />` to be mounted once (in `App.tsx`). If it is not
+ * mounted, the promise resolves `false` (fail-closed) instead of blocking.
+ */
+export function confirm(options: ConfirmOptions): Promise<boolean> {
+	return new Promise((resolve) => {
+		if (!listener) {
+			resolve(false);
+			return;
+		}
+		listener({ ...options, id: ++counter, resolve });
+	});
+}
+
+export function ConfirmHost() {
+	const t = useT();
+	const [pending, setPending] = useState<PendingConfirm | null>(null);
+
+	useEffect(() => {
+		listener = setPending;
+		return () => {
+			listener = null;
+		};
+	}, []);
+
+	if (!pending) return null;
+
+	const close = (result: boolean) => {
+		pending.resolve(result);
+		setPending(null);
+	};
+
+	const confirmLabel = pending.confirmLabel ?? t("confirmDialog.confirm");
+	const cancelLabel = pending.cancelLabel ?? t("confirmDialog.cancel");
+
+	return (
+		<div
+			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+			onMouseDown={(e) => {
+				if (e.target === e.currentTarget) close(false);
+			}}
+		>
+			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4">
+				<h2 className="text-fg text-lg font-semibold">{pending.title}</h2>
+				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
+				<div className="flex justify-end gap-2 pt-1">
+					<button
+						type="button"
+						onClick={() => close(false)}
+						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+					>
+						{cancelLabel}
+					</button>
+					<button
+						type="button"
+						onClick={() => close(true)}
+						className={
+							pending.danger
+								? "px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
+								: "px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+						}
+					>
+						{confirmLabel}
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}

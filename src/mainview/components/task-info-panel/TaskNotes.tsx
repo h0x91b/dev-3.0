@@ -1,4 +1,5 @@
 import type { Dispatch } from "react";
+import { toast } from "../../toast";
 import { NoteItem } from "../NoteItem";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction } from "../../state";
@@ -24,7 +25,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("notes.failedAdd", { error: String(err) }));
+			toast.error(t("notes.failedAdd", { error: String(err) }));
 		}
 	}
 
@@ -51,7 +52,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			alert(t("notes.failedDelete", { error: String(err) }));
+			toast.error(t("notes.failedDelete", { error: String(err) }));
 		}
 	}
 

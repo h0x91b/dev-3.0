@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { useT } from "./i18n";
-import { dispatchErrorToast } from "./components/ErrorToast";
+import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
@@ -1058,7 +1058,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					return uploadedPath ? uploadedPath.replace(/ /g, "\\ ") : null;
 				} catch (err) {
 					console.error(`[TerminalView] file upload failed for "${f.name}":`, err);
-					dispatchErrorToast(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
+					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
 					return null;
 				}
 			}),
