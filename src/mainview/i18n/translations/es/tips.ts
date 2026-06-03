@@ -200,8 +200,8 @@ const tips = {
 	"tip.bugHuntersReadOnly.body": "El skill /dev3-bug-hunter es solo de lectura — sin commits, sin parches. Tras reportar hallazgos, el agente pregunta antes de convertir bugs críticos/medianos en nuevas tareas dev3.",
 	"tip.multiWindow.title": "Reparte proyectos entre pantallas",
 	"tip.multiWindow.body": "Usa Archivo → Nueva ventana para abrir otra ventana de dev-3.0: un proyecto por monitor, y puedes cerrar cualquier ventana sin salir de la app.",
-	"tip.quitConfirm.title": "Cerrar la última ventana pregunta primero",
-	"tip.quitConfirm.body": "Salir — con Cmd+Q, el menú o cerrando la última ventana — ahora muestra una confirmación para que tus sesiones tmux en segundo plano no desaparezcan por sorpresa.",
+	"tip.quitConfirm.title": "Salir pregunta primero",
+	"tip.quitConfirm.body": "Salir con Cmd+Q, el menú o el dock muestra una confirmación para que tus sesiones tmux en segundo plano no desaparezcan por sorpresa.",
 };
 
 export default tips;

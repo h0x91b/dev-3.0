@@ -3870,6 +3870,26 @@ describe("handlers.quitApp", () => {
 });
 
 // ================================================================
+// handlers.requestQuit
+// ================================================================
+
+describe("handlers.requestQuit", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("triggers Utils.quit so the before-quit gate runs (renderer Cmd+Q path)", async () => {
+		await handlers.requestQuit();
+		expect(Utils.quit).toHaveBeenCalledOnce();
+	});
+
+	it("does not persist any setting or confirm the quit itself", async () => {
+		await handlers.requestQuit();
+		// requestQuit only starts the quit; confirmation/persistence happens in
+		// quitApp after the dialog. So no settings write here.
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
 // handlers.hideApp
 // ================================================================
 

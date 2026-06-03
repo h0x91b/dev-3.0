@@ -357,6 +357,10 @@ function initBrowserApi(): ApiShape {
 		async quitApp(): Promise<void> {
 			// No-op in browser
 		},
+
+		async requestQuit(): Promise<void> {
+			// No-op in browser — you don't quit the host app from a remote tab.
+		},
 	};
 
 	// Proxy: api.request.methodName(params) → override or rpcRequest

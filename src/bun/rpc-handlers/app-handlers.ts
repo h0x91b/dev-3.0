@@ -39,6 +39,16 @@ async function quitApp(params?: { dontShowAgain?: boolean }): Promise<void> {
 	Utils.quit();
 }
 
+// Renderer-initiated quit (Cmd+Q). WKWebView swallows the native menu Cmd+Q
+// accelerator when a terminal has focus, so the renderer catches the keystroke
+// itself and asks us to start the quit. We funnel it through `Utils.quit()` so
+// the single `before-quit` gate decides what to do — show the confirmation
+// dialog, or quit straight away if the user opted out (`skipQuitDialog`).
+async function requestQuit(): Promise<void> {
+	log.info("→ requestQuit (Cmd+Q from renderer)");
+	Utils.quit();
+}
+
 async function hideApp(): Promise<void> {
 	log.info("→ hideApp (Cmd+H from renderer)");
 	hideAppNative();
@@ -709,6 +719,7 @@ export const appHandlers = {
 	// TEMP DIAGNOSTIC: remove with logRendererEvent after terminal copy bug cleanup.
 	logRendererEvent,
 	quitApp,
+	requestQuit,
 	hideApp,
 	showConfirm,
 	updateMenuContext,

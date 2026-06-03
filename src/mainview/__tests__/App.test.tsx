@@ -11,6 +11,7 @@ vi.mock("../rpc", () => ({
 			getProjects: vi.fn().mockResolvedValue([]),
 			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
 			quitApp: vi.fn().mockResolvedValue(undefined),
+			requestQuit: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
@@ -126,9 +127,11 @@ describe("App keyboard shortcuts", () => {
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
 	});
 
-	// Quit is gated in the bun `before-quit` handler now (covers Cmd+Q, menu
-	// Quit, and closing the last window). The bun side pushes `rpc:showQuitDialog`
-	// to ask the renderer to confirm; the renderer no longer intercepts Cmd+Q.
+	// Quit is gated in the bun `before-quit` handler now (covers menu Quit, dock
+	// Quit, and the renderer-initiated Cmd+Q). The bun side pushes
+	// `rpc:showQuitDialog` to ask the renderer to confirm. Cmd+Q is caught in the
+	// renderer (WKWebView swallows the native accelerator) and forwarded to bun
+	// via `requestQuit`, which runs the same gate.
 	describe("quit confirmation dialog", () => {
 		function requestQuitDialog() {
 			act(() => {
@@ -140,6 +143,20 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			requestQuitDialog();
 			expect(screen.getByText("Sessions keep running")).toBeInTheDocument();
+		});
+
+		it("Cmd+Q forwards to bun via requestQuit (no native accelerator reliance)", async () => {
+			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}q{/Meta}");
+			expect(api.request.requestQuit).toHaveBeenCalled();
+		});
+
+		it("Ctrl+Q forwards to bun via requestQuit", async () => {
+			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Control>}q{/Control}");
+			expect(api.request.requestQuit).toHaveBeenCalled();
 		});
 
 		it("Escape closes the quit dialog", async () => {

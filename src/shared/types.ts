@@ -1344,6 +1344,10 @@ export type AppRPCSchema = {
 				params: { dontShowAgain?: boolean } | void;
 				response: void;
 			};
+			requestQuit: {
+				params: void;
+				response: void;
+			};
 			hideApp: {
 				params: void;
 				response: void;

@@ -220,7 +220,15 @@ function App() {
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
-			if ((e.metaKey || e.ctrlKey) && e.key === "h") {
+			if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
+				// WKWebView swallows the native menu Cmd+Q accelerator while a
+				// terminal has focus, so we catch it here (capture phase) and ask
+				// the main process to start the quit. The `before-quit` gate then
+				// pushes `showQuitDialog` back, or quits if the user opted out.
+				e.preventDefault();
+				e.stopPropagation();
+				api.request.requestQuit().catch(() => {});
+			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});

@@ -24,34 +24,42 @@ dialogs).
 
 - New `src/bun/quit-manager.ts` holds a `quitConfirmed` flag shared between the
   gate and the `quitApp` handler.
-- `src/bun/index.ts` `before-quit` gate: if not confirmed and `skipQuitDialog`
-  setting is off, cancel the quit and push `showQuitDialog` to the focused
-  window. If no window remains (last window just closed), reopen one and fire the
-  push from its `onDomReady` (`pendingQuitDialog`).
+- `src/bun/index.ts` `before-quit` gate: if already confirmed or `skipQuitDialog`
+  is set, run cleanup and allow. Otherwise, **if a window is open**, cancel the
+  quit and push `showQuitDialog` to the focused window. **If no window is open**
+  (the user closed the last one with the X, which `exitOnLastWindowClosed`
+  turns into a quit), allow the quit — we do NOT reopen a window to ask.
 - `quitApp` (app-handlers) takes `{ dontShowAgain }`, persists `skipQuitDialog`
   to global settings, calls `markQuitConfirmed()`, then `Utils.quit()` — the
   second pass sails through the gate.
-- The renderer no longer intercepts Cmd+Q; native Cmd+Q / menu Quit reach the
-  gate. The React dialog is opened by the `rpc:showQuitDialog` push.
+- Cmd+Q: WKWebView swallows the native menu Cmd+Q accelerator while a terminal
+  has focus, so the renderer catches the keystroke (capture phase) and calls a
+  new `requestQuit` RPC → `Utils.quit()` → the gate pushes `showQuitDialog` back
+  to the same (still-open) window. Menu Quit / dock Quit reach the gate directly
+  (those aren't keystrokes, so the webview doesn't eat them).
 - `updater.applyUpdate()` calls `markQuitConfirmed()` first so auto-update
   relaunch is never blocked by the dialog.
 
 ## Risks
 
-- Closing the **last** window then cancelling reopens a fresh window (loses prior
-  route state) — acceptable, and the only way to host a React dialog after the
-  window is gone.
+- Closing the **last** window quits without the "sessions keep running" dialog.
+  This is deliberate: an earlier version reopened a window to host the dialog,
+  but the reopen was jarring (window flashes back) and the deferred push raced
+  the renderer mount so the dialog often never showed. The dialog now lives only
+  on the explicit quit paths that have a window (Cmd+Q, menu, dock). tmux
+  sessions persist regardless, so quitting never loses work.
 - `skipQuitDialog` is a one-way opt-out from the dialog's checkbox; re-enabling
   needs a settings toggle (not yet added). Matches the previous localStorage
   behavior.
-- If `before-quit` fires while the only window's renderer is mid-load, the push
-  could be missed and the quit stays cancelled. Rare; user can retry.
 
 ## Alternatives considered
 
 - **Native `Utils.showMessageBox` in before-quit** — uniform and simplest, but
   native dialogs are wrong for the remote/browser client and we're removing
   native UI. Rejected.
-- **Renderer-only Cmd+W interception** — keeps the React dialog but cannot cover
-  the red-X-on-last-window path (native close is not interceptable). Rejected as
-  incomplete.
+- **Reopen a window on last-window-close to host the dialog** — implemented
+  first, then removed: the reopen flashes a new window and the dialog push fired
+  on `onDomReady` before the React listener mounted, so it was lost. Rejected.
+- **Rely on the native `{ role: "quit" }` Cmd+Q accelerator** — the webview
+  swallows it when a terminal is focused, so Cmd+Q did nothing. Rejected in
+  favour of the renderer `requestQuit` forward.

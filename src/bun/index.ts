@@ -253,11 +253,6 @@ onMenuContextChange((ctx) => {
 
 // --- Main Window ---
 
-// Set by the `before-quit` gate when the last window was already closed and we
-// had to reopen one just to host the quit-confirmation dialog. Consumed in the
-// new window's `onDomReady`.
-let pendingQuitDialog = false;
-
 async function openMainWindow() {
 	return createAppWindow({
 		title: makeTitle(APP_VERSION, lastBuildTime),
@@ -269,13 +264,6 @@ async function openMainWindow() {
 				win.webview.openDevTools();
 			}
 			log.info(`DOM ready [${lastBuildTime}]`);
-			// If this window was reopened solely to host the quit dialog (the user
-			// closed the last window), surface the dialog now that the renderer is
-			// mounted and can receive the push.
-			if (pendingQuitDialog) {
-				pendingQuitDialog = false;
-				sendToFocusedWindow("showQuitDialog");
-			}
 		},
 		onExternalLink: (externalUrl) => {
 			log.info("Opening external URL", { url: externalUrl });
@@ -466,13 +454,12 @@ function runGlobalQuitCleanup(): void {
 // window (red X / Cmd+W), updater restart, signals. Fires once per attempt.
 //
 // Unless the user already confirmed (via the React dialog → `quitApp`) or opted
-// out (`skipQuitDialog`), we cancel the quit and ask the renderer to show the
-// confirmation dialog. The actual teardown + exit happens on the second pass,
-// once `quitApp` has set the confirmed flag.
+// out (`skipQuitDialog`), we cancel the quit and ask the focused window to show
+// the confirmation dialog. The actual teardown + exit happens on the second
+// pass, once `quitApp` has set the confirmed flag.
 //
-// When the quit was triggered by closing the LAST window, there is no renderer
-// left to host the dialog, so we reopen one and defer the push to its
-// `onDomReady` (see `pendingQuitDialog`).
+// If no window is open (the user closed the last one with the X), we don't
+// reopen a window just to ask — we treat it as a deliberate quit and allow it.
 Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 	if (isQuitConfirmed()) {
 		runGlobalQuitCleanup();
@@ -489,16 +476,22 @@ Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 		return;
 	}
 
-	// Cancel this quit and ask for confirmation.
+	// If the last window is already gone (user closed it with the red X, which
+	// Electrobun turns into a quit via `exitOnLastWindowClosed`), there is no
+	// renderer left to host the dialog. Reopening one just to ask is jarring, so
+	// we treat closing the last window as a deliberate quit and let it through.
+	// The confirmation dialog stays on the explicit quit paths that DO have a
+	// window: Cmd+Q (renderer → requestQuit), the menu Quit item, and dock Quit.
+	if (!getFocusedWindow()) {
+		log.info("Quit with no window open — allowing (last window closed)");
+		runGlobalQuitCleanup();
+		return;
+	}
+
+	// Cancel this quit and ask the focused window for confirmation.
 	e.response = { allow: false };
 	log.info("Quit intercepted — asking renderer to confirm");
-	if (getFocusedWindow()) {
-		sendToFocusedWindow("showQuitDialog");
-	} else {
-		// Last window already gone — reopen one to host the dialog.
-		pendingQuitDialog = true;
-		void openMainWindow();
-	}
+	sendToFocusedWindow("showQuitDialog");
 });
 
 // Click-to-open for watched-task notifications.
