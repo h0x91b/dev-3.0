@@ -7,7 +7,7 @@ import { exitError, exitUsage } from "../output";
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
 
 Usage:
-  dev3 remote [--tunnel] [--port <n>] [--views-dir <path>]
+  dev3 remote [--no-tunnel] [--port <n>] [--views-dir <path>]
 
 What it does:
   Starts a Bun-only dev-3.0 server (no GUI window) and serves the full web UI
@@ -15,12 +15,17 @@ What it does:
   URL signed with a short-lived (30s, single-use) JWT token — the QR is
   auto-refreshed every 25 seconds, matching the GUI modal's behavior.
 
+  By default a Cloudflare quick tunnel (trycloudflare.com) is started and its
+  public URL is included in the QR, so you can connect from any device without
+  setting up SSH port-forwarding. \`cloudflared\` is installed as a brew
+  dependency. Pass --no-tunnel for local-only mode (LAN + SSH forward only).
+
 Flags:
-  --tunnel
-      Start a Cloudflare quick tunnel (trycloudflare.com) and include its
-      public URL in the QR. Requires \`cloudflared\` on PATH.
-      Note: Cloudflare doesn't sanction trycloudflare.com for production
-      use — treat this as a dev convenience only.
+  --no-tunnel
+      Skip the Cloudflare quick tunnel — only LAN + SSH-forward URLs are
+      shown. Use this when the machine is already on a trusted network and
+      you don't want to expose anything to the public internet, or when
+      \`cloudflared\` is unavailable.
 
   --port <n>
       Bind to a fixed TCP port instead of a random one. Useful when running
@@ -39,16 +44,17 @@ Flags:
       internet. Minimum length: 4 characters.
 
 Connection options shown on startup:
-  ① Public tunnel URL (if --tunnel)
+  ① Public tunnel URL (Cloudflare quick tunnel, unless --no-tunnel)
   ② LAN — scan the QR from any device on the same network
   ③ SSH port-forward — \`ssh -L <port>:localhost:<port> user@<server>\`
 
-  The SSH approach is the recommended default: no public exposure, uses your
-  existing SSH credentials, and the browser just points at http://localhost.
+  Tunnel is the easiest to use from anywhere. SSH is the most private — no
+  public exposure, uses your existing SSH credentials, browser points at
+  http://localhost.
 
 Examples:
-  dev3 remote                   # LAN + SSH forwarding
-  dev3 remote --tunnel          # + public Cloudflare tunnel
+  dev3 remote                   # Cloudflare tunnel + LAN + SSH forwarding
+  dev3 remote --no-tunnel       # LAN + SSH only (no public URL)
   dev3 remote --port 3000       # fixed port (ideal for Docker -p 3000:3000)
 `;
 
@@ -131,16 +137,17 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 	}
 
 	for (const key of Object.keys(args.flags)) {
-		if (key !== "tunnel" && key !== "views-dir" && key !== "static-code" && key !== "port" && key !== "help" && key !== "h") {
+		if (key !== "no-tunnel" && key !== "views-dir" && key !== "static-code" && key !== "port" && key !== "help" && key !== "h") {
 			exitUsage(`Unknown flag: --${key}\nRun "dev3 remote --help" for usage.`);
 		}
 	}
 
 	// Translate flags → env for headless-entry. DEV3_HEADLESS is also set as a
 	// safety net: the bootstrap sets it before imports, but belt-and-suspenders.
+	// Tunnel is opt-out: headless-entry starts one unless DEV3_REMOTE_NO_TUNNEL=1.
 	const childEnv: NodeJS.ProcessEnv = { ...process.env, DEV3_HEADLESS: "1" };
-	if (args.flags.tunnel === "true") {
-		childEnv.DEV3_REMOTE_TUNNEL = "1";
+	if (args.flags["no-tunnel"] === "true") {
+		childEnv.DEV3_REMOTE_NO_TUNNEL = "1";
 	}
 	if (args.flags["views-dir"] && args.flags["views-dir"] !== "true") {
 		childEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];

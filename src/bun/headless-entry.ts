@@ -53,7 +53,10 @@ log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
 // ── Options (from DEV3_REMOTE_* env, set by the `dev3 remote` CLI command) ──
-const wantTunnel = process.env.DEV3_REMOTE_TUNNEL === "1";
+// Cloudflare tunnel is opt-out: start one unless DEV3_REMOTE_NO_TUNNEL=1
+// (set by `dev3 remote --no-tunnel`). `cloudflared` is a brew dependency so
+// it should always be available on a Homebrew install.
+const wantTunnel = process.env.DEV3_REMOTE_NO_TUNNEL !== "1";
 
 // ── Resolve DEV3_VIEWS_DIR if not already set ──
 // remote-access-server uses PATHS.VIEWS_FOLDER (backed by DEV3_VIEWS_DIR env in
@@ -167,11 +170,12 @@ await startRemoteAccessServer({
 	},
 });
 
-// ── Optional: Cloudflare tunnel (opt-in via --tunnel flag → DEV3_REMOTE_TUNNEL=1) ──
+// ── Cloudflare tunnel (default-on; opt out with --no-tunnel → DEV3_REMOTE_NO_TUNNEL=1) ──
 if (wantTunnel) {
 	if (!isCloudflaredAvailable()) {
-		console.error("\n[dev3 remote] --tunnel requested but `cloudflared` is not installed.");
-		console.error("              Install it from https://github.com/cloudflare/cloudflared\n");
+		console.error("\n[dev3 remote] `cloudflared` is not installed — skipping public tunnel.");
+		console.error("              On Homebrew: `brew install cloudflared`.");
+		console.error("              Or pass --no-tunnel to silence this warning.\n");
 	} else {
 		console.log("[dev3 remote] Starting Cloudflare tunnel...");
 		const tunnelUrl = await startTunnel(getServerPort());

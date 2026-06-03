@@ -498,6 +498,7 @@ jobs:
 
             depends_on "tmux"
             depends_on "git"
+            depends_on "cloudflared"
 
             def install
               libexec.install "dev3", "dev3-server", "dist"

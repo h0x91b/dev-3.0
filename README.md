@@ -143,7 +143,7 @@ brew install h0x91b/dev3/dev3
 
 This installs the `dev3` CLI. Three ways to use it:
 
-- **Headless / browser UI** — `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint. Open the URL on your laptop and you're in. The token rotates every 25 seconds; the QR auto-refreshes too. Perfect for remote dev boxes.
+- **Headless / browser UI** — `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint. By default it also starts a Cloudflare quick tunnel so you can connect from anywhere without SSH (`cloudflared` is installed as a brew dep). Pass `--no-tunnel` for local-only mode. The token rotates every 25 seconds; the QR auto-refreshes too. Perfect for remote dev boxes.
 - **Desktop GUI** — `dev3 gui` launches the full Electrobun desktop app. On the first run it lazily downloads the bundle (~88 MB) into `~/.dev3.0/gui/` and registers an XDG menu entry. If your distro is missing GTK/WebKit libraries it prints the exact `apt`/`dnf`/`pacman` command for you to copy.
 - **CLI tooling** — `dev3 task …`, `dev3 current`, `dev3 note add …` etc. when you want to script the Kanban board from a terminal.
 
@@ -161,7 +161,7 @@ mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
 # (optional) put it on PATH: echo 'export PATH=$HOME/.dev3:$PATH' >> ~/.bashrc
 ```
 
-Make sure `tmux` and `git` are installed via your package manager (`apt install -y tmux git` on Debian/Ubuntu).
+Make sure `tmux`, `git`, and `cloudflared` are installed via your package manager (`apt install -y tmux git` on Debian/Ubuntu; for `cloudflared` see [Cloudflare's docs](https://github.com/cloudflare/cloudflared#installing-cloudflared)). Without `cloudflared` `dev3 remote` still works — it just falls back to LAN + SSH-forward URLs (or pass `--no-tunnel` to skip the check).
 
 #### Caveats for cloud VMs
 
