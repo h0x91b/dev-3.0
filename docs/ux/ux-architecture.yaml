@@ -479,7 +479,43 @@ ux_architecture:
       status: "proposed"
       rationale: "The Velocity Cockpit is the product's motivation engine. New features that produce a countable, repeatable signal should emit it into the stats pipeline at BUILD time (so the data exists even before it is charted) and surface a visualization on the read-only cockpit WHEN motivational — within the complexity + honesty budget (prefer one strong signal; forward-only 'tracking since', never fake history; numbers must be true). Diagnostic-only metrics keep the data but stay off the cockpit. See PRODUCT_UX_BIBLE §1.1 + UX_DECISIONS 2026-06-29."
 
+  responsive:
+    status: "proposed" # planning only — see docs/ux/feature-plans/mobile-carousel-navigation.md
+    idea_credit: "Ittai Zeidman"
+    breakpoints:
+      narrow:
+        rule: "screen.width < 1024"
+        signal: "useMobile() (existing); gate on viewport width, NOT on isElectrobun"
+        covers: ["phone via dev3 remote", "hypothetical electrobun-mobile", "narrowed desktop browser window"]
+    principle: "On a narrow viewport show exactly one element at a time and move between siblings by swipe/pager. Applies to columns, tasks-in-column, and terminal panes alike."
+    no_new_nav: "Carousels are responsive view-modes of existing screens (project board, task terminal). They MUST NOT add a destination, nav item, or be entered via a setting as the primary mechanism. Layout follows the viewport automatically."
+    view_modes:
+      board_carousel:
+        screen: "project"
+        layout: "CSS scroll-snap track; one column = 100vw (scroll-snap-align:start); column body scrolls vertically. Axis disambiguation delegated to the browser (outer x-snap vs inner y-scroll)."
+        full_surface_swipe: true # column bodies scroll vertically only → horizontal swipe is unambiguous
+        column_set: "same order as desktop; collapsed columns (useColumnCollapse) EXCLUDED from the track; empty columns KEPT for position stability"
+        pager: "sticky header: name + count + position (n / N) + ‹/› chevrons + dot indicators; tap name → bottom-sheet column list"
+        drag_replacement: "no drag with one column visible — card long-press → 'Move to <status>' action sheet wired to the existing status-change path; completion targets reuse confirmTaskCompletion"
+        filters: "LabelFilterBar + search collapse into a bottom sheet behind a header funnel button"
+        evidence: ["src/mainview/components/KanbanBoard.tsx", "KanbanColumn.tsx", "hooks/useColumnCollapse.ts"]
+      pane_carousel:
+        screen: "task"
+        layout: "one zoomed tmux pane (resize-pane -Z); single ghostty TerminalView canvas"
+        full_surface_swipe: false # terminal runs interactive TUIs that consume touch + horizontal motion
+        pager: "docked bar: ‹ prev · pane n / N + dots · next ›; optional 24px edge-swipe gutters as a shortcut; hidden when session has one pane"
+        backend: "reuse tmuxAction nextPane (:.+) / prevPane (:.-) / zoom (-Z). KEEP-ZOOM gotcha: tmux auto-unzooms on pane select, so a step = select-pane then resize-pane -Z (combine into one backend action / keepZoom flag)"
+        evidence: ["src/mainview/components/TaskWorkspacePane.tsx", "TerminalView.tsx", "src/bun/rpc-handlers/tmux-pty.ts (tmuxAction)"]
+    viewport_meta: "Extend useViewport(): narrow + browser → device-width on board/list screens (one column == one screen); terminal screen keeps a stable readable width for tmux sizing. Today browser-remote is pinned to width=1024 for every screen — relax for the board."
+    accessibility:
+      - "Every swipe has a button equivalent (chevrons/dots) and arrow-key support when the pager is focused; swipe is never the only way."
+      - "Focus follows the active column/pane heading on change; aria-live announces the new column/pane."
+      - "Board carousel: aria-roledescription=carousel, columns as group/tabpanel, pager as tablist. Pane pager: labelled group with prev/next buttons."
+      - "Honour prefers-reduced-motion: snap instantly, no smooth-scroll animation."
+
   anti_patterns:
+    - id: "full-surface-swipe-over-terminal"
+      description: "Hijacking full-pane horizontal swipe to change tmux panes. The terminal runs interactive TUIs (vim/htop/less) that consume touch and horizontal motion. Pane switching must use the explicit pager (optionally thin edge-swipe gutters), not a full-surface swipe. Full-surface swipe is allowed ONLY on the board, where column bodies scroll vertically."
     - id: "toolbar-button-creep"
       description: "Adding yet another always-visible git/tmux/dev-server button to TaskInfoPanel or task toolbars without checking the budget. The changelog shows a long history of this (always-visible-git-buttons, tmux-action-buttons, push-button, create-pr-button, etc.). Group or overflow instead."
     - id: "hardcoded-colors"

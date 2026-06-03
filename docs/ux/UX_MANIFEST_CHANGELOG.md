@@ -88,6 +88,10 @@ Documented the inspector header as a 2×2 quickbar grid (Context / Session-Agent
 
 Added a UX decision documenting `exitOnLastWindowClosed: false` (closing the last window keeps the app in the dock, reopened on dock-click) and the React quit-confirmation modal driven by the main-process `before-quit` gate, covering Cmd+Q (via `requestQuit`), menu Quit, and dock Quit. A window-less quit reopens a window that pulls the pending flag on mount to show the dialog reliably. Plus the Cmd+Shift+N New Window shortcut. No new visible buttons or tokens — conforms to the Modal surface and destructive-button-role policy. Decision records 044, 060, 061.
 
+## 2026-06-03 — Narrow-viewport carousel navigation (planning)
+
+Documented the responsive narrow-viewport (mobile / remote) carousel pattern: the Kanban board becomes a 2D scroll-snap carousel (one column per screen, drag-move replaced by a "Move to" action sheet) and the task terminal becomes a pane carousel (one zoomed tmux pane + explicit pager). Added bible §12, a `responsive` block + a `full-surface-swipe-over-terminal` anti-pattern to `ux-architecture.yaml`, a UX decision, and a full feature plan at `docs/ux/feature-plans/mobile-carousel-navigation.md`. Planning only — no product code changed. Idea by Ittai Zeidman.
+
 ## 2026-06-10 — Agent completion request (AI-initiated destructive confirm)
 
 Documented the agent-initiated task-completion flow: CLI-triggered blocking approval via the existing `confirm()` Modal with a new `agentInitiated` visual treatment (accent border + robot badge), danger-role approve, autofocused safe cancel, CLI exit code 6 on decline. New feature plan `feature-plans/agent-completion-request.md`, UX decision appended, decision record 067. No new surfaces, nav items, or budget changes.

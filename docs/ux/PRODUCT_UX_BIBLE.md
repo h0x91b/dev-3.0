@@ -268,7 +268,18 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 - **Actions in breadcrumbs** — header is location + switching only.
 - **Debug-surface leak** — `gauge-demo` / `viewport-lab` outside the Debug menu.
 
-## 12. Open questions
+## 12. Responsive / narrow-viewport behaviour — `Proposed`
+
+On a sub-1024px viewport (phone via `dev3 remote`, a hypothetical Electrobun-mobile build, or a narrowed desktop browser window — detected by the existing `useMobile()` threshold, **not** by `isElectrobun`) the app switches existing screens into **carousels**: show exactly one element at a time and move between siblings by swipe/pager. This is a **responsive view-mode of existing screens** (`project` board, `task` terminal) — it adds **no** destination, nav item, or "mobile mode" setting as its entry point. Idea by Ittai Zeidman. Full plan: `docs/ux/feature-plans/mobile-carousel-navigation.md`.
+
+| Level | Screen | One-element rule | Move between siblings | Notes |
+|---|---|---|---|---|
+| 1 — Board | `project` | one column = 100vw (CSS scroll-snap); body scrolls vertically | horizontal swipe / pager chevrons change column; vertical scroll lists tasks | collapsed columns excluded; empty columns kept; drag-move replaced by a card "Move to <status>" action sheet; filters in a bottom sheet |
+| 2 — Terminal | `task` | one zoomed tmux pane | **explicit pager bar** (reuse `tmuxAction` next/prev/zoom) | full-surface swipe is **forbidden** over the terminal (interactive TUIs eat touch); keep-zoom step = `select-pane` then `resize-pane -Z` |
+
+Two deliberate asymmetries resolve the concept: the **board allows full-surface swipe** (column bodies scroll vertically only, so horizontal motion is unambiguous → native x-snap); the **terminal does not** (an explicit pager drives panes so swipes never fight vim/htop/less). Every swipe has a button + keyboard equivalent, focus follows the active column/pane, and `prefers-reduced-motion` snaps instantly. `useViewport()` must serve device-width on the board for narrow browsers while keeping a stable width on the terminal for tmux sizing.
+
+## 13. Open questions
 
 - Multi-select + a real selection toolbar on the board, or is per-task action intentional?
 - Add an `--info` token, or keep reusing accent (blue)?
