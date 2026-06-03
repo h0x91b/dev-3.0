@@ -10,6 +10,7 @@ type FakeWindow = {
 	};
 	getSize: ReturnType<typeof vi.fn>;
 	setSize: ReturnType<typeof vi.fn>;
+	focus: ReturnType<typeof vi.fn>;
 	on: ReturnType<typeof vi.fn>;
 	handlers: Record<string, () => void>;
 	frame?: { x: number; y: number; width: number; height: number };
@@ -28,6 +29,7 @@ vi.mock("electrobun/bun", () => {
 		webview: any;
 		getSize: ReturnType<typeof vi.fn>;
 		setSize: ReturnType<typeof vi.fn>;
+		focus: ReturnType<typeof vi.fn>;
 		on: ReturnType<typeof vi.fn>;
 		handlers: Record<string, () => void>;
 		frame?: { x: number; y: number; width: number; height: number };
@@ -50,6 +52,7 @@ vi.mock("electrobun/bun", () => {
 			};
 			this.getSize = vi.fn(() => ({ width: 800, height: 600 }));
 			this.setSize = vi.fn();
+			this.focus = vi.fn();
 			this.on = vi.fn((name: string, handler: () => void) => {
 				handlers[name] = handler;
 			});
@@ -83,6 +86,7 @@ import {
 	createAppWindow,
 	broadcastToAllWindows,
 	sendToFocusedWindow,
+	focusFocusedWindow,
 	getFocusedWindow,
 	getAllWindows,
 	getWindowCount,
@@ -136,6 +140,22 @@ describe("window-manager", () => {
 
 		expect(secondWin.webview.rpc.send.navigateToSettings).toHaveBeenCalledWith({});
 		expect(second.webview.rpc.send.navigateToSettings).not.toHaveBeenCalled();
+	});
+
+	it("focusFocusedWindow brings the focused window to the front", () => {
+		spawn();
+		spawn();
+
+		const secondWin = createdWindows[1];
+		secondWin.handlers.focus?.();
+
+		expect(focusFocusedWindow()).toBe(true);
+		expect(secondWin.focus).toHaveBeenCalledTimes(1);
+		expect(createdWindows[0].focus).not.toHaveBeenCalled();
+	});
+
+	it("focusFocusedWindow returns false when no window is open", () => {
+		expect(focusFocusedWindow()).toBe(false);
 	});
 
 	it("removes windows on close and falls back to another focused window", () => {

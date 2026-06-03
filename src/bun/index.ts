@@ -20,7 +20,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "./application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
-import { createAppWindow, broadcastToAllWindows, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow } from "./window-manager";
+import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow } from "./window-manager";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
@@ -472,10 +472,12 @@ function runGlobalQuitCleanup(): void {
 //
 // With `exitOnLastWindowClosed: false`, closing the last window keeps the app
 // alive in the dock — it does NOT trigger a quit. So a quit here is always
-// deliberate (Cmd+Q, menu Quit, dock Quit). If a window is open we push the
-// dialog to it; if none is (the app was sitting window-less in the dock) we
-// reopen one and let it PULL the pending flag on mount — a push would race the
-// not-yet-mounted renderer and get lost.
+// deliberate (Cmd+Q, menu Quit, dock Quit). If a window is open we focus it
+// (a dock right-click → Quit does not activate the app, so the dialog would
+// otherwise sit hidden behind other apps) and push the dialog to it; if none
+// is (the app was sitting window-less in the dock) we reopen one and let it
+// PULL the pending flag on mount — a push would race the not-yet-mounted
+// renderer and get lost.
 Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 	if (isQuitConfirmed()) {
 		runGlobalQuitCleanup();
@@ -496,7 +498,11 @@ Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 	e.response = { allow: false };
 
 	if (getFocusedWindow()) {
-		log.info("Quit intercepted — asking the focused window to confirm");
+		// Bring the window to the front first. A dock right-click → Quit does NOT
+		// activate the app on macOS, so without this the dialog would sit behind
+		// other apps and the app would look frozen.
+		log.info("Quit intercepted — focusing window and asking it to confirm");
+		focusFocusedWindow();
 		sendToFocusedWindow("showQuitDialog");
 	} else {
 		// App is window-less in the dock. Reopen a window to host the dialog;
