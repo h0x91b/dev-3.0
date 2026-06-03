@@ -33,7 +33,7 @@ const tips = {
 	"tip.pushAndCreatePr.title": "Пусть PR откроет агент",
 	"tip.pushAndCreatePr.body": "Нажмите «Create PR» — агент в pane задачи сам запушит ветку и откроет pull request через gh, без отдельного окна.",
 	"tip.createPrAutoMerge.title": "Открыть PR и сразу auto-merge",
-	"tip.createPrAutoMerge.body": "Нажмите «Create PR + auto-merge» — агент запушит, откроет PR и включит auto-merge, чтобы он влился сразу после прохождения проверок.",
+	"tip.createPrAutoMerge.body": "Нажмите «PR + auto-merge» — агент запушит, откроет PR и включит auto-merge, чтобы он влился сразу после прохождения проверок.",
 	"tip.projectGitHubAccount.title": "Выбери gh для проекта",
 	"tip.projectGitHubAccount.body": "Откройте настройки проекта и выберите gh-аккаунт для этого репо перед созданием PR или проверкой статуса PR.",
 	"tip.prBadgeOnCard.title": "Номер PR на карточке",

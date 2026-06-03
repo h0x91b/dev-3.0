@@ -1534,7 +1534,7 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("calls createPullRequest with autoMerge when 'Create PR + auto-merge' is clicked", async () => {
+		it("calls createPullRequest with autoMerge when 'PR + auto-merge' is clicked", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -1548,7 +1548,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			const autoMergeButtons = screen.getAllByText("Create PR + auto-merge");
+			const autoMergeButtons = screen.getAllByText("PR + auto-merge");
 			const enabledBtn = autoMergeButtons.find(b => !b.closest("button")!.disabled);
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);

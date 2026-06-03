@@ -330,7 +330,7 @@ export default function TaskGitActions({
 					>
 						<span className="inline-flex items-center gap-1.5">
 							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{"\u{F0623}"}
+								{"\u{F16A6}"}
 							</span>
 							<span>{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMerge")}</span>
 						</span>
