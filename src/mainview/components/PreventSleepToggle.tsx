@@ -8,6 +8,11 @@ interface SleepState {
 	forcedByRemote: boolean;
 }
 
+// nf-cod-coffee (U+EC15). Built from a codepoint to avoid embedding the raw
+// glyph or relying on \u-escape handling in tooling.
+const COFFEE_GLYPH = String.fromCharCode(0xec15);
+const LOCK_GLYPH = String.fromCodePoint(0xf033e);
+
 /**
  * Header toggle that keeps the machine awake while dev-3.0 is running.
  * Default on. While remote access is active it is forced on and locked,
@@ -73,12 +78,12 @@ function PreventSleepToggle() {
 			title={title}
 		>
 			<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-				{"\u{F0176}"}
+				{COFFEE_GLYPH}
 			</span>
 			<span className="text-[0.6875rem] font-medium">{t("caffeine.label")}</span>
 			{locked && (
 				<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-					{"\u{F033E}"}
+					{LOCK_GLYPH}
 				</span>
 			)}
 		</button>
