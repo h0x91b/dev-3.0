@@ -83,6 +83,25 @@ Only in `project-settings` (`global | project | worktree`). Budget ≤ 6 visible
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
 
+### 5.1 Task info panel — bar model (2×2) — `Observed`
+
+The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) is a **2×2 grid of quickbars**: two rows, each split into a left and a right bar by a `flex-1` spacer. This exploits the wide desktop width instead of stacking more rows above the terminal (the panel has a hard height budget, `MAX_RATIO = 0.33`). **Each bar owns exactly one action domain. Panel chrome is not a bar.**
+
+| Bar | Position | Domain | Contents | Evidence |
+|---|---|---|---|---|
+| Context | row 1, left | task identity & lifecycle | watch toggle, status dropdown, diff-summary badge, include-tests toggle, label strip | `TaskInfoPanel.tsx` (row 1 left cluster) |
+| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls, open-in (editor/file browser) | `TaskInfoPanel.tsx` (row 1 right cluster), `TaskTmuxControls.tsx`, `TaskOpenIn.tsx` |
+| Git | row 2, left | branch & PR | branch name/status, show diff, refresh, copy worktree path, open PR | `task-info-panel/TaskGitActions.tsx` |
+| Runtime | row 2, right | project runtime outputs | dev server (start/stop/restart/status), scripts; ports/resources shown as detail in the expanded body | `task-info-panel/TaskDevServer.tsx`, `task-info-panel/TaskScripts.tsx` |
+
+Rules:
+
+- **Row 1 = "Drive"** (what the task is + how I control its session). **Row 2 = "Outputs"** (what the work produces: branch/PR + running server/ports).
+- **Chrome** (collapse/expand, fullscreen toggle, ⚙ worktree-settings) is pinned to the far right edge of row 1 and is **not** counted as a bar or against any bar's budget.
+- A new control must be assigned to exactly one domain and placed in that bar. Do not drop it into whichever bar has room — that is how the pre-2026-06 "everything in row-1-right" dumpster happened.
+- **Label overflow:** the Context bar shows up to `MAX_INLINE_LABELS` (4) chips inline, then a `+k` chip (hover lists the rest). The full label list still renders in the expanded metadata grid, so the inline strip may truncate safely.
+- Per-bar visible-action budget stays at the toolbar default (≤ 4 visible, then overflow). If Runtime or Session/Agent overflows, promote it to its own dedicated row before widening past the budget.
+
 ## 6. Action taxonomy — `Observed`
 
 | Action type | Definition | Placement | Token role |
@@ -141,7 +160,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 | Task card inline actions | 2 | push to context menu |
 | Toolbar visible actions | 4 | overflow after 4 |
 | Tabs | 6 | more-menu / subpage |
-| Task info panel | (no hard count) | new control ⇒ explicit budget check + group into a sub-section |
+| Task info panel | 4 bars (2×2), ≤ 4 visible per bar | assign new control to one domain bar; overflow after 4 ⇒ promote that domain to its own row (see §5.1) |
 
 ## 10. Placement rules — `Observed`/`Inferred`
 
@@ -156,7 +175,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 
 ## 11. Known anti-patterns in this project
 
-- **Toolbar button creep** — the changelog shows repeated additions of always-visible git/tmux/dev-server buttons (`always-visible-git-buttons`, `tmux-action-buttons`, `push-button`, `create-pr-button`, …). `TaskInfoPanel` (34K) and `TaskCard` (33K) are the pressure points. Group or overflow before adding.
+- **Toolbar button creep** — the changelog shows repeated additions of always-visible git/tmux/dev-server buttons (`always-visible-git-buttons`, `tmux-action-buttons`, `push-button`, `create-pr-button`, …). `TaskInfoPanel` (34K) and `TaskCard` (33K) are the pressure points. For `TaskInfoPanel`, follow the §5.1 bar model: assign each new control to one domain bar; do not pile everything into row-1-right. Group or overflow before adding.
 - **Hardcoded colors** — raw hex/rgb instead of semantic tokens (forbidden except `STATUS_COLORS`).
 - **Untranslated strings** — UI strings must use `t()` and exist in en/ru/es.
 - **Actions in breadcrumbs** — header is location + switching only.
@@ -166,5 +185,5 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 
 - Multi-select + a real selection toolbar on the board, or is per-task action intentional?
 - Add an `--info` token, or keep reusing accent (blue)?
-- Do `TaskInfoPanel` / `ProjectSettings` need documented sub-surface budgets or splitting?
+- `ProjectSettings` (59.9K) is still very large — does it need a documented sub-surface budget or splitting? (`TaskInfoPanel` is now governed by the §5.1 bar model.)
 - Should status colors migrate to named theme tokens, or stay as the documented hex exception?

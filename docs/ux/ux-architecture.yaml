@@ -160,6 +160,37 @@ ux_architecture:
       forbidden: ["global_destination", "cross_project_action"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+      bar_model:
+        layout: "2x2"  # two rows; each row split into left|right by a flex-1 spacer
+        rationale: "Wide desktop width is used instead of stacking more rows; the panel has a hard height budget (MAX_RATIO=0.33). One bar = one action domain. Panel chrome is not a bar."
+        per_bar_visible_budget: 4
+        overflow_rule: "If a domain bar exceeds 4 visible, promote it to its own dedicated row before widening past budget."
+        bars:
+          context:
+            position: "row1.left"
+            domain: "task identity & lifecycle"
+            contents: ["watch_toggle", "status_dropdown", "diff_summary_badge", "include_tests_toggle", "label_strip"]
+            label_overflow: "Show up to MAX_INLINE_LABELS (4) chips inline, then a +k chip (hover lists the rest). Full list also in expanded metadata grid."
+          session_agent:
+            position: "row1.right"
+            domain: "drive the session & agents"
+            contents: ["spawn_agent", "bug_hunters", "tmux_controls", "open_in"]
+          git:
+            position: "row2.left"
+            domain: "branch & PR"
+            contents: ["branch_status", "show_diff", "refresh", "copy_worktree_path", "open_pr"]
+          runtime:
+            position: "row2.right"
+            domain: "project runtime outputs"
+            contents: ["dev_server", "scripts"]
+            note: "Ports/resource usage render as detail in the expanded body, not in the bar."
+        chrome:
+          not_a_bar: true
+          position: "row1 far-right edge"
+          contents: ["collapse_expand", "fullscreen_toggle", "worktree_settings_gear"]
+        rows:
+          row1: "Drive — what the task is + how I control its session"
+          row2: "Outputs — what the work produces (branch/PR + running server/ports)"
     modal:
       purpose: "Focused create/confirm flows."
       allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config"]
@@ -298,7 +329,9 @@ ux_architecture:
       max_inline_actions: 2
       overflow_after: 2     # push extra affordances into the context menu
     task_info_panel:
-      note: "No hard count, but this is the highest-risk surface. New controls require an explicit budget check + grouping into TaskInfoPanel sub-sections."
+      layout: "2x2 bar model (see surfaces.task_info_panel.bar_model)"
+      per_bar_visible_budget: 4
+      note: "Highest-risk surface. New controls go into exactly one of the 4 domain bars; overflow after 4 ⇒ promote that domain to its own row."
     toolbar:
       max_visible_actions: 4
       overflow_after: 4     # the app has a documented history of always-visible git/tmux button creep
@@ -359,5 +392,5 @@ ux_architecture:
   open_questions:
     - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"
     - "Should an --info semantic token be added, or is reusing accent (blue) for informational state intentional?"
-    - "TaskInfoPanel (34K) and ProjectSettings (59.9K) are very large. Do they need a documented sub-surface budget or splitting?"
+    - "ProjectSettings (59.9K) is very large. Does it need a documented sub-surface budget or splitting? (TaskInfoPanel is now governed by surfaces.task_info_panel.bar_model.)"
     - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"

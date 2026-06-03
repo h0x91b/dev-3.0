@@ -46,6 +46,11 @@ const DEFAULT_HEIGHT = 200;
 const MIN_HEIGHT = 80;
 const MAX_RATIO = 0.33;
 
+// Context bar budget: keep the label strip from pushing status/diff off the bar.
+// Extra labels collapse into a "+k" chip; the full list still shows in the
+// expanded metadata grid below.
+const MAX_INLINE_LABELS = 4;
+
 const LS_COLLAPSED = "dev3-panel-collapsed";
 const LS_HEIGHT = "dev3-panel-height";
 
@@ -506,6 +511,22 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		/>
 	) : null;
 
+	const inlineLabels = assignedLabels.slice(0, MAX_INLINE_LABELS);
+	const overflowLabels = assignedLabels.slice(MAX_INLINE_LABELS);
+	const labelStrip = assignedLabels.length > 0 ? (
+		<div className="flex items-center gap-1 min-w-0 flex-shrink">
+			{inlineLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
+			{overflowLabels.length > 0 && (
+				<span
+					className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-elevated text-fg-3 text-[0.625rem] font-medium flex-shrink-0"
+					title={overflowLabels.map((label) => label.name).join(", ")}
+				>
+					+{overflowLabels.length}
+				</span>
+			)}
+		</div>
+	) : null;
+
 	const watchToggleButton = (
 		<button
 			onClick={handleToggleWatch}
@@ -618,15 +639,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{statusDropdownPortal}
 						{diffSummaryBadge}
 						{diffIncludeTestsToggle}
-						{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
+						{labelStrip}
 						<div className="flex-1" />
 						{bugHuntersButton}
 						{spawnAgentButton}
 						<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
 						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
-						<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
 						{worktreeSettingsButton}
 						<button
 							onClick={() => isFullPage
@@ -666,6 +685,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							onBranchStatusChange={setMetadataBranchState}
 							onOpenInlineDiff={onOpenInlineDiff}
 						/>
+						<div className="flex-1" />
+						<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+						<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
 					</div>
 				</div>
 			) : (
@@ -677,15 +699,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{statusDropdownPortal}
 							{diffSummaryBadge}
 						{diffIncludeTestsToggle}
-							{assignedLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
+							{labelStrip}
 							<div className="flex-1" />
 							{bugHuntersButton}
 							{spawnAgentButton}
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 							<TaskTmuxControls taskId={task.id} />
-							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
 							<button
 								onClick={() => isFullPage
 									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
@@ -723,6 +743,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								onBranchStatusChange={setMetadataBranchState}
 								onOpenInlineDiff={onOpenInlineDiff}
 							/>
+							<div className="flex-1" />
+							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
 						</div>
 					</div>
 
