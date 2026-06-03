@@ -5,7 +5,7 @@ import type { PortInfo, Project, Task, ResourceUsage } from "../shared/types";
 
 export type Route =
 	| { screen: "dashboard" }
-	| { screen: "project"; projectId: string; activeTaskId?: string }
+	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean }
 	| { screen: "project-terminal"; projectId: string }
 	| { screen: "home-terminal" }
 	| { screen: "task"; projectId: string; taskId: string }

@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "No mostrar este consejo",
 	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
+	"tip.cmdSwitchKeepsView.title": "Cambia de proyecto sin perder la vista",
+	"tip.cmdSwitchKeepsView.body": "Pulsa Cmd/Ctrl+1..9 en la vista de tareas para saltar a otro proyecto sin salir de la vista — elige una tarea a la izquierda para abrir su terminal.",
 	"tip.agentCreateTasks.title": "Los agentes crean tareas",
 	"tip.agentCreateTasks.body": "Di \"crea una tarea en dev3 sobre...\" en tu prompt y el agente la agregará al tablero.",
 	"tip.agentSeesTasks.title": "Los agentes ven tu tablero",

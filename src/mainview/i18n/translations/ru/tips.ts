@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "Больше не показывать",
 	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
+	"tip.cmdSwitchKeepsView.title": "Меняй проект, сохраняя вид",
+	"tip.cmdSwitchKeepsView.body": "Нажми Cmd/Ctrl+1..9 в режиме задач, чтобы перейти в другой проект, не покидая этот вид — выбери задачу слева, чтобы открыть её терминал.",
 	"tip.agentCreateTasks.title": "Агенты создают задачи",
 	"tip.agentCreateTasks.body": "Скажите «создай задачу в dev3 про...» в промпте — агент добавит её на доску.",
 	"tip.agentSeesTasks.title": "Агенты видят вашу доску",

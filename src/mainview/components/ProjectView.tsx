@@ -34,6 +34,7 @@ interface ProjectViewProps {
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
+	taskView?: boolean;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 }
 
@@ -47,6 +48,7 @@ function ProjectView({
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
+	taskView,
 	navigationGuardRef,
 }: ProjectViewProps) {
 	const t = useT();
@@ -85,9 +87,29 @@ function ProjectView({
 		);
 	}
 
-	if (activeTaskId) {
-		const activeTask = tasks.find((t) => t.id === activeTaskId);
+	if (activeTaskId || taskView) {
+		const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : undefined;
 		const isBrowserMode = !isElectrobun;
+
+		// Terminal pane: a selected task shows its workspace; otherwise (task-view
+		// reached via a project switch with no task picked yet) an empty placeholder.
+		const terminalPane = activeTaskId ? (
+			<TaskWorkspacePane
+				projectId={projectId}
+				taskId={activeTaskId}
+				tasks={tasks}
+				projects={projects}
+				navigate={navigate}
+				dispatch={dispatch}
+				inlineDiffRequest={inlineDiff.request}
+				onCloseInlineDiff={inlineDiff.close}
+				navigationGuardRef={navigationGuardRef}
+			/>
+		) : (
+			<div className="h-full w-full flex items-center justify-center bg-base px-6 text-center">
+				<span className="text-fg-muted text-sm">{t("project.selectTaskForTerminal")}</span>
+			</div>
+		);
 
 		// Browser mode: stack sidebar on top for full-width terminal
 		if (isBrowserMode) {
@@ -112,17 +134,7 @@ function ProjectView({
 						bellCounts={bellCounts}
 					/>
 					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-						<TaskWorkspacePane
-							projectId={projectId}
-							taskId={activeTaskId}
-							tasks={tasks}
-							projects={projects}
-							navigate={navigate}
-							dispatch={dispatch}
-							inlineDiffRequest={inlineDiff.request}
-							onCloseInlineDiff={inlineDiff.close}
-							navigationGuardRef={navigationGuardRef}
-						/>
+						{terminalPane}
 					</div>
 				</div>
 			);
@@ -172,19 +184,7 @@ function ProjectView({
 				)}
 				<SplitLayout
 					kanbanContent={leftContent}
-					terminalContent={
-						<TaskWorkspacePane
-							projectId={projectId}
-							taskId={activeTaskId}
-							tasks={tasks}
-							projects={projects}
-							navigate={navigate}
-							dispatch={dispatch}
-							inlineDiffRequest={inlineDiff.request}
-							onCloseInlineDiff={inlineDiff.close}
-							navigationGuardRef={navigationGuardRef}
-						/>
-					}
+					terminalContent={terminalPane}
 					mode={sidebarMode}
 				/>
 			</div>

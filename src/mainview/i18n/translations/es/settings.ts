@@ -234,6 +234,7 @@ const settings = {
 
 	// ProjectView
 	"project.notFound": "Proyecto no encontrado",
+	"project.selectTaskForTerminal": "Selecciona una tarea para ver su terminal",
 };
 
 export default settings;

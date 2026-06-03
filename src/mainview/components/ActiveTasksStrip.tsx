@@ -10,7 +10,7 @@ import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 interface ActiveTasksStripProps {
 	project: Project;
 	tasks: Task[];
-	activeTaskId: string;
+	activeTaskId?: string;
 	navigate: (route: Route) => void;
 	agents: CodingAgent[];
 	bellCounts: Map<string, number>;

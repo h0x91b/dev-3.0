@@ -73,7 +73,14 @@ vi.mock("../components/Changelog", () => ({
 	default: (_props: { navigate: unknown; goBack: unknown; canGoBack: unknown }) => <div data-testid="changelog-screen" />,
 }));
 vi.mock("../components/ProjectView", () => ({
-	default: () => <div data-testid="project-screen" />,
+	default: (props: { projectId: string; activeTaskId?: string; taskView?: boolean }) => (
+		<div
+			data-testid="project-screen"
+			data-project-id={props.projectId}
+			data-active-task-id={props.activeTaskId ?? ""}
+			data-task-view={props.taskView ? "true" : "false"}
+		/>
+	),
 }));
 vi.mock("../components/TaskWorkspaceView", () => ({
 	default: () => <div data-testid="task-screen" />,
@@ -237,6 +244,67 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+	});
+
+	describe("switch project (Cmd+1..9)", () => {
+		const twoProjects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+
+		it("preserves task view: Cmd+2 from a task switches project and keeps task-view layout with no task selected", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			const before = screen.getByTestId("project-screen");
+			expect(before).toHaveAttribute("data-project-id", "p1");
+			expect(before).toHaveAttribute("data-active-task-id", "t1");
+
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "true");
+			expect(after).toHaveAttribute("data-active-task-id", "");
+		});
+
+		it("preserves task view from the full-page task screen too", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "true");
+		});
+
+		it("keeps board view: Cmd+2 from the Kanban board switches project without task view", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			const before = screen.getByTestId("project-screen");
+			expect(before).toHaveAttribute("data-project-id", "p1");
+			expect(before).toHaveAttribute("data-task-view", "false");
+
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "false");
+			expect(after).toHaveAttribute("data-active-task-id", "");
 		});
 	});
 

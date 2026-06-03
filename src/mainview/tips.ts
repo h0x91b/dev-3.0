@@ -10,6 +10,12 @@ export interface Tip {
 
 const ALL_TIPS: Tip[] = [
 	{
+		id: "cmd-switch-keeps-view",
+		titleKey: "tip.cmdSwitchKeepsView.title",
+		bodyKey: "tip.cmdSwitchKeepsView.body",
+		icon: "\u{F0600}", // nf-md-keyboard
+	},
+	{
 		id: "agent-create-tasks",
 		titleKey: "tip.agentCreateTasks.title",
 		bodyKey: "tip.agentCreateTasks.body",

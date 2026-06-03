@@ -308,13 +308,25 @@ function App() {
 					navigate({ screen: "project-terminal", projectId: route.projectId });
 				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
-				// Cmd+1..9 — switch to project by index (like Slack workspaces)
+				// Cmd+1..9 — switch to project by index (like Slack workspaces).
+				// Preserve the current view mode: if the user is in a task view
+				// (split sidebar+terminal, or full-page task screen), land in the
+				// target project's task view with no task selected (empty terminal),
+				// instead of yanking them to the Kanban board.
 				const idx = parseInt(e.key, 10) - 1;
 				const available = state.projects.filter((p) => !p.deleted);
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();
-					navigate({ screen: "project", projectId: available[idx].id });
+					const { route } = state;
+					const inTaskView =
+						route.screen === "task" ||
+						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+					navigate(
+						inTaskView
+							? { screen: "project", projectId: available[idx].id, taskView: true }
+							: { screen: "project", projectId: available[idx].id },
+					);
 				}
 			}
 		},
@@ -772,7 +784,7 @@ function App() {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "home-terminal") {
 				navigate({ screen: "dashboard" });
-			} else if (route.screen === "project" && route.activeTaskId) {
+			} else if (route.screen === "project" && (route.activeTaskId || route.taskView)) {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project") {
 				navigate({ screen: "dashboard" });
@@ -1121,6 +1133,7 @@ function App() {
 						taskPorts={state.taskPorts}
 						taskResourceUsage={state.taskResourceUsage}
 						activeTaskId={route.activeTaskId}
+						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
 					/>
 				);

@@ -2,6 +2,12 @@
 
 Append-only log of UX architecture decisions. Each entry: date, decision, rationale, evidence/status.
 
+## 2026-06-03 — Cmd+1..9 preserves the current view mode (task-view vs board)
+
+- **Decision:** The `Cmd/Ctrl+1..9` project-switch shortcut now preserves the user's current *view mode* instead of always dropping them on the Kanban board. If the user is in a task view when they switch (split layout: `screen: "project"` with `activeTaskId`, or the full-page `screen: "task"`), the target project opens in task view too — `ActiveTasksSidebar` shows the new project's active tasks and, because no task is selected there yet, the terminal pane shows a centered empty-state: «Select a task to see its terminal». If the user is on the board (no active task), switching keeps the board. A new `taskView?: boolean` flag on the `project` route models "task-view layout with no task selected". The empty-state is a *status surface* (Toast/empty-state family), not an action — centered `text-fg-muted` text, no button (selecting a task in the sidebar fills the terminal).
+- **Rationale:** The app is keyboard-heavy and users live inside the task view; yanking them to the board on every workspace switch breaks flow. Preserving view mode matches how Slack-style `Cmd+N` switching should feel. Empty terminal must be explicit ("pick a task") rather than auto-selecting one — the user asked for an empty pane, not a guessed task, so no implicit selection happens.
+- **Status:** `Observed` (implemented: `App.tsx` Cmd+1..9 + Escape handlers, `ProjectView.tsx` split layout + empty-state, `state.ts` `taskView` flag, i18n key `project.selectTaskForTerminal`).
+
 ## 2026-05-29 — Initial manifest derived from repository
 
 - **Decision:** Treat dev-3.0 as a full-screen desktop web app with a **screen-based navigation model** (the `Route` union in `src/mainview/state.ts`), not a URL-routed site. The manifest's "routes" are screen ids.
