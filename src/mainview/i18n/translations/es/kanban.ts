@@ -154,6 +154,12 @@ const kanban = {
 	"kanban.gitPullFlashUpToDate": "{branch} ya estaba actualizado",
 	"kanban.gitPullFlashFailedLabel": "Failed",
 	"kanban.gitPullFlashFailed": "Pull falló en {branch}",
+
+	// Mobile board carousel (narrow viewport)
+	"kanban.carouselRole": "Columnas del tablero",
+	"kanban.carouselPrev": "Columna anterior",
+	"kanban.carouselNext": "Columna siguiente",
+	"kanban.carouselGoTo": "Ir a {label}",
 };
 
 export default kanban;

@@ -95,3 +95,35 @@ describe("useTerminalPreview — drag-and-drop interaction", () => {
 		expect(result.current.state.activeTaskId).toBe("task-1");
 	});
 });
+
+describe("useTerminalPreview — narrow/mobile viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		document.body.innerHTML = "";
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+	});
+
+	it("does not open a hover preview when the viewport is narrow (carousel mode)", async () => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		const { result } = renderHook(() => useTerminalPreview());
+		const anchor = makeAnchor();
+
+		act(() => {
+			result.current.handlers.onMouseEnter("task-1", anchor);
+		});
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(500);
+		});
+
+		expect(result.current.state.open).toBe(false);
+		expect(mockedApi.request.getTerminalPreview).not.toHaveBeenCalled();
+	});
+});

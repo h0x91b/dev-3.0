@@ -268,7 +268,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 - **Actions in breadcrumbs** — header is location + switching only.
 - **Debug-surface leak** — `gauge-demo` / `viewport-lab` outside the Debug menu.
 
-## 12. Responsive / narrow-viewport behaviour — `Proposed`
+## 12. Responsive / narrow-viewport behaviour — Level 1 `Observed`, Level 2 `Proposed`
 
 On a sub-1024px viewport (phone via `dev3 remote`, a hypothetical Electrobun-mobile build, or a narrowed desktop browser window — detected by the existing `useMobile()` threshold, **not** by `isElectrobun`) the app switches existing screens into **carousels**: show exactly one element at a time and move between siblings by swipe/pager. This is a **responsive view-mode of existing screens** (`project` board, `task` terminal) — it adds **no** destination, nav item, or "mobile mode" setting as its entry point. Idea by Ittai Zeidman. Full plan: `docs/ux/feature-plans/mobile-carousel-navigation.md`.
 

@@ -4,7 +4,10 @@ import { useMobile } from "./useMobile";
 import { isElectrobun } from "../rpc";
 
 const DESKTOP_VIEWPORT = "width=1280";
-const BROWSER_VIEWPORT = "width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content";
+// Browser remote: device-width so the layout is responsive — a phone renders at its
+// real width (≈390px) and the media-query carousel kicks in; a wide desktop browser
+// renders the full board. Replaces the old fixed width=1024.
+const BROWSER_VIEWPORT = "width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content, viewport-fit=cover";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
 /** Screens that require desktop-width viewport even on mobile (terminal). */

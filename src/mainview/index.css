@@ -306,6 +306,17 @@ body, #root {
 	margin: 0 16px;
 }
 
+/* ---- Mobile board carousel: hide the snap-track scrollbar ---- */
+
+.kanban-carousel-track {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.kanban-carousel-track::-webkit-scrollbar {
+	display: none;
+}
+
 /* ---- Collapsed kanban column vertical label ---- */
 
 .kanban-col-vertical-label {

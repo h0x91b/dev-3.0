@@ -1,1 +1,0 @@
-Added a UX implementation plan for narrow-viewport (mobile / remote) carousel navigation: the Kanban board as a 2D column carousel and the task terminal as a single-zoomed-pane carousel, gated on viewport width. Documented in docs/ux/ (bible, decisions, ux-architecture.yaml, feature plan). Planning only, no product code changed. Idea by Ittai Zeidman.

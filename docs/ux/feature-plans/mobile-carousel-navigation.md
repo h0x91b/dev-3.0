@@ -5,6 +5,9 @@ Mode: planning only
 Manifest status: updated
 Confidence: high
 Idea credit: Ittai Zeidman (original concept)
+Implementation status: **Level 1 (board carousel) implemented** (`MobileBoardCarousel.tsx`,
+`KanbanBoard.tsx`, `KanbanColumn.tsx` `fullWidth`, `useViewport.ts` device-width, i18n + tip).
+**Level 2 (terminal pane carousel) not yet built** — next step; needs a pane-index RPC + tmux keep-zoom.
 
 ## 0. One-paragraph framing
 

@@ -240,6 +240,8 @@ const tips = {
 	"tip.statsMilestones.body": "Alcanza 100, 500 o 1000 tareas para desbloquear medallas en estadísticas, con progreso hacia la siguiente.",
 	"tip.statsBeatAverage.title": "Supera tu promedio",
 	"tip.statsBeatAverage.body": "La zona roja de cada medidor marca tu ritmo habitual: lleva la aguja más allá para superar tu norma.",
+	"tip.mobileBoardCarousel.title": "Desliza entre columnas",
+	"tip.mobileBoardCarousel.body": "En un móvil o ventana estrecha el tablero se vuelve un carrusel — desliza de lado para cambiar de columna y desplázate para ver sus tareas.",
 };
 
 export default tips;

@@ -480,7 +480,8 @@ ux_architecture:
       rationale: "The Velocity Cockpit is the product's motivation engine. New features that produce a countable, repeatable signal should emit it into the stats pipeline at BUILD time (so the data exists even before it is charted) and surface a visualization on the read-only cockpit WHEN motivational — within the complexity + honesty budget (prefer one strong signal; forward-only 'tracking since', never fake history; numbers must be true). Diagnostic-only metrics keep the data but stay off the cockpit. See PRODUCT_UX_BIBLE §1.1 + UX_DECISIONS 2026-06-29."
 
   responsive:
-    status: "proposed" # planning only — see docs/ux/feature-plans/mobile-carousel-navigation.md
+    status: "partial" # Level 1 (board_carousel) implemented; Level 2 (pane_carousel) proposed — see docs/ux/feature-plans/mobile-carousel-navigation.md
+    implementation: "board_carousel: MobileBoardCarousel.tsx + KanbanBoard.tsx (useNarrowViewport(768)) + KanbanColumn fullWidth + useViewport device-width. pane_carousel: not yet built."
     idea_credit: "Ittai Zeidman"
     breakpoints:
       narrow:

@@ -240,6 +240,8 @@ const tips = {
 	"tip.statsHeatmap.body": "The activity heatmap on the stats screen shows every day you shipped — hover a cell for the count.",
 	"tip.statsMilestones.title": "Earn shipping medals",
 	"tip.statsMilestones.body": "Hit 100, 500 or 1000 tasks shipped to unlock medals on the stats screen, with progress toward the next.",
+	"tip.mobileBoardCarousel.title": "Swipe between columns",
+	"tip.mobileBoardCarousel.body": "On a phone or narrow window the board becomes a carousel — swipe sideways to change column, scroll up/down to browse its tasks.",
 } as const;
 
 export default tips;

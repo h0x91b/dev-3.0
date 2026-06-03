@@ -504,3 +504,49 @@ describe("dangling customColumnId render fallback", () => {
 		expect(columnLabelOf("task-valid")).toBe("Alpha");
 	});
 });
+
+describe("mobile carousel mode", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		// Narrow: useNarrowViewport(768) matches; widescreen compact query (1400) also matches harmlessly
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("renders the carousel pager instead of the multi-column scroll board", async () => {
+		await renderBoardWith();
+		// Pager chevrons exist (carousel), the always-scroll desktop container does not
+		expect(screen.getByLabelText("Next column")).toBeTruthy();
+		expect(screen.getByLabelText("Previous column")).toBeTruthy();
+		expect(document.querySelector(".kanban-scroll")).toBeNull();
+		expect(document.querySelector(".kanban-carousel-track")).not.toBeNull();
+	});
+
+	it("shows a single column position indicator", async () => {
+		await renderBoardWith();
+		// Position text "n / N" is present
+		expect(screen.getByText(/^\d+ \/ \d+$/)).toBeTruthy();
+	});
+});
