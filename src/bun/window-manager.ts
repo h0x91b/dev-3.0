@@ -192,6 +192,25 @@ export function broadcastToAllWindows(name: string, payload: any): void {
 	}
 }
 
+/**
+ * Bring the focused (or any open) window to the front with key focus, and
+ * activate the app. Used when a quit is triggered from the dock context menu
+ * (right-click → Quit): macOS does NOT activate the app in that case, so a
+ * confirmation dialog shown in the window would sit behind other apps and look
+ * like the app froze. Returns true if a window was focused.
+ */
+export function focusFocusedWindow(): boolean {
+	const win = getFocusedWindow();
+	if (!win) return false;
+	try {
+		win.focus();
+		return true;
+	} catch (err) {
+		log.debug("focusFocusedWindow failed", { error: String(err) });
+		return false;
+	}
+}
+
 /** Send a push message to the focused window only (menu-action pattern). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function sendToFocusedWindow(name: string, payload: any = {}): void {

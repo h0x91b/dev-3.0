@@ -1,0 +1,1 @@
+Focus the app window before showing the quit-confirmation dialog. A dock right-click → Quit does not activate the app on macOS, so the confirmation box used to sit hidden behind other apps and the app looked frozen.
