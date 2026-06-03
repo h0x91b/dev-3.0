@@ -1,4 +1,4 @@
-# 059 — Quit confirmation via a single before-quit gate (React dialog)
+# 061 — Quit confirmation via a single before-quit gate (React dialog)
 
 ## Context
 
