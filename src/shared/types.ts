@@ -1594,6 +1594,15 @@ export type AppRPCSchema = {
 				params: { ports: number[] };
 				response: { command: string; hostGuess: string | null };
 			};
+			/**
+			 * Renderer reports its window focus state so the backend can tell whether
+			 * the app is in the foreground. Used to suppress notification click-to-open
+			 * arming while the user is already looking at the app.
+			 */
+			setWindowForeground: {
+				params: { focused: boolean };
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

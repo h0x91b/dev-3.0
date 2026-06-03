@@ -4,7 +4,7 @@ import Electrobun, {
 	Updater,
 	Utils,
 } from "electrobun/bun";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel, applyUpdate } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
 import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
@@ -269,7 +269,13 @@ async function openMainWindow() {
 			log.info("Opening external URL", { url: externalUrl });
 			Utils.openExternal(externalUrl);
 		},
-		onFocus: () => tryNavigateFromRecentNotification("window-focus"),
+		onFocus: () => {
+			// A window gaining key focus means the app is foreground. The renderer
+			// also reports this via setWindowForeground, but the native focus event
+			// is the authoritative source and never races renderer mount timing.
+			setAppForeground(true);
+			tryNavigateFromRecentNotification("window-focus");
+		},
 	});
 }
 

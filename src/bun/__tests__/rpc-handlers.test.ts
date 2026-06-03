@@ -242,6 +242,8 @@ const {
 	consumeRecentWatchedNotification,
 	_resetWatchedNotificationState,
 	NOTIFICATION_CLICK_TTL_MS,
+	setAppForeground,
+	isAppForeground,
 	emitTaskSound,
 	runCleanupScript,
 } = await import("../rpc-handlers");
@@ -6863,6 +6865,46 @@ describe("notifyWatchedTaskStatusChange", () => {
 		const task = makeTask({ watched: false });
 		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
 		expect(consumeRecentWatchedNotification()).toBeNull();
+	});
+
+	it("shows the banner but does NOT arm click-to-open when the app is in the foreground", () => {
+		setAppForeground(true);
+		const task = makeTask({ watched: true, projectId: "proj-fg" });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+
+		// Banner still shown — the user is just informed, not teleported.
+		expect(Utils.showNotification).toHaveBeenCalledTimes(1);
+		// Slot must stay empty so a later in-app click cannot trigger navigation.
+		expect(consumeRecentWatchedNotification()).toBeNull();
+	});
+
+	it("arms click-to-open when the app is in the background", () => {
+		setAppForeground(false);
+		const task = makeTask({ watched: true, projectId: "proj-bg" });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+
+		expect(consumeRecentWatchedNotification()).toEqual({ taskId: task.id, projectId: "proj-bg" });
+	});
+});
+
+describe("setAppForeground / isAppForeground", () => {
+	beforeEach(() => {
+		_resetWatchedNotificationState();
+	});
+
+	it("defaults to false after reset and toggles with setAppForeground", () => {
+		expect(isAppForeground()).toBe(false);
+		setAppForeground(true);
+		expect(isAppForeground()).toBe(true);
+		setAppForeground(false);
+		expect(isAppForeground()).toBe(false);
+	});
+
+	it("handlers.setWindowForeground forwards the renderer's focus state", async () => {
+		await handlers.setWindowForeground({ focused: true });
+		expect(isAppForeground()).toBe(true);
+		await handlers.setWindowForeground({ focused: false });
+		expect(isAppForeground()).toBe(false);
 	});
 });
 
