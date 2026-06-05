@@ -88,7 +88,7 @@ const settings = {
 	"settings.taskCompleteSound": "Sonido de tarea completada",
 	"settings.taskCompleteSoundDesc": "Reproducir un sonido al completar o cancelar una tarea",
 	"settings.taskOpenMode": "Modo de apertura de tarea",
-	"settings.taskOpenModeDesc": "Cómo se abren las tareas activas al hacer clic en ellas",
+	"settings.taskOpenModeDesc": "Cómo se abren las tareas activas al hacer clic en ellas. También afecta a Cmd+1..9: Vista dividida mantiene la vista de tarea, Pantalla completa cambia al tablero.",
 	"settings.taskOpenModeSplit": "Vista dividida (barra lateral + terminal)",
 	"settings.taskOpenModeFullscreen": "Pantalla completa (solo terminal)",
 	"settings.defaultDiffViewMode": "Layout de diff por defecto",

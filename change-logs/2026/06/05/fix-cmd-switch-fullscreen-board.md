@@ -1,0 +1,1 @@
+Cmd+1..9 project switching now respects the Task Open Mode setting. In Full screen mode it jumps straight to the Kanban board (the pre-#619 behavior) instead of an empty "Select a task" split; Split mode keeps preserving the task view as before.

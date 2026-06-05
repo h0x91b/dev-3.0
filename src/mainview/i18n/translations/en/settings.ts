@@ -88,7 +88,7 @@ const settings = {
 	"settings.taskCompleteSound": "Task Complete Sound",
 	"settings.taskCompleteSoundDesc": "Play a sound when a task is completed or cancelled",
 	"settings.taskOpenMode": "Task Open Mode",
-	"settings.taskOpenModeDesc": "How active tasks open when you click on them",
+	"settings.taskOpenModeDesc": "How active tasks open when you click on them. Also affects Cmd+1..9: Split keeps the task view, Full screen switches to the board.",
 	"settings.taskOpenModeSplit": "Split view (sidebar + terminal)",
 	"settings.taskOpenModeFullscreen": "Full screen (terminal only)",
 	"settings.defaultDiffViewMode": "Default Diff Layout",

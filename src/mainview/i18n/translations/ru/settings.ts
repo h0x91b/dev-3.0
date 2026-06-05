@@ -88,7 +88,7 @@ const settings = {
 	"settings.taskCompleteSound": "Звук завершения задачи",
 	"settings.taskCompleteSoundDesc": "Воспроизводить звук при завершении или отмене задачи",
 	"settings.taskOpenMode": "Режим открытия задачи",
-	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них",
+	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них. Также влияет на Cmd+1..9: «Разделённый вид» сохраняет вид задачи, «Полный экран» переключает на доску.",
 	"settings.taskOpenModeSplit": "Разделённый вид (боковая панель + терминал)",
 	"settings.taskOpenModeFullscreen": "Полный экран (только терминал)",
 	"settings.defaultDiffViewMode": "Diff layout по умолчанию",
