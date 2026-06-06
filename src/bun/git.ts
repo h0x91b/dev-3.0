@@ -946,8 +946,13 @@ export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
 // Per-project fetch deduplication: reuse in-flight fetch promises and enforce
 // a cooldown to prevent lock contention when multiple callers (polling, git
 // operation completion, merge detection) trigger concurrent fetches.
+//
+// fetchProjectQueue serializes the actual git subprocess per repo so that
+// concurrent fetches for *different* branches don't race on .git/packed-refs.lock.
+// Same-branch callers are coalesced by fetchInFlight before reaching the queue.
 const fetchInFlight = new Map<string, Promise<boolean>>();
 const fetchLastSuccess = new Map<string, number>();
+const fetchProjectQueue = new Map<string, Promise<void>>();
 const FETCH_COOLDOWN_MS = 5_000;
 
 export async function fetchOrigin(projectPath: string, branch?: string): Promise<boolean> {
@@ -970,7 +975,18 @@ export async function fetchOrigin(projectPath: string, branch?: string): Promise
 		return existing;
 	}
 
-	const promise = (async () => {
+	// Chain behind any concurrent fetch on this repo. All setup below is synchronous
+	// so the queue tail is correctly sequenced even when two callers enter back-to-back.
+	const prevInQueue = fetchProjectQueue.get(projectPath) ?? Promise.resolve();
+
+	const promise: Promise<boolean> = prevInQueue.catch(() => {}).then(async () => {
+		// Re-check cooldown: a preceding branch fetch may have taken long enough that we
+		// now fall within the window, or another caller for this branch got here first.
+		if (Date.now() - (fetchLastSuccess.get(cacheKey) ?? 0) < FETCH_COOLDOWN_MS) {
+			log.debug("fetchOrigin: skipping (cooldown after queue wait)", { projectPath, branch });
+			return true;
+		}
+
 		const startedAt = performance.now();
 		const cmd = branch
 			? ["git", "fetch", "origin", branch, "--quiet"]
@@ -993,8 +1009,10 @@ export async function fetchOrigin(projectPath: string, branch?: string): Promise
 			});
 		}
 		return result.ok;
-	})();
+	});
 
+	// Become the new queue tail. Errors are swallowed so subsequent fetches always run.
+	fetchProjectQueue.set(projectPath, promise.then(() => {}).catch(() => {}));
 	fetchInFlight.set(cacheKey, promise);
 	try {
 		return await promise;
@@ -1106,6 +1124,7 @@ export function removeFetchCache(projectPath: string): void {
 	for (const key of fetchLastSuccess.keys()) {
 		if (key.startsWith(projectPath + ":")) fetchLastSuccess.delete(key);
 	}
+	fetchProjectQueue.delete(projectPath);
 }
 
 /** Reset fetch dedup state — for tests only. */
