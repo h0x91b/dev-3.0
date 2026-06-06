@@ -267,8 +267,14 @@ async function checkMergedBranches(): Promise<void> {
 
 		if (reviewTasks.length === 0) continue;
 
+		// Fetch every distinct base branch used by tasks in this project so that
+		// per-task merge-detection checks don't compare against stale remote refs.
+		const uniqueBaseBranches = [...new Set([
+			project.defaultBaseBranch || "main",
+			...reviewTasks.map((t) => t.baseBranch || project.defaultBaseBranch || "main"),
+		])];
 		try {
-			await git.fetchOrigin(project.path, project.defaultBaseBranch || "main");
+			await Promise.all(uniqueBaseBranches.map((b) => git.fetchOrigin(project.path, b)));
 		} catch {
 			continue;
 		}
@@ -442,6 +448,10 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
 	await git.fetchOrigin(project.path, baseBranch);
 	const ref = params.compareRef || `origin/${baseBranch}`;
+	const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
+	if (compareRefBranch && compareRefBranch !== baseBranch) {
+		await git.fetchOrigin(project.path, compareRefBranch);
+	}
 	const prDetection: Promise<{ number: number; url: string } | null> = (async () => {
 		try {
 			const ghResult = await github.runGitHub(
@@ -528,6 +538,10 @@ async function getTaskDiff(params: {
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	if (params.mode !== "uncommitted") {
 		await git.fetchOrigin(project.path, baseBranch);
+		const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
+		if (compareRefBranch && compareRefBranch !== baseBranch) {
+			await git.fetchOrigin(project.path, compareRefBranch);
+		}
 	}
 
 	const result = await git.getTaskDiff(task.worktreePath, params.mode, {
@@ -561,10 +575,16 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
+	// Fetch the ref we will actually rebase onto, not just baseBranch.
+	// rebaseTarget may be a custom compareRef (e.g. origin/develop) that differs from baseBranch.
+	const fetchBranch = rebaseTarget.startsWith("origin/")
+		? rebaseTarget.slice("origin/".length)
+		: baseBranch;
+
 	const script = [
 		`#!/bin/bash`,
 		`echo "Fetching origin..."`,
-		`git fetch origin ${baseBranch} --quiet`,
+		`git fetch origin ${fetchBranch} --quiet`,
 		`echo "Rebasing on ${rebaseTarget}..."`,
 		`set -x`,
 		`git rebase ${rebaseTarget}`,
