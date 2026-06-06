@@ -452,6 +452,10 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	if (compareRefBranch && compareRefBranch !== baseBranch) {
 		await git.fetchOrigin(project.path, compareRefBranch);
 	}
+	// Also refresh origin/<task-branch> so getUnpushedCount reflects out-of-band remote pushes.
+	if (branchForPush && branchForPush !== baseBranch && branchForPush !== compareRefBranch) {
+		await git.fetchOrigin(project.path, branchForPush);
+	}
 	const prDetection: Promise<{ number: number; url: string } | null> = (async () => {
 		try {
 			const ghResult = await github.runGitHub(

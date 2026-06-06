@@ -1131,6 +1131,7 @@ export function removeFetchCache(projectPath: string): void {
 export function _resetFetchState(): void {
 	fetchInFlight.clear();
 	fetchLastSuccess.clear();
+	fetchProjectQueue.clear();
 }
 
 export async function getBranchStatus(
