@@ -4,7 +4,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
-import { openFolderPicker } from "../folder-picker";
+import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -53,18 +53,29 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		if (browsing) return;
 		setBrowsing(true);
 		try {
-			const folder = await openFolderPicker();
-			if (!folder) return;
+			const folders = await openFolderPickerMulti();
+			if (!folders || folders.length === 0) return;
 
-			const name = folder.split("/").pop() || folder;
-			const result = await api.request.addProject({ path: folder, name });
+			const errors: string[] = [];
+			for (const folder of folders) {
+				const name = folder.split("/").pop() || folder;
+				try {
+					const result = await api.request.addProject({ path: folder, name });
+					if (result.ok) {
+						dispatch({ type: "addProject", project: result.project });
+						trackEvent("project_added", { source: "local" });
+					} else {
+						errors.push(`${name}: ${result.error}`);
+					}
+				} catch (err) {
+					errors.push(`${name}: ${String(err)}`);
+				}
+			}
 
-			if (result.ok) {
-				dispatch({ type: "addProject", project: result.project });
-				trackEvent("project_added", { source: "local" });
+			if (errors.length === 0) {
 				onClose();
 			} else {
-				setError(result.error);
+				setError(errors.join("\n"));
 			}
 		} catch (err) {
 			setError(String(err));

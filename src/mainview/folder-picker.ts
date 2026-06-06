@@ -23,7 +23,8 @@ export interface FolderPickerOptions {
 
 export interface FolderPickerRequest {
 	options: FolderPickerOptions;
-	resolve: (path: string | null) => void;
+	multiSelect: boolean;
+	resolve: (result: string | string[] | null) => void;
 }
 
 type Listener = (req: FolderPickerRequest) => void;
@@ -31,14 +32,24 @@ type Listener = (req: FolderPickerRequest) => void;
 let listener: Listener | null = null;
 const pendingQueue: FolderPickerRequest[] = [];
 
+function enqueue(request: FolderPickerRequest): void {
+	if (listener) {
+		listener(request);
+	} else {
+		pendingQueue.push(request);
+	}
+}
+
 export function openFolderPicker(options: FolderPickerOptions = {}): Promise<string | null> {
 	return new Promise<string | null>((resolve) => {
-		const request: FolderPickerRequest = { options, resolve };
-		if (listener) {
-			listener(request);
-		} else {
-			pendingQueue.push(request);
-		}
+		enqueue({ options, multiSelect: false, resolve: resolve as (result: string | string[] | null) => void });
+	});
+}
+
+/** Open the folder picker in multi-select mode. Returns an array of selected paths, or null if cancelled. */
+export function openFolderPickerMulti(options: FolderPickerOptions = {}): Promise<string[] | null> {
+	return new Promise<string[] | null>((resolve) => {
+		enqueue({ options, multiSelect: true, resolve: resolve as (result: string | string[] | null) => void });
 	});
 }
 

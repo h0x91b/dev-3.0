@@ -654,6 +654,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.sidebarHide.body",
 		icon: "\u{F0294}", // nf-md-fullscreen
 	},
+	// Batch 42: multi-folder add project
+	{
+		id: "multi-folder-add-project",
+		titleKey: "tip.multiFolderAddProject.title",
+		bodyKey: "tip.multiFolderAddProject.body",
+		icon: "\u{F0770}", // nf-md-folder_open
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

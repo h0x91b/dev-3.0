@@ -115,7 +115,7 @@ const settings = {
 	"addProject.tabClone": "Clonar desde URL",
 	"addProject.tabInit": "Nuevo",
 	"addProject.browseBtn": "Explorar...",
-	"addProject.browseHint": "Selecciona un repositorio git existente en tu computadora",
+	"addProject.browseHint": "Selecciona uno o más repositorios git existentes en tu computadora",
 	"addProject.initHint": "Elige una carpeta vacía (o crea una). dev-3.0 ejecutará git init, añadirá un marcador .dev3/README.md y hará el primer commit por ti.",
 	"addProject.initBtn": "Elegir carpeta...",
 	"addProject.initializing": "Inicializando...",

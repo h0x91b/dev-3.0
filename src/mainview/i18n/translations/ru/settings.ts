@@ -115,7 +115,7 @@ const settings = {
 	"addProject.tabClone": "Клонировать по URL",
 	"addProject.tabInit": "Новый",
 	"addProject.browseBtn": "Обзор...",
-	"addProject.browseHint": "Выберите существующий git-репозиторий на вашем компьютере",
+	"addProject.browseHint": "Выберите один или несколько git-репозиториев на вашем компьютере",
 	"addProject.initHint": "Выберите пустую папку (или создайте новую). dev-3.0 выполнит git init, положит заглушку .dev3/README.md и сделает первый коммит за вас.",
 	"addProject.initBtn": "Выбрать папку...",
 	"addProject.initializing": "Инициализация...",

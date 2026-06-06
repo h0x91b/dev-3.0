@@ -88,6 +88,9 @@ const common = {
 	"folderPicker.newFolderPlaceholder": "Nombre de la carpeta",
 	"folderPicker.create": "Crear",
 	"folderPicker.creating": "Creando…",
+	"folderPicker.noneSelected": "No hay carpetas seleccionadas",
+	"folderPicker.selectedCountLabel_one": "{count} carpeta seleccionada",
+	"folderPicker.selectedCountLabel_other": "{count} carpetas seleccionadas",
 
 	// Stuck preparation popover (clone hangs on Fetching origin — macOS FDA)
 	"stuckPrep.popoverTitle": "¿Atascado en Fetching origin?",
