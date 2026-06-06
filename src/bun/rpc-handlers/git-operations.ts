@@ -268,7 +268,7 @@ async function checkMergedBranches(): Promise<void> {
 		if (reviewTasks.length === 0) continue;
 
 		try {
-			await git.fetchOrigin(project.path);
+			await git.fetchOrigin(project.path, project.defaultBaseBranch || "main");
 		} catch {
 			continue;
 		}
@@ -440,7 +440,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	}
 
 	log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
-	await git.fetchOrigin(project.path);
+	await git.fetchOrigin(project.path, baseBranch);
 	const ref = params.compareRef || `origin/${baseBranch}`;
 	const prDetection: Promise<{ number: number; url: string } | null> = (async () => {
 		try {
@@ -527,7 +527,7 @@ async function getTaskDiff(params: {
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	if (params.mode !== "uncommitted") {
-		await git.fetchOrigin(project.path);
+		await git.fetchOrigin(project.path, baseBranch);
 	}
 
 	const result = await git.getTaskDiff(task.worktreePath, params.mode, {
@@ -564,7 +564,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	const script = [
 		`#!/bin/bash`,
 		`echo "Fetching origin..."`,
-		`git fetch origin --quiet`,
+		`git fetch origin ${baseBranch} --quiet`,
 		`echo "Rebasing on ${rebaseTarget}..."`,
 		`set -x`,
 		`git rebase ${rebaseTarget}`,
@@ -605,7 +605,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	if (!branchForMerge) throw new Error("Task has no branch");
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	await git.fetchOrigin(project.path);
+	await git.fetchOrigin(project.path, baseBranch);
 	// For task-specific base branches (not the project default), compare against the local branch —
 	// consistent with what the UI displays. For the project default, check against the remote.
 	const projectBaseBranch = project.defaultBaseBranch || "main";

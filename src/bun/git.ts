@@ -743,7 +743,7 @@ export async function createWorktree(
 	const fetched = await measureGitStep(
 		"createWorktree.fetchOrigin",
 		{ taskId: task.id.slice(0, 8), projectPath: project.path },
-		() => fetchOrigin(project.path),
+		() => fetchOrigin(project.path, baseBranch),
 	);
 	const remoteBase = `origin/${baseBranch}`;
 	const refCheckResult = fetched
@@ -950,37 +950,44 @@ const fetchInFlight = new Map<string, Promise<boolean>>();
 const fetchLastSuccess = new Map<string, number>();
 const FETCH_COOLDOWN_MS = 5_000;
 
-export async function fetchOrigin(projectPath: string): Promise<boolean> {
+export async function fetchOrigin(projectPath: string, branch?: string): Promise<boolean> {
 	await reportCurrentPreparationStage("fetching-origin");
 	const now = Date.now();
-	const lastSuccess = fetchLastSuccess.get(projectPath) ?? 0;
+	// Cache key is scoped to the specific branch when provided, or "*" for a full fetch.
+	const cacheKey = branch ? `${projectPath}:${branch}` : `${projectPath}:*`;
+	const lastSuccess = fetchLastSuccess.get(cacheKey) ?? 0;
 
 	// Skip if a successful fetch completed recently
 	if (now - lastSuccess < FETCH_COOLDOWN_MS) {
-		log.debug("fetchOrigin: skipping (cooldown)", { projectPath, msSinceLast: now - lastSuccess });
+		log.debug("fetchOrigin: skipping (cooldown)", { projectPath, branch, msSinceLast: now - lastSuccess });
 		return true;
 	}
 
-	// Reuse in-flight fetch for the same project
-	const existing = fetchInFlight.get(projectPath);
+	// Reuse in-flight fetch for the same project+branch
+	const existing = fetchInFlight.get(cacheKey);
 	if (existing) {
-		log.debug("fetchOrigin: reusing in-flight fetch", { projectPath });
+		log.debug("fetchOrigin: reusing in-flight fetch", { projectPath, branch });
 		return existing;
 	}
 
 	const promise = (async () => {
 		const startedAt = performance.now();
-		log.debug("Fetching origin", { projectPath });
-		const result = await run(["git", "fetch", "origin", "--quiet"], projectPath);
+		const cmd = branch
+			? ["git", "fetch", "origin", branch, "--quiet"]
+			: ["git", "fetch", "origin", "--quiet"];
+		log.debug("Fetching origin", { projectPath, branch });
+		const result = await run(cmd, projectPath);
 		if (result.ok) {
-			fetchLastSuccess.set(projectPath, Date.now());
+			fetchLastSuccess.set(cacheKey, Date.now());
 			log.info("fetchOrigin finished", {
 				projectPath,
+				branch,
 				durationMs: Math.round(performance.now() - startedAt),
 			});
 		} else {
 			log.warn("fetchOrigin failed", {
 				projectPath,
+				branch,
 				stderr: result.stderr,
 				durationMs: Math.round(performance.now() - startedAt),
 			});
@@ -988,11 +995,11 @@ export async function fetchOrigin(projectPath: string): Promise<boolean> {
 		return result.ok;
 	})();
 
-	fetchInFlight.set(projectPath, promise);
+	fetchInFlight.set(cacheKey, promise);
 	try {
 		return await promise;
 	} finally {
-		fetchInFlight.delete(projectPath);
+		fetchInFlight.delete(cacheKey);
 	}
 }
 
@@ -1012,7 +1019,7 @@ export async function pullOrigin(
 	if (result.ok) {
 		// A successful pull effectively refreshes the remote tracking branch too —
 		// keep the fetch cache honest so immediate callers don't re-fetch.
-		fetchLastSuccess.set(projectPath, Date.now());
+		fetchLastSuccess.set(`${projectPath}:${branch}`, Date.now());
 	}
 	return result;
 }
@@ -1093,8 +1100,12 @@ export async function fetchFork(
 
 /** Remove fetch cache for a specific project path (call on project deletion). */
 export function removeFetchCache(projectPath: string): void {
-	fetchInFlight.delete(projectPath);
-	fetchLastSuccess.delete(projectPath);
+	for (const key of fetchInFlight.keys()) {
+		if (key.startsWith(projectPath + ":")) fetchInFlight.delete(key);
+	}
+	for (const key of fetchLastSuccess.keys()) {
+		if (key.startsWith(projectPath + ":")) fetchLastSuccess.delete(key);
+	}
 }
 
 /** Reset fetch dedup state — for tests only. */

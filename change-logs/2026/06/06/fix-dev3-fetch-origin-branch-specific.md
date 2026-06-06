@@ -1,0 +1,1 @@
+Replace `git fetch origin` (full fetch) with `git fetch origin <branch>` for all background and triggered fetches that only need the base branch ref. The fetch cache is now keyed by `projectPath:branch` so concurrent callers for different branches no longer share stale cache. The branch picker's explicit fetch-all remains unchanged.
