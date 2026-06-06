@@ -186,7 +186,7 @@ function FolderPickerModal({ options, multiSelect, onClose }: ModalProps) {
 	const [manualPath, setManualPath] = useState("");
 	const [listingError, setListingError] = useState<string | null>(null);
 	const [selectedPath, setSelectedPath] = useState<string | null>(null);
-	const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+	const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
 	const [filterText, setFilterText] = useState("");
 	const [recentPaths, setRecentPaths] = useState<string[]>(() => loadRecent());
 	const [home, setHome] = useState<string>("");
@@ -276,28 +276,15 @@ function FolderPickerModal({ options, multiSelect, onClose }: ModalProps) {
 
 	const handleSelect = useCallback(() => {
 		if (multiSelect) {
-			if (selectedPaths.size === 0) return;
-			const paths = Array.from(selectedPaths);
-			paths.forEach((p) => setRecentPaths(pushRecent(p)));
-			onClose(paths);
+			if (selectedItemIds.length === 0) return;
+			selectedItemIds.forEach((p) => setRecentPaths(pushRecent(p)));
+			onClose(selectedItemIds);
 		} else {
 			if (!selectedPath) return;
 			setRecentPaths(pushRecent(selectedPath));
 			onClose(selectedPath);
 		}
-	}, [multiSelect, selectedPath, selectedPaths, onClose]);
-
-	const handleTogglePath = useCallback((path: string) => {
-		setSelectedPaths((prev) => {
-			const next = new Set(prev);
-			if (next.has(path)) {
-				next.delete(path);
-			} else {
-				next.add(path);
-			}
-			return next;
-		});
-	}, []);
+	}, [multiSelect, selectedPath, selectedItemIds, onClose]);
 
 	const handleCreateFolder = useCallback(async () => {
 		const name = (newFolderInput ?? "").trim();
@@ -520,8 +507,8 @@ function FolderPickerModal({ options, multiSelect, onClose }: ModalProps) {
 									onSelect={setSelectedPath}
 									onNavigate={(p) => void navigateTo(p)}
 									multiSelect={multiSelect}
-									selectedPaths={selectedPaths}
-									onTogglePath={handleTogglePath}
+									initialSelectedIds={selectedItemIds}
+									onSelectionChange={setSelectedItemIds}
 								/>
 							) : (
 								<div className="text-fg-3 text-sm px-3 py-2">{t("folderPicker.loading")}</div>
@@ -544,9 +531,9 @@ function FolderPickerModal({ options, multiSelect, onClose }: ModalProps) {
 						</div>
 						{multiSelect ? (
 							<div className="text-fg text-xs font-mono truncate">
-								{selectedPaths.size === 0
+								{selectedItemIds.length === 0
 									? <span className="text-fg-muted">{t("folderPicker.noneSelected")}</span>
-									: t.plural("folderPicker.selectedCountLabel", selectedPaths.size)
+									: t.plural("folderPicker.selectedCountLabel", selectedItemIds.length)
 								}
 							</div>
 						) : (
@@ -565,7 +552,7 @@ function FolderPickerModal({ options, multiSelect, onClose }: ModalProps) {
 					<button
 						type="button"
 						onClick={handleSelect}
-						disabled={multiSelect ? selectedPaths.size === 0 : !selectedPath}
+						disabled={multiSelect ? selectedItemIds.length === 0 : !selectedPath}
 						className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
 					>
 						{t("folderPicker.select")}
@@ -625,11 +612,13 @@ interface FolderTreeProps {
 	onSelect: (path: string) => void;
 	onNavigate: (path: string) => void;
 	multiSelect?: boolean;
-	selectedPaths?: Set<string>;
-	onTogglePath?: (path: string) => void;
+	/** Paths already selected (from a previous tree mount) to restore on mount. */
+	initialSelectedIds?: string[];
+	/** Called whenever the headless-tree selection changes. IDs == paths in our tree. */
+	onSelectionChange?: (ids: string[]) => void;
 }
 
-function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, multiSelect, selectedPaths, onTogglePath }: FolderTreeProps) {
+function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, multiSelect, initialSelectedIds, onSelectionChange }: FolderTreeProps) {
 	const dataLoader = useMemo(() => ({
 		async getItem(itemId: string): Promise<FolderNode> {
 			if (itemId === rootPath) {
@@ -655,9 +644,27 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, m
 		getItemName: (item) => item.getItemData().name,
 		isItemFolder: (item) => item.getItemData().isDir,
 		dataLoader,
-		initialState: { expandedItems: [rootPath] },
+		// Seed initial selection when tree mounts (e.g. after navigating to a new folder).
+		initialState: {
+			expandedItems: [rootPath],
+			selectedItems: initialSelectedIds ?? [],
+		},
 		features: [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature],
 	});
+
+	// Propagate selection changes to parent so selections survive navigation
+	// (the tree remounts with a new key on each navigate, so we push the current
+	// selection up before the old instance is torn down).
+	const onSelectionChangeRef = useRef(onSelectionChange);
+	onSelectionChangeRef.current = onSelectionChange;
+	const selectedItems = tree.getSelectedItems();
+	const selectionKey = selectedItems.map((i) => i.getId()).sort().join(",");
+	useEffect(() => {
+		if (multiSelect && onSelectionChangeRef.current) {
+			onSelectionChangeRef.current(selectedItems.map((i) => i.getItemData().path));
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [selectionKey, multiSelect]);
 
 	const handleDoubleClick = useCallback((item: ItemInstance<FolderNode>) => {
 		onNavigate(item.getItemData().path);
@@ -702,9 +709,7 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, m
 				const level = item.getItemMeta().level;
 				const expanded = item.isExpanded();
 				const loading = item.isLoading?.() ?? false;
-				const isMultiSelected = multiSelect && (selectedPaths?.has(data.path) ?? false);
-				const isSingleSelected = !multiSelect && item.isSelected();
-				const selected = isMultiSelected || isSingleSelected;
+				const selected = item.isSelected();
 				const itemProps = item.getProps();
 				return (
 					<button
@@ -712,10 +717,11 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, m
 						{...itemProps}
 						type="button"
 						onClick={(e) => {
-							if (multiSelect && onTogglePath) {
-								onTogglePath(data.path);
-							} else {
-								itemProps.onClick?.(e);
+							// Let headless-tree handle ALL click behaviors natively:
+							// plain click → select + expand, Cmd/Ctrl+click → toggle,
+							// Shift+click → range-select.
+							itemProps.onClick?.(e);
+							if (!multiSelect) {
 								onSelect(data.path);
 							}
 						}}
@@ -731,22 +737,6 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, m
 						<FolderGlyph open={expanded && data.isDir} />
 						<span className="truncate flex-1 min-w-0">{data.name}</span>
 						{loading && <Glyph glyph={NF.loading} size="0.8rem" className="text-fg-muted ml-1" spin />}
-						{isMultiSelected && (
-							<span
-								className="flex-shrink-0 w-4 h-4 rounded border border-accent bg-accent flex items-center justify-center"
-								aria-hidden="true"
-							>
-								<svg viewBox="0 0 10 8" fill="none" className="w-2.5 h-2.5">
-									<path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-								</svg>
-							</span>
-						)}
-						{multiSelect && !isMultiSelected && (
-							<span
-								className="flex-shrink-0 w-4 h-4 rounded border border-edge opacity-0 group-hover:opacity-100"
-								aria-hidden="true"
-							/>
-						)}
 					</button>
 				);
 			})}
