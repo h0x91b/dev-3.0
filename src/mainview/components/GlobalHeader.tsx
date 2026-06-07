@@ -187,8 +187,8 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 	if ("projectId" in route) {
 		const project = projects.find((p) => p.id === route.projectId);
 		if (project) {
-			// Clickable when not already on the kanban board (no activeTaskId, not on terminal)
-			const isOnKanban = route.screen === "project" && !route.activeTaskId;
+			// Clickable when not already on the kanban board (no activeTaskId, not in task/activity view)
+			const isOnKanban = route.screen === "project" && !route.activeTaskId && !route.taskView;
 			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
 			segments.push({
 				label: project.name,
