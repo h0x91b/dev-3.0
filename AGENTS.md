@@ -134,6 +134,8 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 
 **Path:** `change-logs/YYYY/MM/DD/<type>-<short-slug>.md`
 
+**The `YYYY/MM/DD` is the expected PR merge date — not the date you started.** If a task spans more than one day, do not leave the entry under the day you created it. Before opening/merging the PR, move (rename) the file/folder so the date matches the actual merge day. The changelog UI groups entries by ship date, so a stale start-date silently files the feature under the wrong day.
+
 **Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
 
 **Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers. **Keep it short — one paragraph max.**
