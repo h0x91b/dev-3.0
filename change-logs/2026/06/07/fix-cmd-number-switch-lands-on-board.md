@@ -1,0 +1,1 @@
+Cmd/Ctrl+1..9 project switching now always lands on the target project's Kanban board, including when the current view is inside a task. This removes the split-mode task-view preservation introduced in #619/#623 — switching projects from a task previously left the user in an empty task layout.

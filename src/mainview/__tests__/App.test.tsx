@@ -253,13 +253,14 @@ describe("App keyboard shortcuts", () => {
 			{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 		];
 
-		// Task-view preservation is gated on the `dev3-task-open-mode` setting.
-		// Remove it between tests so the default ("split") applies unless a test opts in.
+		// Cmd+1..9 always lands on the Kanban board, regardless of the
+		// `dev3-task-open-mode` setting. Remove it between tests anyway so
+		// no test leaks the setting to its siblings.
 		afterEach(() => {
 			localStorage.removeItem("dev3-task-open-mode");
 		});
 
-		it("preserves task view: Cmd+2 from a task switches project and keeps task-view layout with no task selected", async () => {
+		it("Cmd+2 from a task in split view switches project and lands on the board", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
@@ -274,11 +275,11 @@ describe("App keyboard shortcuts", () => {
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
-			expect(after).toHaveAttribute("data-task-view", "true");
+			expect(after).toHaveAttribute("data-task-view", "false");
 			expect(after).toHaveAttribute("data-active-task-id", "");
 		});
 
-		it("preserves task view from the full-page task screen too", async () => {
+		it("Cmd+2 from the full-page task screen lands on the board too", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
@@ -291,7 +292,7 @@ describe("App keyboard shortcuts", () => {
 
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
-			expect(after).toHaveAttribute("data-task-view", "true");
+			expect(after).toHaveAttribute("data-task-view", "false");
 		});
 
 		it("keeps board view: Cmd+2 from the Kanban board switches project without task view", async () => {
@@ -313,7 +314,7 @@ describe("App keyboard shortcuts", () => {
 			expect(after).toHaveAttribute("data-active-task-id", "");
 		});
 
-		it("fullscreen open-mode: Cmd+2 from a task jumps to the board, not an empty split", async () => {
+		it("fullscreen open-mode setting does not change it: Cmd+2 from a task jumps to the board", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
@@ -331,7 +332,7 @@ describe("App keyboard shortcuts", () => {
 			expect(after).toHaveAttribute("data-active-task-id", "");
 		});
 
-		it("fullscreen open-mode: Cmd+2 from the full-page task screen jumps to the board", async () => {
+		it("fullscreen open-mode setting: Cmd+2 from the full-page task screen jumps to the board", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
 			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({

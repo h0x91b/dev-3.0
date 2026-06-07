@@ -309,28 +309,16 @@ function App() {
 				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
 				// Cmd+1..9 — switch to project by index (like Slack workspaces).
-				// View-mode preservation is gated on the `dev3-task-open-mode` setting:
-				//  - "split"      users live in the sidebar+terminal layout, so if they
-				//                 are in a task view we land in the target project's task
-				//                 view with no task selected (empty terminal placeholder).
-				//  - "fullscreen" users have no task to show full-page after a switch, so
-				//                 dropping them into a split they never use is jarring —
-				//                 land on the Kanban board instead (pre-#619 behavior).
+				// Always lands on the target project's Kanban board, even when the
+				// current view is inside a task — there is no task to show in the
+				// other project, so preserving the task layout only yields an empty
+				// split (see #623 → reverted here).
 				const idx = parseInt(e.key, 10) - 1;
 				const available = state.projects.filter((p) => !p.deleted);
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();
-					const { route } = state;
-					const taskOpenMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
-					const inTaskView =
-						route.screen === "task" ||
-						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
-					navigate(
-						inTaskView && taskOpenMode === "split"
-							? { screen: "project", projectId: available[idx].id, taskView: true }
-							: { screen: "project", projectId: available[idx].id },
-					);
+					navigate({ screen: "project", projectId: available[idx].id });
 				}
 			}
 		},
