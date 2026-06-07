@@ -146,6 +146,24 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 	});
 
+	it("project name is clickable in activity/task view with no task selected", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader(
+			{ screen: "project", projectId: "p1", taskView: true },
+			[project1, project2],
+			navigate,
+		);
+
+		// In task/activity view (taskView), the project name must navigate back to the kanban board
+		await user.click(screen.getByText("Project Alpha"));
+
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project",
+			projectId: "p1",
+		});
+	});
+
 	it("opens dropdown on chevron click and shows all non-deleted projects", async () => {
 		const user = userEvent.setup();
 		renderHeader(
