@@ -655,13 +655,21 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate, m
 	// Propagate selection changes to parent so selections survive navigation
 	// (the tree remounts with a new key on each navigate, so we push the current
 	// selection up before the old instance is torn down).
+	// We also strip descendants: if "bookaround" is selected, we exclude
+	// "bookaround/data", "bookaround/src", etc. so that a Shift+click that sweeps
+	// over expanded children doesn't pollute the list with nested paths.
 	const onSelectionChangeRef = useRef(onSelectionChange);
 	onSelectionChangeRef.current = onSelectionChange;
 	const selectedItems = tree.getSelectedItems();
 	const selectionKey = selectedItems.map((i) => i.getId()).sort().join(",");
 	useEffect(() => {
 		if (multiSelect && onSelectionChangeRef.current) {
-			onSelectionChangeRef.current(selectedItems.map((i) => i.getItemData().path));
+			const allPaths = selectedItems.map((i) => i.getItemData().path).sort();
+			// Remove any path that is a descendant of another selected path.
+			const topLevel = allPaths.filter(
+				(p) => !allPaths.some((ancestor) => ancestor !== p && p.startsWith(ancestor + "/")),
+			);
+			onSelectionChangeRef.current(topLevel);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectionKey, multiSelect]);
