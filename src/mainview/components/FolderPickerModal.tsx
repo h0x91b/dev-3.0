@@ -201,7 +201,6 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				if (cancelled) return;
 				listingsRef.current.set(initial.path, initial);
 				setCurrentRoot(initial.path);
-				setSelectedPath([initial.path]);
 				setManualPath(initial.path);
 				setListingError(initial.error ?? null);
 				setHome(initial.home);
@@ -241,7 +240,6 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			const listing = await api.request.listDirectory({ path });
 			listingsRef.current.set(listing.path, listing);
 			setCurrentRoot(listing.path);
-			setSelectedPath([listing.path]);
 			setManualPath(listing.path);
 			setListingError(listing.error ?? null);
 			setFilterText("");
@@ -622,14 +620,9 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 		features: [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature],
 	});
 
-	const onSelectRef = useRef(onSelect);
-	onSelectRef.current = onSelect;
-	const hasFiredRef = useRef(false);
 	const selectedItems = tree.getSelectedItems();
 	const selectionKey = selectedItems.map((i) => i.getId()).sort().join(",");
 	useEffect(() => {
-		if (selectionKey === "" && !hasFiredRef.current) return;
-		hasFiredRef.current = true;
 		const allPaths = selectedItems
 			.map((i) => i.getItemData()?.path)
 			.filter((p): p is string => p !== undefined)
@@ -637,9 +630,8 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 		const topLevel = allPaths.filter(
 			(p) => !allPaths.some((ancestor) => ancestor !== p && p.startsWith(ancestor + "/")),
 		);
-		onSelectRef.current(topLevel);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [selectionKey]);
+		onSelect(topLevel);
+	}, [selectionKey, onSelect]);
 
 	const handleDoubleClick = useCallback((item: ItemInstance<FolderNode>) => {
 		onNavigate(item.getItemData().path);
