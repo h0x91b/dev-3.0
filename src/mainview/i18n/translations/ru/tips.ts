@@ -206,8 +206,6 @@ const tips = {
 	"tip.quitConfirm.body": "Выход через Cmd+Q, меню или док показывает подтверждение, чтобы фоновые tmux-сессии не исчезли внезапно.",
 	"tip.sidebarHide.title": "Скрыть панель Active Tasks",
 	"tip.sidebarHide.body": "Нажмите иконку полноэкранного режима в шапке панели, чтобы свернуть её и отдать всё окно терминалу.",
-	"tip.multiFolderAddProject.title": "Добавить несколько проектов сразу",
-	"tip.multiFolderAddProject.body": "В Add Project → Local Folder выберите несколько папок перед нажатием Select, чтобы импортировать их все за один шаг.",
 };
 
 export default tips;

@@ -88,7 +88,6 @@ const common = {
 	"folderPicker.newFolderPlaceholder": "Имя папки",
 	"folderPicker.create": "Создать",
 	"folderPicker.creating": "Создание…",
-	"folderPicker.noneSelected": "Папки не выбраны",
 	"folderPicker.selectedCountLabel_one": "{count} папка выбрана",
 	"folderPicker.selectedCountLabel_few": "{count} папки выбраны",
 	"folderPicker.selectedCountLabel_many": "{count} папок выбрано",
