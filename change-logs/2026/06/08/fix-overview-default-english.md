@@ -1,0 +1,1 @@
+Fixed the dev3 skill overview instruction that led with a Russian example and explicitly forbade defaulting to English, which caused non-Russian users to occasionally get a Russian task overview. The overview now defaults to English and only mirrors another language when the user is clearly communicating in it.
