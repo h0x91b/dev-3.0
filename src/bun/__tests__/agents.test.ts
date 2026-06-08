@@ -270,6 +270,22 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--profile-v2");
 	});
 
+	it("Codex: never emits --profile-v2 on newer codex that removed it (issue #611)", () => {
+		setCurrentUiTheme("dark");
+		// false => launch flag is the post-rename `--profile`, so the user's `-p`
+		// must be kept as-is and `--profile-v2` must never appear (it aborts codex).
+		__setCodexProfileV2Override(false);
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("-p dev3-dark");
+		expect(cmd).not.toContain("--profile-v2");
+	});
+
 	// ---- Gemini ----
 	it("Gemini: adds --resume latest when resume=true", () => {
 		const cmd = resolveAgentCommand(

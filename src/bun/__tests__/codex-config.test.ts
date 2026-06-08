@@ -4,6 +4,7 @@ import {
 	ensureCodexProfileFile,
 	getCodexSyntaxForVersion,
 	parseCodexVersion,
+	pickCodexProfileLaunchFlag,
 } from "../codex-config";
 
 describe("ensureCodexConfig", () => {
@@ -72,6 +73,39 @@ describe("ensureCodexConfig", () => {
 				major: 0,
 				minor: 131,
 				patch: 2,
+			});
+		});
+
+		describe("pickCodexProfileLaunchFlag (issue #611)", () => {
+			it("prefers --profile-v2 when the help text lists both flags (transition window)", () => {
+				const help = [
+					"Options:",
+					"  -p, --profile <CONFIG_PROFILE>      Configuration profile",
+					"      --profile-v2 <CONFIG_PROFILE_V2>  File-based profile",
+				].join("\n");
+				expect(pickCodexProfileLaunchFlag(help)).toBe("--profile-v2");
+			});
+
+			it("uses --profile when --profile-v2 was removed (codex >= post-rename)", () => {
+				const help = [
+					"Options:",
+					"  -p, --profile <CONFIG_PROFILE_V2>  Configuration profile",
+				].join("\n");
+				expect(pickCodexProfileLaunchFlag(help)).toBe("--profile");
+			});
+
+			it("uses --profile for legacy help that only lists --profile", () => {
+				const help = "  -p, --profile <CONFIG_PROFILE>  Configuration profile to use";
+				expect(pickCodexProfileLaunchFlag(help)).toBe("--profile");
+			});
+
+			it("does not match a --profile-v2-foo substring as --profile-v2", () => {
+				const help = "  --profile-v2-foo <X>  unrelated flag";
+				expect(pickCodexProfileLaunchFlag(help)).toBe("--profile");
+			});
+
+			it("falls back to --profile when help is empty", () => {
+				expect(pickCodexProfileLaunchFlag("")).toBe("--profile");
 			});
 		});
 
