@@ -232,6 +232,7 @@ function ActiveTasksSidebar({
 				</span>
 				<div className="flex items-center gap-1.5 flex-shrink-0 h-5">
 					<div className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
+						{/* Folder \u2014 this project only */}
 						<button
 							type="button"
 							onClick={() => setScope("project")}
@@ -249,26 +250,7 @@ function ActiveTasksSidebar({
 								{"\uF07C"}
 							</span>
 						</button>
-						<button
-							type="button"
-							role="switch"
-							aria-checked={scope === "global"}
-							onClick={() => setScope(scope === "global" ? "project" : "global")}
-							title={t("sidebar.scopeToggleTitle")}
-							className={`relative inline-flex items-center h-4 w-8 rounded-full transition-colors ${
-								scope === "global" ? "bg-accent" : "bg-fg/20"
-							}`}
-							data-testid="sidebar-scope-toggle"
-						>
-							<span
-								className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow transform transition-transform ${
-									scope === "global" ? "translate-x-[1.125rem]" : "translate-x-0.5"
-								}`}
-							/>
-							<span className="sr-only">
-								{scope === "global" ? t("sidebar.scopeGlobal") : t("sidebar.scopeProject")}
-							</span>
-						</button>
+						{/* Globe \u2014 all projects */}
 						<button
 							type="button"
 							onClick={() => setScope("global")}
@@ -286,34 +268,34 @@ function ActiveTasksSidebar({
 								{"\uEB01"}
 							</span>
 						</button>
-					</div>
-					{/* Attention mode \u2014 cross-project view filtered to tasks needing the user's input */}
-					<button
-						type="button"
-						onClick={() => setScope(scope === "attention" ? "project" : "attention")}
-						title={t("sidebar.scopeAttention")}
-						className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
-							scope === "attention"
-								? "text-amber-400"
-								: attentionCount > 0
-									? "text-amber-400/70 hover:text-amber-400"
-									: "text-fg-muted hover:text-fg-2"
-						}`}
-						data-testid="sidebar-scope-attention"
-					>
-						{/* Nerd Font: nf-fa-bell (U+F0A2) */}
-						<span
-							className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						{/* Bell \u2014 attention mode: cross-project, filtered to tasks needing user input */}
+						<button
+							type="button"
+							onClick={() => setScope("attention")}
+							title={t("sidebar.scopeAttention")}
+							className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+								scope === "attention"
+									? "text-amber-400"
+									: attentionCount > 0
+										? "text-amber-400/70 hover:text-amber-400"
+										: "text-fg-muted hover:text-fg-2"
+							}`}
+							data-testid="sidebar-scope-attention"
 						>
-							{"\uF0A2"}
-						</span>
-						{attentionCount > 0 && scope !== "attention" && (
-							<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-amber-500 text-[0.5rem] font-bold text-white leading-none pointer-events-none">
-								{attentionCount > 9 ? "9+" : attentionCount}
+							{/* Nerd Font: nf-fa-bell (U+F0A2) */}
+							<span
+								className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\uF0A2"}
 							</span>
-						)}
-					</button>
+							{attentionCount > 0 && scope !== "attention" && (
+								<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-amber-500 text-[0.5rem] font-bold text-white leading-none pointer-events-none">
+									{attentionCount > 9 ? "9+" : attentionCount}
+								</span>
+							)}
+						</button>
+					</div>
 					<button
 						onClick={onSwitchToBoard}
 						className="inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
