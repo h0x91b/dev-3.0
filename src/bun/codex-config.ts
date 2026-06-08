@@ -47,6 +47,8 @@ interface CodexSyntax {
 	 * profile-v2: per-profile settings live in `~/.codex/<name>.config.toml`,
 	 * and Codex rejects `[profiles.<name>]` blocks or top-level `profile = "<name>"`
 	 * in the main config when `--profile <name>` is used. See codex PR #22647.
+	 * Stays true for codex ≥0.131 — the file-based semantics did not go away when
+	 * the `--profile-v2` *launch flag* was later removed (see issue #611).
 	 */
 	profileV2: boolean;
 }
@@ -100,6 +102,41 @@ export function getCodexSyntaxForVersion(versionText: string | null | undefined)
 			: LEGACY_CODEX_SYNTAX.hooksFeatureKey,
 		profileV2: isVersionAtLeast(version, CODEX_PROFILE_V2_VERSION),
 	};
+}
+
+export type CodexProfileLaunchFlag = "--profile" | "--profile-v2";
+
+/**
+ * Decide which profile-selection flag a Codex binary accepts, from its `--help`
+ * text. `--profile-v2` existed only in a short transition window: it was added
+ * 2026-05-14 (#17141) and renamed to `--profile`/`-p` on 2026-05-21 (#23883),
+ * keeping the same file-based semantics. Newer codex rejects `--profile-v2`
+ * outright (exit 2).
+ *
+ * Order matters: transition-window binaries list BOTH `--profile` (legacy v1)
+ * and `--profile-v2` (new file-based), so `--profile-v2` must be preferred when
+ * present. Version numbers do not map reliably to the rename, so we feature-
+ * detect from help text instead. See issue #611.
+ */
+export function pickCodexProfileLaunchFlag(helpText: string): CodexProfileLaunchFlag {
+	if (/--profile-v2(?![\w-])/.test(helpText)) return "--profile-v2";
+	return "--profile";
+}
+
+/**
+ * Probe the installed Codex's `--help` to pick the profile launch flag.
+ * Falls back to `--profile` (the modern, post-rename flag) when help can't be
+ * read — it is the safe default since `--profile-v2` is the flag that crashes.
+ */
+export function detectCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
+	try {
+		const result = spawnSync(["codex", "--help"], { stdout: "pipe", stderr: "pipe" });
+		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
+		const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : "";
+		return pickCodexProfileLaunchFlag(`${stdout}\n${stderr}`);
+	} catch {
+		return "--profile";
+	}
 }
 
 export function detectCodexVersion(): string | null {
