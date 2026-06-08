@@ -1,0 +1,1 @@
+Scratch tasks no longer auto-fire a first message on Codex, Cursor, and OpenCode. When the task description is empty, the dev3 system prompt is no longer injected as the positional prompt, so the agent opens an empty interactive window like Claude — protocol adherence relies on the auto-installed dev3 skill and hooks.
