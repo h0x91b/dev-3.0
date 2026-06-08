@@ -488,6 +488,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									rootPath={currentRoot}
 									listingsRef={listingsRef}
 									filterText={filterText}
+									multi={options.multi}
 									onSelect={setSelectedPath}
 									onNavigate={(p) => void navigateTo(p)}
 								/>
@@ -513,9 +514,9 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 						<div className="text-fg text-xs font-mono truncate" title={selectedPath[0] ?? ""}>
 							{selectedPath.length === 0
 								? <span className="text-fg-muted">—</span>
-								: selectedPath.length === 1
-									? displayPath(selectedPath[0], home)
-									: t.plural("folderPicker.selectedCountLabel", selectedPath.length)
+								: options.multi && selectedPath.length > 1
+									? t.plural("folderPicker.selectedCountLabel", selectedPath.length)
+									: displayPath(selectedPath[0], home)
 							}
 						</div>
 					</div>
@@ -586,11 +587,12 @@ interface FolderTreeProps {
 	rootPath: string;
 	listingsRef: React.MutableRefObject<Map<string, FolderListing>>;
 	filterText: string;
+	multi?: boolean;
 	onSelect: (paths: string[]) => void;
 	onNavigate: (path: string) => void;
 }
 
-function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }: FolderTreeProps) {
+function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavigate }: FolderTreeProps) {
 	const dataLoader = useMemo(() => ({
 		async getItem(itemId: string): Promise<FolderNode> {
 			if (itemId === rootPath) {
@@ -611,13 +613,20 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 		},
 	}), [rootPath, listingsRef]);
 
+	const features = useMemo(
+		() => multi
+			? [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature]
+			: [asyncDataLoaderFeature, selectionFeature],
+		[multi],
+	);
+
 	const tree = useTree<FolderNode>({
 		rootItemId: rootPath,
 		getItemName: (item) => item.getItemData().name,
 		isItemFolder: (item) => item.getItemData().isDir,
 		dataLoader,
 		initialState: { expandedItems: [rootPath] },
-		features: [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature],
+		features,
 	});
 
 	const selectedItems = tree.getSelectedItems();

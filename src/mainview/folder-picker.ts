@@ -19,6 +19,8 @@ export interface FolderPickerOptions {
 	 * Default: false (existing call sites are for picking existing folders).
 	 */
 	allowCreateFolder?: boolean;
+	/** Enable multi-selection (Cmd/Shift+click). Set by openFolderPickerMulti. */
+	multi?: boolean;
 }
 
 export interface FolderPickerRequest {
@@ -47,7 +49,7 @@ export function openFolderPicker(options: FolderPickerOptions = {}): Promise<str
 
 export function openFolderPickerMulti(options: FolderPickerOptions = {}): Promise<string[] | null> {
 	return new Promise<string[] | null>((resolve) => {
-		enqueue({ options, resolve });
+		enqueue({ options: { ...options, multi: true }, resolve });
 	});
 }
 

@@ -5,6 +5,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
+import { toast } from "../toast";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -51,12 +52,14 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 	async function handleBrowseLocal() {
 		if (browsing) return;
+		setError(null);
 		setBrowsing(true);
 		try {
 			const folders = await openFolderPickerMulti();
 			if (!folders || folders.length === 0) return;
 
 			const errors: string[] = [];
+			let anySucceeded = false;
 			for (const folder of folders) {
 				const name = folder.split("/").pop() || folder;
 				try {
@@ -64,6 +67,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
 						trackEvent("project_added", { source: "local" });
+						anySucceeded = true;
 					} else {
 						errors.push(`${name}: ${result.error}`);
 					}
@@ -74,6 +78,9 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 			if (errors.length === 0) {
 				onClose();
+			} else if (anySucceeded) {
+				onClose();
+				for (const err of errors) toast.error(err);
 			} else {
 				setError(errors.join("\n"));
 			}
@@ -304,7 +311,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 				{/* Error */}
 				{error && (
-					<div className="text-danger text-sm bg-danger/10 px-3 py-2 rounded-lg">
+					<div className="text-danger text-sm bg-danger/10 px-3 py-2 rounded-lg whitespace-pre-line">
 						{error}
 					</div>
 				)}

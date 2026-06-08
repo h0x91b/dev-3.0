@@ -206,6 +206,8 @@ const tips = {
 	"tip.quitConfirm.body": "Salir con Cmd+Q, el menú o el dock muestra una confirmación para que tus sesiones tmux en segundo plano no desaparezcan por sorpresa.",
 	"tip.sidebarHide.title": "Ocultar el panel de Tareas activas",
 	"tip.sidebarHide.body": "Pulsa el icono de pantalla completa en la cabecera del panel para plegarlo y dar al terminal toda la ventana.",
+	"tip.multiFolderAddProject.title": "Añade varios repositorios a la vez",
+	"tip.multiFolderAddProject.body": "En Añadir proyecto → Carpeta local, usa Cmd+clic o Shift+clic para seleccionar varios repos y añadirlos todos en un solo paso.",
 };
 
 export default tips;
