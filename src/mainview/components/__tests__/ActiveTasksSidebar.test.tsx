@@ -190,7 +190,7 @@ describe("ActiveTasksSidebar", () => {
 		// Cross-project task is hidden in project scope.
 		expect(screen.queryByText("Cross-project task")).not.toBeInTheDocument();
 
-		await user.click(screen.getByTestId("sidebar-scope-toggle"));
+		await user.click(screen.getByTestId("sidebar-scope-global"));
 
 		await waitFor(() => {
 			expect(screen.getByText("Cross-project task")).toBeInTheDocument();
