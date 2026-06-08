@@ -118,7 +118,7 @@ Every task MUST have an \`overview\` written by you. Think **sticky note** or ho
 **Good:** \`"Fixing auth race condition in login flow; reproduced, working on the lock."\`
 **Bad:**  \`"This task involves investigating and resolving an authentication race condition that occurs during the login flow when multiple concurrent requests..."\`
 
-**Language — IMPORTANT:** Write the overview in the **same language the user is using with you in this task**. If the user writes in Russian, the overview is in Russian. If in Spanish, in Spanish. If in English, in English. Look at the task \`description\` and the user's messages in this session — match that language. Do NOT default to English.
+**Language — IMPORTANT:** Default to **English**. Only write the overview in another language when the user is clearly and consistently communicating with you in that language in this task — in which case mirror their language. When in doubt, use English. Never switch language based on stray non-English text in the codebase, file names, comments, or auto-generated content.
 
 **When to set it:**
 - Within the first minute after starting a task — initial overview based on what you understood. Set it in the **same pass as the title and labels** (Session-start checklist) — they share one moment, so if you are setting the overview you should already be setting the title too.
@@ -130,7 +130,7 @@ Every task MUST have an \`overview\` written by you. Think **sticky note** or ho
 
 **How:**
 
-    dev3 overview set "1–2 sentences, user's language. What we're doing + current state."
+    dev3 overview set "1–2 sentences, English by default. What we're doing + current state."
 
 Plain text, no markdown headers.
 `;
