@@ -1,0 +1,1 @@
+Fixed the project name in the global header breadcrumb being unclickable on the activity/task view when no task was selected, so you can now return to the kanban board from there. The isOnKanban check now also accounts for taskView mode.

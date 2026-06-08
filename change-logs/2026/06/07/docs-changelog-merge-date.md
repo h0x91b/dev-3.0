@@ -1,0 +1,1 @@
+Clarify the changelog policy: the YYYY/MM/DD path segment is the expected PR merge date, not the day work started. Tasks spanning more than one day must have their file/folder renamed to the actual merge day so entries group under the correct ship date.

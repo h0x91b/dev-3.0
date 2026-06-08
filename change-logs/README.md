@@ -6,6 +6,8 @@ Conflict-free changelog for parallel agent workflows. Each change gets its own f
 
 **Path:** `change-logs/YYYY/MM/DD/<type>-<short-slug>.md`
 
+The `YYYY/MM/DD` is the **expected PR merge date**, not the day you started. If a task spans more than one day, rename the file/folder to the actual merge day before merging — entries are grouped by ship date in the UI.
+
 **Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
 
 **Content:** Plain text, 1-3 sentences describing what was done. No frontmatter, no headers.
