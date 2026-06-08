@@ -654,6 +654,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.sidebarHide.body",
 		icon: "\u{F0294}", // nf-md-fullscreen
 	},
+	// Batch 42: attention mode
+	{
+		id: "sidebar-attention-mode",
+		titleKey: "tip.sidebarAttentionMode.title",
+		bodyKey: "tip.sidebarAttentionMode.body",
+		icon: "\u{F0A2}", // nf-fa-bell
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

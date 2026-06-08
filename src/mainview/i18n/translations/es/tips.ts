@@ -206,6 +206,8 @@ const tips = {
 	"tip.quitConfirm.body": "Salir con Cmd+Q, el menú o el dock muestra una confirmación para que tus sesiones tmux en segundo plano no desaparezcan por sorpresa.",
 	"tip.sidebarHide.title": "Ocultar el panel de Tareas activas",
 	"tip.sidebarHide.body": "Pulsa el icono de pantalla completa en la cabecera del panel para plegarlo y dar al terminal toda la ventana.",
+	"tip.sidebarAttentionMode.title": "Campana = necesita tu atención",
+	"tip.sidebarAttentionMode.body": "Pulsa el icono de campana en el panel para ver todas las tareas esperando tu respuesta en todos los proyectos, ordenadas de más antigua a más reciente.",
 };
 
 export default tips;

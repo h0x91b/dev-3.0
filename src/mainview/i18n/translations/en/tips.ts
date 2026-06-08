@@ -206,6 +206,8 @@ const tips = {
 	"tip.quitConfirm.body": "Quitting via Cmd+Q, the menu, or the dock shows a confirmation so your background tmux sessions don't vanish by surprise.",
 	"tip.sidebarHide.title": "Hide the Active Tasks panel",
 	"tip.sidebarHide.body": "Click the fullscreen icon in the sidebar header to collapse it and give the terminal the whole window.",
+	"tip.sidebarAttentionMode.title": "Bell = needs your eyes",
+	"tip.sidebarAttentionMode.body": "Click the bell icon in the sidebar to see every task waiting for your input across all projects, sorted oldest-first.",
 } as const;
 
 export default tips;
