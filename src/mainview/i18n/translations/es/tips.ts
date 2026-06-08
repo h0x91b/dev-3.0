@@ -240,6 +240,8 @@ const tips = {
 	"tip.pasteLargeText.body": "Pega un bloque de texto grande y se guarda como adjunto .txt, manteniendo la tarea ligera en vez de sobrecargada.",
 	"tip.diffSyntaxHighlight.title": "Resaltado de sintaxis en los diffs",
 	"tip.diffSyntaxHighlight.body": "El visor de diffs colorea el código según el lenguaje y sigue tu tema claro/oscuro, así los cambios son más fáciles de leer.",
+	"tip.sidebarAttentionMode.title": "Campana = necesita tu atención",
+	"tip.sidebarAttentionMode.body": "Pulsa el icono de campana en el panel para ver todas las tareas esperando tu respuesta en todos los proyectos, ordenadas de más antigua a más reciente.",
 };
 
 export default tips;

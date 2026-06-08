@@ -240,6 +240,8 @@ const tips = {
 	"tip.pasteLargeText.body": "Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.",
 	"tip.diffSyntaxHighlight.title": "Diffs are syntax-highlighted",
 	"tip.diffSyntaxHighlight.body": "The diff viewer colors code by language and follows your light/dark theme, so changes are easier to scan.",
+	"tip.sidebarAttentionMode.title": "Bell = needs your eyes",
+	"tip.sidebarAttentionMode.body": "Click the bell icon in the sidebar to see every task waiting for your input across all projects, sorted oldest-first.",
 } as const;
 
 export default tips;

@@ -15,7 +15,7 @@ import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 
-type SidebarScope = "project" | "global";
+type SidebarScope = "project" | "global" | "attention";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
 
 /** Build a translucent fill from a "#rrggbb" status color for subtle tints. */
@@ -26,10 +26,13 @@ function statusTint(hex: string, alpha: number): string {
 	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Statuses that require the user's attention — the "attention" scope shows only these. */
+const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
+
 function readScope(): SidebarScope {
 	try {
 		const v = localStorage.getItem(LS_SIDEBAR_SCOPE);
-		if (v === "global" || v === "project") return v;
+		if (v === "global" || v === "project" || v === "attention") return v;
 	} catch { /* ignore */ }
 	return "project";
 }
@@ -122,9 +125,9 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [disableGlobalFindShortcut]);
 
-	// Fetch active tasks from all projects when in global scope.
+	// Fetch active tasks from all projects when in global or attention scope.
 	useEffect(() => {
-		if (scope !== "global") return;
+		if (scope !== "global" && scope !== "attention") return;
 		let cancelled = false;
 		setGlobalLoading(true);
 		(async () => {
@@ -151,7 +154,7 @@ function ActiveTasksSidebar({
 
 	// Keep global tasks live across all projects.
 	useEffect(() => {
-		if (scope !== "global") return;
+		if (scope !== "global" && scope !== "attention") return;
 		function onTaskUpdated(e: Event) {
 			const { task } = (e as CustomEvent).detail as { task: Task };
 			setGlobalTasks((prev) => {
@@ -177,9 +180,24 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [scope]);
 
-	const sourceTasks = scope === "global" ? globalTasks : tasks;
+	const sourceTasks = (scope === "global" || scope === "attention") ? globalTasks : tasks;
+
+	// Count of attention tasks across all available data (global when loaded, else project).
+	const attentionCount = useMemo(() => {
+		const pool = globalTasks.length > 0 ? globalTasks : tasks;
+		return pool.filter((t) => ATTENTION_STATUSES.includes(t.status)).length;
+	}, [globalTasks, tasks]);
 
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+	if (scope === "attention") {
+		activeTasks = activeTasks.filter((task) => ATTENTION_STATUSES.includes(task.status));
+		// Sort oldest-first so the longest-waiting task is always at the top.
+		activeTasks = activeTasks.slice().sort((a, b) => {
+			const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+			const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+			return aTime - bTime;
+		});
+	}
 	if (searchQuery.trim()) {
 		activeTasks = activeTasks.filter((task) => matchesSearchQuery(task, searchQuery));
 	}
@@ -295,6 +313,33 @@ function ActiveTasksSidebar({
 							</span>
 						</button>
 					</div>
+					{/* Attention mode \u2014 cross-project view filtered to tasks needing the user's input */}
+					<button
+						type="button"
+						onClick={() => setScope(scope === "attention" ? "project" : "attention")}
+						title={t("sidebar.scopeAttention")}
+						className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+							scope === "attention"
+								? "text-amber-400"
+								: attentionCount > 0
+									? "text-amber-400/70 hover:text-amber-400"
+									: "text-fg-muted hover:text-fg-2"
+						}`}
+						data-testid="sidebar-scope-attention"
+					>
+						{/* Nerd Font: nf-fa-bell (U+F0A2) */}
+						<span
+							className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\uF0A2"}
+						</span>
+						{attentionCount > 0 && scope !== "attention" && (
+							<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-amber-500 text-[0.5rem] font-bold text-white leading-none pointer-events-none">
+								{attentionCount > 9 ? "9+" : attentionCount}
+							</span>
+						)}
+					</button>
 					<button
 						onClick={onSwitchToBoard}
 						className="inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
@@ -368,13 +413,17 @@ function ActiveTasksSidebar({
 
 			{/* Task list */}
 			<div className="flex-1 overflow-y-auto overflow-x-hidden">
-				{scope === "global" && globalLoading && grouped.length === 0 ? (
+				{(scope === "global" || scope === "attention") && globalLoading && grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
 						{t("sidebar.globalLoading")}
 					</div>
 				) : grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
-						{searchQuery.trim() ? t("sidebar.noSearchResults") : t("sidebar.noActiveTasks")}
+						{searchQuery.trim()
+							? t("sidebar.noSearchResults")
+							: scope === "attention"
+								? t("sidebar.noAttentionTasks")
+								: t("sidebar.noActiveTasks")}
 					</div>
 				) : (
 					grouped.map(({ status, tasks: groupTasks }, groupIdx) => (
@@ -433,7 +482,7 @@ function ActiveTasksSidebar({
 									.filter(Boolean) as typeof projectLabels;
 								const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
 								const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
-								const showProjectBadge = scope === "global" && task.projectId !== project.id;
+								const showProjectBadge = (scope === "global" || scope === "attention") && task.projectId !== project.id;
 								const projectBadgeName = taskProject?.name ?? t("sidebar.unknownProject");
 
 								return (

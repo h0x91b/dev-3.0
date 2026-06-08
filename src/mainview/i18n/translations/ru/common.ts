@@ -61,6 +61,8 @@ const common = {
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
 	"sidebar.statusChanged": "Статус изменён {ago} · {date}",
+	"sidebar.scopeAttention": "Требует внимания — задачи, ожидающие вашего ответа, по всем проектам",
+	"sidebar.noAttentionTasks": "Всё в порядке, ничего не ждёт вашего ответа",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Переключить задачу",
