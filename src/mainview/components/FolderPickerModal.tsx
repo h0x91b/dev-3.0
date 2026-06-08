@@ -587,7 +587,7 @@ interface FolderTreeProps {
 	rootPath: string;
 	listingsRef: React.MutableRefObject<Map<string, FolderListing>>;
 	filterText: string;
-	multi?: boolean;
+	multi: boolean;
 	onSelect: (paths: string[]) => void;
 	onNavigate: (path: string) => void;
 }
