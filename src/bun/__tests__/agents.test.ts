@@ -270,6 +270,22 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--profile-v2");
 	});
 
+	it("Codex: never emits --profile-v2 on newer codex that removed it (issue #611)", () => {
+		setCurrentUiTheme("dark");
+		// false => launch flag is the post-rename `--profile`, so the user's `-p`
+		// must be kept as-is and `--profile-v2` must never appear (it aborts codex).
+		__setCodexProfileV2Override(false);
+
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined, additionalArgs: ["-p", "dev3"] }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain("-p dev3-dark");
+		expect(cmd).not.toContain("--profile-v2");
+	});
+
 	// ---- Gemini ----
 	it("Gemini: adds --resume latest when resume=true", () => {
 		const cmd = resolveAgentCommand(
@@ -446,6 +462,60 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("resume --last");
 		// Unsupported agent still gets the prompt (no resume behavior)
 		expect(cmd).toContain("Some task");
+	});
+});
+
+describe("resolveAgentCommand — empty description (scratch task) opens interactive window", () => {
+	// Regression: scratch tasks force an empty description (task-lifecycle.ts).
+	// Codex/Cursor/OpenCode have no --append-system-prompt, so the system prompt
+	// used to be injected as the positional prompt — which the agent then
+	// auto-ran as turn 1. With an empty prompt it must NOT be injected, so the
+	// agent opens an empty interactive window (matching Claude).
+
+	it("Codex: empty description → no positional prompt, no system prompt injected", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "" }),
+		);
+
+		expect(cmd).not.toContain("Task Lifecycle Protocol");
+		expect(cmd).not.toContain("shell=\"/bin/bash\"");
+		expect(cmd).not.toMatch(/ -- /);
+		expect(cmd).toBe("codex");
+	});
+
+	it("Cursor Agent: empty description → no positional prompt, no system prompt injected", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "agent" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "" }),
+		);
+
+		expect(cmd).not.toContain("Task Lifecycle Protocol");
+		expect(cmd).not.toMatch(/ -- /);
+	});
+
+	it("OpenCode: empty description → no --prompt, no system prompt injected", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "opencode" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "" }),
+		);
+
+		expect(cmd).not.toContain("Task Lifecycle Protocol");
+		expect(cmd).not.toContain("--prompt");
+	});
+
+	it("Codex: non-empty description still injects description + system prompt", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Fix the login bug" }),
+		);
+
+		expect(cmd).toContain("Fix the login bug");
+		expect(cmd).toContain("Task Lifecycle Protocol");
 	});
 });
 

@@ -1,0 +1,1 @@
+Active Tasks sidebar now color-codes every task by its status: a colored left rail plus a faint status wash on each card, and a tinted, color-barred group header. Makes it obvious at a glance which tasks are running, waiting for review, or asking questions — without hunting for the tiny status dot. Works in both dark and light themes.

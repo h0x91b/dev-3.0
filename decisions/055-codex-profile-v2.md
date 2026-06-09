@@ -28,6 +28,8 @@ Writing the per-profile files was only half the fix. Codex exposes **two** flags
 
 `applyCodexThemeProfile()` in `src/bun/agents.ts` now rewrites the flag to `--profile-v2` (in addition to swapping the value to the themed profile) when `isCodexProfileV2()` is true. profile-v2 detection is cached per process and overridable in tests via `__setCodexProfileV2Override()`. Legacy Codex keeps `-p`. The base config still carries `default_permissions = "dev3"`, so the `[permissions.dev3]` sandbox/network grants apply regardless of which profile flag is used.
 
+> **Superseded (launch flag only) — see [decision 064](./064-codex-profile-v2-flag-removed.md).** Codex later removed the `--profile-v2` flag and folded its file-based semantics into `-p`/`--profile`, so the version-gated rewrite above started crashing newer codex (issue #611). The launch flag is now feature-detected from `codex --help` instead of a version threshold. The per-profile-file config writing described above is unchanged and still correct.
+
 ## Alternatives considered
 
 - **Always use profile-v2** — rejected: older Codex doesn't know about per-profile files, so `--profile dev3-light` would fail on legacy installs.

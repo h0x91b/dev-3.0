@@ -661,6 +661,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiFolderAddProject.body",
 		icon: "\u{F0770}", // nf-md-folder_open
 	},
+	// Batch 43: status color rails
+	{
+		id: "status-color-rails",
+		titleKey: "tip.statusColorRails.title",
+		bodyKey: "tip.statusColorRails.body",
+		icon: "\u{F0766}", // nf-md-format_color_fill
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

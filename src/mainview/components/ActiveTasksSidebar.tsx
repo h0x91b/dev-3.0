@@ -17,6 +17,14 @@ import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 type SidebarScope = "project" | "global";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
 
+/** Build a translucent fill from a "#rrggbb" status color for subtle tints. */
+function statusTint(hex: string, alpha: number): string {
+	const r = parseInt(hex.slice(1, 3), 16);
+	const g = parseInt(hex.slice(3, 5), 16);
+	const b = parseInt(hex.slice(5, 7), 16);
+	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function readScope(): SidebarScope {
 	try {
 		const v = localStorage.getItem(LS_SIDEBAR_SCOPE);
@@ -359,9 +367,18 @@ function ActiveTasksSidebar({
 							)}
 
 							{/* Status group header */}
-							<div className="px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+							<div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+								{/* Faint status wash + left bar so the group reads as one color zone */}
+								<span
+									className="absolute inset-0 pointer-events-none"
+									style={{ background: statusTint(statusColors[status], 0.1) }}
+								/>
+								<span
+									className="absolute left-0 top-0 bottom-0 w-[3px]"
+									style={{ background: statusColors[status] }}
+								/>
 								<div
-									className="w-2 h-2 rounded-full flex-shrink-0"
+									className="w-2 h-2 rounded-full flex-shrink-0 relative"
 									style={{ background: statusColors[status] }}
 								/>
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
@@ -403,11 +420,22 @@ function ActiveTasksSidebar({
 												isActive ? "bg-accent/10" : "hover:bg-elevated-hover"
 											}`}
 										>
-											{/* Active-task indicator — absolute so it does not shift content
-											    horizontally; keeps card padding symmetric on both sides. */}
-											{isActive && (
-												<span className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent" />
+											{/* Faint status wash so the whole card carries its column color
+											    (non-active cards only; active keeps its accent tint). */}
+											{!isActive && (
+												<span
+													className="absolute inset-0 pointer-events-none"
+													style={{ background: statusTint(statusColors[task.status], 0.06) }}
+												/>
 											)}
+
+											{/* Left rail: status color per card, accent when active. Absolute
+											    so it does not shift content; keeps padding symmetric. */}
+											<span
+												className={`absolute left-0 top-0 bottom-0 w-[3px] ${isActive ? "bg-accent" : ""}`}
+												style={isActive ? undefined : { background: statusColors[task.status] }}
+												data-testid={`sidebar-status-rail-${task.id}`}
+											/>
 
 											{/* Bell badge */}
 											{bellCount > 0 && (

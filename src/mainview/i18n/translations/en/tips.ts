@@ -208,6 +208,8 @@ const tips = {
 	"tip.sidebarHide.body": "Click the fullscreen icon in the sidebar header to collapse it and give the terminal the whole window.",
 	"tip.multiFolderAddProject.title": "Add multiple repos at once",
 	"tip.multiFolderAddProject.body": "In Add Project → Local Folder, Cmd-click or Shift-click to pick multiple repos and add them all in one step.",
+	"tip.statusColorRails.title": "Tasks are color-coded by status",
+	"tip.statusColorRails.body": "Each task in the Active Tasks list has a colored left rail matching its status — scan who's working vs. waiting at a glance.",
 } as const;
 
 export default tips;

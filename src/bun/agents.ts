@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
-import { detectCodexVersion, ensureCodexConfig, getCodexSyntaxForVersion } from "./codex-config";
+import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
@@ -253,40 +253,46 @@ export function quoteIfUnsafe(s: string): string {
 	return /^[A-Za-z0-9_\-./:]+$/.test(s) ? s : shellEscape(s);
 }
 
-let codexProfileV2Override: boolean | null = null;
-let cachedCodexProfileV2: boolean | undefined;
+let codexProfileLaunchFlagOverride: CodexProfileLaunchFlag | null = null;
+let cachedCodexProfileLaunchFlag: CodexProfileLaunchFlag | undefined;
 
-/** Test-only override for codex profile-v2 detection. Pass `null` to clear. */
+/**
+ * Test-only override for codex profile launch-flag detection.
+ * `true` forces `--profile-v2`, `false` forces `--profile`, `null` clears.
+ */
 export function __setCodexProfileV2Override(value: boolean | null): void {
-	codexProfileV2Override = value;
-	cachedCodexProfileV2 = undefined;
+	codexProfileLaunchFlagOverride = value === null ? null : value ? "--profile-v2" : "--profile";
+	cachedCodexProfileLaunchFlag = undefined;
 }
 
 /**
- * True when the installed Codex (≥0.131) uses profile-v2 semantics: per-profile
- * settings live in `~/.codex/<name>.config.toml` and are only loaded via
- * `--profile-v2 <name>`. Detected once and cached for the process lifetime.
+ * The flag the installed Codex accepts to select a dev3 profile. `--profile-v2`
+ * existed only in a short transition window before it was renamed to
+ * `--profile`/`-p` (same file-based semantics); newer codex rejects it outright.
+ * Feature-detected from `codex --help` and cached for the process lifetime —
+ * version numbers do not map reliably to the rename. See issue #611.
  */
-function isCodexProfileV2(): boolean {
-	if (codexProfileV2Override !== null) return codexProfileV2Override;
-	if (cachedCodexProfileV2 === undefined) {
-		cachedCodexProfileV2 = getCodexSyntaxForVersion(detectCodexVersion()).profileV2;
+function getCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
+	if (codexProfileLaunchFlagOverride !== null) return codexProfileLaunchFlagOverride;
+	if (cachedCodexProfileLaunchFlag === undefined) {
+		cachedCodexProfileLaunchFlag = detectCodexProfileLaunchFlag();
 	}
-	return cachedCodexProfileV2;
+	return cachedCodexProfileLaunchFlag;
 }
 
 function applyCodexThemeProfile(args: string[]): void {
 	const themedProfile = getCodexProfileForCurrentUiTheme();
-	const profileV2 = isCodexProfileV2();
+	const launchFlag = getCodexProfileLaunchFlag();
 	for (let i = 0; i < args.length - 1; i++) {
 		if ((args[i] === "-p" || args[i] === "--profile") && args[i + 1] === "dev3") {
 			args[i + 1] = themedProfile;
-			// Codex ≥0.131 only loads the per-profile file
-			// `~/.codex/<name>.config.toml` via `--profile-v2 <name>`. The legacy
-			// `-p`/`--profile` flag looks for an in-config `[profiles.<name>]` block
-			// that we no longer write on profile-v2, causing
-			// "config profile `dev3-dark` not found". See decision 055.
-			if (profileV2) args[i] = "--profile-v2";
+			// During the codex transition window the per-profile file
+			// `~/.codex/<name>.config.toml` was loaded only via `--profile-v2`.
+			// After the rename (#23883) `--profile-v2` was removed and `-p`/`--profile`
+			// carries the same file-based semantics, so we keep the user's flag there.
+			// Passing `--profile-v2` to a newer codex aborts with exit 2.
+			// See decision 055 + issue #611.
+			if (launchFlag === "--profile-v2") args[i] = "--profile-v2";
 			return;
 		}
 	}
@@ -463,10 +469,18 @@ export function resolveAgentCommand(
 		// Cursor Agent / OpenCode have no --append-system-prompt and no automatic
 		// hooks, so inject the generic system prompt via the prompt argument.
 		// Codex also gets a prompt reminder because skill loading is not guaranteed.
-		if (codexAgent) {
-			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_CODEX}` : DEV3_SYSTEM_PROMPT_CODEX;
-		} else if (cursorAgent || openCodeAgent) {
-			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}` : DEV3_SYSTEM_PROMPT_GENERIC;
+		//
+		// Only append it when there is an actual task prompt. On scratch / empty
+		// description launches we keep the prompt empty so the agent opens an
+		// interactive window instead of auto-running the system prompt as turn 1
+		// (matching Claude, which delivers it out-of-band). Protocol adherence
+		// then relies on the auto-installed dev3 skill + hooks.
+		if (prompt) {
+			if (codexAgent) {
+				prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_CODEX}`;
+			} else if (cursorAgent || openCodeAgent) {
+				prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}`;
+			}
 		}
 
 		if (prompt) {

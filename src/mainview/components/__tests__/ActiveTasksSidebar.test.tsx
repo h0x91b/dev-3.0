@@ -105,6 +105,42 @@ describe("ActiveTasksSidebar", () => {
 		expect(screen.getAllByText("#494")).toHaveLength(2);
 	});
 
+	it("renders a per-card status color rail (status hue for inactive, accent for active)", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "t1", status: "in-progress" }),
+						makeTask({
+							id: "t2",
+							status: "review-by-user",
+							variantIndex: 2,
+							agentId: "builtin-codex",
+							configId: "codex-default",
+						}),
+					]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent, codexAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Active task's rail uses the accent token, not a status hex.
+		const activeRail = screen.getByTestId("sidebar-status-rail-t1");
+		expect(activeRail.className).toContain("bg-accent");
+
+		// Inactive task's rail is tinted inline with its status color.
+		const inactiveRail = screen.getByTestId("sidebar-status-rail-t2");
+		expect(inactiveRail.className).not.toContain("bg-accent");
+		expect(inactiveRail.getAttribute("style")).toMatch(/background/);
+	});
+
 	it("toggles between project and global scope and fetches all-project tasks", async () => {
 		const user = userEvent.setup();
 		const { api } = await import("../../rpc");

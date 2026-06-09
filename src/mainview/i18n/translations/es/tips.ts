@@ -208,6 +208,8 @@ const tips = {
 	"tip.sidebarHide.body": "Pulsa el icono de pantalla completa en la cabecera del panel para plegarlo y dar al terminal toda la ventana.",
 	"tip.multiFolderAddProject.title": "Añade varios repositorios a la vez",
 	"tip.multiFolderAddProject.body": "En Añadir proyecto → Carpeta local, usa Cmd+clic o Shift+clic para seleccionar varios repos y añadirlos todos en un solo paso.",
+	"tip.statusColorRails.title": "Tareas codificadas por color de estado",
+	"tip.statusColorRails.body": "Cada tarea de la lista Tareas activas tiene una barra de color a la izquierda según su estado: distingue de un vistazo quién trabaja y quién espera.",
 };
 
 export default tips;
