@@ -469,10 +469,18 @@ export function resolveAgentCommand(
 		// Cursor Agent / OpenCode have no --append-system-prompt and no automatic
 		// hooks, so inject the generic system prompt via the prompt argument.
 		// Codex also gets a prompt reminder because skill loading is not guaranteed.
-		if (codexAgent) {
-			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_CODEX}` : DEV3_SYSTEM_PROMPT_CODEX;
-		} else if (cursorAgent || openCodeAgent) {
-			prompt = prompt ? `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}` : DEV3_SYSTEM_PROMPT_GENERIC;
+		//
+		// Only append it when there is an actual task prompt. On scratch / empty
+		// description launches we keep the prompt empty so the agent opens an
+		// interactive window instead of auto-running the system prompt as turn 1
+		// (matching Claude, which delivers it out-of-band). Protocol adherence
+		// then relies on the auto-installed dev3 skill + hooks.
+		if (prompt) {
+			if (codexAgent) {
+				prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_CODEX}`;
+			} else if (cursorAgent || openCodeAgent) {
+				prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}`;
+			}
 		}
 
 		if (prompt) {
