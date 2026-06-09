@@ -10,7 +10,7 @@ import { loadSettings, loadSettingsSync } from "./settings";
 import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { getShellRcFile, getUserShell, resolveShellEnv } from "./shell-env";
+import { getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -108,26 +108,30 @@ log.info("Log files", { dir: getLogPath() });
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
 	installAgentSkills();
 
-	// Append ~/.dev3.0/bin to the user's shell RC file (idempotent).
-	// This makes `dev3` available in all terminals, not just worktree tmux sessions.
+	// Append ~/.dev3.0/bin to the user's shell rc files (idempotent).
+	// This makes `dev3` available in all terminals, not just worktree tmux
+	// sessions. For bash this targets both the login profile and .bashrc — see
+	// getShellRcFiles for why login bash (macOS / tmux) needs the former.
 	const shell = getUserShell();
 	process.env.SHELL = shell;
 	const home = process.env.HOME || "/tmp";
 	const marker = ".dev3.0/bin";
-	const rcFile = getShellRcFile(shell, home);
-	if (!rcFile) {
+	const rcFiles = getShellRcFiles(shell, home, fExists);
+	if (rcFiles.length === 0) {
 		log.warn("Skipping shell profile PATH update for unsupported shell", { shell });
 	} else {
-		try {
-			const content = fExists(rcFile) ? fRead(rcFile, "utf-8") : "";
-			if (!content.includes(marker)) {
-				fAppend(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
-				log.info("Shell profile updated with dev3 PATH", { rcFile });
-			} else {
-				log.info("Shell profile already contains dev3 PATH", { rcFile });
+		for (const rcFile of rcFiles) {
+			try {
+				const content = fExists(rcFile) ? fRead(rcFile, "utf-8") : "";
+				if (!content.includes(marker)) {
+					fAppend(rcFile, `\n# dev3.0 CLI\nexport PATH="$HOME/.dev3.0/bin:$PATH"\n`, "utf-8");
+					log.info("Shell profile updated with dev3 PATH", { rcFile });
+				} else {
+					log.info("Shell profile already contains dev3 PATH", { rcFile });
+				}
+			} catch (err) {
+				log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
 			}
-		} catch (err) {
-			log.warn("Failed to update shell profile (non-fatal)", { rcFile, error: String(err) });
 		}
 	}
 }

@@ -104,6 +104,45 @@ describe("shell environment bootstrap", () => {
 		);
 	});
 
+	describe("getShellRcFiles", () => {
+		const home = "/Users/tester";
+		const none = () => false;
+
+		it("includes a login profile for bash so login shells (macOS / tmux) get dev3 on PATH", async () => {
+			const { getShellRcFiles } = await import("../shell-env");
+			// Reproduces the reported bug: writing only to .bashrc leaves login
+			// bash (which reads the login profile, not .bashrc) without dev3.
+			const files = getShellRcFiles("/bin/bash", home, none);
+			expect(files).toContain(`${home}/.bash_profile`);
+			expect(files).toContain(`${home}/.bashrc`);
+		});
+
+		it("appends to an existing bash login profile instead of shadowing it", async () => {
+			const { getShellRcFiles } = await import("../shell-env");
+			// User has only ~/.profile — creating a fresh .bash_profile would
+			// stop login bash from sourcing it, so we must reuse .profile.
+			const onlyProfile = (p: string) => p === `${home}/.profile`;
+			const files = getShellRcFiles("/bin/bash", home, onlyProfile);
+			expect(files).toEqual([`${home}/.profile`, `${home}/.bashrc`]);
+		});
+
+		it("prefers .bash_profile over .bash_login and .profile when several exist", async () => {
+			const { getShellRcFiles } = await import("../shell-env");
+			const files = getShellRcFiles("/bin/bash", home, () => true);
+			expect(files).toEqual([`${home}/.bash_profile`, `${home}/.bashrc`]);
+		});
+
+		it("uses only .zshrc for zsh (read by every interactive shell)", async () => {
+			const { getShellRcFiles } = await import("../shell-env");
+			expect(getShellRcFiles("/bin/zsh", home, none)).toEqual([`${home}/.zshrc`]);
+		});
+
+		it("returns no files for unsupported shells like fish", async () => {
+			const { getShellRcFiles } = await import("../shell-env");
+			expect(getShellRcFiles("/usr/local/bin/fish", home, none)).toEqual([]);
+		});
+	});
+
 	it("main-process PATH bootstrap uses an explicit shell-profile helper instead of defaulting to zsh", () => {
 		const indexPath = resolve(repoRoot, "src/bun/index.ts");
 		expect(existsSync(indexPath)).toBe(true);

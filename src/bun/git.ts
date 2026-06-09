@@ -11,6 +11,18 @@ const log = createLogger("git");
 const MAX_INLINE_DIFF_FILE_BYTES = 250_000;
 const MAX_BINARY_CHECK_BYTES = 8_192;
 
+// Rename/copy detection at git's default similarity (50%). These flags must be
+// passed explicitly and kept identical between the name-status listing
+// (listDiffEntries) and the per-file patch (buildArgs in getTaskDiff):
+//   - The default must be EXPLICIT because users may disable it globally via
+//     `diff.renames=false`; without the flag a rename renders as a full
+//     delete + add, making it look like the whole file changed.
+//   - The threshold must be git's default (50%), not a stricter value. A high
+//     threshold (e.g. 90%) splits a rename-with-edits into separate delete/add
+//     entries, again showing the entire file as changed instead of the few
+//     lines that actually differ.
+const RENAME_DETECTION_ARGS = ["--find-renames", "--find-copies"] as const;
+
 type BinaryRunResult = {
 	ok: boolean;
 	stdout: Uint8Array;
@@ -241,8 +253,7 @@ async function listDiffEntries(
 			"diff",
 			"--name-status",
 			"-z",
-			"--find-renames=90%",
-			"--find-copies=90%",
+			...RENAME_DETECTION_ARGS,
 			"--diff-filter=ACDMRT",
 			...diffArgs,
 		],
@@ -276,7 +287,7 @@ async function getDiffShortStat(
 	diffArgs: string[],
 ): Promise<TaskDiffSummary> {
 	const result = await run(
-		["git", "diff", "--shortstat", ...diffArgs],
+		["git", "diff", "--shortstat", ...RENAME_DETECTION_ARGS, ...diffArgs],
 		worktreePath,
 	);
 	return result.ok && result.stdout ? parseShortStat(result.stdout) : { files: 0, insertions: 0, deletions: 0 };
@@ -1117,7 +1128,7 @@ export async function getUncommittedChanges(
 ): Promise<{ insertions: number; deletions: number }> {
 	// Tracked file changes (staged + unstaged)
 	const trackedResult = await run(
-		["git", "diff", "--numstat", "HEAD"],
+		["git", "diff", "--numstat", ...RENAME_DETECTION_ARGS, "HEAD"],
 		worktreePath,
 	);
 
@@ -1175,7 +1186,7 @@ export async function getBranchDiffStats(
 	worktreePath: string,
 	ref: string,
 ): Promise<{ files: number; insertions: number; deletions: number; fileStats: Array<{ path: string; insertions: number; deletions: number }> }> {
-	const result = await run(["git", "diff", "--numstat", `${ref}...HEAD`], worktreePath);
+	const result = await run(["git", "diff", "--numstat", ...RENAME_DETECTION_ARGS, `${ref}...HEAD`], worktreePath);
 	if (!result.ok || !result.stdout.trim()) {
 		return { files: 0, insertions: 0, deletions: 0, fileStats: [] };
 	}
@@ -1407,7 +1418,7 @@ export async function getTaskDiff(
 						const path = entry.newPath ?? entry.displayPath;
 						return ["diff", "--no-index", "--no-ext-diff", "--no-color", "--", "/dev/null", path];
 					}
-					return ["diff", "--no-ext-diff", "--no-color", "HEAD", "--", ...getEntryPathArgs(entry)];
+					return ["diff", "--no-ext-diff", "--no-color", ...RENAME_DETECTION_ARGS, "HEAD", "--", ...getEntryPathArgs(entry)];
 				},
 			},
 		);
@@ -1442,6 +1453,7 @@ export async function getTaskDiff(
 							"diff",
 							"--no-ext-diff",
 							"--no-color",
+							...RENAME_DETECTION_ARGS,
 							upstreamRef,
 							"HEAD",
 							"--",
@@ -1477,6 +1489,7 @@ export async function getTaskDiff(
 						"diff",
 						"--no-ext-diff",
 						"--no-color",
+						...RENAME_DETECTION_ARGS,
 						`${defaultCompareRef}...HEAD`,
 						"--",
 						...getEntryPathArgs(entry),
