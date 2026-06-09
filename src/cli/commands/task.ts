@@ -4,7 +4,7 @@ import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, type CliContext } from "../context";
+import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
 // Statuses that destroy the worktree + terminal are forbidden via CLI.
@@ -73,8 +73,8 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 	}
 
 	const params: Record<string, unknown> = { taskId };
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "task.show", params);
 	if (!resp.ok) exitError(resp.error || "Failed to get task");
@@ -84,7 +84,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["project", "title", "description"]);
-	const projectId = args.flags.project || context?.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
 	}
@@ -121,8 +121,8 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 
 	const params: Record<string, unknown> = { taskId };
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 	// Tri-state semantics:
 	//   flag absent           → leave field untouched (not in params)
 	//   flag present+empty    → clear the field (empty string in params)
@@ -187,8 +187,8 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const params: Record<string, unknown> = { taskId, newStatus };
 	if (ifStatus) params.ifStatus = ifStatus;
 	if (ifStatusNot) params.ifStatusNot = ifStatusNot;
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "task.move", params);
 	if (!resp.ok) exitError(resp.error || "Failed to move task");

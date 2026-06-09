@@ -2,7 +2,7 @@ import type { Task, TaskNote, NoteSource } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, type CliContext } from "../context";
+import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
 const VALID_SOURCES: NoteSource[] = ["user", "ai"];
@@ -43,8 +43,8 @@ async function addNote(args: ParsedArgs, socketPath: string, context: CliContext
 	}
 
 	const params: Record<string, unknown> = { taskId, content, source };
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "note.add", params);
 	if (!resp.ok) exitError(resp.error || "Failed to add note");
@@ -63,8 +63,8 @@ async function listNotes(args: ParsedArgs, socketPath: string, context: CliConte
 	const taskId = expandShortId(rawTaskId, context);
 
 	const params: Record<string, unknown> = { taskId };
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "note.list", params);
 	if (!resp.ok) exitError(resp.error || "Failed to list notes");
@@ -99,8 +99,8 @@ async function deleteNote(args: ParsedArgs, socketPath: string, context: CliCont
 	const taskId = expandShortId(rawTaskId, context);
 
 	const params: Record<string, unknown> = { taskId, noteId };
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "note.delete", params);
 	if (!resp.ok) exitError(resp.error || "Failed to delete note");

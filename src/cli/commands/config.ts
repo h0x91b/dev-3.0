@@ -1,7 +1,7 @@
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import type { CliContext } from "../context";
+import { resolveProjectId, type CliContext } from "../context";
 
 export async function handleConfig(
 	subcommand: string | undefined,
@@ -9,7 +9,7 @@ export async function handleConfig(
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
-	const projectId = args.flags?.project || context?.projectId;
+	const projectId = resolveProjectId(args.flags?.project, context);
 	const worktreePath = context?.worktreePath;
 
 	if (subcommand === "export") {
