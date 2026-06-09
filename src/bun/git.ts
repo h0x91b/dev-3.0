@@ -1313,25 +1313,49 @@ export async function isContentMergedInto(
 	// When both local strategies fail (main diverged before AND after the squash
 	// on the same files), ask GitHub directly if a merged PR exists for this branch.
 	// This is the definitive source of truth for GitHub-hosted repos.
-	const branchResult = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath);
-	if (branchResult.ok && branchResult.stdout) {
+	//
+	// CRITICAL: a merged PR matching the head branch *name* is NOT enough. Branch
+	// names get reused — a previously merged PR can coexist with brand-new unmerged
+	// work pushed to the same branch, or an open PR for the same head. This bites
+	// PR-review tasks especially. We only trust the merged-PR signal when the PR's
+	// merged head commit (headRefOid) equals the current local HEAD; in every
+	// GitHub merge method (merge/squash/rebase) the head ref tip is left untouched,
+	// so a genuine merge always satisfies this, while stale/reused-name PRs do not.
+	const [branchResult, headShaResult] = await Promise.all([
+		run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath),
+		run(["git", "rev-parse", "HEAD"], worktreePath),
+	]);
+	if (branchResult.ok && branchResult.stdout && headShaResult.ok && headShaResult.stdout) {
+		const headSha = headShaResult.stdout.trim();
 		try {
 			const ghResult = project
 				? await github.runGitHub(
 					project,
 					worktreePath,
-					["pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number", "--limit", "1"],
+					["pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number,headRefOid", "--limit", "1"],
 				)
 				: await run(
-					["gh", "pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number", "--limit", "1"],
+					["gh", "pr", "list", "--head", branchResult.stdout, "--state", "merged", "--json", "number,headRefOid", "--limit", "1"],
 					worktreePath,
 				);
 			if (ghResult.ok && ghResult.stdout) {
 				try {
 					const prs = JSON.parse(ghResult.stdout);
 					if (Array.isArray(prs) && prs.length > 0) {
-						log.info("isContentMergedInto", { ref, method: "github-pr", pr: prs[0].number, merged: true });
-						return true;
+						const pr = prs[0];
+						if (pr?.headRefOid && pr.headRefOid === headSha) {
+							log.info("isContentMergedInto", { ref, method: "github-pr", pr: pr.number, merged: true });
+							return true;
+						}
+						log.info("isContentMergedInto", {
+							ref,
+							method: "github-pr",
+							pr: pr?.number,
+							headRefOid: pr?.headRefOid,
+							headSha,
+							merged: false,
+							reason: "merged PR head does not match current HEAD",
+						});
 					}
 				} catch { /* ignore parse errors */ }
 			}

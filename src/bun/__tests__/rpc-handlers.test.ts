@@ -6214,6 +6214,101 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		});
 	});
 
+	it("compares PR-review tasks against the project base branch, not the reviewed branch itself", async () => {
+		// PR-review tasks are created from an existing branch; deriveTaskBaseBranch
+		// sets their baseBranch to that same branch. Comparing the branch against
+		// origin/<itself> is trivially "merged" and produced a false prompt. The
+		// poller must instead compare against the project's real base branch.
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			status: "review-by-colleague",
+			worktreePath: "/tmp/test-worktree",
+			baseBranch: "fix/deepseek-reasoning-dsml-recovery",
+			branchName: "fix/deepseek-reasoning-dsml-recovery",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/deepseek-reasoning-dsml-recovery");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		// Not merged into the real base — no prompt.
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(git.isContentMergedInto).toHaveBeenCalledWith(
+			"/tmp/test-worktree",
+			"origin/main",
+			project,
+		);
+	});
+
+	it("still notifies a PR-review task when its branch is genuinely merged into the project base", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			status: "review-by-colleague",
+			worktreePath: "/tmp/test-worktree",
+			baseBranch: "fix/deepseek-reasoning-dsml-recovery",
+			branchName: "fix/deepseek-reasoning-dsml-recovery",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/deepseek-reasoning-dsml-recovery");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		// Merged into origin/main — the reviewed PR actually landed.
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(git.isContentMergedInto).toHaveBeenCalledWith(
+			"/tmp/test-worktree",
+			"origin/main",
+			project,
+		);
+		expect(push).toHaveBeenCalledWith("branchMerged", {
+			taskId: task.id,
+			projectId: project.id,
+			taskTitle: task.title,
+			branchName: "fix/deepseek-reasoning-dsml-recovery",
+			fingerprint: "v1:fix/deepseek-reasoning-dsml-recovery:abc123",
+		});
+	});
+
+	it("skips merge detection when the task branch is the project base branch itself", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			baseBranch: "main",
+			branchName: "main",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("main");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(git.isContentMergedInto).not.toHaveBeenCalled();
+	});
+
 	it("notifies about merged Has Questions tasks on the first 60-second poll", async () => {
 		const project = makeProject();
 		const task = makeTask({
