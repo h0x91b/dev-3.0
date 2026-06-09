@@ -166,19 +166,26 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			// --- Opus 4.8 (new default) — order: Auto, Bypass, Default, then the rest ---
-			{ id: "claude-auto", name: "Auto (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "auto", version: 5 },
+			// --- Fable 5 (new default) — order: Auto, Bypass, Default, then the rest ---
+			{ id: "claude-auto", name: "Auto (Fable 5)", model: "claude-fable-5", permissionMode: "auto", version: 6 },
 			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet", permissionMode: "auto", version: 1 },
-			{ id: "claude-bypass", name: "Bypass (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
+			{ id: "claude-bypass", name: "Bypass (Fable 5)", model: "claude-fable-5", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
 			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-default", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
+			{ id: "claude-default", name: "Default (Fable 5)", model: "claude-fable-5", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
 			{ id: "claude-default-sonnet", name: "Default (Sonnet)", model: "sonnet", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-plan", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 6 },
+			{ id: "claude-plan", name: "Plan (Fable 5)", model: "claude-fable-5", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 7 },
 			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-approvals", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
+			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
 			{ id: "claude-approvals-sonnet", name: "Accept Edits (Sonnet)", model: "sonnet", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-dontask", name: "Don't Ask (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 5 },
+			{ id: "claude-dontask", name: "Don't Ask (Fable 5)", model: "claude-fable-5", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
 			{ id: "claude-dontask-sonnet", name: "Don't Ask (Sonnet)", model: "sonnet", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			// --- Opus 4.8 (previous default, kept for fallback) ---
+			{ id: "claude-default-opus48", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			{ id: "claude-plan-opus48", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
+			{ id: "claude-bypass-opus48", name: "Bypass (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			{ id: "claude-auto-opus48", name: "Auto (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "auto", version: 1 },
+			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			{ id: "claude-dontask-opus48", name: "Don't Ask (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			// --- Opus 4.7 (previous generation, kept for fallback) ---
 			{ id: "claude-default-opus47", name: "Default (Opus 4.7)", model: "claude-opus-4-7[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-plan-opus47", name: "Plan (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
