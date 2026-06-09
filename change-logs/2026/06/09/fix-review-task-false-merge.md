@@ -1,0 +1,1 @@
+Fixed a false "Branch Merged" prompt on PR-review tasks. Such tasks use the reviewed branch as their base branch, so the merge-detection poller was comparing the branch against itself (trivially "merged"); it now skips tasks whose base branch equals the current branch.

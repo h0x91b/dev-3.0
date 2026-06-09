@@ -280,6 +280,13 @@ async function checkMergedBranches(): Promise<void> {
 
 				const branchName = await git.getCurrentBranch(task.worktreePath!);
 				if (!branchName) continue;
+
+				// PR-review tasks check out an existing branch, and deriveTaskBaseBranch
+				// sets their baseBranch to that same branch. Comparing a branch against
+				// origin/<itself> is trivially "merged" and produced a false "Branch
+				// Merged" prompt — skip when there is no distinct base to merge into.
+				if (baseBranch === branchName) continue;
+
 				const hasRemote = await git.getUnpushedCount(task.worktreePath!, branchName);
 				if (hasRemote === -1) continue;
 

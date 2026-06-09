@@ -6214,6 +6214,35 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		});
 	});
 
+	it("does not notify PR-review tasks whose base branch is the reviewed branch itself", async () => {
+		// PR-review tasks are created from an existing branch; deriveTaskBaseBranch
+		// sets their baseBranch to that same branch. The poller would then compare
+		// the branch against origin/<itself>, which is trivially "merged" — producing
+		// a false "Branch Merged" prompt even though nothing reached the real base.
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-colleague",
+			worktreePath: "/tmp/test-worktree",
+			baseBranch: "fix/deepseek-reasoning-dsml-recovery",
+			branchName: "fix/deepseek-reasoning-dsml-recovery",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/deepseek-reasoning-dsml-recovery");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(git.isContentMergedInto).not.toHaveBeenCalled();
+	});
+
 	it("notifies about merged Has Questions tasks on the first 60-second poll", async () => {
 		const project = makeProject();
 		const task = makeTask({
