@@ -1,0 +1,1 @@
+Fixed the diff view showing renamed files as a full delete + add (every line changed) instead of the few lines that actually differ. Rename/copy detection is now passed explicitly to every git diff call at git's default 50% similarity, so it works regardless of the user's `diff.renames` config and no longer drops renames with moderate edits.
