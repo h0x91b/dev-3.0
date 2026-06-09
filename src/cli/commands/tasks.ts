@@ -3,7 +3,7 @@ import { STATUS_LABELS, ALL_STATUSES } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import type { CliContext } from "../context";
+import { resolveProjectId, type CliContext } from "../context";
 
 export async function handleTasks(
 	subcommand: string | undefined,
@@ -12,7 +12,7 @@ export async function handleTasks(
 	context: CliContext | null,
 ): Promise<void> {
 	if (subcommand === "list" || !subcommand) {
-		const projectId = args.flags.project || context?.projectId;
+		const projectId = resolveProjectId(args.flags.project, context);
 		if (!projectId) {
 			exitUsage("--project <id> is required (or run from inside a worktree)");
 		}

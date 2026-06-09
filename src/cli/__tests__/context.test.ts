@@ -381,3 +381,46 @@ describe("detectFromWorktreePath — realDev3Home extraction", () => {
 		expect(result!.realDev3Home).toBe("/home/user/.dev3.0");
 	});
 });
+
+describe("expandShortProjectId", () => {
+	it("expands a short project ID prefix to the full project ID", async () => {
+		const { expandShortProjectId } = await import("../context");
+		// TEST_PROJECT_ID is "proj-test-123" — a short prefix must resolve to it.
+		expect(expandShortProjectId("proj-tes", null)).toBe(TEST_PROJECT_ID);
+	});
+
+	it("returns a full-length ID (>=36 chars) unchanged without scanning", async () => {
+		const { expandShortProjectId } = await import("../context");
+		const fullId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+		expect(expandShortProjectId(fullId, null)).toBe(fullId);
+	});
+
+	it("prefers the context project when its ID matches the prefix", async () => {
+		const { expandShortProjectId } = await import("../context");
+		const ctx = { projectId: "ctx-proj-999", taskId: TEST_TASK_ID, socketPath: "" };
+		expect(expandShortProjectId("ctx-pro", ctx)).toBe("ctx-proj-999");
+	});
+
+	it("returns the input unchanged when no project matches", async () => {
+		const { expandShortProjectId } = await import("../context");
+		expect(expandShortProjectId("zzzzzzzz", null)).toBe("zzzzzzzz");
+	});
+});
+
+describe("resolveProjectId", () => {
+	it("expands a short --project flag value", async () => {
+		const { resolveProjectId } = await import("../context");
+		expect(resolveProjectId("proj-tes", null)).toBe(TEST_PROJECT_ID);
+	});
+
+	it("falls back to context project when flag is absent", async () => {
+		const { resolveProjectId } = await import("../context");
+		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
+		expect(resolveProjectId(undefined, ctx)).toBe(TEST_PROJECT_ID);
+	});
+
+	it("returns undefined when neither flag nor context is present", async () => {
+		const { resolveProjectId } = await import("../context");
+		expect(resolveProjectId(undefined, null)).toBeUndefined();
+	});
+});

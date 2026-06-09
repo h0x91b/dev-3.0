@@ -245,6 +245,36 @@ export function expandShortId(id: string, context: CliContext | null): string {
 }
 
 /**
+ * Expand a short project ID (e.g. 8-char prefix from `projects list`) to full UUID.
+ * Mirrors expandShortId for tasks: the server matches projects by exact ID, so the
+ * CLI must resolve short prefixes before sending them.
+ */
+export function expandShortProjectId(id: string, context: CliContext | null): string {
+	// Already a full UUID
+	if (id.length >= 36) return id;
+	// Check if context project matches the prefix
+	if (context?.projectId?.startsWith(id)) return context.projectId;
+	// Fall back to scanning projects.json
+	try {
+		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string }>;
+		const match = projects.find((p) => p.id.startsWith(id));
+		if (match) return match.id;
+	} catch {
+		// Data files not available — return as-is
+	}
+	return id;
+}
+
+/**
+ * Resolve the target project ID from a parsed --project flag (expanding short IDs)
+ * or fall back to the worktree context. Returns undefined when neither is present.
+ */
+export function resolveProjectId(flagValue: string | undefined, context: CliContext | null): string | undefined {
+	if (flagValue) return expandShortProjectId(flagValue, context);
+	return context?.projectId;
+}
+
+/**
  * Read project info directly from data files (no socket needed).
  */
 export function readProjectDirect(projectId: string): { id: string; name: string; path: string } | null {

@@ -1,0 +1,1 @@
+Fixed the dev3 CLI rejecting 8-char short project IDs (the form shown by `projects list`) on the `--project` flag. Short project IDs are now expanded to the full UUID across task, note, label, overview, dev-server, config, and tasks commands, matching how short task IDs already work.

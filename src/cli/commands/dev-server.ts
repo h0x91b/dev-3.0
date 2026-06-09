@@ -2,7 +2,7 @@ import type { DevServerStatus } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, type CliContext } from "../context";
+import { expandShortId, resolveProjectId, type CliContext } from "../context";
 
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
 	const raw = args.positional[0] || args.flags.id || context?.taskId;
@@ -75,8 +75,8 @@ async function runAction(
 	}
 
 	const params: Record<string, unknown> = { taskId };
-	if (args.flags.project) params.projectId = args.flags.project;
-	else if (context?.projectId) params.projectId = context.projectId;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, `devServer.${action}`, params);
 	if (!resp.ok) exitError(resp.error || `Failed to ${action} dev server`);

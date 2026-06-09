@@ -2,7 +2,7 @@ import type { Task } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, type CliContext } from "../context";
+import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
 const OVERVIEW_MAX_LEN = 500;
@@ -16,7 +16,7 @@ function resolveTargetIds(
 		exitUsage("No task in context. Run from inside a worktree or pass --task <id> / --task-id <id>.");
 	}
 	const taskId = expandShortId(rawTaskId, context);
-	const projectId = args.flags.project || context?.projectId || undefined;
+	const projectId = resolveProjectId(args.flags.project, context);
 	return { taskId, projectId };
 }
 
