@@ -1,0 +1,1 @@
+The "Local Folder" tab in Add Project now opens the folder picker in multi-select mode, allowing users to select multiple git repositories at once and add them all as projects in a single step. Selected folders are highlighted in blue; the footer shows the count when multiple are selected.

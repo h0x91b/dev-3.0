@@ -151,9 +151,9 @@ export default function FolderPickerHost() {
 		return subscribeFolderPicker(setRequest);
 	}, []);
 
-	const handleClose = useCallback((result: string | null) => {
+	const handleClose = useCallback((result: string[] | null) => {
 		if (!request) return;
-		if (result) pushRecent(result);
+		if (result && result.length > 0) result.forEach(pushRecent);
 		request.resolve(result);
 		setRequest(null);
 	}, [request]);
@@ -171,7 +171,7 @@ export default function FolderPickerHost() {
 
 interface ModalProps {
 	options: FolderPickerRequest["options"];
-	onClose: (path: string | null) => void;
+	onClose: (paths: string[] | null) => void;
 }
 
 function FolderPickerModal({ options, onClose }: ModalProps) {
@@ -179,9 +179,9 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	const [currentRoot, setCurrentRoot] = useState<string | null>(null);
 	const [manualPath, setManualPath] = useState("");
 	const [listingError, setListingError] = useState<string | null>(null);
-	const [selectedPath, setSelectedPath] = useState<string | null>(null);
+	const [selectedPath, setSelectedPath] = useState<string[]>([]);
 	const [filterText, setFilterText] = useState("");
-	const [recentPaths, setRecentPaths] = useState<string[]>(() => loadRecent());
+	const [recentPaths] = useState<string[]>(() => loadRecent());
 	const [home, setHome] = useState<string>("");
 	const [homeEntries, setHomeEntries] = useState<Set<string>>(new Set());
 	const [treeKey, setTreeKey] = useState(0);
@@ -201,7 +201,6 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				if (cancelled) return;
 				listingsRef.current.set(initial.path, initial);
 				setCurrentRoot(initial.path);
-				setSelectedPath(initial.path);
 				setManualPath(initial.path);
 				setListingError(initial.error ?? null);
 				setHome(initial.home);
@@ -241,7 +240,6 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			const listing = await api.request.listDirectory({ path });
 			listingsRef.current.set(listing.path, listing);
 			setCurrentRoot(listing.path);
-			setSelectedPath(listing.path);
 			setManualPath(listing.path);
 			setListingError(listing.error ?? null);
 			setFilterText("");
@@ -268,8 +266,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	const breadcrumbs = useMemo(() => buildBreadcrumbs(currentRoot ?? ""), [currentRoot]);
 
 	const handleSelect = useCallback(() => {
-		if (!selectedPath) return;
-		setRecentPaths(pushRecent(selectedPath));
+		if (selectedPath.length === 0) return;
 		onClose(selectedPath);
 	}, [selectedPath, onClose]);
 
@@ -491,6 +488,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									rootPath={currentRoot}
 									listingsRef={listingsRef}
 									filterText={filterText}
+									multi={options.multi}
 									onSelect={setSelectedPath}
 									onNavigate={(p) => void navigateTo(p)}
 								/>
@@ -513,8 +511,13 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 						<div className="text-fg-muted text-[10px] uppercase tracking-wide mb-0.5">
 							{t("folderPicker.selected")}
 						</div>
-						<div className="text-fg text-xs font-mono truncate" title={selectedPath ?? ""}>
-							{selectedPath ? displayPath(selectedPath, home) : <span className="text-fg-muted">—</span>}
+						<div className="text-fg text-xs font-mono truncate" title={selectedPath[0] ?? ""}>
+							{selectedPath.length === 0
+								? <span className="text-fg-muted">—</span>
+								: options.multi && selectedPath.length > 1
+									? t.plural("folderPicker.selectedCountLabel", selectedPath.length)
+									: displayPath(selectedPath[0], home)
+							}
 						</div>
 					</div>
 					<button
@@ -527,7 +530,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					<button
 						type="button"
 						onClick={handleSelect}
-						disabled={!selectedPath}
+						disabled={selectedPath.length === 0}
 						className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
 					>
 						{t("folderPicker.select")}
@@ -584,11 +587,12 @@ interface FolderTreeProps {
 	rootPath: string;
 	listingsRef: React.MutableRefObject<Map<string, FolderListing>>;
 	filterText: string;
-	onSelect: (path: string) => void;
+	multi: boolean;
+	onSelect: (paths: string[]) => void;
 	onNavigate: (path: string) => void;
 }
 
-function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }: FolderTreeProps) {
+function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavigate }: FolderTreeProps) {
 	const dataLoader = useMemo(() => ({
 		async getItem(itemId: string): Promise<FolderNode> {
 			if (itemId === rootPath) {
@@ -609,14 +613,34 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 		},
 	}), [rootPath, listingsRef]);
 
+	const features = useMemo(
+		() => multi
+			? [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature]
+			: [asyncDataLoaderFeature, selectionFeature],
+		[multi],
+	);
+
 	const tree = useTree<FolderNode>({
 		rootItemId: rootPath,
 		getItemName: (item) => item.getItemData().name,
 		isItemFolder: (item) => item.getItemData().isDir,
 		dataLoader,
 		initialState: { expandedItems: [rootPath] },
-		features: [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature],
+		features,
 	});
+
+	const selectedItems = tree.getSelectedItems();
+	const selectionKey = selectedItems.map((i) => i.getId()).sort().join(",");
+	useEffect(() => {
+		const allPaths = selectedItems
+			.map((i) => i.getItemData()?.path)
+			.filter((p): p is string => p !== undefined)
+			.sort();
+		const topLevel = allPaths.filter(
+			(p) => !allPaths.some((ancestor) => ancestor !== p && p.startsWith(ancestor + "/")),
+		);
+		onSelect(topLevel);
+	}, [selectionKey, onSelect]);
 
 	const handleDoubleClick = useCallback((item: ItemInstance<FolderNode>) => {
 		onNavigate(item.getItemData().path);
@@ -660,8 +684,8 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 				const data = item.getItemData();
 				const level = item.getItemMeta().level;
 				const expanded = item.isExpanded();
-				const selected = item.isSelected();
 				const loading = item.isLoading?.() ?? false;
+				const selected = item.isSelected();
 				const itemProps = item.getProps();
 				return (
 					<button
@@ -670,7 +694,12 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 						type="button"
 						onClick={(e) => {
 							itemProps.onClick?.(e);
-							onSelect(data.path);
+							// Single-select callers expect exactly one folder, but
+							// headless-tree's selectionFeature still honors
+							// Cmd/Ctrl/Shift+click to accumulate selection. Collapse
+							// back to the clicked item so extra picks can't be silently
+							// dropped by openFolderPicker (which keeps only [0]).
+							if (!multi) tree.setSelectedItems([item.getId()]);
 						}}
 						onDoubleClick={() => handleDoubleClick(item)}
 						style={{ paddingLeft: `${0.25 + level * 0.9}rem` }}
@@ -682,7 +711,7 @@ function FolderTree({ rootPath, listingsRef, filterText, onSelect, onNavigate }:
 					>
 						{data.isDir ? <ChevronGlyph expanded={expanded} /> : <ChevronPlaceholder />}
 						<FolderGlyph open={expanded && data.isDir} />
-						<span className="truncate">{data.name}</span>
+						<span className="truncate flex-1 min-w-0">{data.name}</span>
 						{loading && <Glyph glyph={NF.loading} size="0.8rem" className="text-fg-muted ml-1" spin />}
 					</button>
 				);

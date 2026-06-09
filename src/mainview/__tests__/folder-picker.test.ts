@@ -4,8 +4,8 @@ import { openFolderPicker, subscribeFolderPicker } from "../folder-picker";
 describe("folder-picker bridge", () => {
 	it("delivers the request to the subscribed host and resolves with the chosen path", async () => {
 		const unsubscribe = subscribeFolderPicker((req) => {
-			expect(req.options).toEqual({});
-			req.resolve("/selected/path");
+			expect(req.options).toEqual({ multi: false });
+			req.resolve(["/selected/path"]);
 		});
 		await expect(openFolderPicker()).resolves.toBe("/selected/path");
 		unsubscribe();
@@ -18,7 +18,7 @@ describe("folder-picker bridge", () => {
 			req.resolve(null);
 		});
 		await openFolderPicker({ initialPath: "/tmp", title: "pick one" });
-		expect(seen).toEqual({ initialPath: "/tmp", title: "pick one" });
+		expect(seen).toEqual({ initialPath: "/tmp", title: "pick one", multi: false });
 		unsubscribe();
 	});
 
@@ -26,7 +26,7 @@ describe("folder-picker bridge", () => {
 		const pending = openFolderPicker({ initialPath: "/early" });
 		const unsubscribe = subscribeFolderPicker((req) => {
 			expect(req.options.initialPath).toBe("/early");
-			req.resolve("/early/resolved");
+			req.resolve(["/early/resolved"]);
 		});
 		await expect(pending).resolves.toBe("/early/resolved");
 		unsubscribe();

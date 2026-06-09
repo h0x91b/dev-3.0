@@ -654,7 +654,14 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.sidebarHide.body",
 		icon: "\u{F0294}", // nf-md-fullscreen
 	},
-	// Batch 42: status color rails
+	// Batch 42: multi-folder add project
+	{
+		id: "multi-folder-add-project",
+		titleKey: "tip.multiFolderAddProject.title",
+		bodyKey: "tip.multiFolderAddProject.body",
+		icon: "\u{F0770}", // nf-md-folder_open
+	},
+	// Batch 43: status color rails
 	{
 		id: "status-color-rails",
 		titleKey: "tip.statusColorRails.title",

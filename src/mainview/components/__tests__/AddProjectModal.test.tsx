@@ -25,13 +25,15 @@ vi.mock("../../rpc", () => ({
 
 vi.mock("../../folder-picker", () => ({
 	openFolderPicker: vi.fn(),
+	openFolderPickerMulti: vi.fn(),
 }));
 
 import { api } from "../../rpc";
-import { openFolderPicker } from "../../folder-picker";
+import { openFolderPicker, openFolderPickerMulti } from "../../folder-picker";
 
 const mockedApi = vi.mocked(api, true);
 const mockedOpenFolderPicker = vi.mocked(openFolderPicker);
+const mockedOpenFolderPickerMulti = vi.mocked(openFolderPickerMulti);
 
 function renderModal(
 	dispatch?: React.Dispatch<AppAction>,
@@ -119,7 +121,7 @@ describe("AddProjectModal", () => {
 		const dispatch = vi.fn();
 		const onClose = vi.fn();
 
-		mockedOpenFolderPicker.mockResolvedValue("/new/path");
+		mockedOpenFolderPickerMulti.mockResolvedValue(["/new/path"]);
 		mockedApi.request.addProject.mockResolvedValue({
 			ok: true as const,
 			project: { ...mockProject, path: "/new/path", name: "path" },
@@ -128,7 +130,7 @@ describe("AddProjectModal", () => {
 		renderModal(dispatch, onClose);
 		await user.click(screen.getByText("Browse..."));
 
-		expect(mockedOpenFolderPicker).toHaveBeenCalled();
+		expect(mockedOpenFolderPickerMulti).toHaveBeenCalled();
 		expect(mockedApi.request.addProject).toHaveBeenCalledWith({
 			path: "/new/path",
 			name: "path",
@@ -140,11 +142,29 @@ describe("AddProjectModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it("opens folder picker and adds multiple projects at once", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+
+		mockedOpenFolderPickerMulti.mockResolvedValue(["/path/repo-a", "/path/repo-b"]);
+		mockedApi.request.addProject
+			.mockResolvedValueOnce({ ok: true as const, project: { ...mockProject, path: "/path/repo-a", name: "repo-a" } })
+			.mockResolvedValueOnce({ ok: true as const, project: { ...mockProject, path: "/path/repo-b", name: "repo-b" } });
+
+		renderModal(dispatch, onClose);
+		await user.click(screen.getByText("Browse..."));
+
+		expect(mockedApi.request.addProject).toHaveBeenCalledTimes(2);
+		expect(dispatch).toHaveBeenCalledTimes(2);
+		expect(onClose).toHaveBeenCalled();
+	});
+
 	it("does nothing when folder picker is cancelled", async () => {
 		const user = userEvent.setup();
 		const dispatch = vi.fn();
 
-		mockedOpenFolderPicker.mockResolvedValue(null);
+		mockedOpenFolderPickerMulti.mockResolvedValue(null);
 
 		renderModal(dispatch);
 		await user.click(screen.getByText("Browse..."));
@@ -276,7 +296,7 @@ describe("AddProjectModal", () => {
 	it("Browse button is disabled while addProject is pending", async () => {
 		const user = userEvent.setup();
 		let resolveAddProject!: (v: any) => void;
-		mockedOpenFolderPicker.mockResolvedValue("/new/path");
+		mockedOpenFolderPickerMulti.mockResolvedValue(["/new/path"]);
 		mockedApi.request.addProject.mockImplementation(
 			() => new Promise((resolve) => { resolveAddProject = resolve; }),
 		);

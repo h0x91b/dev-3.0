@@ -4,7 +4,8 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
-import { openFolderPicker } from "../folder-picker";
+import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
+import { toast } from "../toast";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -51,20 +52,37 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 	async function handleBrowseLocal() {
 		if (browsing) return;
+		setError(null);
 		setBrowsing(true);
 		try {
-			const folder = await openFolderPicker();
-			if (!folder) return;
+			const folders = await openFolderPickerMulti();
+			if (!folders || folders.length === 0) return;
 
-			const name = folder.split("/").pop() || folder;
-			const result = await api.request.addProject({ path: folder, name });
+			const errors: string[] = [];
+			let anySucceeded = false;
+			for (const folder of folders) {
+				const name = folder.split("/").pop() || folder;
+				try {
+					const result = await api.request.addProject({ path: folder, name });
+					if (result.ok) {
+						dispatch({ type: "addProject", project: result.project });
+						trackEvent("project_added", { source: "local" });
+						anySucceeded = true;
+					} else {
+						errors.push(`${name}: ${result.error}`);
+					}
+				} catch (err) {
+					errors.push(`${name}: ${String(err)}`);
+				}
+			}
 
-			if (result.ok) {
-				dispatch({ type: "addProject", project: result.project });
-				trackEvent("project_added", { source: "local" });
+			if (errors.length === 0) {
 				onClose();
+			} else if (anySucceeded) {
+				onClose();
+				for (const err of errors) toast.error(err);
 			} else {
-				setError(result.error);
+				setError(errors.join("\n"));
 			}
 		} catch (err) {
 			setError(String(err));
@@ -293,7 +311,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 				{/* Error */}
 				{error && (
-					<div className="text-danger text-sm bg-danger/10 px-3 py-2 rounded-lg">
+					<div className="text-danger text-sm bg-danger/10 px-3 py-2 rounded-lg whitespace-pre-line">
 						{error}
 					</div>
 				)}

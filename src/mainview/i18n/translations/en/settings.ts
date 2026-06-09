@@ -115,7 +115,7 @@ const settings = {
 	"addProject.tabClone": "Clone from URL",
 	"addProject.tabInit": "New",
 	"addProject.browseBtn": "Browse...",
-	"addProject.browseHint": "Select an existing git repository on your machine",
+	"addProject.browseHint": "Select one or more existing git repositories on your machine",
 	"addProject.initHint": "Pick an empty folder (or create one). dev-3.0 will run git init, add a .dev3/README.md placeholder, and make the first commit for you.",
 	"addProject.initBtn": "Pick folder...",
 	"addProject.initializing": "Initializing...",

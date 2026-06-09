@@ -88,6 +88,10 @@ const common = {
 	"folderPicker.newFolderPlaceholder": "Имя папки",
 	"folderPicker.create": "Создать",
 	"folderPicker.creating": "Создание…",
+	"folderPicker.selectedCountLabel_one": "{count} папка выбрана",
+	"folderPicker.selectedCountLabel_few": "{count} папки выбраны",
+	"folderPicker.selectedCountLabel_many": "{count} папок выбрано",
+	"folderPicker.selectedCountLabel_other": "{count} папок выбрано",
 
 	// Stuck preparation popover (clone hangs on Fetching origin — macOS FDA)
 	"stuckPrep.popoverTitle": "Зависло на Fetching origin?",

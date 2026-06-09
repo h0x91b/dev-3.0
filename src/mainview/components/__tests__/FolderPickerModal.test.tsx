@@ -65,13 +65,14 @@ describe("FolderPickerHost", () => {
 		const backdrop = await screen.findByTestId("folder-picker-backdrop");
 		expect(backdrop).toBeInTheDocument();
 
-		// The initial home path is pre-selected
-		await waitFor(() => {
-			expect(screen.getByText("Select")).not.toBeDisabled();
-		});
+		// Select is disabled until the user explicitly clicks a folder
+		expect(screen.getByText("Select")).toBeDisabled();
+		await screen.findByText("projects");
+		await user.click(screen.getByText("projects"));
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
 		await user.click(screen.getByText("Select"));
 
-		await expect(picked).resolves.toBe("/Users/test");
+		await expect(picked).resolves.toBe("/Users/test/projects");
 	});
 
 	it("resolves with null when the user cancels", async () => {
@@ -136,12 +137,14 @@ describe("FolderPickerHost", () => {
 		renderHost();
 		const picked = openFolderPicker({ initialPath: "/Users/test/projects" });
 		await screen.findByTestId("folder-picker-backdrop");
+		await screen.findByText("web");
+		await user.click(screen.getByText("web"));
 		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
 		await user.click(screen.getByText("Select"));
 		await picked;
 
 		const stored = JSON.parse(localStorage.getItem("dev3-folder-picker-recent") ?? "[]");
-		expect(stored).toEqual(["/Users/test/projects"]);
+		expect(stored).toEqual(["/Users/test/projects/web"]);
 	});
 
 	it("filter input hides non-matching rows in the loaded tree", async () => {

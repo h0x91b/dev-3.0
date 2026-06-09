@@ -19,11 +19,13 @@ export interface FolderPickerOptions {
 	 * Default: false (existing call sites are for picking existing folders).
 	 */
 	allowCreateFolder?: boolean;
+	/** Enable multi-selection (Cmd/Shift+click). */
+	multi: boolean;
 }
 
 export interface FolderPickerRequest {
 	options: FolderPickerOptions;
-	resolve: (path: string | null) => void;
+	resolve: (result: string[] | null) => void;
 }
 
 type Listener = (req: FolderPickerRequest) => void;
@@ -31,14 +33,23 @@ type Listener = (req: FolderPickerRequest) => void;
 let listener: Listener | null = null;
 const pendingQueue: FolderPickerRequest[] = [];
 
-export function openFolderPicker(options: FolderPickerOptions = {}): Promise<string | null> {
+function enqueue(request: FolderPickerRequest): void {
+	if (listener) {
+		listener(request);
+	} else {
+		pendingQueue.push(request);
+	}
+}
+
+export function openFolderPicker(options: Omit<FolderPickerOptions, "multi"> = {}): Promise<string | null> {
 	return new Promise<string | null>((resolve) => {
-		const request: FolderPickerRequest = { options, resolve };
-		if (listener) {
-			listener(request);
-		} else {
-			pendingQueue.push(request);
-		}
+		enqueue({ options: { ...options, multi: false }, resolve: (result) => resolve(result?.[0] ?? null) });
+	});
+}
+
+export function openFolderPickerMulti(options: Omit<FolderPickerOptions, "multi"> = {}): Promise<string[] | null> {
+	return new Promise<string[] | null>((resolve) => {
+		enqueue({ options: { ...options, multi: true }, resolve });
 	});
 }
 
