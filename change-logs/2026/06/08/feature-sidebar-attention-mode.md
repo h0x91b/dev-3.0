@@ -1,1 +1,0 @@
-Added an "attention" mode to the Active Tasks sidebar. A bell icon button appears next to the existing project/global scope toggle; clicking it filters the list cross-project to only tasks in `user-questions` or `review-by-user` status, sorted oldest-first. The bell shows a pulsing count badge when tasks are waiting and the mode is not already active.
