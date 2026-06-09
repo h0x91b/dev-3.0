@@ -55,6 +55,8 @@ const common = {
 	"sidebar.scopeToggleTitle": "Toggle task scope (this project / all projects)",
 	"sidebar.globalLoading": "Loading tasks from all projects…",
 	"sidebar.unknownProject": "Unknown project",
+	"sidebar.scopeAttention": "Needs your attention — tasks waiting for your input, across all projects",
+	"sidebar.noAttentionTasks": "Nothing needs your attention",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",

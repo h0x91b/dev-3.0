@@ -55,6 +55,8 @@ const common = {
 	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
+	"sidebar.scopeAttention": "Требует внимания — задачи, ожидающие вашего ответа, по всем проектам",
+	"sidebar.noAttentionTasks": "Всё в порядке, ничего не ждёт вашего ответа",
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",

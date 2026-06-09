@@ -55,6 +55,8 @@ const common = {
 	"sidebar.scopeToggleTitle": "Alternar alcance (este proyecto / todos los proyectos)",
 	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
 	"sidebar.unknownProject": "Proyecto desconocido",
+	"sidebar.scopeAttention": "Requiere tu atención — tareas esperando tu respuesta en todos los proyectos",
+	"sidebar.noAttentionTasks": "Nada requiere tu atención",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",
