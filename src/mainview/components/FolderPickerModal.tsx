@@ -692,7 +692,15 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 						key={item.getId()}
 						{...itemProps}
 						type="button"
-						onClick={(e) => itemProps.onClick?.(e)}
+						onClick={(e) => {
+							itemProps.onClick?.(e);
+							// Single-select callers expect exactly one folder, but
+							// headless-tree's selectionFeature still honors
+							// Cmd/Ctrl/Shift+click to accumulate selection. Collapse
+							// back to the clicked item so extra picks can't be silently
+							// dropped by openFolderPicker (which keeps only [0]).
+							if (!multi) tree.setSelectedItems([item.getId()]);
+						}}
 						onDoubleClick={() => handleDoubleClick(item)}
 						style={{ paddingLeft: `${0.25 + level * 0.9}rem` }}
 						className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-[13px] transition-colors border-l-2 ${
