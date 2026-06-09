@@ -1,0 +1,1 @@
+Fixed a false-positive "Branch Merged" prompt on PR-review tasks. The GitHub PR fallback in merge detection trusted any merged PR matching the head branch name; it now requires the merged PR's head commit to equal the current local HEAD, so a stale/reused-name PR with new unmerged work no longer triggers the prompt.
