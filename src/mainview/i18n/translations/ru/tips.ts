@@ -206,6 +206,8 @@ const tips = {
 	"tip.quitConfirm.body": "Выход через Cmd+Q, меню или док показывает подтверждение, чтобы фоновые tmux-сессии не исчезли внезапно.",
 	"tip.sidebarHide.title": "Скрыть панель Active Tasks",
 	"tip.sidebarHide.body": "Нажмите иконку полноэкранного режима в шапке панели, чтобы свернуть её и отдать всё окно терминалу.",
+	"tip.statusColorRails.title": "Задачи окрашены по статусу",
+	"tip.statusColorRails.body": "У каждой задачи в списке Active Tasks слева цветная полоса по её статусу — сразу видно, кто работает, а кто ждёт.",
 };
 
 export default tips;
