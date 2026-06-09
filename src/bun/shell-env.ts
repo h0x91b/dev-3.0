@@ -17,15 +17,37 @@ export function getSupportedShell(shell: string): SupportedShell | null {
 	return null;
 }
 
-export function getShellRcFile(shell: string, home: string): string | null {
+// Shell rc files that should carry the `~/.dev3.0/bin` PATH line so the `dev3`
+// CLI is reachable in every terminal — including the extra tmux panes opened
+// inside a task worktree.
+//
+// The subtlety that makes this non-trivial is bash: a *login* interactive bash
+// (macOS Terminal.app, and tmux on macOS which always spawns login shells)
+// reads the login profile (`.bash_profile` → `.bash_login` → `.profile`, first
+// that exists) and does NOT read `.bashrc`. A *non-login* interactive bash
+// (tmux on Linux, nested shells) reads `.bashrc`. Writing only to `.bashrc`
+// therefore left bash users with `dev3: command not found` in worktree panes.
+// We write to both the login profile and `.bashrc` so dev3 is on PATH
+// regardless of how the shell was launched.
+//
+// zsh reads `.zshrc` for every interactive shell (login or not), so one file
+// is enough there.
+export function getShellRcFiles(shell: string, home: string, fileExists: (path: string) => boolean): string[] {
 	const supportedShell = getSupportedShell(shell);
-	if (supportedShell === "bash") {
-		return `${home}/.bashrc`;
-	}
 	if (supportedShell === "zsh") {
-		return `${home}/.zshrc`;
+		return [`${home}/.zshrc`];
 	}
-	return null;
+	if (supportedShell === "bash") {
+		const loginCandidates = [`${home}/.bash_profile`, `${home}/.bash_login`, `${home}/.profile`];
+		// Append to an existing login profile to avoid shadowing: creating a
+		// fresh `.bash_profile` when the user only has `.profile` would stop
+		// login bash from sourcing `.profile`. If none exist, default to
+		// `.bash_profile` (the conventional macOS login profile).
+		const loginFile = loginCandidates.find(fileExists) ?? `${home}/.bash_profile`;
+		const bashrc = `${home}/.bashrc`;
+		return loginFile === bashrc ? [loginFile] : [loginFile, bashrc];
+	}
+	return [];
 }
 
 function decodeStdout(stdout?: Uint8Array): string {

@@ -1,0 +1,1 @@
+Fix `dev3: command not found` in extra terminals opened inside a task for bash users. Login bash (macOS Terminal and tmux) reads the login profile, not `.bashrc`, so the dev3 PATH line never loaded; we now also write it to the bash login profile (`.bash_profile`/`.bash_login`/`.profile`).
