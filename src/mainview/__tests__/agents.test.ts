@@ -120,7 +120,7 @@ describe("mergeWithDefaults", () => {
 
 		// Original config is first (name reset by version bump)
 		expect(claude.configurations[0].id).toBe("claude-default");
-		expect(claude.configurations[0].name).toBe("Default (Opus 4.8)");
+		expect(claude.configurations[0].name).toBe("Default (Fable 5)");
 
 		// All new defaults appended
 		for (const expected of expectedNewConfigs) {
@@ -148,13 +148,16 @@ describe("mergeWithDefaults", () => {
 	});
 
 	it("preserves user-modified configs while appending new defaults", () => {
+		// Use the current default version so overrides win (version match, not a preset bump).
+		const claudeDefaultVersion = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!
+			.configurations.find((c) => c.id === "claude-default")!.version;
 		const stored: CodingAgent[] = [
 			{
 				id: "builtin-claude",
 				name: "Claude",
 				baseCommand: "claude",
 				configurations: [
-					{ id: "claude-default", name: "My Custom Name", model: "haiku", version: 5 },
+					{ id: "claude-default", name: "My Custom Name", model: "haiku", version: claudeDefaultVersion },
 					{ id: "user-custom-cfg", name: "My Extra Config" },
 				],
 				defaultConfigId: "claude-default",

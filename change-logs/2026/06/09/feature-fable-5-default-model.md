@@ -1,0 +1,1 @@
+Added the new Claude model Fable 5 (claude-fable-5) to the Claude agent presets and promoted it to the default launch model across all permission modes (Auto, Bypass, Default, Plan, Accept Edits, Don't Ask). The previous Opus 4.8 presets are kept as a fallback block.
