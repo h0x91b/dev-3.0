@@ -10,6 +10,7 @@ import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
+import { createAnsiLightFilter } from "./utils/ansi-light-adapt";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -42,15 +43,15 @@ const LIGHT_TERMINAL_THEME = {
 	black: "#24292e",
 	red: "#d73a49",
 	green: "#28a745",
-	yellow: "#dbab09",
+	yellow: "#9a6700",
 	blue: "#005cc5",
 	magenta: "#5a32a3",
 	cyan: "#0598bc",
-	white: "#6a737d",
-	brightBlack: "#959da5",
+	white: "#57606a",
+	brightBlack: "#6e7781",
 	brightRed: "#cb2431",
 	brightGreen: "#22863a",
-	brightYellow: "#f9c513",
+	brightYellow: "#b08800",
 	brightBlue: "#0366d6",
 	brightMagenta: "#6f42c1",
 	brightCyan: "#3192aa",
@@ -137,6 +138,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
+	const resolvedThemeRef = useRef(resolvedTheme);
+	resolvedThemeRef.current = resolvedTheme;
 
 	function logCopyEvent(
 		level: "debug" | "info" | "warn" | "error",
@@ -704,6 +707,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		let writeRafId: number | null = null;
 		// Reference to the terminal for batched writes (set by connectPty)
 		let batchTerm: Terminal | null = null;
+		// Rewrites pale 256-color / dim SGR codes that are unreadable on a
+		// light background. No-op in dark mode. See utils/ansi-light-adapt.ts.
+		const lightFilter = createAnsiLightFilter();
 
 		function enqueueTermWrite(data: string) {
 			pendingWrite += data;
@@ -711,8 +717,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				writeRafId = requestAnimationFrame(() => {
 					writeRafId = null;
 					if (disposed || !pendingWrite || !batchTerm) return;
-					const batch = pendingWrite;
+					const batch = lightFilter(pendingWrite, resolvedThemeRef.current === "light");
 					pendingWrite = "";
+					if (!batch) return;
 					try {
 						batchTerm.write(batch);
 					} catch {
