@@ -4,6 +4,7 @@ export const CLI_EXIT_CODE_APP_NOT_RUNNING = 2;
 export const CLI_EXIT_CODE_USAGE_ERROR = 3;
 export const CLI_EXIT_CODE_INTERNAL_ERROR = 4;
 export const CLI_EXIT_CODE_GUI_DEPS_MISSING = 5;
+export const CLI_EXIT_CODE_COMPLETION_DECLINED = 6;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -36,5 +37,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_GUI_DEPS_MISSING,
 		description:
 			"`dev3 gui` cannot launch because system libraries (GTK, WebKit, etc.) are missing. The CLI prints the install command for the detected distro and exits with this code so wrappers can detect it.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_COMPLETION_DECLINED",
+		code: CLI_EXIT_CODE_COMPLETION_DECLINED,
+		description:
+			"`dev3 task move --status completed` asked the user for approval and the user declined. The task keeps its current status and the session stays alive.",
 	},
 ] as const;

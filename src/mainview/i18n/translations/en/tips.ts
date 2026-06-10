@@ -210,6 +210,8 @@ const tips = {
 	"tip.multiFolderAddProject.body": "In Add Project → Local Folder, Cmd-click or Shift-click to pick multiple repos and add them all in one step.",
 	"tip.statusColorRails.title": "Tasks are color-coded by status",
 	"tip.statusColorRails.body": "Each task in the Active Tasks list has a colored left rail matching its status — scan who's working vs. waiting at a glance.",
+	"tip.agentCompletionRequest.title": "Agents can request completion",
+	"tip.agentCompletionRequest.body": "When an agent runs `dev3 task move --status completed`, you get an approval dialog — approve to complete or keep the session alive.",
 } as const;
 
 export default tips;

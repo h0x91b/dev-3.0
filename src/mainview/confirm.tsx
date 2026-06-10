@@ -8,6 +8,12 @@ export interface ConfirmOptions {
 	cancelLabel?: string;
 	/** Style the confirm button as destructive (red). */
 	danger?: boolean;
+	/**
+	 * Mark the dialog as initiated by an AI agent, not by the user's own click:
+	 * shows a robot badge, an accent border, and autofocuses Cancel so muscle
+	 * memory cannot accidentally approve a session-destroying request.
+	 */
+	agentInitiated?: boolean;
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -67,12 +73,28 @@ export function ConfirmHost() {
 				if (e.target === e.currentTarget) close(false);
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4">
+			<div
+				className={`bg-overlay border rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4 ${
+					pending.agentInitiated ? "border-accent/40" : "border-edge"
+				}`}
+			>
+				{pending.agentInitiated && (
+					<div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 text-accent text-xs font-medium">
+						<span
+							className="text-sm leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F06A9}"}
+						</span>
+						{t("confirmDialog.agentBadge")}
+					</div>
+				)}
 				<h2 className="text-fg text-lg font-semibold">{pending.title}</h2>
 				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
 				<div className="flex justify-end gap-2 pt-1">
 					<button
 						type="button"
+						autoFocus={pending.agentInitiated}
 						onClick={() => close(false)}
 						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 					>

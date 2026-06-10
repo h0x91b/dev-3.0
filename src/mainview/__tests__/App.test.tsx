@@ -29,6 +29,7 @@ vi.mock("../rpc", () => ({
 			}),
 			moveTask: vi.fn().mockResolvedValue({}),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
+			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -780,6 +781,68 @@ describe("App keyboard shortcuts", () => {
 			// Still on task screen (for t2)
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 			expect(screen.queryByTestId("project-screen")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("agent completion request dialog", () => {
+		const fireAgentCompletionRequested = (requestId: string, taskId: string, projectId: string) =>
+			act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:agentCompletionRequested", {
+						detail: { requestId, taskId, projectId, taskTitle: "Some task" },
+					}),
+				);
+			});
+
+		it("responds with approved:true and navigates away from the doomed task screen", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCompletionRequested("req-1", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
+					requestId: "req-1",
+					approved: true,
+				});
+			});
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
+			// The move itself happens in the bun process, not the renderer.
+			expect(api.request.moveTask).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ agentInitiated: true, danger: true });
+		});
+
+		it("responds with approved:false and stays in place when declined", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCompletionRequested("req-2", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
+					requestId: "req-2",
+					approved: false,
+				});
+			});
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
 	});
 });

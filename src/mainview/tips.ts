@@ -668,6 +668,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.statusColorRails.body",
 		icon: "\u{F0766}", // nf-md-format_color_fill
 	},
+	// Batch 44: agent completion request
+	{
+		id: "agent-completion-request",
+		titleKey: "tip.agentCompletionRequest.title",
+		bodyKey: "tip.agentCompletionRequest.body",
+		icon: "\u{F06A9}", // nf-md-robot
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

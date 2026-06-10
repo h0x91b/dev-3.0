@@ -210,6 +210,8 @@ const tips = {
 	"tip.multiFolderAddProject.body": "В «Добавить проект» → «Локальная папка» зажмите Cmd и кликайте по нескольким папкам — они все добавятся за один шаг.",
 	"tip.statusColorRails.title": "Задачи окрашены по статусу",
 	"tip.statusColorRails.body": "У каждой задачи в списке Active Tasks слева цветная полоса по её статусу — сразу видно, кто работает, а кто ждёт.",
+	"tip.agentCompletionRequest.title": "Агент может запросить завершение",
+	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вы получаете диалог подтверждения — одобрите завершение или оставьте сессию.",
 };
 
 export default tips;

@@ -1,10 +1,13 @@
 import { connect } from "node:net";
 import type { CliRequest, CliResponse } from "../shared/types";
 
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 export async function sendRequest(
 	socketPath: string,
 	method: string,
 	params: Record<string, unknown> = {},
+	opts: { timeoutMs?: number } = {},
 ): Promise<CliResponse> {
 	const req: CliRequest = {
 		id: crypto.randomUUID(),
@@ -50,9 +53,10 @@ export async function sendRequest(
 			}
 		});
 
-		socket.setTimeout(30_000, () => {
+		const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+		socket.setTimeout(timeoutMs, () => {
 			socket.destroy();
-			reject(new Error("Socket timeout (30s)"));
+			reject(new Error(`Socket timeout (${Math.round(timeoutMs / 1000)}s)`));
 		});
 	});
 }
