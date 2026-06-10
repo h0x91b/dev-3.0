@@ -635,6 +635,28 @@ async function getStuckPreparationThresholdMs(): Promise<{ ms: number }> {
 	return { ms: STUCK_PREPARATION_FETCH_THRESHOLD_MS };
 }
 
+/**
+ * Locate the Zed CLI binary. Launching Zed via `open -a Zed <path>` reuses the
+ * already-running window and swaps its project, so opening worktree B replaces
+ * worktree A. The Zed CLI's `-n` flag is the only way to force a new window per
+ * worktree — but `-n` is a CLI flag `open` can't pass, so we must invoke the CLI
+ * directly. Prefer a binary on a common PATH location, then the `cli` bundled
+ * inside the app. Returns null if none is found (caller falls back to `open -a`).
+ */
+function resolveZedCli(): string | null {
+	const candidates = [
+		"/usr/local/bin/zed",
+		join(homedir(), ".local/bin/zed"),
+		"/opt/homebrew/bin/zed",
+		"/Applications/Zed.app/Contents/MacOS/cli",
+		join(homedir(), "Applications/Zed.app/Contents/MacOS/cli"),
+	];
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) return candidate;
+	}
+	return null;
+}
+
 async function openInApp(params: { appName: string; path: string }): Promise<void> {
 	log.info("→ openInApp", { appName: params.appName, path: params.path });
 	if (!params.path.startsWith("/") || params.path.includes("..")) {
@@ -646,6 +668,16 @@ async function openInApp(params: { appName: string; path: string }): Promise<voi
 	if (params.appName === "Finder") {
 		spawn(["open", params.path], { stdout: "ignore", stderr: "ignore" });
 		return;
+	}
+	// Zed reuses its current window when opened via `open -a`; use the Zed CLI's
+	// `-n` flag to give each worktree its own window. Fall back to `open -a` when
+	// the CLI binary can't be located.
+	if (params.appName === "Zed") {
+		const zedCli = resolveZedCli();
+		if (zedCli) {
+			spawn([zedCli, "-n", params.path], { stdout: "ignore", stderr: "ignore" });
+			return;
+		}
 	}
 	spawn(["open", "-a", params.appName, params.path], { stdout: "ignore", stderr: "ignore" });
 }

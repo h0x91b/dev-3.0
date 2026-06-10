@@ -7081,3 +7081,73 @@ describe("handlers.createPullRequest", () => {
 		).rejects.toThrow("Task has no worktree");
 	});
 });
+
+// handlers.openInApp — launching external editors / Finder.
+// Issue: Zed launched via `open -a Zed` reuses its window and swaps the
+// project, so worktree B replaces worktree A. The Zed CLI's `-n` flag is
+// required to give each worktree its own window.
+describe("handlers.openInApp", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(true);
+	});
+
+	it("opens a path in Finder via `open <path>`", async () => {
+		await handlers.openInApp({ appName: "Finder", path: "/tmp/work" });
+		expect(mockSpawn).toHaveBeenCalledWith(["open", "/tmp/work"], expect.anything());
+	});
+
+	it("opens non-Zed editors via `open -a <app> <path>`", async () => {
+		await handlers.openInApp({ appName: "Visual Studio Code", path: "/tmp/work" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["open", "-a", "Visual Studio Code", "/tmp/work"],
+			expect.anything(),
+		);
+	});
+
+	it("opens Zed in a NEW window via the bundled Zed CLI `-n` flag", async () => {
+		// Only the bundled cli inside the app exists (no `zed` on PATH).
+		vi.mocked(existsSync).mockImplementation(
+			(p) => p === "/Applications/Zed.app/Contents/MacOS/cli",
+		);
+		await handlers.openInApp({ appName: "Zed", path: "/tmp/work" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["/Applications/Zed.app/Contents/MacOS/cli", "-n", "/tmp/work"],
+			expect.anything(),
+		);
+	});
+
+	it("prefers a Zed CLI on PATH over the app bundle", async () => {
+		// All candidates exist → the first (PATH binary) wins.
+		vi.mocked(existsSync).mockReturnValue(true);
+		await handlers.openInApp({ appName: "Zed", path: "/tmp/work" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["/usr/local/bin/zed", "-n", "/tmp/work"],
+			expect.anything(),
+		);
+	});
+
+	it("falls back to `open -a Zed` when no Zed CLI is found", async () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		await handlers.openInApp({ appName: "Zed", path: "/tmp/work" });
+		expect(mockSpawn).toHaveBeenCalledWith(
+			["open", "-a", "Zed", "/tmp/work"],
+			expect.anything(),
+		);
+	});
+
+	it("rejects relative paths and path traversal", async () => {
+		await expect(
+			handlers.openInApp({ appName: "Zed", path: "relative/path" }),
+		).rejects.toThrow("Invalid path");
+		await expect(
+			handlers.openInApp({ appName: "Zed", path: "/tmp/../etc/passwd" }),
+		).rejects.toThrow("Invalid path");
+	});
+
+	it("rejects app names containing a slash", async () => {
+		await expect(
+			handlers.openInApp({ appName: "../evil", path: "/tmp/work" }),
+		).rejects.toThrow("Invalid app name");
+	});
+});
