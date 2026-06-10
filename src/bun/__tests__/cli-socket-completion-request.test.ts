@@ -150,7 +150,7 @@ describe("task.requestCompletion", () => {
 	});
 
 	it("pushes agentCompletionRequested and completes the task on approval", async () => {
-		const task = makeTask();
+		const task = makeTask({ overview: "Agent overview", userOverview: "User overview wins" });
 		setupTask(task);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -160,11 +160,15 @@ describe("task.requestCompletion", () => {
 		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
 
-		const [event, payload] = pushFn.mock.calls[0] as [string, { requestId: string; taskId: string; projectId: string; taskTitle: string }];
+		const [event, payload] = pushFn.mock.calls[0] as [
+			string,
+			{ requestId: string; taskId: string; projectId: string; taskTitle: string; taskOverview?: string },
+		];
 		expect(event).toBe("agentCompletionRequested");
 		expect(payload.taskId).toBe(task.id);
 		expect(payload.projectId).toBe("proj-1");
 		expect(payload.taskTitle).toBe("Test task");
+		expect(payload.taskOverview).toBe("User overview wins");
 
 		resolveCompletionRequest(payload.requestId, true);
 

@@ -4,7 +4,7 @@ const common = {
 	"app.branchMergedTitle": "Rama fusionada",
 	"app.branchMergedMessage": "Todos los cambios de \"{branchName}\" están en la rama base.\n\nTarea: {taskTitle}\n\n¿Marcar esta tarea como completada?",
 	"app.agentCompletionTitle": "El agente solicita completar la tarea",
-	"app.agentCompletionMessage": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nTarea: {taskTitle}\n\nAl aprobar se destruirán el worktree y la sesión de terminal.",
+	"app.agentCompletionMessage": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nAl aprobar se destruirán el worktree y la sesión de terminal.",
 	"app.agentCompletionConfirm": "Completar tarea",
 	"app.agentCompletionCancel": "Mantener sesión",
 

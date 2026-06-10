@@ -582,11 +582,14 @@ const handlers: Record<string, Handler> = {
 
 		const { requestId, decision, isNew } = createCompletionRequest(task.id, project.id);
 		if (isNew) {
+			// User-edited overview overrides the agent-written one, same as in cards.
+			const overview = task.userOverview?.trim() || task.overview?.trim() || undefined;
 			push("agentCompletionRequested", {
 				requestId,
 				taskId: task.id,
 				projectId: project.id,
 				taskTitle: getTaskTitle(task),
+				taskOverview: overview,
 			});
 		}
 

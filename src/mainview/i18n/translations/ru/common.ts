@@ -4,7 +4,7 @@ const common = {
 	"app.branchMergedTitle": "Ветка смержена",
 	"app.branchMergedMessage": "Все изменения из «{branchName}» уже в основной ветке.\n\nЗадача: {taskTitle}\n\nПеревести задачу в «Завершено»?",
 	"app.agentCompletionTitle": "Агент просит завершить задачу",
-	"app.agentCompletionMessage": "ИИ-агент, работающий над этой задачей, сообщает, что полностью закончил, и просит перевести задачу в «Завершено».\n\nЗадача: {taskTitle}\n\nПодтверждение уничтожит worktree и терминальную сессию.",
+	"app.agentCompletionMessage": "ИИ-агент, работающий над этой задачей, сообщает, что полностью закончил, и просит перевести задачу в «Завершено».\n\nПодтверждение уничтожит worktree и терминальную сессию.",
 	"app.agentCompletionConfirm": "Завершить задачу",
 	"app.agentCompletionCancel": "Оставить сессию",
 
