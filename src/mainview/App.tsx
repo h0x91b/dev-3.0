@@ -522,6 +522,49 @@ function App() {
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
 	}, [dispatch, navigate, t]);
 
+	// Listen for agent-initiated completion requests — the CLI is blocked on a
+	// socket waiting for the user's decision, so always respond, even on cancel.
+	useEffect(() => {
+		async function onAgentCompletionRequested(e: Event) {
+			const { requestId, taskId, projectId, taskTitle, taskOverview } = (e as CustomEvent).detail as {
+				requestId: string;
+				taskId: string;
+				projectId: string;
+				taskTitle: string;
+				taskOverview?: string;
+			};
+			let approved = false;
+			try {
+				approved = await confirm({
+					title: t("app.agentCompletionTitle"),
+					message: t("app.agentCompletionMessage"),
+					info: { title: taskTitle, body: taskOverview },
+					confirmLabel: t("app.agentCompletionConfirm"),
+					cancelLabel: t("app.agentCompletionCancel"),
+					danger: true,
+					agentInitiated: true,
+				});
+			} catch (err) {
+				console.error("[App] confirm (agent-completion) failed:", err);
+			}
+			if (approved) {
+				// Leave the task's full-screen terminal BEFORE the worktree is
+				// destroyed (same reasoning as the branch-merged flow above).
+				const currentRoute = routeRef.current;
+				if (currentRoute.screen === "task" && currentRoute.taskId === taskId) {
+					navigate({ screen: "project", projectId });
+				}
+				dispatch({ type: "clearBell", taskId });
+				trackEvent("task_moved", { to_status: "completed", agent_requested: true });
+			}
+			api.request.respondToAgentCompletionRequest({ requestId, approved }).catch((err) =>
+				console.error("respondToAgentCompletionRequest failed:", err),
+			);
+		}
+		window.addEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+		return () => window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+	}, [dispatch, navigate, t]);
+
 	// Listen for silent update ready notification
 	useEffect(() => {
 		function onUpdateAvailable(e: Event) {

@@ -8,6 +8,19 @@ export interface ConfirmOptions {
 	cancelLabel?: string;
 	/** Style the confirm button as destructive (red). */
 	danger?: boolean;
+	/**
+	 * Mark the dialog as initiated by an AI agent, not by the user's own click:
+	 * shows a robot badge, an accent border, and autofocuses Cancel so muscle
+	 * memory cannot accidentally approve a session-destroying request.
+	 */
+	agentInitiated?: boolean;
+	/**
+	 * Optional highlighted subject card rendered between the title and the
+	 * message — an accent-tinted panel with a prominent title (e.g. the task
+	 * name) and an optional secondary line (e.g. the task overview). Use it
+	 * when the dialog is *about* a specific object the user must recognize.
+	 */
+	info?: { title: string; body?: string };
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -67,12 +80,51 @@ export function ConfirmHost() {
 				if (e.target === e.currentTarget) close(false);
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4">
+			<div
+				className={`bg-overlay border rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4 ${
+					pending.agentInitiated ? "border-accent/40" : "border-edge"
+				}`}
+			>
+				{pending.agentInitiated && (
+					<div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 text-accent text-xs font-medium">
+						<span
+							className="text-sm leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F06A9}"}
+						</span>
+						{t("confirmDialog.agentBadge")}
+					</div>
+				)}
 				<h2 className="text-fg text-lg font-semibold">{pending.title}</h2>
+				{pending.info && (
+					<div className="rounded-xl bg-accent/10 border border-accent/30 px-4 py-3">
+						<div className="flex items-start gap-2">
+							<span
+								className="text-accent text-[1.0625rem] leading-snug"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\u{F0AE2}"}
+							</span>
+							{/* `text-base` is unusable here: the project defines a `base` color
+							    token, so Tailwind also emits text-base as a COLOR utility that
+							    overrides text-accent. Use an arbitrary font-size instead. */}
+							<div className="text-accent text-[1.0625rem] font-semibold leading-snug">
+								{pending.info.title}
+							</div>
+						</div>
+						{pending.info.body && (
+							<div className="text-fg-2 text-sm leading-relaxed mt-1.5 whitespace-pre-line">
+								{pending.info.body}
+							</div>
+						)}
+					</div>
+				)}
 				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
 				<div className="flex justify-end gap-2 pt-1">
 					<button
 						type="button"
+						autoFocus={pending.agentInitiated}
 						onClick={() => close(false)}
 						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 					>
