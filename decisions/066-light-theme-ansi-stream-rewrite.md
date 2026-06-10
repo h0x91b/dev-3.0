@@ -1,8 +1,8 @@
-# Light theme: rewrite pale ANSI colors in the PTY stream
+# Theme-adaptive ANSI color rewrite in the PTY stream
 
 ## Context
 
-In the light theme, Claude Code output was unreadable: removed diff lines, file paths, and spinners washed out on the white background. Captured SGR codes via `tmux capture-pane -e`: pale 256-color indexes (`38;5;183`, `38;5;226`, `38;5;51`, `38;5;114`) and `SGR 2` (dim) on `37` (white).
+In the light theme, Claude Code output was unreadable: removed diff lines, file paths, and spinners washed out on the white background. Captured SGR codes via `tmux capture-pane -e`: pale 256-color indexes (`38;5;183`, `38;5;226`, `38;5;51`, `38;5;114`) and `SGR 2` (dim) on `37` (white). The mirror problem appeared in the dark theme with Codex: it emits GitHub-light syntax truecolors (`38;2;51;51;51`, `38;2;24;54;145`, `38;2;167;29;93`) regardless of the terminal background — the terminal answers Codex's OSC 11 background query correctly (verified), Codex simply does not adapt.
 
 ## Investigation
 
@@ -10,16 +10,19 @@ ghostty-web's `ITheme` only covers the 16 ANSI colors; 256-color indexes are res
 
 ## Decision
 
-Added `src/mainview/utils/ansi-light-adapt.ts` — a stateful stream filter applied in `TerminalView.tsx` (`enqueueTermWrite` flush) only when the light theme is active. It drops standalone `SGR 2`, and rewrites pale foregrounds (`38;5;N` with N≥16, `38;2;R;G;B`) whose relative luminance exceeds 0.55 to a darkened truecolor (~0.42 luminance). Sequences split across WS chunks are carried over to the next flush. Also darkened `LIGHT_TERMINAL_THEME` entries (white, brightBlack, yellow, brightYellow) to GitHub Primer light fg values.
+Added `src/mainview/utils/ansi-theme-adapt.ts` — a stateful stream filter applied in `TerminalView.tsx` (`enqueueTermWrite` flush) with the resolved theme as mode. Light mode: drops standalone `SGR 2`, rewrites pale foregrounds (`38;5;N` with N≥16, `38;2;R;G;B`) whose relative luminance exceeds 0.55 to a darkened truecolor (~0.42 luminance). Dark mode: keeps dim, brightens foregrounds below 0.25 luminance by blending toward white (~0.38 target; blend handles pure black without division by zero). Sequences split across WS chunks are carried over to the next flush. Also darkened `LIGHT_TERMINAL_THEME` entries (white, brightBlack, yellow, brightYellow) to GitHub Primer light fg values.
 
-Darkening `white` created a follow-up conflict: Claude Code's light-ansi theme paints message bars with `ansi:white` as a *background* (`SGR 47`) and dark fg (30/90) on top — a dark-on-dark bar. The filter therefore splits the roles of index 7/15: as text (37/97) they stay dark, as backgrounds (47/107, 48;5;7, 48;5;15) they are rewritten to light gray truecolor (220/240), matching Claude Code's own non-ansi light theme bar colors.
+Darkening `white` created a follow-up conflict: Claude Code's light-ansi theme paints message bars with `ansi:white` as a *background* (`SGR 47`) and dark fg (30/90) on top — a dark-on-dark bar. The filter therefore splits the roles of index 7/15 in light mode: as text (37/97) they stay dark, as backgrounds (47/107, 48;5;7, 48;5;15) they are rewritten to light gray truecolor (220/240), matching Claude Code's own non-ansi light theme bar colors.
+
+Foreground adjustment in both modes is gated by cross-sequence state: while an explicit background (40-47, 100-107, 48;…) or reverse video (SGR 7) is active, foregrounds pass through untouched. Apps pick those foregrounds *for that background* (vim themes, selection bars), so "fixing" them would break intentional contrast. The gate state persists across chunk boundaries.
 
 ## Risks
 
-Dropping dim loses the muted-vs-normal distinction in light mode (diff add/remove still differ by their red/green markers). Colors written while one theme is active stay resolved in scrollback after a theme switch until the app repaints. Backgrounds are intentionally untouched — darkening pale backgrounds would invert intent.
+Dropping dim loses the muted-vs-normal distinction in light mode (diff add/remove still differ by their red/green markers). Colors written while one theme is active stay resolved in scrollback after a theme switch until the app repaints. Light-mode pale backgrounds are intentionally untouched — darkening them would invert intent. The gate only sees SGR; an app that sets a background via OSC or DEC private modes would not trip it (not observed in practice).
 
 ## Alternatives considered
 
 - Remapping via theme palette: impossible for 256-color indexes (resolved in WASM).
 - OSC 4 palette redefinition: not supported by ghostty-web.
 - Stateful dim→blended-color emulation (tracking fg across sequences): better fidelity but significantly more complex; dropping dim is predictable and readable.
+- Asking Codex to adapt (it queries OSC 11 and gets a correct dark reply): upstream behavior we cannot control; symptom must be fixed on our side.

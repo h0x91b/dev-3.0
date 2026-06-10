@@ -10,7 +10,7 @@ import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
-import { createAnsiLightFilter } from "./utils/ansi-light-adapt";
+import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -707,9 +707,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		let writeRafId: number | null = null;
 		// Reference to the terminal for batched writes (set by connectPty)
 		let batchTerm: Terminal | null = null;
-		// Rewrites pale 256-color / dim SGR codes that are unreadable on a
-		// light background. No-op in dark mode. See utils/ansi-light-adapt.ts.
-		const lightFilter = createAnsiLightFilter();
+		// Rewrites SGR colors unreadable on the current background: pale/dim
+		// in light mode, too-dark ink in dark mode. See utils/ansi-theme-adapt.ts.
+		const themeFilter = createAnsiThemeFilter();
 
 		function enqueueTermWrite(data: string) {
 			pendingWrite += data;
@@ -717,7 +717,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				writeRafId = requestAnimationFrame(() => {
 					writeRafId = null;
 					if (disposed || !pendingWrite || !batchTerm) return;
-					const batch = lightFilter(pendingWrite, resolvedThemeRef.current === "light");
+					const batch = themeFilter(pendingWrite, resolvedThemeRef.current);
 					pendingWrite = "";
 					if (!batch) return;
 					try {
