@@ -175,7 +175,7 @@ ux_architecture:
       evidence: ["src/mainview/diagnostics.ts", "src/mainview/components/RootErrorBoundary.tsx", "src/mainview/components/BootstrapScreen.tsx", "src/mainview/components/DiagnosticsPanel.tsx", "src/mainview/components/StatusDock.tsx", "src/mainview/components/ConnectionStatusPill.tsx", "src/mainview/components/DiagnosticsIndicator.tsx", "src/mainview/components/KanbanBoardSkeleton.tsx", "src/mainview/components/BoardLoadFailed.tsx", "src/mainview/index.html (pre-React loader)"]
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
-      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout"]
+      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout", "voice_dictation_toggle"]
       ambient_resource_readout:
         budget: 1   # currently memory headroom; a second one folds into the narrow sheet instead
         spec: "Permanent on roomy widths. Shows headroom LEFT (free GB), never a bare quantity labelled 'memory'; colour = OS pressure verdict (normal -> text-fg-3 neutral, warn -> text-warning, critical -> text-danger); never success-green (green means Completed here). Hover/tap opens a breakdown: system, swap, top-5 consumers outside the app, then the app's own share split from the agent share. NOT a link."
@@ -185,6 +185,12 @@ ux_architecture:
       forbidden: ["task_scoped_action", "dense_filters", "destructive_primary"]
       note: "history_nav = back/forward arrows pinned at the far left of the breadcrumb row (browser convention), driven by the route-history stack in state.ts. Also bound to Cmd+[/Cmd+] and mouse side buttons. Buttons are neutral/ghost icon-only and disable when canGoBack/canGoForward is false."
       evidence: ["src/mainview/components/GlobalHeader.tsx", "src/mainview/state.ts (routeHistory/goBack/goForward)", "src/mainview/App.tsx (Cmd+[/], mouseup buttons 3/4)"]
+    dictation_pill:
+      purpose: "Transient bottom-center overlay showing the voice-dictation state (recording / transcribing) with Stop and Cancel."
+      allowed: ["recording_status", "audio_level", "target_hint", "stop_action", "cancel_action"]
+      forbidden: ["navigation", "configuration", "unrelated_actions", "focus_stealing"]
+      status: "proposed" # see docs/ux/feature-plans/voice-dictation.md
+      evidence: ["docs/ux/feature-plans/voice-dictation.md"]
     application_menu:
       purpose: "Native macOS/Linux menu bar; canonical home for the full action taxonomy (File / Edit / Task / Project / View / Debug)."
       allowed: ["destination", "task_action", "project_action", "git_action", "dev_server_action", "destructive", "expert_shortcut"]

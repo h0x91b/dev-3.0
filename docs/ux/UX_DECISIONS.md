@@ -312,6 +312,12 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - **Why:** configuration-in-settings rule + nav budget ≤7. Rejected: a top-level "Automations" destination (a single-feature screen violates the nav budget) and a board-level panel (durable config on an operational surface).
 - **Status:** Observed. Evidence: bible §3 (Automation), yaml `objects.automation`, `ProjectSettings.tsx`, `automations-scheduler.ts`.
 
+## 2026-07-05 — Voice dictation: global focus-follow with a "Send by default" delivery mode
+
+- **Rule:** NerdDictum dictation is one global mechanism — header mic ghost-button (stateful-indicators zone) + `⇧⌘M` capture-phase hotkey (works with terminal focus) + a bottom-center dictation pill; the target (editable / terminal / clipboard fallback) is captured at record-start. Delivery has two modes: **Send** (default; terminal = `handle.paste()` + `\r` à la `TerminalComposer`, single-line input = insert + Enter keydown, textarea = insert only) and **Insert only**; the pill's secondary stop / `Shift` variants fire the non-default mode one-shot. Hard-gated on a Google Gemini key (settings or `GEMINI_API_KEY` env — key stays in the bun process); unconfigured entry points open a React setup modal. Plan: `feature-plans/voice-dictation.md`.
+- **Why:** Per-input mics = button creep across dozens of fields and useless for the terminal — the dominant surface — so the global focus-follow mechanism must exist anyway. Send-by-default matches the primary job (voice-prompting agents in one shot) while the opposite mode stays one gesture away. Rejected: per-input mics; an always-floating widget (duplicates the header control); menu-only entry (absent in browser mode).
+- **Status:** Proposed (plan; implementation pending).
+
 ## 2026-07-05 — Agent rate-limit indicator is ambient header status, not a cockpit metric
 
 - **Rule:** account-wide agent rate-limit usage renders as a passive icon+percent indicator in the global header's stateful-indicators zone (next to prevent-sleep); hidden until data exists, `warning` token ≥80%, `danger` ≥95%; its enable toggle lives in Global Settings → Agents (`rate-limit-tracking` entry, `settings-registry.ts`).
