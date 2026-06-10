@@ -526,17 +526,19 @@ function App() {
 	// socket waiting for the user's decision, so always respond, even on cancel.
 	useEffect(() => {
 		async function onAgentCompletionRequested(e: Event) {
-			const { requestId, taskId, projectId, taskTitle } = (e as CustomEvent).detail as {
+			const { requestId, taskId, projectId, taskTitle, taskOverview } = (e as CustomEvent).detail as {
 				requestId: string;
 				taskId: string;
 				projectId: string;
 				taskTitle: string;
+				taskOverview?: string;
 			};
 			let approved = false;
 			try {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
-					message: t("app.agentCompletionMessage", { taskTitle }),
+					message: t("app.agentCompletionMessage"),
+					info: { title: taskTitle, body: taskOverview },
 					confirmLabel: t("app.agentCompletionConfirm"),
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,

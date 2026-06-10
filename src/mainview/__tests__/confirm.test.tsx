@@ -90,6 +90,29 @@ describe("confirm service", () => {
 		expect(cancelBtn).toHaveFocus();
 	});
 
+	it("renders the info subject card with title and body", async () => {
+		renderHost();
+		act(() => {
+			void confirm({
+				title: "Agent asks",
+				message: "M",
+				info: { title: "My important task", body: "Implementing the thing; almost done." },
+			});
+		});
+
+		expect(await screen.findByText("My important task")).toBeInTheDocument();
+		expect(screen.getByText("Implementing the thing; almost done.")).toBeInTheDocument();
+	});
+
+	it("renders the info card without a body when body is omitted", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Agent asks", message: "M", info: { title: "Title only" } });
+		});
+
+		expect(await screen.findByText("Title only")).toBeInTheDocument();
+	});
+
 	it("resolves false when no host is mounted", async () => {
 		// No ConfirmHost rendered → fail-closed.
 		await expect(confirm({ title: "T", message: "M" })).resolves.toBe(false);

@@ -14,6 +14,13 @@ export interface ConfirmOptions {
 	 * memory cannot accidentally approve a session-destroying request.
 	 */
 	agentInitiated?: boolean;
+	/**
+	 * Optional highlighted subject card rendered between the title and the
+	 * message — an accent-tinted panel with a prominent title (e.g. the task
+	 * name) and an optional secondary line (e.g. the task overview). Use it
+	 * when the dialog is *about* a specific object the user must recognize.
+	 */
+	info?: { title: string; body?: string };
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -90,6 +97,16 @@ export function ConfirmHost() {
 					</div>
 				)}
 				<h2 className="text-fg text-lg font-semibold">{pending.title}</h2>
+				{pending.info && (
+					<div className="rounded-xl bg-accent/10 border border-accent/25 px-4 py-3">
+						<div className="text-accent text-base font-semibold leading-snug">{pending.info.title}</div>
+						{pending.info.body && (
+							<div className="text-fg-2 text-sm leading-relaxed mt-1.5 whitespace-pre-line">
+								{pending.info.body}
+							</div>
+						)}
+					</div>
+				)}
 				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
 				<div className="flex justify-end gap-2 pt-1">
 					<button

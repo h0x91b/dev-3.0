@@ -1632,7 +1632,7 @@ export type AppRPCSchema = {
 			 * blocks on the user's decision; the renderer shows an AI-styled confirm
 			 * dialog and answers via `respondToAgentCompletionRequest`.
 			 */
-			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string };
+			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string; taskOverview?: string };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
