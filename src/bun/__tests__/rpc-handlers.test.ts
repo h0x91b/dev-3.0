@@ -64,6 +64,7 @@ vi.mock("../git", () => ({
 	getBranchDiffStats: vi.fn(),
 	canRebaseCleanly: vi.fn(),
 	isContentMergedInto: vi.fn(),
+	isBranchMergedViaGitHubPR: vi.fn(),
 	cloneRepo: vi.fn(),
 	extractRepoName: vi.fn(),
 	getCurrentBranch: vi.fn(),
@@ -6147,6 +6148,9 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		stopMergeDetectionPoller();
 		_resetMergePollerState();
 		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		// clearAllMocks does not reset implementations left by earlier describe
+		// blocks (e.g. isWorktreeDirty -> true), so pin a clean worktree here.
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
 		vi.mocked(data.updateTask).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => makeTask(patch));
 	});
 
@@ -6466,6 +6470,242 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 
 		expect(push).not.toHaveBeenCalled();
 		expect(git.isContentMergedInto).not.toHaveBeenCalled();
+	});
+
+	it("re-prompts a precise prompt that was reserved over an hour ago but never answered", async () => {
+		// App restart / undelivered push leaves promptedAt set with dismissedAt
+		// null — the popup was lost and must come back, not be muted forever.
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(),
+				dismissedAt: null,
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
+			taskId: task.id,
+			fingerprint: "v1:dev3/task-test:abc123",
+		}));
+	});
+
+	it("does not re-prompt a precise unanswered prompt within the retry window", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+				dismissedAt: null,
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	it("never re-prompts a precise prompt the user dismissed, even after the retry window", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+				dismissedAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	it("checks suppression before running expensive merge detection for dismissed prompts", async () => {
+		// Dismissed tasks must not burn git/gh calls on every 60s tick.
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+				dismissedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(git.isContentMergedInto).not.toHaveBeenCalled();
+		expect(git.getUnpushedCount).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	it("falls back to the GitHub merged-PR check when the remote branch is gone (unpushed === -1)", async () => {
+		// delete_branch_on_merge prunes origin/<branch> after the PR lands;
+		// getUnpushedCount then returns -1 and the merged task was silently skipped.
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(git.isBranchMergedViaGitHubPR).toHaveBeenCalledWith("/tmp/test-worktree", project);
+		expect(git.isContentMergedInto).not.toHaveBeenCalled();
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
+			taskId: task.id,
+			fingerprint: "v1:dev3/task-test:abc123",
+		}));
+	});
+
+	it("does not prompt when the remote branch is gone and GitHub has no matching merged PR", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	it("does not prompt or reserve while the worktree is dirty, then prompts once clean", async () => {
+		// The popup claims "no changes left" — a dirty worktree means changes
+		// DO remain, and completing the task would destroy them.
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(data.updateTask).not.toHaveBeenCalled();
+
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({ taskId: task.id }));
+	});
+
+	it("re-prompts in the same session when an unanswered in-memory reservation expires", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(push).toHaveBeenCalledTimes(1);
+
+		// loadTasks keeps returning the task without persisted prompt state,
+		// so only the in-memory reservation suppresses re-prompts here.
+		await vi.advanceTimersByTimeAsync(62 * 60_000);
+		expect(push).toHaveBeenCalledTimes(2);
 	});
 });
 

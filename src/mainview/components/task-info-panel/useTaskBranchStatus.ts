@@ -101,6 +101,13 @@ export function useTaskBranchStatus({
 		let cancelled = false;
 		let timer: ReturnType<typeof setTimeout> | null = null;
 
+		// mergedByContent is computed against whatever ref the user selected in
+		// the compare dropdown. The completion prompt is only meaningful against
+		// the task's real base branch — comparing against another ref must never
+		// trigger a "Branch Merged" popup.
+		const isDefaultBaseCompare =
+			!compareRef || compareRef === baseBranch || compareRef === `origin/${baseBranch}`;
+
 		const fetchStatus = async () => {
 			try {
 				const status = await api.request.getBranchStatus({
@@ -114,6 +121,11 @@ export function useTaskBranchStatus({
 
 					if (
 						status.mergedByContent &&
+						isDefaultBaseCompare &&
+						// The popup claims "no changes left" — uncommitted changes
+						// mean that's false, and completing would destroy them.
+						status.insertions === 0 &&
+						status.deletions === 0 &&
 						MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) &&
 						!mergeDialogShownRef.current
 					) {
@@ -164,6 +176,7 @@ export function useTaskBranchStatus({
 			}
 		};
 	}, [
+		baseBranch,
 		compareRef,
 		completeTask,
 		isTaskActive,
@@ -222,6 +235,11 @@ export function useTaskBranchStatus({
 			}
 
 			if (detail.operation === "merge" && detail.ok) {
+				// Completing the task destroys the worktree — never offer it while
+				// uncommitted changes remain.
+				if (refreshedStatus && (refreshedStatus.insertions > 0 || refreshedStatus.deletions > 0)) {
+					return;
+				}
 				const promptState = await api.request.prepareMergeCompletionPrompt({
 					taskId: task.id,
 					projectId: project.id,

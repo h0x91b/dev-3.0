@@ -22,7 +22,7 @@ vi.mock("../spawn", async () => {
 	return createSpawnMock(() => ghPrListResponse);
 });
 
-import { isContentMergedInto } from "../git";
+import { isBranchMergedViaGitHubPR, isContentMergedInto } from "../git";
 import { createTestRepo, cleanup, makeTaskCommits, g, type TestRepo } from "./git-test-helpers";
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -252,6 +252,75 @@ describe("isContentMergedInto", () => {
 		g("git checkout task-branch", repo.local);
 
 		const result = await isContentMergedInto(repo.local, "origin/main");
+		expect(result).toBe(false);
+	});
+});
+
+describe("isBranchMergedViaGitHubPR", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		ghPrListResponse = "[]";
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("returns true when a merged PR's head commit matches the current local HEAD", async () => {
+		// Simulates delete_branch_on_merge: the PR merged and origin/<branch>
+		// was pruned, so content strategies are unavailable — gh is the source
+		// of truth.
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const headSha = g("git rev-parse HEAD", repo.local).trim();
+		ghPrListResponse = JSON.stringify([{ number: 42, headRefOid: headSha }]);
+
+		const result = await isBranchMergedViaGitHubPR(repo.local);
+		expect(result).toBe(true);
+	});
+
+	it("returns false when no merged PR exists for the branch", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const result = await isBranchMergedViaGitHubPR(repo.local);
+		expect(result).toBe(false);
+	});
+
+	it("returns false when the merged PR's head commit does not match current HEAD (reused branch name)", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		ghPrListResponse = JSON.stringify([
+			{ number: 7, headRefOid: "0000000000000000000000000000000000000000" },
+		]);
+
+		const result = await isBranchMergedViaGitHubPR(repo.local);
+		expect(result).toBe(false);
+	});
+
+	it("returns false on detached HEAD", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		const headSha = g("git rev-parse HEAD", repo.local).trim();
+		g(`git checkout --detach ${headSha}`, repo.local);
+
+		ghPrListResponse = JSON.stringify([{ number: 42, headRefOid: headSha }]);
+
+		const result = await isBranchMergedViaGitHubPR(repo.local);
+		expect(result).toBe(false);
+	});
+
+	it("returns false when gh output is not valid JSON", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		ghPrListResponse = "gh: command failed";
+
+		const result = await isBranchMergedViaGitHubPR(repo.local);
 		expect(result).toBe(false);
 	});
 });

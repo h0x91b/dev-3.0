@@ -1796,6 +1796,86 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("does not offer auto-complete when comparing against a non-base ref", async () => {
+			// mergedByContent is computed against the user-selected compare ref;
+			// a custom ref must never trigger the "Branch Merged" popup.
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-user" });
+			const customCompareProject = { ...project, defaultCompareRef: "origin/develop" };
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate, project: customCompareProject });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					compareRef: "origin/develop",
+				});
+			});
+			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+		});
+
+		it("does not offer auto-complete while the worktree has uncommitted changes", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-user" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+				insertions: 5,
+				deletions: 2,
+				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.getBranchStatus).toHaveBeenCalled();
+			});
+			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+		});
+
+		it("does not offer auto-complete after a merge while uncommitted changes remain", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "in-progress" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				insertions: 5,
+				deletions: 2,
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await act(async () => {
+				renderPanel(task, { dispatch, navigate });
+			});
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:gitOpCompleted", {
+						detail: { taskId: "t1", operation: "merge", ok: true },
+					}),
+				);
+			});
+
+			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+		});
+
 		it("does not show a second merge-complete dialog while one is already open", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
