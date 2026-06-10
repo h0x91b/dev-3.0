@@ -46,8 +46,9 @@ const DARK_LUMINANCE_THRESHOLD = 0.25;
 const DARK_LUMINANCE_TARGET = 0.38;
 // Near-black colors lose chroma when brightened (gray on dark reads worse
 // than a color of equal luminance), so the target ramps up as the input
-// approaches pure black: lum 0 → target 0.50, lum at threshold → 0.38.
-const DARK_NEAR_BLACK_BOOST = 0.12;
+// approaches pure black: lum 0 → target 0.60 (#999 gray), lum at
+// threshold → 0.38.
+const DARK_NEAR_BLACK_BOOST = 0.22;
 
 function luminance(r: number, g: number, b: number): number {
 	return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
