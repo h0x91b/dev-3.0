@@ -98,8 +98,21 @@ export function ConfirmHost() {
 				)}
 				<h2 className="text-fg text-lg font-semibold">{pending.title}</h2>
 				{pending.info && (
-					<div className="rounded-xl bg-accent/10 border border-accent/25 px-4 py-3">
-						<div className="text-accent text-base font-semibold leading-snug">{pending.info.title}</div>
+					<div className="rounded-xl bg-accent/10 border border-accent/30 px-4 py-3">
+						<div className="flex items-start gap-2">
+							<span
+								className="text-accent text-[1.0625rem] leading-snug"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\u{F0AE2}"}
+							</span>
+							{/* `text-base` is unusable here: the project defines a `base` color
+							    token, so Tailwind also emits text-base as a COLOR utility that
+							    overrides text-accent. Use an arbitrary font-size instead. */}
+							<div className="text-accent text-[1.0625rem] font-semibold leading-snug">
+								{pending.info.title}
+							</div>
+						</div>
 						{pending.info.body && (
 							<div className="text-fg-2 text-sm leading-relaxed mt-1.5 whitespace-pre-line">
 								{pending.info.body}
