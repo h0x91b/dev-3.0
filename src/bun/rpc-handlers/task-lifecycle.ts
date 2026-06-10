@@ -7,6 +7,7 @@ import * as pty from "../pty-server";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
+import { resolveCompletionRequest } from "../completion-requests";
 import { DEV3_HOME } from "../paths";
 import {
 	assertTaskPreparationActive,
@@ -1047,6 +1048,13 @@ async function toggleTaskWatch(params: { taskId: string; projectId: string; watc
 	return updated;
 }
 
+async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
+	const known = resolveCompletionRequest(params.requestId, params.approved);
+	if (!known) {
+		log.debug("respondToAgentCompletionRequest: request expired or unknown", { requestId: params.requestId });
+	}
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
@@ -1062,4 +1070,5 @@ export const taskLifecycleHandlers = {
 	setUserOverview,
 	clearUserOverview,
 	toggleTaskWatch,
+	respondToAgentCompletionRequest,
 };

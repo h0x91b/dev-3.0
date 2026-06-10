@@ -61,6 +61,35 @@ describe("confirm service", () => {
 		expect(screen.getByRole("button", { name: "No" })).toBeInTheDocument();
 	});
 
+	it("shows the AI agent badge for agent-initiated confirms", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Agent asks", message: "M", agentInitiated: true });
+		});
+
+		expect(await screen.findByText("AI agent request")).toBeInTheDocument();
+	});
+
+	it("does not show the AI agent badge for regular confirms", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Plain", message: "M" });
+		});
+
+		await screen.findByText("Plain");
+		expect(screen.queryByText("AI agent request")).not.toBeInTheDocument();
+	});
+
+	it("focuses the cancel button for agent-initiated confirms", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Agent asks", message: "M", agentInitiated: true, cancelLabel: "Keep session" });
+		});
+
+		const cancelBtn = await screen.findByRole("button", { name: "Keep session" });
+		expect(cancelBtn).toHaveFocus();
+	});
+
 	it("resolves false when no host is mounted", async () => {
 		// No ConfirmHost rendered → fail-closed.
 		await expect(confirm({ title: "T", message: "M" })).resolves.toBe(false);

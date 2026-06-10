@@ -1623,6 +1623,15 @@ export type AppRPCSchema = {
 				params: { focused: boolean };
 				response: void;
 			};
+			/**
+			 * Renderer answers an `agentCompletionRequested` dialog. Approval makes
+			 * the blocked CLI request execute the move to `completed`; decline just
+			 * releases it with a refusal.
+			 */
+			respondToAgentCompletionRequest: {
+				params: { requestId: string; approved: boolean };
+				response: void;
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
@@ -1635,6 +1644,12 @@ export type AppRPCSchema = {
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null };
+			/**
+			 * Emitted when an agent runs `dev3 task move --status completed`. The CLI
+			 * blocks on the user's decision; the renderer shows an AI-styled confirm
+			 * dialog and answers via `respondToAgentCompletionRequest`.
+			 */
+			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };

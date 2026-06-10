@@ -1,5 +1,6 @@
-import type { Task, TaskStatus } from "../../shared/types";
+import type { CliResponse, Task, TaskStatus } from "../../shared/types";
 import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
+import { CLI_EXIT_CODE_COMPLETION_DECLINED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
@@ -7,10 +8,15 @@ import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
-// Statuses that destroy the worktree + terminal are forbidden via CLI.
-// An agent running inside a worktree must not be able to kill its own session.
+// Statuses that destroy the worktree + terminal are not directly reachable via
+// CLI. `completed` is special-cased: it becomes a blocking approval request the
+// user answers in the app. `cancelled` stays fully forbidden — an agent must
+// not be able to silently kill its own session.
 const DESTRUCTIVE_STATUSES: TaskStatus[] = ["completed", "cancelled"];
 const CLI_ALLOWED_STATUSES = ALL_STATUSES.filter((s) => !DESTRUCTIVE_STATUSES.includes(s));
+
+// How long the CLI waits for the user to answer the approval dialog.
+const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 function formatDate(iso: string): string {
 	const d = new Date(iso);
@@ -161,6 +167,57 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
 }
 
+async function requestCompletion(
+	taskId: string,
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+	codexStopHook: boolean,
+): Promise<void> {
+	const params: Record<string, unknown> = { taskId };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	process.stderr.write(
+		"Completing a task destroys its worktree and terminal session, so it requires user approval.\n" +
+		"Waiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n",
+	);
+
+	let resp: CliResponse;
+	try {
+		resp = await sendRequest(socketPath, "task.requestCompletion", params, {
+			timeoutMs: COMPLETION_APPROVAL_TIMEOUT_MS,
+		});
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
+			exitError(
+				"Timed out waiting for the user's decision",
+				"The approval dialog may still be open in the app — if the user approves later, the task will complete and this session will be destroyed.",
+			);
+		}
+		throw err;
+	}
+	if (!resp.ok) exitError(resp.error || "Failed to request task completion");
+
+	const result = resp.data as { approved: boolean; task?: Task };
+	if (!result.approved) {
+		exitError(
+			"User declined the completion request",
+			"The task keeps its current status and this session stays alive.\nContinue working or ask the user what they want to change before completing.",
+			CLI_EXIT_CODE_COMPLETION_DECLINED,
+		);
+	}
+
+	if (codexStopHook) {
+		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+		return;
+	}
+	process.stdout.write(
+		`User approved — task ${(result.task?.id ?? taskId).slice(0, 8)} moved to Completed.\n` +
+		"This worktree and terminal session are being destroyed now.\n",
+	);
+}
+
 async function moveTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "status", "if-status", "if-status-not", CODEX_STOP_HOOK_FLAG.slice(2)]);
 	const taskId = resolveTaskId(args, context);
@@ -170,12 +227,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const newStatus = args.flags.status;
 	if (!newStatus) {
-		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; or a custom column ID (see \`dev3 current\`)`);
+		exitUsage(`--status is required. Valid built-in: ${CLI_ALLOWED_STATUSES.join(", ")}; \`completed\` (asks the user for approval); or a custom column ID (see \`dev3 current\`)`);
 	}
-	if (DESTRUCTIVE_STATUSES.includes(newStatus as TaskStatus)) {
+	if (newStatus === "cancelled") {
 		exitError(
-			`Cannot move to "${newStatus}" via CLI`,
-			`This status destroys the worktree and terminal session.\nUse the desktop app UI to mark tasks as ${newStatus}.`,
+			`Cannot move to "cancelled" via CLI`,
+			`This status destroys the worktree and terminal session.\nUse the desktop app UI to mark tasks as cancelled.`,
 		);
 	}
 	// Non-built-in values may be custom column IDs — let the server validate
@@ -183,6 +240,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const ifStatus = args.flags["if-status"];
 	const ifStatusNot = args.flags["if-status-not"];
 	const codexStopHook = args.flags[CODEX_STOP_HOOK_FLAG.slice(2)] === "true";
+
+	// `completed` is not a direct move — it asks the user for approval in the
+	// app and blocks until they answer (or the wait times out).
+	if (newStatus === "completed") {
+		return requestCompletion(taskId, args, socketPath, context, codexStopHook);
+	}
 
 	const params: Record<string, unknown> = { taskId, newStatus };
 	if (ifStatus) params.ifStatus = ifStatus;

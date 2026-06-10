@@ -3,6 +3,10 @@ const common = {
 	"app.loading": "Cargando...",
 	"app.branchMergedTitle": "Rama fusionada",
 	"app.branchMergedMessage": "Todos los cambios de \"{branchName}\" están en la rama base.\n\nTarea: {taskTitle}\n\n¿Marcar esta tarea como completada?",
+	"app.agentCompletionTitle": "El agente solicita completar la tarea",
+	"app.agentCompletionMessage": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nTarea: {taskTitle}\n\nAl aprobar se destruirán el worktree y la sesión de terminal.",
+	"app.agentCompletionConfirm": "Completar tarea",
+	"app.agentCompletionCancel": "Mantener sesión",
 
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",
@@ -14,6 +18,7 @@ const common = {
 	// Generic confirmation dialog (imperative confirm() service)
 	"confirmDialog.confirm": "OK",
 	"confirmDialog.cancel": "Cancelar",
+	"confirmDialog.agentBadge": "Solicitud del agente de IA",
 
 	// About dialog (in-app, replaces the native About message box)
 	"about.version": "Versión {version}",

@@ -216,6 +216,8 @@ const tips = {
 	"tip.projectsDailyBackup.body": "¿Perdiste tus proyectos? Restáuralos desde ~/.dev3.0/projects-YYYY-MM-DD.json.bak — las copias se guardan 7 días.",
 	"tip.pullBehindDot.title": "Punto azul en Pull",
 	"tip.pullBehindDot.body": "Un pequeño punto azul en el botón Pull de la cabecera indica commits nuevos en origin — haz clic para actualizar tu main local.",
+	"tip.agentCompletionRequest.title": "Los agentes pueden pedir completar",
+	"tip.agentCompletionRequest.body": "Cuando un agente ejecuta `dev3 task move --status completed`, recibes un diálogo de aprobación: aprueba para completar o mantén la sesión viva.",
 };
 
 export default tips;
