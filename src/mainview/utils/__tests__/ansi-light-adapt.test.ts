@@ -98,6 +98,36 @@ describe("createAnsiLightFilter — 256-color foregrounds (light)", () => {
 	});
 });
 
+describe("createAnsiLightFilter — white backgrounds (light)", () => {
+	// Claude Code's light-ansi theme paints message bars with "ansi:white"
+	// (SGR 47) and dark fg (30/90) on top. Our palette `white` is a dark gray
+	// (legible as 37 text), so as a background it must become light gray.
+	it("rewrites SGR 47 to a light gray truecolor background", () => {
+		expect(filterAll([`${ESC}[47mfoo`])).toBe(`${ESC}[48;2;220;220;220mfoo`);
+	});
+
+	it("rewrites SGR 107 to a near-white truecolor background", () => {
+		expect(filterAll([`${ESC}[107mfoo`])).toBe(`${ESC}[48;2;240;240;240mfoo`);
+	});
+
+	it("rewrites indexed white backgrounds (48;5;7 and 48;5;15)", () => {
+		expect(filterAll([`${ESC}[48;5;7mfoo`])).toBe(`${ESC}[48;2;220;220;220mfoo`);
+		expect(filterAll([`${ESC}[48;5;15mfoo`])).toBe(`${ESC}[48;2;240;240;240mfoo`);
+	});
+
+	it("preserves surrounding params (Claude message bar pattern)", () => {
+		expect(filterAll([`${ESC}[90m${ESC}[47mbar`])).toBe(
+			`${ESC}[90m${ESC}[48;2;220;220;220mbar`,
+		);
+	});
+
+	it("leaves other background codes untouched", () => {
+		expect(filterAll([`${ESC}[40mfoo`])).toBe(`${ESC}[40mfoo`);
+		expect(filterAll([`${ESC}[44mfoo`])).toBe(`${ESC}[44mfoo`);
+		expect(filterAll([`${ESC}[48;5;28mfoo`])).toBe(`${ESC}[48;5;28mfoo`);
+	});
+});
+
 describe("createAnsiLightFilter — chunk boundaries", () => {
 	it("rewrites a sequence split across two chunks", () => {
 		const out = filterAll([`${ESC}[38;5;2`, `26mfoo`]);

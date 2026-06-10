@@ -12,6 +12,8 @@ ghostty-web's `ITheme` only covers the 16 ANSI colors; 256-color indexes are res
 
 Added `src/mainview/utils/ansi-light-adapt.ts` — a stateful stream filter applied in `TerminalView.tsx` (`enqueueTermWrite` flush) only when the light theme is active. It drops standalone `SGR 2`, and rewrites pale foregrounds (`38;5;N` with N≥16, `38;2;R;G;B`) whose relative luminance exceeds 0.55 to a darkened truecolor (~0.42 luminance). Sequences split across WS chunks are carried over to the next flush. Also darkened `LIGHT_TERMINAL_THEME` entries (white, brightBlack, yellow, brightYellow) to GitHub Primer light fg values.
 
+Darkening `white` created a follow-up conflict: Claude Code's light-ansi theme paints message bars with `ansi:white` as a *background* (`SGR 47`) and dark fg (30/90) on top — a dark-on-dark bar. The filter therefore splits the roles of index 7/15: as text (37/97) they stay dark, as backgrounds (47/107, 48;5;7, 48;5;15) they are rewritten to light gray truecolor (220/240), matching Claude Code's own non-ansi light theme bar colors.
+
 ## Risks
 
 Dropping dim loses the muted-vs-normal distinction in light mode (diff add/remove still differ by their red/green markers). Colors written while one theme is active stay resolved in scrollback after a theme switch until the app repaints. Backgrounds are intentionally untouched — darkening pale backgrounds would invert intent.

@@ -11,7 +11,11 @@
  * - standalone SGR `2` (dim) is dropped
  * - pale indexed (38;5;N, N>=16) and truecolor (38;2;R;G;B) foregrounds are
  *   darkened to a luminance-capped truecolor equivalent
- * Backgrounds and theme-mapped indexes (0-15) are left untouched.
+ * - white backgrounds (47/107, 48;5;7, 48;5;15) become light gray. The light
+ *   palette maps `white` to a dark gray so it stays legible as 37 *text*, but
+ *   Claude Code's light-ansi theme paints message bars with "ansi:white" as a
+ *   *background* and dark fg on top — a dark-on-dark bar without this remap.
+ * Other backgrounds and theme-mapped foreground indexes (0-15) are untouched.
  */
 
 // Darken if relative luminance exceeds this (pale on white = unreadable)
@@ -51,6 +55,11 @@ function color256ToRgb(n: number): [number, number, number] {
  * Returns the new parameter string, or null if the whole sequence
  * should be dropped (every parameter was removed).
  */
+// Replacement backgrounds for "white" bars (matches Claude Code's own
+// non-ansi light theme bar colors: rgb(220,220,220) / rgb(240,240,240)).
+const WHITE_BG = ["48", "2", "220", "220", "220"];
+const BRIGHT_WHITE_BG = ["48", "2", "240", "240", "240"];
+
 function transformSgrParams(raw: string): string | null {
 	if (raw === "") return raw;
 	// Normalize colon sub-parameter form (38:5:226) to semicolons so the
@@ -65,10 +74,25 @@ function transformSgrParams(raw: string): string | null {
 			i++;
 			continue;
 		}
+		if (token === "47") {
+			out.push(...WHITE_BG);
+			i++;
+			continue;
+		}
+		if (token === "107") {
+			out.push(...BRIGHT_WHITE_BG);
+			i++;
+			continue;
+		}
 		if (token === "38" || token === "48" || token === "58") {
 			const mode = tokens[i + 1];
 			if (mode === "5" && tokens[i + 2] !== undefined) {
 				const index = Number(tokens[i + 2]);
+				if (token === "48" && (index === 7 || index === 15)) {
+					out.push(...(index === 7 ? WHITE_BG : BRIGHT_WHITE_BG));
+					i += 3;
+					continue;
+				}
 				if (token === "38" && index >= 16 && index <= 255) {
 					const [r, g, b] = color256ToRgb(index);
 					const darker = darkenPaleRgb(r, g, b);
