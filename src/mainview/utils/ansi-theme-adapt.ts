@@ -26,11 +26,14 @@
  *   Claude Code's own dark theme bar colors (55/70), and explicit dark ANSI
  *   foregrounds (30/90) on those bars are flipped to light grays so
  *   dark-text-on-white bars stay legible as light-text-on-dark bars.
- * Foreground adjustment is gated: while an explicit *colored* background
- * (40-46, 100-106, 48;…) or reverse video (SGR 7) is active, foregrounds
- * pass through untouched — the app picked that fg *for that bg* (vim themes,
- * highlight bars), so "fixing" it would break intentional contrast. White
- * backgrounds are exempt from the gate: after remapping they sit close to
+ * Foreground adjustment is gated by the *luminance* of the active explicit
+ * background: a fg chosen for an opposite-polarity bg (vim themes, highlight
+ * bars) passes through untouched, but a bad-contrast fg on a same-polarity
+ * bg is still fixed — Codex paints its whole UI on an explicit dark truecolor
+ * bg (48;2;30;30;46) and writes pure-black text on top of it. Named ANSI
+ * backgrounds (40-46, 100-106) resolve theme-side, so their luminance is
+ * unknown and they gate fg adjustment off entirely, as does reverse video
+ * (SGR 7). White backgrounds are exempt: after remapping they sit close to
  * the theme background, so the normal fg adjustment stays correct.
  */
 
@@ -117,10 +120,26 @@ function whiteBgReplacement(bright: boolean, mode: ThemeMode): string[] {
 	return bright ? DARK_BRIGHT_WHITE_BG : DARK_WHITE_BG;
 }
 
+// Explicit backgrounds below this luminance count as "dark" (fg brightening
+// stays on in dark mode), above BG_LIGHT_MIN as "light" (fg darkening stays
+// on in light mode); mid-tones and named ANSI bgs gate fg adjustment off.
+const BG_DARK_MAX_LUMINANCE = 0.35;
+const BG_LIGHT_MIN_LUMINANCE = 0.55;
+
+type BgClass = "none" | "white" | "dark" | "light" | "unknown";
+
+function classifyBgRgb(r: number, g: number, b: number): BgClass {
+	const lum = luminance(r, g, b);
+	if (lum < BG_DARK_MAX_LUMINANCE) return "dark";
+	if (lum > BG_LIGHT_MIN_LUMINANCE) return "light";
+	return "unknown";
+}
+
 interface GateState {
-	// "white" = a remapped white bar (fg adjustment stays on); "other" = any
-	// other explicit background (fg adjustment gated off)
-	bg: "none" | "white" | "other";
+	// "white" = a remapped white bar (fg adjustment stays on); "dark"/"light" =
+	// explicit bg of known luminance (fg adjustment stays on only for the
+	// matching mode); "unknown" = named ANSI or mid-tone bg (gated off)
+	bg: BgClass;
 	reverseActive: boolean;
 	// Last explicit dark ANSI fg (30/90) — needed when a white bar opens
 	// *after* the fg was set (Claude emits fg first, then bg)
@@ -153,7 +172,11 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			out.push(...(gate.darkFg === "30" ? DARK_BAR_FG_30 : DARK_BAR_FG_90));
 		}
 	};
-	const fgAdjustable = () => !gate.reverseActive && gate.bg !== "other";
+	const fgAdjustable = () =>
+		!gate.reverseActive &&
+		(gate.bg === "none" ||
+			gate.bg === "white" ||
+			gate.bg === (mode === "dark" ? "dark" : "light"));
 	let i = 0;
 	while (i < tokens.length) {
 		const token = tokens[i];
@@ -217,7 +240,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				i++;
 				continue;
 			}
-			gate.bg = "other";
+			gate.bg = "unknown";
 			out.push(token);
 			i++;
 			continue;
@@ -232,7 +255,12 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 						i += 3;
 						continue;
 					}
-					gate.bg = "other";
+					if (index >= 16 && index <= 255) {
+						const [r, g, b] = color256ToRgb(index);
+						gate.bg = classifyBgRgb(r, g, b);
+					} else {
+						gate.bg = "unknown";
+					}
 				}
 				if (token === "38") {
 					gate.darkFg = null;
@@ -251,7 +279,13 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				continue;
 			}
 			if (introducer === "2" && tokens[i + 4] !== undefined) {
-				if (token === "48") gate.bg = "other";
+				if (token === "48") {
+					gate.bg = classifyBgRgb(
+						Number(tokens[i + 2]),
+						Number(tokens[i + 3]),
+						Number(tokens[i + 4]),
+					);
+				}
 				if (token === "38") {
 					gate.darkFg = null;
 					if (fgAdjustable()) {

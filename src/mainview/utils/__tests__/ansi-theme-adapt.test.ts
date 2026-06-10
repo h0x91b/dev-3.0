@@ -295,6 +295,34 @@ describe("createAnsiThemeFilter — bg/reverse gating", () => {
 		const out = filterAll([`${ESC}[44m${ESC}[m${ESC}[38;2;51;51;51mfoo`], "dark");
 		expect(out).toBe(`${ESC}[44m${ESC}[m${ESC}[38;2;108;108;108mfoo`);
 	});
+
+	it("brightens black fg on an explicit dark truecolor bg (dark)", () => {
+		// Codex paints its whole UI on 48;2;30;30;46 and writes the model
+		// name with 38;2;0;0;0 on top — black on dark must still be fixed.
+		const out = filterAll([`${ESC}[48;2;30;30;46m${ESC}[38;2;0;0;0mgpt`], "dark");
+		expect(out).toBe(`${ESC}[48;2;30;30;46m${ESC}[38;2;153;153;153mgpt`);
+	});
+
+	it("brightens indexed fg on an explicit dark indexed bg (dark)", () => {
+		const out = filterAll([`${ESC}[48;5;16m${ESC}[38;5;16mfoo`], "dark");
+		expect(out).toBe(`${ESC}[48;5;16m${ESC}[38;2;153;153;153mfoo`);
+	});
+
+	it("keeps dark fg on an explicit light truecolor bg (dark)", () => {
+		const input = `${ESC}[48;2;180;190;254m${ESC}[38;2;0;0;0mfoo`;
+		expect(filterAll([input], "dark")).toBe(input);
+	});
+
+	it("darkens pale fg on an explicit light truecolor bg (light)", () => {
+		const out = filterAll([`${ESC}[48;2;255;255;230m${ESC}[38;2;255;255;0mfoo`], "light");
+		expect(out).toMatch(/^\x1b\[48;2;255;255;230m\x1b\[38;2;\d+;\d+;0mfoo$/);
+		expect(out).not.toContain("38;2;255;255;0");
+	});
+
+	it("keeps pale fg on an explicit dark truecolor bg (light)", () => {
+		const input = `${ESC}[48;2;30;30;46m${ESC}[38;5;226mfoo`;
+		expect(filterAll([input], "light")).toBe(input);
+	});
 });
 
 describe("createAnsiThemeFilter — chunk boundaries", () => {
