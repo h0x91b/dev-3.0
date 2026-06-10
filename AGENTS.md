@@ -131,13 +131,15 @@ gh auth switch --user h0x91b 2>/dev/null || true
 
 This is a no-op for collaborators who don't have the `h0x91b` account — `gh` will fall back to whatever account they have configured.
 
+**PRs are squash-merged.** To enable auto-merge, always pass the strategy flag: `gh pr merge --auto --squash <branch>`. A bare `gh pr merge --auto` fails non-interactively ("--merge, --rebase, or --squash required").
+
 ## Changelog policy
 
 **For every code change, create a changelog entry file.** This avoids merge conflicts when multiple agents work in parallel.
 
 **Path:** `change-logs/YYYY/MM/DD/<type>-<short-slug>.md`
 
-**The `YYYY/MM/DD` is the expected PR merge date — not the date you started.** If a task spans more than one day, do not leave the entry under the day you created it. Before opening/merging the PR, move (rename) the file/folder so the date matches the actual merge day. The changelog UI groups entries by ship date, so a stale start-date silently files the feature under the wrong day.
+**The `YYYY/MM/DD` is the expected PR merge date — not the date you started.** If a task spans more than one day, do not leave the entry under the day you created it. Before opening/merging the PR, move (rename) the file/folder so the date matches the actual merge day (with auto-merge, that is normally the day you open the PR). The changelog UI groups entries by ship date, so a stale start-date silently files the feature under the wrong day.
 
 **Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
 
@@ -247,7 +249,7 @@ Two-process model:
 
 The renderer and main process communicate via **Electrobun's built-in RPC** (IPC bridge). The schema is defined in `src/shared/types.ts` as `AppRPCSchema` with two channels: `bun` (main process) and `webview` (renderer).
 
-- **Request/response:** Components call `api.request.METHOD(params)` (returns a Promise, 2-minute timeout). Handlers live in `src/bun/rpc-handlers/*.ts`, split by domain (`app-handlers`, `settings-config`, `task-lifecycle`, `git-operations`, `tmux-pty`, `notes-labels`, `remote-access`). The root `src/bun/rpc-handlers.ts` is a barrel re-exporter that merges them into a single `handlers` object.
+- **Request/response:** Components call `api.request.METHOD(params)` (returns a Promise, 2-minute timeout). Handlers live in `src/bun/rpc-handlers/*.ts`, split by domain (`app-handlers`, `settings-config`, `task-lifecycle`, `git-operations`, `tmux-pty`, `notes-labels`, `remote-access`, `port-tunnels`, `scripts`; `shared.ts`/`shared-pure.ts` are cross-domain helpers, not domains). The root `src/bun/rpc-handlers.ts` is a barrel re-exporter that merges them into a single `handlers` object.
 - **Push messages:** The main process sends unsolicited updates via `pushMessage?.("eventName", payload)`. The renderer dispatches these as `CustomEvent`s (e.g., `rpc:taskUpdated`), which components listen to with `window.addEventListener()`.
 
 ### State management
@@ -258,9 +260,9 @@ UI state uses React's **`useReducer`** pattern (no external state library). The 
 - Components call `api.request.*` to fetch/mutate backend data, then `dispatch()` reducer actions to update local state.
 - Push messages from the main process trigger event listeners that dispatch actions to keep the UI in sync.
 
-### HMR mechanism
+### Renderer asset loading (dev-channel Vite fallback)
 
-The main process checks if the Vite dev server is running on `localhost:5173`. If the app is on the `dev` channel and the server responds, it loads from Vite (HMR enabled). Otherwise it falls back to bundled assets via the `views://` protocol.
+The main process checks if the Vite dev server is running on `localhost:5173`. If the app is on the `dev` channel and the server responds, it loads from Vite (HMR enabled). Otherwise it falls back to bundled assets via the `views://` protocol. This mechanism exists in the code for the `dev` channel, but agents must never run a Vite watch/HMR loop themselves — see the HMR ban in [Commands](#commands).
 
 ### Build pipeline
 
@@ -291,10 +293,10 @@ Each project has three lifecycle scripts, configurable in Project Settings (`src
 | Field | When it runs |
 |---|---|
 | `setupScript` | After a new worktree is created for a task |
-| `devScript` | When starting the dev server for the project (not yet wired up — reserved for future use) |
+| `devScript` | When starting the task dev server (`dev3 dev-server start` or the UI button; runs in a tmux window — see `src/bun/rpc-handlers/tmux-pty.ts`) |
 | `cleanupScript` | Before a task worktree is removed after `completed` or `cancelled` (and `archived` once that status is added) |
 
-All three are free-form shell scripts. They are saved via the `updateProjectSettings` RPC handler in `src/bun/rpc-handlers.ts`.
+All three are free-form shell scripts. They are saved via the `updateProjectSettings` RPC handler in `src/bun/rpc-handlers/settings-config.ts`.
 
 ## Styling & design tokens
 
@@ -386,7 +388,7 @@ Call with `t.plural("dashboard.projectCount", count)`.
 
 ### Adding a new locale
 
-1. Create `src/mainview/i18n/translations/{locale}.ts` with type `TranslationRecord & Record<string, string>`
+1. Create a `src/mainview/i18n/translations/{locale}/` directory with domain files mirroring `en/`, plus a barrel `src/mainview/i18n/translations/{locale}.ts` that merges them (copy the structure of `ru.ts`); the barrel must satisfy `TranslationRecord`
 2. Add the locale to `ALL_LOCALES` and `LOCALE_LABELS` in `src/mainview/i18n/types.ts`
 3. Import and register in `src/mainview/i18n/context.tsx` (`translationSets`)
 4. Add plural rules in `src/mainview/i18n/interpolate.ts` (`getPluralForm`)
