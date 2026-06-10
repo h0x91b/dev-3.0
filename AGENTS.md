@@ -17,6 +17,9 @@ Rules:
   `================ [WHY] =================`
   `================ [NEXT] ================`
 - Show `2-5` candidates in `CANDIDATES`.
+- Every candidate must be a **genuinely viable option** — something a reasonable engineer could actually pick. No strawmen, no filler options that obviously lose, no "do nothing" / "give up" padding just to reach a count.
+- Candidates must be **maximally diverse approaches** to the same problem: different layers (backend vs UI), different mechanisms (fix vs redesign vs config), different scopes (targeted patch vs broader refactor) — not the same idea with cosmetic variations, and not "subset of the chosen plan" vs "the chosen plan".
+- If only one reasonable approach exists, skip the `CANDIDATES` section entirely and say so in `DECISION` — a fake alternatives list is worse than none.
 - Mark the selected candidate with `(chosen)`.
 - Each candidate may use up to 5 short lines.
 - `CANDIDATES` is for concise option framing, not full justification.
