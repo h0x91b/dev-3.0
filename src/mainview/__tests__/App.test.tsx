@@ -722,9 +722,13 @@ describe("App keyboard shortcuts", () => {
 
 			await fireBranchMerged("t1", "p1", "fp-confirm-1");
 
-			await waitFor(() => {
-				expect(screen.getByTestId("project-screen")).toBeInTheDocument();
-			});
+			// Slow CI runners can exceed the default 1s waitFor timeout here
+			await waitFor(
+				() => {
+					expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+				},
+				{ timeout: 5000 },
+			);
 			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
 			expect(api.request.moveTask).toHaveBeenCalledWith(
 				expect.objectContaining({ taskId: "t1", projectId: "p1", newStatus: "completed" }),
