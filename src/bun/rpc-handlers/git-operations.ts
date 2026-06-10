@@ -16,10 +16,14 @@ import { spawn } from "../spawn";
 import { getPushMessage, log } from "./shared";
 
 const gitOpPaneIds = new Map<string, string>();
-const mergeNotifiedPromptKeys = new Set<string>();
+// promptKey -> reservedAt (ms). A reservation only mutes re-prompts for
+// MERGE_PROMPT_RETRY_SUPPRESS_MS: if the user never answers (app restart,
+// undelivered push), the prompt must come back instead of being lost forever.
+const mergeNotifiedPromptKeys = new Map<string, number>();
 const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 const prPromotedTasks = new Set<string>();
 const MERGE_PROMPT_FALLBACK_SUPPRESS_MS = 60 * 60 * 1000;
+const MERGE_PROMPT_RETRY_SUPPRESS_MS = 60 * 60 * 1000;
 
 interface MergeCompletionFingerprint {
 	fingerprint: string;
@@ -36,9 +40,22 @@ function parseTime(value: string | null | undefined): number | null {
 	return Number.isFinite(time) ? time : null;
 }
 
+function isPromptKeyReserved(promptKey: string, nowMs: number): boolean {
+	const reservedAt = mergeNotifiedPromptKeys.get(promptKey);
+	if (reservedAt === undefined) return false;
+	if (nowMs - reservedAt > MERGE_PROMPT_RETRY_SUPPRESS_MS) {
+		mergeNotifiedPromptKeys.delete(promptKey);
+		return false;
+	}
+	return true;
+}
+
 function shouldSuppressMergePrompt(state: MergeCompletionPromptState | null | undefined, fingerprint: MergeCompletionFingerprint, nowMs: number): boolean {
 	if (!state || state.fingerprint !== fingerprint.fingerprint) return false;
-	if (fingerprint.precise && state.precise) return true;
+	// Permanent suppression only for an explicit user dismissal of this exact
+	// head. A reserved-but-unanswered prompt (dismissedAt null) falls through
+	// to the time window below so a lost popup re-appears.
+	if (fingerprint.precise && state.precise && parseTime(state.dismissedAt) !== null) return true;
 
 	const lastPromptTime = Math.max(
 		parseTime(state.promptedAt) ?? 0,
@@ -66,17 +83,17 @@ async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "worktreePa
 
 async function reserveMergeCompletionPrompt(project: Project, task: Task, fingerprint: MergeCompletionFingerprint, now = new Date()): Promise<boolean> {
 	const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
-	if (mergeNotifiedPromptKeys.has(promptKey)) return false;
-
 	const nowMs = now.getTime();
+	if (isPromptKeyReserved(promptKey, nowMs)) return false;
+
 	if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) {
-		mergeNotifiedPromptKeys.add(promptKey);
+		mergeNotifiedPromptKeys.set(promptKey, nowMs);
 		return false;
 	}
 
 	// Reserve the slot before awaiting so concurrent callers see the key immediately
-	// and cannot both pass the has() check above.
-	mergeNotifiedPromptKeys.add(promptKey);
+	// and cannot both pass the reservation check above.
+	mergeNotifiedPromptKeys.set(promptKey, nowMs);
 	await data.updateTask(project, task.id, {
 		mergeCompletionPrompt: {
 			fingerprint: fingerprint.fingerprint,
@@ -250,7 +267,7 @@ async function checkMergedBranches(): Promise<void> {
 			const tasks = await data.loadTasks(project);
 			for (const task of tasks) allTaskIds.add(task.id);
 		}
-		for (const key of mergeNotifiedPromptKeys) {
+		for (const key of [...mergeNotifiedPromptKeys.keys()]) {
 			const taskId = key.slice(0, key.indexOf(":"));
 			if (!allTaskIds.has(taskId)) mergeNotifiedPromptKeys.delete(key);
 		}
@@ -291,13 +308,34 @@ async function checkMergedBranches(): Promise<void> {
 				}
 				const ref = `origin/${baseBranch}`;
 
-				const hasRemote = await git.getUnpushedCount(task.worktreePath!, branchName);
-				if (hasRemote === -1) continue;
+				// Cheap suppression first: a prompt already reserved/dismissed for
+				// this exact head must not burn merge-tree/patch-id/gh calls on
+				// every 60s tick.
+				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
+				const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
+				const nowMs = Date.now();
+				if (isPromptKeyReserved(promptKey, nowMs)) continue;
+				if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
 
-				const merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
+				// The popup claims "no changes left" — never prompt while the
+				// worktree has uncommitted changes. Skip WITHOUT reserving so a
+				// later clean tick prompts normally.
+				if (await git.isWorktreeDirty(task.worktreePath!)) continue;
+
+				const unpushed = await git.getUnpushedCount(task.worktreePath!, branchName);
+				let merged: boolean;
+				if (unpushed === -1) {
+					// origin/<branch> is gone: either never pushed, or pruned after
+					// the PR merged (delete_branch_on_merge). Content strategies are
+					// unsafe here (a never-pushed branch with zero commits would
+					// false-positive), but a merged PR whose head equals local HEAD
+					// is definitive.
+					merged = await git.isBranchMergedViaGitHubPR(task.worktreePath!, project);
+				} else {
+					merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
+				}
 				if (!merged) continue;
 
-				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 				const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint);
 				if (!shouldPrompt) continue;
 
@@ -317,7 +355,7 @@ async function checkMergedBranches(): Promise<void> {
 }
 
 export function clearMergeNotification(taskId: string): void {
-	for (const key of mergeNotifiedPromptKeys) {
+	for (const key of [...mergeNotifiedPromptKeys.keys()]) {
 		if (key.startsWith(`${taskId}:`)) mergeNotifiedPromptKeys.delete(key);
 	}
 }
