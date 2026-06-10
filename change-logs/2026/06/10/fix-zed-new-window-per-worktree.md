@@ -1,0 +1,1 @@
+Fixed "Open in → Zed" so each worktree opens in its own Zed window instead of swapping the project in the single running window. When the Zed CLI is available (on PATH or bundled in Zed.app), dev3 now launches it with the `-n` flag; it falls back to `open -a Zed` otherwise.
