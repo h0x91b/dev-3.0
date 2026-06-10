@@ -41,16 +41,13 @@ describe("darkenPaleRgb", () => {
 
 describe("brightenDarkRgb", () => {
 	it("brightens GitHub-light ink gray (#333333)", () => {
-		expect(brightenDarkRgb(51, 51, 51)).toEqual([97, 97, 97]);
+		expect(brightenDarkRgb(51, 51, 51)).toEqual([103, 103, 103]);
 	});
 
-	it("brightens pure black without division issues", () => {
-		const result = brightenDarkRgb(0, 0, 0);
-		expect(result).not.toBeNull();
-		const [r, g, b] = result!;
-		expect(r).toBe(g);
-		expect(g).toBe(b);
-		expect(r).toBeGreaterThan(80);
+	it("brightens pure black extra (near-black boost, no division issues)", () => {
+		// Pure black gets the highest target — Codex paints its model name
+		// with #000000, which must stay clearly visible on a dark background.
+		expect(brightenDarkRgb(0, 0, 0)).toEqual([128, 128, 128]);
 	});
 
 	it("brightens GitHub-light navy (#183691) keeping hue order", () => {
@@ -166,7 +163,7 @@ describe("createAnsiThemeFilter — white backgrounds (light)", () => {
 describe("createAnsiThemeFilter — dark foregrounds (dark)", () => {
 	it("brightens Codex ink-gray truecolor foreground", () => {
 		expect(filterAll([`${ESC}[38;2;51;51;51mfoo`], "dark")).toBe(
-			`${ESC}[38;2;97;97;97mfoo`,
+			`${ESC}[38;2;103;103;103mfoo`,
 		);
 	});
 
@@ -234,7 +231,7 @@ describe("createAnsiThemeFilter — white backgrounds (dark)", () => {
 
 	it("still brightens too-dark truecolor fg on the remapped bar", () => {
 		expect(filterAll([`${ESC}[47m${ESC}[38;2;51;51;51mfoo`], "dark")).toBe(
-			`${ESC}[48;2;55;55;55m${ESC}[38;2;97;97;97mfoo`,
+			`${ESC}[48;2;55;55;55m${ESC}[38;2;103;103;103mfoo`,
 		);
 	});
 
@@ -268,7 +265,7 @@ describe("createAnsiThemeFilter — bg/reverse gating", () => {
 
 	it("resumes adjusting after SGR 0 reset", () => {
 		const out = filterAll([`${ESC}[44m${ESC}[0m${ESC}[38;2;51;51;51mfoo`], "dark");
-		expect(out).toBe(`${ESC}[44m${ESC}[0m${ESC}[38;2;97;97;97mfoo`);
+		expect(out).toBe(`${ESC}[44m${ESC}[0m${ESC}[38;2;103;103;103mfoo`);
 	});
 
 	it("resumes adjusting after bg-clear (49) and reverse-off (27)", () => {
@@ -276,7 +273,7 @@ describe("createAnsiThemeFilter — bg/reverse gating", () => {
 			[`${ESC}[44;49m${ESC}[7;27m${ESC}[38;2;51;51;51mfoo`],
 			"dark",
 		);
-		expect(out).toBe(`${ESC}[44;49m${ESC}[7;27m${ESC}[38;2;97;97;97mfoo`);
+		expect(out).toBe(`${ESC}[44;49m${ESC}[7;27m${ESC}[38;2;103;103;103mfoo`);
 	});
 
 	it("gates fg within the same compound sequence", () => {
@@ -296,7 +293,7 @@ describe("createAnsiThemeFilter — bg/reverse gating", () => {
 
 	it("empty SGR (ESC[m) resets the gate", () => {
 		const out = filterAll([`${ESC}[44m${ESC}[m${ESC}[38;2;51;51;51mfoo`], "dark");
-		expect(out).toBe(`${ESC}[44m${ESC}[m${ESC}[38;2;97;97;97mfoo`);
+		expect(out).toBe(`${ESC}[44m${ESC}[m${ESC}[38;2;103;103;103mfoo`);
 	});
 });
 
