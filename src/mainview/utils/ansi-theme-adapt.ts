@@ -19,11 +19,19 @@
  *   with "ansi:white" as a *background* and dark fg on top — a dark-on-dark
  *   bar without this remap.
  * - dark mode: too-dark foregrounds are brightened by blending toward white.
- *   Dim is kept (fine on dark backgrounds).
- * Foreground adjustment is gated: while an explicit background (40-47,
- * 100-107, 48;…) or reverse video (SGR 7) is active, foregrounds pass
- * through untouched — the app picked that fg *for that bg* (vim themes,
- * highlight bars), so "fixing" it would break intentional contrast.
+ *   Dim is kept (fine on dark backgrounds). White backgrounds become dark
+ *   gray: Claude Code paints message bars and the history-select highlight
+ *   with "ansi:white"/"ansi:whiteBright", which the dark palette resolves to
+ *   pale lavender — default-fg text on it is unreadable. The remap targets
+ *   Claude Code's own dark theme bar colors (55/70), and explicit dark ANSI
+ *   foregrounds (30/90) on those bars are flipped to light grays so
+ *   dark-text-on-white bars stay legible as light-text-on-dark bars.
+ * Foreground adjustment is gated: while an explicit *colored* background
+ * (40-46, 100-106, 48;…) or reverse video (SGR 7) is active, foregrounds
+ * pass through untouched — the app picked that fg *for that bg* (vim themes,
+ * highlight bars), so "fixing" it would break intentional contrast. White
+ * backgrounds are exempt from the gate: after remapping they sit close to
+ * the theme background, so the normal fg adjustment stays correct.
  */
 
 export type ThemeMode = "light" | "dark";
@@ -86,14 +94,30 @@ function color256ToRgb(n: number): [number, number, number] {
 	return [level, level, level];
 }
 
-// Replacement backgrounds for "white" bars in light mode (matches Claude
-// Code's own non-ansi light theme bar colors: rgb(220,220,220) / rgb(240,240,240)).
-const WHITE_BG = ["48", "2", "220", "220", "220"];
-const BRIGHT_WHITE_BG = ["48", "2", "240", "240", "240"];
+// Replacement backgrounds for "white" bars (matches Claude Code's own
+// non-ansi theme bar colors: light rgb(220,220,220)/rgb(240,240,240),
+// dark rgb(55,55,55)/rgb(70,70,70)).
+const LIGHT_WHITE_BG = ["48", "2", "220", "220", "220"];
+const LIGHT_BRIGHT_WHITE_BG = ["48", "2", "240", "240", "240"];
+const DARK_WHITE_BG = ["48", "2", "55", "55", "55"];
+const DARK_BRIGHT_WHITE_BG = ["48", "2", "70", "70", "70"];
+// Light replacements for dark ANSI fg (30/90) on a dark-remapped white bar
+const DARK_BAR_FG_30 = ["38", "2", "220", "220", "220"];
+const DARK_BAR_FG_90 = ["38", "2", "160", "160", "160"];
+
+function whiteBgReplacement(bright: boolean, mode: ThemeMode): string[] {
+	if (mode === "light") return bright ? LIGHT_BRIGHT_WHITE_BG : LIGHT_WHITE_BG;
+	return bright ? DARK_BRIGHT_WHITE_BG : DARK_WHITE_BG;
+}
 
 interface GateState {
-	bgActive: boolean;
+	// "white" = a remapped white bar (fg adjustment stays on); "other" = any
+	// other explicit background (fg adjustment gated off)
+	bg: "none" | "white" | "other";
 	reverseActive: boolean;
+	// Last explicit dark ANSI fg (30/90) — needed when a white bar opens
+	// *after* the fg was set (Claude emits fg first, then bg)
+	darkFg: "30" | "90" | null;
 }
 
 /**
@@ -104,20 +128,32 @@ interface GateState {
  */
 function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): string | null {
 	if (raw === "") {
-		gate.bgActive = false;
+		gate.bg = "none";
 		gate.reverseActive = false;
+		gate.darkFg = null;
 		return raw;
 	}
 	// Normalize colon sub-parameter form (38:5:226) to semicolons so the
 	// token walk below handles both encodings uniformly.
 	const tokens = raw.replaceAll(":", ";").split(";");
 	const out: string[] = [];
+	// In dark mode a white bar becomes dark gray; if a dark ANSI fg (set now
+	// or earlier) sits on it, append/replace it with a light gray.
+	const pushWhiteBg = (bright: boolean) => {
+		gate.bg = "white";
+		out.push(...whiteBgReplacement(bright, mode));
+		if (mode === "dark" && gate.darkFg !== null) {
+			out.push(...(gate.darkFg === "30" ? DARK_BAR_FG_30 : DARK_BAR_FG_90));
+		}
+	};
+	const fgAdjustable = () => !gate.reverseActive && gate.bg !== "other";
 	let i = 0;
 	while (i < tokens.length) {
 		const token = tokens[i];
 		if (token === "" || token === "0") {
-			gate.bgActive = false;
+			gate.bg = "none";
 			gate.reverseActive = false;
+			gate.darkFg = null;
 			out.push(token);
 			i++;
 			continue;
@@ -135,7 +171,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			continue;
 		}
 		if (token === "49") {
-			gate.bgActive = false;
+			gate.bg = "none";
 			out.push(token);
 			i++;
 			continue;
@@ -151,19 +187,30 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			i++;
 			continue;
 		}
+		if (token === "30" || token === "90") {
+			gate.darkFg = token;
+			if (mode === "dark" && gate.bg === "white" && !gate.reverseActive) {
+				out.push(...(token === "30" ? DARK_BAR_FG_30 : DARK_BAR_FG_90));
+				i++;
+				continue;
+			}
+			out.push(token);
+			i++;
+			continue;
+		}
 		const code = Number(token);
+		if ((code >= 31 && code <= 39) || (code >= 91 && code <= 97)) {
+			// Any other explicit fg (incl. 39 default) clears the dark-fg track;
+			// 38-extended is handled below.
+			if (token !== "38") gate.darkFg = null;
+		}
 		if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
-			gate.bgActive = true;
-			if (mode === "light" && code === 47) {
-				out.push(...WHITE_BG);
+			if (code === 47 || code === 107) {
+				pushWhiteBg(code === 107);
 				i++;
 				continue;
 			}
-			if (mode === "light" && code === 107) {
-				out.push(...BRIGHT_WHITE_BG);
-				i++;
-				continue;
-			}
+			gate.bg = "other";
 			out.push(token);
 			i++;
 			continue;
@@ -173,26 +220,23 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			if (introducer === "5" && tokens[i + 2] !== undefined) {
 				const index = Number(tokens[i + 2]);
 				if (token === "48") {
-					gate.bgActive = true;
-					if (mode === "light" && (index === 7 || index === 15)) {
-						out.push(...(index === 7 ? WHITE_BG : BRIGHT_WHITE_BG));
+					if (index === 7 || index === 15) {
+						pushWhiteBg(index === 15);
 						i += 3;
 						continue;
 					}
+					gate.bg = "other";
 				}
-				if (
-					token === "38" &&
-					index >= 16 &&
-					index <= 255 &&
-					!gate.bgActive &&
-					!gate.reverseActive
-				) {
-					const [r, g, b] = color256ToRgb(index);
-					const adjusted = adjustFgRgb(r, g, b, mode);
-					if (adjusted) {
-						out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
-						i += 3;
-						continue;
+				if (token === "38") {
+					gate.darkFg = null;
+					if (index >= 16 && index <= 255 && fgAdjustable()) {
+						const [r, g, b] = color256ToRgb(index);
+						const adjusted = adjustFgRgb(r, g, b, mode);
+						if (adjusted) {
+							out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
+							i += 3;
+							continue;
+						}
 					}
 				}
 				out.push(token, tokens[i + 1], tokens[i + 2]);
@@ -200,16 +244,19 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				continue;
 			}
 			if (introducer === "2" && tokens[i + 4] !== undefined) {
-				if (token === "48") gate.bgActive = true;
-				if (token === "38" && !gate.bgActive && !gate.reverseActive) {
-					const r = Number(tokens[i + 2]);
-					const g = Number(tokens[i + 3]);
-					const b = Number(tokens[i + 4]);
-					const adjusted = adjustFgRgb(r, g, b, mode);
-					if (adjusted) {
-						out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
-						i += 5;
-						continue;
+				if (token === "48") gate.bg = "other";
+				if (token === "38") {
+					gate.darkFg = null;
+					if (fgAdjustable()) {
+						const r = Number(tokens[i + 2]);
+						const g = Number(tokens[i + 3]);
+						const b = Number(tokens[i + 4]);
+						const adjusted = adjustFgRgb(r, g, b, mode);
+						if (adjusted) {
+							out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
+							i += 5;
+							continue;
+						}
 					}
 				}
 				out.push(token, tokens[i + 1], tokens[i + 2], tokens[i + 3], tokens[i + 4]);
@@ -237,7 +284,7 @@ const MAX_CARRY = 64;
  */
 export function createAnsiThemeFilter(): (chunk: string, mode: ThemeMode) => string {
 	let carry = "";
-	const gate: GateState = { bgActive: false, reverseActive: false };
+	const gate: GateState = { bg: "none", reverseActive: false, darkFg: null };
 	return (chunk, mode) => {
 		let data = carry + chunk;
 		carry = "";

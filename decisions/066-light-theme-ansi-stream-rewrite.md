@@ -14,7 +14,9 @@ Added `src/mainview/utils/ansi-theme-adapt.ts` — a stateful stream filter appl
 
 Darkening `white` created a follow-up conflict: Claude Code's light-ansi theme paints message bars with `ansi:white` as a *background* (`SGR 47`) and dark fg (30/90) on top — a dark-on-dark bar. The filter therefore splits the roles of index 7/15 in light mode: as text (37/97) they stay dark, as backgrounds (47/107, 48;5;7, 48;5;15) they are rewritten to light gray truecolor (220/240), matching Claude Code's own non-ansi light theme bar colors.
 
-Foreground adjustment in both modes is gated by cross-sequence state: while an explicit background (40-47, 100-107, 48;…) or reverse video (SGR 7) is active, foregrounds pass through untouched. Apps pick those foregrounds *for that background* (vim themes, selection bars), so "fixing" them would break intentional contrast. The gate state persists across chunk boundaries.
+Foreground adjustment in both modes is gated by cross-sequence state: while an explicit *colored* background (40-46, 100-106, 48;…) or reverse video (SGR 7) is active, foregrounds pass through untouched. Apps pick those foregrounds *for that background* (vim themes, selection bars), so "fixing" them would break intentional contrast. The gate state persists across chunk boundaries.
+
+White backgrounds get the same role-split in dark mode, mirrored: Claude Code paints message bars and the history-select highlight with `ansi:white`/`ansi:whiteBright` (47/107, `userMessageBackground`/`…Hover` in cli.js), which the dark palette resolves to pale lavender (#a9b1d6/#c0caf5) — default-fg text on it is unreadable. They are remapped to Claude Code's own dark theme bar colors (55/70 gray). Because Claude draws dark fg (30/90) on those bars (emitting fg *before* bg), the filter tracks the last dark ANSI fg across sequences and flips it to light gray when a white bar opens (and when 30/90 is set while one is active). Remapped white bars do not gate fg adjustment — after remapping they sit near the theme background, so the normal pale/dark fg fix stays correct on them.
 
 ## Risks
 

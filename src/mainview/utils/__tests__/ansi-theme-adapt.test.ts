@@ -196,14 +196,57 @@ describe("createAnsiThemeFilter — dark foregrounds (dark)", () => {
 		expect(filterAll([input], "dark")).toBe(input);
 	});
 
-	it("keeps white backgrounds untouched in dark mode", () => {
-		expect(filterAll([`${ESC}[47mfoo`], "dark")).toBe(`${ESC}[47mfoo`);
-		expect(filterAll([`${ESC}[48;5;7mfoo`], "dark")).toBe(`${ESC}[48;5;7mfoo`);
-	});
-
 	it("keeps theme-mapped indices (0-15) untouched", () => {
 		const input = `${ESC}[38;5;0mfoo`;
 		expect(filterAll([input], "dark")).toBe(input);
+	});
+});
+
+describe("createAnsiThemeFilter — white backgrounds (dark)", () => {
+	// Claude Code paints message bars and the history-select highlight with
+	// "ansi:white"/"ansi:whiteBright"; the dark palette resolves those to pale
+	// lavender, so default-fg text on them washes out. Remap to Claude Code's
+	// own dark theme bar colors.
+	it("rewrites SGR 47 to a dark gray truecolor background", () => {
+		expect(filterAll([`${ESC}[47mfoo`], "dark")).toBe(`${ESC}[48;2;55;55;55mfoo`);
+	});
+
+	it("rewrites SGR 107 to a slightly lighter dark gray", () => {
+		expect(filterAll([`${ESC}[107mfoo`], "dark")).toBe(`${ESC}[48;2;70;70;70mfoo`);
+	});
+
+	it("rewrites indexed white backgrounds (48;5;7 and 48;5;15)", () => {
+		expect(filterAll([`${ESC}[48;5;7mfoo`], "dark")).toBe(`${ESC}[48;2;55;55;55mfoo`);
+		expect(filterAll([`${ESC}[48;5;15mfoo`], "dark")).toBe(`${ESC}[48;2;70;70;70mfoo`);
+	});
+
+	it("flips a dark fg set before the bar (Claude fg-then-bg pattern)", () => {
+		expect(filterAll([`${ESC}[90m${ESC}[47mbar`], "dark")).toBe(
+			`${ESC}[90m${ESC}[48;2;55;55;55;38;2;160;160;160mbar`,
+		);
+	});
+
+	it("flips a dark fg set after the bar opens", () => {
+		expect(filterAll([`${ESC}[47m${ESC}[30mfoo`], "dark")).toBe(
+			`${ESC}[48;2;55;55;55m${ESC}[38;2;220;220;220mfoo`,
+		);
+	});
+
+	it("still brightens too-dark truecolor fg on the remapped bar", () => {
+		expect(filterAll([`${ESC}[47m${ESC}[38;2;51;51;51mfoo`], "dark")).toBe(
+			`${ESC}[48;2;55;55;55m${ESC}[38;2;97;97;97mfoo`,
+		);
+	});
+
+	it("does not flip fg after a reset cleared the dark-fg track", () => {
+		expect(filterAll([`${ESC}[90m${ESC}[0m${ESC}[47mfoo`], "dark")).toBe(
+			`${ESC}[90m${ESC}[0m${ESC}[48;2;55;55;55mfoo`,
+		);
+	});
+
+	it("tracks the dark fg across chunk boundaries", () => {
+		const out = filterAll([`${ESC}[90mfoo`, `${ESC}[47mbar`], "dark");
+		expect(out).toBe(`${ESC}[90mfoo${ESC}[48;2;55;55;55;38;2;160;160;160mbar`);
 	});
 });
 
@@ -239,6 +282,11 @@ describe("createAnsiThemeFilter — bg/reverse gating", () => {
 	it("gates fg within the same compound sequence", () => {
 		const input = `${ESC}[44;38;2;51;51;51mfoo`;
 		expect(filterAll([input], "dark")).toBe(input);
+	});
+
+	it("white bars do not gate fg adjustment (light)", () => {
+		const out = filterAll([`${ESC}[47m${ESC}[38;5;226mfoo`], "light");
+		expect(out).toMatch(/^\x1b\[48;2;220;220;220m\x1b\[38;2;\d+;\d+;\d+mfoo$/);
 	});
 
 	it("persists gate state across chunks", () => {
