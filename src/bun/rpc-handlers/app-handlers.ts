@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
-import type { ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, TipState } from "../../shared/types";
+import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, TipState } from "../../shared/types";
 import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -12,6 +12,7 @@ import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
+import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
 import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setAppForeground } from "./shared";
@@ -183,6 +184,18 @@ async function listDirectory(params?: { path?: string | null; includeFiles?: boo
 			entries: [],
 			error: String(err),
 		};
+	}
+}
+
+/** List skills found in the global agent skill directories for autocomplete. */
+async function listAgentSkills(): Promise<AgentSkillInfo[]> {
+	try {
+		const skills = scanAgentSkills();
+		log.info("← listAgentSkills", { count: skills.length });
+		return skills;
+	} catch (err) {
+		log.error("listAgentSkills failed", { error: String(err) });
+		return [];
 	}
 }
 
@@ -774,6 +787,7 @@ export const appHandlers = {
 	getProjects,
 	reorderProjects,
 	listDirectory,
+	listAgentSkills,
 	addProject: addProjectImpl,
 	cloneAndAddProject,
 	createDirectory,

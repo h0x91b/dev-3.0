@@ -210,6 +210,8 @@ const tips = {
 	"tip.multiFolderAddProject.body": "En Añadir proyecto → Carpeta local, usa Cmd+clic o Shift+clic para seleccionar varios repos y añadirlos todos en un solo paso.",
 	"tip.statusColorRails.title": "Tareas codificadas por color de estado",
 	"tip.statusColorRails.body": "Cada tarea de la lista Tareas activas tiene una barra de color a la izquierda según su estado: distingue de un vistazo quién trabaja y quién espera.",
+	"tip.skillAutocomplete.title": "Autocompleta skills con /",
+	"tip.skillAutocomplete.body": "Escribe / en la descripción de una nueva tarea para elegir un skill de agente instalado de la lista de sugerencias.",
 };
 
 export default tips;

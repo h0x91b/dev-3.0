@@ -26,3 +26,7 @@ Documented the inspector header as a 2×2 quickbar grid (Context / Session-Agent
 ## 2026-06-03 — macOS dock-persistence + unified quit-confirmation modal
 
 Added a UX decision documenting `exitOnLastWindowClosed: false` (closing the last window keeps the app in the dock, reopened on dock-click) and the React quit-confirmation modal driven by the main-process `before-quit` gate, covering Cmd+Q (via `requestQuit`), menu Quit, and dock Quit. A window-less quit reopens a window that pulls the pending flag on mount to show the dialog reliably. Plus the Cmd+Shift+N New Window shortcut. No new visible buttons or tokens — conforms to the Modal surface and destructive-button-role policy. Decision records 044, 060, 061.
+
+## 2026-06-11 — Slash skill autocomplete (new-task description)
+
+Added a UX decision for the inline `/`-triggered skill-name autocomplete in the `CreateTaskModal` description textarea, backed by the `listAgentSkills` RPC over the global agent skill directories. Input-assist pattern: no new visible controls, conforms to Modal surface rules and the token policy.

@@ -1,0 +1,1 @@
+Typing "/" in the new-task description now opens an autocomplete dropdown with agent skills discovered in the global skill directories (~/.agents/skills, ~/.claude/skills, ~/.codex/skills). Arrow keys navigate, Enter/Tab or click inserts the skill name, Escape dismisses the list without closing the modal.

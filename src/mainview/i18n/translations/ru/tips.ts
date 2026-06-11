@@ -210,6 +210,8 @@ const tips = {
 	"tip.multiFolderAddProject.body": "В «Добавить проект» → «Локальная папка» зажмите Cmd и кликайте по нескольким папкам — они все добавятся за один шаг.",
 	"tip.statusColorRails.title": "Задачи окрашены по статусу",
 	"tip.statusColorRails.body": "У каждой задачи в списке Active Tasks слева цветная полоса по её статусу — сразу видно, кто работает, а кто ждёт.",
+	"tip.skillAutocomplete.title": "Автодополнение скиллов через /",
+	"tip.skillAutocomplete.body": "Введите / в описании новой задачи, чтобы выбрать установленный скилл агента из списка подсказок.",
 };
 
 export default tips;

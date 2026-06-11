@@ -994,6 +994,19 @@ export interface FolderListing {
 }
 
 
+// ---- Agent skills catalog ----
+
+/** A skill discovered in one of the global agent skill directories. */
+export interface AgentSkillInfo {
+	/** Skill name from SKILL.md frontmatter (falls back to the directory name). */
+	name: string;
+	/** First-line description from SKILL.md frontmatter; empty when absent. */
+	description: string;
+	/** Which global directory the skill was found in. */
+	source: "agents" | "claude" | "codex";
+}
+
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
@@ -1010,6 +1023,10 @@ export type AppRPCSchema = {
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };
 				response: FolderListing;
+			};
+			listAgentSkills: {
+				params: void;
+				response: AgentSkillInfo[];
 			};
 			createCustomColumn: {
 				params: { projectId: string; name: string; color?: string };

@@ -17,6 +17,7 @@ vi.mock("../../rpc", () => ({
 			uploadFileBase64: vi.fn(),
 			uploadImageBase64: vi.fn(),
 			readImageBase64: vi.fn(),
+			listAgentSkills: vi.fn(),
 		},
 	},
 }));
@@ -104,6 +105,11 @@ describe("CreateTaskModal", () => {
 		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 		mockedApi.request.uploadImageBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 		mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,abc" });
+		mockedApi.request.listAgentSkills.mockResolvedValue([
+			{ name: "dev3", description: "Manage dev3 tasks", source: "claude" },
+			{ name: "dev3-bug-hunter", description: "Hunt bugs", source: "claude" },
+			{ name: "review", description: "Review a PR", source: "agents" },
+		]);
 	});
 
 	it("shows Save & Start button when onCreateAndRun is provided", () => {
@@ -838,5 +844,107 @@ describe("matchesBranchQuery", () => {
 	it("matches partial word prefix", () => {
 		expect(matchesBranchQuery("feature/authentication", "auth")).toBe(true);
 		expect(matchesBranchQuery("feature/authentication", "feat")).toBe(true);
+	});
+});
+
+describe("CreateTaskModal skill autocomplete", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false });
+		mockedApi.request.listAgentSkills.mockResolvedValue([
+			{ name: "dev3", description: "Manage dev3 tasks", source: "claude" },
+			{ name: "dev3-bug-hunter", description: "Hunt bugs", source: "claude" },
+			{ name: "review", description: "Review a PR", source: "agents" },
+		]);
+	});
+
+	async function typeInDescription(text: string) {
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, text);
+		return textarea as HTMLTextAreaElement;
+	}
+
+	it("shows the dropdown when typing /", async () => {
+		renderModal();
+		await typeInDescription("/");
+		await waitFor(() => {
+			expect(screen.getByRole("listbox")).toBeInTheDocument();
+		});
+		expect(screen.getByText("/dev3")).toBeInTheDocument();
+		expect(screen.getByText("/review")).toBeInTheDocument();
+	});
+
+	it("filters skills by the typed prefix", async () => {
+		renderModal();
+		await typeInDescription("/d");
+		await waitFor(() => {
+			expect(screen.getByText("/dev3")).toBeInTheDocument();
+		});
+		expect(screen.queryByText("/review")).not.toBeInTheDocument();
+	});
+
+	it("inserts the selected skill on Enter", async () => {
+		renderModal();
+		const textarea = await typeInDescription("/dev");
+		await waitFor(() => {
+			expect(screen.getByRole("listbox")).toBeInTheDocument();
+		});
+		await userEvent.keyboard("{Enter}");
+		await waitFor(() => {
+			expect(textarea.value).toBe("/dev3 ");
+		});
+		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+	});
+
+	it("inserts the arrow-selected skill", async () => {
+		renderModal();
+		const textarea = await typeInDescription("/dev");
+		await waitFor(() => {
+			expect(screen.getByRole("listbox")).toBeInTheDocument();
+		});
+		await userEvent.keyboard("{ArrowDown}{Enter}");
+		await waitFor(() => {
+			expect(textarea.value).toBe("/dev3-bug-hunter ");
+		});
+	});
+
+	it("inserts a skill on click", async () => {
+		renderModal();
+		const textarea = await typeInDescription("/rev");
+		await waitFor(() => {
+			expect(screen.getByText("/review")).toBeInTheDocument();
+		});
+		await userEvent.click(screen.getByText("/review"));
+		await waitFor(() => {
+			expect(textarea.value).toBe("/review ");
+		});
+	});
+
+	it("Escape closes the dropdown but keeps the modal open", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+		await typeInDescription("/d");
+		await waitFor(() => {
+			expect(screen.getByRole("listbox")).toBeInTheDocument();
+		});
+		await userEvent.keyboard("{Escape}");
+		await waitFor(() => {
+			expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+		});
+		expect(onClose).not.toHaveBeenCalled();
+		expect(screen.getByText("New Task")).toBeInTheDocument();
+	});
+
+	it("does not open the dropdown for a slash inside a path", async () => {
+		renderModal();
+		await typeInDescription("fix uploaded-images/dev3");
+		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+	});
+
+	it("hides the dropdown when nothing matches", async () => {
+		renderModal();
+		await typeInDescription("/zzz");
+		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 	});
 });

@@ -210,6 +210,8 @@ const tips = {
 	"tip.multiFolderAddProject.body": "In Add Project → Local Folder, Cmd-click or Shift-click to pick multiple repos and add them all in one step.",
 	"tip.statusColorRails.title": "Tasks are color-coded by status",
 	"tip.statusColorRails.body": "Each task in the Active Tasks list has a colored left rail matching its status — scan who's working vs. waiting at a glance.",
+	"tip.skillAutocomplete.title": "Autocomplete agent skills with /",
+	"tip.skillAutocomplete.body": "Type / in a new task's description to pick an installed agent skill from the suggestion list.",
 } as const;
 
 export default tips;

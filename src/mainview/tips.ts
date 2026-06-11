@@ -668,6 +668,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.statusColorRails.body",
 		icon: "\u{F0766}", // nf-md-format_color_fill
 	},
+	// Batch 44: skill autocomplete in task description
+	{
+		id: "skill-autocomplete",
+		titleKey: "tip.skillAutocomplete.title",
+		bodyKey: "tip.skillAutocomplete.body",
+		icon: "\u{F0349}", // nf-md-magic_staff
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
