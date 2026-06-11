@@ -29,6 +29,7 @@ vi.mock("../rpc", () => ({
 			}),
 			moveTask: vi.fn().mockResolvedValue({}),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
+			listAgentSkills: vi.fn().mockResolvedValue([]),
 		},
 	},
 }));

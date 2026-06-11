@@ -10,8 +10,10 @@ import LabelChip from "./LabelChip";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useImagePaste } from "../hooks/useImagePaste";
 import { useFileDrop } from "../hooks/useFileDrop";
+import { useSkillAutocomplete } from "../hooks/useSkillAutocomplete";
 import { removeImagePath } from "../utils/imageAttachments";
 import BranchSelector from "./BranchSelector";
+import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -83,6 +85,8 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		});
 	}, []);
 
+	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription);
+
 	const { handlePaste, isPasting } = useImagePaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
 
@@ -150,7 +154,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				e.stopImmediatePropagation();
-				if (pendingBranchChoice) {
+				if (skillAutocomplete.open) {
+					skillAutocomplete.close();
+				} else if (pendingBranchChoice) {
 					setPendingBranchChoice(null);
 					setPendingSubmitMode(null);
 				} else if (confirmDiscard) {
@@ -164,7 +170,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		window.addEventListener("keydown", handleKey, true);
 		return () => window.removeEventListener("keydown", handleKey, true);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [description, onClose, confirmDiscard, pendingBranchChoice]);
+	}, [description, onClose, confirmDiscard, pendingBranchChoice, skillAutocomplete.open, skillAutocomplete.close]);
 
 	async function createTaskWithBranch(branch: string | null, mode: "save" | "run" | "scratch") {
 		const trimmed = description.trim();
@@ -325,8 +331,13 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 							<textarea
 							ref={textareaRef}
 							value={description}
-							onChange={(e) => setDescription(e.target.value)}
+							onChange={(e) => {
+								setDescription(e.target.value);
+								skillAutocomplete.sync();
+							}}
+							onSelect={skillAutocomplete.sync}
 							onKeyDown={(e) => {
+								if (skillAutocomplete.handleKeyDown(e)) return;
 								if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
 									if (e.shiftKey && onCreateAndRun) {
 										handleCreateAndRun();
@@ -340,6 +351,14 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 							rows={4}
 							className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[5rem] max-h-[18.75rem]"
 						/>
+						{skillAutocomplete.open && (
+							<SkillAutocompleteDropdown
+								items={skillAutocomplete.items}
+								activeIndex={skillAutocomplete.activeIndex}
+								onHover={skillAutocomplete.setActiveIndex}
+								onSelect={skillAutocomplete.accept}
+							/>
+						)}
 					</div>
 					{isPasting && (
 						<span className="text-[0.6875rem] text-accent animate-pulse">{t("images.pasting")}</span>
