@@ -212,6 +212,8 @@ const tips = {
 	"tip.statusColorRails.body": "Cada tarea de la lista Tareas activas tiene una barra de color a la izquierda según su estado: distingue de un vistazo quién trabaja y quién espera.",
 	"tip.skillAutocomplete.title": "Autocompleta skills con /",
 	"tip.skillAutocomplete.body": "Escribe / en la descripción de una nueva tarea para elegir un skill de agente instalado de la lista de sugerencias.",
+	"tip.projectsDailyBackup.title": "Copia diaria de tus proyectos",
+	"tip.projectsDailyBackup.body": "¿Perdiste tus proyectos? Restáuralos desde ~/.dev3.0/projects-YYYY-MM-DD.json.bak — las copias se guardan 7 días.",
 };
 
 export default tips;

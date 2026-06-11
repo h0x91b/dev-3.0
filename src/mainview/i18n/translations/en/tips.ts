@@ -212,6 +212,8 @@ const tips = {
 	"tip.statusColorRails.body": "Each task in the Active Tasks list has a colored left rail matching its status — scan who's working vs. waiting at a glance.",
 	"tip.skillAutocomplete.title": "Autocomplete agent skills with /",
 	"tip.skillAutocomplete.body": "Type / in a new task's description to pick an installed agent skill from the suggestion list.",
+	"tip.projectsDailyBackup.title": "Project list is backed up daily",
+	"tip.projectsDailyBackup.body": "Lost your projects? Restore from ~/.dev3.0/projects-YYYY-MM-DD.json.bak — snapshots are kept for 7 days.",
 } as const;
 
 export default tips;

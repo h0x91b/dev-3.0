@@ -216,6 +216,16 @@ if (shellEnv.sshAuthSock) {
 const cliSocketPath = startSocketServer();
 log.info("CLI socket server ready", { path: cliSocketPath });
 
+// Daily projects.json safety snapshot (projects-YYYY-MM-DD.json.bak, 7 days kept).
+// Saves also trigger it, but projects.json can go untouched for weeks — the
+// startup hook guarantees at least one fresh backup per day the app is used.
+{
+	const { backupProjectsDaily } = await import("./data");
+	backupProjectsDaily().catch((err) => {
+		log.warn("Startup projects backup failed (non-fatal)", { err });
+	});
+}
+
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");

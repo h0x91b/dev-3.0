@@ -212,8 +212,22 @@ export async function resolveProjectConfig(project: Project, configPath?: string
 			? resolved.defaultBaseBranch
 			: `origin/${resolved.defaultBaseBranch}`;
 	} else if (resolved.defaultCompareRef === undefined) {
-		// Only auto-detect if no explicit value was set at any level (including project)
-		resolved.defaultCompareRef = await git.detectDefaultCompareRef(basePath, resolved.defaultBaseBranch);
+		// Only auto-detect if no explicit value was set at any level (including project).
+		// A deleted project folder (or any git/spawn failure) must not reject — one broken
+		// project would otherwise blow up the whole project list (Promise.all in getProjects).
+		if (!existsSync(basePath)) {
+			resolved.defaultCompareRef = resolved.defaultBaseBranch;
+		} else {
+			try {
+				resolved.defaultCompareRef = await git.detectDefaultCompareRef(basePath, resolved.defaultBaseBranch);
+			} catch (err) {
+				log.warn("Failed to detect default compare ref, falling back to base branch", {
+					path: basePath,
+					error: String(err),
+				});
+				resolved.defaultCompareRef = resolved.defaultBaseBranch;
+			}
+		}
 	}
 
 	return resolved;
@@ -229,6 +243,9 @@ export async function migrateProjectConfig(project: Project, configPath?: string
 	const basePath = configPath ?? project.path;
 	const repoPath = `${basePath}/${CONFIG_FILE}`;
 	const localPath = `${basePath}/${LOCAL_CONFIG_FILE}`;
+
+	// A deleted project folder must not be resurrected by mkdirSync in saveRepoConfig
+	if (!existsSync(basePath)) return;
 
 	// Skip if any .dev3/ config already exists
 	if (existsSync(repoPath) || existsSync(localPath)) return;
