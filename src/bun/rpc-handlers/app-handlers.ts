@@ -84,8 +84,21 @@ async function setWindowForeground(params: { focused: boolean }): Promise<void> 
 async function getProjects(): Promise<Project[]> {
 	log.info("→ getProjects");
 	const rawProjects = await data.loadProjects();
-	await Promise.all(rawProjects.map((project) => repoConfig.migrateProjectConfig(project)));
-	const projects = await Promise.all(rawProjects.map((project) => repoConfig.resolveProjectConfig(project)));
+	// Per-project isolation: one broken project (e.g. its folder was deleted from
+	// disk) must never reject the whole list — that left users with an empty board.
+	const projects = await Promise.all(rawProjects.map(async (project) => {
+		try {
+			await repoConfig.migrateProjectConfig(project);
+			return await repoConfig.resolveProjectConfig(project);
+		} catch (err) {
+			log.warn("Failed to resolve project config, returning project as-is", {
+				id: project.id,
+				path: project.path,
+				error: String(err),
+			});
+			return project;
+		}
+	}));
 	log.info(`← getProjects: ${projects.length} project(s)`);
 	return projects;
 }

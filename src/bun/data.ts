@@ -10,6 +10,8 @@ import { projectSlug } from "./git";
 const log = createLogger("data");
 
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
+const PROJECTS_BACKUP_RETENTION_DAYS = 7;
+const PROJECTS_BACKUP_FILE_PATTERN = /^projects-\d{4}-\d{2}-\d{2}\.json\.bak$/;
 const TASK_BACKUPS_DIR = "tasks-backups";
 const TASK_BACKUP_RETENTION_HOURS = 72;
 const TASK_BACKUP_FILE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}Z\.json$/;
@@ -177,9 +179,44 @@ async function rawLoadAllProjects(options?: { strict?: boolean; persistMigration
 async function rawSaveProjects(projects: Project[]): Promise<void> {
 	log.debug("Saving projects", { count: projects.length, file: PROJECTS_FILE });
 	await ensureDir(PROJECTS_FILE);
+	await backupProjectsDaily().catch((err) => {
+		log.warn("Failed to write daily projects backup (non-fatal)", { err });
+	});
 	await writeFile(PROJECTS_FILE, JSON.stringify(projects, null, 2));
 	projectsCache.delete(PROJECTS_FILE);
 	log.info(`Saved ${projects.length} project(s)`);
+}
+
+/**
+ * Snapshot projects.json to projects-YYYY-MM-DD.json.bak (once per day) and
+ * prune snapshots beyond the retention window. Called before every save and
+ * once at app startup. Writes new sibling files only — never moves or renames
+ * anything under ~/.dev3.0/ (see on-disk layout invariants in AGENTS.md).
+ */
+export async function backupProjectsDaily(now: Date = new Date()): Promise<void> {
+	let currentContent: string;
+	try {
+		currentContent = await readFile(PROJECTS_FILE, "utf8");
+	} catch (err: any) {
+		if (err.code === "ENOENT") return;
+		throw err;
+	}
+
+	const backupFile = `${DEV3_HOME}/projects-${now.toISOString().slice(0, 10)}.json.bak`;
+	try {
+		await readFile(backupFile, "utf8");
+	} catch (err: any) {
+		if (err.code !== "ENOENT") throw err;
+		await writeFile(backupFile, currentContent);
+		log.info("Wrote daily projects backup", { file: backupFile });
+	}
+
+	const backupFiles = (await readdir(DEV3_HOME))
+		.filter((entry) => PROJECTS_BACKUP_FILE_PATTERN.test(entry))
+		.sort();
+	for (const staleFile of backupFiles.slice(0, Math.max(0, backupFiles.length - PROJECTS_BACKUP_RETENTION_DAYS))) {
+		await unlink(`${DEV3_HOME}/${staleFile}`);
+	}
 }
 
 // ---- Projects (public API — all mutators use file lock) ----

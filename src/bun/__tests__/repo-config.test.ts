@@ -397,6 +397,36 @@ describe("migrateProjectConfig", () => {
 
 		expect(existsSync(join(TEST_DIR, ".dev3", "config.json"))).toBe(false);
 	});
+
+	it("does not recreate a deleted project folder", async () => {
+		const missingPath = join(TEST_DIR, "deleted-project");
+		const project = makeProject({ path: missingPath, setupScript: "bun install" });
+
+		await migrateProjectConfig(project);
+
+		expect(existsSync(missingPath)).toBe(false);
+	});
+});
+
+describe("resolveProjectConfig — deleted project folder resilience", () => {
+	it("resolves with fallback compare ref when detection fails on an existing path", async () => {
+		detectDefaultCompareRef.mockRejectedValue(new Error("spawn failed"));
+
+		const project = makeProject({ defaultCompareRef: undefined });
+		const resolved = await resolveProjectConfig(project);
+
+		expect(resolved.defaultCompareRef).toBe("main");
+	});
+
+	it("skips compare-ref detection entirely when the project folder is missing", async () => {
+		detectDefaultCompareRef.mockRejectedValue(new Error("ENOENT: no such cwd"));
+
+		const project = makeProject({ path: join(TEST_DIR, "gone"), defaultCompareRef: undefined });
+		const resolved = await resolveProjectConfig(project);
+
+		expect(detectDefaultCompareRef).not.toHaveBeenCalled();
+		expect(resolved.defaultCompareRef).toBe("main");
+	});
 });
 
 describe("hasRepoConfig", () => {

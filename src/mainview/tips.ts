@@ -675,6 +675,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.skillAutocomplete.body",
 		icon: "\u{F0349}", // nf-md-magic_staff
 	},
+	// Batch 45: daily projects.json backups
+	{
+		id: "projects-daily-backup",
+		titleKey: "tip.projectsDailyBackup.title",
+		bodyKey: "tip.projectsDailyBackup.body",
+		icon: "\u{F006F}", // nf-md-backup_restore
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

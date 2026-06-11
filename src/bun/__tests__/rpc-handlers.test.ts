@@ -939,6 +939,13 @@ describe("end-to-end: task description → shell command escaping", () => {
 describe("handlers.getProjects", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+	// Restore module-level mock defaults — overridden implementations would
+	// otherwise leak into later describes (clearAllMocks keeps implementations).
+	afterEach(() => {
+		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation((async (project: any) => project) as any);
+		vi.mocked(repoConfig.migrateProjectConfig).mockReset();
+	});
+
 	it("returns projects from data layer", async () => {
 		const projects = [makeProject(), makeProject({ id: "proj-2", name: "Second" })];
 		vi.mocked(data.loadProjects).mockResolvedValue(projects);
@@ -952,6 +959,28 @@ describe("handlers.getProjects", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([]);
 		const result = await handlers.getProjects();
 		expect(result).toEqual([]);
+	});
+
+	it("still returns every project when config resolution fails for one (deleted folder)", async () => {
+		const ok = makeProject();
+		const broken = makeProject({ id: "proj-broken", path: "/tmp/deleted-from-disk" });
+		vi.mocked(data.loadProjects).mockResolvedValue([ok, broken]);
+		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation(async (project: any) => {
+			if (project.id === "proj-broken") throw new Error("ENOENT: no such file or directory, posix_spawn");
+			return project;
+		});
+
+		const result = await handlers.getProjects();
+		expect(result.map((p) => p.id)).toEqual([ok.id, "proj-broken"]);
+	});
+
+	it("does not let a failing config migration drop the project list", async () => {
+		const project = makeProject();
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(repoConfig.migrateProjectConfig).mockRejectedValue(new Error("disk gone"));
+
+		const result = await handlers.getProjects();
+		expect(result.map((p) => p.id)).toEqual([project.id]);
 	});
 });
 

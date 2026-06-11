@@ -212,6 +212,8 @@ const tips = {
 	"tip.statusColorRails.body": "У каждой задачи в списке Active Tasks слева цветная полоса по её статусу — сразу видно, кто работает, а кто ждёт.",
 	"tip.skillAutocomplete.title": "Автодополнение скиллов через /",
 	"tip.skillAutocomplete.body": "Введите / в описании новой задачи, чтобы выбрать установленный скилл агента из списка подсказок.",
+	"tip.projectsDailyBackup.title": "Список проектов бэкапится ежедневно",
+	"tip.projectsDailyBackup.body": "Пропали проекты? Восстановите из ~/.dev3.0/projects-YYYY-MM-DD.json.bak — снимки хранятся 7 дней.",
 };
 
 export default tips;
