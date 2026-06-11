@@ -872,7 +872,34 @@ function parseRecentCommitters(shortlogOutput: string): Set<string> {
 	return emails;
 }
 
+// detectDefaultCompareRef runs `git shortlog` over two weeks of history — expensive
+// on large repos. It is invoked by resolveProjectConfig, which the renderer polls
+// every few seconds, so the result is cached with a TTL. The in-flight promise is
+// cached too, coalescing concurrent callers.
+const compareRefCache = new Map<string, { at: number; promise: Promise<string> }>();
+const COMPARE_REF_CACHE_TTL_MS = 10 * 60_000;
+
+/** Test-only: clear the detectDefaultCompareRef cache. */
+export function _resetCompareRefCache(): void {
+	compareRefCache.clear();
+}
+
 export async function detectDefaultCompareRef(
+	projectPath: string,
+	baseBranch: string,
+): Promise<string> {
+	const key = `${projectPath}\0${baseBranch}`;
+	const cached = compareRefCache.get(key);
+	if (cached && Date.now() - cached.at < COMPARE_REF_CACHE_TTL_MS) {
+		return cached.promise;
+	}
+	const promise = detectDefaultCompareRefUncached(projectPath, baseBranch);
+	compareRefCache.set(key, { at: Date.now(), promise });
+	promise.catch(() => compareRefCache.delete(key));
+	return promise;
+}
+
+async function detectDefaultCompareRefUncached(
 	projectPath: string,
 	baseBranch: string,
 ): Promise<string> {
@@ -955,6 +982,23 @@ const fetchLastSuccess = new Map<string, number>();
 const fetchProjectQueue = new Map<string, Promise<void>>();
 const FETCH_COOLDOWN_MS = 5_000;
 
+// Failed fetches (dead remote, no network, auth issues) get an exponential
+// backoff so background pollers don't retry them on every tick. Without this,
+// a repo with an unreachable origin was re-fetched every poller cycle forever.
+const fetchLastFailure = new Map<string, { at: number; failures: number }>();
+const FETCH_FAILURE_BACKOFF_BASE_MS = 2 * 60_000;
+const FETCH_FAILURE_BACKOFF_MAX_MS = 30 * 60_000;
+
+function fetchFailureBackoffMs(failures: number): number {
+	return Math.min(FETCH_FAILURE_BACKOFF_BASE_MS * 2 ** (failures - 1), FETCH_FAILURE_BACKOFF_MAX_MS);
+}
+
+function isInFailureBackoff(cacheKey: string, now: number): boolean {
+	const failure = fetchLastFailure.get(cacheKey);
+	if (!failure) return false;
+	return now - failure.at < fetchFailureBackoffMs(failure.failures);
+}
+
 export async function fetchOrigin(projectPath: string, branch?: string): Promise<boolean> {
 	await reportCurrentPreparationStage("fetching-origin");
 	const now = Date.now();
@@ -966,6 +1010,16 @@ export async function fetchOrigin(projectPath: string, branch?: string): Promise
 	if (now - lastSuccess < FETCH_COOLDOWN_MS) {
 		log.debug("fetchOrigin: skipping (cooldown)", { projectPath, branch, msSinceLast: now - lastSuccess });
 		return true;
+	}
+
+	// Skip if recent fetches for this key keep failing (exponential backoff)
+	if (isInFailureBackoff(cacheKey, now)) {
+		log.debug("fetchOrigin: skipping (failure backoff)", {
+			projectPath,
+			branch,
+			failures: fetchLastFailure.get(cacheKey)?.failures,
+		});
+		return false;
 	}
 
 	// Reuse in-flight fetch for the same project+branch
@@ -986,6 +1040,10 @@ export async function fetchOrigin(projectPath: string, branch?: string): Promise
 			log.debug("fetchOrigin: skipping (cooldown after queue wait)", { projectPath, branch });
 			return true;
 		}
+		if (isInFailureBackoff(cacheKey, Date.now())) {
+			log.debug("fetchOrigin: skipping (failure backoff after queue wait)", { projectPath, branch });
+			return false;
+		}
 
 		const startedAt = performance.now();
 		const cmd = branch
@@ -995,16 +1053,21 @@ export async function fetchOrigin(projectPath: string, branch?: string): Promise
 		const result = await run(cmd, projectPath);
 		if (result.ok) {
 			fetchLastSuccess.set(cacheKey, Date.now());
+			fetchLastFailure.delete(cacheKey);
 			log.info("fetchOrigin finished", {
 				projectPath,
 				branch,
 				durationMs: Math.round(performance.now() - startedAt),
 			});
 		} else {
+			const failures = (fetchLastFailure.get(cacheKey)?.failures ?? 0) + 1;
+			fetchLastFailure.set(cacheKey, { at: Date.now(), failures });
 			log.warn("fetchOrigin failed", {
 				projectPath,
 				branch,
 				stderr: result.stderr,
+				failures,
+				nextRetryInMs: fetchFailureBackoffMs(failures),
 				durationMs: Math.round(performance.now() - startedAt),
 			});
 		}
@@ -1124,6 +1187,9 @@ export function removeFetchCache(projectPath: string): void {
 	for (const key of fetchLastSuccess.keys()) {
 		if (key.startsWith(projectPath + ":")) fetchLastSuccess.delete(key);
 	}
+	for (const key of fetchLastFailure.keys()) {
+		if (key.startsWith(projectPath + ":")) fetchLastFailure.delete(key);
+	}
 	fetchProjectQueue.delete(projectPath);
 }
 
@@ -1131,6 +1197,7 @@ export function removeFetchCache(projectPath: string): void {
 export function _resetFetchState(): void {
 	fetchInFlight.clear();
 	fetchLastSuccess.clear();
+	fetchLastFailure.clear();
 	fetchProjectQueue.clear();
 }
 

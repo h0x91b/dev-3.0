@@ -181,6 +181,92 @@ describe("github", () => {
 		});
 	});
 
+	it("caches authenticated status — repeated calls spawn gh only once", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		spawnMock.mockImplementation(() => fakeProc(JSON.stringify({
+			hosts: {
+				"github.com": [
+					{ login: "h0x91b", host: "github.com", active: true, state: "success" },
+				],
+			},
+		})));
+
+		const { getGitHubCliStatus } = await import("../github");
+		await getGitHubCliStatus();
+		await getGitHubCliStatus();
+		await getGitHubCliStatus();
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not cache not_authenticated status", async () => {
+		whichMock.mockResolvedValue("/usr/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc("", "unknown flag: --json\n", 1);
+			}
+			return fakeProc("", "You are not logged into any GitHub hosts.\n", 1);
+		});
+
+		const { getGitHubCliStatus } = await import("../github");
+		expect((await getGitHubCliStatus()).authStatus).toBe("not_authenticated");
+		const callsAfterFirst = spawnMock.mock.calls.length;
+
+		expect((await getGitHubCliStatus()).authStatus).toBe("not_authenticated");
+		// Second call re-checks (not served from cache)
+		expect(spawnMock.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+	});
+
+	it("caches the resolved token — repeated getGitHubAuthEnv spawns auth token once", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		const tokenCalls: string[] = [];
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc(JSON.stringify({
+					hosts: {
+						"github.com": [
+							{ login: "h0x91b", host: "github.com", active: true, state: "success" },
+						],
+					},
+				}));
+			}
+			if (cmd[1] === "auth" && cmd[2] === "token") {
+				tokenCalls.push(cmd.join(" "));
+				return fakeProc("secret-token\n");
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubAuthEnv } = await import("../github");
+		const selection = { githubAuthHost: null, githubAuthLogin: null };
+		await getGitHubAuthEnv(selection);
+		await getGitHubAuthEnv(selection);
+		expect(tokenCalls).toHaveLength(1);
+	});
+
+	it("expires the auth status cache after the TTL", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+			spawnMock.mockImplementation(() => fakeProc(JSON.stringify({
+				hosts: {
+					"github.com": [
+						{ login: "h0x91b", host: "github.com", active: true, state: "success" },
+					],
+				},
+			})));
+
+			const { getGitHubCliStatus } = await import("../github");
+			await getGitHubCliStatus();
+			expect(spawnMock).toHaveBeenCalledTimes(1);
+
+			vi.setSystemTime(Date.now() + 2 * 60_000);
+			await getGitHubCliStatus();
+			expect(spawnMock).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("builds shell exports for the resolved account", async () => {
 		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
 		spawnMock.mockReturnValue(fakeProc(JSON.stringify({
