@@ -3343,7 +3343,7 @@ describe("handlers.getTaskDiff", () => {
 			compareLabel: "origin/main",
 		});
 
-		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path);
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "main");
 		expect(git.getTaskDiff).toHaveBeenCalledWith("/tmp/wt", "branch", {
 			baseBranch: "main",
 			compareRef: "origin/main",
