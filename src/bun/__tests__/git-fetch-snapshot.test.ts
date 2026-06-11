@@ -99,6 +99,79 @@ describe("fetchOrigin", () => {
 		expect(ok2).toBe(true);
 	});
 
+	it("skips retry while in failure backoff", async () => {
+		queueResponse(128, "", "fatal: no remote");
+		const ok1 = await fetchOrigin("/repo");
+		expect(ok1).toBe(false);
+
+		// Immediate retry must be skipped without spawning git
+		queueResponse(0, "");
+		const ok2 = await fetchOrigin("/repo");
+		expect(ok2).toBe(false);
+		expect(spawnResponses).toHaveLength(1); // queued response not consumed
+	});
+
+	it("retries after the failure backoff window elapses", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			queueResponse(128, "", "fatal: no remote");
+			expect(await fetchOrigin("/repo")).toBe(false);
+
+			// First failure backoff is 2 minutes — jump past it
+			vi.setSystemTime(Date.now() + 3 * 60_000);
+			queueResponse(0, "");
+			expect(await fetchOrigin("/repo")).toBe(true);
+			expect(spawnResponses).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("doubles the backoff on consecutive failures", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			queueResponse(128, "", "fatal: no remote");
+			expect(await fetchOrigin("/repo")).toBe(false);
+
+			vi.setSystemTime(Date.now() + 3 * 60_000);
+			queueResponse(128, "", "fatal: no remote");
+			expect(await fetchOrigin("/repo")).toBe(false);
+
+			// Second failure backoff is 4 minutes — 3 minutes later is still inside it
+			vi.setSystemTime(Date.now() + 3 * 60_000);
+			queueResponse(0, "");
+			expect(await fetchOrigin("/repo")).toBe(false);
+			expect(spawnResponses).toHaveLength(1);
+
+			// Another 2 minutes (5 total) clears the 4-minute backoff
+			vi.setSystemTime(Date.now() + 2 * 60_000);
+			expect(await fetchOrigin("/repo")).toBe(true);
+			expect(spawnResponses).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("a successful fetch clears the failure backoff", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			queueResponse(128, "", "fatal: no remote");
+			expect(await fetchOrigin("/repo")).toBe(false);
+
+			vi.setSystemTime(Date.now() + 3 * 60_000);
+			queueResponse(0, "");
+			expect(await fetchOrigin("/repo")).toBe(true);
+
+			// Past the success cooldown: next fetch runs immediately (no backoff left)
+			vi.setSystemTime(Date.now() + 10_000);
+			queueResponse(0, "");
+			expect(await fetchOrigin("/repo")).toBe(true);
+			expect(spawnResponses).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("allows fetch for different projects concurrently", async () => {
 		queueResponse(0, ""); // for /repo-a
 		queueResponse(0, ""); // for /repo-b

@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskStatus, TipState } from "../shared/types";
 import { titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
@@ -52,6 +52,48 @@ async function ensureDir(filePath: string): Promise<void> {
 	await mkdir(dir, { recursive: true });
 }
 
+// ---- Read cache (mtime/size keyed) ----
+//
+// Background pollers re-read projects.json/tasks.json multiple times per second.
+// Caching the parsed result and validating it with a cheap stat() avoids re-reading
+// and re-parsing megabytes of JSON when the file hasn't changed. stat() is taken
+// BEFORE readFile so a concurrent write can only over-invalidate, never serve stale.
+// Cache hits return shallow copies; mutators bypass the cache and saves invalidate it,
+// so callers of the public load APIs must treat results as read-only snapshots.
+
+interface FileCacheEntry<T> {
+	mtimeMs: number;
+	size: number;
+	value: T[];
+}
+
+const projectsCache = new Map<string, FileCacheEntry<Project>>();
+const tasksCache = new Map<string, FileCacheEntry<Task>>();
+
+async function cacheLookup<T>(
+	cache: Map<string, FileCacheEntry<T>>,
+	file: string,
+): Promise<{ hit: T[] | null; stat: { mtimeMs: number; size: number } | null }> {
+	let fileStat: { mtimeMs: number; size: number } | null = null;
+	try {
+		const st = await stat(file);
+		fileStat = { mtimeMs: st.mtimeMs, size: st.size };
+	} catch {
+		return { hit: null, stat: null };
+	}
+	const entry = cache.get(file);
+	if (entry && entry.mtimeMs === fileStat.mtimeMs && entry.size === fileStat.size) {
+		return { hit: entry.value.map((item) => ({ ...item })), stat: fileStat };
+	}
+	return { hit: null, stat: fileStat };
+}
+
+/** Test-only: clear in-memory read caches. */
+export function _resetDataCaches(): void {
+	projectsCache.clear();
+	tasksCache.clear();
+}
+
 // ---- Projects (raw internal helpers — no locking) ----
 
 function toDataFileReadError(
@@ -69,6 +111,14 @@ function toDataFileReadError(
 }
 
 async function rawLoadAllProjects(options?: { strict?: boolean; persistMigrations?: boolean }): Promise<Project[]> {
+	// Mutators (strict/persistMigrations) always read fresh from disk.
+	const useCache = !options?.strict && !options?.persistMigrations;
+	let preReadStat: { mtimeMs: number; size: number } | null = null;
+	if (useCache) {
+		const { hit, stat: st } = await cacheLookup(projectsCache, PROJECTS_FILE);
+		if (hit) return hit;
+		preReadStat = st;
+	}
 	log.debug("Loading all projects", { file: PROJECTS_FILE });
 	try {
 		const projects = JSON.parse(await readFile(PROJECTS_FILE, "utf8")) as Project[];
@@ -107,6 +157,9 @@ async function rawLoadAllProjects(options?: { strict?: boolean; persistMigration
 			await rawSaveProjects(projects);
 		}
 		log.info(`Loaded ${projects.length} project(s) (including deleted)`);
+		if (useCache && preReadStat) {
+			projectsCache.set(PROJECTS_FILE, { ...preReadStat, value: projects.map((p) => ({ ...p })) });
+		}
 		return projects;
 	} catch (err: any) {
 		if (err.code === "ENOENT") {
@@ -125,6 +178,7 @@ async function rawSaveProjects(projects: Project[]): Promise<void> {
 	log.debug("Saving projects", { count: projects.length, file: PROJECTS_FILE });
 	await ensureDir(PROJECTS_FILE);
 	await writeFile(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+	projectsCache.delete(PROJECTS_FILE);
 	log.info(`Saved ${projects.length} project(s)`);
 }
 
@@ -287,6 +341,14 @@ function nextSeq(tasks: Task[]): number {
 
 async function rawLoadTasks(project: Project, options?: { strict?: boolean; persistMigrations?: boolean }): Promise<Task[]> {
 	const file = tasksFile(project);
+	// Mutators (strict/persistMigrations) always read fresh from disk.
+	const useCache = !options?.strict && !options?.persistMigrations;
+	let preReadStat: { mtimeMs: number; size: number } | null = null;
+	if (useCache) {
+		const { hit, stat: st } = await cacheLookup(tasksCache, file);
+		if (hit) return hit;
+		preReadStat = st;
+	}
 	log.debug("Loading tasks", { projectId: project.id, file });
 	try {
 		const tasks = JSON.parse(await readFile(file, "utf8")) as Task[];
@@ -337,6 +399,9 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 		}
 
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
+		if (useCache && preReadStat) {
+			tasksCache.set(file, { ...preReadStat, value: tasks.map((t) => ({ ...t })) });
+		}
 		return tasks;
 	} catch (err: any) {
 		if (err.code === "ENOENT") {
@@ -362,6 +427,7 @@ async function rawSaveTasks(
 		log.warn("Failed to write hourly tasks backup (non-fatal)", { projectId: project.id, err });
 	});
 	await writeFile(file, JSON.stringify(tasks, null, 2));
+	tasksCache.delete(file);
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
 }
 

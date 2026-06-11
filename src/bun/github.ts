@@ -125,7 +125,43 @@ function parseAccounts(payload: GhAuthStatusResponse): GitHubAccount[] {
 	});
 }
 
+// gh auth status/token are resolved by spawning the gh binary — three subprocesses
+// per GitHub operation without caching. Background pollers (merge/PR detection) hit
+// this constantly, so both are cached with a TTL. Only "authenticated" status is
+// cached: after `gh auth login` the user sees the new state immediately.
+const AUTH_STATUS_CACHE_TTL_MS = 60_000;
+const TOKEN_CACHE_TTL_MS = 5 * 60_000;
+
+let authStatusCache: { at: number; promise: Promise<GitHubCliStatus> } | null = null;
+const tokenCache = new Map<string, { at: number; promise: Promise<string> }>();
+
+/** Test-only: clear gh auth caches. */
+export function _resetGitHubAuthCache(): void {
+	authStatusCache = null;
+	tokenCache.clear();
+}
+
 export async function getGitHubCliStatus(): Promise<GitHubCliStatus> {
+	if (authStatusCache && Date.now() - authStatusCache.at < AUTH_STATUS_CACHE_TTL_MS) {
+		return authStatusCache.promise;
+	}
+	const promise = getGitHubCliStatusUncached();
+	const entry = { at: Date.now(), promise };
+	authStatusCache = entry;
+	promise.then(
+		(status) => {
+			if (status.authStatus !== "authenticated" && authStatusCache === entry) {
+				authStatusCache = null;
+			}
+		},
+		() => {
+			if (authStatusCache === entry) authStatusCache = null;
+		},
+	);
+	return promise;
+}
+
+async function getGitHubCliStatusUncached(): Promise<GitHubCliStatus> {
 	const binaryPath = await which("gh");
 	if (!binaryPath) {
 		return {
@@ -219,11 +255,21 @@ export async function resolveGitHubAccount(project: ProjectGitHubSelection): Pro
 }
 
 async function getAccountToken(account: GitHubAccount): Promise<string> {
-	const result = await runGh(["auth", "token", "--hostname", account.host, "--user", account.login]);
-	if (!result.ok || !result.stdout) {
-		throw new Error(result.stderr || `Failed to resolve GitHub token for ${account.login}@${account.host}`);
+	const key = `${account.host}\0${account.login}`;
+	const cached = tokenCache.get(key);
+	if (cached && Date.now() - cached.at < TOKEN_CACHE_TTL_MS) {
+		return cached.promise;
 	}
-	return result.stdout;
+	const promise = (async () => {
+		const result = await runGh(["auth", "token", "--hostname", account.host, "--user", account.login]);
+		if (!result.ok || !result.stdout) {
+			throw new Error(result.stderr || `Failed to resolve GitHub token for ${account.login}@${account.host}`);
+		}
+		return result.stdout;
+	})();
+	tokenCache.set(key, { at: Date.now(), promise });
+	promise.catch(() => tokenCache.delete(key));
+	return promise;
 }
 
 export async function getGitHubAuthEnv(project: ProjectGitHubSelection): Promise<Record<string, string>> {

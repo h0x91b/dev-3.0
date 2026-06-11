@@ -78,11 +78,13 @@ import {
 	fetchFork,
 	pullOrigin,
 	_resetFetchState,
+	_resetCompareRefCache,
 } from "../git";
 
 beforeEach(() => {
 	spawnResponses = [];
 	_resetFetchState();
+	_resetCompareRefCache();
 	spawnMock.mockClear();
 	spawnMock.mockImplementation(() => {
 		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
@@ -565,6 +567,64 @@ describe("detectDefaultCompareRef", () => {
 		const ref = await detectDefaultCompareRef("/repo", "master");
 
 		expect(ref).toBe("origin/master");
+	});
+
+	it("caches the result for repeated calls (no extra git spawns)", async () => {
+		queueResponse(0, "origin\n"); // remotes
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
+		queueResponse(0, "abc123\n"); // rev-parse --verify main
+		queueResponse(0, ""); // branch --set-upstream-to origin/main main
+		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n"); // shortlog
+
+		const first = await detectDefaultCompareRef("/repo", "main");
+		expect(first).toBe("main");
+		expect(spawnResponses).toHaveLength(0);
+
+		// Second call hits the cache — nothing queued, no spawn attempted
+		const second = await detectDefaultCompareRef("/repo", "main");
+		expect(second).toBe("main");
+	});
+
+	it("caches per projectPath+baseBranch key", async () => {
+		queueResponse(0, "origin\n");
+		queueResponse(0, "abc123\n");
+		queueResponse(0, "abc123\n");
+		queueResponse(0, "");
+		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n");
+		expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
+
+		// Different repo: full detection runs again
+		queueResponse(0, "origin\n");
+		queueResponse(0, "abc123\n");
+		queueResponse(0, "def456\n");
+		queueResponse(0, "");
+		queueResponse(0, "   10 a <a@x.com>\n    3 b <b@x.com>\n");
+		expect(await detectDefaultCompareRef("/other-repo", "main")).toBe("origin/main");
+		expect(spawnResponses).toHaveLength(0);
+	});
+
+	it("expires the cache after the TTL", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			queueResponse(0, "origin\n");
+			queueResponse(0, "abc123\n");
+			queueResponse(0, "abc123\n");
+			queueResponse(0, "");
+			queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n");
+			expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
+
+			vi.setSystemTime(Date.now() + 11 * 60_000);
+
+			queueResponse(0, "origin\n");
+			queueResponse(0, "abc123\n");
+			queueResponse(0, "def456\n");
+			queueResponse(0, "");
+			queueResponse(0, "   10 a <a@x.com>\n    3 b <b@x.com>\n");
+			expect(await detectDefaultCompareRef("/repo", "main")).toBe("origin/main");
+			expect(spawnResponses).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
