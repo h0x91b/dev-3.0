@@ -35,6 +35,12 @@
  * unknown and they gate fg adjustment off entirely, as does reverse video
  * (SGR 7). White backgrounds are exempt: after remapping they sit close to
  * the theme background, so the normal fg adjustment stays correct.
+ *
+ * Apps emit fg *before* bg (Claude Code's status-line branch pill:
+ * 38;5;16 black, then 48;5;37 teal), so a fg can get adjusted before the
+ * gating bg is known — gray-on-teal instead of black-on-teal. The original
+ * params of an adjusted fg are therefore kept until text is drawn; if a bg
+ * that gates fg adjustment opens first, the original fg is re-emitted.
  */
 
 export type ThemeMode = "light" | "dark";
@@ -144,6 +150,11 @@ interface GateState {
 	// Last explicit dark ANSI fg (30/90) — needed when a white bar opens
 	// *after* the fg was set (Claude emits fg first, then bg)
 	darkFg: "30" | "90" | null;
+	// Original params of the last *adjusted* extended fg, with no text drawn
+	// since. Apps emit fg before bg (Claude's status-line branch pill:
+	// 38;5;16 then 48;5;37), so the fg gets adjusted before the gating bg is
+	// known — when such a bg opens, the original fg is re-emitted to undo it.
+	pendingFg: string[] | null;
 }
 
 /**
@@ -157,6 +168,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		gate.bg = "none";
 		gate.reverseActive = false;
 		gate.darkFg = null;
+		gate.pendingFg = null;
 		return raw;
 	}
 	// Normalize colon sub-parameter form (38:5:226) to semicolons so the
@@ -177,6 +189,14 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		(gate.bg === "none" ||
 			gate.bg === "white" ||
 			gate.bg === (mode === "dark" ? "dark" : "light"));
+	// A bg (or reverse video) just opened that gates fg adjustment off, with
+	// no text drawn since the fg was adjusted — re-emit the original fg.
+	const restorePendingFg = () => {
+		if (gate.pendingFg !== null && !fgAdjustable()) {
+			out.push(...gate.pendingFg);
+			gate.pendingFg = null;
+		}
+	};
 	let i = 0;
 	while (i < tokens.length) {
 		const token = tokens[i];
@@ -184,6 +204,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			gate.bg = "none";
 			gate.reverseActive = false;
 			gate.darkFg = null;
+			gate.pendingFg = null;
 			out.push(token);
 			i++;
 			continue;
@@ -191,6 +212,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		if (token === "7") {
 			gate.reverseActive = true;
 			out.push(token);
+			restorePendingFg();
 			i++;
 			continue;
 		}
@@ -219,6 +241,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		}
 		if (token === "30" || token === "90") {
 			gate.darkFg = token;
+			gate.pendingFg = null;
 			if (mode === "dark" && gate.bg === "white" && !gate.reverseActive) {
 				out.push(...(token === "30" ? DARK_BAR_FG_30 : DARK_BAR_FG_90));
 				i++;
@@ -232,7 +255,10 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		if ((code >= 31 && code <= 39) || (code >= 91 && code <= 97)) {
 			// Any other explicit fg (incl. 39 default) clears the dark-fg track;
 			// 38-extended is handled below.
-			if (token !== "38") gate.darkFg = null;
+			if (token !== "38") {
+				gate.darkFg = null;
+				gate.pendingFg = null;
+			}
 		}
 		if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
 			if (code === 47 || code === 107) {
@@ -242,6 +268,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			}
 			gate.bg = "unknown";
 			out.push(token);
+			restorePendingFg();
 			i++;
 			continue;
 		}
@@ -261,13 +288,19 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 					} else {
 						gate.bg = "unknown";
 					}
+					out.push(token, tokens[i + 1], tokens[i + 2]);
+					restorePendingFg();
+					i += 3;
+					continue;
 				}
 				if (token === "38") {
 					gate.darkFg = null;
+					gate.pendingFg = null;
 					if (index >= 16 && index <= 255 && fgAdjustable()) {
 						const [r, g, b] = color256ToRgb(index);
 						const adjusted = adjustFgRgb(r, g, b, mode);
 						if (adjusted) {
+							gate.pendingFg = ["38", "5", tokens[i + 2]];
 							out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
 							i += 3;
 							continue;
@@ -285,15 +318,21 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 						Number(tokens[i + 3]),
 						Number(tokens[i + 4]),
 					);
+					out.push(token, tokens[i + 1], tokens[i + 2], tokens[i + 3], tokens[i + 4]);
+					restorePendingFg();
+					i += 5;
+					continue;
 				}
 				if (token === "38") {
 					gate.darkFg = null;
+					gate.pendingFg = null;
 					if (fgAdjustable()) {
 						const r = Number(tokens[i + 2]);
 						const g = Number(tokens[i + 3]);
 						const b = Number(tokens[i + 4]);
 						const adjusted = adjustFgRgb(r, g, b, mode);
 						if (adjusted) {
+							gate.pendingFg = ["38", "2", tokens[i + 2], tokens[i + 3], tokens[i + 4]];
 							out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
 							i += 5;
 							continue;
@@ -325,7 +364,7 @@ const MAX_CARRY = 64;
  */
 export function createAnsiThemeFilter(): (chunk: string, mode: ThemeMode) => string {
 	let carry = "";
-	const gate: GateState = { bg: "none", reverseActive: false, darkFg: null };
+	const gate: GateState = { bg: "none", reverseActive: false, darkFg: null, pendingFg: null };
 	return (chunk, mode) => {
 		let data = carry + chunk;
 		carry = "";
@@ -335,11 +374,18 @@ export function createAnsiThemeFilter(): (chunk: string, mode: ThemeMode) => str
 			data = data.slice(0, match.index);
 		}
 		if (!data) return data;
-		return data.replace(SGR_RE, (full, params: string) => {
+		// Anything between SGR sequences (text, other escapes) means the
+		// adjusted fg was already used for output — drop the restore candidate.
+		let cursor = 0;
+		const result = data.replace(SGR_RE, (full, params: string, offset: number) => {
+			if (offset > cursor) gate.pendingFg = null;
+			cursor = offset + full.length;
 			const next = transformSgrParams(params, mode, gate);
 			if (next === null) return "";
 			if (next === params) return full;
 			return `\x1b[${next}m`;
 		});
+		if (cursor < data.length) gate.pendingFg = null;
+		return result;
 	};
 }

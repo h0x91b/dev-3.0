@@ -325,6 +325,75 @@ describe("createAnsiThemeFilter — bg/reverse gating", () => {
 	});
 });
 
+describe("createAnsiThemeFilter — fg adjusted before a gating bg arrives", () => {
+	// Claude Code's status-line branch pill emits fg *before* bg in separate
+	// sequences: ESC[38;5;16m (pure black) then ESC[48;5;37m (teal). The fg
+	// was already brightened by the time the gating bg arrives, leaving gray
+	// on teal. The original fg must be restored when a bg that gates fg
+	// adjustment opens with no text drawn in between.
+	it("restores black indexed fg when a teal bg follows (Claude branch pill, dark)", () => {
+		const out = filterAll([`${ESC}[38;5;16m${ESC}[48;5;37m pill `], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[48;5;37;38;5;16m pill `);
+	});
+
+	it("restores fg when fg and bg sit in the same compound sequence", () => {
+		const out = filterAll([`${ESC}[38;5;16;48;5;37mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153;48;5;37;38;5;16mfoo`);
+	});
+
+	it("restores fg across a chunk boundary", () => {
+		const out = filterAll([`${ESC}[38;5;16m`, `${ESC}[48;5;37mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[48;5;37;38;5;16mfoo`);
+	});
+
+	it("restores truecolor fg before a named ANSI bg", () => {
+		const out = filterAll([`${ESC}[38;2;0;0;0m${ESC}[44mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[44;38;2;0;0;0mfoo`);
+	});
+
+	it("restores fg before reverse video opens", () => {
+		const out = filterAll([`${ESC}[38;5;16m${ESC}[7mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[7;38;5;16mfoo`);
+	});
+
+	it("does not restore when text was drawn between fg and bg", () => {
+		const out = filterAll([`${ESC}[38;5;16mfoo${ESC}[48;5;37mbar`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153mfoo${ESC}[48;5;37mbar`);
+	});
+
+	it("does not restore when text intervenes across a chunk boundary", () => {
+		const out = filterAll([`${ESC}[38;5;16mfoo`, `${ESC}[48;5;37mbar`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153mfoo${ESC}[48;5;37mbar`);
+	});
+
+	it("keeps the adjusted fg when a same-polarity bg follows (Codex, dark)", () => {
+		const out = filterAll([`${ESC}[38;2;0;0;0m${ESC}[48;2;30;30;46mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[48;2;30;30;46mfoo`);
+	});
+
+	it("keeps the adjusted fg when a remapped white bar follows (dark)", () => {
+		const out = filterAll([`${ESC}[38;2;0;0;0m${ESC}[47mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[48;2;55;55;55mfoo`);
+	});
+
+	it("restores pale fg before a dark bg (light mode mirror)", () => {
+		const out = filterAll([`${ESC}[38;5;226m${ESC}[48;2;30;30;46mfoo`], "light");
+		expect(out).toMatch(
+			/^\x1b\[38;2;\d+;\d+;0m\x1b\[48;2;30;30;46;38;5;226mfoo$/,
+		);
+	});
+
+	it("does not restore after a newer fg replaced the adjusted one", () => {
+		const out = filterAll([`${ESC}[38;5;16m${ESC}[39m${ESC}[48;5;37mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[39m${ESC}[48;5;37mfoo`);
+	});
+
+	it("does not restore after a reset", () => {
+		const out = filterAll([`${ESC}[38;5;16m${ESC}[0m${ESC}[48;5;37mfoo`], "dark");
+		expect(out).toBe(`${ESC}[38;2;153;153;153m${ESC}[0m${ESC}[48;5;37mfoo`);
+	});
+});
+
 describe("createAnsiThemeFilter — chunk boundaries", () => {
 	it("rewrites a sequence split across two chunks", () => {
 		const out = filterAll([`${ESC}[38;5;2`, `26mfoo`]);
