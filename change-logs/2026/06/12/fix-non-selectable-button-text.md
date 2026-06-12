@@ -1,0 +1,1 @@
+Button labels are no longer selectable as text: a global `user-select: none` rule on `button` elements prevents accidental text highlighting when dragging the mouse across toolbar and header controls.
