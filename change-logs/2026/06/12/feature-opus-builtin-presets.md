@@ -1,0 +1,1 @@
+Brought Opus back as a first-class built-in Claude preset: every mode (Auto, Bypass, Default, Plan, Accept Edits, Don't Ask) now offers an "(Opus)" variant using the `opus` alias model, placed right next to the Fable 5 and Sonnet entries. The pinned Opus 4.8 / 4.7 fallback blocks remain unchanged.

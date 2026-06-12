@@ -317,6 +317,46 @@ describe("mergeWithDefaults", () => {
 		expect(cfg.version).toBe(defCfg.version);
 	});
 
+	it("offers an Opus alias preset next to Fable and Sonnet for every Claude mode", () => {
+		const defClaude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		const ids = defClaude.configurations.map((c) => c.id);
+
+		for (const mode of ["auto", "bypass", "default", "plan", "approvals", "dontask"]) {
+			const opusCfg = defClaude.configurations.find((c) => c.id === `claude-${mode}-opus`);
+			expect(opusCfg).toBeDefined();
+			expect(opusCfg!.model).toBe("opus");
+			// Sits directly after its Sonnet sibling in the main preset chain
+			expect(ids.indexOf(`claude-${mode}-opus`)).toBe(ids.indexOf(`claude-${mode}-sonnet`) + 1);
+		}
+	});
+
+	it("revives ancient stored claude-bypass-opus copies as the new Opus preset (not filtered as deprecated)", () => {
+		const defClaude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		const defCfg = defClaude.configurations.find((c) => c.id === "claude-bypass-opus")!;
+
+		// Shape of the pre-#381 preset that DEPRECATED_CONFIG_IDS used to filter out
+		const stored: CodingAgent[] = [
+			{
+				id: "builtin-claude",
+				name: "Claude",
+				baseCommand: "claude",
+				configurations: [
+					{ id: "claude-bypass-opus", name: "Bypass (Opus)", model: "opus[1m]", permissionMode: "bypassPermissions", version: 1 },
+				],
+				defaultConfigId: "claude-bypass-opus",
+			},
+		];
+		const result = mergeWithDefaults(stored);
+		const claude = result.find((a) => a.id === "builtin-claude")!;
+		const matches = claude.configurations.filter((c) => c.id === "claude-bypass-opus");
+
+		// Kept (no longer deprecated), not duplicated, and reset to the new preset by the version bump
+		expect(matches.length).toBe(1);
+		expect(matches[0].model).toBe("opus");
+		expect(matches[0].additionalArgs).toEqual(defCfg.additionalArgs);
+		expect(matches[0].version).toBe(defCfg.version);
+	});
+
 	it("preserves user additionalArgs when stored version == default version", () => {
 		const defCodex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
 		const defCfg = defCodex.configurations.find((c) => c.id === "codex-default")!;

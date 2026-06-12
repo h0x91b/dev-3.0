@@ -18,12 +18,13 @@ const AGENTS_FILE = `${DEV3_HOME}/agents.json`;
 // ---- Storage ----
 
 /** Old default config IDs that were removed or renamed. These are filtered out
- *  during merge so they don't linger as phantom "user" configs. */
+ *  during merge so they don't linger as phantom "user" configs.
+ *  Note: claude-approvals-opus / claude-bypass-opus were deprecated here once,
+ *  but are now live default presets again (Opus alias chain) — the version bump
+ *  in DEFAULT_AGENTS resets any ancient stored copies instead. */
 const DEPRECATED_CONFIG_IDS = new Set([
 	"claude-plan-then-bypass-opus",
 	"claude-plan-then-bypass-sonnet",
-	"claude-approvals-opus",
-	"claude-bypass-opus",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
