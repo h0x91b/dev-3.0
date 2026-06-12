@@ -30,6 +30,7 @@ function classifySuccess(output: string): "pulled" | "up-to-date" {
 function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	const t = useT();
 	const [branch, setBranch] = useState<string | null | undefined>(undefined);
+	const [behindOrigin, setBehindOrigin] = useState(0);
 	const [pulling, setPulling] = useState(false);
 	const [lastResult, setLastResult] = useState<PullResult | null>(null);
 	const [pullError, setPullError] = useState<PullError | null>(null);
@@ -42,10 +43,12 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 			.then((result) => {
 				if (!mountedRef.current) return;
 				setBranch(result.branch);
+				setBehindOrigin(result.behindOrigin ?? 0);
 			})
 			.catch(() => {
 				if (!mountedRef.current) return;
 				setBranch(null);
+				setBehindOrigin(0);
 			});
 	}, [projectId]);
 
@@ -64,6 +67,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	// otherwise the green/red flash leaks across projects and so does the error modal.
 	useEffect(() => {
 		setBranch(undefined);
+		setBehindOrigin(0);
 		setLastResult(null);
 		setPullError(null);
 		if (flashTimerRef.current) {
@@ -100,6 +104,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				const kind = classifySuccess(result.output);
 				flashResult({ kind, branch: displayBranch });
 				setPullError(null);
+				setBehindOrigin(0);
 				// Success path is silent — the button flash is the feedback.
 				// Details are available via the worktree git log if the user wants them.
 			} else {
@@ -169,8 +174,15 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				break;
 		}
 	} else if (canPull && typeof branch === "string") {
-		title = t("kanban.gitPullTooltip", { branch });
-		stateClass = "text-fg-3 hover:text-fg hover:bg-elevated";
+		if (behindOrigin > 0) {
+			// Quiet "new commits available" hint — accent tint only, no fill/pulse
+			// (those are reserved for the loud "Update ready" header indicator).
+			title = t.plural("kanban.gitPullBehind", behindOrigin, { branch });
+			stateClass = "text-accent/80 hover:text-accent hover:bg-accent/10";
+		} else {
+			title = t("kanban.gitPullTooltip", { branch });
+			stateClass = "text-fg-3 hover:text-fg hover:bg-elevated";
+		}
 		icon = "\u{F0164}"; // cloud_download_outline
 		label = t("header.gitPullLabel");
 	} else {
@@ -197,13 +209,21 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				className={`${baseClass} ${stateClass}`}
 				title={title}
 				aria-label={title}
+				data-behind-origin={behindOrigin > 0 ? behindOrigin : undefined}
 			>
-				<span
-					className={`text-[1.125rem] leading-none${iconSpin ? " animate-spin inline-block" : ""}`}
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					aria-hidden="true"
-				>
-					{icon}
+				<span className="relative inline-flex" aria-hidden="true">
+					<span
+						className={`text-[1.125rem] leading-none${iconSpin ? " animate-spin inline-block" : ""}`}
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{icon}
+					</span>
+					{behindOrigin > 0 && !pulling && !lastResult && (
+						<span
+							className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-accent"
+							data-testid="git-pull-behind-dot"
+						/>
+					)}
 				</span>
 				{!compact && <span className="text-[0.6875rem] font-medium">{label}</span>}
 			</button>

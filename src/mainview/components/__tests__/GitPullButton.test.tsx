@@ -280,6 +280,65 @@ describe("GitPullButton", () => {
 		await waitFor(() => expect(screen.queryByTestId("git-pull-error-text")).toBeNull());
 	});
 
+	it("shows the behind-origin dot and accent tint when remote has new commits", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+			behindOrigin: 3,
+		});
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn.getAttribute("data-behind-origin")).toBe("3"));
+		expect(screen.getByTestId("git-pull-behind-dot")).toBeTruthy();
+		expect(btn.className).toMatch(/text-accent/);
+		expect(btn.getAttribute("title") || "").toMatch(/3 new commits on origin\/main/);
+	});
+
+	it("does not show the behind-origin dot when local main is up to date", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+			behindOrigin: 0,
+		});
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		expect(btn.getAttribute("data-behind-origin")).toBeNull();
+		expect(screen.queryByTestId("git-pull-behind-dot")).toBeNull();
+		expect(btn.className).not.toMatch(/text-accent/);
+	});
+
+	it("clears the behind-origin dot after a successful pull", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+			behindOrigin: 2,
+		});
+		(api.request.pullProjectMain as any).mockResolvedValue({
+			ok: true,
+			branch: "main",
+			output: "Updating abc..def\nFast-forward\n",
+			error: "",
+		});
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn.getAttribute("data-behind-origin")).toBe("2"));
+		// refreshBranch after pull reports 0 behind
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+			behindOrigin: 0,
+		});
+		await userEvent.click(btn);
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
+		expect(btn.getAttribute("data-behind-origin")).toBeNull();
+		expect(screen.queryByTestId("git-pull-behind-dot")).toBeNull();
+	});
+
 	it("does not call pullProjectMain when disabled", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "develop",

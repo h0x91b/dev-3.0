@@ -56,11 +56,12 @@ vi.mock("../git", () => ({
 	applySparseCheckout: vi.fn(),
 	isGitRepo: vi.fn(),
 	getDefaultBranch: vi.fn(),
-	fetchOrigin: vi.fn(),
+	fetchOrigin: vi.fn().mockResolvedValue(true),
 	getBranchStatus: vi.fn(),
 	getTaskDiff: vi.fn(),
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),
+	getBehindOriginCount: vi.fn().mockResolvedValue(0),
 	getBranchDiffStats: vi.fn(),
 	canRebaseCleanly: vi.fn(),
 	isContentMergedInto: vi.fn(),
@@ -1570,9 +1571,36 @@ describe("handlers.getProjectCurrentBranch", () => {
 
 		const result = await handlers.getProjectCurrentBranch({ projectId: "proj-1" });
 
-		expect(result).toEqual({ branch: "feat/login", isBaseBranch: false, isDirty: true });
+		expect(result).toEqual({ branch: "feat/login", isBaseBranch: false, isDirty: true, behindOrigin: 0 });
 		expect(git.getCurrentBranch).toHaveBeenCalledWith(project.path);
 		expect(git.isWorktreeDirty).toHaveBeenCalledWith(project.path);
+		// Behind-origin counting only applies to pullable branches (main/master)
+		expect(git.getBehindOriginCount).not.toHaveBeenCalled();
+	});
+
+	it("returns behindOrigin count when on a pullable branch", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("main");
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
+		vi.mocked(git.getBehindOriginCount).mockResolvedValue(4);
+
+		const result = await handlers.getProjectCurrentBranch({ projectId: "proj-1" });
+
+		expect(result).toEqual({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 4 });
+		expect(git.getBehindOriginCount).toHaveBeenCalledWith(project.path, "main");
+	});
+
+	it("reports behindOrigin 0 on detached HEAD", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue(null);
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
+
+		const result = await handlers.getProjectCurrentBranch({ projectId: "proj-1" });
+
+		expect(result).toEqual({ branch: null, isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+		expect(git.getBehindOriginCount).not.toHaveBeenCalled();
 	});
 });
 

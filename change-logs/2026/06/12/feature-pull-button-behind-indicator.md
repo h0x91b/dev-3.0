@@ -1,0 +1,1 @@
+The header Git Pull button now quietly signals when the local main/master is behind origin: the icon gets a subtle accent tint and a tiny blue dot, and the tooltip shows how many new commits are available. Remote refs are refreshed in the background at most once every 3 minutes to keep polling cheap.

@@ -67,6 +67,7 @@ import {
 	getCurrentBranch,
 	isWorktreeDirty,
 	getUnpushedCount,
+	getBehindOriginCount,
 	getBranchStatus,
 	canRebaseCleanly,
 	getUncommittedChanges,
@@ -206,6 +207,42 @@ describe("getUnpushedCount", () => {
 		queueResponse(0, "abc123\n");
 		queueResponse(1, "", "error");
 		const result = await getUnpushedCount("/repo", "dev3/task-branch");
+		expect(result).toBe(0);
+	});
+});
+
+// ─── getBehindOriginCount ────────────────────────────────────────────────────
+
+describe("getBehindOriginCount", () => {
+	it("returns 0 for empty branch name", async () => {
+		const result = await getBehindOriginCount("/repo", "");
+		expect(result).toBe(0);
+	});
+
+	it("returns 0 when origin ref does not exist", async () => {
+		queueResponse(128, "", "fatal: Needed a single revision");
+		const result = await getBehindOriginCount("/repo", "main");
+		expect(result).toBe(0);
+	});
+
+	it("returns N when local branch is N commits behind origin", async () => {
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
+		queueResponse(0, "5\n");      // rev-list --count HEAD..origin/main
+		const result = await getBehindOriginCount("/repo", "main");
+		expect(result).toBe(5);
+	});
+
+	it("returns 0 when up to date", async () => {
+		queueResponse(0, "abc123\n");
+		queueResponse(0, "0\n");
+		const result = await getBehindOriginCount("/repo", "main");
+		expect(result).toBe(0);
+	});
+
+	it("returns 0 when rev-list fails", async () => {
+		queueResponse(0, "abc123\n");
+		queueResponse(1, "", "error");
+		const result = await getBehindOriginCount("/repo", "main");
 		expect(result).toBe(0);
 	});
 });

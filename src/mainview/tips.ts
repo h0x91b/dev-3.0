@@ -682,6 +682,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.projectsDailyBackup.body",
 		icon: "\u{F006F}", // nf-md-backup_restore
 	},
+	// Batch 46: pull button behind-origin indicator
+	{
+		id: "pull-behind-dot",
+		titleKey: "tip.pullBehindDot.title",
+		bodyKey: "tip.pullBehindDot.body",
+		icon: "\u{F0164}", // nf-md-cloud_download_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

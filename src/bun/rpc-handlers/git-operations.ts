@@ -909,17 +909,41 @@ async function fetchBranches(params: { projectId: string; forkRef?: string }): P
 	return git.listBranches(project.path);
 }
 
-async function getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean }> {
+const PULLABLE_BRANCHES = new Set(["main", "master"]);
+
+// Background fetch pacing for the pull-button "behind origin" indicator.
+// The renderer polls every ~15s; refreshing remote refs that often would
+// reintroduce the network churn removed in PR #648, so fetch at most once
+// per interval and let the cheap local rev-list pick up the result later.
+const BEHIND_FETCH_INTERVAL_MS = 3 * 60_000;
+const behindFetchLastAttempt = new Map<string, number>();
+
+function maybeRefreshOriginRef(projectPath: string, branch: string): void {
+	const now = Date.now();
+	const last = behindFetchLastAttempt.get(projectPath) ?? 0;
+	if (now - last < BEHIND_FETCH_INTERVAL_MS) return;
+	behindFetchLastAttempt.set(projectPath, now);
+	// Fire-and-forget: the next poll reads the updated origin/<branch> ref.
+	void git.fetchOrigin(projectPath, branch).catch((err) => {
+		log.debug("behind-indicator fetch failed (non-fatal)", { projectPath, branch, error: String(err) });
+	});
+}
+
+async function getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number }> {
 	const project = await data.getProject(params.projectId);
 	const [branch, isDirty] = await Promise.all([
 		git.getCurrentBranch(project.path),
 		git.isWorktreeDirty(project.path),
 	]);
 	const isBaseBranch = !branch || branch === project.defaultBaseBranch;
-	return { branch, isBaseBranch, isDirty };
-}
 
-const PULLABLE_BRANCHES = new Set(["main", "master"]);
+	let behindOrigin = 0;
+	if (branch && PULLABLE_BRANCHES.has(branch)) {
+		maybeRefreshOriginRef(project.path, branch);
+		behindOrigin = await git.getBehindOriginCount(project.path, branch);
+	}
+	return { branch, isBaseBranch, isDirty, behindOrigin };
+}
 
 async function pullProjectMain(params: { projectId: string }): Promise<{
 	ok: boolean;
