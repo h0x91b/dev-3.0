@@ -214,6 +214,8 @@ const tips = {
 	"tip.skillAutocomplete.body": "Введите / в описании новой задачи, чтобы выбрать установленный скилл агента из списка подсказок.",
 	"tip.projectsDailyBackup.title": "Список проектов бэкапится ежедневно",
 	"tip.projectsDailyBackup.body": "Пропали проекты? Восстановите из ~/.dev3.0/projects-YYYY-MM-DD.json.bak — снимки хранятся 7 дней.",
+	"tip.pullBehindDot.title": "Синяя точка на Pull",
+	"tip.pullBehindDot.body": "Синяя точка на кнопке Pull в шапке означает новые коммиты в origin — нажмите, чтобы обновить локальный main.",
 };
 
 export default tips;

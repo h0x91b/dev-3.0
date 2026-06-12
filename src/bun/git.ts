@@ -1511,6 +1511,27 @@ export async function getUnpushedCount(
 	return parseInt(result.stdout, 10) || 0;
 }
 
+export async function getBehindOriginCount(
+	worktreePath: string,
+	branchName: string,
+): Promise<number> {
+	if (!branchName) return 0;
+
+	const ref = await run(
+		["git", "rev-parse", "--verify", `origin/${branchName}`],
+		worktreePath,
+	);
+	if (!ref.ok) return 0;
+
+	// Count commits in origin/<branchName> but not in HEAD
+	const result = await run(
+		["git", "rev-list", "--count", `HEAD..origin/${branchName}`],
+		worktreePath,
+	);
+	if (!result.ok) return 0;
+	return parseInt(result.stdout, 10) || 0;
+}
+
 export async function getUpstreamRef(
 	worktreePath: string,
 ): Promise<string | null> {

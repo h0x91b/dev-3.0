@@ -101,7 +101,7 @@ describe("CreateTaskModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 		mockedApi.request.uploadImageBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 		mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,abc" });
@@ -504,7 +504,7 @@ describe("CreateTaskModal", () => {
 	// ---- Current branch choice guardrail ----
 
 	it("auto-fills branch when project is on a non-base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		await waitFor(() => {
@@ -513,7 +513,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("asks whether to use the current branch or the base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
@@ -527,7 +527,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("uses the current branch after explicit confirmation", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: true });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: true, behindOrigin: 0 });
 		renderModal({ dispatch: vi.fn() });
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
@@ -545,7 +545,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("shows a dirty repo warning in the confirmation dialog", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: true });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: true, behindOrigin: 0 });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
@@ -558,7 +558,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("clarifies that base branch means the project base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
@@ -572,7 +572,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("keeps the base branch as default after explicit confirmation", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
@@ -642,7 +642,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("does not ask when project is already on the base branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
@@ -659,7 +659,7 @@ describe("CreateTaskModal", () => {
 	});
 
 	it("does not ask after clearing the auto-filled branch", async () => {
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 		renderModal();
 
 		await waitFor(() => {
@@ -704,8 +704,8 @@ describe("CreateTaskModal", () => {
 		// resolves. The closed-over `selectedBranch` is still null (auto-fill
 		// hasn't committed yet); the confirmation must still fire instead of
 		// silently creating from the base branch.
-		let resolveBranch: (value: { branch: string | null; isBaseBranch: boolean; isDirty: boolean }) => void = () => {};
-		const branchPromise = new Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean }>((resolve) => {
+		let resolveBranch: (value: { branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number }) => void = () => {};
+		const branchPromise = new Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number }>((resolve) => {
 			resolveBranch = resolve;
 		});
 		mockedApi.request.getProjectCurrentBranch.mockReturnValue(branchPromise);
@@ -716,7 +716,7 @@ describe("CreateTaskModal", () => {
 		await userEvent.click(screen.getByText("Save"));
 
 		// Now let the lookup complete with a non-base branch.
-		resolveBranch({ branch: "feat/login", isBaseBranch: false, isDirty: false });
+		resolveBranch({ branch: "feat/login", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
 
 		await waitFor(() => {
 			expect(screen.getByText("Start task from which branch?")).toBeInTheDocument();
@@ -851,7 +851,7 @@ describe("CreateTaskModal skill autocomplete", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
-		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false });
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		mockedApi.request.listAgentSkills.mockResolvedValue([
 			{ name: "dev3", description: "Manage dev3 tasks", source: "claude" },
 			{ name: "dev3-bug-hunter", description: "Hunt bugs", source: "claude" },

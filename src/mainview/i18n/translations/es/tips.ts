@@ -214,6 +214,8 @@ const tips = {
 	"tip.skillAutocomplete.body": "Escribe / en la descripción de una nueva tarea para elegir un skill de agente instalado de la lista de sugerencias.",
 	"tip.projectsDailyBackup.title": "Copia diaria de tus proyectos",
 	"tip.projectsDailyBackup.body": "¿Perdiste tus proyectos? Restáuralos desde ~/.dev3.0/projects-YYYY-MM-DD.json.bak — las copias se guardan 7 días.",
+	"tip.pullBehindDot.title": "Punto azul en Pull",
+	"tip.pullBehindDot.body": "Un pequeño punto azul en el botón Pull de la cabecera indica commits nuevos en origin — haz clic para actualizar tu main local.",
 };
 
 export default tips;

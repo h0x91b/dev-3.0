@@ -1519,7 +1519,7 @@ export type AppRPCSchema = {
 			};
 			getProjectCurrentBranch: {
 				params: { projectId: string };
-				response: { branch: string | null; isBaseBranch: boolean; isDirty: boolean };
+				response: { branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number };
 			};
 			pullProjectMain: {
 				params: { projectId: string };

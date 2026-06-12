@@ -214,6 +214,8 @@ const tips = {
 	"tip.skillAutocomplete.body": "Type / in a new task's description to pick an installed agent skill from the suggestion list.",
 	"tip.projectsDailyBackup.title": "Project list is backed up daily",
 	"tip.projectsDailyBackup.body": "Lost your projects? Restore from ~/.dev3.0/projects-YYYY-MM-DD.json.bak — snapshots are kept for 7 days.",
+	"tip.pullBehindDot.title": "Blue dot on Pull",
+	"tip.pullBehindDot.body": "A small blue dot on the header Pull button means origin has new commits — click it to update your local main.",
 } as const;
 
 export default tips;
