@@ -12,7 +12,7 @@ import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
-import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
+import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -128,7 +128,7 @@ export async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 	resume = false,
-	opts?: { sessionId?: string; skipSessionPersist?: boolean },
+	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string },
 ): Promise<void> {
 	const sessionId = opts?.sessionId;
 	const skipSessionPersist = opts?.skipSessionPersist ?? false;
@@ -222,7 +222,15 @@ export async function launchTaskPty(
 		throw err;
 	}
 
-	const env = buildAgentEnv(extraEnv, task.id);
+	// Lifecycle env first so an explicit agent-config extraEnv can override it.
+	// These vars reach the agent session, and — crucially — the setup script
+	// below: a git-ignored hook (e.g. installed by the b44 CLI into
+	// .dev3/config.local.json) only exists at the project root, so the script
+	// command must be resolvable as "$DEV3_PROJECT_PATH/.dev3/<hook>.sh".
+	const env = {
+		...buildTaskLifecycleEnv(project, task, worktreePath, opts?.branchName),
+		...buildAgentEnv(extraEnv, task.id),
+	};
 	const userShell = getUserShell();
 
 	const portCount = project.portCount ?? 0;
@@ -577,9 +585,13 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		const portExports = devPorts.length > 0
 			? buildEnvExports(portPool.buildPortEnv(devPorts)).join("\n") + "\n"
 			: "";
+		// Same workspace env the setup/cleanup hooks get, so a devScript can
+		// reference root-resolved hooks ("$DEV3_PROJECT_PATH/...") too.
+		const lifecycleExports = buildEnvExports(buildTaskLifecycleEnv(project, task, task.worktreePath)).join("\n") + "\n";
 
 		const wrappedScript = [
 			`#!/bin/bash`,
+			lifecycleExports,
 			...(portExports ? [portExports] : []),
 			`set -x`,
 			resolved.devScript,

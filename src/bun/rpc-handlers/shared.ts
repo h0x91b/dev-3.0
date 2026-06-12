@@ -13,6 +13,7 @@ export {
 	getPushMessageLocal,
 	isActive,
 	buildAgentEnv,
+	buildTaskLifecycleEnv,
 	extractConfigFromParams,
 } from "./shared-pure";
 

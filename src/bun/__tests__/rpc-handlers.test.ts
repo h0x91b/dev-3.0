@@ -404,9 +404,29 @@ describe("runCleanupScript", () => {
 				DEV3_PROJECT_NAME: "Alpha Project",
 				DEV3_PROJECT_PATH: "/tmp/project-root",
 				DEV3_WORKTREE_PATH: "/tmp/test-worktree",
+				DEV3_BRANCH_NAME: "dev3/task-test",
 				DEV3_TASK_STATUS: "completed",
 				DEV3_TASK_FROM_STATUS: "in-progress",
 				DEV3_TASK_TO_STATUS: "completed",
+			}),
+		});
+	});
+
+	it("reports status 'deleted' when the worktree dies via task deletion", async () => {
+		const project = makeProject({ path: "/tmp/project-root", cleanupScript: "echo cleanup" });
+		const task = makeTask({
+			id: "task-123",
+			worktreePath: "/tmp/test-worktree",
+			status: "in-progress",
+		});
+
+		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "deleted" });
+
+		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
+			env: expect.objectContaining({
+				DEV3_TASK_STATUS: "deleted",
+				DEV3_TASK_FROM_STATUS: "in-progress",
+				DEV3_TASK_TO_STATUS: "deleted",
 			}),
 		});
 	});
@@ -2165,6 +2185,69 @@ describe("handlers.deleteTask", () => {
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+
+	it("runs the cleanup script (status 'deleted') before removing the worktree", async () => {
+		// Deleting an active task destroys its worktree just like completing it —
+		// the teardown hook must fire here too, or per-worktree resources (e.g.
+		// dev containers brought up by the setup hook) leak.
+		const project = makeProject({ cleanupScript: "echo cleanup" });
+		const task = makeTask({ status: "in-progress" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		const callOrder: string[] = [];
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (Array.isArray(args) && args.includes("new-session")) callOrder.push("cleanup");
+			return { stdout: new Response(""), stderr: new Response(""), exited: Promise.resolve(0) };
+		});
+		vi.mocked(git.removeWorktree).mockImplementation(async () => {
+			callOrder.push("removeWorktree");
+		});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
+
+		const cleanupCall = mockSpawn.mock.calls.find(
+			([args]) => Array.isArray(args) && args.includes("DEV3_TASK_STATUS=deleted"),
+		);
+		expect(cleanupCall).toBeDefined();
+		expect(callOrder.indexOf("cleanup")).toBeGreaterThanOrEqual(0);
+		expect(callOrder.indexOf("cleanup")).toBeLessThan(callOrder.indexOf("removeWorktree"));
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+
+	it("tolerates cleanup script failure: still removes worktree and task", async () => {
+		const project = makeProject({ cleanupScript: "echo cleanup" });
+		const task = makeTask({ status: "in-progress" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(existsSync).mockReturnValue(true);
+		mockSpawn.mockImplementation(() => {
+			throw new Error("tmux unavailable");
+		});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+
+	it("releases allocated ports on delete", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		const portPool = await import("../port-pool");
+		const releaseSpy = vi.spyOn(portPool, "releasePorts");
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(releaseSpy).toHaveBeenCalledWith("task-1");
 	});
 });
 
