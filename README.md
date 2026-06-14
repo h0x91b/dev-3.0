@@ -262,6 +262,17 @@ If you'd rather have an agent render entirely through dev-3.0's tuned palette, s
 
 This makes Claude Code emit only the 16 base ANSI colors, which dev-3.0 resolves through its tuned palette — handy if you don't like how the default theme's colors look in the embedded terminal.
 
+**Codex** has no "ANSI colors only" mode, but the same idea applies: the readability filter keeps its default output legible, and if you want the syntax colors to match dev-3.0's UI theme, set `[tui] theme` in `~/.codex/config.toml` to a theme of the matching polarity:
+
+```toml
+[tui]
+# dev-3.0 dark theme → pick a dark syntax theme
+theme = "dracula"   # or: monokai-extended-origin, gruvbox-dark, base16-256, one-half-dark, solarized-dark
+
+# dev-3.0 light theme → pick a light one
+# theme = "github"  # or: solarized-light, gruvbox-light, one-half-light
+```
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/image?repos=h0x91b/dev-3.0&type=timeline&legend=top-left)](https://www.star-history.com/?repos=h0x91b%2Fdev-3.0&type=timeline&logscale=&legend=top-left)
