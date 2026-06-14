@@ -10,16 +10,20 @@
  * palette cannot remap them — and renders dim as globalAlpha 0.5, which on a
  * white background washes any color into unreadable gray.
  *
+ * SGR `2` (dim) is dropped in *both* modes: ghostty renders it as 50% alpha,
+ * which on white washes any color out and on dark drops the default fg to a
+ * low-contrast gray — Claude Code's select-prompt descriptions, option
+ * numbers and hints use Ink dimColor and were unreadable on the dark theme.
+ *
  * The filter rewrites the stream before term.write():
- * - light mode: standalone SGR `2` (dim) is dropped; pale foregrounds
- *   (indexed N>=16 and truecolor) are darkened to a luminance-capped
- *   truecolor; white backgrounds (47/107, 48;5;7, 48;5;15) become light
- *   gray. The light palette maps `white` to a dark gray so it stays legible
- *   as 37 *text*, but Claude Code's light-ansi theme paints message bars
- *   with "ansi:white" as a *background* and dark fg on top — a dark-on-dark
- *   bar without this remap.
+ * - light mode: pale foregrounds (indexed N>=16 and truecolor) are darkened
+ *   to a luminance-capped truecolor; white backgrounds (47/107, 48;5;7,
+ *   48;5;15) become light gray. The light palette maps `white` to a dark gray
+ *   so it stays legible as 37 *text*, but Claude Code's light-ansi theme
+ *   paints message bars with "ansi:white" as a *background* and dark fg on
+ *   top — a dark-on-dark bar without this remap.
  * - dark mode: too-dark foregrounds are brightened by blending toward white.
- *   Dim is kept (fine on dark backgrounds). White backgrounds become dark
+ *   White backgrounds become dark
  *   gray: Claude Code paints message bars and the history-select highlight
  *   with "ansi:white"/"ansi:whiteBright", which the dark palette resolves to
  *   pale lavender — default-fg text on it is unreadable. The remap targets
@@ -229,13 +233,11 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			continue;
 		}
 		if (token === "2") {
-			// SGR dim — ghostty renders it as 50% alpha, unreadable on white.
-			// On dark backgrounds dim is fine, keep it.
-			if (mode === "light") {
-				i++;
-				continue;
-			}
-			out.push(token);
+			// SGR dim — ghostty renders it as 50% alpha. On white it washes any
+			// color out; on dark it drops the default fg to a low-contrast gray
+			// (Claude Code's select-prompt descriptions, option numbers and
+			// hints use Ink dimColor). Drop it in both themes — keeping it dark
+			// left that text unreadable.
 			i++;
 			continue;
 		}
