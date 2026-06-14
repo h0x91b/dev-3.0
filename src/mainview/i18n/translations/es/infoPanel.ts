@@ -132,6 +132,7 @@ const infoPanel = {
 	"infoPanel.diffCommentCancel": "Cancelar",
 	"infoPanel.diffCommentSubmit": "Agregar comentario",
 	"infoPanel.diffCommentLine": "Línea {line} de {side}",
+	"infoPanel.diffCommentLines": "Líneas {start}–{end} de {side}",
 	"infoPanel.diffCommentSideOld": "anterior",
 	"infoPanel.diffCommentSideNew": "nueva",
 	"infoPanel.diffReviewExport": "Exportar review",

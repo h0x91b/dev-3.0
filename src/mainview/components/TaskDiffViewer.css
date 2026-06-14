@@ -69,6 +69,32 @@
 	backface-visibility: hidden;
 }
 
+/* Drag-to-select line range for multi-line inline comments. */
+.dev3-diff-drag-host .diff-tailwindcss-wrapper .diff-line-old-num,
+.dev3-diff-drag-host .diff-tailwindcss-wrapper .diff-line-new-num,
+.dev3-diff-drag-host .diff-tailwindcss-wrapper .diff-line-num {
+	cursor: pointer;
+}
+
+/* Suppress native text selection while dragging across the gutter. */
+.dev3-diff-drag-host.dev3-diff-selecting,
+.dev3-diff-drag-host.dev3-diff-selecting * {
+	user-select: none !important;
+	-webkit-user-select: none !important;
+}
+
+/* The library sets inline background on number/content cells, so override with
+   !important to paint the selected range. */
+.dev3-diff-drag-host tr.dev3-diff-line-range > td {
+	background-color: rgb(var(--accent) / 0.16) !important;
+}
+
+.dev3-diff-drag-host tr.dev3-diff-line-range .diff-line-old-num,
+.dev3-diff-drag-host tr.dev3-diff-line-range .diff-line-new-num,
+.dev3-diff-drag-host tr.dev3-diff-line-range .diff-line-num {
+	box-shadow: inset 2px 0 0 rgb(var(--accent));
+}
+
 .dev3-diff-search-highlight {
 	background: linear-gradient(
 		90deg,

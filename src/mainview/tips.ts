@@ -162,6 +162,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F027B}", // nf-md-comment_plus_outline
 	},
 	{
+		id: "inline-diff-multiline-comments",
+		titleKey: "tip.inlineDiffMultilineComments.title",
+		bodyKey: "tip.inlineDiffMultilineComments.body",
+		icon: "\u{F0453}", // nf-md-cursor_move
+	},
+	{
 		id: "inline-diff-review-export",
 		titleKey: "tip.inlineDiffReviewExport.title",
 		bodyKey: "tip.inlineDiffReviewExport.body",

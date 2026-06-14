@@ -54,6 +54,8 @@ const tips = {
 	"tip.inlineDiffModes.body": "Use Unified or Split in the diff toolbar to switch between a compact review and a side-by-side comparison.",
 	"tip.inlineDiffComments.title": "Comment right on the diff",
 	"tip.inlineDiffComments.body": "In Show Diff, click the + button next to a line to leave an inline note exactly where it matters.",
+	"tip.inlineDiffMultilineComments.title": "Comment on a range of lines",
+	"tip.inlineDiffMultilineComments.body": "Click a line number in the diff gutter and drag to select a range, then comment on all of it at once.",
 	"tip.inlineDiffReviewExport.title": "Copy your review as XML",
 	"tip.inlineDiffReviewExport.body": "The sidebar builds an XML review block from your inline comments so you can paste it straight back into the agent chat.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",

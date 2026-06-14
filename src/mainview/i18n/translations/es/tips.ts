@@ -54,6 +54,8 @@ const tips = {
 	"tip.inlineDiffModes.body": "Usa Unified o Split en la barra del diff para alternar rápido entre una revisión compacta y una comparación lado a lado.",
 	"tip.inlineDiffComments.title": "Comenta directo en el diff",
 	"tip.inlineDiffComments.body": "En Show Diff, pulsa el botón + junto a una línea para dejar una nota inline justo donde importa.",
+	"tip.inlineDiffMultilineComments.title": "Comenta un rango de líneas",
+	"tip.inlineDiffMultilineComments.body": "Pulsa un número de línea en el margen del diff y arrastra para seleccionar un rango, luego coméntalo todo de una vez.",
 	"tip.inlineDiffReviewExport.title": "Copia tu review como XML",
 	"tip.inlineDiffReviewExport.body": "La barra lateral arma un bloque XML desde tus comentarios inline para pegarlo directo en el chat del agente.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",
