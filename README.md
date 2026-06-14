@@ -247,6 +247,21 @@ Symptoms:
 
 Why this happens: macOS evaluates permissions per-binary, and TCC (the system permissions database) can silently revoke network/file access for `git`/`tmux` spawned by another app — typically after an OS update or background security-agent activity. Granting Full Disk Access to dev-3.0 covers the app and all its child processes, so `git fetch` to remotes works again.
 
+### Terminal colors look off — use the "ANSI colors only" agent theme
+
+dev-3.0 ships a hand-tuned 16-color ANSI palette for both the **dark** and **light** UI themes, and a readability filter that remaps unreadable foreground/background colors emitted by agents on the fly. To get the best-looking output, point your agent at a theme that uses these terminal colors instead of its own hardcoded palette.
+
+For **Claude Code**, run `/theme` and pick:
+
+- **Dark mode (ANSI colors only)** — when dev-3.0 is on the dark theme
+- **Light mode (ANSI colors only)** — when dev-3.0 is on the light theme
+
+<p align="center">
+  <img src="docs/screenshots/claude-code-ansi-theme.jpg" width="640" alt="Claude Code theme picker — choose 'Dark mode (ANSI colors only)' or 'Light mode (ANSI colors only)'">
+</p>
+
+These themes make Claude Code render through dev-3.0's tuned palette, so if you don't like how the colors look out of the box, switching to one of them is the quickest fix.
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/image?repos=h0x91b/dev-3.0&type=timeline&legend=top-left)](https://www.star-history.com/?repos=h0x91b%2Fdev-3.0&type=timeline&logscale=&legend=top-left)

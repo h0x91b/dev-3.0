@@ -1,0 +1,1 @@
+Documented in the README that dev-3.0 ships tuned ANSI palettes for both dark and light themes, and that switching Claude Code to its matching "ANSI colors only" theme is the quickest fix when terminal colors look off.
