@@ -1,0 +1,1 @@
+Documented in the README how dev-3.0's tuned ANSI palettes and readability filter keep agent terminal colors legible, with optional per-agent theme tips: Claude Code's "ANSI colors only" themes, and matching `[tui] theme` values for Codex.
