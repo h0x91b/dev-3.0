@@ -284,6 +284,13 @@ body, #root {
 	-moz-osx-font-smoothing: grayscale;
 }
 
+/* ---- Buttons are controls, not selectable text ---- */
+
+button {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
 /* ---- Toast auto-dismiss progress bar ---- */
 
 @keyframes toast-shrink {
