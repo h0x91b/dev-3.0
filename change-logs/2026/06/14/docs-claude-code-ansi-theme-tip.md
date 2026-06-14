@@ -1,1 +1,1 @@
-Documented in the README that dev-3.0 ships tuned ANSI palettes for both dark and light themes, and that switching Claude Code to its matching "ANSI colors only" theme is the quickest fix when terminal colors look off.
+Documented in the README how dev-3.0's tuned ANSI palettes and readability filter keep agent terminal colors legible, with optional per-agent theme tips: Claude Code's "ANSI colors only" themes, and matching `[tui] theme` values for Codex.
