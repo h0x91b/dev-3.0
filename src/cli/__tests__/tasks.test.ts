@@ -268,6 +268,14 @@ describe("tasks list --limit", () => {
 		expect(stdoutOutput).not.toContain("First task");
 	});
 
+	it("prints a footer showing the visible window and total", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("Showing 1-2 of 2.");
+	});
+
 	it("orders newest first (highest seq) regardless of server order", async () => {
 		// Server returns ascending; CLI must flip to descending by seq.
 		mockSend.mockResolvedValue(okResp(TASKS));
@@ -315,6 +323,99 @@ describe("tasks list --limit validation", () => {
 	it("rejects partial number --limit (e.g. '10abc') — parseInt silently truncates", async () => {
 		await expect(
 			handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "10abc" } }, SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+// ─── tasks list: default limit + --offset paging ─────────────────────────────
+
+function makeTasks(count: number): Task[] {
+	return Array.from({ length: count }, (_, i) => ({
+		...TASKS[0],
+		id: `t${String(i).padStart(8, "0")}-1111-2222-3333-444444444444`,
+		seq: i + 1,
+		title: `task number ${i + 1}`,
+	}));
+}
+
+describe("tasks list default limit", () => {
+	it("shows only the newest 50 tasks when --limit is omitted", async () => {
+		mockSend.mockResolvedValue(okResp(makeTasks(60)));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		// Newest is seq 60; oldest in window is seq 11 (60 down to 11 = 50 rows).
+		expect(stdoutOutput).toContain("task number 60");
+		expect(stdoutOutput).toContain("task number 11");
+		expect(stdoutOutput).not.toContain("task number 10");
+		expect(stdoutOutput).toContain("Showing 1-50 of 60.");
+		expect(stdoutOutput).toContain("Next page: --offset 50");
+	});
+
+	it("does not paginate when total fits in the default page", async () => {
+		mockSend.mockResolvedValue(okResp(makeTasks(3)));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("Showing 1-3 of 3.");
+		expect(stdoutOutput).not.toContain("Next page");
+	});
+});
+
+describe("tasks list --offset paging", () => {
+	it("skips the first N tasks (after newest-first sort)", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "1" } }, SOCKET, null);
+
+		// Offset 1 skips the newest (seq 2), leaving seq 1.
+		expect(stdoutOutput).toContain("First task");
+		expect(stdoutOutput).not.toContain("Second task");
+		expect(stdoutOutput).toContain("Showing 2-2 of 2.");
+	});
+
+	it("combines --offset with --limit for a middle window", async () => {
+		mockSend.mockResolvedValue(okResp(makeTasks(10)));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "2", limit: "3" } }, SOCKET, null);
+
+		// Newest-first: seq 10,9,8 (offset 2 → start at seq 8), 3 rows → 8,7,6.
+		expect(stdoutOutput).toContain("task number 8");
+		expect(stdoutOutput).toContain("task number 6");
+		expect(stdoutOutput).not.toContain("task number 9");
+		expect(stdoutOutput).not.toContain("task number 5");
+		expect(stdoutOutput).toContain("Showing 3-5 of 10.");
+		expect(stdoutOutput).toContain("Next page: --offset 5 --limit 3");
+	});
+
+	it("reports when offset is past the end", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "5" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("No tasks at offset 5 (2 total).");
+	});
+
+	it("accepts --offset 0 as the first page", async () => {
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "0" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("Showing 1-2 of 2.");
+	});
+
+	it("rejects non-numeric --offset before sending to server", async () => {
+		await expect(
+			handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "abc" } }, SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--offset");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects negative --offset", async () => {
+		await expect(
+			handleTasks("list", { positional: [], flags: { project: "proj-001", offset: "-1" } }, SOCKET, null),
 		).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
 	});

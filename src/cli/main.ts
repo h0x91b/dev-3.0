@@ -39,7 +39,7 @@ Commands:
   dev3 label delete <id>                Delete label
   dev3 label set <id> [<id>...] [--task <task>]  Assign labels to a task
   dev3 label set --clear [--task <id>]  Remove all labels from a task
-  dev3 tasks list [--status <s>] [--label <id>]  List/filter tasks
+  dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]  List tasks (newest first, default 50)
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
