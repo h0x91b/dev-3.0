@@ -21,7 +21,15 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/dev3-test",
 }));
 
-let spawnResponses: Array<{ exitCode: number; stdout: string; stderr: string }> = [];
+type SpawnResponse = {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	hang?: boolean;
+};
+
+let spawnResponses: SpawnResponse[] = [];
+let killedProcesses = 0;
 
 function queueResponse(exitCode: number, stdout: string, stderr = "") {
 	spawnResponses.push({ exitCode, stdout, stderr });
@@ -31,8 +39,18 @@ vi.mock("../spawn", () => ({
 	spawn: () => {
 		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
 		const encoder = new TextEncoder();
+		let resolveExit!: (code: number) => void;
+		const exited = response.hang
+			? new Promise<number>((resolve) => {
+				resolveExit = resolve;
+			})
+			: Promise.resolve(response.exitCode);
 		return {
-			exited: Promise.resolve(response.exitCode),
+			exited,
+			kill: () => {
+				killedProcesses += 1;
+				resolveExit?.(143);
+			},
 			stdout: new ReadableStream({
 				start(controller) {
 					controller.enqueue(encoder.encode(response.stdout));
@@ -58,6 +76,7 @@ import {
 
 beforeEach(() => {
 	spawnResponses = [];
+	killedProcesses = 0;
 	_resetFetchState();
 });
 
@@ -74,6 +93,19 @@ describe("fetchOrigin", () => {
 		queueResponse(128, "", "fatal: no remote");
 		const ok = await fetchOrigin("/repo");
 		expect(ok).toBe(false);
+	});
+
+	it("kills a fetch that exceeds its deadline and releases the project queue", async () => {
+		spawnResponses.push({ exitCode: 0, stdout: "", stderr: "", hang: true });
+
+		const ok = await fetchOrigin("/repo", "main", 10);
+
+		expect(ok).toBe(false);
+		expect(killedProcesses).toBe(1);
+
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "develop", 10)).toBe(true);
+		expect(spawnResponses).toHaveLength(0);
 	});
 
 	it("deduplicates concurrent fetches for the same project", async () => {
