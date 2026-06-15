@@ -103,8 +103,8 @@ export async function run(
 	}
 	const [stdout, stderr] = outcome.timedOut
 		? await Promise.all([
-			settleWithin(proc.stdout.cancel().then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
-			settleWithin(proc.stderr.cancel().then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+			settleWithin(Promise.resolve(proc.stdout.cancel()).then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+			settleWithin(Promise.resolve((proc.stderr as ReadableStream<Uint8Array> | undefined)?.cancel()).then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
 		])
 		: await Promise.all([
 			new Response(proc.stdout).text(),
