@@ -67,6 +67,10 @@ vi.mock("../settings", () => ({
 	saveSettings: vi.fn(),
 }));
 
+vi.mock("../vents", () => ({
+	addVent: vi.fn(() => ({ fileName: "2026-06-15_14-30_x.md", path: "/tmp/v/2026-06-15_14-30_x.md", name: "x" })),
+}));
+
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -81,6 +85,7 @@ import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
+import { addVent } from "../vents";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
 	"../cli-socket-server"
@@ -1823,5 +1828,27 @@ describe("stopSocketServer", () => {
 
 		stopSocketServer();
 		expect(unlinkSync).not.toHaveBeenCalled();
+	});
+});
+
+describe("vent.add", () => {
+	it("records a vent and returns its filename (always on, no opt-in)", async () => {
+		const resp = await handleRequest(makeRequest("vent.add", { name: "tmux split broken", content: "details here" }));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual({ fileName: "2026-06-15_14-30_x.md" });
+		expect(addVent).toHaveBeenCalledWith("tmux split broken", "details here");
+	});
+
+	it("rejects empty name", async () => {
+		const resp = await handleRequest(makeRequest("vent.add", { name: "", content: "c" }));
+		expect(resp.ok).toBe(false);
+		expect(addVent).not.toHaveBeenCalled();
+	});
+
+	it("rejects empty content", async () => {
+		const resp = await handleRequest(makeRequest("vent.add", { name: "n", content: "" }));
+		expect(resp.ok).toBe(false);
+		expect(addVent).not.toHaveBeenCalled();
 	});
 });

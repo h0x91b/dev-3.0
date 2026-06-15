@@ -7,6 +7,7 @@ import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, 
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
+import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
@@ -361,6 +362,19 @@ const handlers: Record<string, Handler> = {
 		const updated = await data.updateTask(project, task.id, { notes });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
+	},
+
+	"vent.add": async (params) => {
+		// Background, fire-and-forget: an agent reporting friction with the dev3
+		// platform itself. Always available, no opt-in, no UI — just write the
+		// anonymous markdown file to ~/.dev3.0/vents/ for the maintainer to read.
+		const name = (params.name as string)?.trim();
+		const content = (params.content as string)?.trim();
+		if (!name) throw new Error("name is required");
+		if (!content) throw new Error("content is required");
+
+		const vent = addVent(name, content);
+		return { fileName: vent.fileName };
 	},
 
 	"label.list": async (params) => {
