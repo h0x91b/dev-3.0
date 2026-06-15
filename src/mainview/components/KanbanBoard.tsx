@@ -70,6 +70,12 @@ function KanbanBoard({
 	const draggedColumnIdRef = useRef<string | null>(null);
 	const [tipState, setTipState] = useState<TipState | null>(null);
 	const currentTip = useMemo(() => tipState ? selectTip(tipState) : null, [tipState]);
+	// Mirror tipState/currentTip in refs so the rotation timer reads the latest
+	// values instead of the (null) closure captured when the effect first ran.
+	const tipStateRef = useRef<TipState | null>(null);
+	const currentTipRef = useRef(currentTip);
+	useEffect(() => { tipStateRef.current = tipState; }, [tipState]);
+	useEffect(() => { currentTipRef.current = currentTip; }, [currentTip]);
 	const collapseState = useColumnCollapse(project.id);
 
 	// PR numbers for task cards: taskId → { number, url }
@@ -89,13 +95,15 @@ function KanbanBoard({
 		function scheduleRotation() {
 			tipTimerRef.current = setTimeout(() => {
 				if (!tipMountedRef.current) return;
-				if (!tipState) {
+				const state = tipStateRef.current;
+				if (!state) {
 					scheduleRotation();
 					return;
 				}
+				const tip = currentTipRef.current;
 				api.request.updateTipState({
-					seen: currentTip ? { [currentTip.id]: Date.now() } : {},
-					rotationIndex: (tipState?.rotationIndex ?? 0) + 1,
+					seen: tip ? { [tip.id]: Date.now() } : {},
+					rotationIndex: state.rotationIndex + 1,
 				}).then((state) => {
 					if (!tipMountedRef.current) return;
 					setTipState(state);

@@ -1,0 +1,1 @@
+Fixed the "Did you know?" tip card never rotating: the 60s rotation timer captured a stale (null) tipState in its closure, so it rescheduled forever and never marked tips seen. The timer now reads the latest tip state via refs, so tips rotate and the seen-cooldown is recorded.

@@ -1,7 +1,9 @@
 import { act, render, screen } from "@testing-library/react";
 import KanbanBoard from "../KanbanBoard";
 import { I18nProvider } from "../../i18n";
-import type { CustomColumn, Project } from "../../../shared/types";
+import { api } from "../../rpc";
+import { ROTATION_INTERVAL_MS } from "../../tips";
+import type { CustomColumn, Project, TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -282,6 +284,82 @@ describe("column ordering", () => {
 		const betaIdx = newOrder.indexOf("col-b");
 		// Alpha moved after Beta
 		expect(alphaIdx).toBeGreaterThan(betaIdx);
+	});
+});
+
+describe("tip rotation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function renderForRotation() {
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<KanbanBoard
+						project={project}
+						tasks={[]}
+						dispatch={vi.fn()}
+						navigate={vi.fn()}
+						bellCounts={new Map()}
+						taskPorts={new Map()}
+					/>
+				</I18nProvider>,
+			);
+		});
+		// Flush async getTipState / getGlobalSettings before the first timer fires.
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+	}
+
+	it("rotates tips every ROTATION_INTERVAL_MS with an advancing rotationIndex", async () => {
+		const getTipState = vi.mocked(api.request.getTipState);
+		const updateTipState = vi.mocked(api.request.updateTipState);
+		getTipState.mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 });
+		// Echo params back so setTipState advances the persisted rotationIndex.
+		updateTipState.mockImplementation((params: Partial<TipState>) =>
+			Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...params } as TipState),
+		);
+
+		await renderForRotation();
+
+		// First rotation tick.
+		await act(async () => { await vi.advanceTimersByTimeAsync(ROTATION_INTERVAL_MS); });
+		expect(updateTipState).toHaveBeenCalledTimes(1);
+		expect(updateTipState.mock.calls[0][0].rotationIndex).toBe(1);
+
+		// Second rotation tick — index must keep advancing, not stick.
+		await act(async () => { await vi.advanceTimersByTimeAsync(ROTATION_INTERVAL_MS); });
+		expect(updateTipState).toHaveBeenCalledTimes(2);
+		expect(updateTipState.mock.calls[1][0].rotationIndex).toBe(2);
+	});
+
+	it("persists TipState with the unchanged shape (seen[tipId]=timestamp, advancing rotationIndex)", async () => {
+		const getTipState = vi.mocked(api.request.getTipState);
+		const updateTipState = vi.mocked(api.request.updateTipState);
+		getTipState.mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 });
+		updateTipState.mockImplementation((params: Partial<TipState>) =>
+			Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...params } as TipState),
+		);
+
+		await renderForRotation();
+		await act(async () => { await vi.advanceTimersByTimeAsync(ROTATION_INTERVAL_MS); });
+
+		expect(updateTipState).toHaveBeenCalledTimes(1);
+		const payload = updateTipState.mock.calls[0][0];
+		// Only the two writable keys are sent — no new/renamed fields that an older version can't read.
+		expect(Object.keys(payload).sort()).toEqual(["rotationIndex", "seen"]);
+		expect(payload.rotationIndex).toBe(1);
+		// seen maps a tip id → a numeric timestamp.
+		const seenEntries = Object.entries(payload.seen ?? {});
+		expect(seenEntries.length).toBe(1);
+		const [tipId, ts] = seenEntries[0];
+		expect(typeof tipId).toBe("string");
+		expect(typeof ts).toBe("number");
 	});
 });
 
