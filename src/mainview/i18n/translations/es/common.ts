@@ -60,6 +60,7 @@ const common = {
 	"sidebar.scopeToggleTitle": "Alternar alcance (este proyecto / todos los proyectos)",
 	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
 	"sidebar.unknownProject": "Proyecto desconocido",
+	"sidebar.statusChanged": "Estado cambiado {ago} · {date}",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Cambiar de tarea",

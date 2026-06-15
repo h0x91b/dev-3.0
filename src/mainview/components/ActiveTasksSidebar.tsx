@@ -5,9 +5,10 @@ import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
 import type { AppAction, Route } from "../state";
-import { useT } from "../i18n";
+import { useT, useLocale } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { matchesSearchQuery } from "../utils/taskSearch";
+import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
 import LabelChip from "./LabelChip";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import AgentLauncherBadge from "./AgentLauncherBadge";
@@ -62,6 +63,16 @@ const STATUS_ORDER: TaskStatus[] = [
 	"review-by-ai",
 ];
 
+/** Maps the single most-significant age unit to its verbose i18n key. */
+const AGE_UNIT_KEY: Record<AgeUnit, string> = {
+	s: "activity.secondsAgo",
+	m: "activity.minutesAgo",
+	h: "activity.hoursAgo",
+	d: "activity.daysAgo",
+	M: "activity.monthsAgo",
+	y: "activity.yearsAgo",
+};
+
 function ActiveTasksSidebar({
 	project,
 	tasks,
@@ -75,9 +86,16 @@ function ActiveTasksSidebar({
 	disableGlobalFindShortcut = false,
 }: ActiveTasksSidebarProps) {
 	const t = useT();
+	const [locale] = useLocale();
 	const statusColors = useStatusColors();
 	const preview = useTerminalPreview();
 	const [searchQuery, setSearchQuery] = useState("");
+	// Re-render once per second so the status-age badges stay live.
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const id = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(id);
+	}, []);
 	const [scope, setScopeState] = useState<SidebarScope>(readScope);
 	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
 	const [globalLoading, setGlobalLoading] = useState(false);
@@ -526,6 +544,36 @@ function ActiveTasksSidebar({
 															))}
 														</div>
 													)}
+													{(() => {
+														const part = ageParts(task.movedAt, now);
+														if (!part) return null;
+														const relative =
+															part.unit === "s" && part.value < 1
+																? t("activity.justNow")
+																: t(AGE_UNIT_KEY[part.unit] as Parameters<typeof t>[0], {
+																		count: String(part.value),
+																	});
+														const date = new Date(task.movedAt!).toLocaleString(locale, {
+															dateStyle: "medium",
+															timeStyle: "short",
+														});
+														return (
+															<span
+																className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-muted font-mono whitespace-nowrap"
+																title={t("sidebar.statusChanged", { ago: relative, date })}
+																data-testid={`sidebar-status-age-${task.id}`}
+															>
+																<span
+																	aria-hidden
+																	className="leading-none"
+																	style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+																>
+																	{"\uF017"}
+																</span>
+																{compactAge(task.movedAt, now)}
+															</span>
+														);
+													})()}
 												</div>
 
 												{/* Port indicators */}

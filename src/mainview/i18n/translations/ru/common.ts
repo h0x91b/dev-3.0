@@ -60,6 +60,7 @@ const common = {
 	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
+	"sidebar.statusChanged": "Статус изменён {ago} · {date}",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Переключить задачу",

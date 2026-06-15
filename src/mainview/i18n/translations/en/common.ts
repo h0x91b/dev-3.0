@@ -60,6 +60,7 @@ const common = {
 	"sidebar.scopeToggleTitle": "Toggle task scope (this project / all projects)",
 	"sidebar.globalLoading": "Loading tasks from all projects…",
 	"sidebar.unknownProject": "Unknown project",
+	"sidebar.statusChanged": "Status changed {ago} · {date}",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Switch Task",

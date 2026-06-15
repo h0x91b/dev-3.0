@@ -402,4 +402,48 @@ describe("ActiveTasksSidebar", () => {
 
 		expect(screen.queryByTestId("sidebar-hide")).not.toBeInTheDocument();
 	});
+
+	it("shows a compact status-age badge with a descriptive tooltip", () => {
+		const movedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ movedAt })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const badge = screen.getByTestId("sidebar-status-age-t1");
+		expect(badge).toHaveTextContent("5m");
+		expect(badge.getAttribute("title")).toContain("Status changed");
+		expect(badge.getAttribute("title")).toContain("5m ago");
+	});
+
+	it("omits the status-age badge when movedAt is absent", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ movedAt: undefined })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		expect(screen.queryByTestId("sidebar-status-age-t1")).not.toBeInTheDocument();
+	});
 });

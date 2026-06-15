@@ -10,6 +10,12 @@ export interface Tip {
 
 const ALL_TIPS: Tip[] = [
 	{
+		id: "status-age-badge",
+		titleKey: "tip.statusAgeBadge.title",
+		bodyKey: "tip.statusAgeBadge.body",
+		icon: "\u{F0954}", // nf-md-clock_outline
+	},
+	{
 		id: "cmd-switch-keeps-view",
 		titleKey: "tip.cmdSwitchKeepsView.title",
 		bodyKey: "tip.cmdSwitchKeepsView.body",

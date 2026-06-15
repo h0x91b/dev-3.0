@@ -21,9 +21,12 @@ const dashboard = {
 	"activity.taskCount_other": "{count} activas",
 	"activity.noActiveInProject": "sin tareas activas",
 	"activity.justNow": "ahora",
+	"activity.secondsAgo": "hace {count}s",
 	"activity.minutesAgo": "hace {count}m",
 	"activity.hoursAgo": "hace {count}h",
 	"activity.daysAgo": "hace {count}d",
+	"activity.monthsAgo": "hace {count}mes",
+	"activity.yearsAgo": "hace {count}a",
 
 	// GlobalHeader
 	"header.task": "Tarea",
