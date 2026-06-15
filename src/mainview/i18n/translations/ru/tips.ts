@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "Больше не показывать",
 	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
+	"tip.statusAgeBadge.title": "Сколько прошло с момента перехода",
+	"tip.statusAgeBadge.body": "На каждой карточке Active Tasks есть живой бейдж возраста (5m, 7h, 13d) — наведи, чтобы увидеть точное время смены статуса.",
 	"tip.cmdSwitchKeepsView.title": "Меняй проект, сохраняя вид",
 	"tip.cmdSwitchKeepsView.body": "Нажми Cmd/Ctrl+1..9 в режиме задач, чтобы перейти в другой проект, не покидая этот вид — выбери задачу слева, чтобы открыть её терминал.",
 	"tip.cmdShiftSwitchFlipsView.title": "Меняй проект, переключая вид",

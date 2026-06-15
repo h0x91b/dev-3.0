@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "Don't show this tip",
 	"tip.snooze": "Hide tips for a while",
 	"tip.next": "Next tip",
+	"tip.statusAgeBadge.title": "How long since the move",
+	"tip.statusAgeBadge.body": "Each Active Tasks card shows a live age badge (5m, 7h, 13d) — hover it for the exact status-change time.",
 	"tip.cmdSwitchKeepsView.title": "Switch projects, keep your view",
 	"tip.cmdSwitchKeepsView.body": "Press Cmd/Ctrl+1..9 from a task view to jump to another project without leaving the task view — pick a task on the left to open its terminal.",
 	"tip.cmdShiftSwitchFlipsView.title": "Switch projects, flip the view",

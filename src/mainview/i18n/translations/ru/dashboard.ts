@@ -25,9 +25,12 @@ const dashboard = {
 	"activity.taskCount_other": "{count} активных",
 	"activity.noActiveInProject": "нет активных задач",
 	"activity.justNow": "только что",
+	"activity.secondsAgo": "{count}с назад",
 	"activity.minutesAgo": "{count}м назад",
 	"activity.hoursAgo": "{count}ч назад",
 	"activity.daysAgo": "{count}д назад",
+	"activity.monthsAgo": "{count}мес назад",
+	"activity.yearsAgo": "{count}г назад",
 
 	// GlobalHeader
 	"header.task": "Задача",

@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "No mostrar este consejo",
 	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
+	"tip.statusAgeBadge.title": "Cuánto desde el cambio",
+	"tip.statusAgeBadge.body": "Cada tarjeta de Active Tasks muestra una insignia de antigüedad en vivo (5m, 7h, 13d) — pasa el ratón para ver la hora exacta del cambio de estado.",
 	"tip.cmdSwitchKeepsView.title": "Cambia de proyecto sin perder la vista",
 	"tip.cmdSwitchKeepsView.body": "Pulsa Cmd/Ctrl+1..9 en la vista de tareas para saltar a otro proyecto sin salir de la vista — elige una tarea a la izquierda para abrir su terminal.",
 	"tip.cmdShiftSwitchFlipsView.title": "Cambia de proyecto, invierte la vista",
