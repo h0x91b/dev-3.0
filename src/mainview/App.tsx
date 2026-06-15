@@ -692,6 +692,23 @@ function App() {
 		return () => window.removeEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
 	}, []);
 
+	// Notify user when background worktree/PTY preparation fails (e.g. empty repo,
+	// missing base branch). The task is reverted to todo on the backend; surface
+	// the real error so the user isn't left with a misleading "[session ended]".
+	useEffect(() => {
+		function onTaskPreparationFailed(e: Event) {
+			const { taskTitle, error } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				taskTitle: string;
+				error: string;
+			};
+			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }));
+		}
+		window.addEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
+		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
+	}, []);
+
 	// Listen for update download progress (minimum 5s display time)
 	useEffect(() => {
 		const MIN_DISPLAY_MS = 5_000;

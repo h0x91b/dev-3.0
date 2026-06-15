@@ -530,7 +530,7 @@ describe("createWorktree edge cases", () => {
 		}
 	});
 
-	it("throws when repo has no commits at all", async () => {
+	it("throws a clear empty-repo error when repo has no commits at all", async () => {
 		const r = createEmptyRepo();
 		try {
 			const project = makeProject(r.local);
@@ -538,8 +538,11 @@ describe("createWorktree edge cases", () => {
 				id: "33333333-4444-5555-6666-777777777777",
 			});
 
+			// Empty repos get an empty-repo-specific message (create an initial
+			// commit), not the generic "branch does not exist" guidance which
+			// misleads the user into changing their base-branch setting.
 			await expect(createWorktree(project, task)).rejects.toThrow(
-				'Branch "main" does not exist',
+				/no commits yet/i,
 			);
 		} finally {
 			cleanupLocal(r);

@@ -1657,6 +1657,13 @@ export type AppRPCSchema = {
 			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */
 			columnAgentFailed: { taskId: string; projectId: string; columnName: string; error: string };
 			/**
+			 * Emitted when background worktree/PTY preparation for a task fails (e.g.
+			 * empty repo, missing base branch). The task is reverted to todo so it is
+			 * recoverable; the renderer surfaces this as a toast instead of leaving a
+			 * misleading "[session ended]" terminal.
+			 */
+			taskPreparationFailed: { taskId: string; projectId: string; taskTitle: string; error: string };
+			/**
 			 * Emitted when the main window gains focus shortly after a watched-task notification fired.
 			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
 			 */
