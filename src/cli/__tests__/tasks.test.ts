@@ -141,6 +141,43 @@ describe("tasks list", () => {
 		expect(stdoutOutput).toContain("...");
 	});
 
+	it("shows the custom title (customTitle), not the auto-generated title", async () => {
+		const taskWithCustomTitle: Task = {
+			...TASKS[0],
+			id: "cccccccc-1111-2222-3333-444444444444",
+			seq: 3,
+			title: "Bug (from bug-hunt review): the raw auto-generated description blob",
+			customTitle: "Fix custom title display",
+		};
+		mockSend.mockResolvedValue(okResp([taskWithCustomTitle]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("Fix custom title display");
+		expect(stdoutOutput).not.toContain("Bug (from bug-hunt review)");
+	});
+
+	it("does not mutate or persist task fields (read-only render)", async () => {
+		const original: Task = {
+			...TASKS[0],
+			id: "dddddddd-1111-2222-3333-444444444444",
+			seq: 4,
+			title: "auto-generated title",
+			customTitle: "custom title",
+			titleEditedByUser: true,
+		};
+		const snapshot = JSON.stringify(original);
+		mockSend.mockResolvedValue(okResp([original]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		// Listing is purely a read — the task object must be byte-identical after.
+		expect(JSON.stringify(original)).toBe(snapshot);
+		// No write RPC should ever be issued by `tasks list`.
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: "proj-001" });
+	});
+
 	it("shows short (8-char) task IDs", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 

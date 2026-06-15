@@ -1,5 +1,5 @@
 import type { Task } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES } from "../../shared/types";
+import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -57,12 +57,15 @@ export async function handleTasks(
 
 		printTable(
 			["SEQ", "ID", "STATUS", "TITLE"],
-			tasks.map((t) => [
-				String(t.seq),
-				t.id.slice(0, 8),
-				STATUS_LABELS[t.status] || t.status,
-				t.title.length > 60 ? t.title.slice(0, 57) + "..." : t.title,
-			]),
+			tasks.map((t) => {
+				const title = getTaskTitle(t);
+				return [
+					String(t.seq),
+					t.id.slice(0, 8),
+					STATUS_LABELS[t.status] || t.status,
+					title.length > 60 ? title.slice(0, 57) + "..." : title,
+				];
+			}),
 		);
 		return;
 	}
