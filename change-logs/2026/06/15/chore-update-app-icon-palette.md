@@ -1,0 +1,1 @@
+Replaced the app icon with the recolored four-tile brain design (Kanban/circuit/terminal/swarm) whose tile colors now match the kanban status palette. Regenerated all icon.iconset sizes and the website/README icon (docs/icon.png) from a 2048x2048 transparent source.
