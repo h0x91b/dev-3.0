@@ -307,6 +307,33 @@ function App() {
 					e.stopPropagation();
 					navigate({ screen: "project-terminal", projectId: route.projectId });
 				}
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
+				// Cmd+Shift+1..9 — switch to project by index landing on the
+				// OPPOSITE view of the current one (the mirror of Cmd+1..9, which
+				// PRESERVES the view):
+				//  - on the Kanban board  → target project's task view (split layout,
+				//                            empty terminal placeholder, no task picked).
+				//  - in a task view       → target project's Kanban board.
+				// `e.code` (not `e.key`) because Shift+digit yields the shifted symbol
+				// ("!", "@", …) in `e.key`. Open-mode is intentionally ignored here —
+				// the explicit Shift means "give me the other view" regardless of the
+				// `dev3-task-open-mode` preference. Note: macOS reserves Cmd+Shift+3/4/5
+				// for screenshots, so those may be swallowed by the OS before reaching us.
+				const idx = parseInt(e.code.slice(5), 10) - 1;
+				const available = state.projects.filter((p) => !p.deleted);
+				if (idx < available.length) {
+					e.preventDefault();
+					e.stopPropagation();
+					const { route } = state;
+					const inTaskView =
+						route.screen === "task" ||
+						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+					navigate(
+						inTaskView
+							? { screen: "project", projectId: available[idx].id }
+							: { screen: "project", projectId: available[idx].id, taskView: true },
+					);
+				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
 				// Cmd+1..9 — switch to project by index (like Slack workspaces).
 				// View-mode preservation is gated on the `dev3-task-open-mode` setting:

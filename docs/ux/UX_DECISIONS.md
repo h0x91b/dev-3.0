@@ -2,6 +2,12 @@
 
 Append-only log of UX architecture decisions. Each entry: date, decision, rationale, evidence/status.
 
+## 2026-06-15 — Cmd+Shift+1..9 switches project to the OPPOSITE view
+
+- **Decision:** Added `Cmd/Ctrl+Shift+1..9` as the mirror of `Cmd/Ctrl+1..9`. Where the unshifted chord *preserves* the current view mode, the shifted chord *flips* it: from the Kanban board it opens the target project's task view (split layout, empty-terminal placeholder, reusing the `taskView` route flag), and from a task view it opens the target project's board. Feature class is `expert_shortcut`/keyboard — no new visible controls, buttons, or tokens. Not bound in the application menu (consistent with Cmd+1..9; Electrobun can't bind chord accelerators, decision 044). Unlike Cmd+1..9, this chord intentionally ignores the `dev3-task-open-mode` preference — the explicit Shift means "give me the other view".
+- **Rationale:** Keyboard-heavy users wanted a one-chord way to reach a project *and* the other layout in a single keystroke, instead of switching then toggling the view. Mirroring the existing shortcut (Shift = inverse) is a predictable expert pattern. macOS reserves Cmd+Shift+3/4/5 for screenshots, so those indices may be swallowed by the OS — documented as a known limitation, not worked around.
+- **Status:** `Observed` (implemented: `App.tsx` Cmd+Shift+1..9 handler keyed on `e.code` Digit1..9, reuses `state.ts` `taskView` flag and `ProjectView.tsx` split empty-state; tip `cmd-shift-switch-flips-view`; decision record 068).
+
 ## 2026-06-03 — Cmd+1..9 preserves the current view mode (task-view vs board)
 
 - **Decision:** The `Cmd/Ctrl+1..9` project-switch shortcut now preserves the user's current *view mode* instead of always dropping them on the Kanban board. If the user is in a task view when they switch (split layout: `screen: "project"` with `activeTaskId`, or the full-page `screen: "task"`), the target project opens in task view too — `ActiveTasksSidebar` shows the new project's active tasks and, because no task is selected there yet, the terminal pane shows a centered empty-state: «Select a task to see its terminal». If the user is on the board (no active task), switching keeps the board. A new `taskView?: boolean` flag on the `project` route models "task-view layout with no task selected". The empty-state is a *status surface* (Toast/empty-state family), not an action — centered `text-fg-muted` text, no button (selecting a task in the sidebar fills the terminal).

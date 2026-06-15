@@ -16,6 +16,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0600}", // nf-md-keyboard
 	},
 	{
+		id: "cmd-shift-switch-flips-view",
+		titleKey: "tip.cmdShiftSwitchFlipsView.title",
+		bodyKey: "tip.cmdShiftSwitchFlipsView.body",
+		icon: "\u{F0600}", // nf-md-keyboard
+	},
+	{
 		id: "agent-create-tasks",
 		titleKey: "tip.agentCreateTasks.title",
 		bodyKey: "tip.agentCreateTasks.body",

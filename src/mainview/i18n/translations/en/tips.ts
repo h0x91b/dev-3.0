@@ -6,6 +6,8 @@ const tips = {
 	"tip.next": "Next tip",
 	"tip.cmdSwitchKeepsView.title": "Switch projects, keep your view",
 	"tip.cmdSwitchKeepsView.body": "Press Cmd/Ctrl+1..9 from a task view to jump to another project without leaving the task view — pick a task on the left to open its terminal.",
+	"tip.cmdShiftSwitchFlipsView.title": "Switch projects, flip the view",
+	"tip.cmdShiftSwitchFlipsView.body": "Add Shift — Cmd/Ctrl+Shift+1..9 jumps to a project and opens the opposite view: board → task view, task view → board.",
 	"tip.agentCreateTasks.title": "Agents can create tasks",
 	"tip.agentCreateTasks.body": "Just say \"create a task in dev3 about...\" in your prompt and the agent will add it to your board.",
 	"tip.agentSeesTasks.title": "Agents see your board",
