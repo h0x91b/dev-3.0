@@ -1,0 +1,1 @@
+Fixed flaky pty-server configureTmux timeout tests by replacing fixed two-microtask flushes with vi.waitFor polling, so assertions no longer depend on the exact async promise-chain depth under CI load. Test-only change; production code untouched.
