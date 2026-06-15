@@ -30,6 +30,13 @@ export interface AppState {
 	bellCounts: Map<string, number>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage: Map<string, ResourceUsage>;
+	/**
+	 * Most-recently-used task ids, newest first. Bumped whenever navigation
+	 * lands on a task (full-page or split). Powers the Option+Tab switcher's
+	 * order so a quick tap-tap toggles the two most recent tasks. In-memory
+	 * only — reset on reload.
+	 */
+	taskMru: string[];
 }
 
 export const initialState: AppState = {
@@ -42,7 +49,23 @@ export const initialState: AppState = {
 	bellCounts: new Map(),
 	taskPorts: new Map(),
 	taskResourceUsage: new Map(),
+	taskMru: [],
 };
+
+/** The task id a route lands on, or null if the route is not a task view. */
+export function routeTaskId(route: Route): string | null {
+	if (route.screen === "task") return route.taskId;
+	if (route.screen === "project" && route.activeTaskId) return route.activeTaskId;
+	return null;
+}
+
+/** Move `taskId` to the front of the MRU list (newest first); no-op if null. */
+function bumpMru(mru: string[], route: Route): string[] {
+	const taskId = routeTaskId(route);
+	if (!taskId) return mru;
+	if (mru[0] === taskId) return mru;
+	return [taskId, ...mru.filter((id) => id !== taskId)];
+}
 
 // ---- Actions ----
 
@@ -97,21 +120,24 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			// Trim oldest entries if over the limit
 			const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
 			const historyIndex = routeHistory.length - 1;
-			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts };
+			const taskMru = bumpMru(state.taskMru, action.route);
+			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts, taskMru };
 		}
 		case "goBack": {
 			if (state.historyIndex <= 0) return state;
 			const newIndex = state.historyIndex - 1;
 			const route = state.routeHistory[newIndex];
 			const bellCounts = clearBellForRoute(state.bellCounts, route);
-			return { ...state, route, historyIndex: newIndex, bellCounts };
+			const taskMru = bumpMru(state.taskMru, route);
+			return { ...state, route, historyIndex: newIndex, bellCounts, taskMru };
 		}
 		case "goForward": {
 			if (state.historyIndex >= state.routeHistory.length - 1) return state;
 			const newIndex = state.historyIndex + 1;
 			const route = state.routeHistory[newIndex];
 			const bellCounts = clearBellForRoute(state.bellCounts, route);
-			return { ...state, route, historyIndex: newIndex, bellCounts };
+			const taskMru = bumpMru(state.taskMru, route);
+			return { ...state, route, historyIndex: newIndex, bellCounts, taskMru };
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };

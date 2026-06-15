@@ -61,6 +61,13 @@ const common = {
 	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
 	"sidebar.unknownProject": "Proyecto desconocido",
 
+	// Task switcher (Option+Tab)
+	"taskSwitcher.title": "Cambiar de tarea",
+	"taskSwitcher.scopeProject": "Este proyecto",
+	"taskSwitcher.scopeGlobal": "Todos los proyectos",
+	"taskSwitcher.noOverview": "Sin resumen todavía",
+	"taskSwitcher.hint": "Tab siguiente · ↑↓ mover · ⇧ todos los proyectos · ⏎ abrir · esc cancelar",
+
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",
 	"openIn.noAppsFound": "No se encontraron aplicaciones externas",

@@ -1,5 +1,9 @@
 # UX Manifest Changelog
 
+## 2026-06-15 — Added `task_switcher` transient overlay surface
+
+Added a new `task_switcher` surface to `ux-architecture.yaml` (transient keyboard-summoned HUD for Option+Tab hold-cycle task switching) and a UX decision recording why this is a presentation of the existing `task_jump` action — not a command palette. Created `feature-plans/option-tab-task-switcher.md`.
+
 ## 2026-05-29 — Initial creation
 
 Created the first Product UX Bible for dev-3.0 from a full repository audit.

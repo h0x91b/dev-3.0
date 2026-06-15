@@ -220,6 +220,10 @@ const tips = {
 	"tip.pullBehindDot.body": "A small blue dot on the header Pull button means origin has new commits — click it to update your local main.",
 	"tip.agentCompletionRequest.title": "Agents can request completion",
 	"tip.agentCompletionRequest.body": "When an agent runs `dev3 task move --status completed`, you get an approval dialog — approve to complete or keep the session alive.",
+	"tip.taskSwitcher.title": "Option+Tab between tasks",
+	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.)",
+	"tip.taskSwitcherGlobal.title": "Switch tasks across projects",
+	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab opens the switcher across all projects, not just the current one.",
 } as const;
 
 export default tips;

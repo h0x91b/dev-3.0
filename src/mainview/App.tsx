@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useAppState, type Route } from "./state";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useAppState, routeTaskId, type Route } from "./state";
 import { api } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -34,6 +34,8 @@ import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
+import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
+import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -207,6 +209,20 @@ function App() {
 		},
 		[dispatch],
 	);
+
+	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
+	const switcher = useTaskSwitcher({
+		projectTasks: state.currentProjectTasks,
+		currentProjectId: "projectId" in state.route ? state.route.projectId : null,
+		currentTaskId: routeTaskId(state.route),
+		mru: state.taskMru,
+		navigate,
+	});
+	const switcherProjectById = useMemo(() => {
+		const map = new Map<string, Project>();
+		for (const p of state.projects) map.set(p.id, p);
+		return map;
+	}, [state.projects]);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => {
 		switch (route.screen) {
@@ -951,6 +967,15 @@ function App() {
 				/>
 			)}
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
+			{switcher.session && (
+				<TaskSwitcherOverlay
+					session={switcher.session}
+					projectById={switcherProjectById}
+					onHover={switcher.setIndex}
+					onCommit={switcher.commit}
+					onCancel={switcher.cancel}
+				/>
+			)}
 			{showAddProjectModal && (
 				<AddProjectModal
 					dispatch={dispatch}

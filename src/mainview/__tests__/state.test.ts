@@ -1,4 +1,4 @@
-import { reducer, initialState, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
+import { reducer, initialState, routeTaskId, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
 import type { AppState, AppAction } from "../state";
 import type { Project, Task } from "../../shared/types";
 
@@ -43,6 +43,7 @@ describe("initialState", () => {
 			bellCounts: new Map(),
 			taskPorts: new Map(),
 			taskResourceUsage: new Map(),
+			taskMru: [],
 		});
 	});
 });
@@ -795,5 +796,54 @@ describe("reducer", () => {
 			type: "unknownAction" as AppAction["type"],
 		} as AppAction);
 		expect(next).toBe(initialState);
+	});
+});
+
+describe("routeTaskId", () => {
+	it("returns taskId for a full-page task route", () => {
+		expect(routeTaskId({ screen: "task", projectId: "p1", taskId: "t9" })).toBe("t9");
+	});
+
+	it("returns activeTaskId for a split project route", () => {
+		expect(routeTaskId({ screen: "project", projectId: "p1", activeTaskId: "t5" })).toBe("t5");
+	});
+
+	it("returns null for a project route with no active task", () => {
+		expect(routeTaskId({ screen: "project", projectId: "p1" })).toBeNull();
+		expect(routeTaskId({ screen: "dashboard" })).toBeNull();
+	});
+});
+
+describe("taskMru tracking", () => {
+	it("navigate to a task pushes it to the front of the MRU", () => {
+		const next = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "task", projectId: "p1", taskId: "a" },
+		});
+		expect(next.taskMru).toEqual(["a"]);
+	});
+
+	it("navigate to a non-task route leaves MRU untouched", () => {
+		const next = reducer(initialState, {
+			type: "navigate",
+			route: { screen: "dashboard" },
+		});
+		expect(next.taskMru).toEqual([]);
+	});
+
+	it("revisiting a task moves it to the front without duplicating", () => {
+		let s: AppState = initialState;
+		s = reducer(s, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "a" } });
+		s = reducer(s, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "b" } });
+		s = reducer(s, { type: "navigate", route: { screen: "project", projectId: "p1", activeTaskId: "a" } });
+		expect(s.taskMru).toEqual(["a", "b"]);
+	});
+
+	it("goBack/goForward also bump the MRU for the task they land on", () => {
+		let s: AppState = initialState;
+		s = reducer(s, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "a" } });
+		s = reducer(s, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "b" } });
+		s = reducer(s, { type: "goBack" }); // back to a
+		expect(s.taskMru[0]).toBe("a");
 	});
 });
