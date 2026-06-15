@@ -364,7 +364,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 			</div>
 
 			{/* Actions — tmux sessions, changelog, project settings, global settings, external links */}
-			<div className="flex items-center gap-1.5 flex-shrink-0">
+			<div className="flex items-center gap-0.5 flex-shrink-0">
 				{/* Update download progress indicator */}
 				{updateDownloadStatus && updateDownloadStatus !== "error" && !updateVersion && (
 					<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/10 text-accent">
@@ -435,7 +435,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 							navigate({ screen: "home-terminal" });
 						}
 					}}
-					className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
+					className={`flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
 						route.screen === "home-terminal"
 							? "text-accent bg-accent/15 hover:bg-accent/25"
 							: "text-fg-3 hover:text-fg hover:bg-elevated"
@@ -456,7 +456,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 								navigate({ screen: "project-terminal", projectId: route.projectId });
 							}
 						}}
-						className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
+						className={`flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
 							route.screen === "project-terminal"
 								? "text-accent bg-accent/15 hover:bg-accent/25"
 								: "text-fg-3 hover:text-fg hover:bg-elevated"
@@ -488,7 +488,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 							// Remote access server may not be running
 						}
 					}}
-					className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+					className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 					title={t("header.remoteAccessTooltip")}
 				>
 					<span
@@ -509,7 +509,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						{/* GitHub website */}
 						<button
 							onClick={() => window.open("https://h0x91b.github.io/dev-3.0/", "_blank")}
-							className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+							className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 							title={t("header.githubTooltip")}
 						>
 							<svg
@@ -524,7 +524,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						{/* Report a bug */}
 						<button
 							onClick={() => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank")}
-							className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+							className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 							title={t("header.reportBugTooltip")}
 						>
 							<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf188"}</span>
@@ -535,7 +535,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 						{route.screen !== "changelog" && (
 							<button
 								onClick={() => navigate({ screen: "changelog" })}
-								className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+								className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 								title={t("header.changelogTooltip")}
 							>
 								<svg
@@ -563,7 +563,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 					<div className="relative" ref={overflowMenuRef}>
 						<button
 							onClick={() => setShowOverflowMenu((v) => !v)}
-							className={`flex items-center transition-colors px-2 py-1 rounded-lg ${
+							className={`flex items-center transition-colors px-1.5 py-1 rounded-lg ${
 								showOverflowMenu ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
 							}`}
 							title={t("header.moreActions")}
@@ -628,7 +628,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 								projectId: route.projectId,
 							})
 						}
-						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 						title={t("header.projectSettings")}
 					>
 						<svg
@@ -653,7 +653,7 @@ function GlobalHeader({ route, projects, tasks, navigate, updateVersion, updateD
 				{route.screen !== "settings" && (
 					<button
 						onClick={() => navigate({ screen: "settings" })}
-						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated"
+						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 						title={t("header.globalSettingsTooltip")}
 					>
 						<svg

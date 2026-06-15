@@ -143,7 +143,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	let iconSpin = false;
 	let label: string;
 
-	const baseClass = "flex items-center gap-1 transition-colors px-2 py-1 rounded-lg";
+	const baseClass = "flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg";
 
 	if (pulling) {
 		title = t("kanban.gitPullInProgress");
