@@ -20,9 +20,11 @@ White backgrounds get the same role-split in dark mode, mirrored: Claude Code pa
 
 The fg-before-bg ordering bites beyond white bars: Claude Code's status-line branch pill emits `38;5;16` (pure black) and only then `48;5;37` (teal, mid-luminance → gate "unknown"), so the dark-mode filter had already brightened black to gray before the gating bg arrived — gray-on-teal. The filter now keeps the *original* params of the last adjusted extended fg until any text is drawn (tracked via match offsets in the chunk filter, persisting across chunk boundaries); when a bg or reverse video that gates fg adjustment opens first, the original fg is re-emitted right after it, restoring the app's intended contrast.
 
+Dim turned out to hurt the dark theme too, not just light. ghostty renders SGR `2` as 50% alpha; Claude Code's select-prompt (`AskUserQuestion`/plan) draws option descriptions, the leading numbers, the separators and the footer hints with Ink `dimColor` (verified in `cli.js`: those rows are `dimColor:!0` over the default fg). At 50% alpha the default dark-theme fg (`#c0caf5`) collapses to a low-contrast blue-gray — unreadable. Dim is now dropped in *both* modes (it was kept in dark originally), making the filter symmetric.
+
 ## Risks
 
-Dropping dim loses the muted-vs-normal distinction in light mode (diff add/remove still differ by their red/green markers). Colors written while one theme is active stay resolved in scrollback after a theme switch until the app repaints. Light-mode pale backgrounds are intentionally untouched — darkening them would invert intent. The gate only sees SGR; an app that sets a background via OSC or DEC private modes would not trip it (not observed in practice).
+Dropping dim loses the muted-vs-normal distinction in both themes — in dark mode the select-prompt option labels and their descriptions now render at the same brightness (readability over hierarchy; diff add/remove still differ by their red/green markers). Colors written while one theme is active stay resolved in scrollback after a theme switch until the app repaints. Light-mode pale backgrounds are intentionally untouched — darkening them would invert intent. The gate only sees SGR; an app that sets a background via OSC or DEC private modes would not trip it (not observed in practice).
 
 ## Alternatives considered
 
