@@ -61,6 +61,13 @@ const common = {
 	"sidebar.globalLoading": "Loading tasks from all projects…",
 	"sidebar.unknownProject": "Unknown project",
 
+	// Task switcher (Option+Tab)
+	"taskSwitcher.title": "Switch Task",
+	"taskSwitcher.scopeProject": "This project",
+	"taskSwitcher.scopeGlobal": "All projects",
+	"taskSwitcher.noOverview": "No overview yet",
+	"taskSwitcher.hint": "Tab next · ↑↓ move · ⏎ open · esc cancel",
+
 	// Open in...
 	"openIn.menuTitle": "Open in...",
 	"openIn.noAppsFound": "No external apps found",

@@ -61,6 +61,13 @@ const common = {
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
 
+	// Task switcher (Option+Tab)
+	"taskSwitcher.title": "Переключить задачу",
+	"taskSwitcher.scopeProject": "Этот проект",
+	"taskSwitcher.scopeGlobal": "Все проекты",
+	"taskSwitcher.noOverview": "Обзора пока нет",
+	"taskSwitcher.hint": "Tab дальше · ↑↓ выбор · ⏎ открыть · esc отмена",
+
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",
 	"openIn.noAppsFound": "Не найдены внешние приложения",

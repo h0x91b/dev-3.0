@@ -702,6 +702,19 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.agentCompletionRequest.body",
 		icon: "\u{F06A9}", // nf-md-robot
 	},
+	// Batch 48: Option+Tab task switcher
+	{
+		id: "task-switcher-option-tab",
+		titleKey: "tip.taskSwitcher.title",
+		bodyKey: "tip.taskSwitcher.body",
+		icon: "\u{F030C}", // nf-md-keyboard
+	},
+	{
+		id: "task-switcher-global",
+		titleKey: "tip.taskSwitcherGlobal.title",
+		bodyKey: "tip.taskSwitcherGlobal.body",
+		icon: "\uEB01", // nf-cod-globe
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

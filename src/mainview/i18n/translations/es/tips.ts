@@ -220,6 +220,10 @@ const tips = {
 	"tip.pullBehindDot.body": "Un pequeño punto azul en el botón Pull de la cabecera indica commits nuevos en origin — haz clic para actualizar tu main local.",
 	"tip.agentCompletionRequest.title": "Los agentes pueden pedir completar",
 	"tip.agentCompletionRequest.body": "Cuando un agente ejecuta `dev3 task move --status completed`, recibes un diálogo de aprobación: aprueba para completar o mantén la sesión viva.",
+	"tip.taskSwitcher.title": "Option+Tab entre tareas",
+	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.)",
+	"tip.taskSwitcherGlobal.title": "Cambiar de tarea entre proyectos",
+	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab abre el selector en todos los proyectos, no solo en el actual.",
 };
 
 export default tips;

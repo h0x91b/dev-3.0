@@ -220,6 +220,10 @@ const tips = {
 	"tip.pullBehindDot.body": "Синяя точка на кнопке Pull в шапке означает новые коммиты в origin — нажмите, чтобы обновить локальный main.",
 	"tip.agentCompletionRequest.title": "Агент может запросить завершение",
 	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вы получаете диалог подтверждения — одобрите завершение или оставьте сессию.",
+	"tip.taskSwitcher.title": "Option+Tab между задачами",
+	"tip.taskSwitcher.body": "Держите Option и жмите Tab, чтобы листать активные задачи; отпустите — перейдёте. Стрелки ↑↓ листают в обе стороны. (На Linux — Ctrl+Tab.)",
+	"tip.taskSwitcherGlobal.title": "Переключение задач между проектами",
+	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab открывает переключатель по всем проектам, а не только по текущему.",
 };
 
 export default tips;
