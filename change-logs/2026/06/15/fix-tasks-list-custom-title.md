@@ -1,1 +1,1 @@
-Fixed `dev3 tasks list` to display the custom/agent-set title via getTaskTitle() instead of the raw auto-generated title, matching `task show` and the app UI.
+Fixed `dev3 tasks list` to display the custom/agent-set title via getTaskTitle() instead of the raw auto-generated title, matching `task show` and the app UI. The list is now also ordered newest-first (descending seq), so `--limit N` returns the N most recent tasks.

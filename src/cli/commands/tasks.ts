@@ -42,6 +42,10 @@ export async function handleTasks(
 			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
 		}
 
+		// Newest first — sort by seq descending so the most recent tasks lead.
+		// Done before --limit so `--limit N` returns the N newest tasks.
+		tasks = [...tasks].sort((a, b) => b.seq - a.seq);
+
 		// Client-side limit (server returns all tasks matching status filter)
 		if (args.flags.limit) {
 			const limit = Number(args.flags.limit);

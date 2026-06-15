@@ -207,9 +207,13 @@ describe("tasks list", () => {
 	it("defaults to 'list' when no subcommand", async () => {
 		mockSend.mockResolvedValue(okResp([]));
 
-		await handleTasks(undefined, { positional: [], flags: { project: "p" } }, SOCKET, null);
+		// Use a full-length (>=36 char) id so expandShortProjectId returns it
+		// verbatim. Short ids scan the on-disk projects.json, where a 1-char "p"
+		// could prefix-match a leftover project from a sibling test file.
+		const fullId = "proj-default-list-0000-0000-000000000000";
+		await handleTasks(undefined, { positional: [], flags: { project: fullId } }, SOCKET, null);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: "p" });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "tasks.list", { projectId: fullId });
 	});
 
 	it("exits with error for unknown subcommand", async () => {
@@ -254,13 +258,27 @@ describe("tasks list --limit", () => {
 		});
 	});
 
-	it("truncates results to --limit count", async () => {
+	it("truncates results to --limit count (keeps the newest)", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 
 		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "1" } }, SOCKET, null);
 
-		expect(stdoutOutput).toContain("First task");
-		expect(stdoutOutput).not.toContain("Second task");
+		// Newest-first ordering means --limit 1 keeps seq 2 (the newer task).
+		expect(stdoutOutput).toContain("Second task");
+		expect(stdoutOutput).not.toContain("First task");
+	});
+
+	it("orders newest first (highest seq) regardless of server order", async () => {
+		// Server returns ascending; CLI must flip to descending by seq.
+		mockSend.mockResolvedValue(okResp(TASKS));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		const firstIdx = stdoutOutput.indexOf("bbbbbbbb"); // seq 2
+		const secondIdx = stdoutOutput.indexOf("aaaaaaaa"); // seq 1
+		expect(firstIdx).toBeGreaterThan(-1);
+		expect(secondIdx).toBeGreaterThan(-1);
+		expect(firstIdx).toBeLessThan(secondIdx);
 	});
 
 	it("shows all tasks when --limit exceeds task count", async () => {
