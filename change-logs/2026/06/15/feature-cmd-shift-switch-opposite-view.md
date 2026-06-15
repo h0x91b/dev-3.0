@@ -1,0 +1,1 @@
+Added Cmd/Ctrl+Shift+1..9 to switch to a project by index and land on the opposite view of the current one — from the Kanban board you get the project's task view, from a task view you get its board. This mirrors Cmd+1..9, which preserves the current view.
