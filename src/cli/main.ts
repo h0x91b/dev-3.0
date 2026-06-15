@@ -6,6 +6,7 @@ import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
 import { handleNote } from "./commands/note";
+import { handleVents } from "./commands/vents";
 import { handleOverview } from "./commands/overview";
 import { handleLabel } from "./commands/label";
 import { handleInstallHooks } from "./commands/install-hooks";
@@ -29,6 +30,7 @@ Commands:
   dev3 note add "..." [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
   dev3 note delete <id> [--task <task>] Delete note (8-char prefix works)
+  dev3 vents "name" "markdown"          File anonymous dev3-platform feedback (opt-in)
   dev3 overview set "..." [--task <id>] Set task overview (one paragraph)
   dev3 overview show [--task <id>]      Show task overview (or description fallback)
   dev3 overview clear [--task <id>]     Remove task overview
@@ -127,6 +129,10 @@ async function main(): Promise<void> {
 				return await handleTask(subcommand, args, socketPath, context);
 			case "note":
 				return await handleNote(subcommand, args, socketPath, context);
+			case "vents":
+				// `vents` takes no subcommand — its first positional is the vent
+				// name, so re-parse from the raw args without the subcommand split.
+				return await handleVents(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath);
 			case "overview":
 				return await handleOverview(subcommand, args, socketPath, context);
 			case "label":

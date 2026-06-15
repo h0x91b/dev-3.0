@@ -249,6 +249,43 @@ describe("withFileLock — non-existent parent directory", () => {
 	});
 });
 
+describe("withFileLock — lock dir shape (backward compatibility)", () => {
+	it("creates the lock as a plain empty directory at <filePath>.lock", async () => {
+		const filePath = path.join(tmpDir, "fresh", "tasks.json");
+		const lockDir = filePath + ".lock";
+
+		let observedDir = false;
+		let observedEmpty = false;
+		let observedPath = "";
+
+		await withFileLock(filePath, async () => {
+			observedPath = lockDir;
+			const stat = fs.statSync(lockDir);
+			observedDir = stat.isDirectory();
+			observedEmpty = fs.readdirSync(lockDir).length === 0;
+		});
+
+		expect(observedPath).toBe(filePath + ".lock");
+		expect(observedDir).toBe(true);
+		expect(observedEmpty).toBe(true);
+		// Released afterwards.
+		expect(fs.existsSync(lockDir)).toBe(false);
+	});
+
+	it("lock dir is interoperable with an older version (plain mkdir/rmdir)", async () => {
+		const filePath = path.join(tmpDir, "interop", "tasks.json");
+		const lockDir = filePath + ".lock";
+
+		// New code acquires + releases (parent did not exist beforehand).
+		await withFileLock(filePath, async () => "ok");
+
+		// An older version acquires the SAME lock with a plain, non-recursive
+		// mkdir and releases it with rmdir — must work without error.
+		expect(() => fs.mkdirSync(lockDir)).not.toThrow();
+		expect(() => fs.rmdirSync(lockDir)).not.toThrow();
+	});
+});
+
 describe("withFileLock — re-entrancy (same file, nested calls)", () => {
 	it("does not deadlock on nested lock for the same file", async () => {
 		const filePath = path.join(tmpDir, "test.json");

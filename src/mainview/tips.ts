@@ -16,6 +16,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0600}", // nf-md-keyboard
 	},
 	{
+		id: "cmd-shift-switch-flips-view",
+		titleKey: "tip.cmdShiftSwitchFlipsView.title",
+		bodyKey: "tip.cmdShiftSwitchFlipsView.body",
+		icon: "\u{F0600}", // nf-md-keyboard
+	},
+	{
 		id: "agent-create-tasks",
 		titleKey: "tip.agentCreateTasks.title",
 		bodyKey: "tip.agentCreateTasks.body",
@@ -688,6 +694,26 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.pullBehindDot.title",
 		bodyKey: "tip.pullBehindDot.body",
 		icon: "\u{F0164}", // nf-md-cloud_download_outline
+	},
+	// Batch 47: agent completion request
+	{
+		id: "agent-completion-request",
+		titleKey: "tip.agentCompletionRequest.title",
+		bodyKey: "tip.agentCompletionRequest.body",
+		icon: "\u{F06A9}", // nf-md-robot
+	},
+	// Batch 48: Option+Tab task switcher
+	{
+		id: "task-switcher-option-tab",
+		titleKey: "tip.taskSwitcher.title",
+		bodyKey: "tip.taskSwitcher.body",
+		icon: "\u{F030C}", // nf-md-keyboard
+	},
+	{
+		id: "task-switcher-global",
+		titleKey: "tip.taskSwitcherGlobal.title",
+		bodyKey: "tip.taskSwitcherGlobal.body",
+		icon: "\uEB01", // nf-cod-globe
 	},
 ];
 

@@ -3,6 +3,10 @@ const common = {
 	"app.loading": "Loading...",
 	"app.branchMergedTitle": "Branch Merged",
 	"app.branchMergedMessage": "All changes from \"{branchName}\" are now in the base branch.\n\nTask: {taskTitle}\n\nMark this task as completed?",
+	"app.agentCompletionTitle": "Agent requests completion",
+	"app.agentCompletionMessage": "The AI agent working on this task reports it is fully done and asks to mark the task as completed.\n\nApproving will destroy the worktree and terminal session.",
+	"app.agentCompletionConfirm": "Complete task",
+	"app.agentCompletionCancel": "Keep session",
 
 	// Quit dialog
 	"quit.dialogTitle": "Sessions keep running",
@@ -14,6 +18,7 @@ const common = {
 	// Generic confirmation dialog (imperative confirm() service)
 	"confirmDialog.confirm": "OK",
 	"confirmDialog.cancel": "Cancel",
+	"confirmDialog.agentBadge": "AI agent request",
 
 	// About dialog (in-app, replaces the native About message box)
 	"about.version": "Version {version}",
@@ -55,6 +60,13 @@ const common = {
 	"sidebar.scopeToggleTitle": "Toggle task scope (this project / all projects)",
 	"sidebar.globalLoading": "Loading tasks from all projects…",
 	"sidebar.unknownProject": "Unknown project",
+
+	// Task switcher (Option+Tab)
+	"taskSwitcher.title": "Switch Task",
+	"taskSwitcher.scopeProject": "This project",
+	"taskSwitcher.scopeGlobal": "All projects",
+	"taskSwitcher.noOverview": "No overview yet",
+	"taskSwitcher.hint": "Tab next · ↑↓ move · ⇧ all projects · ⏎ open · esc cancel",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",

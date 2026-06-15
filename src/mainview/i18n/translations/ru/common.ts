@@ -3,6 +3,10 @@ const common = {
 	"app.loading": "Загрузка...",
 	"app.branchMergedTitle": "Ветка смержена",
 	"app.branchMergedMessage": "Все изменения из «{branchName}» уже в основной ветке.\n\nЗадача: {taskTitle}\n\nПеревести задачу в «Завершено»?",
+	"app.agentCompletionTitle": "Агент просит завершить задачу",
+	"app.agentCompletionMessage": "ИИ-агент, работающий над этой задачей, сообщает, что полностью закончил, и просит перевести задачу в «Завершено».\n\nПодтверждение уничтожит worktree и терминальную сессию.",
+	"app.agentCompletionConfirm": "Завершить задачу",
+	"app.agentCompletionCancel": "Оставить сессию",
 
 	// Quit dialog
 	"quit.dialogTitle": "Сессии продолжают работать",
@@ -14,6 +18,7 @@ const common = {
 	// Generic confirmation dialog (imperative confirm() service)
 	"confirmDialog.confirm": "ОК",
 	"confirmDialog.cancel": "Отмена",
+	"confirmDialog.agentBadge": "Запрос от ИИ-агента",
 
 	// About dialog (in-app, replaces the native About message box)
 	"about.version": "Версия {version}",
@@ -55,6 +60,13 @@ const common = {
 	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
+
+	// Task switcher (Option+Tab)
+	"taskSwitcher.title": "Переключить задачу",
+	"taskSwitcher.scopeProject": "Этот проект",
+	"taskSwitcher.scopeGlobal": "Все проекты",
+	"taskSwitcher.noOverview": "Обзора пока нет",
+	"taskSwitcher.hint": "Tab дальше · ↑↓ выбор · ⇧ все проекты · ⏎ открыть · esc отмена",
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",

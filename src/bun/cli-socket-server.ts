@@ -1,11 +1,13 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, getTaskTitle, titleFromDescription } from "../shared/types";
+import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
+import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
@@ -362,6 +364,19 @@ const handlers: Record<string, Handler> = {
 		return updated;
 	},
 
+	"vent.add": async (params) => {
+		// Background, fire-and-forget: an agent reporting friction with the dev3
+		// platform itself. Always available, no opt-in, no UI — just write the
+		// anonymous markdown file to ~/.dev3.0/vents/ for the maintainer to read.
+		const name = (params.name as string)?.trim();
+		const content = (params.content as string)?.trim();
+		if (!name) throw new Error("name is required");
+		if (!content) throw new Error("content is required");
+
+		const vent = addVent(name, content);
+		return { fileName: vent.fileName };
+	},
+
 	"label.list": async (params) => {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
@@ -563,6 +578,41 @@ const handlers: Record<string, Handler> = {
 		}
 
 		return updated;
+	},
+
+	// Agent-initiated request to complete a task. Blocks until the user
+	// approves or declines in the app UI. Approval executes the move even if
+	// the requesting CLI has already disconnected (its tmux session may have
+	// hit a client-side timeout while the dialog stayed open).
+	"task.requestCompletion": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		const push = getPushMessage();
+		if (!push) {
+			throw new Error("No app window is connected — cannot ask the user for approval");
+		}
+
+		const { requestId, decision, isNew } = createCompletionRequest(task.id, project.id);
+		if (isNew) {
+			// User-edited overview overrides the agent-written one, same as in cards.
+			const overview = task.userOverview?.trim() || task.overview?.trim() || undefined;
+			push("agentCompletionRequested", {
+				requestId,
+				taskId: task.id,
+				projectId: project.id,
+				taskTitle: getTaskTitle(task),
+				taskOverview: overview,
+			});
+		}
+
+		const approved = await decision;
+		if (!approved) {
+			return { approved: false };
+		}
+		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "completed" });
+		return { approved: true, task: updated };
 	},
 
 	"devServer.start": async (params) => {

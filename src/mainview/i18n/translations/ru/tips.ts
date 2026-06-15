@@ -6,6 +6,8 @@ const tips = {
 	"tip.next": "Следующий совет",
 	"tip.cmdSwitchKeepsView.title": "Меняй проект, сохраняя вид",
 	"tip.cmdSwitchKeepsView.body": "Нажми Cmd/Ctrl+1..9 в режиме задач, чтобы перейти в другой проект, не покидая этот вид — выбери задачу слева, чтобы открыть её терминал.",
+	"tip.cmdShiftSwitchFlipsView.title": "Меняй проект, переключая вид",
+	"tip.cmdShiftSwitchFlipsView.body": "Добавь Shift — Cmd/Ctrl+Shift+1..9 переходит в проект и открывает противоположный вид: доска → режим задач, режим задач → доска.",
 	"tip.agentCreateTasks.title": "Агенты создают задачи",
 	"tip.agentCreateTasks.body": "Скажите «создай задачу в dev3 про...» в промпте — агент добавит её на доску.",
 	"tip.agentSeesTasks.title": "Агенты видят вашу доску",
@@ -216,6 +218,12 @@ const tips = {
 	"tip.projectsDailyBackup.body": "Пропали проекты? Восстановите из ~/.dev3.0/projects-YYYY-MM-DD.json.bak — снимки хранятся 7 дней.",
 	"tip.pullBehindDot.title": "Синяя точка на Pull",
 	"tip.pullBehindDot.body": "Синяя точка на кнопке Pull в шапке означает новые коммиты в origin — нажмите, чтобы обновить локальный main.",
+	"tip.agentCompletionRequest.title": "Агент может запросить завершение",
+	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вы получаете диалог подтверждения — одобрите завершение или оставьте сессию.",
+	"tip.taskSwitcher.title": "Option+Tab между задачами",
+	"tip.taskSwitcher.body": "Держите Option и жмите Tab, чтобы листать активные задачи; отпустите — перейдёте. Стрелки ↑↓ листают в обе стороны. (На Linux — Ctrl+Tab.)",
+	"tip.taskSwitcherGlobal.title": "Переключение задач между проектами",
+	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab открывает переключатель по всем проектам, а не только по текущему.",
 };
 
 export default tips;

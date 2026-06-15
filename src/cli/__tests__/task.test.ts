@@ -421,15 +421,6 @@ describe("task move", () => {
 		).rejects.toThrow("EXIT_3");
 	});
 
-	it("blocks completed status (destroys worktree)", async () => {
-		await expect(
-			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
-		).rejects.toThrow("EXIT_1");
-		expect(stderrOutput).toContain("Cannot move to");
-		expect(stderrOutput).toContain("destroys the worktree");
-		expect(mockSend).not.toHaveBeenCalled();
-	});
-
 	it("blocks cancelled status (destroys worktree)", async () => {
 		await expect(
 			handleTask("move", args(["aaaaaaaa"], { status: "cancelled" }), SOCKET, null),
@@ -471,6 +462,69 @@ describe("task move", () => {
 			taskId: "aaaaaaaa",
 			newStatus: "review-by-user",
 		});
+		expect(stdoutOutput).toBe("{}");
+	});
+});
+
+// ─── task move --status completed (agent completion request) ────────────────
+// "completed" is not a direct move: the CLI sends task.requestCompletion and
+// blocks until the user answers the approval dialog in the app.
+
+describe("task move --status completed", () => {
+	it("sends task.requestCompletion with the long approval timeout", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"task.requestCompletion",
+			{ taskId: "aaaaaaaa" },
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
+		expect(stderrOutput).toContain("requires user approval");
+		expect(stdoutOutput).toContain("User approved");
+		expect(stdoutOutput).toContain("moved to Completed");
+	});
+
+	it("exits with code 6 when the user declines", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false }));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
+		).rejects.toThrow("EXIT_6");
+		expect(stderrOutput).toContain("User declined the completion request");
+		expect(stderrOutput).toContain("session stays alive");
+	});
+
+	it("exits with a hint when the approval wait times out", async () => {
+		mockSend.mockRejectedValue(new Error("Socket timeout (600s)"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("Timed out waiting for the user's decision");
+	});
+
+	it("exits on server error", async () => {
+		mockSend.mockResolvedValue(errResp("Task is already completed"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("Task is already completed");
+	});
+
+	it("prints minimal JSON stdout for Codex stop hooks on approval", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "completed", "codex-stop-hook": "true" }),
+			SOCKET,
+			null,
+		);
+
 		expect(stdoutOutput).toBe("{}");
 	});
 });
@@ -773,8 +827,9 @@ describe("task create --description", () => {
 });
 
 // ─── task move: status validation ────────────────────────────────────────────
-// The CLI blocks "completed" and "cancelled" only. Unknown values (potential
-// custom column IDs) are forwarded to the server, which validates them.
+// The CLI blocks "cancelled" only; "completed" becomes an approval request.
+// Unknown values (potential custom column IDs) are forwarded to the server,
+// which validates them.
 
 describe("task move status validation", () => {
 	it("forwards unknown status values to the server (may be a custom column ID)", async () => {

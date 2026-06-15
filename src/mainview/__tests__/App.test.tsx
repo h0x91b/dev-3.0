@@ -30,6 +30,7 @@ vi.mock("../rpc", () => ({
 			moveTask: vi.fn().mockResolvedValue({}),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
+			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -347,6 +348,86 @@ describe("App keyboard shortcuts", () => {
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
 			expect(after).toHaveAttribute("data-task-view", "false");
+		});
+	});
+
+	describe("switch project to opposite view (Cmd+Shift+1..9)", () => {
+		const twoProjects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+
+		afterEach(() => {
+			localStorage.removeItem("dev3-task-open-mode");
+		});
+
+		it("from the board: Cmd+Shift+2 switches project and opens task view", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			const before = screen.getByTestId("project-screen");
+			expect(before).toHaveAttribute("data-project-id", "p1");
+			expect(before).toHaveAttribute("data-task-view", "false");
+
+			await userEvent.keyboard("{Meta>}{Shift>}2{/Shift}{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "true");
+			expect(after).toHaveAttribute("data-active-task-id", "");
+		});
+
+		it("from a task: Cmd+Shift+2 switches project and drops to the board", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
+
+			await userEvent.keyboard("{Meta>}{Shift>}2{/Shift}{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "false");
+			expect(after).toHaveAttribute("data-active-task-id", "");
+		});
+
+		it("from the full-page task screen: Cmd+Shift+2 drops to the board", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await userEvent.keyboard("{Meta>}{Shift>}2{/Shift}{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "false");
+		});
+
+		it("ignores open-mode: from the board in fullscreen mode it still opens task view", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-task-view", "false");
+
+			await userEvent.keyboard("{Meta>}{Shift>}2{/Shift}{/Meta}");
+
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p2");
+			expect(after).toHaveAttribute("data-task-view", "true");
 		});
 	});
 
@@ -781,6 +862,68 @@ describe("App keyboard shortcuts", () => {
 			// Still on task screen (for t2)
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 			expect(screen.queryByTestId("project-screen")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("agent completion request dialog", () => {
+		const fireAgentCompletionRequested = (requestId: string, taskId: string, projectId: string) =>
+			act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:agentCompletionRequested", {
+						detail: { requestId, taskId, projectId, taskTitle: "Some task" },
+					}),
+				);
+			});
+
+		it("responds with approved:true and navigates away from the doomed task screen", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCompletionRequested("req-1", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
+					requestId: "req-1",
+					approved: true,
+				});
+			});
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
+			// The move itself happens in the bun process, not the renderer.
+			expect(api.request.moveTask).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ agentInitiated: true, danger: true });
+		});
+
+		it("responds with approved:false and stays in place when declined", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
+			await fireAgentCompletionRequested("req-2", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
+					requestId: "req-2",
+					approved: false,
+				});
+			});
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
 	});
 });

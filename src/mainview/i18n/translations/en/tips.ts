@@ -6,6 +6,8 @@ const tips = {
 	"tip.next": "Next tip",
 	"tip.cmdSwitchKeepsView.title": "Switch projects, keep your view",
 	"tip.cmdSwitchKeepsView.body": "Press Cmd/Ctrl+1..9 from a task view to jump to another project without leaving the task view — pick a task on the left to open its terminal.",
+	"tip.cmdShiftSwitchFlipsView.title": "Switch projects, flip the view",
+	"tip.cmdShiftSwitchFlipsView.body": "Add Shift — Cmd/Ctrl+Shift+1..9 jumps to a project and opens the opposite view: board → task view, task view → board.",
 	"tip.agentCreateTasks.title": "Agents can create tasks",
 	"tip.agentCreateTasks.body": "Just say \"create a task in dev3 about...\" in your prompt and the agent will add it to your board.",
 	"tip.agentSeesTasks.title": "Agents see your board",
@@ -216,6 +218,12 @@ const tips = {
 	"tip.projectsDailyBackup.body": "Lost your projects? Restore from ~/.dev3.0/projects-YYYY-MM-DD.json.bak — snapshots are kept for 7 days.",
 	"tip.pullBehindDot.title": "Blue dot on Pull",
 	"tip.pullBehindDot.body": "A small blue dot on the header Pull button means origin has new commits — click it to update your local main.",
+	"tip.agentCompletionRequest.title": "Agents can request completion",
+	"tip.agentCompletionRequest.body": "When an agent runs `dev3 task move --status completed`, you get an approval dialog — approve to complete or keep the session alive.",
+	"tip.taskSwitcher.title": "Option+Tab between tasks",
+	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.)",
+	"tip.taskSwitcherGlobal.title": "Switch tasks across projects",
+	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab opens the switcher across all projects, not just the current one.",
 } as const;
 
 export default tips;

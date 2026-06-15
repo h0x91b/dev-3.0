@@ -6,6 +6,8 @@ const tips = {
 	"tip.next": "Siguiente consejo",
 	"tip.cmdSwitchKeepsView.title": "Cambia de proyecto sin perder la vista",
 	"tip.cmdSwitchKeepsView.body": "Pulsa Cmd/Ctrl+1..9 en la vista de tareas para saltar a otro proyecto sin salir de la vista — elige una tarea a la izquierda para abrir su terminal.",
+	"tip.cmdShiftSwitchFlipsView.title": "Cambia de proyecto, invierte la vista",
+	"tip.cmdShiftSwitchFlipsView.body": "Añade Shift — Cmd/Ctrl+Shift+1..9 salta a un proyecto y abre la vista opuesta: tablero → vista de tareas, vista de tareas → tablero.",
 	"tip.agentCreateTasks.title": "Los agentes crean tareas",
 	"tip.agentCreateTasks.body": "Di \"crea una tarea en dev3 sobre...\" en tu prompt y el agente la agregará al tablero.",
 	"tip.agentSeesTasks.title": "Los agentes ven tu tablero",
@@ -216,6 +218,12 @@ const tips = {
 	"tip.projectsDailyBackup.body": "¿Perdiste tus proyectos? Restáuralos desde ~/.dev3.0/projects-YYYY-MM-DD.json.bak — las copias se guardan 7 días.",
 	"tip.pullBehindDot.title": "Punto azul en Pull",
 	"tip.pullBehindDot.body": "Un pequeño punto azul en el botón Pull de la cabecera indica commits nuevos en origin — haz clic para actualizar tu main local.",
+	"tip.agentCompletionRequest.title": "Los agentes pueden pedir completar",
+	"tip.agentCompletionRequest.body": "Cuando un agente ejecuta `dev3 task move --status completed`, recibes un diálogo de aprobación: aprueba para completar o mantén la sesión viva.",
+	"tip.taskSwitcher.title": "Option+Tab entre tareas",
+	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.)",
+	"tip.taskSwitcherGlobal.title": "Cambiar de tarea entre proyectos",
+	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab abre el selector en todos los proyectos, no solo en el actual.",
 };
 
 export default tips;

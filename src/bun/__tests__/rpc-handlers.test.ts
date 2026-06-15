@@ -2611,17 +2611,20 @@ describe("handlers.spawnVariants", () => {
 		});
 	});
 
-	it("clears preparing when project config resolution fails before variant setup starts", async () => {
+	it("reverts variant to todo and notifies when project config resolution fails before setup starts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
 		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
-		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false, preparingStage: null, preparingProgress: null });
+		const revertedVariant = makeTask({ id: "variant-1", status: "todo", preparing: false, preparingStage: null, preparingProgress: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		vi.mocked(data.addTask).mockResolvedValue(variantTask);
-		vi.mocked(data.updateTask).mockResolvedValue(unstuckVariant);
+		vi.mocked(data.updateTask).mockResolvedValue(revertedVariant);
 		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad repo config"));
+
+		const push = vi.fn();
+		setPushMessage(push);
 
 		await handlers.spawnVariants({
 			taskId: "task-1",
@@ -2631,28 +2634,31 @@ describe("handlers.spawnVariants", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", {
-				preparing: false,
-				preparingStage: null,
-				preparingProgress: null,
-				preparingStartedAt: null,
-			});
+			expect(data.updateTask).toHaveBeenCalledWith(
+				project,
+				"variant-1",
+				expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
+			);
 		});
+
+		const failedEvent = push.mock.calls.find((c) => c[0] === "taskPreparationFailed");
+		expect(failedEvent?.[1]).toMatchObject({ taskId: "variant-1", projectId: project.id });
+		expect(String(failedEvent?.[1].error)).toContain("bad repo config");
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
-	it("clears preparing when PTY launch fails after the worktree is created", async () => {
+	it("reverts variant to todo and cleans up the worktree when PTY launch fails after the worktree is created", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
 		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true });
-		const unstuckVariant = makeTask({ id: "variant-1", status: "in-progress", preparing: false, preparingStage: null, preparingProgress: null });
+		const revertedVariant = makeTask({ id: "variant-1", status: "todo", preparing: false, preparingStage: null, preparingProgress: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		vi.mocked(data.addTask).mockResolvedValue(variantTask);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
-		vi.mocked(data.updateTask).mockResolvedValue(unstuckVariant);
+		vi.mocked(data.updateTask).mockResolvedValue(revertedVariant);
 		vi.mocked(pty.createSession).mockImplementationOnce(() => {
 			throw new Error("pty boom");
 		});
@@ -2665,13 +2671,14 @@ describe("handlers.spawnVariants", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(data.updateTask).toHaveBeenCalledWith(project, "variant-1", {
-				preparing: false,
-				preparingStage: null,
-				preparingProgress: null,
-				preparingStartedAt: null,
-			});
+			expect(data.updateTask).toHaveBeenCalledWith(
+				project,
+				"variant-1",
+				expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
+			);
 		});
+		// The half-created worktree must be cleaned up, not left dangling.
+		expect(git.removeWorktree).toHaveBeenCalled();
 	});
 
 	it("uses worktree-resolved sparse checkout and clone paths while preparing variants", async () => {
@@ -2992,7 +2999,7 @@ describe("handlers.addAttempts", () => {
 		);
 	});
 
-	it("clears preparing when project config resolution fails before attempt setup starts", async () => {
+	it("reverts attempt to todo and notifies when project config resolution fails before setup starts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
 		const attemptTask = makeTask({
@@ -3002,9 +3009,9 @@ describe("handlers.addAttempts", () => {
 			variantIndex: 2,
 			preparing: true,
 		});
-		const unstuckAttempt = makeTask({
+		const revertedAttempt = makeTask({
 			id: "attempt-2",
-			status: "in-progress",
+			status: "todo",
 			groupId: "group-1",
 			variantIndex: 2,
 			preparing: false,
@@ -3018,8 +3025,11 @@ describe("handlers.addAttempts", () => {
 			.mockResolvedValueOnce(sourceTask);
 		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
 		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
-		vi.mocked(data.updateTask).mockResolvedValue(unstuckAttempt);
+		vi.mocked(data.updateTask).mockResolvedValue(revertedAttempt);
 		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad repo config"));
+
+		const push = vi.fn();
+		setPushMessage(push);
 
 		await handlers.addAttempts({
 			taskId: "task-1",
@@ -3027,19 +3037,26 @@ describe("handlers.addAttempts", () => {
 			variants: [{ agentId: "agent-1", configId: null }],
 		});
 
+		// A failed preparation must not strand the task in-progress: it is moved
+		// back to todo (status: "todo", worktree/branch cleared).
 		await vi.waitFor(() => {
-			expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", {
-				preparing: false,
-				preparingStage: null,
-				preparingProgress: null,
-				preparingStartedAt: null,
-			});
+			expect(data.updateTask).toHaveBeenCalledWith(
+				project,
+				"attempt-2",
+				expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
+			);
 		});
+
+		// The real error is surfaced to the renderer as a toast.
+		const failedEvent = push.mock.calls.find((c) => c[0] === "taskPreparationFailed");
+		expect(failedEvent).toBeDefined();
+		expect(failedEvent?.[1]).toMatchObject({ taskId: "attempt-2", projectId: project.id });
+		expect(String(failedEvent?.[1].error)).toContain("bad repo config");
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
-	it("keeps preparing isolated per attempt when one attempt fails and another succeeds", async () => {
+	it("reverts only the failed attempt to todo while a sibling attempt succeeds", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
 		const firstAttempt = makeTask({
@@ -3068,17 +3085,10 @@ describe("handlers.addAttempts", () => {
 		vi.mocked(git.createWorktree)
 			.mockRejectedValueOnce(new Error("wt boom"))
 			.mockResolvedValueOnce({ worktreePath: "/tmp/attempt-3", branchName: "dev3/a3" });
-		vi.mocked(data.updateTask)
-			.mockResolvedValueOnce({ ...firstAttempt, preparing: false, preparingStage: null, preparingProgress: null })
-			.mockResolvedValueOnce({
-				...secondAttempt,
-				worktreePath: "/tmp/attempt-3",
-				branchName: "dev3/a3",
-				preparing: false,
-				preparingStage: null,
-				preparingProgress: null,
-				preparingStartedAt: null,
-			});
+		vi.mocked(data.updateTask).mockImplementation(async (_p, id, updates) => {
+			if (id === "attempt-2") return { ...firstAttempt, ...updates } as typeof firstAttempt;
+			return { ...secondAttempt, ...updates } as typeof secondAttempt;
+		});
 
 		await handlers.addAttempts({
 			taskId: "task-1",
@@ -3092,12 +3102,13 @@ describe("handlers.addAttempts", () => {
 		await vi.waitFor(() => {
 			expect(git.createWorktree).toHaveBeenCalledTimes(2);
 		});
-		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-2", {
-			preparing: false,
-			preparingStage: null,
-			preparingProgress: null,
-			preparingStartedAt: null,
-		});
+		// Failed attempt → reverted to todo.
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"attempt-2",
+			expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
+		);
+		// Succeeded attempt → stays in-progress with its worktree.
 		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-3", {
 			worktreePath: "/tmp/attempt-3",
 			branchName: "dev3/a3",

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useAppState, type Route } from "./state";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useAppState, routeTaskId, type Route } from "./state";
 import { api } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -34,6 +34,8 @@ import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
+import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
+import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -208,6 +210,20 @@ function App() {
 		[dispatch],
 	);
 
+	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
+	const switcher = useTaskSwitcher({
+		projectTasks: state.currentProjectTasks,
+		currentProjectId: "projectId" in state.route ? state.route.projectId : null,
+		currentTaskId: routeTaskId(state.route),
+		mru: state.taskMru,
+		navigate,
+	});
+	const switcherProjectById = useMemo(() => {
+		const map = new Map<string, Project>();
+		for (const p of state.projects) map.set(p.id, p);
+		return map;
+	}, [state.projects]);
+
 	const getProjectIdForRoute = useCallback((route: Route): string | null => {
 		switch (route.screen) {
 			case "project":
@@ -306,6 +322,33 @@ function App() {
 					e.preventDefault();
 					e.stopPropagation();
 					navigate({ screen: "project-terminal", projectId: route.projectId });
+				}
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
+				// Cmd+Shift+1..9 — switch to project by index landing on the
+				// OPPOSITE view of the current one (the mirror of Cmd+1..9, which
+				// PRESERVES the view):
+				//  - on the Kanban board  → target project's task view (split layout,
+				//                            empty terminal placeholder, no task picked).
+				//  - in a task view       → target project's Kanban board.
+				// `e.code` (not `e.key`) because Shift+digit yields the shifted symbol
+				// ("!", "@", …) in `e.key`. Open-mode is intentionally ignored here —
+				// the explicit Shift means "give me the other view" regardless of the
+				// `dev3-task-open-mode` preference. Note: macOS reserves Cmd+Shift+3/4/5
+				// for screenshots, so those may be swallowed by the OS before reaching us.
+				const idx = parseInt(e.code.slice(5), 10) - 1;
+				const available = state.projects.filter((p) => !p.deleted);
+				if (idx < available.length) {
+					e.preventDefault();
+					e.stopPropagation();
+					const { route } = state;
+					const inTaskView =
+						route.screen === "task" ||
+						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+					navigate(
+						inTaskView
+							? { screen: "project", projectId: available[idx].id }
+							: { screen: "project", projectId: available[idx].id, taskView: true },
+					);
 				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
 				// Cmd+1..9 — switch to project by index (like Slack workspaces).
@@ -522,6 +565,49 @@ function App() {
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
 	}, [dispatch, navigate, t]);
 
+	// Listen for agent-initiated completion requests — the CLI is blocked on a
+	// socket waiting for the user's decision, so always respond, even on cancel.
+	useEffect(() => {
+		async function onAgentCompletionRequested(e: Event) {
+			const { requestId, taskId, projectId, taskTitle, taskOverview } = (e as CustomEvent).detail as {
+				requestId: string;
+				taskId: string;
+				projectId: string;
+				taskTitle: string;
+				taskOverview?: string;
+			};
+			let approved = false;
+			try {
+				approved = await confirm({
+					title: t("app.agentCompletionTitle"),
+					message: t("app.agentCompletionMessage"),
+					info: { title: taskTitle, body: taskOverview },
+					confirmLabel: t("app.agentCompletionConfirm"),
+					cancelLabel: t("app.agentCompletionCancel"),
+					danger: true,
+					agentInitiated: true,
+				});
+			} catch (err) {
+				console.error("[App] confirm (agent-completion) failed:", err);
+			}
+			if (approved) {
+				// Leave the task's full-screen terminal BEFORE the worktree is
+				// destroyed (same reasoning as the branch-merged flow above).
+				const currentRoute = routeRef.current;
+				if (currentRoute.screen === "task" && currentRoute.taskId === taskId) {
+					navigate({ screen: "project", projectId });
+				}
+				dispatch({ type: "clearBell", taskId });
+				trackEvent("task_moved", { to_status: "completed", agent_requested: true });
+			}
+			api.request.respondToAgentCompletionRequest({ requestId, approved }).catch((err) =>
+				console.error("respondToAgentCompletionRequest failed:", err),
+			);
+		}
+		window.addEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+		return () => window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+	}, [dispatch, navigate, t]);
+
 	// Listen for silent update ready notification
 	useEffect(() => {
 		function onUpdateAvailable(e: Event) {
@@ -620,6 +706,23 @@ function App() {
 		}
 		window.addEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
 		return () => window.removeEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
+	}, []);
+
+	// Notify user when background worktree/PTY preparation fails (e.g. empty repo,
+	// missing base branch). The task is reverted to todo on the backend; surface
+	// the real error so the user isn't left with a misleading "[session ended]".
+	useEffect(() => {
+		function onTaskPreparationFailed(e: Event) {
+			const { taskTitle, error } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				taskTitle: string;
+				error: string;
+			};
+			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }));
+		}
+		window.addEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
+		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
 	}, []);
 
 	// Listen for update download progress (minimum 5s display time)
@@ -864,6 +967,15 @@ function App() {
 				/>
 			)}
 			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
+			{switcher.session && (
+				<TaskSwitcherOverlay
+					session={switcher.session}
+					projectById={switcherProjectById}
+					onHover={switcher.setIndex}
+					onCommit={switcher.commit}
+					onCancel={switcher.cancel}
+				/>
+			)}
 			{showAddProjectModal && (
 				<AddProjectModal
 					dispatch={dispatch}

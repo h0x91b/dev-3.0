@@ -10,10 +10,15 @@
  * palette cannot remap them — and renders dim as globalAlpha 0.5, which on a
  * white background washes any color into unreadable gray.
  *
- * SGR `2` (dim) is dropped in *both* modes: ghostty renders it as 50% alpha,
- * which on white washes any color out and on dark drops the default fg to a
- * low-contrast gray — Claude Code's select-prompt descriptions, option
- * numbers and hints use Ink dimColor and were unreadable on the dark theme.
+ * SGR `2` (dim) over the default fg is emulated as an explicit muted gray in
+ * *both* modes: ghostty renders dim as 50% alpha, which on white washes any
+ * color out and on dark drops the default fg to a low-contrast gray (Claude
+ * Code's select-prompt descriptions/hints use Ink dimColor). Dropping dim
+ * entirely instead made muted text — the input ghost/placeholder suggestion —
+ * look like typed input, so dim now becomes a readable-but-secondary gray.
+ * When an explicit fg color accompanies the dim, the color wins and dim is
+ * dropped (preserving the colored text). The substitution is resolved at the
+ * end of each SGR sequence and reset by SGR 0/22.
  *
  * The filter rewrites the stream before term.write():
  * - light mode: pale foregrounds (indexed N>=16 and truecolor) are darkened
@@ -125,6 +130,19 @@ const DARK_BRIGHT_WHITE_BG = ["48", "2", "70", "70", "70"];
 const DARK_BAR_FG_30 = ["38", "2", "220", "220", "220"];
 const DARK_BAR_FG_90 = ["38", "2", "160", "160", "160"];
 
+// Emulated dim foreground. ghostty renders SGR dim as 50% alpha, which is too
+// faint to read on dark and washes out on white; full intensity (dropping dim)
+// makes muted text — placeholder/ghost suggestions, select-prompt descriptions
+// and hints — look like typed input. We substitute an explicit muted gray:
+// readable, yet clearly dimmer than the default fg. Dark is a Tokyo-Night-ish
+// slate (lum ~0.47), light a neutral mid gray.
+const DARK_DIM_FG = ["38", "2", "112", "120", "150"];
+const LIGHT_DIM_FG = ["38", "2", "130", "130", "130"];
+
+function dimFgReplacement(mode: ThemeMode): string[] {
+	return mode === "light" ? LIGHT_DIM_FG : DARK_DIM_FG;
+}
+
 function whiteBgReplacement(bright: boolean, mode: ThemeMode): string[] {
 	if (mode === "light") return bright ? LIGHT_BRIGHT_WHITE_BG : LIGHT_WHITE_BG;
 	return bright ? DARK_BRIGHT_WHITE_BG : DARK_WHITE_BG;
@@ -159,6 +177,14 @@ interface GateState {
 	// 38;5;16 then 48;5;37), so the fg gets adjusted before the gating bg is
 	// known — when such a bg opens, the original fg is re-emitted to undo it.
 	pendingFg: string[] | null;
+	// SGR dim seen in the current sequence, not yet resolved: flushed as an
+	// emulated muted-gray fg at sequence end iff no explicit fg overrides it.
+	dimPending: boolean;
+	// An emulated dim gray is the active fg, so SGR 22 (dim off) must reset it.
+	dimActive: boolean;
+	// An explicit fg color (not the default, not our emulated gray) is active —
+	// dim is then dropped (the color shows full), matching prior behavior.
+	fgExplicit: boolean;
 }
 
 /**
@@ -173,6 +199,9 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		gate.reverseActive = false;
 		gate.darkFg = null;
 		gate.pendingFg = null;
+		gate.dimPending = false;
+		gate.dimActive = false;
+		gate.fgExplicit = false;
 		return raw;
 	}
 	// Normalize colon sub-parameter form (38:5:226) to semicolons so the
@@ -209,6 +238,9 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			gate.reverseActive = false;
 			gate.darkFg = null;
 			gate.pendingFg = null;
+			gate.dimPending = false;
+			gate.dimActive = false;
+			gate.fgExplicit = false;
 			out.push(token);
 			i++;
 			continue;
@@ -233,17 +265,30 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			continue;
 		}
 		if (token === "2") {
-			// SGR dim — ghostty renders it as 50% alpha. On white it washes any
-			// color out; on dark it drops the default fg to a low-contrast gray
-			// (Claude Code's select-prompt descriptions, option numbers and
-			// hints use Ink dimColor). Drop it in both themes — keeping it dark
-			// left that text unreadable.
+			// SGR dim — resolved at sequence end (flushed as an emulated muted
+			// gray unless an explicit fg overrides it). Don't emit the dim token.
+			gate.dimPending = true;
+			i++;
+			continue;
+		}
+		if (token === "22") {
+			// Dim off. If we emulated dim with a gray fg, also reset the fg.
+			gate.dimPending = false;
+			out.push(token);
+			if (gate.dimActive) {
+				out.push("39");
+				gate.dimActive = false;
+				gate.fgExplicit = false;
+			}
 			i++;
 			continue;
 		}
 		if (token === "30" || token === "90") {
 			gate.darkFg = token;
 			gate.pendingFg = null;
+			gate.dimPending = false;
+			gate.dimActive = false;
+			gate.fgExplicit = true;
 			if (mode === "dark" && gate.bg === "white" && !gate.reverseActive) {
 				out.push(...(token === "30" ? DARK_BAR_FG_30 : DARK_BAR_FG_90));
 				i++;
@@ -260,6 +305,11 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			if (token !== "38") {
 				gate.darkFg = null;
 				gate.pendingFg = null;
+				gate.dimPending = false;
+				gate.dimActive = false;
+				// 39 restores the default fg (not an explicit color); 31-37/91-97
+				// are explicit colors that take over and drop dim.
+				gate.fgExplicit = token !== "39";
 			}
 		}
 		if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
@@ -298,6 +348,9 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				if (token === "38") {
 					gate.darkFg = null;
 					gate.pendingFg = null;
+					gate.dimPending = false;
+					gate.dimActive = false;
+					gate.fgExplicit = true;
 					if (index >= 16 && index <= 255 && fgAdjustable()) {
 						const [r, g, b] = color256ToRgb(index);
 						const adjusted = adjustFgRgb(r, g, b, mode);
@@ -328,6 +381,9 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				if (token === "38") {
 					gate.darkFg = null;
 					gate.pendingFg = null;
+					gate.dimPending = false;
+					gate.dimActive = false;
+					gate.fgExplicit = true;
 					if (fgAdjustable()) {
 						const r = Number(tokens[i + 2]);
 						const g = Number(tokens[i + 3]);
@@ -349,6 +405,16 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		out.push(token);
 		i++;
 	}
+	// Resolve a dim seen in this sequence: if no explicit fg overrode it, the
+	// dimmed text is over the default fg — emit an emulated muted gray so it
+	// stays readable yet visibly secondary (placeholder/ghost text, hints).
+	if (gate.dimPending) {
+		gate.dimPending = false;
+		if (!gate.fgExplicit) {
+			out.push(...dimFgReplacement(mode));
+			gate.dimActive = true;
+		}
+	}
 	if (out.length === 0) return null;
 	return out.join(";");
 }
@@ -366,7 +432,15 @@ const MAX_CARRY = 64;
  */
 export function createAnsiThemeFilter(): (chunk: string, mode: ThemeMode) => string {
 	let carry = "";
-	const gate: GateState = { bg: "none", reverseActive: false, darkFg: null, pendingFg: null };
+	const gate: GateState = {
+		bg: "none",
+		reverseActive: false,
+		darkFg: null,
+		pendingFg: null,
+		dimPending: false,
+		dimActive: false,
+		fgExplicit: false,
+	};
 	return (chunk, mode) => {
 		let data = carry + chunk;
 		carry = "";

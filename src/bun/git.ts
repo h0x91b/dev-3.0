@@ -792,6 +792,18 @@ export async function createWorktree(
 	if (!refCheckResult.ok) {
 		const localCheck = await run(["git", "rev-parse", "--verify", baseBranch], project.path);
 		if (!localCheck.ok) {
+			// An empty repository (no commits at all) needs a different fix —
+			// create an initial commit — than a repo that simply lacks the
+			// configured base branch (fix the base-branch setting). The generic
+			// "branch does not exist" message misleads in the empty-repo case.
+			const hasAnyCommit = (await run(["git", "rev-parse", "--verify", "HEAD"], project.path)).ok;
+			if (!hasAnyCommit) {
+				log.error("Repository has no commits", { baseBranch, taskId: task.id });
+				throw new Error(
+					`Repository has no commits yet, so there is no "${baseBranch}" branch to start from. ` +
+					`Create an initial commit in the repository before starting a task.`,
+				);
+			}
 			log.error("Base branch does not exist", { baseBranch, taskId: task.id });
 			throw new Error(
 				`Branch "${baseBranch}" does not exist locally or on the remote. ` +

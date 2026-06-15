@@ -99,6 +99,18 @@ If the project defines custom columns (visible in \`dev3 current\` output), you 
 Each custom column has an 8-char ID prefix and a description of when to use it.
 `;
 
+const SKILL_COMPLETION_REQUEST = `
+### Completing a task (user approval required)
+
+\`dev3 task move --status completed\` does NOT complete the task directly. It shows an approval dialog to the user in the app and **blocks for up to 10 minutes** waiting for their answer:
+
+- **Approved** → the task moves to Completed and this worktree + terminal session are destroyed immediately.
+- **Declined** → exit code 6; the task keeps its status and the session stays alive. Continue working or ask the user what to change.
+- **Timeout** → the dialog may still be open; if the user approves later, the task completes and the session is destroyed.
+
+Only request completion when the work is truly done (committed, tested, nothing pending). \`cancelled\` remains fully forbidden via CLI.
+`;
+
 const SKILL_NOTES = `
 ## Notes (per-task scratchpad)
 
@@ -211,7 +223,7 @@ const SKILL_STATUS_MANUAL = `
 ### Rules:
 
 - If \`task move\` fails because the task is already in the target status, that is OK — just continue.
-${SKILL_CUSTOM_COLUMNS}`;
+${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 
 // Simplified status management — for Claude Code (hooks handle everything automatically)
 const SKILL_STATUS_HOOKS = `
@@ -219,7 +231,7 @@ const SKILL_STATUS_HOOKS = `
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
 Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
-${SKILL_CUSTOM_COLUMNS}`;
+${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 
 // Codex also uses hooks, but the session must be restarted after config changes.
 const SKILL_STATUS_CODEX_HOOKS = `
@@ -227,12 +239,44 @@ const SKILL_STATUS_CODEX_HOOKS = `
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`review-by-ai\`, \`review-by-user\`) for Codex sessions started after the dev3 config was installed.
 Do NOT call \`dev3 task move\` for normal active/review transitions when hooks are active. If you need user input or clarification, move the task to \`user-questions\` before your final response. If you are in an older Codex session where hooks clearly are not firing yet, fall back to manual status management: move to \`in-progress\` when you start, \`user-questions\` when blocked, and \`review-by-user\` when finished.
-${SKILL_CUSTOM_COLUMNS}`;
+${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 
 const SKILL_CODEX_SHELL = `
 ## Codex shell note
 
 For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. Do not trust the ambient shell metadata — the sandbox may resolve to an unavailable shell binary (e.g. homebrew zsh blocked by seatbelt).
+`;
+
+// Platform-feedback ("vent") section. Always present — this is the agent's
+// background bug-report channel for the dev3 platform itself. No opt-in, no UI:
+// the agent decides to vent, dev3 writes an anonymous markdown file, done.
+const SKILL_VENT_FEEDBACK = `
+## Platform feedback — vents (about dev3 itself only)
+
+dev3 gives you a private, background feedback channel for the **dev3 platform itself**. Use it for two kinds of feedback about dev3:
+
+1. **Something went wrong / got in your way** — a CLI command that is missing or confusing, an unclear skill instruction, broken tmux integration, contradictory docs, or repeated failures caused by dev3 itself. (A bug report.)
+2. **Something is missing that would help** — a capability dev3 doesn't have yet that would have saved you work. e.g. "I spent ~6 turns doing X by hand; if dev3 had a \`dev3 <foo>\` command / hook / field for this, it would take one step next time." (A feature request / improvement idea.)
+
+File it with:
+
+  dev3 vents "short name" "markdown body"
+
+For a bug report, the body should say what you were trying to do, what dev3 did instead, and what would have unblocked you. For a feature/improvement idea, say what you were trying to accomplish, what was tedious or impossible, and concretely what dev3 capability would have helped and how much it would save next time.
+
+**Anonymity is mandatory — this is a hard rule.** A vent must be 100% anonymous and describe ONLY dev3 the tool. NEVER include:
+- any code from the project, file paths, file names, or diffs
+- the project/repo name, task content, branch names, or any user data
+- anything PII or anything specific to this one app or project
+
+If you cannot describe the friction or idea without referencing the project, do **not** vent.
+
+**In scope:** dev3 CLI / skill / tmux / docs / runtime friction, AND missing dev3 capabilities — anything the dev3 maintainer would have to change or add to *dev3* to fix or improve.
+**Out of scope:** bugs in the user's app, your own code/build/runtime errors, anything you can fix yourself, anything app-specific.
+
+Litmus test: "would the dev3 maintainer have to change or extend dev3 to address this?" If no — don't vent.
+
+Call it **silently, at most once per user message**: do not announce it, do not mention it in your reply. It is a private signal to the maintainer; your answer to the user must read identically whether you vented or not.
 `;
 
 // Composed bodies for each agent type
@@ -242,9 +286,9 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 

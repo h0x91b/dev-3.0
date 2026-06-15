@@ -3,6 +3,10 @@ const common = {
 	"app.loading": "Cargando...",
 	"app.branchMergedTitle": "Rama fusionada",
 	"app.branchMergedMessage": "Todos los cambios de \"{branchName}\" están en la rama base.\n\nTarea: {taskTitle}\n\n¿Marcar esta tarea como completada?",
+	"app.agentCompletionTitle": "El agente solicita completar la tarea",
+	"app.agentCompletionMessage": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nAl aprobar se destruirán el worktree y la sesión de terminal.",
+	"app.agentCompletionConfirm": "Completar tarea",
+	"app.agentCompletionCancel": "Mantener sesión",
 
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",
@@ -14,6 +18,7 @@ const common = {
 	// Generic confirmation dialog (imperative confirm() service)
 	"confirmDialog.confirm": "OK",
 	"confirmDialog.cancel": "Cancelar",
+	"confirmDialog.agentBadge": "Solicitud del agente de IA",
 
 	// About dialog (in-app, replaces the native About message box)
 	"about.version": "Versión {version}",
@@ -55,6 +60,13 @@ const common = {
 	"sidebar.scopeToggleTitle": "Alternar alcance (este proyecto / todos los proyectos)",
 	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
 	"sidebar.unknownProject": "Proyecto desconocido",
+
+	// Task switcher (Option+Tab)
+	"taskSwitcher.title": "Cambiar de tarea",
+	"taskSwitcher.scopeProject": "Este proyecto",
+	"taskSwitcher.scopeGlobal": "Todos los proyectos",
+	"taskSwitcher.noOverview": "Sin resumen todavía",
+	"taskSwitcher.hint": "Tab siguiente · ↑↓ mover · ⇧ todos los proyectos · ⏎ abrir · esc cancelar",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",
