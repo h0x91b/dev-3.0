@@ -1,9 +1,13 @@
 import type { Task } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES } from "../../shared/types";
+import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { resolveProjectId, type CliContext } from "../context";
+
+// Default page size for `tasks list` when --limit is omitted. Keeps large
+// boards (hundreds of tasks) from flooding the terminal; page with --offset.
+const DEFAULT_LIST_LIMIT = 50;
 
 export async function handleTasks(
 	subcommand: string | undefined,
@@ -24,11 +28,22 @@ export async function handleTasks(
 			}
 			params.status = args.flags.status;
 		}
+		let limit = DEFAULT_LIST_LIMIT;
 		if (args.flags.limit) {
-			const limit = Number(args.flags.limit);
-			if (!Number.isInteger(limit) || limit <= 0) {
+			const parsed = Number(args.flags.limit);
+			if (!Number.isInteger(parsed) || parsed <= 0) {
 				exitUsage(`Invalid --limit: "${args.flags.limit}". Must be a positive integer.`);
 			}
+			limit = parsed;
+		}
+
+		let offset = 0;
+		if (args.flags.offset) {
+			const parsed = Number(args.flags.offset);
+			if (!Number.isInteger(parsed) || parsed < 0) {
+				exitUsage(`Invalid --offset: "${args.flags.offset}". Must be a non-negative integer.`);
+			}
+			offset = parsed;
 		}
 
 		const resp = await sendRequest(socketPath, "tasks.list", params);
@@ -42,28 +57,45 @@ export async function handleTasks(
 			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
 		}
 
-		// Client-side limit (server returns all tasks matching status filter)
-		if (args.flags.limit) {
-			const limit = Number(args.flags.limit);
-			if (limit > 0 && limit < tasks.length) {
-				tasks = tasks.slice(0, limit);
-			}
-		}
+		// Newest first — sort by seq descending so the most recent tasks lead.
+		// Done before paging so --offset/--limit walk from the newest task.
+		tasks = [...tasks].sort((a, b) => b.seq - a.seq);
 
-		if (tasks.length === 0) {
-			process.stdout.write("No tasks found.\n");
+		// Client-side paging (server returns all tasks matching status filter).
+		// Defaults to the newest DEFAULT_LIST_LIMIT so large boards don't flood.
+		const total = tasks.length;
+		const page = tasks.slice(offset, offset + limit);
+
+		if (page.length === 0) {
+			if (total === 0) {
+				process.stdout.write("No tasks found.\n");
+			} else {
+				process.stdout.write(`No tasks at offset ${offset} (${total} total).\n`);
+			}
 			return;
 		}
 
 		printTable(
 			["SEQ", "ID", "STATUS", "TITLE"],
-			tasks.map((t) => [
-				String(t.seq),
-				t.id.slice(0, 8),
-				STATUS_LABELS[t.status] || t.status,
-				t.title.length > 60 ? t.title.slice(0, 57) + "..." : t.title,
-			]),
+			page.map((t) => {
+				const title = getTaskTitle(t);
+				return [
+					String(t.seq),
+					t.id.slice(0, 8),
+					STATUS_LABELS[t.status] || t.status,
+					title.length > 60 ? title.slice(0, 57) + "..." : title,
+				];
+			}),
 		);
+
+		// Footer: show the visible window and hint at paging when more remain.
+		const from = offset + 1;
+		const to = offset + page.length;
+		let footer = `\nShowing ${from}-${to} of ${total}.`;
+		if (to < total) {
+			footer += ` Next page: --offset ${to}${args.flags.limit ? ` --limit ${limit}` : ""}.`;
+		}
+		process.stdout.write(`${footer}\n`);
 		return;
 	}
 
