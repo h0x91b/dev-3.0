@@ -21,28 +21,49 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/dev3-test",
 }));
 
-let spawnResponses: Array<{ exitCode: number; stdout: string; stderr: string }> = [];
+type SpawnResponse = {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	hang?: boolean;
+	holdStreamsOpen?: boolean;
+};
+
+let spawnResponses: SpawnResponse[] = [];
+let lastSpawnOptions: { env?: Record<string, string> } | undefined;
+let killedProcesses = 0;
 
 function queueResponse(exitCode: number, stdout: string, stderr = "") {
 	spawnResponses.push({ exitCode, stdout, stderr });
 }
 
 vi.mock("../spawn", () => ({
-	spawn: () => {
+	spawn: (_cmd: string[], opts?: { env?: Record<string, string> }) => {
+		lastSpawnOptions = opts;
 		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
 		const encoder = new TextEncoder();
+		let resolveExit!: (code: number) => void;
+		const exited = response.hang
+			? new Promise<number>((resolve) => {
+				resolveExit = resolve;
+			})
+			: Promise.resolve(response.exitCode);
 		return {
-			exited: Promise.resolve(response.exitCode),
+			exited,
+			kill: () => {
+				killedProcesses += 1;
+				resolveExit?.(143);
+			},
 			stdout: new ReadableStream({
 				start(controller) {
 					controller.enqueue(encoder.encode(response.stdout));
-					controller.close();
+					if (!response.holdStreamsOpen) controller.close();
 				},
 			}),
 			stderr: new ReadableStream({
 				start(controller) {
 					controller.enqueue(encoder.encode(response.stderr));
-					controller.close();
+					if (!response.holdStreamsOpen) controller.close();
 				},
 			}),
 		};
@@ -57,7 +78,9 @@ import {
 } from "../git";
 
 beforeEach(() => {
+	lastSpawnOptions = undefined;
 	spawnResponses = [];
+	killedProcesses = 0;
 	_resetFetchState();
 });
 
@@ -67,6 +90,10 @@ describe("fetchOrigin", () => {
 	it("returns true on successful fetch", async () => {
 		queueResponse(0, "");
 		const ok = await fetchOrigin("/repo");
+		expect(lastSpawnOptions?.env).toMatchObject({
+			GIT_TERMINAL_PROMPT: "0",
+			GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=10",
+		});
 		expect(ok).toBe(true);
 	});
 
@@ -74,6 +101,27 @@ describe("fetchOrigin", () => {
 		queueResponse(128, "", "fatal: no remote");
 		const ok = await fetchOrigin("/repo");
 		expect(ok).toBe(false);
+	});
+
+	it("kills a fetch that exceeds its deadline and releases the project queue", async () => {
+		spawnResponses.push({
+			exitCode: 0,
+			stdout: "",
+			stderr: "",
+			hang: true,
+			holdStreamsOpen: true,
+		});
+		const startedAt = performance.now();
+
+		const ok = await fetchOrigin("/repo", "main", 10);
+		expect(performance.now() - startedAt).toBeLessThan(2_500);
+
+		expect(ok).toBe(false);
+		expect(killedProcesses).toBe(1);
+
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "develop", 10)).toBe(true);
+		expect(spawnResponses).toHaveLength(0);
 	});
 
 	it("deduplicates concurrent fetches for the same project", async () => {

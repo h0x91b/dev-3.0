@@ -1,0 +1,1 @@
+Prevent task creation from hanging indefinitely when fetching the remote base branch. Remote fetches use non-interactive SSH, and timed-out processes and streams are bounded before worktree creation falls back to the local base branch.

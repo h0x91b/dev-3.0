@@ -58,9 +58,26 @@ function withGitFilenameEncoding(cmd: string[]): string[] {
 	return ["git", "-c", "core.quotepath=false", ...cmd.slice(1)];
 }
 
+const PROCESS_CLEANUP_GRACE_MS = 1_000;
+
+async function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<T>((resolve) => {
+				timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeoutId) clearTimeout(timeoutId);
+	}
+}
+
 export async function run(
 	cmd: string[],
 	cwd: string,
+	opts?: { timeoutMs?: number; env?: Record<string, string> },
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
 	const finalCmd = withGitFilenameEncoding(cmd);
 	log.debug(`exec: ${finalCmd.join(" ")}`, { cwd });
@@ -68,15 +85,35 @@ export async function run(
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
+		env: opts?.env,
 	});
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	const code = await proc.exited;
-	const result = { ok: code === 0, stdout: stdout.trim(), stderr: stderr.trim() };
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const outcome = opts?.timeoutMs
+		? await Promise.race([
+			proc.exited.then((code) => ({ code, timedOut: false as const })),
+			new Promise<{ code: null; timedOut: true }>((resolve) => {
+				timeoutId = setTimeout(() => resolve({ code: null, timedOut: true }), opts.timeoutMs);
+			}),
+		])
+		: { code: await proc.exited, timedOut: false as const };
+	if (timeoutId) clearTimeout(timeoutId);
+	if (outcome.timedOut) {
+		proc.kill();
+		await settleWithin(proc.exited.catch(() => null), PROCESS_CLEANUP_GRACE_MS, null);
+	}
+	const [stdout, stderr] = outcome.timedOut
+		? await Promise.all([
+			settleWithin(Promise.resolve(proc.stdout.cancel()).then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+			settleWithin(Promise.resolve((proc.stderr as ReadableStream<Uint8Array> | undefined)?.cancel()).then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+		])
+		: await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+		]);
+	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
+	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
 	if (!result.ok) {
-		log.warn(`Command failed (exit ${code}): ${finalCmd.join(" ")}`, {
+		log.warn(`Command failed (exit ${outcome.code}): ${finalCmd.join(" ")}`, {
 			stderr: result.stderr,
 		});
 	}
@@ -993,6 +1030,7 @@ const fetchInFlight = new Map<string, Promise<boolean>>();
 const fetchLastSuccess = new Map<string, number>();
 const fetchProjectQueue = new Map<string, Promise<void>>();
 const FETCH_COOLDOWN_MS = 5_000;
+const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
 
 // Failed fetches (dead remote, no network, auth issues) get an exponential
 // backoff so background pollers don't retry them on every tick. Without this,
@@ -1011,7 +1049,11 @@ function isInFailureBackoff(cacheKey: string, now: number): boolean {
 	return now - failure.at < fetchFailureBackoffMs(failure.failures);
 }
 
-export async function fetchOrigin(projectPath: string, branch?: string): Promise<boolean> {
+export async function fetchOrigin(
+	projectPath: string,
+	branch?: string,
+	timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<boolean> {
 	await reportCurrentPreparationStage("fetching-origin");
 	const now = Date.now();
 	// Cache key is scoped to the specific branch when provided, or "*" for a full fetch.
@@ -1062,7 +1104,13 @@ export async function fetchOrigin(projectPath: string, branch?: string): Promise
 			? ["git", "fetch", "origin", branch, "--quiet"]
 			: ["git", "fetch", "origin", "--quiet"];
 		log.debug("Fetching origin", { projectPath, branch });
-		const result = await run(cmd, projectPath);
+		const result = await run(cmd, projectPath, {
+			timeoutMs,
+			env: {
+				GIT_TERMINAL_PROMPT: "0",
+				GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=10",
+			},
+		});
 		if (result.ok) {
 			fetchLastSuccess.set(cacheKey, Date.now());
 			fetchLastFailure.delete(cacheKey);
