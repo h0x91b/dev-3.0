@@ -107,6 +107,28 @@ describe("useTaskSwitcher", () => {
 		expect(result.current.session!.items.map((t) => t.id)).toContain("x");
 	});
 
+	it("toggles scope live when Shift is pressed and released mid-session", async () => {
+		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
+			{ projectId: "p1", tasks: [task("a", 1)] },
+			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }] },
+		]);
+		const { result } = mount();
+		await act(async () => {
+			await Promise.resolve();
+		});
+		keydown({ key: "Tab", ...MOD }); // opens in project scope
+		expect(result.current.session!.scope).toBe("project");
+		expect(result.current.session!.items.map((t) => t.id)).not.toContain("x");
+
+		keydown({ key: "Shift", ...MOD, shiftKey: true }); // → global
+		expect(result.current.session!.scope).toBe("global");
+		expect(result.current.session!.items.map((t) => t.id)).toContain("x");
+
+		keyup({ key: "Shift" }); // release Shift (modifier still down) → back to project
+		expect(result.current.session!.scope).toBe("project");
+		expect(result.current.session!.items.map((t) => t.id)).not.toContain("x");
+	});
+
 	it("advances forward with Tab and wraps around", () => {
 		const { result } = mount();
 		keydown({ key: "Tab", ...MOD }); // index 1

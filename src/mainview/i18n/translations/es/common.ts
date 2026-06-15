@@ -66,7 +66,7 @@ const common = {
 	"taskSwitcher.scopeProject": "Este proyecto",
 	"taskSwitcher.scopeGlobal": "Todos los proyectos",
 	"taskSwitcher.noOverview": "Sin resumen todavía",
-	"taskSwitcher.hint": "Tab siguiente · ↑↓ mover · ⏎ abrir · esc cancelar",
+	"taskSwitcher.hint": "Tab siguiente · ↑↓ mover · ⇧ todos los proyectos · ⏎ abrir · esc cancelar",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",

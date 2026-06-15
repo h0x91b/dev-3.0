@@ -82,7 +82,7 @@ No primary/destructive buttons.
 - **Preconditions:** ≥1 active task in the chosen scope.
 - **Open + cycle model (locked):** classic **hold** — hold the modifier, each Tab advances the highlight with wrap-around; **arrows ↑/↓** move bidirectionally; **release the modifier commits** the highlighted task.
 - **Reverse:** arrows ↑/↓ (Shift is unavailable — it selects global scope).
-- **Scope lock:** scope is read once at open; adding/releasing Shift mid-hold does not swap the list.
+- **Live scope toggle:** while the overlay is open, holding Shift widens to global (all projects) and releasing it narrows back to the current project; the highlighted task is preserved across the switch when it still exists in the new scope.
 - **MRU order (locked):** in-memory stack of recently-focused task IDs; most recent first; first Tab lands on the previous task so tap-tap toggles the last two. Resets on app reload.
 - **Commit:** release modifier → navigate to highlighted task honoring `dev3-task-open-mode`. **Enter** / click also commit; these double as a fallback if the WKWebView modifier `keyup` is dropped.
 - **Cancel:** **Esc** → close, no navigation, restore prior focus.
@@ -129,7 +129,6 @@ Do not implement:
 - A command palette or any global action-runner.
 - A new persistent navigation surface or header control.
 - Vimium-style board link-hints (separate ticket).
-- Mid-cycle scope switching.
 
 Likely files to inspect or modify:
 

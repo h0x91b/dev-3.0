@@ -157,6 +157,29 @@ export function useTaskSwitcher({
 		});
 	}, []);
 
+	// Switch scope on an already-open session (Shift toggled mid-cycle). Keeps
+	// the highlighted task selected if it still exists in the new scope.
+	const applyScope = useCallback(
+		(scope: SwitcherScope) => {
+			if (scope === "global") void refreshGlobal();
+			setSession((s) => {
+				if (!s || s.scope === scope) return s;
+				const source =
+					scope === "global"
+						? globalTasksRef.current
+						: projectTasksRef.current.filter(
+								(t) => t.projectId === currentProjectIdRef.current,
+							);
+				const items = orderByMru(activeOf(source), mruRef.current);
+				if (items.length === 0) return s;
+				const currentId = s.items[s.index]?.id;
+				const index = Math.max(0, items.findIndex((t) => t.id === currentId));
+				return { ...s, scope, items, index };
+			});
+		},
+		[refreshGlobal],
+	);
+
 	const open = useCallback(
 		(scope: SwitcherScope): boolean => {
 			const source =
@@ -203,6 +226,13 @@ export function useTaskSwitcher({
 		const onKeyDown = (e: KeyboardEvent) => {
 			const s = sessionRef.current;
 			if (s) {
+				if (e.key === "Shift") {
+					// Live scope toggle: hold Shift → global, release → project.
+					e.preventDefault();
+					e.stopPropagation();
+					applyScope("global");
+					return;
+				}
 				if (e.key === "Tab") {
 					e.preventDefault();
 					e.stopPropagation();
@@ -247,6 +277,11 @@ export function useTaskSwitcher({
 		};
 		const onKeyUp = (e: KeyboardEvent) => {
 			if (!sessionRef.current) return;
+			if (e.key === "Shift") {
+				// Releasing Shift narrows back to the current project.
+				applyScope("project");
+				return;
+			}
 			const released = modIsAlt
 				? e.key === "Alt" || !e.altKey
 				: e.key === "Control" || !e.ctrlKey;
@@ -258,7 +293,7 @@ export function useTaskSwitcher({
 			window.removeEventListener("keydown", onKeyDown, { capture: true });
 			window.removeEventListener("keyup", onKeyUp, { capture: true });
 		};
-	}, [advance, commit, cancel, open]);
+	}, [advance, commit, cancel, open, applyScope]);
 
 	return { session, setIndex, commit, cancel };
 }
