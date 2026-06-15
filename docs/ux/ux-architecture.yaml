@@ -223,6 +223,12 @@ ux_architecture:
       allowed: ["status_message", "error"]
       forbidden: ["persistent_action", "primary_action"]
       evidence: ["src/mainview/components/ErrorToast.tsx"]
+    task_switcher:
+      purpose: "Transient keyboard-summoned HUD overlay for hold-cycle jumping between active tasks (Option+Tab project / Option+Shift+Tab global). A presentation of the sidebar's task_jump action, not a command palette."
+      allowed: ["task_jump", "terminal_preview"]
+      forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation"]
+      observed: ["TaskSwitcherOverlay (planned)"]
+      evidence: ["docs/ux/feature-plans/option-tab-task-switcher.md", "UX_DECISIONS 2026-06-15"]
 
   action_types:
     primary_action:
