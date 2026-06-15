@@ -1,0 +1,1 @@
+Replaced the app icon with a new transparent design: four rounded tiles (Kanban board, git branch graph, tmux split terminal, multi-agent swarm) around a central neural brain on a transparent background. Regenerated all icon.iconset sizes and the website/README icon (docs/icon.png).
