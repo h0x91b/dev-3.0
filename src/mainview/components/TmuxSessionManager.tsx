@@ -212,7 +212,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 			<button
 				ref={buttonRef}
 				onClick={togglePopover}
-				className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-2 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
+				className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
 				title={t("tmuxSessions.title")}
 			>
 				<span

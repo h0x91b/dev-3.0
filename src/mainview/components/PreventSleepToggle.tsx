@@ -70,7 +70,7 @@ function PreventSleepToggle({ compact = false }: { compact?: boolean }) {
 			onClick={toggle}
 			disabled={locked}
 			aria-pressed={active}
-			className={`flex items-center gap-1 transition-colors px-2 py-1 rounded-lg ${
+			className={`flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
 				active
 					? "text-awake bg-awake/15 border border-awake/30 hover:bg-awake/25"
 					: "text-fg-3 hover:text-fg hover:bg-elevated border border-transparent"
