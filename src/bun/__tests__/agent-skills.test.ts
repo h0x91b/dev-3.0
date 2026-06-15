@@ -8,6 +8,19 @@ import {
 	getTmuxSkillContent,
 } from "../agent-skills";
 
+describe("vent feedback skill section (always present)", () => {
+	it("teaches every agent the vent command, anonymity rules, and scope", () => {
+		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("## Platform feedback — vents");
+			expect(skill).toContain('dev3 vents "short name" "markdown body"');
+			expect(skill).toContain("Anonymity is mandatory");
+			expect(skill).toContain("would the dev3 maintainer have to change or extend dev3 to address this?");
+			expect(skill).toContain("Something is missing that would help");
+			expect(skill).toContain("at most once per user message");
+		}
+	});
+});
+
 describe("dev3 skill content", () => {
 	it("folds label guidance into the session-start title pass", () => {
 		const codexSkill = getCodexSkillContent();
