@@ -6574,7 +6574,12 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		}));
 	});
 
-	it("does not re-prompt a precise unanswered prompt within the retry window", async () => {
+	it("re-prompts a recently-reserved unanswered prompt, but only once per session (in-memory throttle)", async () => {
+		// Option B: an unanswered prompt (dismissedAt null) is never time-muted —
+		// even one reserved 30 min ago must re-offer completion when the task is
+		// eligible (e.g. it flipped to in-progress and back to review-by-user).
+		// The in-memory reservation still prevents the 60s poller from re-pushing
+		// every tick within the same session.
 		const project = makeProject();
 		const task = makeTask({
 			status: "review-by-user",
@@ -6600,7 +6605,15 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		startMergeDetectionPoller();
 		await vi.advanceTimersByTimeAsync(60_000);
 
-		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
+			taskId: task.id,
+			fingerprint: "v1:dev3/task-test:abc123",
+		}));
+
+		// Second tick without any status change: the in-memory reservation
+		// throttles the re-push, so the user is not spammed every minute.
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(push.mock.calls.filter((c) => c[0] === "branchMerged")).toHaveLength(1);
 	});
 
 	it("never re-prompts a precise prompt the user dismissed, even after the retry window", async () => {

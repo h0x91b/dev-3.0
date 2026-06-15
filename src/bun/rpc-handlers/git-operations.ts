@@ -1,6 +1,5 @@
 import {
 	type BranchStatus,
-	type MergeCompletionPromptState,
 	type PRInfo,
 	type Project,
 	type Task,
@@ -14,6 +13,11 @@ import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
 import { getPushMessage, log } from "./shared";
+import {
+	type MergeCompletionFingerprint,
+	MERGE_PROMPT_RETRY_SUPPRESS_MS,
+	shouldSuppressMergePrompt,
+} from "./merge-prompt-suppression";
 
 const gitOpPaneIds = new Map<string, string>();
 // promptKey -> reservedAt (ms). A reservation only mutes re-prompts for
@@ -22,22 +26,9 @@ const gitOpPaneIds = new Map<string, string>();
 const mergeNotifiedPromptKeys = new Map<string, number>();
 const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 const prPromotedTasks = new Set<string>();
-const MERGE_PROMPT_FALLBACK_SUPPRESS_MS = 60 * 60 * 1000;
-const MERGE_PROMPT_RETRY_SUPPRESS_MS = 60 * 60 * 1000;
-
-interface MergeCompletionFingerprint {
-	fingerprint: string;
-	precise: boolean;
-}
 
 function mergePromptKey(taskId: string, fingerprint: string | null): string {
 	return `${taskId}:${fingerprint || "unknown"}`;
-}
-
-function parseTime(value: string | null | undefined): number | null {
-	if (!value) return null;
-	const time = Date.parse(value);
-	return Number.isFinite(time) ? time : null;
 }
 
 function isPromptKeyReserved(promptKey: string, nowMs: number): boolean {
@@ -48,20 +39,6 @@ function isPromptKeyReserved(promptKey: string, nowMs: number): boolean {
 		return false;
 	}
 	return true;
-}
-
-function shouldSuppressMergePrompt(state: MergeCompletionPromptState | null | undefined, fingerprint: MergeCompletionFingerprint, nowMs: number): boolean {
-	if (!state || state.fingerprint !== fingerprint.fingerprint) return false;
-	// Permanent suppression only for an explicit user dismissal of this exact
-	// head. A reserved-but-unanswered prompt (dismissedAt null) falls through
-	// to the time window below so a lost popup re-appears.
-	if (fingerprint.precise && state.precise && parseTime(state.dismissedAt) !== null) return true;
-
-	const lastPromptTime = Math.max(
-		parseTime(state.promptedAt) ?? 0,
-		parseTime(state.dismissedAt) ?? 0,
-	);
-	return lastPromptTime > 0 && nowMs - lastPromptTime < MERGE_PROMPT_FALLBACK_SUPPRESS_MS;
 }
 
 async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "worktreePath" | "branchName">, branchName: string | null): Promise<MergeCompletionFingerprint> {
