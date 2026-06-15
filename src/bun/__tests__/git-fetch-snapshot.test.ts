@@ -26,9 +26,11 @@ type SpawnResponse = {
 	stdout: string;
 	stderr: string;
 	hang?: boolean;
+	holdStreamsOpen?: boolean;
 };
 
 let spawnResponses: SpawnResponse[] = [];
+let lastSpawnOptions: { env?: Record<string, string> } | undefined;
 let killedProcesses = 0;
 
 function queueResponse(exitCode: number, stdout: string, stderr = "") {
@@ -36,7 +38,8 @@ function queueResponse(exitCode: number, stdout: string, stderr = "") {
 }
 
 vi.mock("../spawn", () => ({
-	spawn: () => {
+	spawn: (_cmd: string[], opts?: { env?: Record<string, string> }) => {
+		lastSpawnOptions = opts;
 		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
 		const encoder = new TextEncoder();
 		let resolveExit!: (code: number) => void;
@@ -54,13 +57,13 @@ vi.mock("../spawn", () => ({
 			stdout: new ReadableStream({
 				start(controller) {
 					controller.enqueue(encoder.encode(response.stdout));
-					controller.close();
+					if (!response.holdStreamsOpen) controller.close();
 				},
 			}),
 			stderr: new ReadableStream({
 				start(controller) {
 					controller.enqueue(encoder.encode(response.stderr));
-					controller.close();
+					if (!response.holdStreamsOpen) controller.close();
 				},
 			}),
 		};
@@ -75,6 +78,7 @@ import {
 } from "../git";
 
 beforeEach(() => {
+	lastSpawnOptions = undefined;
 	spawnResponses = [];
 	killedProcesses = 0;
 	_resetFetchState();
@@ -86,6 +90,10 @@ describe("fetchOrigin", () => {
 	it("returns true on successful fetch", async () => {
 		queueResponse(0, "");
 		const ok = await fetchOrigin("/repo");
+		expect(lastSpawnOptions?.env).toMatchObject({
+			GIT_TERMINAL_PROMPT: "0",
+			GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=10",
+		});
 		expect(ok).toBe(true);
 	});
 
@@ -96,9 +104,17 @@ describe("fetchOrigin", () => {
 	});
 
 	it("kills a fetch that exceeds its deadline and releases the project queue", async () => {
-		spawnResponses.push({ exitCode: 0, stdout: "", stderr: "", hang: true });
+		spawnResponses.push({
+			exitCode: 0,
+			stdout: "",
+			stderr: "",
+			hang: true,
+			holdStreamsOpen: true,
+		});
+		const startedAt = performance.now();
 
 		const ok = await fetchOrigin("/repo", "main", 10);
+		expect(performance.now() - startedAt).toBeLessThan(2_500);
 
 		expect(ok).toBe(false);
 		expect(killedProcesses).toBe(1);

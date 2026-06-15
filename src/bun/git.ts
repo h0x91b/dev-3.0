@@ -58,6 +58,22 @@ function withGitFilenameEncoding(cmd: string[]): string[] {
 	return ["git", "-c", "core.quotepath=false", ...cmd.slice(1)];
 }
 
+const PROCESS_CLEANUP_GRACE_MS = 1_000;
+
+async function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<T>((resolve) => {
+				timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeoutId) clearTimeout(timeoutId);
+	}
+}
+
 export async function run(
 	cmd: string[],
 	cwd: string,
@@ -71,8 +87,6 @@ export async function run(
 		stderr: "pipe",
 		env: opts?.env,
 	});
-	const stdoutPromise = new Response(proc.stdout).text();
-	const stderrPromise = new Response(proc.stderr).text();
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
 	const outcome = opts?.timeoutMs
 		? await Promise.race([
@@ -85,9 +99,17 @@ export async function run(
 	if (timeoutId) clearTimeout(timeoutId);
 	if (outcome.timedOut) {
 		proc.kill();
-		await proc.exited.catch(() => {});
+		await settleWithin(proc.exited.catch(() => null), PROCESS_CLEANUP_GRACE_MS, null);
 	}
-	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
+	const [stdout, stderr] = outcome.timedOut
+		? await Promise.all([
+			settleWithin(proc.stdout.cancel().then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+			settleWithin(proc.stderr.cancel().then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+		])
+		: await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+		]);
 	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
 	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
 	if (!result.ok) {
@@ -1072,7 +1094,10 @@ export async function fetchOrigin(
 		log.debug("Fetching origin", { projectPath, branch });
 		const result = await run(cmd, projectPath, {
 			timeoutMs,
-			env: { GIT_TERMINAL_PROMPT: "0" },
+			env: {
+				GIT_TERMINAL_PROMPT: "0",
+				GIT_SSH_COMMAND: "ssh -o BatchMode=yes -o ConnectTimeout=10",
+			},
 		});
 		if (result.ok) {
 			fetchLastSuccess.set(cacheKey, Date.now());
