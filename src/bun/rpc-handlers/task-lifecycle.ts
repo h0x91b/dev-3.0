@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, titleFromDescription } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -329,11 +329,25 @@ async function prepareTaskInBackground(
 			});
 			try {
 				if (isTaskPreparationActive(task.id, runId)) {
-					const updated = await data.updateTask(project, task.id, clearPreparingState());
-					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+					// Don't strand the task in its active column with no worktree and no
+					// PTY — that surfaces as a misleading "[session ended]" terminal and
+					// survives app restarts. Move it back to todo (cleaning up any
+					// half-created worktree) so it is recoverable, and surface the real
+					// preparation error to the renderer as a toast.
+					const reverted = await revertPreparingTaskToTodo(project, task);
+					getPushMessage()?.("taskPreparationFailed", {
+						taskId: task.id,
+						projectId: project.id,
+						taskTitle: getTaskTitle(reverted),
+						error: err instanceof Error ? err.message : String(err),
+					});
 				}
-			} catch {
-				// Best effort — the original error is already logged.
+			} catch (revertErr) {
+				log.error("Failed to revert task after preparation failure", {
+					taskId: task.id.slice(0, 8),
+					runId,
+					error: String(revertErr),
+				});
 			}
 		}
 	}, (stage) => pushPreparingStage(project, task.id, stage));
