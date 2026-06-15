@@ -827,8 +827,12 @@ describe("pty-server", () => {
 			mockSpawn.mockClear();
 
 			await vi.advanceTimersByTimeAsync(200);
-			await Promise.resolve();
-			await Promise.resolve();
+			await vi.waitFor(() => {
+				const call = mockSpawn.mock.calls.find(
+					(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
+				);
+				expect(call).toBeDefined();
+			});
 
 			// configureTmux now uses async `spawn` rather than `spawnSync`.
 			const sourceCall = mockSpawn.mock.calls.find(
@@ -850,8 +854,12 @@ describe("pty-server", () => {
 			mockSpawn.mockClear();
 
 			await vi.advanceTimersByTimeAsync(200);
-			await Promise.resolve();
-			await Promise.resolve();
+			await vi.waitFor(() => {
+				const call = mockSpawn.mock.calls.find(
+					(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
+				);
+				expect(call).toBeDefined();
+			});
 
 			const envCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("set-environment") && c[0].includes("PATH") && !c[0].includes("DEV3_WORKTREE_ROOT"),
@@ -871,8 +879,12 @@ describe("pty-server", () => {
 			mockSpawn.mockClear();
 
 			await vi.advanceTimersByTimeAsync(200);
-			await Promise.resolve();
-			await Promise.resolve();
+			await vi.waitFor(() => {
+				const call = mockSpawn.mock.calls.find(
+					(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
+				);
+				expect(call).toBeDefined();
+			});
 
 			const sourceCall = mockSpawn.mock.calls.find(
 				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
