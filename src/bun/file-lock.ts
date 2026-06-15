@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { createLogger } from "./logger";
 
 const log = createLogger("file-lock");
@@ -64,9 +65,14 @@ async function acquireLock(
 			return; // Lock acquired
 		} catch (err: any) {
 			if (err.code === "ENOENT") {
-				// Parent directory doesn't exist (e.g. new project with no tasks yet)
-				fs.mkdirSync(lockDir, { recursive: true });
-				return; // Lock acquired
+				// Parent directory doesn't exist (e.g. new project with no tasks yet).
+				// Create ONLY the parent recursively, then loop back to retry the
+				// plain (non-recursive) mkdir of the lock dir itself. Calling
+				// mkdirSync(lockDir, { recursive: true }) directly would swallow
+				// EEXIST, so two processes racing through this branch would both
+				// believe they acquired the lock.
+				fs.mkdirSync(path.dirname(lockDir), { recursive: true });
+				continue; // Parent ready — retry the atomic lock-dir mkdir
 			}
 			if (err.code !== "EEXIST") {
 				throw err; // Unexpected error (e.g. permissions)
