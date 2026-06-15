@@ -66,25 +66,48 @@ describe("brightenDarkRgb", () => {
 	});
 });
 
-describe("createAnsiThemeFilter — dim handling (light)", () => {
-	it("drops a standalone dim sequence", () => {
-		expect(filterAll([`${ESC}[2mfoo`])).toBe("foo");
+describe("createAnsiThemeFilter — dim handling (both themes)", () => {
+	// ghostty renders SGR dim as 50% alpha. On white it washes any color out;
+	// on dark it drops the default fg to a low-contrast gray (Claude Code's
+	// select-prompt descriptions, option numbers and hints use Ink dimColor).
+	// Dim is dropped in both themes so muted text stays readable.
+	it("drops a standalone dim sequence (light and dark)", () => {
+		expect(filterAll([`${ESC}[2mfoo`], "light")).toBe("foo");
+		expect(filterAll([`${ESC}[2mfoo`], "dark")).toBe("foo");
 	});
 
-	it("removes dim from compound params but keeps the rest", () => {
-		expect(filterAll([`${ESC}[0;2mfoo`])).toBe(`${ESC}[0mfoo`);
-		expect(filterAll([`${ESC}[1;2;31mbar`])).toBe(`${ESC}[1;31mbar`);
+	it("removes dim from compound params but keeps the rest (light and dark)", () => {
+		expect(filterAll([`${ESC}[0;2mfoo`], "light")).toBe(`${ESC}[0mfoo`);
+		expect(filterAll([`${ESC}[0;2mfoo`], "dark")).toBe(`${ESC}[0mfoo`);
+		expect(filterAll([`${ESC}[1;2;31mbar`], "light")).toBe(`${ESC}[1;31mbar`);
+		expect(filterAll([`${ESC}[1;2;31mbar`], "dark")).toBe(`${ESC}[1;31mbar`);
 	});
 
-	it("does not confuse dim with the 2 in truecolor introducers", () => {
+	it("does not confuse dim with the 2 in truecolor introducers (dark)", () => {
 		const input = `${ESC}[38;2;10;20;30mx`;
-		expect(filterAll([input])).toBe(input);
+		// 38;2;10;20;30 is below the dark brighten threshold, so it is rewritten,
+		// but the introducer 2 must not be mistaken for dim and dropped.
+		const out = filterAll([input], "dark");
+		expect(out).toMatch(/^\x1b\[38;2;\d+;\d+;\d+mx$/);
+	});
+
+	it("does not confuse dim with the 2 in truecolor introducers (light)", () => {
+		const input = `${ESC}[38;2;10;20;30mx`;
+		expect(filterAll([input], "light")).toBe(input);
 	});
 
 	it("keeps reset and bold-off sequences", () => {
 		expect(filterAll([`${ESC}[0mfoo`])).toBe(`${ESC}[0mfoo`);
 		expect(filterAll([`${ESC}[22mfoo`])).toBe(`${ESC}[22mfoo`);
 		expect(filterAll([`${ESC}[mfoo`])).toBe(`${ESC}[mfoo`);
+	});
+
+	it("drops dim around an indexed fg (Claude select-prompt description, dark)", () => {
+		// Claude wraps muted text in dimColor over the default fg; with an
+		// explicit pale index it is dim + 38;5;231 — drop dim, keep the color.
+		expect(filterAll([`${ESC}[2m${ESC}[38;5;231m desc ${ESC}[0m`], "dark")).toBe(
+			`${ESC}[38;5;231m desc ${ESC}[0m`,
+		);
 	});
 });
 
@@ -188,9 +211,8 @@ describe("createAnsiThemeFilter — dark foregrounds (dark)", () => {
 		expect(filterAll([input], "dark")).toBe(input);
 	});
 
-	it("keeps dim sequences in dark mode", () => {
-		const input = `${ESC}[2mfoo`;
-		expect(filterAll([input], "dark")).toBe(input);
+	it("drops dim sequences in dark mode", () => {
+		expect(filterAll([`${ESC}[2mfoo`], "dark")).toBe("foo");
 	});
 
 	it("keeps theme-mapped indices (0-15) untouched", () => {
