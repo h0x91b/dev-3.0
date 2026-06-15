@@ -689,6 +689,13 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.pullBehindDot.body",
 		icon: "\u{F0164}", // nf-md-cloud_download_outline
 	},
+	// Batch 47: agent completion request
+	{
+		id: "agent-completion-request",
+		titleKey: "tip.agentCompletionRequest.title",
+		bodyKey: "tip.agentCompletionRequest.body",
+		icon: "\u{F06A9}", // nf-md-robot
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

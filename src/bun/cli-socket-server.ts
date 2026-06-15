@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, getTaskTitle, titleFromDescription } from "../shared/types";
+import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
@@ -563,6 +564,41 @@ const handlers: Record<string, Handler> = {
 		}
 
 		return updated;
+	},
+
+	// Agent-initiated request to complete a task. Blocks until the user
+	// approves or declines in the app UI. Approval executes the move even if
+	// the requesting CLI has already disconnected (its tmux session may have
+	// hit a client-side timeout while the dialog stayed open).
+	"task.requestCompletion": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		const push = getPushMessage();
+		if (!push) {
+			throw new Error("No app window is connected — cannot ask the user for approval");
+		}
+
+		const { requestId, decision, isNew } = createCompletionRequest(task.id, project.id);
+		if (isNew) {
+			// User-edited overview overrides the agent-written one, same as in cards.
+			const overview = task.userOverview?.trim() || task.overview?.trim() || undefined;
+			push("agentCompletionRequested", {
+				requestId,
+				taskId: task.id,
+				projectId: project.id,
+				taskTitle: getTaskTitle(task),
+				taskOverview: overview,
+			});
+		}
+
+		const approved = await decision;
+		if (!approved) {
+			return { approved: false };
+		}
+		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "completed" });
+		return { approved: true, task: updated };
 	},
 
 	"devServer.start": async (params) => {

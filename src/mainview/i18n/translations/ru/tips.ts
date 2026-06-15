@@ -216,6 +216,8 @@ const tips = {
 	"tip.projectsDailyBackup.body": "Пропали проекты? Восстановите из ~/.dev3.0/projects-YYYY-MM-DD.json.bak — снимки хранятся 7 дней.",
 	"tip.pullBehindDot.title": "Синяя точка на Pull",
 	"tip.pullBehindDot.body": "Синяя точка на кнопке Pull в шапке означает новые коммиты в origin — нажмите, чтобы обновить локальный main.",
+	"tip.agentCompletionRequest.title": "Агент может запросить завершение",
+	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вы получаете диалог подтверждения — одобрите завершение или оставьте сессию.",
 };
 
 export default tips;
