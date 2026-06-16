@@ -1,6 +1,7 @@
 import { Electroview } from "electrobun/view";
 import type { AppRPCSchema } from "../shared/types";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
+import { createWatchdogState, decidePingOutcome, shouldAllowReload } from "./rpc-watchdog";
 
 // Push message handlers — shared between Electrobun and browser transports
 const pushMessageHandlers: Record<string, (payload: any) => void> = {
@@ -94,6 +95,95 @@ function enrichRequest(rawRequest: RequestProxy): RequestProxy {
 // Only executed inside WKWebView where electrobun/view is the real module.
 // In browser mode, the import resolves to a stub (via Vite alias) but this
 // function is never called.
+// Liveness-probe timing for the bridge watchdog. The ping races a short timeout
+// (independent of RPC_TIMEOUT_MS) so a jammed socket is detected in seconds, not
+// the 2-minute request timeout.
+const PING_TIMEOUT_MS = 4_000;
+const PING_INTERVAL_MS = 30_000;
+const RELOAD_MIN_GAP_MS = 30_000;
+
+// Guard against reload loops: if a previous watchdog reload happened very
+// recently (same browser session), skip another one and let socket re-init try.
+// The gap decision lives in shouldAllowReload (unit-tested); this only handles
+// the sessionStorage I/O.
+function allowWatchdogReload(now: number): boolean {
+	try {
+		const KEY = "dev3-rpc-watchdog-last-reload";
+		const last = Number(sessionStorage.getItem(KEY) || NaN);
+		if (!shouldAllowReload(now, last, RELOAD_MIN_GAP_MS)) return false;
+		sessionStorage.setItem(KEY, String(now));
+		return true;
+	} catch {
+		return true;
+	}
+}
+
+// Watchdog for the desktop transport: the Electrobun localhost socket has no
+// reconnect, so after sleep it can die with every request hanging forever. We
+// ping on a timer and on wake/focus; on confirmed failure we re-open the socket,
+// and as a last resort reload the webview (bun stays alive, so this recovers the
+// bridge without a force-quit).
+function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestProxy): void {
+	const state = createWatchdogState();
+	let inFlight = false;
+
+	async function pingOnce(): Promise<boolean> {
+		let timeoutId: ReturnType<typeof setTimeout> | undefined;
+		try {
+			await Promise.race([
+				(rawRequest as any).ping(),
+				new Promise((_, reject) => {
+					timeoutId = setTimeout(() => reject(new Error("ping timeout")), PING_TIMEOUT_MS);
+				}),
+			]);
+			return true;
+		} catch {
+			return false;
+		} finally {
+			// Clear the race timer regardless of which leg won, so a successful
+			// ping doesn't leave a dangling timeout every interval.
+			if (timeoutId) clearTimeout(timeoutId);
+		}
+	}
+
+	async function check(): Promise<void> {
+		if (inFlight) return;
+		// Only probe while the window is visible — no point pinging (or recovering)
+		// a backgrounded app, and it avoids racing the OS as it suspends/resumes.
+		if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+		inFlight = true;
+		try {
+			const ok = await pingOnce();
+			const action = decidePingOutcome(state, ok, Date.now());
+			if (action === "reinit") {
+				console.warn("[rpc-watchdog] bridge unresponsive — re-opening Electrobun socket");
+				try {
+					// Close the stale socket first — initSocketToBun() opens a fresh
+					// WebSocket and reassigns bunSocket without closing the old one,
+					// which would leak a socket on every re-init.
+					electroview.bunSocket?.close();
+					electroview.initSocketToBun();
+				} catch (err) {
+					console.error("[rpc-watchdog] socket re-init failed", err);
+				}
+			} else if (action === "reload") {
+				console.warn("[rpc-watchdog] bridge still dead after re-init — reloading webview");
+				if (allowWatchdogReload(Date.now())) window.location.reload();
+			}
+		} finally {
+			inFlight = false;
+		}
+	}
+
+	setInterval(() => void check(), PING_INTERVAL_MS);
+	if (typeof document !== "undefined") {
+		document.addEventListener("visibilitychange", () => {
+			if (document.visibilityState === "visible") void check();
+		});
+	}
+	window.addEventListener("focus", () => void check());
+}
+
 function initElectrobunApi(): ApiShape {
 	const rpc = Electroview.defineRPC<AppRPCSchema>({
 		maxRequestTime: RPC_TIMEOUT_MS,
@@ -105,6 +195,7 @@ function initElectrobunApi(): ApiShape {
 
 	const electroview = new Electroview({ rpc });
 	const rawApi = electroview.rpc!;
+	startBridgeWatchdog(electroview, rawApi.request as any);
 	return { ...rawApi, request: enrichRequest(rawApi.request as any) } as any;
 }
 

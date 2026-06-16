@@ -46,9 +46,13 @@ function buildTokenEnv(host: string, token: string): Record<string, string> {
 	};
 }
 
+// Exit code reported when a gh command is killed for exceeding its timeout
+// (matches GNU `timeout`'s convention).
+const GH_TIMEOUT_EXIT_CODE = 124;
+
 async function runGh(
 	args: string[],
-	options?: { cwd?: string; env?: Record<string, string> },
+	options?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number },
 ): Promise<GitHubCommandResult> {
 	log.debug(`gh ${args.join(" ")}`, { cwd: options?.cwd });
 	const proc = spawn(["gh", ...args], {
@@ -57,14 +61,37 @@ async function runGh(
 		stderr: "pipe",
 		env: options?.env,
 	});
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	const code = await proc.exited;
+	// Start draining stdout/stderr immediately, BEFORE awaiting exit. If we
+	// waited for exit first, a command whose output exceeds the OS pipe buffer
+	// (~64KB) would block on write with nobody reading — proc.exited never
+	// resolves and we deadlock (or, with a timeout, get killed and lose output).
+	// `.catch` is required: on the timeout path below we kill the process and
+	// return without awaiting these, so a stream error must not surface as an
+	// unhandled rejection (mirrors git.ts run()).
+	const stdoutPromise = new Response(proc.stdout).text().catch(() => "");
+	const stderrPromise = new Response(proc.stderr).text().catch(() => "");
+
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const outcome = options?.timeoutMs
+		? await Promise.race([
+			proc.exited.then((code) => ({ code, timedOut: false as const })),
+			new Promise<{ code: null; timedOut: true }>((resolve) => {
+				timeoutId = setTimeout(() => resolve({ code: null, timedOut: true }), options.timeoutMs);
+			}),
+		])
+		: { code: await proc.exited, timedOut: false as const };
+	if (timeoutId) clearTimeout(timeoutId);
+	if (outcome.timedOut) {
+		// Kill the hung process so it can't keep holding resources (e.g. a
+		// branch-status semaphore slot) after we've given up on it.
+		proc.kill();
+		log.warn(`gh ${args.join(" ")} timed out`, { timeoutMs: options?.timeoutMs });
+		return { code: GH_TIMEOUT_EXIT_CODE, ok: false, stdout: "", stderr: `gh timed out after ${options?.timeoutMs}ms` };
+	}
+	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
 	return {
-		code,
-		ok: code === 0,
+		code: outcome.code,
+		ok: outcome.code === 0,
 		stdout: stdout.trim(),
 		stderr: stderr.trim(),
 	};
@@ -282,9 +309,10 @@ export async function runGitHub(
 	project: ProjectGitHubSelection,
 	cwd: string,
 	args: string[],
+	options?: { timeoutMs?: number },
 ): Promise<GitHubCommandResult> {
 	const env = await getGitHubAuthEnv(project);
-	return runGh(args, { cwd, env });
+	return runGh(args, { cwd, env, timeoutMs: options?.timeoutMs });
 }
 
 export async function getGitHubShellExports(project: ProjectGitHubSelection): Promise<string[]> {

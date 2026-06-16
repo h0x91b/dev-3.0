@@ -87,6 +87,13 @@ export async function run(
 		stderr: "pipe",
 		env: opts?.env,
 	});
+	// Start draining stdout/stderr immediately, BEFORE awaiting exit. Otherwise a
+	// command whose output exceeds the OS pipe buffer (~64KB) blocks on write with
+	// nobody reading — proc.exited never resolves and we deadlock (commands without
+	// a timeout would hang forever).
+	const stdoutPromise = new Response(proc.stdout).text().catch(() => "");
+	const stderrPromise = new Response(proc.stderr).text().catch(() => "");
+
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
 	const outcome = opts?.timeoutMs
 		? await Promise.race([
@@ -101,15 +108,14 @@ export async function run(
 		proc.kill();
 		await settleWithin(proc.exited.catch(() => null), PROCESS_CLEANUP_GRACE_MS, null);
 	}
+	// On timeout the killed process closes its pipes, so the readers resolve with
+	// whatever partial output arrived; bound the wait just in case.
 	const [stdout, stderr] = outcome.timedOut
 		? await Promise.all([
-			settleWithin(Promise.resolve(proc.stdout.cancel()).then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
-			settleWithin(Promise.resolve((proc.stderr as ReadableStream<Uint8Array> | undefined)?.cancel()).then(() => "").catch(() => ""), PROCESS_CLEANUP_GRACE_MS, ""),
+			settleWithin(stdoutPromise, PROCESS_CLEANUP_GRACE_MS, ""),
+			settleWithin(stderrPromise, PROCESS_CLEANUP_GRACE_MS, ""),
 		])
-		: await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-		]);
+		: await Promise.all([stdoutPromise, stderrPromise]);
 	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
 	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
 	if (!result.ok) {

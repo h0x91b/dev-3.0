@@ -12,6 +12,7 @@ import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { trackEvent } from "../../analytics";
 import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
+import { startVisibilityAwarePoll } from "../../utils/poll";
 
 interface UseTaskBranchStatusParams {
 	task: Task;
@@ -99,7 +100,6 @@ export function useTaskBranchStatus({
 
 		mergeDialogShownRef.current = false;
 		let cancelled = false;
-		let timer: ReturnType<typeof setTimeout> | null = null;
 
 		// mergedByContent is computed against whatever ref the user selected in
 		// the compare dropdown. The completion prompt is only meaningful against
@@ -160,20 +160,14 @@ export function useTaskBranchStatus({
 			} catch {
 				// Polling retries on the next tick.
 			}
-
-			if (!cancelled) {
-				timer = setTimeout(fetchStatus, 15_000);
-			}
 		};
 
 		fetchStatusRef.current = fetchStatus;
-		void fetchStatus();
+		const stop = startVisibilityAwarePoll({ fn: fetchStatus, intervalMs: 15_000 });
 
 		return () => {
 			cancelled = true;
-			if (timer) {
-				clearTimeout(timer);
-			}
+			stop();
 		};
 	}, [
 		baseBranch,
