@@ -50,6 +50,7 @@ import { notesLabelsHandlers } from "./rpc-handlers/notes-labels";
 import { remoteAccessHandlers } from "./rpc-handlers/remote-access";
 import { scriptsHandlers } from "./rpc-handlers/scripts";
 import { portTunnelHandlers } from "./rpc-handlers/port-tunnels";
+import { conversationSearchHandlers } from "./rpc-handlers/conversation-search-handlers";
 
 export const handlers = {
 	...appHandlers,
@@ -61,4 +62,5 @@ export const handlers = {
 	...remoteAccessHandlers,
 	...scriptsHandlers,
 	...portTunnelHandlers,
+	...conversationSearchHandlers,
 };
