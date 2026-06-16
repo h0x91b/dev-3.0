@@ -61,6 +61,8 @@ const dashboard = {
 	"header.reportLabel": "Report",
 	"header.gitPullLabel": "Pull",
 	"header.switchProject": "Переключить проект",
+	"header.navBack": "Назад (⌘[)",
+	"header.navForward": "Вперёд (⌘])",
 	"header.activeTaskCount_one": "{count} активная",
 	"header.activeTaskCount_few": "{count} активных",
 	"header.activeTaskCount_many": "{count} активных",

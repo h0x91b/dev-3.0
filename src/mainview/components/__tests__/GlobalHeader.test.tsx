@@ -88,7 +88,14 @@ function renderHeader(
 	projects: Project[] = [project1, project2],
 	navigate?: (route: Route) => void,
 	tasks: Task[] = [],
-	extra?: { updateVersion?: string | null; updateDownloadStatus?: string | null },
+	extra?: {
+		updateVersion?: string | null;
+		updateDownloadStatus?: string | null;
+		goBack?: () => void;
+		goForward?: () => void;
+		canGoBack?: boolean;
+		canGoForward?: boolean;
+	},
 ) {
 	return render(
 		<I18nProvider>
@@ -97,6 +104,10 @@ function renderHeader(
 				projects={projects}
 				tasks={tasks}
 				navigate={navigate ?? vi.fn()}
+				goBack={extra?.goBack ?? vi.fn()}
+				goForward={extra?.goForward ?? vi.fn()}
+				canGoBack={extra?.canGoBack ?? false}
+				canGoForward={extra?.canGoForward ?? false}
 				updateVersion={extra?.updateVersion}
 				updateDownloadStatus={extra?.updateDownloadStatus}
 			/>
@@ -643,5 +654,44 @@ describe("GlobalHeader — compact layout", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		expect(screen.getByText("Change Log")).toBeInTheDocument();
 		expect(screen.queryByTitle("More")).not.toBeInTheDocument();
+	});
+});
+
+describe("GlobalHeader — back/forward navigation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("renders both navigation buttons", () => {
+		renderHeader({ screen: "dashboard" });
+		expect(screen.getByLabelText("Back (⌘[)")).toBeInTheDocument();
+		expect(screen.getByLabelText("Forward (⌘])")).toBeInTheDocument();
+	});
+
+	it("disables back when there is no history behind", () => {
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoBack: false });
+		expect(screen.getByLabelText("Back (⌘[)")).toBeDisabled();
+	});
+
+	it("disables forward when there is no history ahead", () => {
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoForward: false });
+		expect(screen.getByLabelText("Forward (⌘])")).toBeDisabled();
+	});
+
+	it("invokes goBack when the back button is clicked", async () => {
+		const user = userEvent.setup();
+		const goBack = vi.fn();
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoBack: true, goBack });
+		await user.click(screen.getByLabelText("Back (⌘[)"));
+		expect(goBack).toHaveBeenCalledTimes(1);
+	});
+
+	it("invokes goForward when the forward button is clicked", async () => {
+		const user = userEvent.setup();
+		const goForward = vi.fn();
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoForward: true, goForward });
+		await user.click(screen.getByLabelText("Forward (⌘])"));
+		expect(goForward).toHaveBeenCalledTimes(1);
 	});
 });

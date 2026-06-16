@@ -1,0 +1,1 @@
+Added browser-style back/forward navigation: two arrow buttons at the top-left of the global header, plus ⌘[ / ⌘] keyboard shortcuts and mouse side buttons. The route-history model already existed; this wires it up to global UI controls.

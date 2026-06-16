@@ -131,9 +131,10 @@ ux_architecture:
   surfaces:
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
-      allowed: ["breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle"]
+      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle"]
       forbidden: ["task_scoped_action", "dense_filters", "destructive_primary"]
-      evidence: ["src/mainview/components/GlobalHeader.tsx"]
+      note: "history_nav = back/forward arrows pinned at the far left of the breadcrumb row (browser convention), driven by the route-history stack in state.ts. Also bound to Cmd+[/Cmd+] and mouse side buttons. Buttons are neutral/ghost icon-only and disable when canGoBack/canGoForward is false."
+      evidence: ["src/mainview/components/GlobalHeader.tsx", "src/mainview/state.ts (routeHistory/goBack/goForward)", "src/mainview/App.tsx (Cmd+[/], mouseup buttons 3/4)"]
     application_menu:
       purpose: "Native macOS/Linux menu bar; canonical home for the full action taxonomy (File / Edit / Task / Project / View / Debug)."
       allowed: ["destination", "task_action", "project_action", "git_action", "dev_server_action", "destructive", "expert_shortcut"]

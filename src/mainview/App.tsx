@@ -302,6 +302,16 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "[") {
+				// Cmd+[ — navigate back through route history
+				e.preventDefault();
+				e.stopPropagation();
+				dispatch({ type: "goBack" });
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "]") {
+				// Cmd+] — navigate forward through route history
+				e.preventDefault();
+				e.stopPropagation();
+				dispatch({ type: "goForward" });
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "~") {
 				// Cmd+Shift+` — toggle home terminal (key="~" because Shift+` produces ~)
 				e.preventDefault();
@@ -377,9 +387,26 @@ function App() {
 				}
 			}
 		},
-		[createTaskProjectId, navigate, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[createTaskProjectId, dispatch, navigate, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
+
+	// Mouse side buttons (back = button 3, forward = button 4) drive route history,
+	// mirroring browser navigation. WKWebView has no native back/forward to fight,
+	// but we preventDefault to avoid any stray default handling.
+	useEffect(() => {
+		function handleMouseUp(e: MouseEvent) {
+			if (e.button === 3) {
+				e.preventDefault();
+				dispatch({ type: "goBack" });
+			} else if (e.button === 4) {
+				e.preventDefault();
+				dispatch({ type: "goForward" });
+			}
+		}
+		window.addEventListener("mouseup", handleMouseUp);
+		return () => window.removeEventListener("mouseup", handleMouseUp);
+	}, [dispatch]);
 
 	function handleConfirmQuit() {
 		api.request.quitApp({ dontShowAgain }).catch(() => {});
@@ -957,6 +984,10 @@ function App() {
 				projects={state.projects}
 				tasks={state.currentProjectTasks}
 				navigate={navigate}
+				goBack={() => dispatch({ type: "goBack" })}
+				goForward={() => dispatch({ type: "goForward" })}
+				canGoBack={state.historyIndex > 0}
+				canGoForward={state.historyIndex < state.routeHistory.length - 1}
 				updateVersion={updateVersion}
 				updateDownloadStatus={updateDownloadStatus}
 			/>

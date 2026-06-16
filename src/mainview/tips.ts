@@ -10,6 +10,12 @@ export interface Tip {
 
 const ALL_TIPS: Tip[] = [
 	{
+		id: "back-forward-nav",
+		titleKey: "tip.backForwardNav.title",
+		bodyKey: "tip.backForwardNav.body",
+		icon: "\u{F0141}", // nf-md-chevron_left
+	},
+	{
 		id: "status-age-badge",
 		titleKey: "tip.statusAgeBadge.title",
 		bodyKey: "tip.statusAgeBadge.body",

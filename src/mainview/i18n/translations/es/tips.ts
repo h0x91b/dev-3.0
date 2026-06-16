@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "No mostrar este consejo",
 	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
+	"tip.backForwardNav.title": "Salta atrás y adelante",
+	"tip.backForwardNav.body": "Usa las flechas ‹ › arriba a la izquierda, ⌘[ / ⌘] o los botones laterales del ratón para volver por donde estuviste.",
 	"tip.statusAgeBadge.title": "Cuánto desde el cambio",
 	"tip.statusAgeBadge.body": "Cada tarjeta de Active Tasks muestra una insignia de antigüedad en vivo (5m, 7h, 13d) — pasa el ratón para ver la hora exacta del cambio de estado.",
 	"tip.cmdSwitchKeepsView.title": "Cambia de proyecto sin perder la vista",
