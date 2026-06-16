@@ -1,0 +1,1 @@
+Tasks now keep an append-only history of their title and overview as they change over time, recorded automatically in the data layer (seeded at creation, updated whenever the displayed title or overview changes). Not shown in the UI yet — stored for a future history view and search.
