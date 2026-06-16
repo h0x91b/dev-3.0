@@ -1,0 +1,1 @@
+In the active-tasks sidebar, the "Agent is Working" and "AI Review" status group headers now show an animated spinner instead of a static dot, making it obvious the agent is still in progress. Also lightened the task number and last-updated time from fg-muted to fg-3 so they are easier to read.

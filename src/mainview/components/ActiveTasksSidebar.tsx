@@ -395,10 +395,22 @@ function ActiveTasksSidebar({
 									className="absolute left-0 top-0 bottom-0 w-[3px]"
 									style={{ background: statusColors[status] }}
 								/>
-								<div
-									className="w-2 h-2 rounded-full flex-shrink-0 relative"
-									style={{ background: statusColors[status] }}
-								/>
+								{status === "in-progress" || status === "review-by-ai" ? (
+									<div
+										className="w-3 h-3 flex-shrink-0 rounded-full animate-spin"
+										style={{
+											border: `1.5px solid ${statusColors[status]}33`,
+											borderTopColor: statusColors[status],
+										}}
+										data-testid={`sidebar-status-spinner-${status}`}
+										aria-label={getStatusLabel(status, t, project)}
+									/>
+								) : (
+									<div
+										className="w-2 h-2 rounded-full flex-shrink-0 relative"
+										style={{ background: statusColors[status] }}
+									/>
+								)}
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
 									{getStatusLabel(status, t, project)}
 								</span>
@@ -530,7 +542,7 @@ function ActiveTasksSidebar({
 												})()}
 
 												<div className="mt-1 flex items-center gap-1 min-w-0">
-													<div className="text-[0.5625rem] text-fg-muted font-mono shrink-0">
+													<div className="text-[0.5625rem] text-fg-3 font-mono shrink-0">
 														#{task.seq}
 													</div>
 													{assignedLabels.length > 0 && (
@@ -559,7 +571,7 @@ function ActiveTasksSidebar({
 														});
 														return (
 															<span
-																className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-muted font-mono whitespace-nowrap"
+																className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-3 font-mono whitespace-nowrap"
 																title={t("sidebar.statusChanged", { ago: relative, date })}
 																data-testid={`sidebar-status-age-${task.id}`}
 															>
