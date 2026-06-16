@@ -127,6 +127,12 @@ Use \`dev3 note add "..."\` to record durable findings, decisions, and hard-won 
 **Be generous but not noisy.** Lean toward writing the note when in doubt — a slightly-too-detailed note costs nothing, a missing one costs the next agent hours. But never log trivia ("ran the tests", "edited the file", "finished step 2"): if it's derivable from the diff, the commit message, or git history, it does **not** belong in a note. The bar is *"would this save a future agent real time?"* — if yes, write it; if no, skip it.
 
 Keep each note self-contained and concise — one insight per note, phrased so it makes sense months later without this conversation.
+
+\`dev3 note list\` truncates each body to one line. To read a note's complete content (e.g. when resuming a task after a context reset), use \`dev3 note show <id>\` with the 8-char prefix.
+
+## Saving context tokens
+
+If you already received the full task description as your initial prompt (most agents do), run \`dev3 current --brief\` instead of \`dev3 current\` to skip re-printing the description — you keep the project/task/status/overview lines without duplicating text you already hold.
 `;
 
 const SKILL_CONVERSATION_SEARCH = `

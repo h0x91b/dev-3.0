@@ -10,7 +10,7 @@ import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info
  * Works without the app running (reads data files directly).
  * If the app is running, fetches live data via socket.
  */
-export async function handleCurrent(socketPath: string | null): Promise<void> {
+export async function handleCurrent(socketPath: string | null, opts: { brief?: boolean } = {}): Promise<void> {
 	const context = detectContext();
 	if (!context) {
 		const diag = detectContextDiagnostics();
@@ -66,9 +66,13 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 				}
 
 				if (task.description && task.description !== displayTitle) {
-					process.stdout.write("\nDescription:\n");
-					for (const line of task.description.split("\n")) {
-						process.stdout.write(`  ${line}\n`);
+					if (opts.brief) {
+						process.stdout.write("\nDescription: hidden (--brief) — see your initial task prompt, or re-run without --brief.\n");
+					} else {
+						process.stdout.write("\nDescription:\n");
+						for (const line of task.description.split("\n")) {
+							process.stdout.write(`  ${line}\n`);
+						}
 					}
 				}
 
@@ -137,9 +141,13 @@ export async function handleCurrent(socketPath: string | null): Promise<void> {
 
 		const desc = task.description as string | undefined;
 		if (desc && desc !== displayTitle) {
-			process.stdout.write("\nDescription:\n");
-			for (const line of desc.split("\n")) {
-				process.stdout.write(`  ${line}\n`);
+			if (opts.brief) {
+				process.stdout.write("\nDescription: hidden (--brief) — see your initial task prompt, or re-run without --brief.\n");
+			} else {
+				process.stdout.write("\nDescription:\n");
+				for (const line of desc.split("\n")) {
+					process.stdout.write(`  ${line}\n`);
+				}
 			}
 		}
 	} else {

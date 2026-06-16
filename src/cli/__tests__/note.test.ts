@@ -311,6 +311,54 @@ describe("note list", () => {
 	});
 });
 
+// ─── note show ────────────────────────────────────────────────────────────────
+
+describe("note show", () => {
+	const MULTILINE_NOTE: TaskNote = {
+		id: "abcd1234-1111-2222-3333-444444444444",
+		content: "What happened: rewrote the parser.\nWhat's next: wire it into the RPC handler and add tests.",
+		source: "ai",
+		createdAt: "2026-03-02T10:00:00Z",
+		updatedAt: "2026-03-02T10:00:00Z",
+	};
+
+	it("prints the full untruncated note body by 8-char prefix", async () => {
+		mockSend.mockResolvedValue(okResp([MULTILINE_NOTE]));
+
+		await handleNote("show", args(["abcd1234"]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "note.list", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+		});
+		expect(stdoutOutput).toContain("abcd1234");
+		expect(stdoutOutput).toContain("What happened: rewrote the parser.");
+		expect(stdoutOutput).toContain("What's next: wire it into the RPC handler");
+		expect(stdoutOutput).not.toContain("…");
+	});
+
+	it("errors when no note id given", async () => {
+		await expect(handleNote("show", args([]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
+		expect(stderrOutput).toContain("Usage: dev3 note show");
+	});
+
+	it("errors when note not found", async () => {
+		mockSend.mockResolvedValue(okResp([MULTILINE_NOTE]));
+
+		await expect(handleNote("show", args(["deadbeef"]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
+		expect(stderrOutput).toContain("Note not found");
+	});
+
+	it("errors on ambiguous prefix", async () => {
+		const a = { ...MULTILINE_NOTE, id: "ffff0000-aaaa" };
+		const b = { ...MULTILINE_NOTE, id: "ffff0000-bbbb" };
+		mockSend.mockResolvedValue(okResp([a, b]));
+
+		await expect(handleNote("show", args(["ffff0000"]), SOCKET, CTX)).rejects.toThrow(/EXIT_/);
+		expect(stderrOutput).toContain("Ambiguous note id");
+	});
+});
+
 // ─── note delete ──────────────────────────────────────────────────────────────
 
 describe("note delete", () => {

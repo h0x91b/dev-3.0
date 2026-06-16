@@ -23,13 +23,15 @@ const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
 
 Commands:
-  dev3 current                          Show current project, task, status
+  dev3 current [--brief]                Show current project, task, status
+                                         (--brief: hide the full description if you already have it in your prompt)
   dev3 task show [--task <id>]          Full task details
   dev3 task move [--task <id>] --status <status>  Change task status
   dev3 task update [--task <id>] --title "..." [--description "..."]  Update title/description
   dev3 task create --title "..." [--description "..."]  Create a new task (To Do)
   dev3 note add "..." [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
+  dev3 note show <id> [--task <task>]   Show one note's full body (8-char prefix works)
   dev3 note delete <id> [--task <task>] Delete note (8-char prefix works)
   dev3 vents "name" "markdown"          File anonymous dev3-platform feedback (opt-in)
   dev3 overview set "..." [--task <id>] Set task overview (one paragraph)
@@ -96,7 +98,7 @@ async function main(): Promise<void> {
 
 	// Commands that work without the app running
 	if (command === "current") {
-		return await handleCurrent(socketPath);
+		return await handleCurrent(socketPath, { brief: Boolean(args.flags.brief) });
 	}
 	if (command === "install-hooks") {
 		return await handleInstallHooks();
