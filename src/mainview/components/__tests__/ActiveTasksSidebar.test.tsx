@@ -133,12 +133,13 @@ describe("ActiveTasksSidebar", () => {
 
 		// Active task's rail uses the accent token, not a status hex.
 		const activeRail = screen.getByTestId("sidebar-status-rail-t1");
-		expect(activeRail.className).toContain("bg-accent");
+		expect(activeRail.getAttribute("style") ?? "").toMatch(/box-shadow/i);
+		expect(activeRail.querySelector("span")?.getAttribute("style") ?? "").toContain("var(--accent)");
 
 		// Inactive task's rail is tinted inline with its status color.
 		const inactiveRail = screen.getByTestId("sidebar-status-rail-t2");
-		expect(inactiveRail.className).not.toContain("bg-accent");
-		expect(inactiveRail.getAttribute("style")).toMatch(/background/);
+		expect(inactiveRail.getAttribute("style") ?? "").not.toMatch(/box-shadow/i);
+		expect(inactiveRail.querySelector("span")?.getAttribute("style") ?? "").toMatch(/background/);
 	});
 
 	it("toggles between project and global scope and fetches all-project tasks", async () => {

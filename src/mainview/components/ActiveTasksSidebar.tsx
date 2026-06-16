@@ -395,10 +395,22 @@ function ActiveTasksSidebar({
 									className="absolute left-0 top-0 bottom-0 w-[3px]"
 									style={{ background: statusColors[status] }}
 								/>
-								<div
-									className="w-2 h-2 rounded-full flex-shrink-0 relative"
-									style={{ background: statusColors[status] }}
-								/>
+								{status === "in-progress" || status === "review-by-ai" ? (
+									<div
+										className="w-3 h-3 flex-shrink-0 rounded-full animate-spin"
+										style={{
+											border: `1.5px solid ${statusColors[status]}33`,
+											borderTopColor: statusColors[status],
+										}}
+										data-testid={`sidebar-status-spinner-${status}`}
+										aria-label={getStatusLabel(status, t, project)}
+									/>
+								) : (
+									<div
+										className="w-2 h-2 rounded-full flex-shrink-0 relative"
+										style={{ background: statusColors[status] }}
+									/>
+								)}
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
 									{getStatusLabel(status, t, project)}
 								</span>
@@ -435,7 +447,9 @@ function ActiveTasksSidebar({
 											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											className={`w-full text-left px-3 py-2 transition-all relative ${
-												isActive ? "bg-accent/10" : "hover:bg-elevated-hover"
+												isActive
+													? "bg-accent/20 ring-1 ring-inset ring-accent/50"
+													: "hover:bg-elevated-hover"
 											}`}
 										>
 											{/* Faint status wash so the whole card carries its column color
@@ -448,12 +462,30 @@ function ActiveTasksSidebar({
 											)}
 
 											{/* Left rail: status color per card, accent when active. Absolute
-											    so it does not shift content; keeps padding symmetric. */}
-											<span
-												className={`absolute left-0 top-0 bottom-0 w-[3px] ${isActive ? "bg-accent" : ""}`}
-												style={isActive ? undefined : { background: statusColors[task.status] }}
-												data-testid={`sidebar-status-rail-${task.id}`}
-											/>
+											    so it does not shift content; keeps padding symmetric. For
+											    busy statuses a bright highlight flows down the rail. */}
+											{(() => {
+												const isBusy = task.status === "in-progress" || task.status === "review-by-ai";
+												const railColor = isActive ? "rgb(var(--accent))" : statusColors[task.status];
+												return (
+													<span
+														className={`absolute left-0 top-0 bottom-0 overflow-hidden ${isActive ? "w-[4px]" : "w-[3px]"}`}
+														style={isActive ? { boxShadow: "0 0 8px rgb(var(--accent) / 0.7)" } : undefined}
+														data-testid={`sidebar-status-rail-${task.id}`}
+													>
+														<span
+															className="absolute inset-0"
+															style={{ background: railColor, opacity: isBusy ? 0.4 : 1 }}
+														/>
+														{isBusy && (
+															<span
+																className="absolute inset-x-0 h-1/2 animate-rail-flow"
+																style={{ background: `linear-gradient(180deg, transparent, ${railColor}, transparent)` }}
+															/>
+														)}
+													</span>
+												);
+											})()}
 
 											{/* Bell badge */}
 											{bellCount > 0 && (
@@ -530,7 +562,7 @@ function ActiveTasksSidebar({
 												})()}
 
 												<div className="mt-1 flex items-center gap-1 min-w-0">
-													<div className="text-[0.5625rem] text-fg-muted font-mono shrink-0">
+													<div className="text-[0.5625rem] text-fg-3 font-mono shrink-0">
 														#{task.seq}
 													</div>
 													{assignedLabels.length > 0 && (
@@ -559,7 +591,7 @@ function ActiveTasksSidebar({
 														});
 														return (
 															<span
-																className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-muted font-mono whitespace-nowrap"
+																className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-3 font-mono whitespace-nowrap"
 																title={t("sidebar.statusChanged", { ago: relative, date })}
 																data-testid={`sidebar-status-age-${task.id}`}
 															>
