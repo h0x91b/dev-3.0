@@ -188,6 +188,22 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("Add JWT auth");
 		});
 
+		it("hides the description body in --brief mode but keeps other fields", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: SOCKET,
+			});
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			mockReadProject.mockReturnValue(null);
+
+			await handleCurrent(SOCKET, { brief: true });
+
+			expect(stdoutOutput).toContain("Implement auth");
+			expect(stdoutOutput).toContain("hidden (--brief)");
+			expect(stdoutOutput).not.toContain("Add JWT auth to the API endpoints");
+		});
+
 		it("uses short project ID when project not found in files", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",
@@ -323,6 +339,26 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("Description:");
 			expect(stdoutOutput).toContain("longer description");
+		});
+
+		it("hides description in offline --brief mode", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: "",
+			});
+			mockReadProject.mockReturnValue(null);
+			mockReadTask.mockReturnValue({
+				id: FAKE_TASK.id,
+				title: "Auth task",
+				description: "This is a longer description of the auth task",
+				status: "todo",
+			});
+
+			await handleCurrent(null, { brief: true });
+
+			expect(stdoutOutput).toContain("hidden (--brief)");
+			expect(stdoutOutput).not.toContain("longer description of the auth task");
 		});
 	});
 });

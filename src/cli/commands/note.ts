@@ -1,6 +1,6 @@
 import type { Task, TaskNote, NoteSource } from "../../shared/types";
 import { sendRequest } from "../socket-client";
-import { printTable, exitError, exitUsage } from "../output";
+import { printTable, printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
@@ -85,6 +85,50 @@ async function listNotes(args: ParsedArgs, socketPath: string, context: CliConte
 	printTable(headers, rows);
 }
 
+async function showNote(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "task-id", "project"]);
+	const noteId = args.positional[0];
+	if (!noteId) {
+		exitUsage("Usage: dev3 note show <note-id> [--task <id>|--task-id <id>]");
+	}
+
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
+	if (!rawTaskId) {
+		exitUsage("--task <id> or --task-id <id> is required (or run from inside a worktree)");
+	}
+	const taskId = expandShortId(rawTaskId, context);
+
+	const params: Record<string, unknown> = { taskId };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	const resp = await sendRequest(socketPath, "note.list", params);
+	if (!resp.ok) exitError(resp.error || "Failed to list notes");
+
+	const notes = resp.data as TaskNote[];
+	const matches = notes.filter((n) => n.id === noteId || n.id.startsWith(noteId));
+	if (matches.length === 0) {
+		exitError(`Note not found: ${noteId}`);
+	}
+	if (matches.length > 1) {
+		exitError(
+			`Ambiguous note id: ${noteId}`,
+			`Matches ${matches.length} notes: ${matches.map((n) => n.id.slice(0, 8)).join(", ")}`,
+		);
+	}
+
+	const note = matches[0];
+	printDetail([
+		["ID:", note.id.slice(0, 8)],
+		["Source:", note.source],
+		["Created:", formatDate(note.createdAt)],
+	]);
+	process.stdout.write("\nContent:\n");
+	for (const line of note.content.split("\n")) {
+		process.stdout.write(`  ${line}\n`);
+	}
+}
+
 async function deleteNote(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["task", "task-id", "project"]);
 	const noteId = args.positional[0];
@@ -119,12 +163,14 @@ export async function handleNote(
 			return addNote(args, socketPath, context);
 		case "list":
 			return listNotes(args, socketPath, context);
+		case "show":
+			return showNote(args, socketPath, context);
 		case "delete":
 			return deleteNote(args, socketPath, context);
 		default:
 			exitUsage(
 				`Unknown subcommand: note ${subcommand || "(none)"}` +
-				"\nAvailable: note add, note list, note delete",
+				"\nAvailable: note add, note list, note show, note delete",
 			);
 	}
 }
