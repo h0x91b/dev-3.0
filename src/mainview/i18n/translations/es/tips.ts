@@ -226,6 +226,8 @@ const tips = {
 	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.)",
 	"tip.taskSwitcherGlobal.title": "Cambiar de tarea entre proyectos",
 	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab abre el selector en todos los proyectos, no solo en el actual.",
+	"tip.pasteLargeText.title": "Pega registros grandes como archivos",
+	"tip.pasteLargeText.body": "Pega un bloque de texto grande y se guarda como adjunto .txt, manteniendo la tarea ligera en vez de sobrecargada.",
 };
 
 export default tips;

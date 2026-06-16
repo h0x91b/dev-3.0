@@ -42,6 +42,9 @@ const columns = {
 	"notes.failedAdd": "Не удалось добавить заметку: {error}",
 	"notes.failedDelete": "Не удалось удалить заметку: {error}",
 
+	// Paste
+	"paste.savingText": "Сохранение вставленного текста...",
+
 	// Images
 	"images.pasting": "Вставка изображения...",
 	"images.pasteFailed": "Не удалось вставить изображение",

@@ -226,6 +226,8 @@ const tips = {
 	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.)",
 	"tip.taskSwitcherGlobal.title": "Switch tasks across projects",
 	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab opens the switcher across all projects, not just the current one.",
+	"tip.pasteLargeText.title": "Paste big logs as files",
+	"tip.pasteLargeText.body": "Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.",
 } as const;
 
 export default tips;

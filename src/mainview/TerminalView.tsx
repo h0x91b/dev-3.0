@@ -10,6 +10,7 @@ import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
+import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 
 const DARK_TERMINAL_THEME = {
@@ -1006,39 +1007,59 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
 
-	// Intercept paste events containing images (clipboard → save to disk → inject path into PTY).
-	// Normal text paste is unaffected — event propagates to ghostty-web as usual.
+	// Intercept paste events containing images or large text blocks (clipboard → save to disk → inject path into PTY).
+	// Small text pastes are unaffected — the event propagates to ghostty-web as usual.
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
 
+		function sendPathToPty(path: string) {
+			if (wsRef.current?.readyState === WebSocket.OPEN) {
+				const escaped = path.replace(/ /g, "\\ ");
+				wsRef.current.send(escaped);
+			}
+			try { termRef.current?.focus(); } catch { /* disposed */ }
+		}
+
 		function onPaste(e: ClipboardEvent) {
 			const items = e.clipboardData?.items;
-			if (!items) return;
 
 			let hasImage = false;
-			for (let i = 0; i < items.length; i++) {
-				if (items[i].type.startsWith("image/")) {
-					hasImage = true;
-					break;
+			if (items) {
+				for (let i = 0; i < items.length; i++) {
+					if (items[i].type.startsWith("image/")) {
+						hasImage = true;
+						break;
+					}
 				}
 			}
-			if (!hasImage) return;
-			// No project context (e.g. home terminal) — image paste is unsupported,
+
+			// No project context (e.g. home terminal) — attachments are unsupported,
 			// let the default text paste behavior run.
 			if (!projectId) return;
 
+			if (hasImage) {
+				e.preventDefault();
+				e.stopPropagation();
+				api.request.pasteClipboardImage({ projectId }).then((result) => {
+					if (result) sendPathToPty(result.path);
+				}).catch((err) => {
+					console.error("[TerminalView] Image paste failed:", err);
+				});
+				return;
+			}
+
+			// Large text paste → save to a .txt file and inject its path instead of
+			// streaming the whole block into the PTY.
+			const text = e.clipboardData?.getData("text/plain") ?? "";
+			if (!isLargeTextPaste(text)) return;
+
 			e.preventDefault();
 			e.stopPropagation();
-
-			api.request.pasteClipboardImage({ projectId }).then((result) => {
-				if (result && wsRef.current?.readyState === WebSocket.OPEN) {
-					const escaped = result.path.replace(/ /g, "\\ ");
-					wsRef.current.send(escaped);
-				}
-				try { termRef.current?.focus(); } catch { /* disposed */ }
+			uploadPastedText(projectId, text).then((path) => {
+				if (path) sendPathToPty(path);
 			}).catch((err) => {
-				console.error("[TerminalView] Image paste failed:", err);
+				console.error("[TerminalView] Large text paste failed:", err);
 			});
 		}
 

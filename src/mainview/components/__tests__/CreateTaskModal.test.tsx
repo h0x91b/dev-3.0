@@ -97,6 +97,20 @@ function dispatchDrop(target: Element, files: File[]) {
 	});
 }
 
+function dispatchTextPaste(target: Element, text: string) {
+	const event = new Event("paste", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "clipboardData", {
+		value: {
+			items: [{ type: "text/plain", kind: "string" }],
+			getData: (type: string) => (type === "text/plain" ? text : ""),
+		},
+	});
+	act(() => {
+		target.dispatchEvent(event);
+	});
+	return event;
+}
+
 describe("CreateTaskModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -391,6 +405,39 @@ describe("CreateTaskModal", () => {
 		await waitFor(() => {
 			expect(textarea.value).toBe("/tmp/uploaded-notes.txt\n");
 		});
+	});
+
+	it("saves a large text paste to a .txt file and inserts its path", async () => {
+		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-pasted-text.txt" });
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
+		const bigText = "x".repeat(2000);
+		const event = dispatchTextPaste(textarea, bigText);
+
+		expect(event.defaultPrevented).toBe(true);
+		await waitFor(() => {
+			expect(mockedApi.request.uploadFileBase64).toHaveBeenCalledWith(
+				expect.objectContaining({
+					projectId: "p1",
+					filename: "pasted-text.txt",
+					mimeType: "text/plain",
+				}),
+			);
+		});
+		await waitFor(() => {
+			expect(textarea.value).toBe("/tmp/uploaded-pasted-text.txt\n");
+		});
+	});
+
+	it("lets a small text paste fall through without uploading", async () => {
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
+		const event = dispatchTextPaste(textarea, "short note");
+
+		expect(event.defaultPrevented).toBe(false);
+		expect(mockedApi.request.uploadFileBase64).not.toHaveBeenCalled();
 	});
 
 	// ---- Branch selector ----

@@ -8,7 +8,7 @@ import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
-import { useImagePaste } from "../hooks/useImagePaste";
+import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { useSkillAutocomplete } from "../hooks/useSkillAutocomplete";
 import { removeImagePath } from "../utils/imageAttachments";
@@ -87,7 +87,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription);
 
-	const { handlePaste, isPasting } = useImagePaste(project.id, insertPathAtCursor);
+	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
 
 	const handleRemovePath = useCallback((path: string) => {
@@ -361,7 +361,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 						)}
 					</div>
 					{isPasting && (
-						<span className="text-[0.6875rem] text-accent animate-pulse">{t("images.pasting")}</span>
+						<span className="text-[0.6875rem] text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={description} onRemovePath={handleRemovePath} />
 					{generatedTitle && (

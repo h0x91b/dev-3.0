@@ -721,6 +721,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskSwitcherGlobal.body",
 		icon: "\uEB01", // nf-cod-globe
 	},
+	{
+		id: "paste-large-text",
+		titleKey: "tip.pasteLargeText.title",
+		bodyKey: "tip.pasteLargeText.body",
+		icon: "\u{F0192}", // nf-md-file_document_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

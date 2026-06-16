@@ -42,6 +42,9 @@ const columns = {
 	"notes.failedAdd": "Error al agregar nota: {error}",
 	"notes.failedDelete": "Error al eliminar nota: {error}",
 
+	// Paste
+	"paste.savingText": "Guardando texto pegado...",
+
 	// Images
 	"images.pasting": "Pegando imagen...",
 	"images.pasteFailed": "Error al pegar imagen",
