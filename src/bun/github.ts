@@ -61,6 +61,13 @@ async function runGh(
 		stderr: "pipe",
 		env: options?.env,
 	});
+	// Start draining stdout/stderr immediately, BEFORE awaiting exit. If we
+	// waited for exit first, a command whose output exceeds the OS pipe buffer
+	// (~64KB) would block on write with nobody reading — proc.exited never
+	// resolves and we deadlock (or, with a timeout, get killed and lose output).
+	const stdoutPromise = new Response(proc.stdout).text();
+	const stderrPromise = new Response(proc.stderr).text();
+
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
 	const outcome = options?.timeoutMs
 		? await Promise.race([
@@ -78,10 +85,7 @@ async function runGh(
 		log.warn(`gh ${args.join(" ")} timed out`, { timeoutMs: options?.timeoutMs });
 		return { code: GH_TIMEOUT_EXIT_CODE, ok: false, stdout: "", stderr: `gh timed out after ${options?.timeoutMs}ms` };
 	}
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
+	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
 	return {
 		code: outcome.code,
 		ok: outcome.code === 0,
