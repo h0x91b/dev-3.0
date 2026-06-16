@@ -3,7 +3,7 @@ import type { TaskNote } from "../../shared/types";
 import { useT } from "../i18n";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
-import { useImagePaste } from "../hooks/useImagePaste";
+import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
 
@@ -58,7 +58,7 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 		});
 	}, [onSave]);
 
-	const { handlePaste, isPasting } = useImagePaste(projectId ?? "", insertPath);
+	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(projectId ?? "", insertPath);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(projectId ?? "", insertPath);
 
 	const handleRemovePath = useCallback((pathToRemove: string) => {
@@ -136,7 +136,7 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 						autoFocus={note.content === ""}
 					/>
 					{isPasting && (
-						<span className="text-[0.625rem] text-accent animate-pulse">{t("images.pasting")}</span>
+						<span className="text-[0.625rem] text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={value} onRemovePath={handleRemovePath} />
 				</div>

@@ -9,6 +9,13 @@ const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 const IMAGE_PATH_RE = /(\/(?:[^\n"'<>]*\/)*[^\n"'<>]+\.(png|jpe?g|gif|webp|bmp|svg))/gi;
 
 /**
+ * Match non-image attachment paths we generate under the worktree uploads dir.
+ * Scoped to `/uploads/upload-<ts>-<hex>-<name>.<ext>` so plain file paths
+ * mentioned in prose (e.g. `/Users/me/src/foo.ts`) don't render as chips.
+ */
+const UPLOAD_FILE_PATH_RE = /(\/[^\n"'<>]*\/uploads\/upload-\d+-[0-9a-f]{4}-[^\n"'<>]+\.[A-Za-z0-9]{1,16})/gi;
+
+/**
  * Extract absolute image paths from text.
  * Returns a deduplicated array of paths.
  */
@@ -19,6 +26,21 @@ export function extractImagePaths(text: string): string[] {
 	IMAGE_PATH_RE.lastIndex = 0;
 	while ((match = IMAGE_PATH_RE.exec(text)) !== null) {
 		results.push(match[1]);
+	}
+	return [...new Set(results)];
+}
+
+/**
+ * Extract non-image uploaded file paths (e.g. pasted-text.txt) from text.
+ * Returns a deduplicated array of paths.
+ */
+export function extractFilePaths(text: string): string[] {
+	if (!text) return [];
+	const results: string[] = [];
+	let match: RegExpExecArray | null;
+	UPLOAD_FILE_PATH_RE.lastIndex = 0;
+	while ((match = UPLOAD_FILE_PATH_RE.exec(text)) !== null) {
+		if (!isImagePath(match[1])) results.push(match[1]);
 	}
 	return [...new Set(results)];
 }

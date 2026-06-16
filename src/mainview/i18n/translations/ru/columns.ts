@@ -42,6 +42,9 @@ const columns = {
 	"notes.failedAdd": "Не удалось добавить заметку: {error}",
 	"notes.failedDelete": "Не удалось удалить заметку: {error}",
 
+	// Paste
+	"paste.savingText": "Сохранение вставленного текста...",
+
 	// Images
 	"images.pasting": "Вставка изображения...",
 	"images.pasteFailed": "Не удалось вставить изображение",
@@ -51,6 +54,10 @@ const columns = {
 	"images.close": "Закрыть",
 	"images.remove": "Удалить изображение",
 	"images.dropHere": "Перетащите файл сюда",
+
+	// File attachments
+	"attachments.openFile": "Открыть {name}",
+	"attachments.removeFile": "Удалить файл",
 };
 
 export default columns;

@@ -42,6 +42,9 @@ const columns = {
 	"notes.failedAdd": "Error al agregar nota: {error}",
 	"notes.failedDelete": "Error al eliminar nota: {error}",
 
+	// Paste
+	"paste.savingText": "Guardando texto pegado...",
+
 	// Images
 	"images.pasting": "Pegando imagen...",
 	"images.pasteFailed": "Error al pegar imagen",
@@ -51,6 +54,10 @@ const columns = {
 	"images.close": "Cerrar",
 	"images.remove": "Eliminar imagen",
 	"images.dropHere": "Suelta el archivo aquí",
+
+	// File attachments
+	"attachments.openFile": "Abrir {name}",
+	"attachments.removeFile": "Eliminar archivo",
 };
 
 export default columns;

@@ -42,6 +42,9 @@ const columns = {
 	"notes.failedAdd": "Failed to add note: {error}",
 	"notes.failedDelete": "Failed to delete note: {error}",
 
+	// Paste
+	"paste.savingText": "Saving pasted text...",
+
 	// Images
 	"images.pasting": "Pasting image...",
 	"images.pasteFailed": "Failed to paste image",
@@ -51,6 +54,10 @@ const columns = {
 	"images.close": "Close",
 	"images.remove": "Remove image",
 	"images.dropHere": "Drop file here",
+
+	// File attachments
+	"attachments.openFile": "Open {name}",
+	"attachments.removeFile": "Remove file",
 } as const;
 
 export default columns;

@@ -226,6 +226,8 @@ const tips = {
 	"tip.taskSwitcher.body": "Держите Option и жмите Tab, чтобы листать активные задачи; отпустите — перейдёте. Стрелки ↑↓ листают в обе стороны. (На Linux — Ctrl+Tab.)",
 	"tip.taskSwitcherGlobal.title": "Переключение задач между проектами",
 	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab открывает переключатель по всем проектам, а не только по текущему.",
+	"tip.pasteLargeText.title": "Вставляйте большие логи файлами",
+	"tip.pasteLargeText.body": "Вставьте большой блок текста — он сохранится как .txt-вложение, и задача останется лёгкой, а не раздутой.",
 };
 
 export default tips;

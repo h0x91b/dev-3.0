@@ -1,0 +1,1 @@
+Pasting a large text block (over 1 KB) into a task description, note, or the agent terminal now saves it as a .txt attachment in the worktree uploads dir and inserts its path, just like image paste — instead of dumping the raw text and bloating the task. Uploaded non-image files now render as a removable file card in the attachments strip alongside image thumbnails.

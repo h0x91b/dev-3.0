@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { extractImagePaths } from "../utils/imageAttachments";
+import { extractImagePaths, extractFilePaths } from "../utils/imageAttachments";
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ImageLightbox } from "./ImageLightbox";
+import { FileAttachmentCard } from "./FileAttachmentCard";
 
 interface ImageAttachmentsStripProps {
 	text: string;
@@ -10,9 +11,10 @@ interface ImageAttachmentsStripProps {
 
 export function ImageAttachmentsStrip({ text, onRemovePath }: ImageAttachmentsStripProps) {
 	const paths = extractImagePaths(text);
+	const filePaths = extractFilePaths(text);
 	const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-	if (paths.length === 0) return null;
+	if (paths.length === 0 && filePaths.length === 0) return null;
 
 	return (
 		<>
@@ -22,6 +24,13 @@ export function ImageAttachmentsStrip({ text, onRemovePath }: ImageAttachmentsSt
 						key={path}
 						path={path}
 						onClick={() => setLightboxIndex(i)}
+						onRemove={onRemovePath ? () => onRemovePath(path) : undefined}
+					/>
+				))}
+				{filePaths.map((path) => (
+					<FileAttachmentCard
+						key={path}
+						path={path}
 						onRemove={onRemovePath ? () => onRemovePath(path) : undefined}
 					/>
 				))}
