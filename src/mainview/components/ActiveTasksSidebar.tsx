@@ -462,12 +462,30 @@ function ActiveTasksSidebar({
 											)}
 
 											{/* Left rail: status color per card, accent when active. Absolute
-											    so it does not shift content; keeps padding symmetric. */}
-											<span
-												className={`absolute left-0 top-0 bottom-0 ${isActive ? "w-[4px] bg-accent" : "w-[3px]"}`}
-												style={isActive ? { boxShadow: "0 0 8px rgb(var(--accent) / 0.7)" } : { background: statusColors[task.status] }}
-												data-testid={`sidebar-status-rail-${task.id}`}
-											/>
+											    so it does not shift content; keeps padding symmetric. For
+											    busy statuses a bright highlight flows down the rail. */}
+											{(() => {
+												const isBusy = task.status === "in-progress" || task.status === "review-by-ai";
+												const railColor = isActive ? "rgb(var(--accent))" : statusColors[task.status];
+												return (
+													<span
+														className={`absolute left-0 top-0 bottom-0 overflow-hidden ${isActive ? "w-[4px]" : "w-[3px]"}`}
+														style={isActive ? { boxShadow: "0 0 8px rgb(var(--accent) / 0.7)" } : undefined}
+														data-testid={`sidebar-status-rail-${task.id}`}
+													>
+														<span
+															className="absolute inset-0"
+															style={{ background: railColor, opacity: isBusy ? 0.4 : 1 }}
+														/>
+														{isBusy && (
+															<span
+																className="absolute inset-x-0 h-1/2 animate-rail-flow"
+																style={{ background: `linear-gradient(180deg, transparent, ${railColor}, transparent)` }}
+															/>
+														)}
+													</span>
+												);
+											})()}
 
 											{/* Bell badge */}
 											{bellCount > 0 && (

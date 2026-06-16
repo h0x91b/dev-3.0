@@ -943,22 +943,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				userOverview={task.userOverview ?? null}
 				description={task.description}
 			/>
-
-			{/* Indeterminate activity bar — only while an agent is actively running
-			    (in-progress / AI review), mirroring the sidebar spinner semantics.
-			    A faint always-on track keeps it visible; a brighter highlight sweeps. */}
-			{(task.status === "in-progress" || task.status === "review-by-ai") && (
-				<div
-					data-testid={`task-activity-bar-${task.id}`}
-					className="pointer-events-none absolute bottom-0 left-0 right-0 h-[3px] overflow-hidden rounded-b-xl"
-				>
-					<div className="absolute inset-0" style={{ background: color, opacity: 0.2 }} />
-					<div
-						className="absolute inset-y-0 left-0 w-1/3 animate-indeterminate-bar"
-						style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
-					/>
-				</div>
-			)}
 		</div>
 	);
 }
