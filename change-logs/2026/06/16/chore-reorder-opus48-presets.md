@@ -1,0 +1,1 @@
+Reordered the built-in Claude presets so the Opus 4.8 variants sit at the top of the list and made an Opus 4.8 preset the default, since Fable 5 is temporarily unavailable. Fable 5 and Sonnet presets remain below for when Fable 5 returns.
