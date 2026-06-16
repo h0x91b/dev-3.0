@@ -1,0 +1,1 @@
+Strengthened two sections of the dev3 agent skill. Notes: stress that notes are the durable memory surviving worktree destruction, with a concrete bar for what to record versus skip. Vents: nudge agents to use the platform-feedback channel far more proactively, lowering the bar so everyday friction gets reported instead of the channel sitting empty.

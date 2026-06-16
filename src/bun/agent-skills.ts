@@ -112,9 +112,21 @@ Only request completion when the work is truly done (committed, tested, nothing 
 `;
 
 const SKILL_NOTES = `
-## Notes (per-task scratchpad)
+## Notes (per-task scratchpad) — your gift to future agents
 
-Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
+Use \`dev3 note add "..."\` to record durable findings, decisions, and hard-won context.
+
+**Why this matters more than it looks:** when a task is completed or cancelled, the worktree is destroyed and the conversation transcript fades into search noise — but **notes survive intact** and are surfaced (weighted higher than raw chatter) to every future agent via \`dev3 conversations search\`. A note you write today is often the single most useful thing the *next* agent finds when it hits the same wall. Treat notes as the long-term memory of the project, not a personal scratchpad.
+
+**Write a note whenever you:**
+- **dug something up** that wasn't obvious from the code — a non-trivial root cause, how two subsystems actually talk, why a thing is built the way it is.
+- **learned something you didn't know** going in — an undocumented invariant, a surprising API behavior, a gotcha in a dependency.
+- **kept getting it wrong** — a mistake you made repeatedly, a wrong assumption that cost you time, a footgun. Spell out the correct path so the next agent skips the whole detour.
+- **made a real decision** — what you chose, what you rejected, and the reason (the *why*, not just the *what*).
+
+**Be generous but not noisy.** Lean toward writing the note when in doubt — a slightly-too-detailed note costs nothing, a missing one costs the next agent hours. But never log trivia ("ran the tests", "edited the file", "finished step 2"): if it's derivable from the diff, the commit message, or git history, it does **not** belong in a note. The bar is *"would this save a future agent real time?"* — if yes, write it; if no, skip it.
+
+Keep each note self-contained and concise — one insight per note, phrased so it makes sense months later without this conversation.
 `;
 
 const SKILL_CONVERSATION_SEARCH = `
@@ -277,6 +289,8 @@ dev3 gives you a private, background feedback channel for the **dev3 platform it
 
 1. **Something went wrong / got in your way** — a CLI command that is missing or confusing, an unclear skill instruction, broken tmux integration, contradictory docs, or repeated failures caused by dev3 itself. (A bug report.)
 2. **Something is missing that would help** — a capability dev3 doesn't have yet that would have saved you work. e.g. "I spent ~6 turns doing X by hand; if dev3 had a \`dev3 <foo>\` command / hook / field for this, it would take one step next time." (A feature request / improvement idea.)
+
+**Don't sit on real friction — this channel is underused.** You don't need a dramatic blocker to vent: a command that took two tries to get right, a skill instruction you had to re-read, a flag you wished existed, or a doc that contradicted reality is each worth a quick vent. The maintainer can only fix what they hear about, and a vent costs almost nothing. So when something in dev3 genuinely slowed you down or was clearly missing, file it rather than letting it slide — but don't manufacture feedback when the session ran smoothly.
 
 File it with:
 
