@@ -6,6 +6,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
+import { startVisibilityAwarePoll } from "../utils/poll";
 
 interface TmuxSessionManagerProps {
 	navigate: (route: Route) => void;
@@ -63,20 +64,10 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 		return request;
 	}, []);
 
-	// Poll every 30 seconds — use setTimeout chain (not setInterval) to
-	// prevent stampede on app wake/reconnect.
+	// Poll every 30 seconds. Visibility-aware so it pauses while the app is
+	// hidden and runs a single refresh on wake — no stampede on resume.
 	useEffect(() => {
-		let cancelled = false;
-		let timer: ReturnType<typeof setTimeout> | null = null;
-		async function poll() {
-			await fetchSessions();
-			if (!cancelled) timer = setTimeout(poll, 30_000);
-		}
-		poll();
-		return () => {
-			cancelled = true;
-			if (timer) clearTimeout(timer);
-		};
+		return startVisibilityAwarePoll({ fn: async () => { await fetchSessions(); }, intervalMs: 30_000 });
 	}, [fetchSessions]);
 
 	// Refresh on popover open

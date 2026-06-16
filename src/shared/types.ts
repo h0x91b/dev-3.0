@@ -1672,6 +1672,15 @@ export type AppRPCSchema = {
 				params: { requestId: string; approved: boolean };
 				response: void;
 			};
+			/**
+			 * Cheap liveness probe for the desktop RPC bridge watchdog. The renderer
+			 * pings this on wake/focus with a short timeout; a missed ping means the
+			 * Electrobun localhost socket has jammed and the bridge needs recovery.
+			 */
+			ping: {
+				params: void;
+				response: { ok: true; t: number };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };

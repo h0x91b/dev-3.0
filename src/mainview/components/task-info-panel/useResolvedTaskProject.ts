@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
+import { startVisibilityAwarePoll } from "../../utils/poll";
 
 export function useResolvedTaskProject(task: Task, project: Project): Project {
 	const [resolvedProject, setResolvedProject] = useState(project);
@@ -27,12 +28,11 @@ export function useResolvedTaskProject(task: Task, project: Project): Project {
 				});
 		};
 
-		fetchResolved();
-		const timer = setInterval(fetchResolved, 10_000);
+		const stop = startVisibilityAwarePoll({ fn: fetchResolved, intervalMs: 10_000 });
 
 		return () => {
 			cancelled = true;
-			clearInterval(timer);
+			stop();
 		};
 	}, [project, project.id, task.worktreePath]);
 

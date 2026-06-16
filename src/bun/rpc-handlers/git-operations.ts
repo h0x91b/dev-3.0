@@ -12,6 +12,7 @@ import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
+import { Semaphore } from "../concurrency";
 import { getPushMessage, log } from "./shared";
 import {
 	type MergeCompletionFingerprint,
@@ -25,6 +26,9 @@ const gitOpPaneIds = new Map<string, string>();
 // undelivered push), the prompt must come back instead of being lost forever.
 const mergeNotifiedPromptKeys = new Map<string, number>();
 const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
+// Bound concurrent heavy branch-status runs across all tasks (see getBranchStatus).
+const GIT_STATUS_MAX_CONCURRENCY = 4;
+const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
 const prPromotedTasks = new Set<string>();
 
 function mergePromptKey(taskId: string, fingerprint: string | null): string {
@@ -530,7 +534,10 @@ async function getBranchStatus(params: { taskId: string; projectId: string; comp
 		return existing;
 	}
 
-	const promise = getBranchStatusImpl(params);
+	// Cap cross-task concurrency: each impl run spawns `git fetch` + `gh` + many
+	// local git commands. A wave of panels polling at once (e.g. on wake) would
+	// otherwise fork dozens of git processes simultaneously and choke the machine.
+	const promise = branchStatusSemaphore.run(() => getBranchStatusImpl(params));
 	branchStatusInFlight.set(dedupKey, promise);
 	try {
 		return await promise;

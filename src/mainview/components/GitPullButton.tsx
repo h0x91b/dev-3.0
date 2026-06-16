@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { startVisibilityAwarePoll } from "../utils/poll";
 import GitPullErrorModal from "./GitPullErrorModal";
 
 interface GitPullButtonProps {
@@ -54,11 +55,10 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 
 	useEffect(() => {
 		mountedRef.current = true;
-		refreshBranch();
-		const interval = setInterval(refreshBranch, BRANCH_POLL_MS);
+		const stop = startVisibilityAwarePoll({ fn: refreshBranch, intervalMs: BRANCH_POLL_MS });
 		return () => {
 			mountedRef.current = false;
-			clearInterval(interval);
+			stop();
 			if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
 		};
 	}, [refreshBranch]);

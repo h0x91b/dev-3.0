@@ -81,6 +81,12 @@ async function setWindowForeground(params: { focused: boolean }): Promise<void> 
 	setAppForeground(params.focused);
 }
 
+// Liveness probe for the renderer's RPC bridge watchdog. Intentionally trivial:
+// it must round-trip only if the Electrobun localhost socket is alive.
+async function ping(): Promise<{ ok: true; t: number }> {
+	return { ok: true, t: Date.now() };
+}
+
 async function getProjects(): Promise<Project[]> {
 	log.info("→ getProjects");
 	const rawProjects = await data.loadProjects();
@@ -796,6 +802,7 @@ export const appHandlers = {
 	openNewWindow,
 	hideApp,
 	setWindowForeground,
+	ping,
 	updateMenuContext,
 	getProjects,
 	reorderProjects,

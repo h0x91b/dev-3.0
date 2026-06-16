@@ -20,6 +20,7 @@ import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
+import { startVisibilityAwarePoll } from "../utils/poll";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
@@ -159,9 +160,7 @@ function KanbanBoard({
 	}, [project.id, tasks]);
 
 	useEffect(() => {
-		fetchPRs();
-		const interval = setInterval(fetchPRs, 60_000);
-		return () => clearInterval(interval);
+		return startVisibilityAwarePoll({ fn: fetchPRs, intervalMs: 60_000 });
 	}, [fetchPRs]);
 
 	// Global dragend listener to clear drag state
