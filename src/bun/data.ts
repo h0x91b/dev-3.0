@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import type { Project, Task, TaskStatus, TipState } from "../shared/types";
-import { titleFromDescription } from "../shared/types";
+import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskStatus, TipState } from "../shared/types";
+import { getTaskOverview, getTaskTitle, titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { detectClonePaths } from "./cow-clone";
@@ -405,6 +405,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			if ((task as any).customColumnId === undefined) task.customColumnId = null;
 			if ((task as any).overview === undefined) task.overview = null;
 			if ((task as any).userOverview === undefined) task.userOverview = null;
+				if ((task as any).history === undefined) task.history = [];
 		}
 
 		// Backfill seq for tasks created before seq existed
@@ -571,6 +572,7 @@ export async function addTask(
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 		};
+		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);
 		log.info("Task created", { taskId: task.id, seq: task.seq, title });
@@ -673,6 +675,8 @@ function applyTaskUpdate(
 	}
 	const now = new Date().toISOString();
 	const statusChanged = updates.status && updates.status !== currentTask.status;
+	const prevTitle = getTaskTitle(currentTask);
+	const prevOverview = getTaskOverview(currentTask);
 
 	if (statusChanged) {
 		const newStatus = updates.status!;
@@ -707,7 +711,31 @@ function applyTaskUpdate(
 		tasks[idx] = { ...tasks[idx], ...updates, updatedAt: now };
 	}
 
+	recordTitleOverviewHistory(tasks, idx, prevTitle, prevOverview, now);
+
 	return tasks[idx];
+}
+
+/**
+ * Append a snapshot to the task's history when its effective (displayed) title
+ * or overview changed. Each entry captures both values so it stands alone. No
+ * entry is written when neither changed (e.g. status-only moves).
+ */
+function recordTitleOverviewHistory(
+	tasks: Task[],
+	idx: number,
+	prevTitle: string,
+	prevOverview: string | null,
+	now: string,
+): void {
+	const nextTitle = getTaskTitle(tasks[idx]);
+	const nextOverview = getTaskOverview(tasks[idx]);
+	const titleChanged = nextTitle !== prevTitle;
+	const overviewChanged = nextOverview !== prevOverview;
+	if (!titleChanged && !overviewChanged) return;
+	const changed: TaskHistoryChange = titleChanged && overviewChanged ? "both" : titleChanged ? "title" : "overview";
+	const entry: TaskHistoryEntry = { at: now, title: nextTitle, overview: nextOverview, changed };
+	tasks[idx] = { ...tasks[idx], history: [...(tasks[idx].history ?? []), entry] };
 }
 
 function isInSameRenderedColumn(task: Task, status: string, customColumnId: string | null | undefined): boolean {

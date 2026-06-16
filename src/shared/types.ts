@@ -613,6 +613,14 @@ export interface Task {
 	existingBranch?: string | null;
 	notes?: TaskNote[];
 	customColumnId?: string | null;
+	/**
+	 * Append-only log of the task's title/overview as they changed over time.
+	 * Written automatically by the data layer whenever the *effective*
+	 * (displayed) title or overview changes — and seeded once at creation. Each
+	 * entry is a full snapshot of both values, so it is self-contained. Not
+	 * surfaced in the UI yet; kept for a future history view and for search.
+	 */
+	history?: TaskHistoryEntry[];
 	/** True while the worktree is being created (heavy I/O in progress). */
 	preparing?: boolean;
 	/** Current preparation stage shown while the task is still being set up. */
@@ -740,6 +748,33 @@ export interface TaskSessionState {
 /** Returns the display title: custom override if set, otherwise auto-generated. */
 export function getTaskTitle(task: Task): string {
 	return task.customTitle || task.title;
+}
+
+/**
+ * Returns the effective displayed overview: the user override if set, otherwise
+ * the agent-written overview. Mirrors the precedence used in the task cards and
+ * CLI. Returns null when neither is present.
+ */
+export function getTaskOverview(task: Task): string | null {
+	return task.userOverview?.trim() || task.overview?.trim() || null;
+}
+
+/** What changed in a {@link TaskHistoryEntry}. */
+export type TaskHistoryChange = "created" | "title" | "overview" | "both";
+
+/**
+ * One immutable snapshot of a task's displayed title + overview, captured at the
+ * moment either of them changed. Append-only; see {@link Task.history}.
+ */
+export interface TaskHistoryEntry {
+	/** ISO timestamp of the change. */
+	at: string;
+	/** Effective title at this point (custom override or auto-generated). */
+	title: string;
+	/** Effective overview at this point (user override or agent overview), or null. */
+	overview: string | null;
+	/** Which displayed value(s) changed and triggered this snapshot. */
+	changed: TaskHistoryChange;
 }
 
 /** Humanize a status slug for display in notifications (e.g. "in-progress" → "In Progress"). */
