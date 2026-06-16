@@ -233,6 +233,19 @@ describe("TaskCard", () => {
 			expect(screen.getByText("#5 · Variant 3")).toBeInTheDocument();
 		});
 
+		it("renders the indeterminate activity bar for active agent statuses", () => {
+			renderCard(makeTask({ id: "t1", status: "in-progress" }));
+			expect(screen.getByTestId("task-activity-bar-t1")).toBeInTheDocument();
+		});
+
+		it("does not render the activity bar for waiting or terminal statuses", () => {
+			for (const status of ["todo", "user-questions", "review-by-user", "completed"] as TaskStatus[]) {
+				const { unmount } = renderCard(makeTask({ id: "t1", status }));
+				expect(screen.queryByTestId("task-activity-bar-t1")).not.toBeInTheDocument();
+				unmount();
+			}
+		});
+
 		it("shows agent name without config when configId does not match", () => {
 			renderCard(makeTask({
 				seq: 5,
