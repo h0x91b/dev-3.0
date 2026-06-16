@@ -15,6 +15,7 @@ import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
 import { handleGui } from "./commands/gui";
+import { handleConversations } from "./commands/conversations";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 
@@ -40,6 +41,7 @@ Commands:
   dev3 label set <id> [<id>...] [--task <task>]  Assign labels to a task
   dev3 label set --clear [--task <id>]  Remove all labels from a task
   dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]  List tasks (newest first, default 50)
+  dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]  Search past task conversations (completed/cancelled)
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
@@ -101,6 +103,10 @@ async function main(): Promise<void> {
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();
+	}
+	if (command === "conversations") {
+		// Read-only search over local transcript files — no app/socket needed.
+		return await handleConversations(subcommand, args, context);
 	}
 	if (command === "remote") {
 		// `dev3 remote` IS the app in headless mode — it must not require a

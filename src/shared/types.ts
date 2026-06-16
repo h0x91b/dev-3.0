@@ -1,4 +1,5 @@
 import type { RPCSchema } from "electrobun/bun";
+import type { ConversationMatch } from "./conversation-search-core";
 
 // ---- Changelog ----
 
@@ -1183,6 +1184,10 @@ export type AppRPCSchema = {
 			getAllProjectTasks: {
 				params: void;
 				response: { projectId: string; tasks: Task[] }[];
+			};
+			searchConversations: {
+				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };
+				response: ConversationMatch[];
 			};
 			createTask: {
 				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean };

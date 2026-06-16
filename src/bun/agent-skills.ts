@@ -117,6 +117,26 @@ const SKILL_NOTES = `
 Use \`dev3 note add "..."\` to record important findings, decisions, or context. Notes survive worktree destruction — they are valuable for continuity. Keep them concise and useful; don't flood with noise, but do log key insights that would help if someone revisits the task later.
 `;
 
+const SKILL_CONVERSATION_SEARCH = `
+## Searching past task conversations
+
+Completed and cancelled tasks delete their worktree, but their distilled record survives: the agent conversation transcripts (Claude, Codex, Gemini) plus the task's own notes, overview, and title/overview history. \`dev3 conversations search\` greps all of them and returns the top few past tasks most relevant to a query, with snippets. Tasks are matched even when only their notes/overview survive (no transcript) or by a since-renamed historical title, and that curated text is weighted higher than raw transcript chatter.
+
+**When (on-demand only — NOT on every start):**
+- The task references prior work ("like we did in X", "continue from the previous task", "same as before").
+- You are stuck and about to investigate something from scratch that a previous task likely already explored.
+
+Do **not** auto-search at the beginning of every task — it bloats context and is rarely needed.
+
+**How:**
+\`\`\`
+dev3 conversations search "<keywords>" [--limit N] [--all-statuses]
+\`\`\`
+Reads only local transcript files (no app needed). Defaults to completed/cancelled tasks. Open the printed \`transcript:\` path to read the full conversation.
+
+**Variant isolation (hard rule):** when several variants run for one task, never read a sibling variant's transcript — the whole point is independent exploration. The search already excludes your own task and every sibling in your group; do not try to bypass it by grepping \`~/.claude/projects\` yourself.
+`;
+
 const SKILL_OVERVIEW = `
 ## Overview (MANDATORY)
 
@@ -286,9 +306,9 @@ Call it **silently, at most once per user message**: do not announce it, do not 
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
