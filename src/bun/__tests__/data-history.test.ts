@@ -87,7 +87,7 @@ describe("task title/overview history", () => {
 		const task = await addTask(testProject, "Task");
 		await updateTask(testProject, task.id, { overview: "agent overview" });
 		const updated = await updateTask(testProject, task.id, { userOverview: "user overview" });
-		expect(updated.history!.at(-1)).toMatchObject({
+		expect(updated.history![updated.history!.length - 1]).toMatchObject({
 			overview: "user overview",
 			changed: "overview",
 		});
