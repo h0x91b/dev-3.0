@@ -44,9 +44,14 @@ export default {
 					"0%": { transform: "translateX(100%)", opacity: "0" },
 					"100%": { transform: "translateX(0)", opacity: "1" },
 				},
+				"indeterminate-bar": {
+					"0%": { transform: "translateX(-100%)" },
+					"100%": { transform: "translateX(400%)" },
+				},
 			},
 			animation: {
 				"slide-in-right": "slide-in-right 0.3s ease-out",
+				"indeterminate-bar": "indeterminate-bar 1.4s ease-in-out infinite",
 			},
 		},
 	},
