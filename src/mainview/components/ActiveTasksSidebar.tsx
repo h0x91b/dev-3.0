@@ -447,7 +447,9 @@ function ActiveTasksSidebar({
 											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											className={`w-full text-left px-3 py-2 transition-all relative ${
-												isActive ? "bg-accent/10" : "hover:bg-elevated-hover"
+												isActive
+													? "bg-accent/20 ring-1 ring-inset ring-accent/50"
+													: "hover:bg-elevated-hover"
 											}`}
 										>
 											{/* Faint status wash so the whole card carries its column color
@@ -462,8 +464,8 @@ function ActiveTasksSidebar({
 											{/* Left rail: status color per card, accent when active. Absolute
 											    so it does not shift content; keeps padding symmetric. */}
 											<span
-												className={`absolute left-0 top-0 bottom-0 w-[3px] ${isActive ? "bg-accent" : ""}`}
-												style={isActive ? undefined : { background: statusColors[task.status] }}
+												className={`absolute left-0 top-0 bottom-0 ${isActive ? "w-[4px] bg-accent" : "w-[3px]"}`}
+												style={isActive ? { boxShadow: "0 0 8px rgb(var(--accent) / 0.7)" } : { background: statusColors[task.status] }}
 												data-testid={`sidebar-status-rail-${task.id}`}
 											/>
 

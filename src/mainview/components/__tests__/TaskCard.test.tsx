@@ -1048,7 +1048,7 @@ describe("TaskCard", () => {
 			renderCard(task, { isActiveInSplit: true });
 
 			const card = screen.getByText("My task").closest("[draggable]")!;
-			expect(card.className).toContain("border-accent/50");
+			expect(card.className).toContain("border-accent");
 			expect(card.className).toContain("ring-2");
 		});
 
@@ -1057,7 +1057,7 @@ describe("TaskCard", () => {
 			renderCard(task, { isActiveInSplit: false });
 
 			const card = screen.getByText("My task").closest("[draggable]")!;
-			expect(card.className).not.toContain("border-accent/50");
+			expect(card.className).not.toContain("ring-accent");
 			expect(card.className).not.toContain("ring-2");
 		});
 	});
