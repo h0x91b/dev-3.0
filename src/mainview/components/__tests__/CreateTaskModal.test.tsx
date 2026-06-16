@@ -17,6 +17,7 @@ vi.mock("../../rpc", () => ({
 			uploadFileBase64: vi.fn(),
 			uploadImageBase64: vi.fn(),
 			readImageBase64: vi.fn(),
+			openImageFile: vi.fn(),
 			listAgentSkills: vi.fn(),
 		},
 	},
@@ -407,8 +408,10 @@ describe("CreateTaskModal", () => {
 		});
 	});
 
+	const PASTED_TXT_PATH = "/home/user/.dev3.0/worktrees/proj/uploads/upload-1781612040314-24b3-pasted-text.txt";
+
 	it("saves a large text paste to a .txt file and inserts its path", async () => {
-		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-pasted-text.txt" });
+		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: PASTED_TXT_PATH });
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
@@ -426,8 +429,26 @@ describe("CreateTaskModal", () => {
 			);
 		});
 		await waitFor(() => {
-			expect(textarea.value).toBe("/tmp/uploaded-pasted-text.txt\n");
+			expect(textarea.value).toBe(`${PASTED_TXT_PATH}\n`);
 		});
+	});
+
+	it("shows a removable file card for a pasted text attachment", async () => {
+		mockedApi.request.uploadFileBase64.mockResolvedValue({ path: PASTED_TXT_PATH });
+		renderModal();
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
+		dispatchTextPaste(textarea, "y".repeat(2000));
+
+		const card = await screen.findByText("upload-1781612040314-24b3-pasted-text.txt");
+		expect(card).toBeInTheDocument();
+
+		await userEvent.click(screen.getByTitle("Remove file"));
+
+		await waitFor(() => {
+			expect(screen.queryByText("upload-1781612040314-24b3-pasted-text.txt")).not.toBeInTheDocument();
+		});
+		expect(textarea.value).toBe("");
 	});
 
 	it("lets a small text paste fall through without uploading", async () => {

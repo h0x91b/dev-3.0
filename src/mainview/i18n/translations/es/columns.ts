@@ -54,6 +54,10 @@ const columns = {
 	"images.close": "Cerrar",
 	"images.remove": "Eliminar imagen",
 	"images.dropHere": "Suelta el archivo aquí",
+
+	// File attachments
+	"attachments.openFile": "Abrir {name}",
+	"attachments.removeFile": "Eliminar archivo",
 };
 
 export default columns;
