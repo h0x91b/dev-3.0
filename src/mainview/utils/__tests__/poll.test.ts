@@ -61,6 +61,30 @@ describe("startVisibilityAwarePoll", () => {
 		stop();
 	});
 
+	it("refreshes after the in-flight tick when woken mid-run", async () => {
+		let release!: () => void;
+		const fn = vi.fn().mockImplementation(
+			() => new Promise<void>((resolve) => { release = resolve; }),
+		);
+		const stop = startVisibilityAwarePoll({ fn, intervalMs: 1000, jitterRatio: 0, random: () => 0.5 });
+
+		await vi.advanceTimersByTimeAsync(0); // start tick begins, now in flight
+		expect(fn).toHaveBeenCalledTimes(1);
+
+		// Wake arrives while the first run is still pending — must not be dropped.
+		setVisibility("visible");
+		await vi.advanceTimersByTimeAsync(0);
+		expect(fn).toHaveBeenCalledTimes(1); // still only the in-flight one
+
+		release(); // first run completes → queued wake refresh fires immediately
+		await vi.advanceTimersByTimeAsync(0);
+		release(); // let the queued run resolve too
+		await vi.advanceTimersByTimeAsync(0);
+		expect(fn).toHaveBeenCalledTimes(2);
+
+		stop();
+	});
+
 	it("does not run on start when hidden", async () => {
 		setVisibility("hidden");
 		const fn = vi.fn().mockResolvedValue(undefined);

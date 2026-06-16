@@ -29,6 +29,9 @@ const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 // Bound concurrent heavy branch-status runs across all tasks (see getBranchStatus).
 const GIT_STATUS_MAX_CONCURRENCY = 4;
 const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
+// Cap the PR-detection `gh` call: it holds a semaphore slot for its whole
+// duration, so a hung gh on a slow network must not stall branch-status globally.
+const PR_DETECTION_TIMEOUT_MS = 15_000;
 const prPromotedTasks = new Set<string>();
 
 function mergePromptKey(taskId: string, fingerprint: string | null): string {
@@ -481,6 +484,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 				project,
 				task.worktreePath!,
 				["pr", "list", "--head", branchForPush, "--state", "open", "--json", "number,url", "--limit", "1"],
+				{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
 			);
 			if (ghResult.ok && ghResult.stdout) {
 				const prs = JSON.parse(ghResult.stdout);

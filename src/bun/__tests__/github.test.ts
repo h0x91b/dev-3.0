@@ -287,4 +287,41 @@ describe("github", () => {
 		expect(lines).toContain('export GH_TOKEN="$__DEV3_GH_TOKEN"');
 		expect(lines).toContain('export GITHUB_TOKEN="$__DEV3_GH_TOKEN"');
 	});
+
+	it("kills a gh command that exceeds its timeout and reports failure", async () => {
+		vi.useFakeTimers();
+		try {
+			whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+			const kill = vi.fn();
+			const closedStream = () => new ReadableStream({ start(c) { c.close(); } });
+			spawnMock.mockImplementation((cmd: string[]) => {
+				if (cmd.join(" ") === "gh auth status --json hosts") {
+					return fakeProc(JSON.stringify({
+						hosts: { "github.com": [{ login: "h0x91b", host: "github.com", active: true, state: "success" }] },
+					}));
+				}
+				if (cmd[1] === "auth" && cmd[2] === "token") {
+					return fakeProc("secret-token\n");
+				}
+				// The actual command hangs forever — exited never resolves.
+				return { exited: new Promise(() => {}), stdout: closedStream(), stderr: closedStream(), kill };
+			});
+
+			const { runGitHub } = await import("../github");
+			const resultPromise = runGitHub(
+				{ githubAuthHost: "github.com", githubAuthLogin: "h0x91b" },
+				"/tmp/wt",
+				["pr", "list"],
+				{ timeoutMs: 5_000 },
+			);
+			await vi.advanceTimersByTimeAsync(5_000);
+			const result = await resultPromise;
+
+			expect(result.ok).toBe(false);
+			expect(result.stderr).toMatch(/timed out/i);
+			expect(kill).toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

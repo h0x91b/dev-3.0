@@ -128,14 +128,21 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 	let inFlight = false;
 
 	async function pingOnce(): Promise<boolean> {
+		let timeoutId: ReturnType<typeof setTimeout> | undefined;
 		try {
 			await Promise.race([
 				(rawRequest as any).ping(),
-				new Promise((_, reject) => setTimeout(() => reject(new Error("ping timeout")), PING_TIMEOUT_MS)),
+				new Promise((_, reject) => {
+					timeoutId = setTimeout(() => reject(new Error("ping timeout")), PING_TIMEOUT_MS);
+				}),
 			]);
 			return true;
 		} catch {
 			return false;
+		} finally {
+			// Clear the race timer regardless of which leg won, so a successful
+			// ping doesn't leave a dangling timeout every interval.
+			if (timeoutId) clearTimeout(timeoutId);
 		}
 	}
 
@@ -151,6 +158,10 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 			if (action === "reinit") {
 				console.warn("[rpc-watchdog] bridge unresponsive — re-opening Electrobun socket");
 				try {
+					// Close the stale socket first — initSocketToBun() opens a fresh
+					// WebSocket and reassigns bunSocket without closing the old one,
+					// which would leak a socket on every re-init.
+					electroview.bunSocket?.close();
 					electroview.initSocketToBun();
 				} catch (err) {
 					console.error("[rpc-watchdog] socket re-init failed", err);

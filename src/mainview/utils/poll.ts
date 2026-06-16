@@ -40,6 +40,9 @@ export function startVisibilityAwarePoll(opts: VisibilityAwarePollOptions): () =
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let cancelled = false;
 	let running = false;
+	// Set when a refresh is requested (e.g. on wake) while a tick is already in
+	// flight, so we run one more immediately on completion instead of losing it.
+	let refreshQueued = false;
 
 	const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
 
@@ -58,13 +61,24 @@ export function startVisibilityAwarePoll(opts: VisibilityAwarePollOptions): () =
 
 	async function tick() {
 		timer = null;
-		if (cancelled || running || isHidden()) return;
+		if (cancelled || isHidden()) return;
+		// A run is already in flight: remember to refresh again right after it,
+		// rather than dropping this request (the wake-refresh case).
+		if (running) {
+			refreshQueued = true;
+			return;
+		}
 		running = true;
 		try {
 			await fn();
 		} finally {
 			running = false;
-			schedule();
+			const wantImmediate = refreshQueued && !cancelled && !isHidden();
+			refreshQueued = false;
+			if (!cancelled) {
+				if (wantImmediate) void tick();
+				else schedule();
+			}
 		}
 	}
 
