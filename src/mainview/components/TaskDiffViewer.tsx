@@ -2789,9 +2789,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</button>
 				)}
 				{!error && !isBusy && payload && totalFileCount > 0 && !filesCollapsed && (
-					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
-						<div className="h-full overflow-auto px-3 py-2">
-							<div className="sticky top-0 z-10 bg-raised/35 pb-2">
+					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35 flex flex-col min-h-0">
+							<div className="shrink-0 px-3 pt-2 pb-2">
 								<button
 									type="button"
 									onClick={toggleFilesCollapsed}
@@ -2926,10 +2925,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</div>
 								</div>
 							</div>
-							<div className="space-y-1">
-								{fileTree.map((node) => renderFileTreeNode(node))}
+							<div className="flex-1 min-h-0 overflow-auto px-3 pb-2">
+								<div className="space-y-1">
+									{fileTree.map((node) => renderFileTreeNode(node))}
+								</div>
 							</div>
-						</div>
 					</aside>
 				)}
 

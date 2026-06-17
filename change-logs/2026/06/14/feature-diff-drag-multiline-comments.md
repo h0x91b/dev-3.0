@@ -1,1 +1,0 @@
-In the diff viewer you can now click a line number in the gutter and drag to select a range of lines, then leave a single inline review comment covering the whole range. The composer and the saved thread show the selected line range.
