@@ -2,7 +2,7 @@ import { uploadDroppedFile } from "./uploadDroppedFile";
 
 // Text pastes larger than this (in UTF-8 bytes) are saved to a .txt file in the
 // worktree uploads dir instead of being dumped raw into the task / terminal.
-export const LARGE_TEXT_PASTE_THRESHOLD = 1024;
+export const LARGE_TEXT_PASTE_THRESHOLD = 4096;
 
 export function textByteLength(text: string): number {
 	return new TextEncoder().encode(text).length;
