@@ -1,15 +1,17 @@
 import { uploadDroppedFile } from "./uploadDroppedFile";
 
-// Text pastes larger than this (in UTF-8 bytes) are saved to a .txt file in the
-// worktree uploads dir instead of being dumped raw into the task / terminal.
-export const LARGE_TEXT_PASTE_THRESHOLD = 4096;
+// Text pastes longer than this (in characters / Unicode code points) are saved
+// to a .txt file in the worktree uploads dir instead of being dumped raw into
+// the task / terminal. Counting characters (not UTF-8 bytes) keeps the limit
+// language-independent — the same paste size triggers it in English and Cyrillic.
+export const LARGE_TEXT_PASTE_THRESHOLD = 8192;
 
-export function textByteLength(text: string): number {
-	return new TextEncoder().encode(text).length;
+export function textCharLength(text: string): number {
+	return [...text].length;
 }
 
 export function isLargeTextPaste(text: string): boolean {
-	return textByteLength(text) > LARGE_TEXT_PASTE_THRESHOLD;
+	return textCharLength(text) > LARGE_TEXT_PASTE_THRESHOLD;
 }
 
 export async function uploadPastedText(projectId: string, text: string): Promise<string | null> {

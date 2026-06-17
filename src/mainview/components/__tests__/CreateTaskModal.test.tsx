@@ -415,7 +415,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
-		const bigText = "x".repeat(5000);
+		const bigText = "x".repeat(9000);
 		const event = dispatchTextPaste(textarea, bigText);
 
 		expect(event.defaultPrevented).toBe(true);
@@ -438,7 +438,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...") as HTMLTextAreaElement;
-		dispatchTextPaste(textarea, "y".repeat(5000));
+		dispatchTextPaste(textarea, "y".repeat(9000));
 
 		const card = await screen.findByText("upload-1781612040314-24b3-pasted-text.txt");
 		expect(card).toBeInTheDocument();
