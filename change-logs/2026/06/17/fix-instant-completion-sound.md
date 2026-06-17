@@ -1,0 +1,1 @@
+Completing or cancelling a task from the kanban board now plays the completion sound the instant the card is dropped, instead of waiting for the worktree-cleanup round-trip to finish. A dedupe guard prevents the bun-side push from playing the same sound twice, and the moving spinner keeps running on the card until the move succeeds.

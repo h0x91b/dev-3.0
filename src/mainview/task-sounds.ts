@@ -18,6 +18,14 @@ const SOUND_UNLOCK_EVENTS: Array<keyof WindowEventMap> = ["pointerdown", "keydow
 const pendingQueue: TaskSoundStatus[] = [];
 const templates = new Map<TaskSoundStatus, HTMLAudioElement>();
 
+// The UI plays the completion sound client-side the instant a card is dropped
+// onto completed/cancelled (so it feels immediate), but the bun process ALSO
+// pushes a `taskSound` event for the same move a moment later. Without a guard
+// the same move would play twice. Swallow a repeat of the same status that
+// arrives within this window of an actual playback.
+const SOUND_DEDUPE_MS = 1500;
+const lastPlayedAt = new Map<TaskSoundStatus, number>();
+
 let unlockHandlersInstalled = false;
 let playbackUnlocked = false;
 
@@ -78,12 +86,16 @@ export function initTaskSoundPlayback(): void {
 export async function playTaskSound(status: TaskSoundStatus): Promise<void> {
 	initTaskSoundPlayback();
 
+	const last = lastPlayedAt.get(status);
+	if (last !== undefined && Date.now() - last < SOUND_DEDUPE_MS) return;
+
 	if (!canPlayImmediately()) {
 		pendingQueue.push(status);
 		return;
 	}
 
 	playbackUnlocked = true;
+	lastPlayedAt.set(status, Date.now());
 
 	const template = getAudioTemplate(status);
 	const audio = template.cloneNode() as HTMLAudioElement;

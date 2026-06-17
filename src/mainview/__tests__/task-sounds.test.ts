@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { SOUND_DEFS } from "../task-sounds";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SOUND_DEFS, playTaskSound } from "../task-sounds";
 
 // Regression guard for the `views://` range-request bug: task sounds must be
 // inlined as base64 `data:` URLs (via the `?inline` import suffix), never served
@@ -12,4 +12,39 @@ describe("task sound assets", () => {
 			expect(def.url.startsWith("data:audio/")).toBe(true);
 		});
 	}
+});
+
+// The kanban UI plays the completion sound client-side the instant a card is
+// dropped onto completed/cancelled, while the bun process pushes a `taskSound`
+// event for the same move a moment later. The dedupe guard must swallow that
+// near-simultaneous repeat so the user hears the sound exactly once.
+describe("playTaskSound dedupe", () => {
+	let playSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000_000);
+		playSpy = vi
+			.spyOn(window.HTMLMediaElement.prototype, "play")
+			.mockResolvedValue(undefined as unknown as void);
+	});
+
+	afterEach(() => {
+		playSpy.mockRestore();
+		vi.useRealTimers();
+	});
+
+	it("plays only once for a repeated status within the dedupe window", async () => {
+		await playTaskSound("completed");
+		vi.advanceTimersByTime(200);
+		await playTaskSound("completed");
+		expect(playSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("plays again once the dedupe window has elapsed", async () => {
+		await playTaskSound("cancelled");
+		vi.advanceTimersByTime(2000);
+		await playTaskSound("cancelled");
+		expect(playSpy).toHaveBeenCalledTimes(2);
+	});
 });

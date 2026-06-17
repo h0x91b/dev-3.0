@@ -24,6 +24,7 @@ import { startVisibilityAwarePoll } from "../utils/poll";
 import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
+import { playTaskSound } from "../task-sounds";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -216,6 +217,12 @@ function KanbanBoard({
 		dispatch({ type: "updateTask", task: optimisticTask });
 		if (targetStatus === "completed" || targetStatus === "cancelled") {
 			dispatch({ type: "clearBell", taskId: task.id });
+			// Play the completion sound immediately on drop so it feels instant,
+			// instead of waiting for the bun round-trip + `taskSound` push (which
+			// the dedupe guard in task-sounds.ts then swallows).
+			if (globalSettings.playSoundOnTaskComplete !== false) {
+				void playTaskSound(targetStatus);
+			}
 		}
 		recordMove(task.id);
 		setMovingTaskIds((prev) => new Set(prev).add(task.id));
