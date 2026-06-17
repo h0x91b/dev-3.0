@@ -98,6 +98,21 @@ describe("moveTaskToStatus", () => {
 		expect(mockedToastError).toHaveBeenCalled();
 	});
 
+	it("runs onSuccess only after the server confirms the move", async () => {
+		const dispatch = vi.fn();
+		const onSuccess = vi.fn();
+		await moveTaskToStatus({ task, project, newStatus: "review-by-user", dispatch, t, onSuccess });
+		expect(onSuccess).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not run onSuccess when both move attempts fail", async () => {
+		mockedMoveTask.mockRejectedValue(new Error("boom"));
+		const dispatch = vi.fn();
+		const onSuccess = vi.fn();
+		await moveTaskToStatus({ task, project, newStatus: "review-by-user", dispatch, t, onSuccess });
+		expect(onSuccess).not.toHaveBeenCalled();
+	});
+
 	it("keeps the optimistic state on failure when revertOnFailure is false", async () => {
 		mockedMoveTask.mockRejectedValue(new Error("boom"));
 		const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});

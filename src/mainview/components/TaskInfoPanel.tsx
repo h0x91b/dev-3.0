@@ -201,13 +201,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			// revert + toast if the RPC fails.
 			revertOnFailure: !terminal,
 			onMovingChange: terminal ? undefined : (moving) => setMovingStatus(moving),
+			// Terminal moves leave the screen immediately (fire-and-forget); other
+			// screen-leaving moves wait for the server to confirm so a failed +
+			// reverted move doesn't kick the user off the task screen.
 			afterOptimistic: terminal && leaveScreen
 				? () => navigate({ screen: "project", projectId: project.id })
 				: undefined,
+			onSuccess: !terminal && leaveScreen
+				? () => navigate({ screen: "project", projectId: project.id })
+				: undefined,
 		});
-		if (!terminal && leaveScreen) {
-			navigate({ screen: "project", projectId: project.id });
-		}
 	}
 
 	async function handleMoveToCustomColumn(customColumnId: string) {

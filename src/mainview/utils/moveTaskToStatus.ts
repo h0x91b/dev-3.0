@@ -26,6 +26,8 @@ export interface MoveTaskToStatusOptions {
 	onMoved?: () => void;
 	/** Run right after the optimistic update commits (e.g. navigate away from the task screen). */
 	afterOptimistic?: () => void;
+	/** Run only after the server confirms the move (after both RPC attempts succeed). Not called on failure. */
+	onSuccess?: () => void;
 	/**
 	 * On total RPC failure (both the normal and forced attempts), revert the
 	 * optimistic update and surface a toast. Default true.
@@ -66,6 +68,7 @@ export async function moveTaskToStatus({
 	onMovingChange,
 	onMoved,
 	afterOptimistic,
+	onSuccess,
 	revertOnFailure = true,
 }: MoveTaskToStatusOptions): Promise<boolean> {
 	const terminal = isTerminalStatus(newStatus);
@@ -110,6 +113,7 @@ export async function moveTaskToStatus({
 			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, force: true });
 		}
 		dispatch({ type: "updateTask", task: updated });
+		onSuccess?.();
 	} catch (err) {
 		if (revertOnFailure) {
 			dispatch({ type: "updateTask", task });
