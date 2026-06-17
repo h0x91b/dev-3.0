@@ -152,6 +152,123 @@ describe("task show", () => {
 
 		expect(stdoutOutput).not.toContain("Description:");
 	});
+
+	it("always shows the current overview (agent overview)", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, overview: "Repro done, writing the lock" }));
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).toContain("Overview:");
+		expect(stdoutOutput).toContain("Repro done, writing the lock");
+	});
+
+	it("prefers the user override over the agent overview", async () => {
+		mockSend.mockResolvedValue(
+			okResp({ ...FAKE_TASK, overview: "agent text", userOverview: "user pinned text" }),
+		);
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).toContain("user pinned text");
+		expect(stdoutOutput).not.toContain("agent text");
+	});
+
+	it("omits the overview section when there is none", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).not.toContain("Overview:");
+	});
+
+	it("inlines note bodies with --notes", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				...FAKE_TASK,
+				notes: [
+					{
+						id: "note1111-2222-3333-4444-555555555555",
+						content: "Root cause: missing mutex around session refresh",
+						source: "ai",
+						createdAt: "2026-03-01T13:00:00Z",
+						updatedAt: "2026-03-01T13:00:00Z",
+					},
+				],
+			}),
+		);
+
+		await handleTask("show", args(["aaaaaaaa"], { notes: "true" }), SOCKET, null);
+
+		expect(stdoutOutput).toContain("Notes (1):");
+		expect(stdoutOutput).toContain("note1111");
+		expect(stdoutOutput).toContain("Root cause: missing mutex around session refresh");
+	});
+
+	it("does not inline note bodies without --notes", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				...FAKE_TASK,
+				notes: [
+					{
+						id: "note1111-2222-3333-4444-555555555555",
+						content: "secret note body",
+						source: "ai",
+						createdAt: "2026-03-01T13:00:00Z",
+						updatedAt: "2026-03-01T13:00:00Z",
+					},
+				],
+			}),
+		);
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).toContain("Notes:");
+		expect(stdoutOutput).not.toContain("secret note body");
+	});
+
+	it("prints the title/overview change log with --history", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				...FAKE_TASK,
+				history: [
+					{ at: "2026-03-01T10:00:00Z", title: "Old title", overview: null, changed: "created" },
+					{
+						at: "2026-03-01T11:30:00Z",
+						title: "Fix the login bug",
+						overview: "Repro done",
+						changed: "both",
+					},
+				],
+			}),
+		);
+
+		await handleTask("show", args(["aaaaaaaa"], { history: "true" }), SOCKET, null);
+
+		expect(stdoutOutput).toContain("History (2):");
+		expect(stdoutOutput).toContain("[created]");
+		expect(stdoutOutput).toContain("title + overview changed");
+		expect(stdoutOutput).toContain("Old title");
+		expect(stdoutOutput).toContain("(none)");
+	});
+
+	it("does not print history without --history", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				...FAKE_TASK,
+				history: [{ at: "2026-03-01T10:00:00Z", title: "x", overview: null, changed: "created" }],
+			}),
+		);
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).not.toContain("History (");
+	});
+
+	it("rejects unknown flags", async () => {
+		await expect(handleTask("show", args(["aaaaaaaa"], { bogus: "true" }), SOCKET, null)).rejects.toThrow(
+			"EXIT_3",
+		);
+	});
 });
 
 // ─── task create ─────────────────────────────────────────────────────────────
