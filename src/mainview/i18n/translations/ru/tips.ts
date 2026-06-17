@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "Больше не показывать",
 	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
+	"tip.backForwardNav.title": "Прыгай назад и вперёд",
+	"tip.backForwardNav.body": "Стрелки ‹ › слева вверху, ⌘[ / ⌘] или боковые кнопки мыши вернут тебя туда, где ты уже был.",
 	"tip.statusAgeBadge.title": "Сколько прошло с момента перехода",
 	"tip.statusAgeBadge.body": "На каждой карточке Active Tasks есть живой бейдж возраста (5m, 7h, 13d) — наведи, чтобы увидеть точное время смены статуса.",
 	"tip.cmdSwitchKeepsView.title": "Меняй проект, сохраняя вид",

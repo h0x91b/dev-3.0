@@ -1,5 +1,9 @@
 # UX Manifest Changelog
 
+## 2026-06-16 — Back/forward history nav in the global header
+
+Added `history_nav` to the `global_header` surface's allowed actions in `ux-architecture.yaml` (back/forward arrows at the far-left of the breadcrumb row, also bound to ⌘[/⌘] and mouse side buttons, driven by the pre-existing `state.ts` route-history stack). Appended a UX decision. No new surface, nav item, token, or budget change — the empty left edge of the header absorbs it.
+
 ## 2026-06-15 — Added `task_switcher` transient overlay surface
 
 Added a new `task_switcher` surface to `ux-architecture.yaml` (transient keyboard-summoned HUD for Option+Tab hold-cycle task switching) and a UX decision recording why this is a presentation of the existing `task_jump` action — not a command palette. Created `feature-plans/option-tab-task-switcher.md`.

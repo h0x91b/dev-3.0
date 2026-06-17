@@ -4,6 +4,8 @@ const tips = {
 	"tip.dismiss": "Don't show this tip",
 	"tip.snooze": "Hide tips for a while",
 	"tip.next": "Next tip",
+	"tip.backForwardNav.title": "Jump back and forward",
+	"tip.backForwardNav.body": "Use the ‹ › arrows top-left, ⌘[ / ⌘], or your mouse side buttons to retrace where you've been.",
 	"tip.statusAgeBadge.title": "How long since the move",
 	"tip.statusAgeBadge.body": "Each Active Tasks card shows a live age badge (5m, 7h, 13d) — hover it for the exact status-change time.",
 	"tip.cmdSwitchKeepsView.title": "Switch projects, keep your view",
