@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
 	LARGE_TEXT_PASTE_THRESHOLD,
 	isLargeTextPaste,
-	textByteLength,
+	textCharLength,
 	uploadPastedText,
 } from "../uploadPastedText";
 import { api } from "../../rpc";
@@ -15,15 +15,15 @@ const mockedApi = api as unknown as {
 	request: { uploadFileBase64: ReturnType<typeof vi.fn> };
 };
 
-describe("textByteLength", () => {
-	it("counts ASCII bytes", () => {
-		expect(textByteLength("abc")).toBe(3);
+describe("textCharLength", () => {
+	it("counts ASCII characters", () => {
+		expect(textCharLength("abc")).toBe(3);
 	});
 
-	it("counts multibyte UTF-8 characters by byte length", () => {
-		// "é" is 2 bytes, "💡" is 4 bytes in UTF-8.
-		expect(textByteLength("é")).toBe(2);
-		expect(textByteLength("💡")).toBe(4);
+	it("counts each multibyte character as one, regardless of UTF-8 byte size", () => {
+		// "é" is 2 bytes but 1 character; "💡" is 4 bytes / 2 UTF-16 units but 1 code point.
+		expect(textCharLength("é")).toBe(1);
+		expect(textCharLength("💡")).toBe(1);
 	});
 });
 
@@ -36,12 +36,21 @@ describe("isLargeTextPaste", () => {
 		expect(isLargeTextPaste("a".repeat(LARGE_TEXT_PASTE_THRESHOLD + 1))).toBe(true);
 	});
 
-	it("uses byte length, not character count, for multibyte text", () => {
-		// 1100 four-byte chars = 4400 bytes > 4096, even though JS length is only 2200.
-		const text = "💡".repeat(1100);
-		expect(text.length).toBeLessThan(LARGE_TEXT_PASTE_THRESHOLD);
-		expect(textByteLength(text)).toBeGreaterThan(LARGE_TEXT_PASTE_THRESHOLD);
-		expect(isLargeTextPaste(text)).toBe(true);
+	it("counts characters language-independently — Cyrillic is not penalized for byte size", () => {
+		// A Cyrillic paragraph well under the character threshold must NOT be saved
+		// to a file, even though its UTF-8 byte size is ~2x its character count.
+		const text = "Короткий абзац на русском языке для проверки порога вставки. ".repeat(100);
+		expect(textCharLength(text)).toBeLessThan(LARGE_TEXT_PASTE_THRESHOLD);
+		expect(isLargeTextPaste(text)).toBe(false);
+	});
+
+	it("counts code points, not UTF-16 code units, for astral characters", () => {
+		// Each "💡" is 2 UTF-16 units but 1 code point. 5000 of them = 5000 chars
+		// (below the threshold), even though string.length reports 10000.
+		const text = "💡".repeat(5000);
+		expect(text.length).toBeGreaterThan(LARGE_TEXT_PASTE_THRESHOLD);
+		expect(textCharLength(text)).toBeLessThan(LARGE_TEXT_PASTE_THRESHOLD);
+		expect(isLargeTextPaste(text)).toBe(false);
 	});
 });
 

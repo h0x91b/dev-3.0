@@ -1,0 +1,1 @@
+Changed the large-text-paste threshold to count characters instead of UTF-8 bytes and raised it to 8192, so pasting text into a task description, note, or the agent terminal is saved as a .txt attachment only once it exceeds 8192 characters — the limit is now language-independent and no longer penalizes Cyrillic or other multibyte text.
