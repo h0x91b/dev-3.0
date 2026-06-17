@@ -37,8 +37,8 @@ describe("isLargeTextPaste", () => {
 	});
 
 	it("uses byte length, not character count, for multibyte text", () => {
-		// 300 four-byte chars = 1200 bytes > 1024, even though JS length is only 600.
-		const text = "💡".repeat(300);
+		// 1100 four-byte chars = 4400 bytes > 4096, even though JS length is only 2200.
+		const text = "💡".repeat(1100);
 		expect(text.length).toBeLessThan(LARGE_TEXT_PASTE_THRESHOLD);
 		expect(textByteLength(text)).toBeGreaterThan(LARGE_TEXT_PASTE_THRESHOLD);
 		expect(isLargeTextPaste(text)).toBe(true);
