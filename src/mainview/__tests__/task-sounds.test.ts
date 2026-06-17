@@ -47,4 +47,16 @@ describe("playTaskSound dedupe", () => {
 		await playTaskSound("cancelled");
 		expect(playSpy).toHaveBeenCalledTimes(2);
 	});
+
+	it("does not swallow the retry when the first playback fails", async () => {
+		// Clear any dedupe stamp left by earlier tests (module state persists).
+		vi.advanceTimersByTime(2000);
+		// First attempt rejects (e.g. autoplay still blocked); it must NOT leave a
+		// dedupe stamp behind, or the immediate retry would be silently dropped.
+		playSpy.mockRejectedValueOnce(new Error("blocked"));
+		await playTaskSound("completed");
+		vi.advanceTimersByTime(100);
+		await playTaskSound("completed");
+		expect(playSpy).toHaveBeenCalledTimes(2);
+	});
 });

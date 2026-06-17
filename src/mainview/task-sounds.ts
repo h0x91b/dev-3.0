@@ -124,6 +124,9 @@ export async function playTaskSound(status: TaskSoundStatus): Promise<void> {
 		await audio.play();
 	} catch (err) {
 		console.warn("[task-sounds] playback failed", { status, error: String(err) });
+		// Playback never actually happened — clear the dedupe stamp so the queued
+		// retry on the next user gesture isn't swallowed as a "duplicate".
+		lastPlayedAt.delete(status);
 		pendingQueue.push(status);
 		playbackUnlocked = false;
 		installUnlockHandlers();
