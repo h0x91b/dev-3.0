@@ -975,7 +975,7 @@ describe("task.move", () => {
 			const task = tasks.find((candidate) => candidate.id === taskId);
 			if (!task) throw new Error(`Task not found: ${taskId}`);
 
-			emitTaskSound(newStatus as "completed" | "cancelled");
+			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
 			try {
 				pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 			} catch {}

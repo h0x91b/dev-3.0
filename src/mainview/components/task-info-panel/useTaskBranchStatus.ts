@@ -10,7 +10,7 @@ import type { AppAction, Route } from "../../state";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
-import { trackEvent } from "../../analytics";
+import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
 import { startVisibilityAwarePoll } from "../../utils/poll";
 
@@ -61,35 +61,18 @@ export function useTaskBranchStatus({
 		setCompareRef(defaultCompareRef);
 	}, [defaultCompareRef, task.id]);
 
-	const completeTask = useCallback((fromStatus: Task["status"]) => {
-		dispatch({
-			type: "updateTask",
-			task: {
-				...task,
-				status: "completed",
-				worktreePath: null,
-				branchName: null,
-				movedAt: new Date().toISOString(),
-				columnOrder: undefined,
-			},
-		});
-		dispatch({ type: "clearBell", taskId: task.id });
-		trackEvent("task_moved", { from_status: fromStatus, to_status: "completed" });
-		navigate({ screen: "project", projectId: project.id });
-
-		api.request.moveTask({
-			taskId: task.id,
-			projectId: project.id,
+	const completeTask = useCallback(() => {
+		void moveTaskToStatus({
+			task,
+			project,
 			newStatus: "completed",
-		}).catch(() => {
-			api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus: "completed",
-				force: true,
-			}).catch((err) => console.error("moveTask (merge-complete popup) failed:", err));
+			dispatch,
+			t,
+			confirm: false,
+			revertOnFailure: false,
+			afterOptimistic: () => navigate({ screen: "project", projectId: project.id }),
 		});
-	}, [dispatch, navigate, project.id, task]);
+	}, [dispatch, navigate, project, task, t]);
 
 	useEffect(() => {
 		if (!isTaskActive || !task.worktreePath) {
@@ -146,7 +129,7 @@ export function useTaskBranchStatus({
 								}),
 							);
 							if (shouldComplete) {
-								completeTask(task.status);
+								completeTask();
 							} else if (shouldComplete === false) {
 								await api.request.dismissMergeCompletionPrompt({
 									taskId: task.id,
@@ -248,7 +231,7 @@ export function useTaskBranchStatus({
 					}),
 				);
 				if (shouldComplete) {
-					completeTask(task.status);
+					completeTask();
 				} else if (shouldComplete === false) {
 					await api.request.dismissMergeCompletionPrompt({
 						taskId: task.id,

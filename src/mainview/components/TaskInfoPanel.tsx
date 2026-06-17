@@ -13,7 +13,7 @@ import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent } from "../analytics";
-import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
@@ -185,78 +185,32 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	}
 
 	async function handleStatusMove(newStatus: TaskStatus) {
-		if (task.worktreePath && (newStatus === "completed" || newStatus === "cancelled")) {
-			setStatusMenuOpen(false);
-			const proceed = await confirmTaskCompletion(task, project, newStatus, t);
-			if (!proceed) {
-				return;
-			}
-		}
-
-		const fromStatus = task.status;
-		setMovingStatus(true);
 		setStatusMenuOpen(false);
-
-		if (newStatus === "completed" || newStatus === "cancelled") {
-			dispatch({
-				type: "updateTask",
-				task: {
-					...task,
-					status: newStatus,
-					worktreePath: null,
-					branchName: null,
-					movedAt: new Date().toISOString(),
-					columnOrder: undefined,
-				},
-			});
-			dispatch({ type: "clearBell", taskId: task.id });
-			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-			navigate({ screen: "project", projectId: project.id });
-			api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus,
-			}).catch(() => {
-				api.request.moveTask({
-					taskId: task.id,
-					projectId: project.id,
-					newStatus,
-					force: true,
-				}).catch((err) => console.error("Background moveTask failed:", err));
-			});
-			return;
-		}
-
-		try {
-			const updated = await api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus,
-			});
-			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-			if (!ACTIVE_STATUSES.includes(newStatus)) {
-				navigate({ screen: "project", projectId: project.id });
-			}
-		} catch {
-			try {
-				const updated = await api.request.moveTask({
-					taskId: task.id,
-					projectId: project.id,
-					newStatus,
-					force: true,
-				});
-				dispatch({ type: "updateTask", task: updated });
-				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-				if (!ACTIVE_STATUSES.includes(newStatus)) {
-					navigate({ screen: "project", projectId: project.id });
-				}
-			} catch (retryErr) {
-				toast.error(t("task.failedMove", { error: String(retryErr) }));
-			}
-		}
-
-		setMovingStatus(false);
+		const terminal = newStatus === "completed" || newStatus === "cancelled";
+		// Terminal moves leave the task screen immediately (worktree teardown runs
+		// in the background); other moves keep the panel and show a spinner.
+		const leaveScreen = terminal || !ACTIVE_STATUSES.includes(newStatus);
+		await moveTaskToStatus({
+			task,
+			project,
+			newStatus,
+			dispatch,
+			t,
+			// Terminal moves leave the screen and keep the optimistic completion on
+			// failure (matches the fire-and-forget behaviour); other moves stay and
+			// revert + toast if the RPC fails.
+			revertOnFailure: !terminal,
+			onMovingChange: terminal ? undefined : (moving) => setMovingStatus(moving),
+			// Terminal moves leave the screen immediately (fire-and-forget); other
+			// screen-leaving moves wait for the server to confirm so a failed +
+			// reverted move doesn't kick the user off the task screen.
+			afterOptimistic: terminal && leaveScreen
+				? () => navigate({ screen: "project", projectId: project.id })
+				: undefined,
+			onSuccess: !terminal && leaveScreen
+				? () => navigate({ screen: "project", projectId: project.id })
+				: undefined,
+		});
 	}
 
 	async function handleMoveToCustomColumn(customColumnId: string) {

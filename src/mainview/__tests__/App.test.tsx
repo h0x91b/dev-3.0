@@ -55,6 +55,9 @@ vi.mock("../zoom", () => ({
 vi.mock("../task-sounds", () => ({
 	initTaskSoundPlayback: vi.fn(),
 	playTaskSound: vi.fn().mockResolvedValue(undefined),
+	playTaskSoundFromPush: vi.fn(),
+	playTaskCompletionSound: vi.fn(),
+	setTaskCompletionSoundEnabled: vi.fn(),
 }));
 
 // Mock child screens so they don't trigger their own API calls
@@ -110,7 +113,7 @@ vi.mock("../confirm", () => ({
 	confirm: vi.fn().mockResolvedValue(false),
 	ConfirmHost: () => null,
 }));
-import { initTaskSoundPlayback, playTaskSound } from "../task-sounds";
+import { initTaskSoundPlayback, playTaskSoundFromPush } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
@@ -494,9 +497,9 @@ describe("App keyboard shortcuts", () => {
 		it("plays task sounds when rpc:taskSound fires", async () => {
 			await renderApp();
 			await act(async () => {
-				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed" } }));
+				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed", taskId: "task-9" } }));
 			});
-			expect(playTaskSound).toHaveBeenCalledWith("completed");
+			expect(playTaskSoundFromPush).toHaveBeenCalledWith("completed", "task-9");
 		});
 	});
 

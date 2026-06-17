@@ -4,6 +4,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
+import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
@@ -113,15 +114,16 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}, [ptyUrl, error]);
 
 	function handleMove(newStatus: "completed" | "cancelled") {
-		const fromStatus = task?.status ?? "unknown";
-		if (task) {
-			dispatch({ type: "updateTask", task: { ...task, status: newStatus, worktreePath: null, branchName: null, movedAt: new Date().toISOString(), columnOrder: undefined } });
-		}
-		dispatch({ type: "clearBell", taskId });
-		trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-		navigate({ screen: "project", projectId });
-		api.request.moveTask({ taskId, projectId, newStatus, force: true }).catch((err) => {
-			console.error("Background moveTask failed:", err);
+		if (!task || !project) return;
+		void moveTaskToStatus({
+			task,
+			project,
+			newStatus,
+			dispatch,
+			t,
+			confirm: false,
+			revertOnFailure: false,
+			afterOptimistic: () => navigate({ screen: "project", projectId }),
 		});
 	}
 

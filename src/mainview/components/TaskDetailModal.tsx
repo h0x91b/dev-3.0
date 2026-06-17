@@ -9,6 +9,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
+import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { trackEvent } from "../analytics";
 
 interface TaskDetailModalProps {
@@ -168,34 +169,15 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 	}
 
 	async function handleStatusMove(newStatus: TaskStatus) {
-		setMovingStatus(true);
 		setStatusMenuOpen(false);
-		const fromStatus = task.status;
-		try {
-			const updated = await api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus,
-			});
-			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-			onClose();
-		} catch (err) {
-			try {
-				const updated = await api.request.moveTask({
-					taskId: task.id,
-					projectId: project.id,
-					newStatus,
-					force: true,
-				});
-				dispatch({ type: "updateTask", task: updated });
-				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-				onClose();
-			} catch (retryErr) {
-				toast.error(t("task.failedMove", { error: String(retryErr) }));
-			}
-		}
-		setMovingStatus(false);
+		await moveTaskToStatus({
+			task,
+			project,
+			newStatus,
+			dispatch,
+			t,
+			afterOptimistic: () => onClose(),
+		});
 	}
 
 	// ---- Notes handlers ----
