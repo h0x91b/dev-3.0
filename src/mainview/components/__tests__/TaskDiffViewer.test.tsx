@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, Task, TaskDiffResponse } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -36,6 +36,7 @@ vi.mock("@git-diff-view/react", async () => {
 			renderWidgetLine,
 			renderExtendLine,
 			extendData,
+			onCreateUseWidgetHook,
 		}: {
 			diffViewMode: number;
 			diffViewTheme: "dark" | "light";
@@ -47,9 +48,24 @@ vi.mock("@git-diff-view/react", async () => {
 				oldFile?: Record<string, { data: unknown }>;
 				newFile?: Record<string, { data: unknown }>;
 			};
+			onCreateUseWidgetHook?: (hook: { getReadonlyState: () => { setWidget: (arg: { side?: number; lineNumber?: number }) => void } }) => void;
 		}) => {
 			const [widget, setWidget] = React.useState<{ lineNumber: number; side: number } | null>(null);
 			const [nextWidgetLineNumber, setNextWidgetLineNumber] = React.useState(1);
+
+			// Mirror the library's onCreateUseWidgetHook so production code can open
+			// the composer programmatically (used by drag-to-select range commenting).
+			React.useEffect(() => {
+				onCreateUseWidgetHook?.({
+					getReadonlyState: () => ({
+						setWidget: ({ side, lineNumber }) => {
+							if (typeof lineNumber === "number") {
+								setWidget({ lineNumber, side: side ?? SplitSide.new });
+							}
+						},
+					}),
+				});
+			}, [onCreateUseWidgetHook]);
 			const threadEntries = [
 				...Object.entries(extendData?.oldFile ?? {}).map(([lineNumber, entry]) => ({
 					key: `old-${lineNumber}`,
@@ -70,13 +86,35 @@ vi.mock("@git-diff-view/react", async () => {
 					<div data-testid="mock-diff">
 						mode:{diffViewMode} theme:{diffViewTheme}
 						<div className="space-y-1">
-							{diffFile?.__mockLines?.map((line, index) => (
-								<div key={line.key} data-line={index + 1} className="diff-line">
-									<div className={line.side === "old" ? "diff-line-old-content" : "diff-line-new-content"}>
-										<span data-testid="mock-search-line-content">{line.text}</span>
-									</div>
-								</div>
-							))}
+							{(() => {
+								let oldNum = 0;
+								let newNum = 0;
+								// Mirror both real gutter layouts: split uses `.diff-line-{old,new}-num`
+								// with `[data-line-num]`; unified uses a single `.diff-line-num` cell
+								// with `[data-line-old-num]`/`[data-line-new-num]` spans.
+								const unified = diffViewMode === 4;
+								return diffFile?.__mockLines?.map((line, index) => {
+									const lineNumber = line.side === "old" ? (oldNum += 1) : (newNum += 1);
+									return (
+										<div key={line.key} data-line={index + 1} data-side={line.side} className="diff-line">
+											{unified ? (
+												<div className="diff-line-num">
+													{line.side === "old"
+														? <span data-line-old-num={lineNumber}>{lineNumber}</span>
+														: <span data-line-new-num={lineNumber}>{lineNumber}</span>}
+												</div>
+											) : (
+												<div className={line.side === "old" ? "diff-line-old-num" : "diff-line-new-num"}>
+													<span data-line-num={lineNumber}>{lineNumber}</span>
+												</div>
+											)}
+											<div className={line.side === "old" ? "diff-line-old-content" : "diff-line-new-content"}>
+												<span data-testid="mock-search-line-content">{line.text}</span>
+											</div>
+										</div>
+									);
+								});
+							})()}
 						</div>
 						{diffViewAddWidget && (
 							<button
@@ -1604,6 +1642,97 @@ describe("TaskDiffViewer", () => {
 		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Delete comment" }));
 		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
+	});
+
+	it("drag-selects a line range in the gutter and comments on the whole range", async () => {
+		const user = userEvent.setup();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		const section = diffs[0];
+		const newNums = section.querySelectorAll<HTMLElement>(".diff-line-new-num [data-line-num]");
+		// src/app.ts adds two new lines (1 and 2).
+		expect(newNums.length).toBeGreaterThanOrEqual(2);
+
+		// Press on line 1, drag to line 2, release — selects the [1, 2] range.
+		fireEvent.mouseDown(newNums[0], { button: 0 });
+		fireEvent.mouseMove(newNums[1]);
+		fireEvent.mouseUp(newNums[1]);
+
+		// The composer opens anchored to the bottom line, labelled with the range.
+		const composer = await screen.findByText(/New lines 1–2/);
+		expect(composer).toBeInTheDocument();
+
+		await user.type(
+			screen.getByPlaceholderText("Leave a comment on this line..."),
+			"Refactor this block",
+		);
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(screen.getAllByText("Refactor this block").length).toBeGreaterThanOrEqual(1);
+		// The persisted thread header reflects the multi-line range.
+		expect(
+			within(screen.getByTestId("inline-comment-thread")).getByText("New lines 1–2"),
+		).toBeInTheDocument();
+		expect(document.querySelector('[data-inline-comment-id*=":newFile:1-2:"]')).not.toBeNull();
+	});
+
+	it("drag-selects a line range in unified mode where the gutter is one combined column", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			defaultDiffViewMode: "unified",
+		});
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4");
+		});
+
+		const section = screen.getAllByTestId("mock-diff")[0];
+		// Unified gutter: a single `.diff-line-num` cell with `[data-line-new-num]` spans.
+		const newNums = section.querySelectorAll<HTMLElement>(".diff-line-num [data-line-new-num]");
+		expect(newNums.length).toBeGreaterThanOrEqual(2);
+
+		fireEvent.mouseDown(newNums[0], { button: 0 });
+		fireEvent.mouseMove(newNums[1]);
+		fireEvent.mouseUp(newNums[1]);
+
+		const composer = await screen.findByText(/New lines 1–2/);
+		expect(composer).toBeInTheDocument();
+
+		await user.type(
+			screen.getByPlaceholderText("Leave a comment on this line..."),
+			"Unified range note",
+		);
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(
+			within(screen.getByTestId("inline-comment-thread")).getByText("New lines 1–2"),
+		).toBeInTheDocument();
 	});
 
 	it("keeps the caret position while editing an inline comment", async () => {

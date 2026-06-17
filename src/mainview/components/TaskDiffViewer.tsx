@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MutableRefObject, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactElement, type ReactNode } from "react";
 import type { NavigationGuard } from "../navigation-guard";
 import type {
 	Project,
@@ -186,7 +186,8 @@ interface TaskDiffFileSectionProps {
 	onAddComment: (params: {
 		fileId: string;
 		side: InlineCommentSideKey;
-		lineNumber: number;
+		startLine: number;
+		endLine: number;
 		body: string;
 	}) => void;
 	editingCommentId: string | null;
@@ -235,6 +236,20 @@ function getInlineCommentSideKey(side: number, splitSide: DiffLibrary["SplitSide
 
 function getInlineCommentSideLabel(side: InlineCommentSideKey): "infoPanel.diffCommentSideOld" | "infoPanel.diffCommentSideNew" {
 	return side === "oldFile" ? "infoPanel.diffCommentSideOld" : "infoPanel.diffCommentSideNew";
+}
+
+function formatInlineCommentLineLabel(
+	t: ReturnType<typeof useT>,
+	side: InlineCommentSideKey,
+	startLine: number,
+	endLine: number,
+): string {
+	const sideLabel = t(getInlineCommentSideLabel(side));
+	const lo = Math.min(startLine, endLine);
+	const hi = Math.max(startLine, endLine);
+	return lo === hi
+		? t("infoPanel.diffCommentLine", { side: sideLabel, line: String(lo) })
+		: t("infoPanel.diffCommentLines", { side: sideLabel, start: String(lo), end: String(hi) });
 }
 
 function getReviewFilePath(file: TaskDiffFile): string {
@@ -672,10 +687,12 @@ function InlineCommentThreadView({
 			data-testid="inline-comment-thread"
 		>
 			<div className="dev3-inline-comment__meta text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-muted">
-				{t("infoPanel.diffCommentLine", {
-					side: t(getInlineCommentSideLabel(side)),
-					line: String(lineNumber),
-				})}
+				{formatInlineCommentLineLabel(
+					t,
+					side,
+					thread.comments.reduce((min, c) => Math.min(min, c.startLine), lineNumber),
+					thread.comments.reduce((max, c) => Math.max(max, c.endLine), lineNumber),
+				)}
 			</div>
 			{thread.comments.map((comment) => (
 				<div
@@ -746,13 +763,15 @@ function InlineCommentThreadView({
 function InlineCommentComposer({
 	filePath,
 	side,
-	lineNumber,
+	startLine,
+	endLine,
 	onCancel,
 	onSubmit,
 }: {
 	filePath: string;
 	side: InlineCommentSideKey;
-	lineNumber: number;
+	startLine: number;
+	endLine: number;
 	onCancel: () => void;
 	onSubmit: (body: string) => void;
 }) {
@@ -777,10 +796,7 @@ function InlineCommentComposer({
 					{t("infoPanel.diffCommentAdd")}
 				</div>
 				<div className="dev3-inline-comment__meta text-[0.6875rem] text-fg-3">
-					{filePath} · {t("infoPanel.diffCommentLine", {
-						side: t(getInlineCommentSideLabel(side)),
-						line: String(lineNumber),
-					})}
+					{filePath} · {formatInlineCommentLineLabel(t, side, startLine, endLine)}
 				</div>
 			</div>
 			<textarea
@@ -1094,6 +1110,141 @@ function TaskDiffFileSection({
 	const builtModesRef = useRef<Set<DiffViewMode>>(new Set());
 	const isFirstExpandedEffectRef = useRef(true);
 	const copiedPathResetRef = useRef<number | null>(null);
+	const dragHostRef = useRef<HTMLDivElement | null>(null);
+	const widgetHookRef = useRef<{ getReadonlyState: () => { setWidget: (arg: { side?: number; lineNumber?: number }) => void } } | null>(null);
+	const gutterDragRef = useRef<{ side: InlineCommentSideKey; sideNum: number; anchor: number; current: number } | null>(null);
+	const [pendingRange, setPendingRange] = useState<{ side: InlineCommentSideKey; startLine: number; endLine: number } | null>(null);
+
+	const clearRangeHighlight = useCallback(() => {
+		dragHostRef.current
+			?.querySelectorAll(".dev3-diff-line-range")
+			.forEach((row) => row.classList.remove("dev3-diff-line-range"));
+	}, []);
+
+	// Read the side + line number from a gutter cell. Handles both layouts:
+	//  - split:   cell `.diff-line-{old,new}-num` with a `[data-line-num]` span
+	//  - unified: cell `.diff-line-num` with `[data-line-old-num]`/`[data-line-new-num]` spans
+	// `lockedSide` constrains which side to read in unified mode (and is used to
+	// reject rows that belong to the other side in split mode).
+	const readGutterCell = useCallback((cell: Element | null, lockedSide?: InlineCommentSideKey): { side: InlineCommentSideKey; line: number } | null => {
+		if (!cell) {
+			return null;
+		}
+		const readAttr = (attr: string): number => Number(cell.querySelector(`[${attr}]`)?.getAttribute(attr) ?? NaN);
+		if (cell.classList.contains("diff-line-old-num")) {
+			const line = readAttr("data-line-num");
+			return Number.isFinite(line) ? { side: "oldFile", line } : null;
+		}
+		if (cell.classList.contains("diff-line-new-num")) {
+			const line = readAttr("data-line-num");
+			return Number.isFinite(line) ? { side: "newFile", line } : null;
+		}
+		// Unified: pick the locked side, else prefer the new side when present.
+		const oldLine = readAttr("data-line-old-num");
+		const newLine = readAttr("data-line-new-num");
+		if (lockedSide === "oldFile") {
+			return Number.isFinite(oldLine) ? { side: "oldFile", line: oldLine } : null;
+		}
+		if (lockedSide === "newFile") {
+			return Number.isFinite(newLine) ? { side: "newFile", line: newLine } : null;
+		}
+		if (Number.isFinite(newLine)) {
+			return { side: "newFile", line: newLine };
+		}
+		return Number.isFinite(oldLine) ? { side: "oldFile", line: oldLine } : null;
+	}, []);
+
+	const applyRangeHighlight = useCallback((side: InlineCommentSideKey, a: number, b: number) => {
+		const host = dragHostRef.current;
+		if (!host) {
+			return;
+		}
+		const lo = Math.min(a, b);
+		const hi = Math.max(a, b);
+		host.querySelectorAll(".dev3-diff-line-range").forEach((row) => row.classList.remove("dev3-diff-line-range"));
+		host.querySelectorAll(".diff-line-old-num, .diff-line-new-num, .diff-line-num").forEach((cell) => {
+			const info = readGutterCell(cell, side);
+			if (info && info.side === side && info.line >= lo && info.line <= hi) {
+				cell.closest(".diff-line")?.classList.add("dev3-diff-line-range");
+			}
+		});
+	}, [readGutterCell]);
+
+	// Re-apply the range highlight after React commits (the library re-renders the
+	// table rows when the composer widget opens, which wipes manually-added classes).
+	useEffect(() => {
+		if (pendingRange) {
+			applyRangeHighlight(pendingRange.side, pendingRange.startLine, pendingRange.endLine);
+		} else {
+			clearRangeHighlight();
+		}
+	}, [pendingRange, diffFile, applyRangeHighlight, clearRangeHighlight]);
+
+	const handleGutterMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+		if (event.button !== 0) {
+			return;
+		}
+		const target = event.target as HTMLElement;
+		// Let the hover "+" widget handle single-line comments.
+		if (target.closest(".diff-add-widget, .diff-add-widget-wrapper")) {
+			return;
+		}
+		const numCell = target.closest(".diff-line-old-num, .diff-line-new-num, .diff-line-num");
+		const anchorInfo = readGutterCell(numCell);
+		if (!anchorInfo) {
+			return;
+		}
+		const sideKey = anchorInfo.side;
+		const sideNum = sideKey === "oldFile" ? diffLib.SplitSide.old : diffLib.SplitSide.new;
+		const lineValue = anchorInfo.line;
+		// Prevent native text selection while dragging across the gutter.
+		event.preventDefault();
+		gutterDragRef.current = { side: sideKey, sideNum, anchor: lineValue, current: lineValue };
+		setPendingRange(null);
+		dragHostRef.current?.classList.add("dev3-diff-selecting");
+		applyRangeHighlight(sideKey, lineValue, lineValue);
+
+		const onMove = (moveEvent: MouseEvent) => {
+			const drag = gutterDragRef.current;
+			if (!drag) {
+				return;
+			}
+			const row = (moveEvent.target as HTMLElement | null)?.closest(".diff-line");
+			if (!row || !dragHostRef.current?.contains(row)) {
+				return;
+			}
+			const cell = row.querySelector(".diff-line-old-num, .diff-line-new-num, .diff-line-num");
+			const info = readGutterCell(cell, drag.side);
+			if (!info || info.side !== drag.side || info.line === drag.current) {
+				return;
+			}
+			drag.current = info.line;
+			applyRangeHighlight(drag.side, drag.anchor, info.line);
+		};
+
+		const onUp = () => {
+			document.removeEventListener("mousemove", onMove);
+			document.removeEventListener("mouseup", onUp);
+			const drag = gutterDragRef.current;
+			gutterDragRef.current = null;
+			dragHostRef.current?.classList.remove("dev3-diff-selecting");
+			if (!drag) {
+				return;
+			}
+			const lo = Math.min(drag.anchor, drag.current);
+			const hi = Math.max(drag.anchor, drag.current);
+			if (lo === hi) {
+				// No range dragged — leave single-line commenting to the "+" widget.
+				clearRangeHighlight();
+				return;
+			}
+			setPendingRange({ side: drag.side, startLine: lo, endLine: hi });
+			widgetHookRef.current?.getReadonlyState().setWidget({ side: drag.sideNum, lineNumber: hi });
+		};
+
+		document.addEventListener("mousemove", onMove);
+		document.addEventListener("mouseup", onUp);
+	}, [diffLib, readGutterCell, applyRangeHighlight, clearRangeHighlight]);
 
 	useEffect(() => {
 		setActivated(eager);
@@ -1312,6 +1463,7 @@ function TaskDiffFileSection({
 				buildError ? (
 					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
 				) : diffFile ? (
+					<div ref={dragHostRef} className="dev3-diff-drag-host" onMouseDown={handleGutterMouseDown}>
 					<DiffView
 						key={diffRenderKey}
 						diffFile={diffFile}
@@ -1321,23 +1473,36 @@ function TaskDiffFileSection({
 						diffViewHighlight={false}
 						diffViewAddWidget
 						extendData={comments}
-						renderWidgetLine={({ lineNumber, side, onClose }: { lineNumber: number; side: number; onClose: () => void }) => (
-							<InlineCommentComposer
-								filePath={file.displayPath}
-								side={getInlineCommentSideKey(side, diffLib.SplitSide)}
-								lineNumber={lineNumber}
-								onCancel={onClose}
-								onSubmit={(body) => {
-									onAddComment({
-										fileId: file.id,
-										side: getInlineCommentSideKey(side, diffLib.SplitSide),
-										lineNumber,
-										body,
-									});
-									onClose();
-								}}
-							/>
-						)}
+						onCreateUseWidgetHook={(hook: typeof widgetHookRef.current) => { widgetHookRef.current = hook; }}
+						renderWidgetLine={({ lineNumber, side, onClose }: { lineNumber: number; side: number; onClose: () => void }) => {
+							const sideKey = getInlineCommentSideKey(side, diffLib.SplitSide);
+							const isPendingRange = pendingRange?.side === sideKey && pendingRange.endLine === lineNumber;
+							const startLine = isPendingRange ? pendingRange.startLine : lineNumber;
+							const closeComposer = () => {
+								onClose();
+								setPendingRange(null);
+								clearRangeHighlight();
+							};
+							return (
+								<InlineCommentComposer
+									filePath={file.displayPath}
+									side={sideKey}
+									startLine={startLine}
+									endLine={lineNumber}
+									onCancel={closeComposer}
+									onSubmit={(body) => {
+										onAddComment({
+											fileId: file.id,
+											side: sideKey,
+											startLine,
+											endLine: lineNumber,
+											body,
+										});
+										closeComposer();
+									}}
+								/>
+							);
+						}}
 						renderExtendLine={({ data, lineNumber, side }: { data: InlineDiffCommentThread; lineNumber: number; side: number }) => (
 							<InlineCommentThreadView
 								thread={data}
@@ -1355,6 +1520,7 @@ function TaskDiffFileSection({
 						)}
 						className="diff-tailwindcss-wrapper"
 					/>
+					</div>
 				) : (
 					<div className="p-4 space-y-3 animate-pulse">
 						<div className="h-4 w-36 rounded bg-elevated" />
@@ -1694,12 +1860,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	function addInlineComment({
 		fileId,
 		side,
-		lineNumber,
+		startLine,
+		endLine,
 		body,
 	}: {
 		fileId: string;
 		side: InlineCommentSideKey;
-		lineNumber: number;
+		startLine: number;
+		endLine: number;
 		body: string;
 	}) {
 		const trimmedBody = body.trim();
@@ -1707,16 +1875,21 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return;
 		}
 
+		const lo = Math.min(startLine, endLine);
+		const hi = Math.max(startLine, endLine);
+		// Threads are keyed by the anchor (end) line, where the widget/composer renders.
+		const anchorLine = hi;
+
 		setInlineComments((current) => {
 			const fileComments = current[fileId] ?? createEmptyInlineCommentFileData();
 			const sideComments = fileComments[side];
-			const existingThread = sideComments[lineNumber]?.data;
+			const existingThread = sideComments[anchorLine]?.data;
 			const nextComment: InlineDiffComment = {
-				id: `${fileId}:${side}:${lineNumber}:${Date.now().toString(36)}`,
+				id: `${fileId}:${side}:${lo === hi ? lo : `${lo}-${hi}`}:${Date.now().toString(36)}`,
 				body: trimmedBody,
 				createdAt: new Date().toISOString(),
-				startLine: lineNumber,
-				endLine: lineNumber,
+				startLine: lo,
+				endLine: hi,
 				side,
 			};
 			return {
@@ -1725,7 +1898,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					...fileComments,
 					[side]: {
 						...sideComments,
-						[lineNumber]: {
+						[anchorLine]: {
 							data: {
 								comments: [...(existingThread?.comments ?? []), nextComment],
 							},
@@ -2616,9 +2789,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</button>
 				)}
 				{!error && !isBusy && payload && totalFileCount > 0 && !filesCollapsed && (
-					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35">
-						<div className="h-full overflow-auto px-3 py-2">
-							<div className="sticky top-0 z-10 bg-raised/35 pb-2">
+					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35 flex flex-col min-h-0">
+							<div className="shrink-0 px-3 pt-2 pb-2">
 								<button
 									type="button"
 									onClick={toggleFilesCollapsed}
@@ -2753,10 +2925,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</div>
 								</div>
 							</div>
-							<div className="space-y-1">
-								{fileTree.map((node) => renderFileTreeNode(node))}
+							<div className="flex-1 min-h-0 overflow-auto px-3 pb-2">
+								<div className="space-y-1">
+									{fileTree.map((node) => renderFileTreeNode(node))}
+								</div>
 							</div>
-						</div>
 					</aside>
 				)}
 

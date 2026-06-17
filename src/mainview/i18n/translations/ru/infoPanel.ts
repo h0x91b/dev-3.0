@@ -140,6 +140,7 @@ const infoPanel = {
 	"infoPanel.diffCommentCancel": "Отмена",
 	"infoPanel.diffCommentSubmit": "Добавить комментарий",
 	"infoPanel.diffCommentLine": "{side} строка {line}",
+	"infoPanel.diffCommentLines": "{side} строки {start}–{end}",
 	"infoPanel.diffCommentSideOld": "Старая",
 	"infoPanel.diffCommentSideNew": "Новая",
 	"infoPanel.diffReviewExport": "Экспорт ревью",

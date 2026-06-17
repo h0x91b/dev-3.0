@@ -56,6 +56,8 @@ const tips = {
 	"tip.inlineDiffModes.body": "В toolbar diff’а переключайтесь между Unified и Split, чтобы быстро менять компактный обзор на side-by-side сравнение.",
 	"tip.inlineDiffComments.title": "Комментируйте прямо в diff",
 	"tip.inlineDiffComments.body": "В Show Diff нажмите + рядом со строкой, чтобы оставить inline comment ровно в нужном месте.",
+	"tip.inlineDiffMultilineComments.title": "Комментарий на диапазон строк",
+	"tip.inlineDiffMultilineComments.body": "Зажмите номер строки в diff и протяните, чтобы выделить диапазон, затем прокомментируйте сразу все строки.",
 	"tip.inlineDiffReviewExport.title": "Копируйте review как XML",
 	"tip.inlineDiffReviewExport.body": "Сайдбар собирает XML-блок из ваших inline comments, чтобы его можно было сразу вставить обратно агенту.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",
