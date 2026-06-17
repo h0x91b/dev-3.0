@@ -234,11 +234,12 @@ describe("TaskTerminal", () => {
 
 			await user.click(screen.getByText(/Complete/i));
 
+			// The shared move helper tries a normal move first (force is only the
+			// fallback when that fails), so the background call carries no force flag.
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "completed",
-				force: true,
 			});
 		});
 	});

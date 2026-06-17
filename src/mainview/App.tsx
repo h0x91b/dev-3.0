@@ -31,7 +31,7 @@ import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
-import { initTaskSoundPlayback, playTaskSound } from "./task-sounds";
+import { initTaskSoundPlayback, playTaskSound, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
@@ -158,6 +158,12 @@ function App() {
 	useEffect(() => {
 		initTaskSoundPlayback();
 	}, []);
+
+	// Mirror the completion-sound setting into the task-sounds module so the UI
+	// can gate its instant client-side playback without a round-trip.
+	useEffect(() => {
+		setTaskCompletionSoundEnabled(globalSettings.playSoundOnTaskComplete !== false);
+	}, [globalSettings.playSoundOnTaskComplete]);
 
 	const checkRequirements = useCallback(async () => {
 		setReqChecking(true);

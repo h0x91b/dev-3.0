@@ -26,6 +26,25 @@ const templates = new Map<TaskSoundStatus, HTMLAudioElement>();
 const SOUND_DEDUPE_MS = 1500;
 const lastPlayedAt = new Map<TaskSoundStatus, number>();
 
+// Client-side mirror of the `playSoundOnTaskComplete` setting, kept in sync by
+// App.tsx. The bun process also gates its `taskSound` push on the same setting;
+// this lets the UI gate the *immediate* client-side playback without a round-trip.
+let completionSoundEnabled = true;
+
+export function setTaskCompletionSoundEnabled(enabled: boolean): void {
+	completionSoundEnabled = enabled;
+}
+
+/**
+ * Play the completion/cancellation sound immediately from the UI (respecting the
+ * user setting). The matching bun `taskSound` push that follows is swallowed by
+ * the dedupe guard, so the sound is heard exactly once.
+ */
+export function playTaskCompletionSound(status: TaskSoundStatus): void {
+	if (!completionSoundEnabled) return;
+	void playTaskSound(status);
+}
+
 let unlockHandlersInstalled = false;
 let playbackUnlocked = false;
 

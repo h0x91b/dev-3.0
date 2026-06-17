@@ -14,17 +14,15 @@ type ColumnSlot =
 import type { AppAction, Route } from "../state";
 import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
-import { trackEvent } from "../analytics";
 import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { startVisibilityAwarePoll } from "../utils/poll";
-import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
 import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
-import { playTaskSound } from "../task-sounds";
+import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -201,51 +199,15 @@ function KanbanBoard({
 			return;
 		}
 
-		// Warn before completing/cancelling with unpushed changes
-		if (
-			task.worktreePath &&
-			(targetStatus === "completed" || targetStatus === "cancelled")
-		) {
-			const proceed = await confirmTaskCompletion(task, project, targetStatus, t);
-			if (!proceed) return;
-		}
-
-		const fromStatus = task.status;
-
-		// Optimistic update: move card immediately and clear customColumnId
-		const optimisticTask = { ...task, status: targetStatus, customColumnId: null };
-		dispatch({ type: "updateTask", task: optimisticTask });
-		if (targetStatus === "completed" || targetStatus === "cancelled") {
-			dispatch({ type: "clearBell", taskId: task.id });
-			// Play the completion sound immediately on drop so it feels instant,
-			// instead of waiting for the bun round-trip + `taskSound` push (which
-			// the dedupe guard in task-sounds.ts then swallows).
-			if (globalSettings.playSoundOnTaskComplete !== false) {
-				void playTaskSound(targetStatus);
-			}
-		}
-		recordMove(task.id);
-		setMovingTaskIds((prev) => new Set(prev).add(task.id));
-
-		try {
-			const updated = await api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus: targetStatus,
-			});
-			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_moved", { from_status: fromStatus, to_status: targetStatus });
-		} catch (err) {
-			// Revert optimistic update on failure
-			dispatch({ type: "updateTask", task });
-			toast.error(t("task.failedMove", { error: String(err) }));
-		} finally {
-			setMovingTaskIds((prev) => {
-				const next = new Set(prev);
-				next.delete(task.id);
-				return next;
-			});
-		}
+		await moveTaskToStatus({
+			task,
+			project,
+			newStatus: targetStatus,
+			dispatch,
+			t,
+			onMoved: () => recordMove(task.id),
+			onMovingChange: (moving) => handleSetMoving(task.id, moving),
+		});
 	}
 
 	async function handleTaskDropToCustomColumn(taskId: string, customColumnId: string) {

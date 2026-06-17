@@ -17,7 +17,7 @@ import LabelPicker from "./LabelPicker";
 import SiblingPopover from "./SiblingPopover";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
-import { confirmTaskCompletion } from "../utils/confirmTaskCompletion";
+import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TaskDetailModal from "./TaskDetailModal";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
@@ -197,64 +197,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			return;
 		}
 
-		// Warn before completing/cancelling with unpushed changes
-		if (
-			task.worktreePath &&
-			(newStatus === "completed" || newStatus === "cancelled")
-		) {
-			setMenuOpen(false);
-			const proceed = await confirmTaskCompletion(task, project, newStatus, t);
-			if (!proceed) return;
-		}
-
-		const fromStatus = task.status;
-		const isTerminal = newStatus === "completed" || newStatus === "cancelled";
 		setMenuOpen(false);
+		const isTerminal = newStatus === "completed" || newStatus === "cancelled";
 
-		// Optimistic update for terminal statuses — grey out and move immediately
-		if (isTerminal) {
-			dispatch({ type: "updateTask", task: { ...task, status: newStatus } });
-			dispatch({ type: "clearBell", taskId: task.id });
-			onTaskMoved(task.id);
-			onSetMoving?.(task.id, true);
-		} else {
-			setMoving(true);
-		}
-
-		try {
-			const updated = await api.request.moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus,
-			});
-			dispatch({ type: "updateTask", task: updated });
-			if (!isTerminal) onTaskMoved(task.id);
-			trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-		} catch (err) {
-			// Auto-retry with force — environment is likely broken
-			try {
-				const updated = await api.request.moveTask({
-					taskId: task.id,
-					projectId: project.id,
-					newStatus,
-					force: true,
-				});
-				dispatch({ type: "updateTask", task: updated });
-				if (!isTerminal) onTaskMoved(task.id);
-				trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
-			} catch (retryErr) {
-				// Revert optimistic update on total failure
-				if (isTerminal) {
-					dispatch({ type: "updateTask", task });
-				}
-				toast.error(t("task.failedMove", { error: String(retryErr) }));
-			}
-		}
-		if (isTerminal) {
-			onSetMoving?.(task.id, false);
-		} else {
-			setMoving(false);
-		}
+		await moveTaskToStatus({
+			task,
+			project,
+			newStatus,
+			dispatch,
+			t,
+			onMoved: () => onTaskMoved(task.id),
+			onMovingChange: (moving) =>
+				isTerminal ? onSetMoving?.(task.id, moving) : setMoving(moving),
+		});
 	}
 
 	async function handleMoveToCustomColumn(customColumnId: string) {

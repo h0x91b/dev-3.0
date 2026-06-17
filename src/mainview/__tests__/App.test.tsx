@@ -55,6 +55,8 @@ vi.mock("../zoom", () => ({
 vi.mock("../task-sounds", () => ({
 	initTaskSoundPlayback: vi.fn(),
 	playTaskSound: vi.fn().mockResolvedValue(undefined),
+	playTaskCompletionSound: vi.fn(),
+	setTaskCompletionSoundEnabled: vi.fn(),
 }));
 
 // Mock child screens so they don't trigger their own API calls
