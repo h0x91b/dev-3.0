@@ -1685,7 +1685,7 @@ export type AppRPCSchema = {
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
 			projectUpdated: { project: Project };
-			taskSound: { status: "completed" | "cancelled" };
+			taskSound: { status: "completed" | "cancelled"; taskId: string };
 			ptyDied: { taskId: string };
 			projectPtyDied: { projectId: string };
 			homePtyDied: {};

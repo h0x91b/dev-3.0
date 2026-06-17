@@ -31,7 +31,7 @@ import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
-import { initTaskSoundPlayback, playTaskSound, setTaskCompletionSoundEnabled } from "./task-sounds";
+import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
@@ -492,8 +492,8 @@ function App() {
 
 	useEffect(() => {
 		function onTaskSound(e: Event) {
-			const { status } = (e as CustomEvent).detail;
-			void playTaskSound(status);
+			const { status, taskId } = (e as CustomEvent).detail;
+			playTaskSoundFromPush(status, taskId);
 		}
 		window.addEventListener("rpc:taskSound", onTaskSound);
 		return () => window.removeEventListener("rpc:taskSound", onTaskSound);

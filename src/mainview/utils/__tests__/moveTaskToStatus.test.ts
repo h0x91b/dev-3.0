@@ -50,8 +50,8 @@ describe("moveTaskToStatus", () => {
 		const ok = await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t });
 
 		expect(ok).toBe(true);
-		// Sound fires before the RPC resolves (instant feedback).
-		expect(mockedSound).toHaveBeenCalledWith("completed");
+		// Sound fires before the RPC resolves (instant feedback), keyed by task id.
+		expect(mockedSound).toHaveBeenCalledWith("completed", "t1");
 		// Optimistic + clearBell + server-confirmed update.
 		expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "clearBell", taskId: "t1" }));
 		expect(dispatchedStatuses(dispatch)).toEqual(["completed", "completed"]);

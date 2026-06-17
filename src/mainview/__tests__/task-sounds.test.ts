@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SOUND_DEFS, playTaskSound } from "../task-sounds";
+import {
+	SOUND_DEFS,
+	playTaskCompletionSound,
+	playTaskSoundFromPush,
+	setTaskCompletionSoundEnabled,
+} from "../task-sounds";
 
 // Regression guard for the `views://` range-request bug: task sounds must be
 // inlined as base64 `data:` URLs (via the `?inline` import suffix), never served
@@ -14,16 +19,15 @@ describe("task sound assets", () => {
 	}
 });
 
-// The kanban UI plays the completion sound client-side the instant a card is
-// dropped onto completed/cancelled, while the bun process pushes a `taskSound`
-// event for the same move a moment later. The dedupe guard must swallow that
-// near-simultaneous repeat so the user hears the sound exactly once.
-describe("playTaskSound dedupe", () => {
+// The UI plays the completion sound client-side the instant a card is dropped,
+// while the bun process pushes a `taskSound` echo for the SAME move a moment
+// later. The echo is suppressed precisely by task id — not by status+time — so
+// the sound is heard exactly once AND two different tasks both ring.
+describe("completion-sound echo suppression", () => {
 	let playSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
-		vi.useFakeTimers();
-		vi.setSystemTime(1_000_000);
+		setTaskCompletionSoundEnabled(true);
 		playSpy = vi
 			.spyOn(window.HTMLMediaElement.prototype, "play")
 			.mockResolvedValue(undefined as unknown as void);
@@ -31,32 +35,35 @@ describe("playTaskSound dedupe", () => {
 
 	afterEach(() => {
 		playSpy.mockRestore();
-		vi.useRealTimers();
 	});
 
-	it("plays only once for a repeated status within the dedupe window", async () => {
-		await playTaskSound("completed");
-		vi.advanceTimersByTime(200);
-		await playTaskSound("completed");
+	it("swallows the bun echo for a task the UI already played", () => {
+		playTaskCompletionSound("completed", "task-A");
+		playTaskSoundFromPush("completed", "task-A"); // the echo
 		expect(playSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it("plays again once the dedupe window has elapsed", async () => {
-		await playTaskSound("cancelled");
-		vi.advanceTimersByTime(2000);
-		await playTaskSound("cancelled");
+	it("rings for two different tasks completing back-to-back", () => {
+		playTaskCompletionSound("completed", "task-1");
+		playTaskCompletionSound("completed", "task-2");
 		expect(playSpy).toHaveBeenCalledTimes(2);
 	});
 
-	it("does not swallow the retry when the first playback fails", async () => {
-		// Clear any dedupe stamp left by earlier tests (module state persists).
-		vi.advanceTimersByTime(2000);
-		// First attempt rejects (e.g. autoplay still blocked); it must NOT leave a
-		// dedupe stamp behind, or the immediate retry would be silently dropped.
-		playSpy.mockRejectedValueOnce(new Error("blocked"));
-		await playTaskSound("completed");
-		vi.advanceTimersByTime(100);
-		await playTaskSound("completed");
-		expect(playSpy).toHaveBeenCalledTimes(2);
+	it("swallows a repeated echo (force-retry can emit the push twice)", () => {
+		playTaskCompletionSound("completed", "task-R");
+		playTaskSoundFromPush("completed", "task-R");
+		playTaskSoundFromPush("completed", "task-R");
+		expect(playSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("plays a push for a task the UI never played locally (CLI/other window)", () => {
+		playTaskSoundFromPush("completed", "remote-task");
+		expect(playSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not play locally when the setting is disabled", () => {
+		setTaskCompletionSoundEnabled(false);
+		playTaskCompletionSound("completed", "task-off");
+		expect(playSpy).not.toHaveBeenCalled();
 	});
 });

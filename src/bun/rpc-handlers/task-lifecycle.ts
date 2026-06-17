@@ -499,10 +499,10 @@ export async function runCleanupScript(
 	log.info("Cleanup session finished", { session: sessionName });
 }
 
-export function emitTaskSound(status: "completed" | "cancelled"): void {
+export function emitTaskSound(status: "completed" | "cancelled", taskId: string): void {
 	const settings = loadSettingsSync();
 	if (settings.playSoundOnTaskComplete === false) return;
-	getPushMessage()?.("taskSound", { status });
+	getPushMessage()?.("taskSound", { status, taskId });
 }
 
 export async function triggerColumnAgentIfNeeded(
@@ -680,7 +680,7 @@ export async function moveTask(params: {
 	if (newStatus === "completed" || newStatus === "cancelled") {
 		cleanupTaskState(task.id);
 		portPool.releasePorts(task.id);
-		emitTaskSound(newStatus as "completed" | "cancelled");
+		emitTaskSound(newStatus as "completed" | "cancelled", task.id);
 		if (params.force) {
 			log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
 		} else if (isActive(oldStatus) || task.worktreePath) {

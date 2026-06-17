@@ -97,7 +97,7 @@ export async function moveTaskToStatus({
 	dispatch({ type: "updateTask", task: optimisticTask });
 	if (terminal) {
 		dispatch({ type: "clearBell", taskId: task.id });
-		playTaskCompletionSound(newStatus as "completed" | "cancelled");
+		playTaskCompletionSound(newStatus as "completed" | "cancelled", task.id);
 	}
 	onMoved?.();
 	trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });

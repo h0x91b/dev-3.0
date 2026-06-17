@@ -1807,7 +1807,7 @@ describe("handlers.moveTask", () => {
 		expect(push.mock.invocationCallOrder[0]).toBeLessThan(
 			vi.mocked(git.removeWorktree).mock.invocationCallOrder[0],
 		);
-		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed" });
+		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed", taskId: task.id });
 		expect(result.status).toBe("completed");
 	});
 
@@ -1816,9 +1816,9 @@ describe("handlers.moveTask", () => {
 		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
 		setPushMessage(push);
 
-		emitTaskSound("completed");
+		emitTaskSound("completed", "task-1");
 
-		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed" });
+		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed", taskId: "task-1" });
 	});
 
 	it("emitTaskSound: stays silent when the setting is disabled", () => {
@@ -1826,7 +1826,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false } as any);
 		setPushMessage(push);
 
-		emitTaskSound("cancelled");
+		emitTaskSound("cancelled", "task-2");
 
 		expect(push).not.toHaveBeenCalledWith("taskSound", expect.anything());
 	});
