@@ -1,0 +1,1 @@
+`dev3 task show` now always prints the task's current overview, and accepts `--notes` to inline note bodies and `--history` to show the title/overview change log. Lets agents understand a neighbouring or dependency task in one call without its worktree or conversation.

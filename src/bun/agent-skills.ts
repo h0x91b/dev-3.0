@@ -130,6 +130,8 @@ Keep each note self-contained and concise — one insight per note, phrased so i
 
 \`dev3 note list\` truncates each body to one line. To read a note's complete content (e.g. when resuming a task after a context reset), use \`dev3 note show <id>\` with the 8-char prefix.
 
+\`dev3 task show\` always prints the task's **current overview** (the freshest summary — more useful than the original description). To understand a *neighbouring* task you're not working in (a dependency, rebase target, related experiment), add \`--notes\` to inline that task's note bodies and \`--history\` to see how its title/overview evolved over time — both in one call, without a worktree or its conversation.
+
 ## Saving context tokens
 
 If you already received the full task description as your initial prompt (most agents do), run \`dev3 current --brief\` instead of \`dev3 current\` to skip re-printing the description — you keep the project/task/status/overview lines without duplicating text you already hold.

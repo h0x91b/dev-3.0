@@ -1,5 +1,5 @@
-import type { CliResponse, Task, TaskStatus } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
+import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
+import { STATUS_LABELS, ALL_STATUSES, getTaskTitle, getTaskOverview } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
@@ -29,7 +29,55 @@ function formatDate(iso: string): string {
 	});
 }
 
-function printTask(task: Task): void {
+/** Print a titled block of indented body lines, preceded by a blank line. */
+function printSection(title: string, body: string): void {
+	process.stdout.write(`\n${title}\n`);
+	for (const line of body.split("\n")) {
+		process.stdout.write(`  ${line}\n`);
+	}
+}
+
+/** Describe what a history entry changed, for the inline log. */
+function describeHistoryChange(changed: TaskHistoryEntry["changed"]): string {
+	switch (changed) {
+		case "created":
+			return "created";
+		case "title":
+			return "title changed";
+		case "overview":
+			return "overview changed";
+		case "both":
+			return "title + overview changed";
+		default:
+			return changed;
+	}
+}
+
+function printHistory(history: TaskHistoryEntry[]): void {
+	process.stdout.write(`\nHistory (${history.length}):\n`);
+	for (const entry of history) {
+		process.stdout.write(`  ${formatDate(entry.at)}  [${describeHistoryChange(entry.changed)}]\n`);
+		process.stdout.write(`    title:    ${entry.title}\n`);
+		process.stdout.write(`    overview: ${entry.overview ?? "(none)"}\n`);
+	}
+}
+
+function printNotes(notes: TaskNote[]): void {
+	process.stdout.write(`\nNotes (${notes.length}):\n`);
+	for (const note of notes) {
+		process.stdout.write(`  [${note.id.slice(0, 8)}] ${note.source} · ${formatDate(note.createdAt)}\n`);
+		for (const line of note.content.split("\n")) {
+			process.stdout.write(`    ${line}\n`);
+		}
+	}
+}
+
+interface ShowTaskOptions {
+	history?: boolean;
+	notes?: boolean;
+}
+
+function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 	const titleMarker = task.titleEditedByUser ? " (user-edited — do NOT rename)" : "";
 	const fields: Array<[string, string]> = [
 		["ID:", task.id],
@@ -50,19 +98,18 @@ function printTask(task: Task): void {
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
 
-	const showDescription = task.description && task.description !== task.title;
-	if (showDescription) {
-		fields.push(["", ""]);
-		fields.push(["Description:", ""]);
-	}
-
 	printDetail(fields);
 
-	if (showDescription) {
-		for (const line of task.description.split("\n")) {
-			process.stdout.write(`  ${line}\n`);
-		}
-	}
+	// Always surface the current effective overview — it is the freshest summary
+	// of the task and is far more useful to an agent than the original prompt.
+	const overview = getTaskOverview(task);
+	if (overview) printSection("Overview:", overview);
+
+	const showDescription = task.description && task.description !== task.title;
+	if (showDescription) printSection("Description:", task.description);
+
+	if (opts.notes && task.notes && task.notes.length > 0) printNotes(task.notes);
+	if (opts.history && task.history && task.history.length > 0) printHistory(task.history);
 }
 
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
@@ -72,10 +119,10 @@ function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | u
 }
 
 async function showTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "history", "notes"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task show <id|--task id|--task-id id|--id id>");
+		exitUsage("Usage: dev3 task show <id|--task id|--task-id id|--id id> [--notes] [--history]");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -85,7 +132,10 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const resp = await sendRequest(socketPath, "task.show", params);
 	if (!resp.ok) exitError(resp.error || "Failed to get task");
 
-	printTask(resp.data as Task);
+	printTask(resp.data as Task, {
+		history: args.flags.history === "true",
+		notes: args.flags.notes === "true",
+	});
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {

@@ -25,7 +25,8 @@ Auto-detects project and task from the worktree context.
 Commands:
   dev3 current [--brief]                Show current project, task, status
                                          (--brief: hide the full description if you already have it in your prompt)
-  dev3 task show [--task <id>]          Full task details
+  dev3 task show [--task <id>] [--notes] [--history]  Full task details
+                                         (always shows current overview; --notes inlines note bodies, --history shows title/overview change log)
   dev3 task move [--task <id>] --status <status>  Change task status
   dev3 task update [--task <id>] --title "..." [--description "..."]  Update title/description
   dev3 task create --title "..." [--description "..."]  Create a new task (To Do)
