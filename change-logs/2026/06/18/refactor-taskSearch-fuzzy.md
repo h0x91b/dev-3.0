@@ -1,0 +1,1 @@
+Task search now uses the shared fzf-style fuzzy matcher (fuzzyMatch) for title and description instead of a naive substring check, so it behaves consistently with the project quick-switch palette. Identifier fields (seq, UUID, PR number) keep strict prefix matching.
