@@ -26,6 +26,11 @@ const LS_DIFF_MODE_PREFERENCE = "dev3-inline-diff-mode-v1";
 const LS_DIFF_FILES_COLLAPSED = "dev3-inline-diff-files-collapsed-v1";
 const DEFAULT_DIFF_MODE: TaskDiffMode = "uncommitted";
 const EAGER_FILE_COUNT = 2;
+// @git-diff-view skips syntax highlighting for files longer than this many lines
+// (library default is 2000, which left large source files — e.g. this one — plain).
+// Raise it so realistic source files still get highlighted; the per-line node guard
+// inside the library still protects against pathologically long single lines.
+const SYNTAX_HIGHLIGHT_MAX_LINES = 50000;
 
 function readFilesCollapsed(): boolean {
 	try {
@@ -82,6 +87,7 @@ type DiffViewMode = "unified" | "split";
 type DiffInstance = {
 	initTheme: (theme?: "light" | "dark") => void;
 	initRaw: () => void;
+	initSyntax: () => void;
 	buildSplitDiffLines: () => void;
 	buildUnifiedDiffLines: () => void;
 };
@@ -1327,6 +1333,11 @@ function TaskDiffFileSection({
 						: diffLib.generateDiffFile(oldPath, file.oldContent, newPath, file.newContent);
 					nextDiffFile.initTheme(resolvedTheme);
 					nextDiffFile.initRaw();
+					// Populate syntax-highlight data up front so the first render of
+					// <DiffView diffViewHighlight> already reads colored tokens. The
+					// library's own post-mount initSyntax + notifyAll does not reliably
+					// re-render the memoized line rows, leaving the diff unhighlighted.
+					nextDiffFile.initSyntax();
 					diffInstanceRef.current = nextDiffFile;
 				} else {
 					nextDiffFile.initTheme(resolvedTheme);
@@ -1470,7 +1481,7 @@ function TaskDiffFileSection({
 						diffViewTheme={resolvedTheme}
 						diffViewMode={diffMode}
 						diffViewWrap={false}
-						diffViewHighlight={false}
+						diffViewHighlight={true}
 						diffViewAddWidget
 						extendData={comments}
 						onCreateUseWidgetHook={(hook: typeof widgetHookRef.current) => { widgetHookRef.current = hook; }}
@@ -1756,10 +1767,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		Promise.all([
 			import("@git-diff-view/react"),
 			import("@git-diff-view/file"),
-		]).then(([reactLib, fileLib]) => {
+			import("@git-diff-view/core"),
+		]).then(([reactLib, fileLib, coreLib]) => {
 			if (cancelled) {
 				return;
 			}
+			// The highlighter is a shared singleton; raise its line cap so large
+			// files get syntax-highlighted instead of falling back to plain text.
+			coreLib.highlighter.setMaxLineToIgnoreSyntax(SYNTAX_HIGHLIGHT_MAX_LINES);
 			setDiffLib({
 				DiffView: reactLib.DiffView,
 				DiffFile: reactLib.DiffFile,

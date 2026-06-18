@@ -232,6 +232,8 @@ const tips = {
 	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab открывает переключатель по всем проектам, а не только по текущему.",
 	"tip.pasteLargeText.title": "Вставляйте большие логи файлами",
 	"tip.pasteLargeText.body": "Вставьте большой блок текста — он сохранится как .txt-вложение, и задача останется лёгкой, а не раздутой.",
+	"tip.diffSyntaxHighlight.title": "Подсветка синтаксиса в диффах",
+	"tip.diffSyntaxHighlight.body": "Просмотрщик диффов подсвечивает код по языку и следует светлой/тёмной теме — изменения легче читать.",
 };
 
 export default tips;
