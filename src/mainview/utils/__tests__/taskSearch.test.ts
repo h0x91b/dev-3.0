@@ -47,6 +47,32 @@ describe("matchesSearchQuery", () => {
 		expect(matchesSearchQuery(makeTask({ title: "Refactor database" }), "auth")).toBe(false);
 	});
 
+	// ---- Fuzzy (subsequence) title matching ----
+
+	it("matches title by fuzzy subsequence (non-contiguous)", () => {
+		// "fxbug" is a subsequence of "Fix authentication bug" but not a substring.
+		expect(matchesSearchQuery(makeTask({ title: "Fix authentication bug" }), "fxbug")).toBe(true);
+	});
+
+	it("matches title by acronym-style subsequence", () => {
+		expect(matchesSearchQuery(makeTask({ title: "Migrate task search", description: "" }), "mts")).toBe(true);
+	});
+
+	it("does not match title when query is not a subsequence", () => {
+		expect(
+			matchesSearchQuery(makeTask({ title: "Fix authentication bug", description: "" }), "xyzq"),
+		).toBe(false);
+	});
+
+	it("matches description by fuzzy subsequence", () => {
+		expect(
+			matchesSearchQuery(
+				makeTask({ title: "Unrelated", description: "The login flow breaks when session expires" }),
+				"lgnflw",
+			),
+		).toBe(true);
+	});
+
 	// ---- Description matching ----
 
 	it("matches by description substring", () => {
@@ -98,6 +124,16 @@ describe("matchesSearchQuery", () => {
 		expect(matchesSearchQuery(makeTask({ seq: 1, title: "No numbers here", description: "" }), "1")).toBe(true);
 	});
 
+	it("treats seq as prefix-only, not fuzzy subsequence", () => {
+		// "135" is a subsequence of "12345" but not a prefix — must NOT match.
+		expect(
+			matchesSearchQuery(
+				makeTask({ seq: 12345, title: "No numbers", description: "none", id: "00000000-0000-0000-0000-000000000000" }),
+				"135",
+			),
+		).toBe(false);
+	});
+
 	// ---- Full UUID (long ID) matching ----
 
 	it("matches by full UUID", () => {
@@ -112,6 +148,16 @@ describe("matchesSearchQuery", () => {
 				"a1b2c3d4-e5f6",
 			),
 		).toBe(true);
+	});
+
+	it("treats UUID as prefix-only, not fuzzy subsequence", () => {
+		// "b2c3" appears inside the UUID but is not a prefix — must NOT match.
+		expect(
+			matchesSearchQuery(
+				makeTask({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", title: "No match", description: "none", seq: 1 }),
+				"b2c3",
+			),
+		).toBe(false);
 	});
 
 	it("matches UUID case-insensitively", () => {

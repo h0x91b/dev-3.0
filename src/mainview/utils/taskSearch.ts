@@ -1,5 +1,6 @@
 import type { Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
+import { fuzzyScore } from "./fuzzyMatch";
 
 interface SearchOptions {
 	/** PR number associated with the task's branch (from BranchStatus), if available. */
@@ -8,8 +9,12 @@ interface SearchOptions {
 
 /**
  * Check if a task matches a search query.
- * Searches across: title, description, seq (numeric ID), UUID (full + short prefix),
- * and optionally PR number (when provided via options).
+ *
+ * Textual fields (title, description) use the shared fzf-style fuzzy matcher
+ * (`fuzzyScore`) so task search behaves like the project quick-switch palette:
+ * a query matches when its chars appear in order (subsequence), not only as a
+ * contiguous substring. Identifier fields (seq, UUID, PR number) keep strict
+ * prefix matching — fuzzy subsequence on short numeric IDs would be meaningless.
  * All comparisons are case-insensitive.
  */
 export function matchesSearchQuery(task: Task, query: string, options?: SearchOptions): boolean {
@@ -19,11 +24,11 @@ export function matchesSearchQuery(task: Task, query: string, options?: SearchOp
 	// Strip leading # for numeric ID search
 	const qNormalized = q.startsWith("#") ? q.slice(1) : q;
 
-	// Match against title (custom or auto-generated)
-	if (getTaskTitle(task).toLowerCase().includes(q)) return true;
+	// Fuzzy match against title (custom or auto-generated)
+	if (fuzzyScore(q, getTaskTitle(task)).matched) return true;
 
-	// Match against description
-	if (task.description.toLowerCase().includes(q)) return true;
+	// Fuzzy match against description
+	if (fuzzyScore(q, task.description).matched) return true;
 
 	// Match against seq (numeric human-readable ID) — prefix match on string representation
 	const seqStr = String(task.seq);
