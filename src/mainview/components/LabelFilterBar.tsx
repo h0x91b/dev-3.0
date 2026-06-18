@@ -86,7 +86,17 @@ function LabelFilterBar({
 			{/* Label filters */}
 			{hasLabels && (
 				<>
-					<span className="text-xs text-fg-3 font-medium flex-shrink-0">{t("labels.filterTitle")}:</span>
+					<span className="flex items-center gap-1 text-xs text-fg-3 font-medium flex-shrink-0">
+						{t("labels.filterTitle")}:
+						<span
+							className="cursor-help text-fg-muted hover:text-fg transition-colors leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							title={t("labels.manageHint")}
+							aria-label={t("labels.manageHint")}
+						>
+							{"\u{F02FC}"}
+						</span>
+					</span>
 					<div className="flex items-center gap-1.5 flex-wrap">
 						{labels.map((label) => (
 							<LabelChip

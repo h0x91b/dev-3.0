@@ -15,6 +15,7 @@ const columns = {
 
 	// Labels
 	"labels.filterTitle": "Labels",
+	"labels.manageHint": "To rename, recolor or delete labels, open Project Settings → Labels.",
 	"labels.noLabels": "No labels yet. Type a name to create one.",
 	"labels.createLabel": "Create \"{name}\"",
 	"labels.searchPlaceholder": "Search or create...",

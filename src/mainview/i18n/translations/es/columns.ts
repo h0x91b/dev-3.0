@@ -15,6 +15,7 @@ const columns = {
 
 	// Labels
 	"labels.filterTitle": "Etiquetas",
+	"labels.manageHint": "Para renombrar, recolorear o eliminar etiquetas, abre Ajustes del proyecto → Etiquetas.",
 	"labels.noLabels": "Aún no hay etiquetas. Escribe un nombre para crear una.",
 	"labels.createLabel": "Crear \"{name}\"",
 	"labels.searchPlaceholder": "Buscar o crear...",
