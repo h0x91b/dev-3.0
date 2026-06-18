@@ -536,6 +536,7 @@ export async function addTask(
 		scratch?: boolean;
 		customTitle?: string | null;
 		titleEditedByUser?: boolean;
+		labelIds?: string[];
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -561,7 +562,7 @@ export async function addTask(
 			createdAt: now,
 			updatedAt: now,
 			tmuxSocket: "dev3",
-			labelIds: [],
+			labelIds: extras?.labelIds ?? [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
 			...(extras?.preparing ? { preparing: true } : {}),
 			...(extras?.preparingStage ? { preparingStage: extras.preparingStage } : {}),

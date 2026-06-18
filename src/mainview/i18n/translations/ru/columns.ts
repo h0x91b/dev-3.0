@@ -15,6 +15,7 @@ const columns = {
 
 	// Labels
 	"labels.filterTitle": "Метки",
+	"labels.manageHint": "Чтобы переименовать, изменить цвет или удалить метку, откройте Настройки проекта → Метки.",
 	"labels.noLabels": "Меток пока нет. Введите название для создания.",
 	"labels.createLabel": "Создать \"{name}\"",
 	"labels.searchPlaceholder": "Найти или создать...",

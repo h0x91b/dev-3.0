@@ -858,6 +858,9 @@ async function spawnVariants(params: {
 				// so "Save and Run" does not silently revert to the description prefix.
 				customTitle: sourceTask.customTitle,
 				titleEditedByUser: sourceTask.titleEditedByUser,
+				// Carry the labels the user picked in the Create-Task modal — the
+				// source task is deleted below, so without this every label is lost.
+				labelIds: sourceTask.labelIds,
 			},
 		);
 
@@ -961,6 +964,8 @@ async function addAttempts(params: {
 				// so re-running a task does not throw away the title the user typed.
 				customTitle: sourceTask.customTitle,
 				titleEditedByUser: sourceTask.titleEditedByUser,
+				// Attempts share the source task's labels (same group).
+				labelIds: sourceTask.labelIds,
 			},
 		);
 

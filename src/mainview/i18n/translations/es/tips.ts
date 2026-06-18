@@ -1,6 +1,8 @@
 const tips = {
 	// Tips (feature discovery)
 	"tip.badge": "¿Sabías que...?",
+	"tip.createTaskInlineLabel.title": "Crea etiquetas al añadir una tarea",
+	"tip.createTaskInlineLabel.body": "En el diálogo «Nueva tarea» pulsa «+ Add Label» para crear y asignar una etiqueta nueva sin salir del formulario.",
 	"tip.dismiss": "No mostrar este consejo",
 	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
