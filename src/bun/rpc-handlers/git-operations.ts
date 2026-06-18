@@ -449,6 +449,7 @@ export function _resetPRPollerState(): void {
 	prPromotedTasks.clear();
 	prTaskNextDue.clear();
 	prLastTickAt = 0;
+	scheduleRandom = Math.random;
 }
 
 export async function checkOpenPRsForPromotion(): Promise<void> {
