@@ -68,6 +68,10 @@ const common = {
 	"taskSwitcher.scopeGlobal": "All projects",
 	"taskSwitcher.noOverview": "No overview yet",
 	"taskSwitcher.hint": "Tab next · ↑↓ move · ⇧ all projects · ⏎ open · esc cancel",
+	"projectSwitch.title": "Go to Project",
+	"projectSwitch.placeholder": "Type a project name…",
+	"projectSwitch.noResults": "No matching projects",
+	"projectSwitch.hint": "↑↓ move · ⏎ open · esc cancel",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",
