@@ -65,9 +65,9 @@ Evidence: `GlobalHeader.tsx`.
 
 Only in `project-settings` (`global | project | worktree`). Budget ≤ 6 visible tabs.
 
-### Command palette (Cmd/Ctrl+K) — `Observed`
+### Command palette (Cmd/Ctrl+K nav · Cmd/Ctrl+Shift+P actions) — `Observed`
 
-Type-to-find navigation. Complements the index jumps (`Cmd+1..9`) and the breadcrumb project dropdown for when you'd rather type a name than recall a position. Fuzzy-matches (`utils/fuzzyMatch.ts`); Enter navigates to the best match. Allowed: destinations, object jumps. Forbidden: one-off actions, durable state. See Surface model below.
+A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShell`). **Cmd+K** = navigation: fuzzy-jump to a project, Enter navigates (complements `Cmd+1..9` and the breadcrumb dropdown). **Cmd+Shift+P** = actions: fuzzy-match a command label, Enter runs it via `handleMenuAction` — a DOM mirror of the native menu, not a second command runner; only context-applicable commands show. Both fuzzy via `utils/fuzzyMatch.ts`. Destructive (delete/cancel/complete) and modal/inline flows (rename, overview, note, spawn, duplicate) are excluded from the quick palette by policy. See Surface model below.
 
 ## 5. Surface model — `Observed` unless noted
 
@@ -83,12 +83,12 @@ Type-to-find navigation. Complements the index jumps (`Cmd+1..9`) and the breadc
 | Context menu | Right-click object actions | object action, open-in, destructive | global destination | `OpenInMenu.tsx` |
 | Settings | Durable configuration | configuration, preference, integration, scripts | daily operational action | `GlobalSettings.tsx`, `ProjectSettings.tsx` |
 | Sidebar | Active-task jump list | destination, task jump, terminal preview, search | durable config | `ActiveTasksSidebar.tsx` |
-| Command palette (Cmd/Ctrl+K) | Type-to-find navigation overlay | destination, fuzzy search, object jump | command runner, object action, durable config, dense filters | `ProjectQuickSwitchModal.tsx`, `fuzzyMatch.ts` |
+| Command palette (Cmd+K nav / Cmd+Shift+P actions) | Type-to-find nav + type-to-run commands (two modes, one shell) | destination, fuzzy search, object jump, command runner (action mode, via handleMenuAction) | destructive action, modal/inline flow, durable config without friction, dense filters | `PaletteShell.tsx`, `ProjectQuickSwitchModal.tsx`, `CommandPaletteModal.tsx`, `commands.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
 
-The **command palette** is keyboard-only by design (no toolbar/breadcrumb button → sidesteps button-creep). Today it fuzzy-jumps to a **project** by name; the matcher (`utils/fuzzyMatch.ts`) is the single matcher for short UI entities. It is **not** the task switcher: the switcher (Option+Tab) hold-cycles the *active tasks*; the palette type-searches *all* entities. Hotkey is `Cmd/Ctrl+K`, not `Cmd+T` — `Cmd+T` is the universal new-tab key and the live terminal (ghostty/tmux) underneath intercepts it. **Future:** Cmd+K absorbs task search too, and a sibling **Cmd+Shift+P** action palette handles command-running — see `UX_DECISIONS.md` (2026-06-18).
+The **command palette** is keyboard-only by design (no toolbar/breadcrumb button → sidesteps button-creep) and runs in two sibling modes on one shared `PaletteShell`. **Navigation (Cmd+K):** fuzzy-jumps to a **project**; the matcher (`utils/fuzzyMatch.ts`) is the single matcher for short UI entities. **Actions (Cmd+Shift+P):** fuzzy-runs a command via `handleMenuAction` (DOM mirror of the native menu), listing only context-applicable commands and excluding destructive + modal/inline flows by policy. It is **not** the task switcher: the switcher (Option+Tab) hold-cycles the *active tasks*; the palette type-searches. Hotkeys avoid `Cmd+T` (universal new-tab; the live terminal underneath intercepts it). The navigation-vs-action question is resolved as **two-surfaces-one-shell** — see `UX_DECISIONS.md` (2026-06-18) and decision record 072. **Future:** Cmd+K absorbs task search too.
 
 ### 5.1 Task info panel — bar model (2×2) — `Observed`
 

@@ -1,6 +1,7 @@
 import { api } from "./rpc";
 import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
+import type { TaskStatus } from "../shared/types";
 
 /**
  * Universal dispatch for `application-menu-clicked` events that the bun side
@@ -90,6 +91,23 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "view-changelog":
 			navigate(ctx, { screen: "changelog" });
 			return;
+		case "open-settings":
+			navigate(ctx, { screen: "settings" });
+			return;
+		case "go-back":
+			ctx.dispatch({ type: "goBack" });
+			return;
+		case "go-forward":
+			ctx.dispatch({ type: "goForward" });
+			return;
+
+		// ── Create flows — open the App-owned modals via CustomEvent ──
+		case "open-new-task":
+			window.dispatchEvent(new CustomEvent("menu:open-new-task"));
+			return;
+		case "open-add-project":
+			window.dispatchEvent(new CustomEvent("menu:open-add-project"));
+			return;
 
 		// ── Project: navigation ──
 		case "project-settings": {
@@ -170,6 +188,37 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			return;
 		}
 
+		// ── Task: watch toggle ──
+		case "task-toggle-watch": {
+			const projectId = currentProjectId(state);
+			const task = currentTask(state);
+			if (!projectId || !task) return;
+			try {
+				await api.request.toggleTaskWatch({ taskId: task.id, projectId, watched: !task.watched });
+			} catch (err) {
+				console.error("[menu] toggleTaskWatch failed", err);
+			}
+			return;
+		}
+
+		// ── Task: lifecycle moves (safe statuses only; destructive
+		// complete/cancel are intentionally not palette/menu quick-actions) ──
+		case "task-move-todo":
+		case "task-move-in-progress":
+		case "task-move-user-questions":
+		case "task-move-review-ai":
+		case "task-move-review-user": {
+			const projectId = currentProjectId(state);
+			const taskId = currentTaskId(state);
+			if (!projectId || !taskId) return;
+			try {
+				await api.request.moveTask({ taskId, projectId, newStatus: TASK_MOVE_STATUS[action] });
+			} catch (err) {
+				console.error(`[menu] moveTask(${TASK_MOVE_STATUS[action]}) failed`, err);
+			}
+			return;
+		}
+
 		// ── Task: scripts ──
 		case "task-run-script": {
 			const taskId = currentTaskId(state);
@@ -221,13 +270,14 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			return;
 		}
 
-		// ── Terminal toggles dispatch CustomEvents — existing keybind handlers
-		// pick them up (see App.tsx Cmd+`/Cmd+Shift+` listeners). ──
-		case "term-toggle-project-terminal":
-			window.dispatchEvent(new CustomEvent("menu:toggle-project-terminal"));
+		// ── Terminal: open the project / home terminal screen directly ──
+		case "term-toggle-project-terminal": {
+			const projectId = currentProjectId(state);
+			if (projectId) navigate(ctx, { screen: "project-terminal", projectId });
 			return;
+		}
 		case "term-toggle-home-terminal":
-			window.dispatchEvent(new CustomEvent("menu:toggle-home-terminal"));
+			navigate(ctx, { screen: "home-terminal" });
 			return;
 
 		// ── Cheat sheet modal: open via CustomEvent — App.tsx wires the modal. ──
@@ -239,6 +289,14 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			console.warn("[menu] Unhandled menu action", action);
 	}
 }
+
+const TASK_MOVE_STATUS: Record<string, TaskStatus> = {
+	"task-move-todo": "todo",
+	"task-move-in-progress": "in-progress",
+	"task-move-user-questions": "user-questions",
+	"task-move-review-ai": "review-by-ai",
+	"task-move-review-user": "review-by-user",
+};
 
 const TMUX_ACTION_MAP = {
 	"term-split-h": "splitH",

@@ -16,6 +16,8 @@ const tips = {
 	"tip.cmdShiftSwitchFlipsView.body": "Add Shift — Cmd/Ctrl+Shift+1..9 jumps to a project and opens the opposite view: board → task view, task view → board.",
 	"tip.projectQuickSwitch.title": "Jump to a project by name",
 	"tip.projectQuickSwitch.body": "Press Cmd/Ctrl+K, start typing a project name, and hit Enter to jump to the best match — no need to remember its number.",
+	"tip.commandPalette.title": "Run any command",
+	"tip.commandPalette.body": "Press Cmd/Ctrl+Shift+P, type part of a command (theme, dev server, pull main…), and hit Enter to run it.",
 	"tip.agentCreateTasks.title": "Agents can create tasks",
 	"tip.agentCreateTasks.body": "Just say \"create a task in dev3 about...\" in your prompt and the agent will add it to your board.",
 	"tip.agentSeesTasks.title": "Agents see your board",

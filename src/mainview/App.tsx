@@ -37,6 +37,7 @@ import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
+import CommandPaletteModal from "./components/CommandPaletteModal";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -138,6 +139,7 @@ function App() {
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
+	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -282,6 +284,32 @@ function App() {
 		navigate({ screen: "dashboard" });
 	}, [navigate, state.route.screen]);
 
+	// Run a command from the Cmd+Shift+P action palette. Every command dispatches
+	// through the same `handleMenuAction` router the native menu uses, so the
+	// palette is a DOM mirror of the menu rather than a second command runner.
+	const runCommand = useCallback(
+		(actionId: string) => {
+			setShowCommandPalette(false);
+			handleMenuAction(actionId, { state, dispatch, setLocale }).catch((err) => {
+				console.error("[App] runCommand failed", err);
+			});
+		},
+		[state, dispatch, setLocale],
+	);
+
+	// The create-flow commands (`open-new-task` / `open-add-project`) live as
+	// App-owned modals, so the router emits CustomEvents the App opens here.
+	useEffect(() => {
+		const onNewTask = () => openCreateTaskModal();
+		const onAddProject = () => openAddProject();
+		window.addEventListener("menu:open-new-task", onNewTask);
+		window.addEventListener("menu:open-add-project", onAddProject);
+		return () => {
+			window.removeEventListener("menu:open-new-task", onNewTask);
+			window.removeEventListener("menu:open-add-project", onAddProject);
+		};
+	}, [openCreateTaskModal, openAddProject]);
+
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
@@ -322,6 +350,13 @@ function App() {
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
 				setShowProjectSwitch((open) => !open);
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
+				// Cmd/Ctrl+Shift+P — open the action (command) palette (VSCode
+				// convention). The navigation sibling is Cmd+K.
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
+				setShowCommandPalette((open) => !open);
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1042,6 +1077,16 @@ function App() {
 						navigateToProject(projectId);
 					}}
 					onClose={() => setShowProjectSwitch(false)}
+				/>
+			)}
+			{showCommandPalette && (
+				<CommandPaletteModal
+					context={{
+						hasProject: Boolean(getProjectIdForRoute(state.route)),
+						hasTask: Boolean(routeTaskId(state.route)),
+					}}
+					onRun={runCommand}
+					onClose={() => setShowCommandPalette(false)}
 				/>
 			)}
 			{showAddProjectModal && (
