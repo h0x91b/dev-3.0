@@ -236,6 +236,8 @@ const tips = {
 	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab opens the switcher across all projects, not just the current one.",
 	"tip.pasteLargeText.title": "Paste big logs as files",
 	"tip.pasteLargeText.body": "Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.",
+	"tip.diffSyntaxHighlight.title": "Diffs are syntax-highlighted",
+	"tip.diffSyntaxHighlight.body": "The diff viewer colors code by language and follows your light/dark theme, so changes are easier to scan.",
 } as const;
 
 export default tips;

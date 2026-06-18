@@ -33,6 +33,7 @@ vi.mock("@git-diff-view/react", async () => {
 			diffViewTheme,
 			diffFile,
 			diffViewAddWidget,
+			diffViewHighlight,
 			renderWidgetLine,
 			renderExtendLine,
 			extendData,
@@ -42,6 +43,7 @@ vi.mock("@git-diff-view/react", async () => {
 			diffViewTheme: "dark" | "light";
 			diffFile?: { __mockLines?: MockDiffLine[] };
 			diffViewAddWidget?: boolean;
+			diffViewHighlight?: boolean;
 			renderWidgetLine?: (props: { lineNumber: number; side: number; onClose: () => void; diffFile: object }) => React.ReactNode;
 			renderExtendLine?: (props: { lineNumber: number; side: number; data: unknown; onUpdate: () => void; diffFile: object }) => React.ReactNode;
 			extendData?: {
@@ -83,7 +85,7 @@ vi.mock("@git-diff-view/react", async () => {
 
 			return (
 				<div className="diff-table-scroll-container overflow-x-auto" data-testid="mock-diff-scroll">
-					<div data-testid="mock-diff">
+					<div data-testid="mock-diff" data-diff-highlight={diffViewHighlight ? "1" : "0"}>
 						mode:{diffViewMode} theme:{diffViewTheme}
 						<div className="space-y-1">
 							{(() => {
@@ -183,6 +185,7 @@ vi.mock("@git-diff-view/react", async () => {
 
 			initTheme() {}
 			initRaw() {}
+			initSyntax() {}
 			buildSplitDiffLines() {}
 			buildUnifiedDiffLines() {}
 		},
@@ -210,9 +213,17 @@ vi.mock("@git-diff-view/file", () => ({
 		],
 		initTheme() {},
 		initRaw() {},
+		initSyntax() {},
 		buildSplitDiffLines() {},
 		buildUnifiedDiffLines() {},
 	}),
+}));
+
+const mockSetMaxLineToIgnoreSyntax = vi.fn();
+vi.mock("@git-diff-view/core", () => ({
+	highlighter: {
+		setMaxLineToIgnoreSyntax: (value: number) => mockSetMaxLineToIgnoreSyntax(value),
+	},
 }));
 
 import { api } from "../../rpc";
@@ -402,6 +413,34 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
+	});
+
+	it("enables syntax highlighting on the rendered diff view", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+
+		for (const diff of screen.getAllByTestId("mock-diff")) {
+			expect(diff).toHaveAttribute("data-diff-highlight", "1");
+		}
+
+		// The library skips highlighting files longer than 2000 lines by default;
+		// the viewer raises that cap so large source files stay highlighted.
+		expect(mockSetMaxLineToIgnoreSyntax).toHaveBeenCalled();
+		const calls = mockSetMaxLineToIgnoreSyntax.mock.calls;
+		const raisedTo = calls[calls.length - 1]?.[0] ?? 0;
+		expect(raisedTo).toBeGreaterThan(2000);
 	});
 
 	it("sorts the right-panel file list alphabetically by full path", async () => {

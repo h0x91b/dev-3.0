@@ -5,6 +5,7 @@
     "": {
       "name": "electrobun-react-tailwind-vite",
       "dependencies": {
+        "@git-diff-view/core": "^0.1.3",
         "@git-diff-view/file": "^0.1.3",
         "@git-diff-view/react": "^0.1.3",
         "@headless-tree/core": "^1.6.3",

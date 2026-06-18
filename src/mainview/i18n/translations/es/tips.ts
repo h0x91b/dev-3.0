@@ -236,6 +236,8 @@ const tips = {
 	"tip.taskSwitcherGlobal.body": "Option+Shift+Tab abre el selector en todos los proyectos, no solo en el actual.",
 	"tip.pasteLargeText.title": "Pega registros grandes como archivos",
 	"tip.pasteLargeText.body": "Pega un bloque de texto grande y se guarda como adjunto .txt, manteniendo la tarea ligera en vez de sobrecargada.",
+	"tip.diffSyntaxHighlight.title": "Resaltado de sintaxis en los diffs",
+	"tip.diffSyntaxHighlight.body": "El visor de diffs colorea el código según el lenguaje y sigue tu tema claro/oscuro, así los cambios son más fáciles de leer.",
 };
 
 export default tips;

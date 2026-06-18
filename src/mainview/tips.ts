@@ -751,6 +751,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.pasteLargeText.body",
 		icon: "\u{F0192}", // nf-md-file_document_outline
 	},
+	{
+		id: "diff-syntax-highlight",
+		titleKey: "tip.diffSyntaxHighlight.title",
+		bodyKey: "tip.diffSyntaxHighlight.body",
+		icon: "\u{F0626}", // nf-md-palette_outline
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
