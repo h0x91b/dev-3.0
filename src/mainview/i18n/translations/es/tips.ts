@@ -16,6 +16,8 @@ const tips = {
 	"tip.cmdShiftSwitchFlipsView.body": "Añade Shift — Cmd/Ctrl+Shift+1..9 salta a un proyecto y abre la vista opuesta: tablero → vista de tareas, vista de tareas → tablero.",
 	"tip.projectQuickSwitch.title": "Ir a un proyecto por nombre",
 	"tip.projectQuickSwitch.body": "Pulsa Cmd/Ctrl+K, empieza a escribir el nombre de un proyecto y pulsa Enter para saltar a la mejor coincidencia — sin recordar su número.",
+	"tip.commandPalette.title": "Ejecuta cualquier comando",
+	"tip.commandPalette.body": "Pulsa Cmd/Ctrl+Shift+P, escribe parte de un comando (tema, servidor dev, actualizar main…) y pulsa Enter para ejecutarlo.",
 	"tip.agentCreateTasks.title": "Los agentes crean tareas",
 	"tip.agentCreateTasks.body": "Di \"crea una tarea en dev3 sobre...\" en tu prompt y el agente la agregará al tablero.",
 	"tip.agentSeesTasks.title": "Los agentes ven tu tablero",

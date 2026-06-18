@@ -46,6 +46,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0969}", // nf-md-magnify
 	},
 	{
+		id: "command-palette",
+		titleKey: "tip.commandPalette.title",
+		bodyKey: "tip.commandPalette.body",
+		icon: "\u{F0E7}", // nf-fa-bolt
+	},
+	{
 		id: "agent-create-tasks",
 		titleKey: "tip.agentCreateTasks.title",
 		bodyKey: "tip.agentCreateTasks.body",

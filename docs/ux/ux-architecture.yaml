@@ -128,12 +128,12 @@ ux_architecture:
       max_visible_tabs: 6
       status: "observed"
     command_palette:
-      purpose: "Type-to-find navigation across entities, keyboard-summoned (Cmd/Ctrl+K). Complements index jumps (Cmd+1..9) and the breadcrumb project dropdown when you'd rather type a name than remember a position."
-      mechanism: "Cmd/Ctrl+K opens surfaces.command_palette; fuzzy-match (utils/fuzzyMatch.ts), Enter navigates to the best match."
-      allowed: ["destination", "object_jump"]
-      forbidden: ["one_off_action", "durable_state"]
+      purpose: "Keyboard-summoned palette with two modes (see surfaces.command_palette). Navigation (Cmd/Ctrl+K) complements index jumps (Cmd+1..9) and the breadcrumb dropdown; actions (Cmd/Ctrl+Shift+P) complement the native menu when you'd rather type than hunt."
+      mechanism: "Cmd/Ctrl+K = navigation (fuzzy-jump to a project, Enter navigates). Cmd/Ctrl+Shift+P = actions (fuzzy-match a command label, Enter runs it via handleMenuAction). Both fuzzy via utils/fuzzyMatch.ts on the shared PaletteShell."
+      allowed: ["destination", "object_jump", "command_runner"]
+      forbidden: ["destructive_action", "durable_state_without_friction"]
       status: "observed"
-      evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/App.tsx (Cmd+K)"]
+      evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P)"]
 
   surfaces:
     global_header:
@@ -238,16 +238,27 @@ ux_architecture:
       observed: ["TaskSwitcherOverlay (planned)"]
       evidence: ["docs/ux/feature-plans/option-tab-task-switcher.md", "UX_DECISIONS 2026-06-15"]
     command_palette:
-      purpose: "Transient keyboard-summoned overlay for type-to-find navigation. Cmd/Ctrl+K (Slack/Linear/VSCode 'go to anything' convention). Today: fuzzy-jump to a project by name; Enter navigates to the best match. Distinct from task_switcher, which is hold-cycle (Option+Tab) over only the active tasks — the palette is type-to-search over all entities."
-      allowed: ["destination", "fuzzy_search", "object_jump"]
-      forbidden: ["command_runner", "object_action", "durable_configuration", "dense_filters"]
-      hotkey: "Cmd/Ctrl+K"
-      note: "Keyboard-only on purpose — no toolbar/breadcrumb button (sidesteps toolbar-button-creep). NOT Cmd+T: that is the universal new-tab key and the live terminal underneath (ghostty/tmux) intercepts it."
+      purpose: "Transient keyboard-summoned overlay built on the shared PaletteShell (portal, fuzzy input, keyboard nav). TWO sibling modes, kept cleanly separated by intent (the navigation-vs-action question is now resolved as two-surfaces-one-shell, not one-palette-with-modes). Distinct from task_switcher, which is hold-cycle (Option+Tab) over only the active tasks — the palette is type-to-search."
+      modes:
+        navigation:
+          hotkey: "Cmd/Ctrl+K"
+          purpose: "Type-to-find navigation. Today: fuzzy-jump to a project by name; Enter navigates to the best match."
+          allowed: ["destination", "fuzzy_search", "object_jump"]
+          forbidden: ["command_runner", "object_action", "durable_configuration", "dense_filters"]
+          component: "ProjectQuickSwitchModal"
+        action:
+          hotkey: "Cmd/Ctrl+Shift+P"
+          purpose: "Type-to-run commands (VSCode convention). Fuzzy-match a command label, Enter runs it via the shared handleMenuAction router — the palette is a DOM mirror of the native menu, NOT a second command runner. Only commands runnable in the current route context are listed (scope: always | project | task)."
+          allowed: ["command_runner", "object_action", "navigation", "configuration"]
+          forbidden: ["destructive_action", "modal_or_inline_flow", "dense_filters"]
+          forbidden_rationale: "Destructive (task delete/cancel/complete) needs friction, not a fuzzy-Enter — stays on inspector/context-menu/confirm. Modal/inline flows (rename, set-overview, add-note, spawn-variants, duplicate) keep living on their own surfaces."
+          component: "CommandPaletteModal"
+      note: "Keyboard-only on purpose — no toolbar/breadcrumb button (sidesteps toolbar-button-creep). NOT Cmd+T: that is the universal new-tab key and the live terminal underneath (ghostty/tmux) intercepts it. The action palette dispatching through handleMenuAction also fixed several native-menu items that were previously no-op in the renderer."
       future:
         - "Cmd+K grows to fuzzy-search tasks as well as projects, reusing utils/fuzzyMatch.ts (the single matcher for short UI entities; BM25 in shared/conversation-search-core.ts stays for long transcripts)."
-        - "A sibling command palette (Cmd+Shift+P) for action-running (create task, git, dev-server) — the action counterpart to this navigation palette."
-      observed: ["ProjectQuickSwitchModal", "utils/fuzzyMatch.ts"]
-      evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/utils/fuzzyMatch.ts", "src/mainview/App.tsx (Cmd+K handler)", "UX_DECISIONS 2026-06-18"]
+        - "Action palette can grow to cover more menu actions by adding a registry entry in commands.ts AND a handleMenuAction case — destructive/modal flows still excluded by policy."
+      observed: ["ProjectQuickSwitchModal", "CommandPaletteModal", "PaletteShell", "commands.ts", "utils/fuzzyMatch.ts"]
+      evidence: ["src/mainview/components/PaletteShell.tsx", "src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/commands.ts", "src/mainview/menuRouter.ts", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P handlers)", "UX_DECISIONS 2026-06-18"]
 
   action_types:
     primary_action:
@@ -421,5 +432,7 @@ ux_architecture:
     - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"
     - "Should an --info semantic token be added, or is reusing accent (blue) for informational state intentional?"
     - "ProjectSettings (59.9K) is very large. Does it need a documented sub-surface budget or splitting? (TaskInfoPanel is now governed by surfaces.task_info_panel.bar_model.)"
-    - "command_palette: when Cmd+K absorbs tasks (and a Cmd+Shift+P action palette lands), how do we keep navigation vs. action-running cleanly separated — one palette with modes/sections, or two distinct surfaces? Lock the split before scope grows."
     - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"
+
+  resolved_questions:
+    - "[2026-06-18] command_palette navigation-vs-action split: RESOLVED as two-surfaces-one-shell. Cmd+K = navigation, Cmd+Shift+P = actions; both render on the shared PaletteShell. Action mode runs commands via handleMenuAction (DOM mirror of the native menu), destructive/modal flows excluded by policy. See UX_DECISIONS 2026-06-18 + surfaces.command_palette.modes."
