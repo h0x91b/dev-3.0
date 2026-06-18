@@ -61,9 +61,10 @@ describe("shell environment bootstrap", () => {
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
-	// awk dumps env null-delimited: each `KEY=VALUE` followed by a NUL byte.
+	// awk output: sentinel + null-delimited KEY=VALUE\0 pairs.
+	// The sentinel lets parseNullDelimitedEnv discard login-shell startup noise.
 	function nullEnv(vars: Record<string, string>): string {
-		return Object.entries(vars).map(([k, v]) => `${k}=${v}\0`).join("");
+		return "\x01\x01DEV3ENV\x01\x01" + Object.entries(vars).map(([k, v]) => `${k}=${v}\0`).join("");
 	}
 
 	it("captures typed config vars plus the full exported env from the login shell", async () => {
@@ -130,6 +131,19 @@ describe("shell environment bootstrap", () => {
 
 		expect(result.fullEnv?.MULTILINE_KEY).toBe("-----BEGIN-----\nline2\nline3\n-----END-----");
 		expect(result.fullEnv?.URL_WITH_EQUALS).toBe("https://x.test/?a=1&b=2");
+	});
+
+	it("strips login-shell startup noise that precedes the awk sentinel", async () => {
+		process.env.SHELL = "/bin/zsh";
+		// Simulate .zshrc that echoes a welcome banner to stdout before awk runs.
+		const noise = "Welcome!\nsome=junk\n";
+		spawnMock.mockReturnValue(fakeProc(noise + nullEnv({ MY_API_KEY: "secret" })));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		const result = await resolveShellEnv();
+
+		expect(result.fullEnv?.MY_API_KEY).toBe("secret");
+		expect(Object.keys(result.fullEnv ?? {})).toHaveLength(1);
 	});
 
 	it("prefers the account shell from macOS user records over a stale SHELL env", async () => {

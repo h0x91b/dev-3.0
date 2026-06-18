@@ -19,7 +19,7 @@ import { dirname, resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { getUserShell, resolveShellEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
@@ -139,24 +139,8 @@ if (shellEnv.ghConfigDir) {
 	log.info("Shell GH_CONFIG_DIR resolved", { original: originalGhConfigDir, resolved: shellEnv.ghConfigDir });
 }
 
-// Inherit the user's full exported shell environment (env-based MCP server
-// credentials, SDK keys, etc.) — same as the GUI entry. Gated by the global
-// importShellEnv setting (default on). Patched process.env flows to the tmux
-// server and every agent/MCP child via normal inheritance.
-if (shellEnv.fullEnv) {
-	const { loadSettings } = await import("./settings");
-	const importShellEnv = (await loadSettings()).importShellEnv !== false;
-	if (importShellEnv) {
-		let injected = 0;
-		for (const [key, value] of Object.entries(shellEnv.fullEnv)) {
-			process.env[key] = value;
-			injected++;
-		}
-		log.info("Inherited user shell environment", { injected });
-	} else {
-		log.info("importShellEnv disabled — skipping full shell env inheritance");
-	}
-}
+const { loadSettings } = await import("./settings");
+applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server (required — CLI tool talks to the app over this) ──
 const cliSocketPath = startSocketServer();

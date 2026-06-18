@@ -164,15 +164,23 @@ function isDeniedEnvVar(key: string): boolean {
 	return SHELL_ENV_DENIED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
+// Unique marker written by awk before any env output so we can discard
+// login-shell startup noise (.zshrc echoes, MOTD, etc.) that appears in stdout
+// before the awk process runs.  SOH bytes (\x01) are safe — vanishingly unlikely
+// in env var values, and invisible to `split("\0")`.
+export const ENV_DUMP_SENTINEL = "\x01\x01DEV3ENV\x01\x01";
+
 // Dump every exported variable of the current shell, null-delimited, so values
 // containing newlines or `=` survive intact. `awk`'s ENVIRON is POSIX and works
 // identically under bash and zsh on macOS (BSD) and Linux — unlike `env -0`,
 // which BSD `env` on macOS does not support.
-const ENV_DUMP_COMMAND = `awk 'BEGIN{for (k in ENVIRON) printf "%s=%s%c", k, ENVIRON[k], 0}'`;
+const ENV_DUMP_COMMAND = `awk 'BEGIN{printf "\\001\\001DEV3ENV\\001\\001"; for (k in ENVIRON) printf "%s=%s%c", k, ENVIRON[k], 0}'`;
 
 function parseNullDelimitedEnv(stdout: string): Record<string, string> {
+	const sentinelIdx = stdout.indexOf(ENV_DUMP_SENTINEL);
+	if (sentinelIdx < 0) return {};
 	const result: Record<string, string> = {};
-	for (const entry of stdout.split("\0")) {
+	for (const entry of stdout.slice(sentinelIdx + ENV_DUMP_SENTINEL.length).split("\0")) {
 		if (!entry) continue;
 		const eq = entry.indexOf("=");
 		if (eq <= 0) continue;
@@ -252,5 +260,24 @@ export async function resolveShellEnv(): Promise<ResolvedShellEnv> {
 			error: String(err),
 		});
 		return {};
+	}
+}
+
+/**
+ * Apply the `fullEnv` portion of a resolved shell environment to `process.env`.
+ * Used by both the GUI entry (index.ts) and the headless entry (headless-entry.ts)
+ * to avoid duplicating the injection loop and its logging.
+ */
+export function applyFullShellEnvToProcess(shellEnv: ResolvedShellEnv, importEnabled: boolean): void {
+	if (!shellEnv.fullEnv) return;
+	if (importEnabled) {
+		let injected = 0;
+		for (const [key, value] of Object.entries(shellEnv.fullEnv)) {
+			process.env[key] = value;
+			injected++;
+		}
+		log.info("Inherited user shell environment", { injected });
+	} else {
+		log.info("importShellEnv disabled — skipping full shell env inheritance");
 	}
 }

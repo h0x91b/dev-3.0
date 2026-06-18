@@ -10,7 +10,7 @@ import { loadSettings, loadSettingsSync } from "./settings";
 import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -211,25 +211,7 @@ if (shellEnv.sshAuthSock) {
 	});
 }
 
-// Inherit the user's full exported shell environment (credentials for env-based
-// MCP servers, SDK keys, etc.) so agents launched in non-interactive tmux
-// sessions see exactly what a real terminal would. Gated by a global setting
-// (default on); the typed vars above and runtime junk are already filtered out
-// in resolveShellEnv. The patched process.env flows to the tmux server and
-// every agent/MCP child via the normal inheritance chain.
-if (shellEnv.fullEnv) {
-	const importShellEnv = (await loadSettings()).importShellEnv !== false;
-	if (importShellEnv) {
-		let injected = 0;
-		for (const [key, value] of Object.entries(shellEnv.fullEnv)) {
-			process.env[key] = value;
-			injected++;
-		}
-		log.info("Inherited user shell environment", { injected });
-	} else {
-		log.info("importShellEnv disabled — skipping full shell env inheritance");
-	}
-}
+applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server ──
 // Start Unix domain socket server for CLI tool communication.
