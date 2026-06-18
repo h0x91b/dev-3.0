@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskStatus, TipState } from "../shared/types";
 import { getTaskOverview, getTaskTitle, titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
@@ -52,6 +52,27 @@ function deriveTaskBaseBranch(project: Project, existingBranch?: string | null):
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
 	await mkdir(dir, { recursive: true });
+}
+
+/**
+ * Crash-safe write: write `content` to a sibling temp file in the SAME
+ * directory, then rename() it over `filePath`. rename() within one filesystem
+ * is atomic on POSIX, so a crash/power-loss can only ever leave the temp file
+ * truncated — never the live file. The temp name (`<file>.tmp-<pid>`) never
+ * matches the exact filenames or backup patterns older versions read, so a
+ * leftover is harmless; we still clean it up on failure. The final path and
+ * byte content are identical to the old in-place writeFile, so older app
+ * versions read/write these files unchanged.
+ */
+async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+	const tmpPath = `${filePath}.tmp-${process.pid}`;
+	try {
+		await writeFile(tmpPath, content);
+		await rename(tmpPath, filePath);
+	} catch (err) {
+		await unlink(tmpPath).catch(() => {});
+		throw err;
+	}
 }
 
 // ---- Read cache (mtime/size keyed) ----
@@ -182,7 +203,7 @@ async function rawSaveProjects(projects: Project[]): Promise<void> {
 	await backupProjectsDaily().catch((err) => {
 		log.warn("Failed to write daily projects backup (non-fatal)", { err });
 	});
-	await writeFile(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+	await atomicWriteFile(PROJECTS_FILE, JSON.stringify(projects, null, 2));
 	projectsCache.delete(PROJECTS_FILE);
 	log.info(`Saved ${projects.length} project(s)`);
 }
@@ -464,7 +485,7 @@ async function rawSaveTasks(
 	await writeHourlyTasksBackup(project, file).catch((err) => {
 		log.warn("Failed to write hourly tasks backup (non-fatal)", { projectId: project.id, err });
 	});
-	await writeFile(file, JSON.stringify(tasks, null, 2));
+	await atomicWriteFile(file, JSON.stringify(tasks, null, 2));
 	tasksCache.delete(file);
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
 }

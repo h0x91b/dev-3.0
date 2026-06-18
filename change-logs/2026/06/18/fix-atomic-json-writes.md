@@ -1,0 +1,1 @@
+Made projects.json and tasks.json saves crash-safe by writing to a sibling temp file and renaming it over the final path. A crash or power loss mid-write can no longer truncate the live file and silently empty the dashboard or board.
