@@ -14,6 +14,8 @@ export {
 	NOTIFICATION_CLICK_TTL_MS,
 	setAppForeground,
 	isAppForeground,
+	setActiveContext,
+	getActiveContext,
 } from "./rpc-handlers/shared";
 export {
 	startMergeDetectionPoller,

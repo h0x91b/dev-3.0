@@ -246,6 +246,7 @@ const {
 	NOTIFICATION_CLICK_TTL_MS,
 	setAppForeground,
 	isAppForeground,
+	setActiveContext,
 	emitTaskSound,
 	runCleanupScript,
 } = await import("../rpc-handlers");
@@ -6294,6 +6295,10 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.useFakeTimers();
 		stopMergeDetectionPoller();
 		_resetMergePollerState();
+		// Simulate the user actively viewing this project's board so the poller
+		// runs at the full per-tick cadence (off-screen projects are throttled).
+		setAppForeground(true);
+		setActiveContext({ projectId: "proj-1", taskId: null });
 		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
 		// clearAllMocks does not reset implementations left by earlier describe
 		// blocks (e.g. isWorktreeDirty -> true), so pin a clean worktree here.
@@ -6304,6 +6309,8 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 	afterEach(() => {
 		stopMergeDetectionPoller();
 		_resetMergePollerState();
+		setAppForeground(false);
+		setActiveContext({ projectId: null, taskId: null });
 		vi.mocked(data.updateTask).mockReset();
 		vi.useRealTimers();
 	});

@@ -13,7 +13,15 @@ import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
 import { Semaphore } from "../concurrency";
-import { getPushMessage, log } from "./shared";
+import { getActiveContext, getPushMessage, isAppForeground, log } from "./shared";
+import {
+	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
+	ACTIVE_PROJECT_PR_INTERVAL_MS,
+	BACKGROUND_PROJECT_MERGE_INTERVAL_MS,
+	BACKGROUND_PROJECT_PR_INTERVAL_MS,
+	isProjectDueForCheck,
+	pruneLastRun,
+} from "./git-poll-throttle";
 import {
 	type MergeCompletionFingerprint,
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
@@ -33,6 +41,11 @@ const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
 // duration, so a hung gh on a slow network must not stall branch-status globally.
 const PR_DETECTION_TIMEOUT_MS = 15_000;
 const prPromotedTasks = new Set<string>();
+
+// projectId -> last time its tasks were processed by each poller. The throttle
+// decision itself lives in git-poll-throttle.ts (dependency-free + unit-tested).
+const mergeCheckLastRun = new Map<string, number>();
+const prCheckLastRun = new Map<string, number>();
 
 function mergePromptKey(taskId: string, fingerprint: string | null): string {
 	return `${taskId}:${fingerprint || "unknown"}`;
@@ -244,6 +257,9 @@ async function checkMergedBranches(): Promise<void> {
 	if (!pushMessage) return;
 
 	const projects = await data.loadProjects();
+	pruneLastRun(mergeCheckLastRun, new Set(projects.map((p) => p.id)));
+	const { projectId: activeProjectId } = getActiveContext();
+	const foreground = isAppForeground();
 
 	if (mergeNotifiedPromptKeys.size > 0 || prPromotedTasks.size > 0) {
 		const allTaskIds = new Set<string>();
@@ -261,12 +277,29 @@ async function checkMergedBranches(): Promise<void> {
 	}
 
 	for (const project of projects) {
+		if (
+			!isProjectDueForCheck({
+				projectId: project.id,
+				activeProjectId,
+				foreground,
+				lastRunMs: mergeCheckLastRun.get(project.id) ?? 0,
+				nowMs: Date.now(),
+				activeIntervalMs: ACTIVE_PROJECT_MERGE_INTERVAL_MS,
+				backgroundIntervalMs: BACKGROUND_PROJECT_MERGE_INTERVAL_MS,
+			})
+		) {
+			continue;
+		}
+
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
 			(task) => MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) && task.worktreePath,
 		);
 
 		if (reviewTasks.length === 0) continue;
+		// Mark processed only once we know there is real work; an empty project
+		// stays "due" so it reacts immediately when a task enters review.
+		mergeCheckLastRun.set(project.id, Date.now());
 
 		// Fetch every distinct base branch used by tasks in this project so that
 		// per-task merge-detection checks don't compare against stale remote refs.
@@ -352,6 +385,7 @@ export function clearMergeNotification(taskId: string): void {
 
 export function _resetMergePollerState(): void {
 	mergeNotifiedPromptKeys.clear();
+	mergeCheckLastRun.clear();
 }
 
 let prPollerInterval: ReturnType<typeof setInterval> | null = null;
@@ -380,6 +414,7 @@ export function stopPRDetectionPoller(): void {
 
 export function _resetPRPollerState(): void {
 	prPromotedTasks.clear();
+	prCheckLastRun.clear();
 }
 
 export async function checkOpenPRsForPromotion(): Promise<void> {
@@ -392,8 +427,25 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 	}
 
 	const projects = await data.loadProjects();
+	pruneLastRun(prCheckLastRun, new Set(projects.map((p) => p.id)));
+	const { projectId: activeProjectId } = getActiveContext();
+	const foreground = isAppForeground();
+
 	for (const project of projects) {
 		if (project.peerReviewEnabled === false) continue;
+		if (
+			!isProjectDueForCheck({
+				projectId: project.id,
+				activeProjectId,
+				foreground,
+				lastRunMs: prCheckLastRun.get(project.id) ?? 0,
+				nowMs: Date.now(),
+				activeIntervalMs: ACTIVE_PROJECT_PR_INTERVAL_MS,
+				backgroundIntervalMs: BACKGROUND_PROJECT_PR_INTERVAL_MS,
+			})
+		) {
+			continue;
+		}
 
 		const tasks = await data.loadTasks(project);
 		const candidates = tasks.filter(
@@ -401,6 +453,7 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 		);
 
 		if (candidates.length === 0) continue;
+		prCheckLastRun.set(project.id, Date.now());
 
 		for (const task of candidates) {
 			try {

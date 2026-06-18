@@ -1,0 +1,1 @@
+Fixed UI freezes (main-loop stalls) caused by a storm of git processes. The background merge-detection and PR-promotion pollers now poll only the currently viewed project board at full cadence and throttle every off-screen project heavily (~10–15 min instead of every 60s), dramatically cutting git fetch/patch-id churn across many worktrees.

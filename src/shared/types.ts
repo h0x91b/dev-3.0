@@ -1664,6 +1664,15 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			/**
+			 * Renderer reports which project board / task it is currently viewing.
+			 * Background git pollers use this to poll the active board at full
+			 * cadence while throttling every off-screen project heavily.
+			 */
+			setActiveContext: {
+				params: { projectId: string | null; taskId: string | null };
+				response: void;
+			};
+			/**
 			 * Renderer answers an `agentCompletionRequested` dialog. Approval makes
 			 * the blocked CLI request execute the move to `completed`; decline just
 			 * releases it with a refusal.

@@ -780,6 +780,23 @@ function App() {
 		};
 	}, []);
 
+	// Report the active project board / task to the backend so its background git
+	// pollers poll the on-screen project at full cadence and throttle every
+	// off-screen project heavily — the fix for the git-process storm that stalled
+	// the main loop when many worktrees were polled blindly.
+	useEffect(() => {
+		const route = state.route;
+		const projectId =
+			route.screen === "project" ||
+			route.screen === "project-terminal" ||
+			route.screen === "task" ||
+			route.screen === "project-settings"
+				? route.projectId
+				: null;
+		const taskId = routeTaskId(route);
+		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
+	}, [state.route]);
+
 	// Notify user when a column-agent launch fails (custom columns have no automatic fallback)
 	useEffect(() => {
 		function onColumnAgentFailed(e: Event) {
