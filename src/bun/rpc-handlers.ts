@@ -26,6 +26,7 @@ export {
 	stopPRDetectionPoller,
 	_resetPRPollerState,
 	checkOpenPRsForPromotion,
+	_setScheduleRandomForTest,
 } from "./rpc-handlers/git-operations";
 export {
 	activateTask,

@@ -1,50 +1,73 @@
 import { describe, expect, it } from "vitest";
-import { isProjectDueForCheck } from "../rpc-handlers/git-poll-throttle";
+import {
+	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
+	BACKGROUND_PROJECT_MERGE_INTERVAL_MS,
+	MERGE_POLL_INTERVAL_MS,
+	SCHEDULE_JITTER_MS,
+	intervalForTask,
+	isDue,
+	nextDueAfterRun,
+	pruneSchedule,
+	staggeredDue,
+	wasAsleep,
+} from "../rpc-handlers/git-poll-throttle";
 
-const ACTIVE = 60_000;
-const BG = 10 * 60_000;
-// A realistic epoch-scale "now"; lastRun is expressed relative to it.
 const NOW = 1_700_000_000_000;
 
-function due(over: Partial<Parameters<typeof isProjectDueForCheck>[0]>): boolean {
-	return isProjectDueForCheck({
-		projectId: "p1",
-		activeProjectId: "p1",
-		foreground: true,
-		lastRunMs: NOW,
-		nowMs: NOW,
-		activeIntervalMs: ACTIVE,
-		backgroundIntervalMs: BG,
-		...over,
+describe("intervalForTask", () => {
+	it("uses the active interval only for the on-screen foreground project", () => {
+		expect(intervalForTask(true, ACTIVE_PROJECT_MERGE_INTERVAL_MS, BACKGROUND_PROJECT_MERGE_INTERVAL_MS)).toBe(ACTIVE_PROJECT_MERGE_INTERVAL_MS);
+		expect(intervalForTask(false, ACTIVE_PROJECT_MERGE_INTERVAL_MS, BACKGROUND_PROJECT_MERGE_INTERVAL_MS)).toBe(BACKGROUND_PROJECT_MERGE_INTERVAL_MS);
 	});
-}
+});
 
-describe("isProjectDueForCheck", () => {
-	it("runs a never-checked project immediately", () => {
-		expect(due({ lastRunMs: 0 })).toBe(true);
+describe("nextDueAfterRun", () => {
+	it("schedules one interval out plus random jitter within [0, SCHEDULE_JITTER_MS)", () => {
+		expect(nextDueAfterRun(NOW, 60_000, () => 0)).toBe(NOW + 60_000);
+		expect(nextDueAfterRun(NOW, 60_000, () => 0.5)).toBe(NOW + 60_000 + SCHEDULE_JITTER_MS / 2);
+		const r = nextDueAfterRun(NOW, 60_000, () => 0.999);
+		expect(r).toBeGreaterThan(NOW + 60_000);
+		expect(r).toBeLessThan(NOW + 60_000 + SCHEDULE_JITTER_MS);
 	});
 
-	it("checks the active foreground project every base tick (~60s)", () => {
-		expect(due({ nowMs: NOW + 60_000 })).toBe(true);
-		expect(due({ nowMs: NOW + 55_000 })).toBe(true); // within drift tolerance
+	it("gives two tasks scheduled together different next-due times (no re-alignment)", () => {
+		const a = nextDueAfterRun(NOW, 60_000, () => 0.1);
+		const b = nextDueAfterRun(NOW, 60_000, () => 0.8);
+		expect(a).not.toBe(b);
 	});
+});
 
-	it("does NOT re-check the active project on a too-soon tick", () => {
-		expect(due({ nowMs: NOW + 20_000 })).toBe(false);
+describe("staggeredDue", () => {
+	it("spreads a fresh/woken batch across the whole interval window", () => {
+		expect(staggeredDue(NOW, 600_000, () => 0)).toBe(NOW);
+		expect(staggeredDue(NOW, 600_000, () => 0.5)).toBe(NOW + 300_000);
+		const late = staggeredDue(NOW, 600_000, () => 0.99);
+		expect(late).toBeGreaterThan(NOW + 500_000);
+		expect(late).toBeLessThan(NOW + 600_000);
 	});
+});
 
-	it("throttles a background (off-screen) project to the slow interval", () => {
-		expect(due({ projectId: "p2", nowMs: NOW + 60_000 })).toBe(false);
-		expect(due({ projectId: "p2", nowMs: NOW + 9 * 60_000 })).toBe(false);
-		expect(due({ projectId: "p2", nowMs: NOW + 10 * 60_000 })).toBe(true);
+describe("isDue", () => {
+	it("is due only once now has reached the scheduled time", () => {
+		expect(isDue(NOW + 1_000, NOW)).toBe(false);
+		expect(isDue(NOW, NOW)).toBe(true);
+		expect(isDue(NOW - 1, NOW)).toBe(true);
 	});
+});
 
-	it("treats the active project as background when the app is not in the foreground", () => {
-		expect(due({ foreground: false, nowMs: NOW + 60_000 })).toBe(false);
-		expect(due({ foreground: false, nowMs: NOW + 10 * 60_000 })).toBe(true);
+describe("wasAsleep", () => {
+	it("flags a tick that arrives far later than the base interval", () => {
+		expect(wasAsleep(MERGE_POLL_INTERVAL_MS, MERGE_POLL_INTERVAL_MS)).toBe(false);
+		expect(wasAsleep(2 * MERGE_POLL_INTERVAL_MS, MERGE_POLL_INTERVAL_MS)).toBe(false);
+		// A 30-minute gap on a 60s poller = host slept.
+		expect(wasAsleep(30 * 60_000, MERGE_POLL_INTERVAL_MS)).toBe(true);
 	});
+});
 
-	it("treats everything as background when no active project is reported", () => {
-		expect(due({ activeProjectId: null, nowMs: NOW + 60_000 })).toBe(false);
+describe("pruneSchedule", () => {
+	it("drops scheduling state for tasks that no longer exist", () => {
+		const map = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+		pruneSchedule(map, new Set(["b"]));
+		expect([...map.keys()]).toEqual(["b"]);
 	});
 });
