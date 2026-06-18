@@ -15,7 +15,7 @@ import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 
-type SidebarScope = "project" | "global";
+type SidebarScope = "project" | "global" | "attention";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
 
 /** Build a translucent fill from a "#rrggbb" status color for subtle tints. */
@@ -26,10 +26,13 @@ function statusTint(hex: string, alpha: number): string {
 	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Statuses that require the user's attention — the "attention" scope shows only these. */
+const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
+
 function readScope(): SidebarScope {
 	try {
 		const v = localStorage.getItem(LS_SIDEBAR_SCOPE);
-		if (v === "global" || v === "project") return v;
+		if (v === "global" || v === "project" || v === "attention") return v;
 	} catch { /* ignore */ }
 	return "project";
 }
@@ -122,11 +125,13 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [disableGlobalFindShortcut]);
 
-	// Fetch active tasks from all projects when in global scope.
+	// Always fetch global tasks (for the attention badge) and re-fetch when
+	// switching into global/attention scope. Loading spinner only shows in
+	// scoped views so project-scope mounts are silent.
 	useEffect(() => {
-		if (scope !== "global") return;
 		let cancelled = false;
-		setGlobalLoading(true);
+		const isScoped = scope === "global" || scope === "attention";
+		if (isScoped) setGlobalLoading(true);
 		(async () => {
 			try {
 				const results = await api.request.getAllProjectTasks();
@@ -141,7 +146,7 @@ function ActiveTasksSidebar({
 					console.error("Failed to load global active tasks:", err);
 				}
 			} finally {
-				if (!cancelled) setGlobalLoading(false);
+				if (!cancelled && isScoped) setGlobalLoading(false);
 			}
 		})();
 		return () => {
@@ -151,7 +156,7 @@ function ActiveTasksSidebar({
 
 	// Keep global tasks live across all projects.
 	useEffect(() => {
-		if (scope !== "global") return;
+		if (scope !== "global" && scope !== "attention") return;
 		function onTaskUpdated(e: Event) {
 			const { task } = (e as CustomEvent).detail as { task: Task };
 			setGlobalTasks((prev) => {
@@ -177,9 +182,25 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [scope]);
 
-	const sourceTasks = scope === "global" ? globalTasks : tasks;
+	const sourceTasks = (scope === "global" || scope === "attention") ? globalTasks : tasks;
+
+	// Count of attention tasks across all available data (global when loaded, else project).
+	const attentionCount = useMemo(() => {
+		const pool = globalTasks.length > 0 ? globalTasks : tasks;
+		return pool.filter((t) => ATTENTION_STATUSES.includes(t.status)).length;
+	}, [globalTasks, tasks]);
 
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+	if (scope === "attention") {
+		activeTasks = activeTasks.filter((task) => ATTENTION_STATUSES.includes(task.status));
+		// Sort oldest-first by movedAt (status-change timestamp) so the
+		// longest-waiting task is always at the top.
+		activeTasks = activeTasks.slice().sort((a, b) => {
+			const aTime = a.movedAt ? new Date(a.movedAt).getTime() : 0;
+			const bTime = b.movedAt ? new Date(b.movedAt).getTime() : 0;
+			return aTime - bTime;
+		});
+	}
 	if (searchQuery.trim()) {
 		activeTasks = activeTasks.filter((task) => matchesSearchQuery(task, searchQuery));
 	}
@@ -207,13 +228,16 @@ function ActiveTasksSidebar({
 		return map;
 	}, [sourceTasks]);
 
-	// Group by status in display order
-	const grouped = STATUS_ORDER
-		.map((status) => ({
-			status,
-			tasks: activeTasks.filter((task) => task.status === status),
-		}))
-		.filter((g) => g.tasks.length > 0);
+	// In attention mode, render a single flat list sorted oldest-first by movedAt;
+	// grouping by STATUS_ORDER would reorder tasks by status, defeating age ordering.
+	const grouped = scope === "attention"
+		? (activeTasks.length > 0 ? [{ status: "user-questions" as TaskStatus, tasks: activeTasks }] : [])
+		: STATUS_ORDER
+			.map((status) => ({
+				status,
+				tasks: activeTasks.filter((task) => task.status === status),
+			}))
+			.filter((g) => g.tasks.length > 0);
 
 	function handleTaskClick(task: Task) {
 		preview.close();
@@ -239,10 +263,12 @@ function ActiveTasksSidebar({
 					{t("sidebar.activeTasks")}
 				</span>
 				<div className="flex items-center gap-1.5 flex-shrink-0 h-5">
-					<div className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
+					<div role="group" className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
+						{/* Folder \u2014 this project only */}
 						<button
 							type="button"
 							onClick={() => setScope("project")}
+							aria-pressed={scope === "project"}
 							title={t("sidebar.scopeProject")}
 							className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 								scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
@@ -257,29 +283,11 @@ function ActiveTasksSidebar({
 								{"\uF07C"}
 							</span>
 						</button>
-						<button
-							type="button"
-							role="switch"
-							aria-checked={scope === "global"}
-							onClick={() => setScope(scope === "global" ? "project" : "global")}
-							title={t("sidebar.scopeToggleTitle")}
-							className={`relative inline-flex items-center h-4 w-8 rounded-full transition-colors ${
-								scope === "global" ? "bg-accent" : "bg-fg/20"
-							}`}
-							data-testid="sidebar-scope-toggle"
-						>
-							<span
-								className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow transform transition-transform ${
-									scope === "global" ? "translate-x-[1.125rem]" : "translate-x-0.5"
-								}`}
-							/>
-							<span className="sr-only">
-								{scope === "global" ? t("sidebar.scopeGlobal") : t("sidebar.scopeProject")}
-							</span>
-						</button>
+						{/* Globe \u2014 all projects */}
 						<button
 							type="button"
 							onClick={() => setScope("global")}
+							aria-pressed={scope === "global"}
 							title={t("sidebar.scopeGlobal")}
 							className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 								scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
@@ -293,6 +301,34 @@ function ActiveTasksSidebar({
 							>
 								{"\uEB01"}
 							</span>
+						</button>
+						{/* Bell \u2014 attention mode: cross-project, filtered to tasks needing user input */}
+						<button
+							type="button"
+							onClick={() => setScope("attention")}
+							aria-pressed={scope === "attention"}
+							title={t("sidebar.scopeAttention")}
+							className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+								scope === "attention"
+									? "text-awake"
+									: attentionCount > 0
+										? "text-awake/70 hover:text-awake"
+										: "text-fg-muted hover:text-fg-2"
+							}`}
+							data-testid="sidebar-scope-attention"
+						>
+							{/* Nerd Font: nf-fa-bell (U+F0A2) */}
+							<span
+								className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\uF0A2"}
+							</span>
+							{attentionCount > 0 && scope !== "attention" && (
+								<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-[0.5rem] font-bold text-fg leading-none pointer-events-none">
+									{attentionCount > 9 ? "9+" : attentionCount}
+								</span>
+							)}
 						</button>
 					</div>
 					<button
@@ -368,24 +404,28 @@ function ActiveTasksSidebar({
 
 			{/* Task list */}
 			<div className="flex-1 overflow-y-auto overflow-x-hidden">
-				{scope === "global" && globalLoading && grouped.length === 0 ? (
+				{(scope === "global" || scope === "attention") && globalLoading && grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
 						{t("sidebar.globalLoading")}
 					</div>
 				) : grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
-						{searchQuery.trim() ? t("sidebar.noSearchResults") : t("sidebar.noActiveTasks")}
+						{searchQuery.trim()
+							? t("sidebar.noSearchResults")
+							: scope === "attention"
+								? t("sidebar.noAttentionTasks")
+								: t("sidebar.noActiveTasks")}
 					</div>
 				) : (
 					grouped.map(({ status, tasks: groupTasks }, groupIdx) => (
 						<div key={status}>
 							{/* Solid separator between status groups */}
-							{groupIdx > 0 && (
+							{groupIdx > 0 && scope !== "attention" && (
 								<div className="mx-3 border-t border-edge" />
 							)}
 
-							{/* Status group header */}
-							<div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+							{/* Status group header (hidden in attention mode — flat list, no status grouping) */}
+							{scope !== "attention" && <div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								{/* Faint status wash + left bar so the group reads as one color zone */}
 								<span
 									className="absolute inset-0 pointer-events-none"
@@ -417,7 +457,7 @@ function ActiveTasksSidebar({
 								<span className="text-[0.625rem] text-fg-muted">
 									{groupTasks.length}
 								</span>
-							</div>
+							</div>}
 
 							{/* Tasks in this status */}
 							{groupTasks.map((task, idx) => {
@@ -433,7 +473,7 @@ function ActiveTasksSidebar({
 									.filter(Boolean) as typeof projectLabels;
 								const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
 								const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
-								const showProjectBadge = scope === "global" && task.projectId !== project.id;
+								const showProjectBadge = (scope === "global" || scope === "attention") && task.projectId !== project.id;
 								const projectBadgeName = taskProject?.name ?? t("sidebar.unknownProject");
 
 								return (

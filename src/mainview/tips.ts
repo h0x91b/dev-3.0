@@ -763,6 +763,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffSyntaxHighlight.body",
 		icon: "\u{F0626}", // nf-md-palette_outline
 	},
+	{
+		id: "sidebar-attention-mode",
+		titleKey: "tip.sidebarAttentionMode.title",
+		bodyKey: "tip.sidebarAttentionMode.body",
+		icon: "\u{F0A2}", // nf-fa-bell
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

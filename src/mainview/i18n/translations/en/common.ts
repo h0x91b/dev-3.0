@@ -61,6 +61,8 @@ const common = {
 	"sidebar.globalLoading": "Loading tasks from all projects…",
 	"sidebar.unknownProject": "Unknown project",
 	"sidebar.statusChanged": "Status changed {ago} · {date}",
+	"sidebar.scopeAttention": "Needs your attention — tasks waiting for your input, across all projects",
+	"sidebar.noAttentionTasks": "Nothing needs your attention",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Switch Task",
