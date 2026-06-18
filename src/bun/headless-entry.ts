@@ -19,7 +19,7 @@ import { dirname, resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { getUserShell, resolveShellEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
@@ -138,6 +138,9 @@ if (shellEnv.ghConfigDir) {
 	process.env.GH_CONFIG_DIR = shellEnv.ghConfigDir;
 	log.info("Shell GH_CONFIG_DIR resolved", { original: originalGhConfigDir, resolved: shellEnv.ghConfigDir });
 }
+
+const { loadSettings } = await import("./settings");
+applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server (required — CLI tool talks to the app over this) ──
 const cliSocketPath = startSocketServer();

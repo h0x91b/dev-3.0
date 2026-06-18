@@ -61,26 +61,89 @@ describe("shell environment bootstrap", () => {
 		expect(spawnMock).not.toHaveBeenCalled();
 	});
 
-	it("captures gh-related config variables and SSH_AUTH_SOCK from the login shell", async () => {
+	// awk output: sentinel + null-delimited KEY=VALUE\0 pairs.
+	// The sentinel lets parseNullDelimitedEnv discard login-shell startup noise.
+	function nullEnv(vars: Record<string, string>): string {
+		return "\x01\x01DEV3ENV\x01\x01" + Object.entries(vars).map(([k, v]) => `${k}=${v}\0`).join("");
+	}
+
+	it("captures typed config vars plus the full exported env from the login shell", async () => {
 		process.env.SHELL = "/bin/zsh";
-		spawnMock.mockReturnValue(fakeProc([
-			"___PATH=/opt/homebrew/bin:/usr/bin:/bin",
-			"___LANG=en_US.UTF-8",
-			"___XDG_CONFIG_HOME=/Users/tester/.config-xdg",
-			"___GH_CONFIG_DIR=/Users/tester/.config-gh",
-			"___SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.abc/Listeners",
-		].join("\n")));
+		spawnMock.mockReturnValue(fakeProc(nullEnv({
+			PATH: "/opt/homebrew/bin:/usr/bin:/bin",
+			LANG: "en_US.UTF-8",
+			XDG_CONFIG_HOME: "/Users/tester/.config-xdg",
+			GH_CONFIG_DIR: "/Users/tester/.config-gh",
+			SSH_AUTH_SOCK: "/private/tmp/com.apple.launchd.abc/Listeners",
+			MDB_MCP_CONNECTION_STRING: "mongodb://user:pass@host/db",
+			DD_API_KEY: "secret-key",
+		})));
 
 		const { resolveShellEnv } = await import("../shell-env");
 		const result = await resolveShellEnv();
 
-		expect(result).toEqual({
-			path: "/opt/homebrew/bin:/usr/bin:/bin",
-			lang: "en_US.UTF-8",
-			xdgConfigHome: "/Users/tester/.config-xdg",
-			ghConfigDir: "/Users/tester/.config-gh",
-			sshAuthSock: "/private/tmp/com.apple.launchd.abc/Listeners",
+		expect(result.path).toBe("/opt/homebrew/bin:/usr/bin:/bin");
+		expect(result.lang).toBe("en_US.UTF-8");
+		expect(result.xdgConfigHome).toBe("/Users/tester/.config-xdg");
+		expect(result.ghConfigDir).toBe("/Users/tester/.config-gh");
+		expect(result.sshAuthSock).toBe("/private/tmp/com.apple.launchd.abc/Listeners");
+		// User-exported credentials flow through fullEnv...
+		expect(result.fullEnv).toEqual({
+			MDB_MCP_CONNECTION_STRING: "mongodb://user:pass@host/db",
+			DD_API_KEY: "secret-key",
 		});
+		// ...but the typed vars are NOT duplicated into fullEnv (owned by bootstrap).
+		expect(result.fullEnv).not.toHaveProperty("PATH");
+		expect(result.fullEnv).not.toHaveProperty("LANG");
+		expect(result.fullEnv).not.toHaveProperty("SSH_AUTH_SOCK");
+	});
+
+	it("excludes runtime/internal vars from fullEnv (denylist + prefixes)", async () => {
+		process.env.SHELL = "/bin/zsh";
+		spawnMock.mockReturnValue(fakeProc(nullEnv({
+			MY_TOKEN: "keep-me",
+			SHLVL: "3",
+			PWD: "/somewhere",
+			OLDPWD: "/elsewhere",
+			_: "/usr/bin/awk",
+			SHELL: "/bin/zsh",
+			TERM: "xterm-256color",
+			TMPDIR: "/var/folders/xx/T/",
+			DEV3_TASK_ID: "abc123",
+			BUN_INSTALL: "/Users/tester/.bun",
+		})));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		const result = await resolveShellEnv();
+
+		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me" });
+	});
+
+	it("preserves multiline and '=' containing env values", async () => {
+		process.env.SHELL = "/bin/zsh";
+		spawnMock.mockReturnValue(fakeProc(nullEnv({
+			MULTILINE_KEY: "-----BEGIN-----\nline2\nline3\n-----END-----",
+			URL_WITH_EQUALS: "https://x.test/?a=1&b=2",
+		})));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		const result = await resolveShellEnv();
+
+		expect(result.fullEnv?.MULTILINE_KEY).toBe("-----BEGIN-----\nline2\nline3\n-----END-----");
+		expect(result.fullEnv?.URL_WITH_EQUALS).toBe("https://x.test/?a=1&b=2");
+	});
+
+	it("strips login-shell startup noise that precedes the awk sentinel", async () => {
+		process.env.SHELL = "/bin/zsh";
+		// Simulate .zshrc that echoes a welcome banner to stdout before awk runs.
+		const noise = "Welcome!\nsome=junk\n";
+		spawnMock.mockReturnValue(fakeProc(noise + nullEnv({ MY_API_KEY: "secret" })));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		const result = await resolveShellEnv();
+
+		expect(result.fullEnv?.MY_API_KEY).toBe("secret");
+		expect(Object.keys(result.fullEnv ?? {})).toHaveLength(1);
 	});
 
 	it("prefers the account shell from macOS user records over a stale SHELL env", async () => {

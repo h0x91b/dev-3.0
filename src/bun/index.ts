@@ -10,7 +10,7 @@ import { loadSettings, loadSettingsSync } from "./settings";
 import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
-import { getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -210,6 +210,8 @@ if (shellEnv.sshAuthSock) {
 		resolved: shellEnv.sshAuthSock,
 	});
 }
+
+applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server ──
 // Start Unix domain socket server for CLI tool communication.
