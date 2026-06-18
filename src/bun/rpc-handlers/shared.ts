@@ -113,6 +113,24 @@ export function isAppForeground(): boolean {
 	return appForeground;
 }
 
+/**
+ * The project/task the renderer is currently looking at. Background git pollers
+ * (merge detection, PR promotion) blindly iterate every project on disk, which
+ * forks a storm of `git fetch` + patch-id processes for worktrees nobody is
+ * viewing and stalls the main loop. They consult this so the active board is
+ * polled at the normal cadence while everything else is heavily throttled.
+ * Reported by the renderer on every route change; null until first report.
+ */
+let activeContext: { projectId: string | null; taskId: string | null } = { projectId: null, taskId: null };
+
+export function setActiveContext(ctx: { projectId: string | null; taskId: string | null }): void {
+	activeContext = { projectId: ctx.projectId ?? null, taskId: ctx.taskId ?? null };
+}
+
+export function getActiveContext(): { projectId: string | null; taskId: string | null } {
+	return activeContext;
+}
+
 export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
 	if (!task.watched || oldStatus === newStatus) return;
 	Utils.showNotification({
@@ -153,6 +171,7 @@ export function consumeRecentWatchedNotification(now: number = Date.now()): { ta
 export function _resetWatchedNotificationState(): void {
 	lastWatchedNotification = null;
 	appForeground = false;
+	activeContext = { projectId: null, taskId: null };
 }
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {

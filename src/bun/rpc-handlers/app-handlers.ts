@@ -15,7 +15,7 @@ import { DEV3_HOME } from "../paths";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
-import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setAppForeground } from "./shared";
+import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground } from "./shared";
 import { applyMenuContext, type MenuContext } from "../application-menu";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
@@ -79,6 +79,15 @@ async function hideApp(): Promise<void> {
  */
 async function setWindowForeground(params: { focused: boolean }): Promise<void> {
 	setAppForeground(params.focused);
+}
+
+/**
+ * The renderer reports which project board / task it is currently viewing so the
+ * background git pollers can poll the active board at full cadence and throttle
+ * every other (off-screen) project heavily. See `getActiveContext` in shared.ts.
+ */
+async function setActiveContextHandler(params: { projectId: string | null; taskId: string | null }): Promise<void> {
+	setActiveContext(params);
 }
 
 // Liveness probe for the renderer's RPC bridge watchdog. Intentionally trivial:
@@ -802,6 +811,7 @@ export const appHandlers = {
 	openNewWindow,
 	hideApp,
 	setWindowForeground,
+	setActiveContext: setActiveContextHandler,
 	ping,
 	updateMenuContext,
 	getProjects,

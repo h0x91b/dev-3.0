@@ -14,6 +14,8 @@ export {
 	NOTIFICATION_CLICK_TTL_MS,
 	setAppForeground,
 	isAppForeground,
+	setActiveContext,
+	getActiveContext,
 } from "./rpc-handlers/shared";
 export {
 	startMergeDetectionPoller,
@@ -24,6 +26,7 @@ export {
 	stopPRDetectionPoller,
 	_resetPRPollerState,
 	checkOpenPRsForPromotion,
+	_setScheduleRandomForTest,
 } from "./rpc-handlers/git-operations";
 export {
 	activateTask,

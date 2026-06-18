@@ -231,6 +231,7 @@ const {
 	checkOpenPRsForPromotion,
 	_resetPRPollerState,
 	_resetMergePollerState,
+	_setScheduleRandomForTest,
 	startMergeDetectionPoller,
 	stopMergeDetectionPoller,
 	startPRDetectionPoller,
@@ -246,6 +247,7 @@ const {
 	NOTIFICATION_CLICK_TTL_MS,
 	setAppForeground,
 	isAppForeground,
+	setActiveContext,
 	emitTaskSound,
 	runCleanupScript,
 } = await import("../rpc-handlers");
@@ -6118,6 +6120,8 @@ describe("checkOpenPRsForPromotion", () => {
 		vi.mocked(git.getUnpushedCount).mockReset();
 		vi.mocked(github.runGitHub).mockReset();
 		_resetPRPollerState();
+		// Zero jitter so a freshly-seen task is due on the first direct call.
+		_setScheduleRandomForTest(() => 0);
 	});
 
 	function setup(taskOverrides?: Partial<Task>, projectOverrides?: Partial<Project>) {
@@ -6294,6 +6298,12 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.useFakeTimers();
 		stopMergeDetectionPoller();
 		_resetMergePollerState();
+		// Simulate the user actively viewing this project's board so the poller
+		// runs at the full per-tick cadence (off-screen projects are throttled).
+		setAppForeground(true);
+		setActiveContext({ projectId: "proj-1", taskId: null });
+		// Zero jitter so per-task scheduling is deterministic in tests.
+		_setScheduleRandomForTest(() => 0);
 		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
 		// clearAllMocks does not reset implementations left by earlier describe
 		// blocks (e.g. isWorktreeDirty -> true), so pin a clean worktree here.
@@ -6304,6 +6314,8 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 	afterEach(() => {
 		stopMergeDetectionPoller();
 		_resetMergePollerState();
+		setAppForeground(false);
+		setActiveContext({ projectId: null, taskId: null });
 		vi.mocked(data.updateTask).mockReset();
 		vi.useRealTimers();
 	});
@@ -6873,10 +6885,13 @@ describe("startPRDetectionPoller / stopPRDetectionPoller", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		stopPRDetectionPoller();
+		_resetPRPollerState();
+		_setScheduleRandomForTest(() => 0);
 	});
 
 	afterEach(() => {
 		stopPRDetectionPoller();
+		_resetPRPollerState();
 		vi.useRealTimers();
 	});
 

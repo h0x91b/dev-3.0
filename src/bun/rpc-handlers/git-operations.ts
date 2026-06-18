@@ -13,7 +13,21 @@ import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
 import { Semaphore } from "../concurrency";
-import { getPushMessage, log } from "./shared";
+import { getActiveContext, getPushMessage, isAppForeground, log } from "./shared";
+import {
+	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
+	ACTIVE_PROJECT_PR_INTERVAL_MS,
+	BACKGROUND_PROJECT_MERGE_INTERVAL_MS,
+	BACKGROUND_PROJECT_PR_INTERVAL_MS,
+	MERGE_POLL_INTERVAL_MS,
+	PR_POLL_INTERVAL_MS,
+	intervalForTask,
+	isDue,
+	nextDueAfterRun,
+	pruneSchedule,
+	staggeredDue,
+	wasAsleep,
+} from "./git-poll-throttle";
 import {
 	type MergeCompletionFingerprint,
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
@@ -33,6 +47,21 @@ const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
 // duration, so a hung gh on a slow network must not stall branch-status globally.
 const PR_DETECTION_TIMEOUT_MS = 15_000;
 const prPromotedTasks = new Set<string>();
+
+// taskId -> next time each poller may run its heavy git check for that task.
+// The scheduling math (intervals, jitter, wake re-spread) lives in
+// git-poll-throttle.ts (dependency-free + unit-tested).
+const mergeTaskNextDue = new Map<string, number>();
+const prTaskNextDue = new Map<string, number>();
+// Wall-clock of the previous tick, per poller, to detect host sleep gaps.
+let mergeLastTickAt = 0;
+let prLastTickAt = 0;
+// Injectable RNG so jitter is deterministic under test.
+let scheduleRandom: () => number = Math.random;
+
+export function _setScheduleRandomForTest(fn: () => number): void {
+	scheduleRandom = fn;
+}
 
 function mergePromptKey(taskId: string, fingerprint: string | null): string {
 	return `${taskId}:${fingerprint || "unknown"}`;
@@ -219,7 +248,7 @@ let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startMergeDetectionPoller(): void {
 	stopMergeDetectionPoller();
-	const POLL_INTERVAL = 60_000;
+	const POLL_INTERVAL = MERGE_POLL_INTERVAL_MS;
 
 	mergePollerInterval = setInterval(async () => {
 		try {
@@ -244,6 +273,13 @@ async function checkMergedBranches(): Promise<void> {
 	if (!pushMessage) return;
 
 	const projects = await data.loadProjects();
+	const { projectId: activeProjectId } = getActiveContext();
+	const foreground = isAppForeground();
+	const now = Date.now();
+	// A tick far later than the base interval means the host was suspended
+	// (laptop sleep): re-spread overdue tasks instead of firing them all at once.
+	const wokeFromSleep = mergeLastTickAt !== 0 && wasAsleep(now - mergeLastTickAt, MERGE_POLL_INTERVAL_MS);
+	mergeLastTickAt = now;
 
 	if (mergeNotifiedPromptKeys.size > 0 || prPromotedTasks.size > 0) {
 		const allTaskIds = new Set<string>();
@@ -260,6 +296,7 @@ async function checkMergedBranches(): Promise<void> {
 		}
 	}
 
+	const liveTaskIds = new Set<string>();
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
 		const reviewTasks = tasks.filter(
@@ -268,11 +305,33 @@ async function checkMergedBranches(): Promise<void> {
 
 		if (reviewTasks.length === 0) continue;
 
-		// Fetch every distinct base branch used by tasks in this project so that
-		// per-task merge-detection checks don't compare against stale remote refs.
+		const isActiveFg = foreground && project.id === activeProjectId;
+		const interval = intervalForTask(isActiveFg, ACTIVE_PROJECT_MERGE_INTERVAL_MS, BACKGROUND_PROJECT_MERGE_INTERVAL_MS);
+
+		// Decide which tasks are due this tick; schedule (or re-spread) the rest.
+		const dueTasks = reviewTasks.filter((task) => {
+			liveTaskIds.add(task.id);
+			let scheduled = mergeTaskNextDue.get(task.id);
+			if (scheduled === undefined) {
+				// First sight: the on-screen project checks now, everything else is
+				// spread across its interval so a batch never fires on one tick.
+				scheduled = isActiveFg ? now : staggeredDue(now, interval, scheduleRandom);
+				mergeTaskNextDue.set(task.id, scheduled);
+			}
+			if (wokeFromSleep) {
+				mergeTaskNextDue.set(task.id, staggeredDue(now, interval, scheduleRandom));
+				return false;
+			}
+			return isDue(scheduled, now);
+		});
+
+		if (dueTasks.length === 0) continue;
+
+		// Fetch only the base branches the due tasks actually compare against, so
+		// a project with nothing due this tick triggers no network at all.
 		const uniqueBaseBranches = [...new Set([
 			project.defaultBaseBranch || "main",
-			...reviewTasks.map((t) => t.baseBranch || project.defaultBaseBranch || "main"),
+			...dueTasks.map((t) => t.baseBranch || project.defaultBaseBranch || "main"),
 		])];
 		try {
 			await Promise.all(uniqueBaseBranches.map((b) => git.fetchOrigin(project.path, b)));
@@ -280,7 +339,7 @@ async function checkMergedBranches(): Promise<void> {
 			continue;
 		}
 
-		for (const task of reviewTasks) {
+		for (const task of dueTasks) {
 			try {
 				const branchName = await git.getCurrentBranch(task.worktreePath!);
 				if (!branchName) continue;
@@ -339,9 +398,14 @@ async function checkMergedBranches(): Promise<void> {
 				});
 			} catch (err) {
 				log.warn("Merge check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
+			} finally {
+				// Reschedule regardless of outcome (merged, dirty, suppressed, error)
+				// so this task does not re-run until its next jittered slot.
+				mergeTaskNextDue.set(task.id, nextDueAfterRun(now, interval, scheduleRandom));
 			}
 		}
 	}
+	pruneSchedule(mergeTaskNextDue, liveTaskIds);
 }
 
 export function clearMergeNotification(taskId: string): void {
@@ -352,13 +416,16 @@ export function clearMergeNotification(taskId: string): void {
 
 export function _resetMergePollerState(): void {
 	mergeNotifiedPromptKeys.clear();
+	mergeTaskNextDue.clear();
+	mergeLastTickAt = 0;
+	scheduleRandom = Math.random;
 }
 
 let prPollerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startPRDetectionPoller(): void {
 	stopPRDetectionPoller();
-	const POLL_INTERVAL = 5 * 60_000;
+	const POLL_INTERVAL = PR_POLL_INTERVAL_MS;
 
 	prPollerInterval = setInterval(async () => {
 		try {
@@ -380,6 +447,9 @@ export function stopPRDetectionPoller(): void {
 
 export function _resetPRPollerState(): void {
 	prPromotedTasks.clear();
+	prTaskNextDue.clear();
+	prLastTickAt = 0;
+	scheduleRandom = Math.random;
 }
 
 export async function checkOpenPRsForPromotion(): Promise<void> {
@@ -392,6 +462,13 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 	}
 
 	const projects = await data.loadProjects();
+	const { projectId: activeProjectId } = getActiveContext();
+	const foreground = isAppForeground();
+	const now = Date.now();
+	const wokeFromSleep = prLastTickAt !== 0 && wasAsleep(now - prLastTickAt, PR_POLL_INTERVAL_MS);
+	prLastTickAt = now;
+
+	const liveTaskIds = new Set<string>();
 	for (const project of projects) {
 		if (project.peerReviewEnabled === false) continue;
 
@@ -402,7 +479,26 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 		if (candidates.length === 0) continue;
 
-		for (const task of candidates) {
+		const isActiveFg = foreground && project.id === activeProjectId;
+		const interval = intervalForTask(isActiveFg, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
+
+		const dueTasks = candidates.filter((task) => {
+			liveTaskIds.add(task.id);
+			let scheduled = prTaskNextDue.get(task.id);
+			if (scheduled === undefined) {
+				scheduled = isActiveFg ? now : staggeredDue(now, interval, scheduleRandom);
+				prTaskNextDue.set(task.id, scheduled);
+			}
+			if (wokeFromSleep) {
+				prTaskNextDue.set(task.id, staggeredDue(now, interval, scheduleRandom));
+				return false;
+			}
+			return isDue(scheduled, now);
+		});
+
+		if (dueTasks.length === 0) continue;
+
+		for (const task of dueTasks) {
 			try {
 				const branchName = await git.getCurrentBranch(task.worktreePath!);
 				if (!branchName) continue;
@@ -438,9 +534,12 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 				pushMessage("taskUpdated", { projectId: project.id, task: updated });
 			} catch (err) {
 				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
+			} finally {
+				prTaskNextDue.set(task.id, nextDueAfterRun(now, interval, scheduleRandom));
 			}
 		}
 	}
+	pruneSchedule(prTaskNextDue, liveTaskIds);
 }
 
 export function cleanupTaskGitState(taskId: string): void {
