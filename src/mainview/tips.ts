@@ -10,6 +10,12 @@ export interface Tip {
 
 const ALL_TIPS: Tip[] = [
 	{
+		id: "create-task-inline-label",
+		titleKey: "tip.createTaskInlineLabel.title",
+		bodyKey: "tip.createTaskInlineLabel.body",
+		icon: "\u{F0403}", // nf-md-label_outline
+	},
+	{
 		id: "back-forward-nav",
 		titleKey: "tip.backForwardNav.title",
 		bodyKey: "tip.backForwardNav.body",

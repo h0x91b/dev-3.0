@@ -13,6 +13,7 @@ vi.mock("../../rpc", () => ({
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
+			createLabel: vi.fn(),
 			getProjectCurrentBranch: vi.fn(),
 			uploadFileBase64: vi.fn(),
 			uploadImageBase64: vi.fn(),
@@ -64,11 +65,12 @@ function renderModal(props: {
 	dispatch?: React.Dispatch<AppAction>;
 	onClose?: () => void;
 	onCreateAndRun?: (task: Task) => void;
+	project?: Project;
 } = {}) {
 	return render(
 		<I18nProvider>
 			<CreateTaskModal
-				project={mockProject}
+				project={props.project ?? mockProject}
 				dispatch={props.dispatch ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
@@ -834,6 +836,89 @@ describe("CreateTaskModal", () => {
 		await userEvent.click(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch"));
 		expect(screen.queryByPlaceholderText("Type to search branches...")).not.toBeInTheDocument();
 		expect(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch")).toBeInTheDocument();
+	});
+});
+
+// ================================================================
+// Inline label creation in the Create-Task modal
+// ================================================================
+
+describe("CreateTaskModal labels", () => {
+	const labeledProject: Project = {
+		...mockProject,
+		labels: [
+			{ id: "lbl-bug", name: "Bug", color: "#ef4444" },
+			{ id: "lbl-feat", name: "Feature", color: "#84cc16" },
+		],
+	};
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.setTaskLabels.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+		mockedApi.request.listAgentSkills.mockResolvedValue([]);
+	});
+
+	it("shows the add-label affordance even when the project has no labels", () => {
+		renderModal();
+		expect(screen.getByTitle("+ Add Label")).toBeInTheDocument();
+	});
+
+	it("creates a new label inline and selects it on the task", async () => {
+		const dispatch = vi.fn();
+		mockedApi.request.createLabel.mockResolvedValue({ id: "lbl-new", name: "Urgent", color: "#3b82f6" });
+		renderModal({ dispatch, project: labeledProject });
+
+		await userEvent.click(screen.getByTitle("+ Add Label"));
+		const input = screen.getByPlaceholderText("Label name");
+		await userEvent.type(input, "Urgent{Enter}");
+
+		await waitFor(() => {
+			expect(mockedApi.request.createLabel).toHaveBeenCalledWith({ projectId: "p1", name: "Urgent" });
+		});
+		expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+			type: "updateProject",
+			project: expect.objectContaining({
+				labels: expect.arrayContaining([{ id: "lbl-new", name: "Urgent", color: "#3b82f6" }]),
+			}),
+		}));
+
+		// The new label must be carried into the created task.
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Do the thing");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.setTaskLabels).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				labelIds: ["lbl-new"],
+			});
+		});
+	});
+
+	it("does not create a duplicate when typing an existing label name", async () => {
+		renderModal({ project: labeledProject });
+
+		await userEvent.click(screen.getByTitle("+ Add Label"));
+		const input = screen.getByPlaceholderText("Label name");
+		await userEvent.type(input, "bug{Enter}");
+
+		expect(mockedApi.request.createLabel).not.toHaveBeenCalled();
+
+		// Existing label gets selected and passed through on create.
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Do the thing");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.setTaskLabels).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				labelIds: ["lbl-bug"],
+			});
+		});
 	});
 });
 

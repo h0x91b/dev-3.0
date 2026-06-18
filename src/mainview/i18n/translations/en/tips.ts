@@ -1,6 +1,8 @@
 const tips = {
 	// Tips (feature discovery)
 	"tip.badge": "Did you know?",
+	"tip.createTaskInlineLabel.title": "Create labels while adding a task",
+	"tip.createTaskInlineLabel.body": "In the New Task dialog, hit \"+ Add Label\" to create and assign a brand-new label without leaving the form.",
 	"tip.dismiss": "Don't show this tip",
 	"tip.snooze": "Hide tips for a while",
 	"tip.next": "Next tip",

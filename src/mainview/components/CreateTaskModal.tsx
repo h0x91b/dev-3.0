@@ -33,6 +33,9 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
+	const [addingLabel, setAddingLabel] = useState(false);
+	const [newLabelName, setNewLabelName] = useState("");
+	const [creatingLabel, setCreatingLabel] = useState(false);
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const [customTitle, setCustomTitle] = useState<string | null>(null);
 	const [editingTitle, setEditingTitle] = useState(false);
@@ -45,6 +48,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const keepEditingRef = useRef<HTMLButtonElement>(null);
+	const newLabelInputRef = useRef<HTMLInputElement>(null);
 	const projectLabels = project.labels ?? [];
 	const baseBranch = project.defaultBaseBranch || "main";
 
@@ -156,6 +160,8 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				e.stopImmediatePropagation();
 				if (skillAutocomplete.open) {
 					skillAutocomplete.close();
+				} else if (addingLabel) {
+					cancelLabelInput();
 				} else if (pendingBranchChoice) {
 					setPendingBranchChoice(null);
 					setPendingSubmitMode(null);
@@ -170,7 +176,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		window.addEventListener("keydown", handleKey, true);
 		return () => window.removeEventListener("keydown", handleKey, true);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [description, onClose, confirmDiscard, pendingBranchChoice, skillAutocomplete.open, skillAutocomplete.close]);
+	}, [description, onClose, confirmDiscard, pendingBranchChoice, skillAutocomplete.open, skillAutocomplete.close, addingLabel]);
 
 	async function createTaskWithBranch(branch: string | null, mode: "save" | "run" | "scratch") {
 		const trimmed = description.trim();
@@ -280,6 +286,40 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		setSelectedLabelIds((prev) =>
 			prev.includes(label.id) ? prev.filter((id) => id !== label.id) : [...prev, label.id],
 		);
+	}
+
+	function openLabelInput() {
+		setAddingLabel(true);
+		requestAnimationFrame(() => newLabelInputRef.current?.focus());
+	}
+
+	function cancelLabelInput() {
+		setAddingLabel(false);
+		setNewLabelName("");
+	}
+
+	async function createAndSelectLabel() {
+		const name = newLabelName.trim();
+		if (!name || creatingLabel) return;
+		// Avoid duplicates: if a label with this name already exists, just select it.
+		const existing = projectLabels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+		if (existing) {
+			setSelectedLabelIds((prev) => (prev.includes(existing.id) ? prev : [...prev, existing.id]));
+			setNewLabelName("");
+			return;
+		}
+		setCreatingLabel(true);
+		try {
+			const label = await api.request.createLabel({ projectId: project.id, name });
+			dispatch({ type: "updateProject", project: { ...project, labels: [...projectLabels, label] } });
+			setSelectedLabelIds((prev) => [...prev, label.id]);
+			setNewLabelName("");
+			// Keep the input open and focused so several labels can be added in a row.
+			requestAnimationFrame(() => newLabelInputRef.current?.focus());
+		} catch (err) {
+			toast.error(t("labels.failedCreate", { error: String(err) }));
+		}
+		setCreatingLabel(false);
 	}
 
 	return (
@@ -427,25 +467,52 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 					)}
 				</div>
 
-				{/* Label selector — only shown if project has labels */}
-				{projectLabels.length > 0 && (
-					<div className="space-y-2">
-						<label className="text-fg-2 text-sm font-medium">
-							{t("labels.taskLabels")}
-						</label>
-						<div className="flex flex-wrap gap-1.5">
-							{projectLabels.map((label) => (
-								<LabelChip
-									key={label.id}
-									label={label}
-									size="sm"
-									active={selectedLabelIds.includes(label.id)}
-									onClick={() => toggleLabel(label)}
-								/>
-							))}
-						</div>
+				{/* Label selector — always shown so the first label can be created inline */}
+				<div className="space-y-2">
+					<label className="text-fg-2 text-sm font-medium">
+						{t("labels.taskLabels")}
+					</label>
+					<div className="flex flex-wrap items-center gap-1.5">
+						{projectLabels.map((label) => (
+							<LabelChip
+								key={label.id}
+								label={label}
+								size="sm"
+								active={selectedLabelIds.includes(label.id)}
+								onClick={() => toggleLabel(label)}
+							/>
+						))}
+						{addingLabel ? (
+							<input
+								ref={newLabelInputRef}
+								type="text"
+								value={newLabelName}
+								onChange={(e) => setNewLabelName(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										void createAndSelectLabel();
+									}
+								}}
+								onBlur={() => {
+									if (!newLabelName.trim()) cancelLabelInput();
+								}}
+								disabled={creatingLabel}
+								placeholder={t("labels.labelName")}
+								className="w-32 bg-elevated border border-edge-active rounded-full px-2.5 py-0.5 text-xs text-fg placeholder-fg-muted outline-none focus:border-accent/50 transition-colors disabled:opacity-50"
+							/>
+						) : (
+							<button
+								type="button"
+								onClick={openLabelInput}
+								className="inline-flex items-center rounded-full border border-dashed border-edge-active px-2 py-0.5 text-[0.625rem] font-medium text-fg-3 hover:text-fg hover:bg-fg/5 transition-colors"
+								title={t("labels.addLabel")}
+							>
+								{t("labels.addLabel")}
+							</button>
+						)}
 					</div>
-				)}
+				</div>
 
 				{/* Branch selector — collapsible */}
 				<BranchSelector

@@ -2772,6 +2772,37 @@ describe("handlers.spawnVariants", () => {
 			expect.objectContaining({ customTitle: "User-set title", titleEditedByUser: true }),
 		);
 	});
+
+	// Labels chosen in the Create-Task modal are stored on the source task, but
+	// spawnVariants deletes that source and creates fresh variants — so the
+	// variants must inherit labelIds, otherwise "Create and Run" silently drops
+	// every label the user picked.
+	it("preserves labelIds from the source task on spawned variants", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, labelIds: ["lbl-1", "lbl-2"] });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, labelIds: ["lbl-1", "lbl-2"] });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", labelIds: ["lbl-1", "lbl-2"] });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ labelIds: ["lbl-1", "lbl-2"] }),
+		);
+	});
 });
 
 describe("handlers.addAttempts", () => {
@@ -2839,6 +2870,54 @@ describe("handlers.addAttempts", () => {
 				undefined,
 			);
 		});
+	});
+
+	// Added attempts belong to the same group as the source task, so they
+	// must carry the same labelIds — otherwise re-running a labeled task
+	// produces unlabeled attempts.
+	it("inherits labelIds from the source task into added attempts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			labelIds: ["lbl-1", "lbl-2"],
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			labelIds: ["lbl-1", "lbl-2"],
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({
+			...attemptTask,
+			worktreePath: "/tmp/attempt-2",
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "dev3/v2" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ labelIds: ["lbl-1", "lbl-2"] }),
+		);
 	});
 
 	it("propagates the scratch flag and blanks the placeholder prompt for added attempts", async () => {

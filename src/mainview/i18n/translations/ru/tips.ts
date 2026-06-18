@@ -1,6 +1,8 @@
 const tips = {
 	// Tips (feature discovery)
 	"tip.badge": "А вы знали?",
+	"tip.createTaskInlineLabel.title": "Создавайте метки при добавлении задачи",
+	"tip.createTaskInlineLabel.body": "В окне «Новая задача» нажмите «+ Add Label», чтобы создать и назначить новую метку, не выходя из формы.",
 	"tip.dismiss": "Больше не показывать",
 	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
