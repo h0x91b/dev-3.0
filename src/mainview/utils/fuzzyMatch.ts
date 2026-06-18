@@ -1,4 +1,4 @@
-// Lightweight fuzzy matcher used by the project quick-switch palette (Cmd/Ctrl+T).
+// Lightweight fuzzy matcher used by the project quick-switch palette (Cmd/Ctrl+K).
 // Case-insensitive subsequence match with fzf-style scoring so the "most relevant"
 // project sorts first: prefix and word-boundary matches beat scattered ones, and
 // consecutive runs beat gappy ones.

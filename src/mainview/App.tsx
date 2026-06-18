@@ -221,7 +221,7 @@ function App() {
 	// Switch to a project, preserving the current view shape the same way Cmd+1..9
 	// does: in a task view with split open-mode, land in the target's task view
 	// (no task selected); otherwise land on its Kanban board. Shared by the
-	// Cmd+1..9 index shortcuts and the Cmd+T quick-switch palette.
+	// Cmd+1..9 index shortcuts and the Cmd+K quick-switch palette.
 	const navigateToProject = useCallback(
 		(projectId: string) => {
 			const route = state.route;
@@ -314,8 +314,10 @@ function App() {
 				e.stopPropagation();
 				if (showQuitDialog) return;
 				openAddProject();
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
-				// Cmd/Ctrl+T — open the project quick-switch palette (VSCode-style).
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+				// Cmd/Ctrl+K — open the project quick-switch palette (Slack/Linear/VSCode
+				// "go to anything" convention). Not Cmd+T: that's the universal new-tab key
+				// and the live terminal underneath (ghostty/tmux) intercepts it.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;

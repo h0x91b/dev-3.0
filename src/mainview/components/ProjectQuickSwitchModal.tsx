@@ -31,7 +31,7 @@ function HighlightedName({ name, indices }: { name: string; indices: number[] })
 }
 
 /**
- * VSCode-style Cmd/Ctrl+T project quick-switch palette. Type to fuzzy-filter
+ * VSCode-style Cmd/Ctrl+K project quick-switch palette. Type to fuzzy-filter
  * projects by name; Enter jumps to the highlighted match (the top one by default).
  */
 function ProjectQuickSwitchModal({ projects, onSelect, onClose }: ProjectQuickSwitchModalProps) {

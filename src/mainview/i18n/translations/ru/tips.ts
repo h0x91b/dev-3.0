@@ -13,7 +13,7 @@ const tips = {
 	"tip.cmdShiftSwitchFlipsView.title": "Меняй проект, переключая вид",
 	"tip.cmdShiftSwitchFlipsView.body": "Добавь Shift — Cmd/Ctrl+Shift+1..9 переходит в проект и открывает противоположный вид: доска → режим задач, режим задач → доска.",
 	"tip.projectQuickSwitch.title": "Переход к проекту по имени",
-	"tip.projectQuickSwitch.body": "Нажми Cmd/Ctrl+T, начни вводить название проекта и нажми Enter, чтобы перейти к лучшему совпадению — номер запоминать не нужно.",
+	"tip.projectQuickSwitch.body": "Нажми Cmd/Ctrl+K, начни вводить название проекта и нажми Enter, чтобы перейти к лучшему совпадению — номер запоминать не нужно.",
 	"tip.agentCreateTasks.title": "Агенты создают задачи",
 	"tip.agentCreateTasks.body": "Скажите «создай задачу в dev3 про...» в промпте — агент добавит её на доску.",
 	"tip.agentSeesTasks.title": "Агенты видят вашу доску",
