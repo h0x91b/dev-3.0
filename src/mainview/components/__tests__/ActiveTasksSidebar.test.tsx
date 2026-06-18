@@ -225,21 +225,21 @@ describe("ActiveTasksSidebar", () => {
 			title: "Older review", description: "Older review",
 			status: "review-by-user",
 			groupId: null as unknown as string, variantIndex: null,
-			updatedAt: "2025-01-01T00:00:00Z",
+			movedAt: "2025-01-01T00:00:00Z",
 		});
 		const newerReview = makeTask({
 			id: "rv-new", seq: 101, projectId: "p1",
 			title: "Newer review", description: "Newer review",
 			status: "review-by-user",
 			groupId: null as unknown as string, variantIndex: null,
-			updatedAt: "2025-06-01T00:00:00Z",
+			movedAt: "2025-06-01T00:00:00Z",
 		});
 		const question = makeTask({
 			id: "q1", seq: 102, projectId: "p1",
 			title: "Has a question", description: "Has a question",
 			status: "user-questions",
 			groupId: null as unknown as string, variantIndex: null,
-			updatedAt: "2025-03-01T00:00:00Z",
+			movedAt: "2025-03-01T00:00:00Z",
 		});
 		const working = makeTask({
 			id: "w1", seq: 103, projectId: "p1",
@@ -278,7 +278,7 @@ describe("ActiveTasksSidebar", () => {
 		expect(screen.queryByText("Still working")).not.toBeInTheDocument();
 		// question task (other attention status) is included
 		expect(screen.getByText("Has a question")).toBeInTheDocument();
-		// oldest-first within the review-by-user group
+		// oldest-first across all attention-status tasks (flat list, no STATUS_ORDER grouping)
 		const older = screen.getByText("Older review");
 		const newer = screen.getByText("Newer review");
 		expect(

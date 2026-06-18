@@ -125,11 +125,13 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [disableGlobalFindShortcut]);
 
-	// Fetch active tasks from all projects when in global or attention scope.
+	// Always fetch global tasks (for the attention badge) and re-fetch when
+	// switching into global/attention scope. Loading spinner only shows in
+	// scoped views so project-scope mounts are silent.
 	useEffect(() => {
-		if (scope !== "global" && scope !== "attention") return;
 		let cancelled = false;
-		setGlobalLoading(true);
+		const isScoped = scope === "global" || scope === "attention";
+		if (isScoped) setGlobalLoading(true);
 		(async () => {
 			try {
 				const results = await api.request.getAllProjectTasks();
@@ -144,7 +146,7 @@ function ActiveTasksSidebar({
 					console.error("Failed to load global active tasks:", err);
 				}
 			} finally {
-				if (!cancelled) setGlobalLoading(false);
+				if (!cancelled && isScoped) setGlobalLoading(false);
 			}
 		})();
 		return () => {
@@ -191,10 +193,11 @@ function ActiveTasksSidebar({
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 	if (scope === "attention") {
 		activeTasks = activeTasks.filter((task) => ATTENTION_STATUSES.includes(task.status));
-		// Sort oldest-first so the longest-waiting task is always at the top.
+		// Sort oldest-first by movedAt (status-change timestamp) so the
+		// longest-waiting task is always at the top.
 		activeTasks = activeTasks.slice().sort((a, b) => {
-			const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-			const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+			const aTime = a.movedAt ? new Date(a.movedAt).getTime() : 0;
+			const bTime = b.movedAt ? new Date(b.movedAt).getTime() : 0;
 			return aTime - bTime;
 		});
 	}
@@ -225,13 +228,16 @@ function ActiveTasksSidebar({
 		return map;
 	}, [sourceTasks]);
 
-	// Group by status in display order
-	const grouped = STATUS_ORDER
-		.map((status) => ({
-			status,
-			tasks: activeTasks.filter((task) => task.status === status),
-		}))
-		.filter((g) => g.tasks.length > 0);
+	// In attention mode, render a single flat list sorted oldest-first by movedAt;
+	// grouping by STATUS_ORDER would reorder tasks by status, defeating age ordering.
+	const grouped = scope === "attention"
+		? (activeTasks.length > 0 ? [{ status: "user-questions" as TaskStatus, tasks: activeTasks }] : [])
+		: STATUS_ORDER
+			.map((status) => ({
+				status,
+				tasks: activeTasks.filter((task) => task.status === status),
+			}))
+			.filter((g) => g.tasks.length > 0);
 
 	function handleTaskClick(task: Task) {
 		preview.close();
@@ -257,11 +263,12 @@ function ActiveTasksSidebar({
 					{t("sidebar.activeTasks")}
 				</span>
 				<div className="flex items-center gap-1.5 flex-shrink-0 h-5">
-					<div className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
+					<div role="group" className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
 						{/* Folder \u2014 this project only */}
 						<button
 							type="button"
 							onClick={() => setScope("project")}
+							aria-pressed={scope === "project"}
 							title={t("sidebar.scopeProject")}
 							className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 								scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
@@ -280,6 +287,7 @@ function ActiveTasksSidebar({
 						<button
 							type="button"
 							onClick={() => setScope("global")}
+							aria-pressed={scope === "global"}
 							title={t("sidebar.scopeGlobal")}
 							className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 								scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
@@ -298,12 +306,13 @@ function ActiveTasksSidebar({
 						<button
 							type="button"
 							onClick={() => setScope("attention")}
+							aria-pressed={scope === "attention"}
 							title={t("sidebar.scopeAttention")}
 							className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
 								scope === "attention"
-									? "text-amber-400"
+									? "text-awake"
 									: attentionCount > 0
-										? "text-amber-400/70 hover:text-amber-400"
+										? "text-awake/70 hover:text-awake"
 										: "text-fg-muted hover:text-fg-2"
 							}`}
 							data-testid="sidebar-scope-attention"
@@ -316,7 +325,7 @@ function ActiveTasksSidebar({
 								{"\uF0A2"}
 							</span>
 							{attentionCount > 0 && scope !== "attention" && (
-								<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-amber-500 text-[0.5rem] font-bold text-white leading-none pointer-events-none">
+								<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-[0.5rem] font-bold text-fg leading-none pointer-events-none">
 									{attentionCount > 9 ? "9+" : attentionCount}
 								</span>
 							)}
@@ -411,12 +420,12 @@ function ActiveTasksSidebar({
 					grouped.map(({ status, tasks: groupTasks }, groupIdx) => (
 						<div key={status}>
 							{/* Solid separator between status groups */}
-							{groupIdx > 0 && (
+							{groupIdx > 0 && scope !== "attention" && (
 								<div className="mx-3 border-t border-edge" />
 							)}
 
-							{/* Status group header */}
-							<div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+							{/* Status group header (hidden in attention mode — flat list, no status grouping) */}
+							{scope !== "attention" && <div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								{/* Faint status wash + left bar so the group reads as one color zone */}
 								<span
 									className="absolute inset-0 pointer-events-none"
@@ -448,7 +457,7 @@ function ActiveTasksSidebar({
 								<span className="text-[0.625rem] text-fg-muted">
 									{groupTasks.length}
 								</span>
-							</div>
+							</div>}
 
 							{/* Tasks in this status */}
 							{groupTasks.map((task, idx) => {
