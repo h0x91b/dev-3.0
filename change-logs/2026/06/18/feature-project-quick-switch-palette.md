@@ -1,0 +1,1 @@
+Added a VSCode/Linear-style project quick-switch palette: press Cmd/Ctrl+K, type part of a project name, and hit Enter to jump to the best fuzzy match (arrow keys to pick another). No more memorizing project numbers.

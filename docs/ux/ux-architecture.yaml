@@ -1,6 +1,6 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-05-29"
+  updated_at: "2026-06-18"
   source: "derived_from_repository"
   confidence: "medium"
 
@@ -127,6 +127,13 @@ ux_architecture:
       observed_in: ["project-settings (global | project | worktree)"]
       max_visible_tabs: 6
       status: "observed"
+    command_palette:
+      purpose: "Type-to-find navigation across entities, keyboard-summoned (Cmd/Ctrl+K). Complements index jumps (Cmd+1..9) and the breadcrumb project dropdown when you'd rather type a name than remember a position."
+      mechanism: "Cmd/Ctrl+K opens surfaces.command_palette; fuzzy-match (utils/fuzzyMatch.ts), Enter navigates to the best match."
+      allowed: ["destination", "object_jump"]
+      forbidden: ["one_off_action", "durable_state"]
+      status: "observed"
+      evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/App.tsx (Cmd+K)"]
 
   surfaces:
     global_header:
@@ -230,6 +237,17 @@ ux_architecture:
       forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation"]
       observed: ["TaskSwitcherOverlay (planned)"]
       evidence: ["docs/ux/feature-plans/option-tab-task-switcher.md", "UX_DECISIONS 2026-06-15"]
+    command_palette:
+      purpose: "Transient keyboard-summoned overlay for type-to-find navigation. Cmd/Ctrl+K (Slack/Linear/VSCode 'go to anything' convention). Today: fuzzy-jump to a project by name; Enter navigates to the best match. Distinct from task_switcher, which is hold-cycle (Option+Tab) over only the active tasks — the palette is type-to-search over all entities."
+      allowed: ["destination", "fuzzy_search", "object_jump"]
+      forbidden: ["command_runner", "object_action", "durable_configuration", "dense_filters"]
+      hotkey: "Cmd/Ctrl+K"
+      note: "Keyboard-only on purpose — no toolbar/breadcrumb button (sidesteps toolbar-button-creep). NOT Cmd+T: that is the universal new-tab key and the live terminal underneath (ghostty/tmux) intercepts it."
+      future:
+        - "Cmd+K grows to fuzzy-search tasks as well as projects, reusing utils/fuzzyMatch.ts (the single matcher for short UI entities; BM25 in shared/conversation-search-core.ts stays for long transcripts)."
+        - "A sibling command palette (Cmd+Shift+P) for action-running (create task, git, dev-server) — the action counterpart to this navigation palette."
+      observed: ["ProjectQuickSwitchModal", "utils/fuzzyMatch.ts"]
+      evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/utils/fuzzyMatch.ts", "src/mainview/App.tsx (Cmd+K handler)", "UX_DECISIONS 2026-06-18"]
 
   action_types:
     primary_action:
@@ -403,4 +421,5 @@ ux_architecture:
     - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"
     - "Should an --info semantic token be added, or is reusing accent (blue) for informational state intentional?"
     - "ProjectSettings (59.9K) is very large. Does it need a documented sub-surface budget or splitting? (TaskInfoPanel is now governed by surfaces.task_info_panel.bar_model.)"
+    - "command_palette: when Cmd+K absorbs tasks (and a Cmd+Shift+P action palette lands), how do we keep navigation vs. action-running cleanly separated — one palette with modes/sections, or two distinct surfaces? Lock the split before scope grows."
     - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"

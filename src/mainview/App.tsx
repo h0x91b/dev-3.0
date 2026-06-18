@@ -36,6 +36,7 @@ import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
+import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -136,6 +137,7 @@ function App() {
 	const [ghWarning, setGhWarning] = useState<{ notInstalled: boolean } | null>(null);
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
+	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -216,6 +218,26 @@ function App() {
 		[dispatch],
 	);
 
+	// Switch to a project, preserving the current view shape the same way Cmd+1..9
+	// does: in a task view with split open-mode, land in the target's task view
+	// (no task selected); otherwise land on its Kanban board. Shared by the
+	// Cmd+1..9 index shortcuts and the Cmd+K quick-switch palette.
+	const navigateToProject = useCallback(
+		(projectId: string) => {
+			const route = state.route;
+			const taskOpenMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+			const inTaskView =
+				route.screen === "task" ||
+				(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+			navigate(
+				inTaskView && taskOpenMode === "split"
+					? { screen: "project", projectId, taskView: true }
+					: { screen: "project", projectId },
+			);
+		},
+		[navigate, state.route],
+	);
+
 	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
 	const switcher = useTaskSwitcher({
 		projectTasks: state.currentProjectTasks,
@@ -292,6 +314,14 @@ function App() {
 				e.stopPropagation();
 				if (showQuitDialog) return;
 				openAddProject();
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+				// Cmd/Ctrl+K — open the project quick-switch palette (Slack/Linear/VSCode
+				// "go to anything" convention). Not Cmd+T: that's the universal new-tab key
+				// and the live terminal underneath (ghostty/tmux) intercepts it.
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
+				setShowProjectSwitch((open) => !open);
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -380,20 +410,11 @@ function App() {
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();
-					const { route } = state;
-					const taskOpenMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
-					const inTaskView =
-						route.screen === "task" ||
-						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
-					navigate(
-						inTaskView && taskOpenMode === "split"
-							? { screen: "project", projectId: available[idx].id, taskView: true }
-							: { screen: "project", projectId: available[idx].id },
-					);
+					navigateToProject(available[idx].id);
 				}
 			}
 		},
-		[createTaskProjectId, dispatch, navigate, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[createTaskProjectId, dispatch, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -1011,6 +1032,16 @@ function App() {
 					onHover={switcher.setIndex}
 					onCommit={switcher.commit}
 					onCancel={switcher.cancel}
+				/>
+			)}
+			{showProjectSwitch && (
+				<ProjectQuickSwitchModal
+					projects={state.projects.filter((p) => !p.deleted)}
+					onSelect={(projectId) => {
+						setShowProjectSwitch(false);
+						navigateToProject(projectId);
+					}}
+					onClose={() => setShowProjectSwitch(false)}
 				/>
 			)}
 			{showAddProjectModal && (

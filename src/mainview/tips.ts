@@ -34,6 +34,12 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0600}", // nf-md-keyboard
 	},
 	{
+		id: "project-quick-switch",
+		titleKey: "tip.projectQuickSwitch.title",
+		bodyKey: "tip.projectQuickSwitch.body",
+		icon: "\u{F0969}", // nf-md-magnify
+	},
+	{
 		id: "agent-create-tasks",
 		titleKey: "tip.agentCreateTasks.title",
 		bodyKey: "tip.agentCreateTasks.body",

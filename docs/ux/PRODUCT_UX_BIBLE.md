@@ -65,6 +65,10 @@ Evidence: `GlobalHeader.tsx`.
 
 Only in `project-settings` (`global | project | worktree`). Budget ≤ 6 visible tabs.
 
+### Command palette (Cmd/Ctrl+K) — `Observed`
+
+Type-to-find navigation. Complements the index jumps (`Cmd+1..9`) and the breadcrumb project dropdown for when you'd rather type a name than recall a position. Fuzzy-matches (`utils/fuzzyMatch.ts`); Enter navigates to the best match. Allowed: destinations, object jumps. Forbidden: one-off actions, durable state. See Surface model below.
+
 ## 5. Surface model — `Observed` unless noted
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
@@ -79,9 +83,12 @@ Only in `project-settings` (`global | project | worktree`). Budget ≤ 6 visible
 | Context menu | Right-click object actions | object action, open-in, destructive | global destination | `OpenInMenu.tsx` |
 | Settings | Durable configuration | configuration, preference, integration, scripts | daily operational action | `GlobalSettings.tsx`, `ProjectSettings.tsx` |
 | Sidebar | Active-task jump list | destination, task jump, terminal preview, search | durable config | `ActiveTasksSidebar.tsx` |
+| Command palette (Cmd/Ctrl+K) | Type-to-find navigation overlay | destination, fuzzy search, object jump | command runner, object action, durable config, dense filters | `ProjectQuickSwitchModal.tsx`, `fuzzyMatch.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
+
+The **command palette** is keyboard-only by design (no toolbar/breadcrumb button → sidesteps button-creep). Today it fuzzy-jumps to a **project** by name; the matcher (`utils/fuzzyMatch.ts`) is the single matcher for short UI entities. It is **not** the task switcher: the switcher (Option+Tab) hold-cycles the *active tasks*; the palette type-searches *all* entities. Hotkey is `Cmd/Ctrl+K`, not `Cmd+T` — `Cmd+T` is the universal new-tab key and the live terminal (ghostty/tmux) underneath intercepts it. **Future:** Cmd+K absorbs task search too, and a sibling **Cmd+Shift+P** action palette handles command-running — see `UX_DECISIONS.md` (2026-06-18).
 
 ### 5.1 Task info panel — bar model (2×2) — `Observed`
 
