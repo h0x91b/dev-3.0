@@ -240,6 +240,8 @@ const tips = {
 	"tip.pasteLargeText.body": "Pega un bloque de texto grande y se guarda como adjunto .txt, manteniendo la tarea ligera en vez de sobrecargada.",
 	"tip.diffSyntaxHighlight.title": "Resaltado de sintaxis en los diffs",
 	"tip.diffSyntaxHighlight.body": "El visor de diffs colorea el código según el lenguaje y sigue tu tema claro/oscuro, así los cambios son más fáciles de leer.",
+	"tip.shellEnvInherited.title": "Los agentes heredan tu entorno de shell",
+	"tip.shellEnvInherited.body": "Las credenciales exportadas en tu .zshrc/.bashrc llegan a los agentes automáticamente, así los servidores MCP basados en env funcionan solos.",
 };
 
 export default tips;

@@ -25,6 +25,13 @@ export interface GlobalSettings {
 	defaultDiffViewMode?: "split" | "unified" | "auto";
 	preventSleepWhileRunning?: boolean;
 	skipQuitDialog?: boolean;
+	/**
+	 * Inherit the user's full exported login-shell environment into agent/MCP
+	 * sessions (so env-based MCP servers, SDK keys, etc. set in `.zshrc`/`.bashrc`
+	 * work). Default on; set to `false` to fall back to importing only the typed
+	 * vars (PATH/LANG/...) for an isolated environment.
+	 */
+	importShellEnv?: boolean;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -65,6 +72,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 							: undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
+			importShellEnv: data.importShellEnv === false ? false : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -113,6 +121,7 @@ export function loadSettingsSync(): GlobalSettings {
 							: undefined,
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
+			importShellEnv: data.importShellEnv === false ? false : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

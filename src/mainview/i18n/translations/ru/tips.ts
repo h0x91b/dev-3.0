@@ -240,6 +240,8 @@ const tips = {
 	"tip.pasteLargeText.body": "Вставьте большой блок текста — он сохранится как .txt-вложение, и задача останется лёгкой, а не раздутой.",
 	"tip.diffSyntaxHighlight.title": "Подсветка синтаксиса в диффах",
 	"tip.diffSyntaxHighlight.body": "Просмотрщик диффов подсвечивает код по языку и следует светлой/тёмной теме — изменения легче читать.",
+	"tip.shellEnvInherited.title": "Агенты наследуют окружение шелла",
+	"tip.shellEnvInherited.body": "Креды, экспортированные в .zshrc/.bashrc, автоматически доходят до агентов — MCP-серверы на env работают сами.",
 };
 
 export default tips;

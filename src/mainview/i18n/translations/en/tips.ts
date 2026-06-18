@@ -240,6 +240,8 @@ const tips = {
 	"tip.pasteLargeText.body": "Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.",
 	"tip.diffSyntaxHighlight.title": "Diffs are syntax-highlighted",
 	"tip.diffSyntaxHighlight.body": "The diff viewer colors code by language and follows your light/dark theme, so changes are easier to scan.",
+	"tip.shellEnvInherited.title": "Agents inherit your shell env",
+	"tip.shellEnvInherited.body": "Credentials exported in your .zshrc/.bashrc reach agents automatically, so env-based MCP servers just work.",
 } as const;
 
 export default tips;

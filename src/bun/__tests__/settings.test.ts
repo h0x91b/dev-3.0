@@ -12,7 +12,7 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: TEST_HOME,
 }));
 
-import { saveSettings, type GlobalSettings } from "../settings";
+import { saveSettings, loadSettings, type GlobalSettings } from "../settings";
 
 function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
 	return {
@@ -52,6 +52,19 @@ describe("saveSettings", () => {
 
 		expect(() => JSON.parse(readFileSync(settingsPath, "utf-8"))).not.toThrow();
 		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(previousSettings);
+	});
+
+	it("defaults importShellEnv to on (undefined) and only stores it when explicitly disabled", async () => {
+		// No file → default: undefined means "on" (consumers gate with `!== false`).
+		expect((await loadSettings()).importShellEnv).toBeUndefined();
+
+		// Explicit false is preserved so users can opt into an isolated environment.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ importShellEnv: false }), null, 2), "utf-8");
+		expect((await loadSettings()).importShellEnv).toBe(false);
+
+		// Explicit true normalizes back to undefined (the default-on representation).
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ importShellEnv: true }), null, 2), "utf-8");
+		expect((await loadSettings()).importShellEnv).toBeUndefined();
 	});
 
 	it("creates the settings directory before writing the file", async () => {

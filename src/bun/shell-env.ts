@@ -113,6 +113,74 @@ export function _resetUserShellCacheForTests(): void {
 	cachedUserShellAt = 0;
 }
 
+export interface ResolvedShellEnv {
+	path?: string;
+	lang?: string;
+	xdgConfigHome?: string;
+	ghConfigDir?: string;
+	sshAuthSock?: string;
+	/**
+	 * Every exported variable from the user's login shell, minus the typed
+	 * fields above (handled separately) and the runtime/internal vars in
+	 * SHELL_ENV_DENYLIST. This is what lets env-based MCP servers, SDK
+	 * credentials, etc. that the user exports from their `.zshrc` / `.bashrc`
+	 * reach agents launched in non-interactive tmux sessions.
+	 */
+	fullEnv?: Record<string, string>;
+}
+
+// Variables we must NOT copy from the user's login shell into the dev3 runtime.
+// Two groups:
+//   1. Typed fields handled explicitly elsewhere (PATH/LANG/...): excluded here
+//      so the dedicated bootstrap logic stays the single source of truth.
+//   2. Per-process / per-shell runtime state that is meaningless or harmful to
+//      inherit (the running shell level, current dir, last command, the bun
+//      runtime's own notion of its terminal, etc.).
+// Anything NOT in this set (and not matching a denied prefix) is forwarded, so
+// dev3 behaves like a real terminal for the user's exported credentials.
+export const SHELL_ENV_DENYLIST = new Set<string>([
+	// Typed fields — owned by the dedicated bootstrap in index.ts/headless-entry.ts.
+	"PATH",
+	"LANG",
+	"XDG_CONFIG_HOME",
+	"GH_CONFIG_DIR",
+	"SSH_AUTH_SOCK",
+	// Per-shell / per-process runtime state.
+	"_",
+	"SHLVL",
+	"PWD",
+	"OLDPWD",
+	"SHELL",
+	"TERM",
+	"TMPDIR",
+]);
+
+// Variable name prefixes that must never be inherited from the login shell —
+// dev3's own task wiring and the bun runtime's internals.
+const SHELL_ENV_DENIED_PREFIXES = ["DEV3_", "BUN_"];
+
+function isDeniedEnvVar(key: string): boolean {
+	if (SHELL_ENV_DENYLIST.has(key)) return true;
+	return SHELL_ENV_DENIED_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+// Dump every exported variable of the current shell, null-delimited, so values
+// containing newlines or `=` survive intact. `awk`'s ENVIRON is POSIX and works
+// identically under bash and zsh on macOS (BSD) and Linux — unlike `env -0`,
+// which BSD `env` on macOS does not support.
+const ENV_DUMP_COMMAND = `awk 'BEGIN{for (k in ENVIRON) printf "%s=%s%c", k, ENVIRON[k], 0}'`;
+
+function parseNullDelimitedEnv(stdout: string): Record<string, string> {
+	const result: Record<string, string> = {};
+	for (const entry of stdout.split("\0")) {
+		if (!entry) continue;
+		const eq = entry.indexOf("=");
+		if (eq <= 0) continue;
+		result[entry.slice(0, eq)] = entry.slice(eq + 1);
+	}
+	return result;
+}
+
 /**
  * Resolve the user's shell environment by spawning their login shell.
  *
@@ -121,17 +189,14 @@ export function _resetUserShellCacheForTests(): void {
  * - LANG: undefined (causes tmux to replace non-ASCII with underscores)
  * - GH_CONFIG_DIR / XDG_CONFIG_HOME: undefined (gh auth can look unauthenticated
  *   in the main process while working fine inside terminal shells)
+ * - No user-exported credentials (MCP connection strings, API keys, ...): every
+ *   env-based MCP server then fails inside agent sessions.
  *
- * This function gets the real values from the user's configured shell so that
- * spawned processes (tmux, git, gh, pbcopy, etc.) work correctly.
+ * This runs the user's *active* login shell (bash or zsh, whichever `getUserShell`
+ * reports) and captures its full exported environment so spawned processes (tmux,
+ * git, gh, pbcopy, agents, MCP servers) see exactly what a real terminal would.
  */
-export async function resolveShellEnv(): Promise<{
-	path?: string;
-	lang?: string;
-	xdgConfigHome?: string;
-	ghConfigDir?: string;
-	sshAuthSock?: string;
-}> {
+export async function resolveShellEnv(): Promise<ResolvedShellEnv> {
 	const shell = getUserShell();
 	const timeout = 5_000;
 	const supportedShell = getSupportedShell(shell);
@@ -142,13 +207,7 @@ export async function resolveShellEnv(): Promise<{
 	}
 
 	try {
-		const proc = spawn([shell, "-ilc", [
-			'echo "___PATH=$PATH"',
-			'echo "___LANG=$LANG"',
-			'echo "___XDG_CONFIG_HOME=$XDG_CONFIG_HOME"',
-			'echo "___GH_CONFIG_DIR=$GH_CONFIG_DIR"',
-			'echo "___SSH_AUTH_SOCK=$SSH_AUTH_SOCK"',
-		].join(";")], {
+		const proc = spawn([shell, "-ilc", ENV_DUMP_COMMAND], {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -165,34 +224,28 @@ export async function resolveShellEnv(): Promise<{
 		}
 
 		const stdout = await new Response(proc.stdout).text();
-		const lines = stdout.split("\n");
+		const parsed = parseNullDelimitedEnv(stdout);
 
-		let path: string | undefined;
-		let lang: string | undefined;
-		let xdgConfigHome: string | undefined;
-		let ghConfigDir: string | undefined;
-		let sshAuthSock: string | undefined;
+		const pathVal = parsed.PATH?.trim();
+		const langVal = parsed.LANG?.trim();
+		const xdgVal = parsed.XDG_CONFIG_HOME?.trim();
+		const ghVal = parsed.GH_CONFIG_DIR?.trim();
+		const sshVal = parsed.SSH_AUTH_SOCK?.trim();
 
-		for (const line of lines) {
-			if (line.startsWith("___PATH=")) {
-				const val = line.slice("___PATH=".length).trim();
-				if (val && val.includes("/")) path = val;
-			} else if (line.startsWith("___LANG=")) {
-				const val = line.slice("___LANG=".length).trim();
-				if (val) lang = val;
-			} else if (line.startsWith("___XDG_CONFIG_HOME=")) {
-				const val = line.slice("___XDG_CONFIG_HOME=".length).trim();
-				if (val) xdgConfigHome = val;
-			} else if (line.startsWith("___GH_CONFIG_DIR=")) {
-				const val = line.slice("___GH_CONFIG_DIR=".length).trim();
-				if (val) ghConfigDir = val;
-			} else if (line.startsWith("___SSH_AUTH_SOCK=")) {
-				const val = line.slice("___SSH_AUTH_SOCK=".length).trim();
-				if (val) sshAuthSock = val;
-			}
+		const fullEnv: Record<string, string> = {};
+		for (const [key, value] of Object.entries(parsed)) {
+			if (isDeniedEnvVar(key)) continue;
+			fullEnv[key] = value;
 		}
 
-		return { path, lang, xdgConfigHome, ghConfigDir, sshAuthSock };
+		return {
+			path: pathVal && pathVal.includes("/") ? pathVal : undefined,
+			lang: langVal || undefined,
+			xdgConfigHome: xdgVal || undefined,
+			ghConfigDir: ghVal || undefined,
+			sshAuthSock: sshVal || undefined,
+			fullEnv,
+		};
 	} catch (err) {
 		log.warn("Failed to resolve shell environment", {
 			shell,

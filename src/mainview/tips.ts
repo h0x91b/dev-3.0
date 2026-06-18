@@ -763,6 +763,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffSyntaxHighlight.body",
 		icon: "\u{F0626}", // nf-md-palette_outline
 	},
+	{
+		id: "shell-env-inherited",
+		titleKey: "tip.shellEnvInherited.title",
+		bodyKey: "tip.shellEnvInherited.body",
+		icon: "\u{F0492}", // nf-md-key_variant
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
