@@ -588,8 +588,10 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 
 		if (viewerPaneId) {
 			devViewerPaneIds.set(task.id, viewerPaneId);
+			// pane-border-status is "top" globally (set in the theme config), so the
+			// viewer pane's title renders without a per-session toggle. We only set
+			// its title here.
 			spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)")).exited.catch(() => {});
-			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top")).exited.catch(() => {});
 		}
 
 		log.info("← runDevServer done", { devSession, viewerPaneId });
@@ -626,8 +628,8 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 		await killDevServerSession(task.id, socket);
-		const taskSession = `dev3-${task.id.slice(0, 8)}`;
-		spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited.catch(() => {});
+		// Keep pane-border-status as-is (globally "top") — the pane id labels stay
+		// visible after the dev server stops.
 		log.info("← stopDevServer done");
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
