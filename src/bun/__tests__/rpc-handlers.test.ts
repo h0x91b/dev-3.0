@@ -4977,7 +4977,7 @@ describe("handlers.checkDevServer", () => {
 describe("handlers.stopDevServer", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("kills dev server session and leaves pane-border-status on (pane ids stay visible)", async () => {
+	it("kills dev server session and disables pane-border-status", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-0000-0000-0000-000000000000" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -4986,15 +4986,14 @@ describe("handlers.stopDevServer", () => {
 		mockSpawn
 			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // list-panes fallback
 			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // kill-session
+			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // set-option
 			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }); // has-session after stop
 
 		const result = await handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
 
 		const calls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(calls.some((a) => a.includes("kill-session") && a.includes("dev3-dev-abcd1234"))).toBe(true);
-		// The global "top" border default stays — stopping the dev server must NOT
-		// disable pane-border-status, or every pane would lose its id label.
-		expect(calls.some((a) => a.includes("pane-border-status") && a.includes("off"))).toBe(false);
+		expect(calls.some((a) => a.includes("set-option") && a.includes("pane-border-status") && a.includes("off"))).toBe(true);
 		expect(result.running).toBe(false);
 	});
 

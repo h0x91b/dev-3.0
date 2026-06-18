@@ -143,12 +143,6 @@ set -gF window-active-style "bg=#{@thm_bg}"
 set -gF pane-border-style "fg=#{@thm_overlay_0},bg=#{@thm_bg}"
 set -gF pane-active-border-style "fg=#{@thm_lavender},bg=#{@thm_bg}"
 
-# Pane border label — show "pane <id>" (id with the tmux '%' stripped for
-# readability) plus the pane's custom title if set, else its running command.
-# Costs one row per pane but makes every pane addressable at a glance.
-set -g pane-border-status top
-set -g pane-border-format "#[fg=#{@thm_crust},bg=#{@thm_overlay_2}] pane #{s/%%//:pane_id} #[fg=#{@thm_fg},bg=#{@thm_surface_0}] #{?#{==:#{pane_title},#{host}},#{pane_current_command},#{pane_title}} "
-
 # Popups
 set -gF popup-style "bg=#{@thm_bg},fg=#{@thm_fg}"
 set -gF popup-border-style "fg=#{@thm_surface_1}"

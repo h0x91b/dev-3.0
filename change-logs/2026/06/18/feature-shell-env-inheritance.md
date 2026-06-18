@@ -1,3 +1,1 @@
 dev3 now inherits the full exported environment from your active login shell (bash or zsh) into agent and MCP sessions, instead of only a handful of whitelisted vars. This fixes env-based MCP servers (mongodb, datadog, github, etc.) that previously failed with "Connection closed" / "needs authentication" because credentials set in your .zshrc/.bashrc never reached the non-interactive tmux session. Runtime/internal vars are filtered out, and a new global setting importShellEnv (default on) lets you opt back into an isolated environment.
-
-Each tmux pane now shows a "pane <id>" label on its top border (plus its title or running command), making every pane easy to identify and target with tmux commands.
