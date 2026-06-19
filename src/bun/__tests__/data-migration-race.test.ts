@@ -10,6 +10,7 @@ const { mockFileStore, lockQueues, fsPromises } = vi.hoisted(() => ({
 		readdir: vi.fn(),
 		unlink: vi.fn(),
 		writeFile: vi.fn(),
+		rename: vi.fn(),
 	},
 }));
 
@@ -131,6 +132,14 @@ beforeEach(() => {
 		await new Promise((resolve) => setTimeout(resolve, WRITE_DELAY_MS));
 		mockFileStore[String(path)] = String(content);
 	});
+	fsPromises.rename.mockImplementation(async (from: string | URL | Buffer, to: string | URL | Buffer) => {
+		const fromKey = String(from);
+		const toKey = String(to);
+		if (fromKey in mockFileStore) {
+			mockFileStore[toKey] = mockFileStore[fromKey];
+			delete mockFileStore[fromKey];
+		}
+	});
 });
 
 describe("migration readers racing with writers", () => {
@@ -157,7 +166,7 @@ describe("migration readers racing with writers", () => {
 		fsPromises.writeFile.mockImplementation(async (path: string | URL | Buffer, content: string | ArrayBuffer | SharedArrayBuffer | DataView) => {
 			const key = String(path);
 			const text = String(content);
-			if (!mutatorStarted && key === PROJECTS_FILE && text.includes('"cleanupScript": ""')) {
+			if (!mutatorStarted && key.startsWith(PROJECTS_FILE) && text.includes('"cleanupScript": ""')) {
 				firstReaderWrite.resolve();
 				await releaseReaderWrite.promise;
 			}
@@ -196,7 +205,7 @@ describe("migration readers racing with writers", () => {
 		fsPromises.writeFile.mockImplementation(async (path: string | URL | Buffer, content: string | ArrayBuffer | SharedArrayBuffer | DataView) => {
 			const key = String(path);
 			const text = String(content);
-			if (!mutatorStarted && key === tasksPath && text.includes('"seq": 1')) {
+			if (!mutatorStarted && key.startsWith(tasksPath) && text.includes('"seq": 1')) {
 				firstReaderWrite.resolve();
 				await releaseReaderWrite.promise;
 			}
