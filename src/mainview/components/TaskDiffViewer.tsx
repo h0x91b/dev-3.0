@@ -1635,7 +1635,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
-	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>({});
+	// Lazy-initialize from localStorage so the first persist-effect fire (when
+	// payload arrives) sees the stored review rather than `{}` — otherwise the
+	// persist effect would delete the localStorage entry before the restore effect's
+	// setInlineComments causes a second render that writes it back.
+	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>(() => readStoredReview(task.id));
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 	const [editingCommentDraft, setEditingCommentDraft] = useState("");
