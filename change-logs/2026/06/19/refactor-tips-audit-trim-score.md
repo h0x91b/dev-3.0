@@ -1,0 +1,1 @@
+Audited the "Did you know?" tips: removed 10 low-value/duplicate tips, merged 15 redundant ones into their stronger siblings (120 → 95). Each tip now carries a coolness score (1–5) and the rotation surfaces the highest tier first in random order, draining to lower tiers as tips are seen.

@@ -160,6 +160,16 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 
 **Content:** title 3–6 words, body one sentence max ~120 chars — tell the user *what to do*, no fluff. Icon: Nerd Font glyph (`\u{XXXXX}`).
 
+**Coolness score (mandatory `score` field, 1–5 where 5 is coolest).** Tips are surfaced highest-tier-first — every `score: 5` tip is shown (in random order) before any `4`, and so on (see `selectTip` in `tips.ts`). When you add a tip, **self-assign its score** with this rubric — do NOT ask the user:
+
+- **5** — flagship "wow" that sells the product: multi-agent variants, the bug-hunter swarm, CoW worktree deps, AI Review, live terminal preview. Reserve for genuinely demo-reel features.
+- **4** — strong, distinctive capability most users will love (agent-driven PRs, command palette, OSC52 clipboard, port auto-allocation, image/large-text paste).
+- **3** — useful everyday convenience (search, status badges, right-click open, dev servers).
+- **2** — minor convenience or a settings toggle (rename column, hide sidebar, pick gh account).
+- **1** — niche/power-user edge or near-invisible auto-behavior. If you're tempted to write a `1`, reconsider whether the tip is worth adding at all.
+
+Default conservatively: when unsure between two tiers, pick the lower one. Add the new tip at the end of the `ALL_TIPS` array (order within a tier doesn't matter — selection is random within the tier).
+
 ## Decision records
 
 Non-obvious architectural decisions, hacks, and workarounds are documented in `decisions/`. This helps future agents (and humans) understand **why** something was done a certain way — not just what.

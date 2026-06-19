@@ -6,28 +6,53 @@ function freshState(overrides: Partial<TipState> = {}): TipState {
 	return { snoozedUntil: 0, seen: {}, rotationIndex: 0, ...overrides };
 }
 
+const MAX_SCORE = Math.max(...ALL_TIPS.map((t) => t.score));
+
 describe("tips", () => {
 	it("returns a tip with fresh state", () => {
 		const tip = selectTip(freshState());
 		expect(tip).not.toBeNull();
-		expect(tip!.id).toBe(ALL_TIPS[0].id);
 	});
 
-	it("returns a different tip when rotationIndex advances", () => {
-		const tip0 = selectTip(freshState({ rotationIndex: 0 }));
-		const tip1 = selectTip(freshState({ rotationIndex: 1 }));
-		expect(tip0).not.toBeNull();
-		expect(tip1).not.toBeNull();
-		expect(tip0!.id).not.toBe(tip1!.id);
+	it("every tip has a coolness score in 1..5", () => {
+		for (const t of ALL_TIPS) {
+			expect(t.score).toBeGreaterThanOrEqual(1);
+			expect(t.score).toBeLessThanOrEqual(5);
+		}
+	});
+
+	it("always picks from the highest available tier first", () => {
+		// Across many rotation indexes, a fresh state must always surface a top-tier tip.
+		for (let i = 0; i < 50; i++) {
+			const tip = selectTip(freshState({ rotationIndex: i }));
+			expect(tip).not.toBeNull();
+			expect(tip!.score).toBe(MAX_SCORE);
+		}
+	});
+
+	it("drops to the next tier once the top tier is exhausted", () => {
+		const now = Date.now();
+		const seen: Record<string, number> = {};
+		for (const t of ALL_TIPS) if (t.score === MAX_SCORE) seen[t.id] = now;
+		const remainingMax = Math.max(
+			...ALL_TIPS.filter((t) => t.score !== MAX_SCORE).map((t) => t.score),
+		);
+		for (let i = 0; i < 20; i++) {
+			const tip = selectTip(freshState({ seen, rotationIndex: i }));
+			expect(tip).not.toBeNull();
+			expect(tip!.score).toBe(remainingMax);
+		}
 	});
 
 	it("skips tips that are on cooldown", () => {
 		const now = Date.now();
-		const state = freshState({ seen: { [ALL_TIPS[0].id]: now }, rotationIndex: 0 });
-		const tip = selectTip(state);
-		expect(tip).not.toBeNull();
-		// Should skip the first tip (on cooldown) and pick from remaining
-		expect(tip!.id).not.toBe(ALL_TIPS[0].id);
+		const topTier = ALL_TIPS.filter((t) => t.score === MAX_SCORE);
+		const seen = { [topTier[0].id]: now };
+		// The seen top-tier tip must never be returned while on cooldown.
+		for (let i = 0; i < 20; i++) {
+			const tip = selectTip(freshState({ seen, rotationIndex: i }));
+			expect(tip!.id).not.toBe(topTier[0].id);
+		}
 	});
 
 	it("returns null when snoozed", () => {
@@ -59,12 +84,5 @@ describe("tips", () => {
 		expect(getAvailableTipsCount(freshState())).toBe(ALL_TIPS.length);
 		const now = Date.now();
 		expect(getAvailableTipsCount(freshState({ seen: { [ALL_TIPS[0].id]: now } }))).toBe(ALL_TIPS.length - 1);
-	});
-
-	it("rotationIndex wraps around available tips", () => {
-		const state = freshState({ rotationIndex: ALL_TIPS.length + 2 });
-		const tip = selectTip(state);
-		expect(tip).not.toBeNull();
-		expect(tip!.id).toBe(ALL_TIPS[2].id);
 	});
 });
