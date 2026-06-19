@@ -625,6 +625,83 @@ describe("updateTask — columnOrder lifecycle", () => {
 		expect(saved.find((t) => t.id === "D")!.columnOrder).toBe(9);
 	});
 
+	it("builtin -> custom column (same status) resets columnOrder + movedAt and honors dropPosition", async () => {
+		// Task D sits mid-column in In Progress (builtin, columnOrder=9). Moving it
+		// into custom column "col-a" keeps status in-progress but changes the rendered
+		// column. It must land at the top of col-a, not keep its stale columnOrder.
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "D", seq: 4, status: "in-progress", customColumnId: null, createdAt: "2025-01-04T00:00:00Z", columnOrder: 9, movedAt: "2025-01-04T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		const updated = await updateTask(testProject, "D", { customColumnId: "col-a" }, { dropPosition: "top" });
+
+		expect(updated.columnOrder).toBe(0);
+		expect(updated.movedAt).toBeDefined();
+		expect(updated.movedAt).not.toBe("2025-01-04T00:00:00Z");
+		const saved = readSavedTasks();
+		const colATasks = saved
+			.filter((t) => t.status === "in-progress" && t.customColumnId === "col-a")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(colATasks.map((t) => t.id)).toEqual(["D", "A", "B"]);
+	});
+
+	it("custom column -> builtin (same status) resets columnOrder + movedAt and honors dropPosition", async () => {
+		// Task C is in custom column "col-b" (status in-progress, columnOrder=7).
+		// Moving it back to the builtin In Progress column keeps status in-progress
+		// but changes the rendered column → must land at top of the builtin column.
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: null, createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "B", seq: 2, status: "in-progress", customColumnId: null, createdAt: "2025-01-02T00:00:00Z", columnOrder: 1 }),
+			makeTask({ id: "C", seq: 3, status: "in-progress", customColumnId: "col-b", createdAt: "2025-01-03T00:00:00Z", columnOrder: 7, movedAt: "2025-01-03T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		const updated = await updateTask(testProject, "C", { status: "in-progress", customColumnId: null }, { dropPosition: "top" });
+
+		expect(updated.columnOrder).toBe(0);
+		expect(updated.movedAt).toBeDefined();
+		expect(updated.movedAt).not.toBe("2025-01-03T00:00:00Z");
+		const saved = readSavedTasks();
+		const builtinTasks = saved
+			.filter((t) => t.status === "in-progress" && (t.customColumnId ?? null) === null)
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(builtinTasks.map((t) => t.id)).toEqual(["C", "A", "B"]);
+	});
+
+	it("custom column A -> custom column B (same status) resets columnOrder + movedAt", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: "col-b", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+			makeTask({ id: "C", seq: 3, status: "in-progress", customColumnId: "col-a", createdAt: "2025-01-03T00:00:00Z", columnOrder: 7, movedAt: "2025-01-03T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		const updated = await updateTask(testProject, "C", { customColumnId: "col-b" }, { dropPosition: "bottom" });
+
+		expect(updated.columnOrder).toBe(1);
+		expect(updated.movedAt).not.toBe("2025-01-03T00:00:00Z");
+		const saved = readSavedTasks();
+		const colBTasks = saved
+			.filter((t) => t.status === "in-progress" && t.customColumnId === "col-b")
+			.sort((a, b) => (a.columnOrder ?? 999) - (b.columnOrder ?? 999));
+		expect(colBTasks.map((t) => t.id)).toEqual(["A", "C"]);
+	});
+
+	it("same rendered column (no status/customColumnId change) preserves columnOrder", async () => {
+		// Guard: a true no-op (e.g. title edit) must NOT reset columnOrder.
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: "col-a", columnOrder: 5, createdAt: "2025-01-01T00:00:00Z" }),
+		];
+		seedTasks(tasks);
+
+		await updateTask(testProject, "A", { customColumnId: "col-a" }, { dropPosition: "top" });
+
+		const loaded = await loadTasks(testProject);
+		expect(loaded[0].columnOrder).toBe(5);
+	});
+
 	it("without dropPosition, columnOrder is cleared (backward compat)", async () => {
 		const tasks = [
 			makeTask({ id: "A", seq: 1, status: "todo", createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
@@ -722,6 +799,71 @@ describe("columnOrder serialization — undefined handling", () => {
 
 		const loaded = await loadTasks(testProject);
 		expect(loaded[0].columnOrder).toBeUndefined();
+	});
+});
+
+// ============================================================
+// Backward compatibility — same-status column move writes only known fields
+// ============================================================
+
+describe("same-status move — backward compatibility", () => {
+	// Every key the Task type may legitimately carry. A same-status column move
+	// must NOT introduce any field outside this set, so older app versions keep
+	// reading tasks.json without choking on unknown keys.
+	const KNOWN_TASK_KEYS = new Set([
+		"id", "seq", "projectId", "title", "description", "overview", "userOverview",
+		"customTitle", "titleEditedByUser", "status", "baseBranch", "worktreePath",
+		"branchName", "groupId", "variantIndex", "agentId", "configId", "createdAt",
+		"updatedAt", "movedAt", "columnOrder", "tmuxSocket", "labelIds", "existingBranch",
+		"notes", "customColumnId", "history", "preparing", "preparingStage",
+		"preparingProgress", "preparingStartedAt", "watched", "sessionState",
+		"mergeCompletionPrompt", "scratch", "scriptLastRunAt", "scriptLastPlacement",
+	]);
+
+	it("introduces no new task fields when moving builtin -> custom column", async () => {
+		const tasks = [
+			makeTask({ id: "A", seq: 1, status: "in-progress", customColumnId: null, createdAt: "2025-01-01T00:00:00Z", columnOrder: 0 }),
+		];
+		seedTasks(tasks);
+
+		await updateTask(testProject, "A", { customColumnId: "col-a" }, { dropPosition: "top" });
+
+		const saved = readSavedTasks();
+		for (const key of Object.keys(saved[0])) {
+			expect(KNOWN_TASK_KEYS.has(key)).toBe(true);
+		}
+	});
+
+	it("old-version-shaped task (no movedAt/columnOrder) still loads and moves correctly", async () => {
+		// Raw JSON as written by an older app version: no movedAt, no columnOrder,
+		// already sitting in a custom column. The fix must move it without crashing.
+		const raw = [{
+			id: "A",
+			seq: 1,
+			projectId: "proj-1",
+			title: "Old",
+			description: "desc",
+			status: "in-progress",
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+			groupId: null,
+			variantIndex: null,
+			agentId: null,
+			configId: null,
+			createdAt: "2025-01-01T00:00:00Z",
+			updatedAt: "2025-01-01T00:00:00Z",
+			labelIds: [],
+			customColumnId: "col-a",
+		}];
+		mkdirSync(dirname(tasksFilePath()), { recursive: true });
+		writeFileSync(tasksFilePath(), JSON.stringify(raw));
+
+		const updated = await updateTask(testProject, "A", { customColumnId: null }, { dropPosition: "top" });
+
+		expect(updated.columnOrder).toBe(0);
+		expect(updated.movedAt).toBeDefined();
+		expect(updated.customColumnId).toBeNull();
 	});
 });
 

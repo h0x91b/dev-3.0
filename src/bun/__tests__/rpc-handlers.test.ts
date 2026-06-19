@@ -6037,7 +6037,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		const result = await handlers.moveTaskToCustomColumn({ taskId: "task-1", projectId: "proj-1", customColumnId: "col-aaa" });
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: "col-aaa" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: "col-aaa" }, { dropPosition: "top" });
 		expect(result.customColumnId).toBe("col-aaa");
 	});
 
@@ -6102,7 +6102,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 
 		const result = await handlers.moveTaskToCustomColumn({ taskId: "task-1", projectId: "proj-1", customColumnId: null });
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: null });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: null }, { dropPosition: "top" });
 		expect(result.customColumnId).toBeNull();
 	});
 });

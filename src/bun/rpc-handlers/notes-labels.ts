@@ -184,7 +184,13 @@ async function moveTaskToCustomColumn(params: { taskId: string; projectId: strin
 		return updated;
 	}
 
-	const updated = await data.updateTask(project, params.taskId, { customColumnId: params.customColumnId });
+	const settings = await loadSettings();
+	const updated = await data.updateTask(
+		project,
+		params.taskId,
+		{ customColumnId: params.customColumnId },
+		{ dropPosition: settings.taskDropPosition },
+	);
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	if (column?.agentConfig && updated.worktreePath) {
 		await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn: column });
