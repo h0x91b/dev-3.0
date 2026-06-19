@@ -22,6 +22,7 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.diffReviewPersists.title",
 		bodyKey: "tip.diffReviewPersists.body",
 		icon: "\u{F0193}", // nf-md-content_save
+		score: 3,
 	},
 	{
 		id: "create-task-inline-label",
