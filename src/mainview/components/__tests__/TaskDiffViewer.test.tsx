@@ -2150,6 +2150,40 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByText("Comment 1")).toBeInTheDocument();
 	});
 
+	it("sweeps expired and corrupt review entries for other tasks on mount", async () => {
+		const dayMs = 24 * 60 * 60 * 1000;
+		const expiredKey = "dev3-inline-diff-review-v1:other-old";
+		const freshKey = "dev3-inline-diff-review-v1:other-fresh";
+		const corruptKey = "dev3-inline-diff-review-v1:other-broken";
+		const unrelatedKey = "some-other-app-key";
+
+		localStorage.setItem(expiredKey, JSON.stringify({ savedAt: Date.now() - (3 * dayMs + 60_000), comments: { f: 1 } }));
+		localStorage.setItem(freshKey, JSON.stringify({ savedAt: Date.now() - dayMs, comments: { f: 1 } }));
+		localStorage.setItem(corruptKey, "{not json");
+		localStorage.setItem(unrelatedKey, "keep me");
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		await waitFor(() => {
+			expect(localStorage.getItem(expiredKey)).toBeNull();
+		});
+		expect(localStorage.getItem(corruptKey)).toBeNull();
+		// A still-fresh review for another task and unrelated keys are left alone.
+		expect(localStorage.getItem(freshKey)).not.toBeNull();
+		expect(localStorage.getItem(unrelatedKey)).toBe("keep me");
+	});
+
 	it("drops a persisted review older than the 3-day TTL instead of restoring it", async () => {
 		const user = userEvent.setup();
 		const reviewKey = "dev3-inline-diff-review-v1:t1";

@@ -934,6 +934,37 @@ function writeStoredReview(taskId: string, state: InlineDiffCommentsState): void
 	} catch {}
 }
 
+// Global garbage-collection for persisted reviews. The per-key TTL in
+// readStoredReview only fires when *that* task's diff is reopened, so a review
+// for a task that is never revisited (or has been deleted) would linger forever.
+// This sweep walks every review key and drops expired or corrupt entries; it runs
+// whenever any diff viewer mounts, keeping the working set to "reviews touched in
+// the last few days" regardless of which tasks are reopened.
+function pruneExpiredReviews(now: number = Date.now()): void {
+	try {
+		const prefix = `${LS_DIFF_REVIEW}:`;
+		const staleKeys: string[] = [];
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (!key || !key.startsWith(prefix)) {
+				continue;
+			}
+			try {
+				const parsed = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<StoredReview> | null;
+				const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
+				if (savedAt === null || now - savedAt > REVIEW_TTL_MS) {
+					staleKeys.push(key);
+				}
+			} catch {
+				staleKeys.push(key);
+			}
+		}
+		for (const key of staleKeys) {
+			localStorage.removeItem(key);
+		}
+	} catch {}
+}
+
 function normalizeDiffPath(value: string | null | undefined): string {
 	return (value ?? "")
 		.replace(/^\.?\//, "")
@@ -1667,6 +1698,13 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			navigationGuardRef.current = null;
 		};
 	}, [navigationGuardRef]);
+
+	// Garbage-collect expired/orphaned persisted reviews across all tasks whenever a
+	// diff viewer opens, so localStorage never accumulates stale review entries for
+	// tasks that are never reopened (or have been deleted).
+	useEffect(() => {
+		pruneExpiredReviews();
+	}, []);
 
 	const isInitialRequestSyncRef = useRef(true);
 
