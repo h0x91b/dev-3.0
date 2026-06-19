@@ -1,0 +1,1 @@
+Fixed a lost-update race in the CLI socket `label.delete` handler: it recomputed each task's labelIds from a stale snapshot taken outside the per-task lock, so a concurrent labelIds change (e.g. setting labels from the UI) could be silently clobbered. It now recomputes inside the lock via updateTaskWith, mirroring the RPC deleteLabel handler.

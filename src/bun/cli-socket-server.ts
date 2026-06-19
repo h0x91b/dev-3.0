@@ -417,12 +417,17 @@ const handlers: Record<string, Handler> = {
 		if (!label) throw new Error(`Label not found: ${labelId}`);
 
 		await data.updateProject(projectId, { labels: labels.filter((l) => l.id !== label.id) });
-		// Remove from all tasks
+		// Remove from all tasks. Recompute labelIds from the CURRENT task inside the
+		// per-task lock (updateTaskWith) — filtering a pre-lock snapshot would clobber
+		// any concurrent labelIds change. Mirrors the RPC deleteLabel handler.
 		const tasks = await data.loadTasks(project);
 		for (const task of tasks.filter((t) => t.labelIds?.includes(label.id))) {
-			await data.updateTask(project, task.id, {
-				labelIds: (task.labelIds ?? []).filter((id) => id !== label.id),
-			});
+			await data.updateTaskWith(project, task.id, async (currentTask) => ({
+				updates: {
+					labelIds: (currentTask.labelIds ?? []).filter((id) => id !== label.id),
+				},
+				result: undefined,
+			}));
 		}
 		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
 		return { deleted: label.id };
