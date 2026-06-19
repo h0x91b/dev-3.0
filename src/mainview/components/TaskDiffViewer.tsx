@@ -959,30 +959,7 @@ function statusLabel(status: TaskDiffFileStatus): string {
 }
 
 function getFileDiffStats(file: TaskDiffFile): { insertions: number; deletions: number } {
-	if (file.hunks && file.hunks.length > 0) {
-		let insertions = 0;
-		let deletions = 0;
-		for (const hunk of file.hunks) {
-			for (const line of hunk.split("\n")) {
-				if (line.startsWith("+++ ") || line.startsWith("--- ")) {
-					continue;
-				}
-				if (line.startsWith("+")) {
-					insertions += 1;
-				} else if (line.startsWith("-")) {
-					deletions += 1;
-				}
-			}
-		}
-		return { insertions, deletions };
-	}
-
-	const oldLines = file.oldContent ? file.oldContent.split("\n") : [];
-	const newLines = file.newContent ? file.newContent.split("\n") : [];
-	return {
-		insertions: Math.max(0, newLines.length - oldLines.length),
-		deletions: Math.max(0, oldLines.length - newLines.length),
-	};
+	return { insertions: file.insertions, deletions: file.deletions };
 }
 
 function diffFileFullPath(file: TaskDiffFile | TaskDiffSkippedFile): string {

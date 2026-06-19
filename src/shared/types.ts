@@ -877,6 +877,8 @@ export interface TaskDiffFile {
 	oldContent: string;
 	newContent: string;
 	hunks: string[] | null;
+	insertions: number;
+	deletions: number;
 }
 
 export interface TaskDiffSummary {

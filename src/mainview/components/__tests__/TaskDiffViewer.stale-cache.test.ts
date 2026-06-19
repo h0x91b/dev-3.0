@@ -54,6 +54,8 @@ function fileFor(oldContent: string, newContent: string, hunk: string): TaskDiff
 		oldContent,
 		newContent,
 		hunks: [hunk],
+		insertions: 1,
+		deletions: 1,
 	};
 }
 

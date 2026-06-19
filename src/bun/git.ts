@@ -13,7 +13,7 @@ const MAX_BINARY_CHECK_BYTES = 8_192;
 
 // Rename/copy detection at git's default similarity (50%). These flags must be
 // passed explicitly and kept identical between the name-status listing
-// (listDiffEntries) and the per-file patch (buildArgs in getTaskDiff):
+// (listDiffEntries) and the per-file stat listing (getNumstat):
 //   - The default must be EXPLICIT because users may disable it globally via
 //     `diff.renames=false`; without the flag a rename renders as a full
 //     delete + add, making it look like the whole file changed.
@@ -22,12 +22,6 @@ const MAX_BINARY_CHECK_BYTES = 8_192;
 //     entries, again showing the entire file as changed instead of the few
 //     lines that actually differ.
 const RENAME_DETECTION_ARGS = ["--find-renames", "--find-copies"] as const;
-
-type BinaryRunResult = {
-	ok: boolean;
-	stdout: Uint8Array;
-	stderr: string;
-};
 
 type ParsedNameStatusEntry = {
 	status: TaskDiffFileStatus;
@@ -46,10 +40,6 @@ type TextReadResult =
 type DiffContentSource =
 	| { kind: "ref"; ref: string }
 	| { kind: "worktree" };
-
-type DiffRenderSource =
-	| { kind: "git"; buildArgs: (entry: ParsedNameStatusEntry) => string[] }
-	| { kind: "file" };
 
 function withGitFilenameEncoding(cmd: string[]): string[] {
 	if (cmd[0] !== "git") {
@@ -149,57 +139,6 @@ async function measureGitStep<T>(
 		});
 		throw err;
 	}
-}
-
-async function runBinary(
-	cmd: string[],
-	cwd: string,
-): Promise<BinaryRunResult> {
-	const finalCmd = withGitFilenameEncoding(cmd);
-	log.debug(`exec(binary): ${finalCmd.join(" ")}`, { cwd });
-	const proc = spawn(finalCmd, {
-		cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdoutBuffer, stderr] = await Promise.all([
-		new Response(proc.stdout).arrayBuffer(),
-		new Response(proc.stderr).text(),
-	]);
-	const code = await proc.exited;
-	const result = {
-		ok: code === 0,
-		stdout: new Uint8Array(stdoutBuffer),
-		stderr: stderr.trim(),
-	};
-	if (!result.ok) {
-		log.warn(`Binary command failed (exit ${code}): ${finalCmd.join(" ")}`, {
-			stderr: result.stderr,
-		});
-	}
-	return result;
-}
-
-async function runWithCode(
-	cmd: string[],
-	cwd: string,
-): Promise<{ code: number; stdout: string; stderr: string }> {
-	const finalCmd = withGitFilenameEncoding(cmd);
-	log.debug(`exec(code): ${finalCmd.join(" ")}`, { cwd });
-	const proc = spawn(finalCmd, {
-		cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	return {
-		code: await proc.exited,
-		stdout,
-		stderr: stderr.trim(),
-	};
 }
 
 function isProbablyBinary(bytes: Uint8Array): boolean {
@@ -336,50 +275,110 @@ async function getDiffShortStat(
 	return result.ok && result.stdout ? parseShortStat(result.stdout) : { files: 0, insertions: 0, deletions: 0 };
 }
 
-async function getBlobSizeAtRef(
-	worktreePath: string,
-	ref: string,
-	filePath: string,
-): Promise<number | null> {
-	const result = await run(
-		["git", "cat-file", "-s", `${ref}:${filePath}`],
-		worktreePath,
-	);
-	return result.ok ? parseInt(result.stdout, 10) || 0 : null;
+// Runs a git command, feeding `stdin`, and returns raw stdout bytes. Used for
+// the cat-file --batch protocol whose output is binary-safe (length-prefixed).
+// stdin is a Blob so the test spawn mock (which only forwards Blob stdin) works.
+async function runGitStdinBinary(
+	cmd: string[],
+	cwd: string,
+	stdin: string,
+): Promise<{ code: number; stdout: Uint8Array }> {
+	const finalCmd = withGitFilenameEncoding(cmd);
+	log.debug(`exec(stdin): ${finalCmd.join(" ")}`, { cwd });
+	const proc = spawn(finalCmd, {
+		cwd,
+		stdin: new Blob([stdin]),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdoutBuffer] = await Promise.all([
+		new Response(proc.stdout).arrayBuffer(),
+		new Response(proc.stderr).text(),
+	]);
+	return { code: await proc.exited, stdout: new Uint8Array(stdoutBuffer) };
 }
 
-async function readRefTextFile(
+const BATCH_HEADER_RE = /^[0-9a-f]{40,64} blob (\d+)$/;
+
+function indexOfNewline(bytes: Uint8Array, from: number): number {
+	for (let i = from; i < bytes.length; i++) {
+		if (bytes[i] === 0x0a) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// Reads many blobs at a single ref in two git invocations (cat-file
+// --batch-check for sizes, then --batch for the content of under-limit blobs),
+// instead of two processes per file (cat-file -s + git show). Returns a map
+// keyed by the input file path.
+async function readRefBlobsBatch(
 	worktreePath: string,
 	ref: string,
-	filePath: string,
-): Promise<TextReadResult> {
-	const size = await getBlobSizeAtRef(worktreePath, ref, filePath);
-	if (size === null) {
-		return { kind: "missing" };
-	}
-	if (size > MAX_INLINE_DIFF_FILE_BYTES) {
-		return { kind: "large", size };
+	paths: string[],
+): Promise<Map<string, TextReadResult>> {
+	const out = new Map<string, TextReadResult>();
+	const unique = [...new Set(paths)];
+	if (unique.length === 0) {
+		return out;
 	}
 
-	const result = await runBinary(
-		["git", "show", "--no-textconv", `${ref}:${filePath}`],
-		worktreePath,
-	);
-	if (!result.ok) {
-		return { kind: "missing" };
+	// Phase 1: sizes + existence, without reading content.
+	const checkInput = unique.map((p) => `${ref}:${p}\n`).join("");
+	const check = await runGitStdinBinary(["git", "cat-file", "--batch-check"], worktreePath, checkInput);
+	const checkLines = new TextDecoder().decode(check.stdout).split("\n");
+	const underLimit: string[] = [];
+	for (let i = 0; i < unique.length; i++) {
+		const path = unique[i];
+		const match = (checkLines[i] ?? "").match(BATCH_HEADER_RE);
+		if (!match) {
+			out.set(path, { kind: "missing" });
+			continue;
+		}
+		const size = parseInt(match[1], 10);
+		if (size > MAX_INLINE_DIFF_FILE_BYTES) {
+			out.set(path, { kind: "large", size });
+		} else {
+			underLimit.push(path);
+		}
 	}
-	if (result.stdout.byteLength > MAX_INLINE_DIFF_FILE_BYTES) {
-		return { kind: "large", size: result.stdout.byteLength };
-	}
-	if (isProbablyBinary(result.stdout)) {
-		return { kind: "binary", size: result.stdout.byteLength };
+	if (underLimit.length === 0) {
+		return out;
 	}
 
-	return {
-		kind: "text",
-		content: new TextDecoder().decode(result.stdout),
-		size: result.stdout.byteLength,
-	};
+	// Phase 2: content for under-limit blobs. --batch output is length-prefixed
+	// ("<oid> blob <size>\n" + <size> bytes + "\n"), so we parse it positionally
+	// and binary-safely against the input order.
+	const batchInput = underLimit.map((p) => `${ref}:${p}\n`).join("");
+	const batch = await runGitStdinBinary(["git", "cat-file", "--batch"], worktreePath, batchInput);
+	const bytes = batch.stdout;
+	let cursor = 0;
+	for (const path of underLimit) {
+		const nl = indexOfNewline(bytes, cursor);
+		if (nl < 0) {
+			out.set(path, { kind: "missing" });
+			continue;
+		}
+		const header = new TextDecoder().decode(bytes.subarray(cursor, nl));
+		const match = header.match(BATCH_HEADER_RE);
+		if (!match) {
+			// Missing object: "<input> missing" line, no content block follows.
+			out.set(path, { kind: "missing" });
+			cursor = nl + 1;
+			continue;
+		}
+		const size = parseInt(match[1], 10);
+		const start = nl + 1;
+		const content = bytes.subarray(start, start + size);
+		cursor = start + size + 1; // skip the trailing newline after content
+		if (isProbablyBinary(content)) {
+			out.set(path, { kind: "binary", size });
+		} else {
+			out.set(path, { kind: "text", content: new TextDecoder().decode(content), size });
+		}
+	}
+	return out;
 }
 
 async function readWorktreeTextFile(
@@ -406,20 +405,6 @@ async function readWorktreeTextFile(
 	}
 }
 
-async function readTextFromSource(
-	worktreePath: string,
-	source: DiffContentSource,
-	filePath: string | null,
-): Promise<TextReadResult> {
-	if (!filePath) {
-		return { kind: "absent" };
-	}
-	if (source.kind === "ref") {
-		return readRefTextFile(worktreePath, source.ref, filePath);
-	}
-	return readWorktreeTextFile(worktreePath, filePath);
-}
-
 function readSize(result: TextReadResult): number | null {
 	switch (result.kind) {
 		case "text":
@@ -436,41 +421,152 @@ function readTextContent(result: TextReadResult): string {
 	return result.kind === "text" ? result.content : "";
 }
 
-function getEntryPathArgs(entry: ParsedNameStatusEntry): string[] {
-	if (entry.oldPath && entry.newPath && entry.oldPath !== entry.newPath) {
-		return [entry.oldPath, entry.newPath];
+function countLines(content: string): number {
+	if (content === "") {
+		return 0;
 	}
-	return [entry.newPath ?? entry.oldPath ?? entry.displayPath];
+	const normalized = content.endsWith("\n") ? content.slice(0, -1) : content;
+	return normalized.split("\n").length;
 }
 
-async function readGitPatch(
+type DiffStat = { insertions: number; deletions: number };
+
+// Per-file added/removed line counts for the whole diff in one `git diff
+// --numstat -z` call. Keyed by the file's new path (or old path for deletes),
+// which matches how name-status entries are keyed. Renames use the -z layout
+// "add\tdel\t\0<old>\0<new>"; binary files report "-\t-".
+async function getNumstat(
 	worktreePath: string,
-	args: string[],
-): Promise<string[] | null> {
-	const result = await runWithCode(["git", ...args], worktreePath);
-	if (result.code !== 0 && result.code !== 1) {
-		log.warn("readGitPatch failed", { args, code: result.code, stderr: result.stderr });
-		return null;
+	diffArgs: string[],
+): Promise<Map<string, DiffStat>> {
+	const stats = new Map<string, DiffStat>();
+	const result = await run(
+		[
+			"git",
+			"diff",
+			"--numstat",
+			"-z",
+			...RENAME_DETECTION_ARGS,
+			"--diff-filter=ACDMRT",
+			...diffArgs,
+		],
+		worktreePath,
+	);
+	if (!result.ok || !result.stdout) {
+		return stats;
 	}
-	const patch = result.stdout.trim();
-	return patch ? [patch] : null;
+
+	const tokens = result.stdout.split("\0");
+	let i = 0;
+	while (i < tokens.length) {
+		const token = tokens[i];
+		if (!token) {
+			i += 1;
+			continue;
+		}
+		const parts = token.split("\t");
+		if (parts.length < 3) {
+			i += 1;
+			continue;
+		}
+		const insertions = parts[0] === "-" ? 0 : parseInt(parts[0], 10) || 0;
+		const deletions = parts[1] === "-" ? 0 : parseInt(parts[1], 10) || 0;
+		const path = parts.slice(2).join("\t");
+		if (path === "") {
+			// Rename/copy: empty path field, the following two tokens are old/new.
+			const newPath = tokens[i + 2];
+			if (newPath) {
+				stats.set(newPath, { insertions, deletions });
+			}
+			i += 3;
+		} else {
+			stats.set(path, { insertions, deletions });
+			i += 1;
+		}
+	}
+	return stats;
 }
 
+async function mapWithConcurrency<T, R>(
+	items: T[],
+	limit: number,
+	fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const results = new Array<R>(items.length);
+	let next = 0;
+	const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+		while (true) {
+			const index = next++;
+			if (index >= items.length) {
+				return;
+			}
+			results[index] = await fn(items[index]);
+		}
+	});
+	await Promise.all(workers);
+	return results;
+}
+
+const WORKTREE_READ_CONCURRENCY = 24;
+
+// Resolves the content of every entry's two sides with a constant number of git
+// processes: ref sides are batched through cat-file (one pair of processes per
+// distinct ref), worktree sides are read from disk concurrently. Hunks are no
+// longer computed here — the renderer derives them from old/new content via
+// @git-diff-view's generateDiffFile, saving one `git diff` process per file.
 async function buildTaskDiffFiles(
 	worktreePath: string,
 	entries: ParsedNameStatusEntry[],
 	oldSource: DiffContentSource,
 	newSource: DiffContentSource,
-	renderSource: DiffRenderSource,
+	stats: Map<string, DiffStat>,
 ): Promise<Pick<TaskDiffResponse, "files" | "skippedFiles">> {
 	const files: TaskDiffFile[] = [];
 	const skippedFiles: TaskDiffSkippedFile[] = [];
 
+	const refReads = new Map<string, Map<string, TextReadResult>>();
+	async function batchRef(ref: string, paths: (string | null)[]): Promise<void> {
+		if (refReads.has(ref)) {
+			return;
+		}
+		const wanted = paths.filter((p): p is string => p !== null);
+		refReads.set(ref, await readRefBlobsBatch(worktreePath, ref, wanted));
+	}
+
+	if (oldSource.kind === "ref") {
+		await batchRef(oldSource.ref, entries.map((e) => e.oldPath));
+	}
+	if (newSource.kind === "ref") {
+		await batchRef(newSource.ref, entries.map((e) => e.newPath));
+	}
+
+	const worktreeReads = new Map<string, TextReadResult>();
+	if (oldSource.kind === "worktree" || newSource.kind === "worktree") {
+		const wtPaths = new Set<string>();
+		for (const entry of entries) {
+			if (oldSource.kind === "worktree" && entry.oldPath) wtPaths.add(entry.oldPath);
+			if (newSource.kind === "worktree" && entry.newPath) wtPaths.add(entry.newPath);
+		}
+		const unique = [...wtPaths];
+		const read = await mapWithConcurrency(unique, WORKTREE_READ_CONCURRENCY, (p) =>
+			readWorktreeTextFile(worktreePath, p),
+		);
+		unique.forEach((p, idx) => worktreeReads.set(p, read[idx]));
+	}
+
+	function resolve(source: DiffContentSource, filePath: string | null): TextReadResult {
+		if (!filePath) {
+			return { kind: "absent" };
+		}
+		if (source.kind === "ref") {
+			return refReads.get(source.ref)?.get(filePath) ?? { kind: "missing" };
+		}
+		return worktreeReads.get(filePath) ?? { kind: "missing" };
+	}
+
 	for (const entry of entries) {
-		const [oldContent, newContent] = await Promise.all([
-			readTextFromSource(worktreePath, oldSource, entry.oldPath),
-			readTextFromSource(worktreePath, newSource, entry.newPath),
-		]);
+		const oldContent = resolve(oldSource, entry.oldPath);
+		const newContent = resolve(newSource, entry.newPath);
 
 		const isBinary = oldContent.kind === "binary" || newContent.kind === "binary";
 		const isLarge = oldContent.kind === "large" || newContent.kind === "large";
@@ -489,9 +585,13 @@ async function buildTaskDiffFiles(
 			continue;
 		}
 
-		const hunks = renderSource.kind === "git"
-			? await readGitPatch(worktreePath, renderSource.buildArgs(entry))
-			: null;
+		const newText = readTextContent(newContent);
+		const statKey = entry.newPath ?? entry.oldPath ?? entry.displayPath;
+		// Untracked files are absent from `git diff` numstat — every line is new.
+		const stat = stats.get(statKey)
+			?? (entry.status === "untracked"
+				? { insertions: countLines(newText), deletions: 0 }
+				: { insertions: 0, deletions: 0 });
 
 		files.push({
 			id: entry.oldPath ?? entry.newPath ?? entry.displayPath,
@@ -500,8 +600,10 @@ async function buildTaskDiffFiles(
 			oldPath: entry.oldPath,
 			newPath: entry.newPath,
 			oldContent: readTextContent(oldContent),
-			newContent: readTextContent(newContent),
-			hunks,
+			newContent: newText,
+			hunks: null,
+			insertions: stat.insertions,
+			deletions: stat.deletions,
 		});
 	}
 
@@ -1621,10 +1723,11 @@ export async function getTaskDiff(
 	const defaultCompareLabel = options.compareLabel || defaultCompareRef;
 
 	if (mode === "uncommitted") {
-		const [entries, untrackedEntries, summary] = await Promise.all([
+		const [entries, untrackedEntries, summary, numstat] = await Promise.all([
 			listDiffEntries(worktreePath, ["HEAD"]),
 			listUntrackedEntries(worktreePath),
 			getUncommittedChanges(worktreePath),
+			getNumstat(worktreePath, ["HEAD"]),
 		]);
 		const allEntries = [...entries, ...untrackedEntries];
 		const filesResult = await buildTaskDiffFiles(
@@ -1632,16 +1735,7 @@ export async function getTaskDiff(
 			allEntries,
 			{ kind: "ref", ref: "HEAD" },
 			{ kind: "worktree" },
-			{
-				kind: "git",
-				buildArgs: (entry) => {
-					if (entry.status === "untracked") {
-						const path = entry.newPath ?? entry.displayPath;
-						return ["diff", "--no-index", "--no-ext-diff", "--no-color", "--", "/dev/null", path];
-					}
-					return ["diff", "--no-ext-diff", "--no-color", ...RENAME_DETECTION_ARGS, "HEAD", "--", ...getEntryPathArgs(entry)];
-				},
-			},
+			numstat,
 		);
 		return {
 			mode,
@@ -1661,28 +1755,17 @@ export async function getTaskDiff(
 		const upstreamRef = await getUpstreamRef(worktreePath);
 		if (upstreamRef) {
 			const entries = await listDiffEntries(worktreePath, [upstreamRef, "HEAD"]);
-			const [summary, filesResult] = await Promise.all([
+			const [summary, numstat] = await Promise.all([
 				getDiffShortStat(worktreePath, [upstreamRef, "HEAD"]),
-				buildTaskDiffFiles(
-					worktreePath,
-					entries,
-					{ kind: "ref", ref: upstreamRef },
-					{ kind: "ref", ref: "HEAD" },
-					{
-						kind: "git",
-						buildArgs: (entry) => [
-							"diff",
-							"--no-ext-diff",
-							"--no-color",
-							...RENAME_DETECTION_ARGS,
-							upstreamRef,
-							"HEAD",
-							"--",
-							...getEntryPathArgs(entry),
-						],
-					},
-				),
+				getNumstat(worktreePath, [upstreamRef, "HEAD"]),
 			]);
+			const filesResult = await buildTaskDiffFiles(
+				worktreePath,
+				entries,
+				{ kind: "ref", ref: upstreamRef },
+				{ kind: "ref", ref: "HEAD" },
+				numstat,
+			);
 			return {
 				mode,
 				compareRef: upstreamRef,
@@ -1697,27 +1780,17 @@ export async function getTaskDiff(
 		}
 
 		const branchEntries = await listDiffEntries(worktreePath, [`${defaultCompareRef}...HEAD`]);
-		const [summary, filesResult] = await Promise.all([
+		const [summary, numstat] = await Promise.all([
 			getBranchDiffStats(worktreePath, defaultCompareRef),
-			buildTaskDiffFiles(
-				worktreePath,
-				branchEntries,
-				{ kind: "ref", ref: defaultCompareRef },
-				{ kind: "ref", ref: "HEAD" },
-				{
-					kind: "git",
-					buildArgs: (entry) => [
-						"diff",
-						"--no-ext-diff",
-						"--no-color",
-						...RENAME_DETECTION_ARGS,
-						`${defaultCompareRef}...HEAD`,
-						"--",
-						...getEntryPathArgs(entry),
-					],
-				},
-			),
+			getNumstat(worktreePath, [`${defaultCompareRef}...HEAD`]),
 		]);
+		const filesResult = await buildTaskDiffFiles(
+			worktreePath,
+			branchEntries,
+			{ kind: "ref", ref: defaultCompareRef },
+			{ kind: "ref", ref: "HEAD" },
+			numstat,
+		);
 		return {
 			mode,
 			compareRef: defaultCompareRef,
@@ -1733,26 +1806,17 @@ export async function getTaskDiff(
 	}
 
 	const branchEntries = await listDiffEntries(worktreePath, [`${defaultCompareRef}...HEAD`]);
-	const [summary, filesResult] = await Promise.all([
+	const [summary, numstat] = await Promise.all([
 		getBranchDiffStats(worktreePath, defaultCompareRef),
-		buildTaskDiffFiles(
-			worktreePath,
-			branchEntries,
-			{ kind: "ref", ref: defaultCompareRef },
-			{ kind: "ref", ref: "HEAD" },
-			{
-				kind: "git",
-				buildArgs: (entry) => [
-					"diff",
-					"--no-ext-diff",
-					"--no-color",
-					`${defaultCompareRef}...HEAD`,
-					"--",
-					...getEntryPathArgs(entry),
-				],
-			},
-		),
+		getNumstat(worktreePath, [`${defaultCompareRef}...HEAD`]),
 	]);
+	const filesResult = await buildTaskDiffFiles(
+		worktreePath,
+		branchEntries,
+		{ kind: "ref", ref: defaultCompareRef },
+		{ kind: "ref", ref: "HEAD" },
+		numstat,
+	);
 	return {
 		mode,
 		compareRef: defaultCompareRef,

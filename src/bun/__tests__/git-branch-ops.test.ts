@@ -373,14 +373,23 @@ describe("getUncommittedChanges", () => {
 // ─── getTaskDiff ─────────────────────────────────────────────────────────────
 
 describe("getTaskDiff", () => {
+	// Content is read via the `git cat-file` batch protocol: --batch-check emits
+	// "<oid> blob <size>" per requested path, --batch emits that header followed
+	// by <size> raw bytes and a trailing newline. These helpers mint matching
+	// canned responses with a fixed (valid-shaped) object id.
+	const OID = "0123456789abcdef0123456789abcdef01234567";
+	const enc = new TextEncoder();
+	const catCheck = (size: number) => `${OID} blob ${size}\n`;
+	const catBlob = (content: string) => `${OID} blob ${enc.encode(content).length}\n${content}\n`;
+
 	it("builds a branch diff from git blobs", async () => {
-		queueResponse(0, "M\0src/app.ts\0");
-		queueResponse(0, "2\t1\tsrc/app.ts\n");
-		queueResponse(0, "13\n");
-		queueResponse(0, "13\n");
-		queueResponse(0, "const a = 1;\n");
-		queueResponse(0, "const a = 2;\n");
-		queueResponse(0, "diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;\n");
+		queueResponse(0, "M\0src/app.ts\0");        // listDiffEntries (name-status)
+		queueResponse(0, "2\t1\tsrc/app.ts\n");     // getBranchDiffStats (summary numstat)
+		queueResponse(0, "2\t1\tsrc/app.ts\0");     // getNumstat (per-file, -z)
+		queueResponse(0, catCheck(13));             // old ref (origin/main) batch-check
+		queueResponse(0, catBlob("const a = 1;\n")); // old ref batch
+		queueResponse(0, catCheck(13));             // new ref (HEAD) batch-check
+		queueResponse(0, catBlob("const a = 2;\n")); // new ref batch
 
 		const result = await getTaskDiff("/repo", "branch", {
 			baseBranch: "main",
@@ -401,7 +410,9 @@ describe("getTaskDiff", () => {
 				displayPath: "src/app.ts",
 				oldContent: "const a = 1;\n",
 				newContent: "const a = 2;\n",
-				hunks: ["diff --git a/src/app.ts b/src/app.ts\n@@ -1 +1 @@\n-const a = 1;\n+const a = 2;"],
+				hunks: null,
+				insertions: 2,
+				deletions: 1,
 			}),
 		]);
 	});
@@ -411,11 +422,11 @@ describe("getTaskDiff", () => {
 		mkdirSync(tmpDir, { recursive: true });
 		writeFileSync(join(tmpDir, "notes.txt"), "line 1\nline 2\n");
 
-		queueResponse(0, "");
-		queueResponse(0, "notes.txt\0");
-		queueResponse(0, "");
-		queueResponse(0, "notes.txt\n");
-		queueResponse(1, "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\n@@ -0,0 +1,2 @@\n+line 1\n+line 2\n");
+		queueResponse(0, "");             // listDiffEntries HEAD (no tracked changes)
+		queueResponse(0, "notes.txt\0");  // listUntrackedEntries (ls-files --others -z)
+		queueResponse(0, "");             // getUncommittedChanges numstat HEAD
+		queueResponse(0, "");             // getNumstat -z HEAD (no tracked changes)
+		queueResponse(0, "notes.txt\n");  // getUncommittedChanges ls-files --others
 
 		const result = await getTaskDiff(tmpDir, "uncommitted", {
 			baseBranch: "main",
@@ -427,13 +438,16 @@ describe("getTaskDiff", () => {
 			insertions: 2,
 			deletions: 0,
 		});
+		// Untracked file: read from the worktree on disk, every line counts as new.
 		expect(result.files).toEqual([
 			expect.objectContaining({
 				status: "untracked",
 				displayPath: "notes.txt",
 				oldContent: "",
 				newContent: "line 1\nline 2\n",
-				hunks: ["diff --git a/notes.txt b/notes.txt\nnew file mode 100644\n@@ -0,0 +1,2 @@\n+line 1\n+line 2"],
+				hunks: null,
+				insertions: 2,
+				deletions: 0,
 			}),
 		]);
 
@@ -441,12 +455,12 @@ describe("getTaskDiff", () => {
 	});
 
 	it("falls back to branch diff when unpushed mode has no upstream", async () => {
-		queueResponse(128, "", "fatal: no upstream configured");
-		queueResponse(0, "A\0src/new.ts\0");
-		queueResponse(0, "4\t0\tsrc/new.ts\n");
-		queueResponse(0, "9\n");
-		queueResponse(0, "export {};\n");
-		queueResponse(0, "diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n@@ -0,0 +1 @@\n+export {};\n");
+		queueResponse(128, "", "fatal: no upstream configured"); // getUpstreamRef
+		queueResponse(0, "A\0src/new.ts\0");        // listDiffEntries
+		queueResponse(0, "1\t0\tsrc/new.ts\n");     // getBranchDiffStats
+		queueResponse(0, "1\t0\tsrc/new.ts\0");     // getNumstat
+		queueResponse(0, catCheck(10));             // new ref (HEAD) batch-check (added file: no old side)
+		queueResponse(0, catBlob("export {};\n"));  // new ref batch
 
 		const result = await getTaskDiff("/repo", "unpushed", {
 			baseBranch: "main",
@@ -462,17 +476,20 @@ describe("getTaskDiff", () => {
 			displayPath: "src/new.ts",
 			oldContent: "",
 			newContent: "export {};\n",
-			hunks: ["diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n@@ -0,0 +1 @@\n+export {};"],
+			hunks: null,
+			insertions: 1,
+			deletions: 0,
 		}));
 	});
 
 	it("reports binary files in skippedFiles with both sides' sizes", async () => {
-		queueResponse(0, "M\0image.png\0");
-		queueResponse(0, "-\t-\timage.png\n");
-		queueResponse(0, "120\n");              // cat-file -s old
-		queueResponse(0, "250\n");              // cat-file -s new
-		queueResponse(0, "\0binary-old");       // show old (binary content)
-		queueResponse(0, "\0binary-new-bytes"); // show new (binary content)
+		queueResponse(0, "M\0image.png\0");      // name-status
+		queueResponse(0, "-\t-\timage.png\n");   // getBranchDiffStats
+		queueResponse(0, "-\t-\timage.png\0");   // getNumstat
+		queueResponse(0, catCheck(120));         // old ref batch-check
+		queueResponse(0, catBlob("\0binary-old")); // old ref batch (null byte ⇒ binary)
+		queueResponse(0, catCheck(250));         // new ref batch-check
+		queueResponse(0, catBlob("\0binary-new-bytes")); // new ref batch
 
 		const result = await getTaskDiff("/repo", "branch", {
 			baseBranch: "main",
@@ -491,10 +508,11 @@ describe("getTaskDiff", () => {
 	});
 
 	it("reports added binary files with null oldSize", async () => {
-		queueResponse(0, "A\0assets/logo.png\0");
-		queueResponse(0, "-\t-\tassets/logo.png\n");
-		queueResponse(0, "64\n");             // cat-file -s new
-		queueResponse(0, "\0png-new-bytes");  // show new (binary)
+		queueResponse(0, "A\0assets/logo.png\0");   // name-status
+		queueResponse(0, "-\t-\tassets/logo.png\n"); // getBranchDiffStats
+		queueResponse(0, "-\t-\tassets/logo.png\0"); // getNumstat
+		queueResponse(0, catCheck(64));             // new ref batch-check (added: no old side)
+		queueResponse(0, catBlob("\0png-new-bytes")); // new ref batch
 
 		const result = await getTaskDiff("/repo", "branch", {
 			baseBranch: "main",
@@ -513,13 +531,13 @@ describe("getTaskDiff", () => {
 	});
 
 	it("reports renamed binary files with old→new paths and sizes", async () => {
-		queueResponse(0, "R100\0old.png\0new.png\0");
-		queueResponse(0, " 1 file changed, 0 insertions(+), 0 deletions(-)");
-		queueResponse(0, "old.png\nnew.png\n");
-		queueResponse(0, "80\n");         // cat-file -s old
-		queueResponse(0, "82\n");         // cat-file -s new
-		queueResponse(0, "\0oldbin");     // show old
-		queueResponse(0, "\0newbin2");    // show new
+		queueResponse(0, "R100\0old.png\0new.png\0");  // name-status (rename)
+		queueResponse(0, "-\t-\tnew.png\n");            // getBranchDiffStats
+		queueResponse(0, "-\t-\t\0old.png\0new.png\0"); // getNumstat (rename, -z layout)
+		queueResponse(0, catCheck(80));                 // old ref batch-check (old.png)
+		queueResponse(0, catBlob("\0oldbin"));          // old ref batch
+		queueResponse(0, catCheck(82));                 // new ref batch-check (new.png)
+		queueResponse(0, catBlob("\0newbin2"));         // new ref batch
 
 		const result = await getTaskDiff("/repo", "branch", {
 			baseBranch: "main",
