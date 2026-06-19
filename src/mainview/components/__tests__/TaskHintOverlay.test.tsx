@@ -120,6 +120,32 @@ describe("TaskHintOverlay", () => {
 		expect(click1).not.toHaveBeenCalled();
 	});
 
+	it("skips card clones living inside a dialog/popover", () => {
+		makeCard("t1", 0); // real board card
+		// A stuck-preparation-style popover clone: same kind of node, but inside
+		// a role="dialog" and with no navigation handler.
+		const dialog = document.createElement("div");
+		dialog.setAttribute("role", "dialog");
+		document.body.appendChild(dialog);
+		makeCard("t2", 0, dialog);
+		renderOverlay();
+		const labels = screen.getAllByTestId("task-hint-label");
+		expect(labels).toHaveLength(1);
+		expect(labels[0].getAttribute("data-hint")).toBe("fa");
+	});
+
+	it("does not click a target that detached before commit", () => {
+		const t1 = makeCard("t1", 0);
+		const click1 = vi.fn();
+		t1.addEventListener("click", click1);
+		const { onExit } = renderOverlay();
+		t1.remove(); // card leaves the DOM while the overlay is open
+		press("f");
+		press("a"); // would commit t1
+		expect(click1).not.toHaveBeenCalled();
+		expect(onExit).toHaveBeenCalledTimes(1);
+	});
+
 	it("targets the innermost element when a task id is nested", () => {
 		// Mirrors the board: a wrapper <div data-task-id> around the card root,
 		// which also has data-task-id and owns the real click handler.

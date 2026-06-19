@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { DEFAULT_HINT_CHARS, generateHintStrings } from "../utils/hintLabels";
@@ -28,26 +28,26 @@ function isVisibleInViewport(el: HTMLElement): boolean {
  * wraps each card in a `<div data-task-id>` for drag-and-drop AND the card root
  * itself has it. Only the innermost element owns the navigation `onClick`, so
  * for each id we keep the element that has no descendant sharing the same id.
+ * Clones living inside dialogs/popovers (e.g. the stuck-preparation popover)
+ * are skipped — they have no navigation handler.
  */
-function scanTargets(): HTMLElement[] {
+function scanTargets(): Array<{ id: string; element: HTMLElement }> {
 	const all = Array.from(document.querySelectorAll<HTMLElement>("[data-task-id]"));
 	const byId = new Map<string, HTMLElement>();
 	for (const el of all) {
 		const id = el.getAttribute("data-task-id");
 		if (!id) continue;
+		if (el.closest('[role="dialog"]')) continue;
 		if (!isVisibleInViewport(el)) continue;
-		// Prefer the innermost element: one that does not contain another node
-		// with the same id. (querySelectorAll yields ancestors before
-		// descendants, so the descendant naturally overwrites the ancestor.)
-		const hasInnerTwin = el.querySelector(`[data-task-id="${CSS.escape(id)}"]`) !== null;
-		if (hasInnerTwin) continue;
+		// Not the innermost element (it wraps another node with the same id).
+		if (el.querySelector(`[data-task-id="${CSS.escape(id)}"]`)) continue;
 		if (!byId.has(id)) byId.set(id, el);
 	}
 	// Order spatially: down each column (left→right), top→bottom within a column,
 	// so the shortest/earliest hints land on the top-left cards.
-	return Array.from(byId.values()).sort((a, b) => {
-		const ra = a.getBoundingClientRect();
-		const rb = b.getBoundingClientRect();
+	return Array.from(byId, ([id, element]) => ({ id, element })).sort((a, b) => {
+		const ra = a.element.getBoundingClientRect();
+		const rb = b.element.getBoundingClientRect();
 		return ra.left - rb.left || ra.top - rb.top;
 	});
 }
@@ -55,20 +55,19 @@ function scanTargets(): HTMLElement[] {
 function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 	const t = useT();
 	const [typed, setTyped] = useState("");
-	// Bumped on scroll/resize to recompute badge positions from live rects.
-	const [tick, setTick] = useState(0);
+	// Mirror of `typed` for the keydown handler so it stays pure (no reading
+	// state inside a state updater).
+	const typedRef = useRef("");
+	// Re-render trigger to re-read live rects after scroll/resize.
+	const [, bumpReposition] = useState(0);
 
 	const onExitRef = useRef(onExit);
 	onExitRef.current = onExit;
 
 	const [targets] = useState<HintTarget[]>(() => {
-		const els = scanTargets();
-		const hints = generateHintStrings(els.length);
-		return els.map((element, i) => ({
-			id: element.getAttribute("data-task-id") ?? String(i),
-			hint: hints[i],
-			element,
-		}));
+		const found = scanTargets();
+		const hints = generateHintStrings(found.length);
+		return found.map(({ id, element }, i) => ({ id, hint: hints[i], element }));
 	});
 	const targetsRef = useRef(targets);
 	targetsRef.current = targets;
@@ -78,17 +77,22 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 		if (targets.length === 0) onExitRef.current();
 	}, [targets.length]);
 
-	const commit = useCallback((target: HintTarget) => {
-		// Click while the element is still live, then close the overlay. The
-		// click reuses the card's own navigation logic (split vs fullscreen,
-		// detail modal for finished tasks), so behavior stays in lockstep.
-		target.element.click();
-		onExitRef.current();
-	}, []);
-
 	// Own every keystroke while active (capture phase + stopImmediatePropagation)
 	// so neither focused inputs nor the app's global shortcuts react.
 	useEffect(() => {
+		function setTypedBoth(next: string) {
+			typedRef.current = next;
+			setTyped(next);
+		}
+		function commit(target: HintTarget) {
+			onExitRef.current();
+			// The card may have detached (column move, websocket update) while the
+			// overlay was open — clicking an orphan would silently do nothing.
+			if (!document.contains(target.element)) return;
+			// Reuses the card's own navigation logic (split vs fullscreen, detail
+			// modal for finished tasks), so behavior stays in lockstep.
+			target.element.click();
+		}
 		function onKeyDown(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				e.preventDefault();
@@ -99,7 +103,7 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 			if (e.key === "Backspace") {
 				e.preventDefault();
 				e.stopImmediatePropagation();
-				setTyped((prev) => prev.slice(0, -1));
+				setTypedBoth(typedRef.current.slice(0, -1));
 				return;
 			}
 			// Let real chords (Cmd/Ctrl/Alt+key) fall through untouched.
@@ -109,20 +113,18 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 			if (key.length === 1 && DEFAULT_HINT_CHARS.includes(key)) {
 				e.preventDefault();
 				e.stopImmediatePropagation();
-				setTyped((prev) => {
-					const next = prev + key;
-					const matches = targetsRef.current.filter((tg) => tg.hint.startsWith(next));
-					if (matches.length === 0) return prev; // dead key — keep current state
-					if (matches.length === 1 && matches[0].hint === next) {
-						commit(matches[0]);
-						return prev;
-					}
-					return next;
-				});
+				const next = typedRef.current + key;
+				const matches = targetsRef.current.filter((tg) => tg.hint.startsWith(next));
+				if (matches.length === 0) return; // dead key — ignore
+				if (matches.length === 1 && matches[0].hint === next) {
+					commit(matches[0]);
+					return;
+				}
+				setTypedBoth(next);
 				return;
 			}
-			// Any other single key (space, letters outside the set, etc.): swallow
-			// it so it can't leak to the board, but don't exit — only Esc exits.
+			// Any other single key: swallow it so it can't leak to the board, but
+			// don't exit — only Esc exits.
 			if (key.length === 1) {
 				e.preventDefault();
 				e.stopImmediatePropagation();
@@ -130,11 +132,11 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 		}
 		window.addEventListener("keydown", onKeyDown, { capture: true });
 		return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
-	}, [commit]);
+	}, []);
 
 	// Recompute positions when the board scrolls or the window resizes.
 	useEffect(() => {
-		const bump = () => setTick((x) => x + 1);
+		const bump = () => bumpReposition((x) => x + 1);
 		window.addEventListener("scroll", bump, { capture: true, passive: true });
 		window.addEventListener("resize", bump);
 		return () => {
@@ -143,15 +145,13 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 		};
 	}, []);
 
-	const visible = useMemo(() => {
-		// `tick` participates so live rects are re-read after scroll/resize.
-		void tick;
-		return targets
-			.filter((tg) => tg.hint.startsWith(typed))
-			.map((tg) => ({ target: tg, rect: tg.element.getBoundingClientRect() }));
-	}, [targets, typed, tick]);
-
 	if (targets.length === 0) return null;
+
+	// Recomputed every render (cheap for a handful of cards); the reposition
+	// re-render above keeps the live rects fresh during scroll/resize.
+	const visible = targets
+		.filter((tg) => tg.hint.startsWith(typed))
+		.map((tg) => ({ target: tg, rect: tg.element.getBoundingClientRect() }));
 
 	return createPortal(
 		<div

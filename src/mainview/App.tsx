@@ -502,14 +502,14 @@ function App() {
 				// nothing else is grabbing the keyboard (a focused field, the
 				// terminal, or an open modal/palette).
 				if (state.route.screen !== "project") return;
-				if (createTaskProjectId || showAddProjectModal || showQuitDialog || showCommandPalette || showProjectSwitch || shortcutsModal.open) return;
+				if (createTaskProjectId || showAddProjectModal || showQuitDialog || showCommandPalette || showProjectSwitch || shortcutsModal.open || switcher.session) return;
 				if (isTypingContext()) return;
 				e.preventDefault();
 				e.stopPropagation();
 				setHintMode(true);
 			}
 		},
-		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, shortcutsModal.open, showAddProjectModal, showCommandPalette, showProjectSwitch, showQuitDialog, state.projects, state.route],
+		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, shortcutsModal.open, showAddProjectModal, showCommandPalette, showProjectSwitch, showQuitDialog, state.projects, state.route, switcher.session],
 		{ capture: true },
 	);
 
