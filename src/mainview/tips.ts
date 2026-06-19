@@ -697,6 +697,13 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0192}", // nf-md-file_document_outline
 		score: 4,
 	},
+	{
+		id: "task-hint-nav",
+		titleKey: "tip.taskHintNav.title",
+		bodyKey: "tip.taskHintNav.body",
+		icon: "\uF05B", // nf-fa-crosshairs
+		score: 4,
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

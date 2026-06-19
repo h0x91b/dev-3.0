@@ -38,6 +38,12 @@ export default {
 					DEFAULT: "rgb(var(--success) / <alpha-value>)",
 					hover: "rgb(var(--success-hover) / <alpha-value>)",
 				},
+				hint: {
+					DEFAULT: "rgb(var(--hint-bg) / <alpha-value>)",
+					fg: "rgb(var(--hint-fg) / <alpha-value>)",
+					border: "rgb(var(--hint-border) / <alpha-value>)",
+					typed: "rgb(var(--hint-typed) / <alpha-value>)",
+				},
 			},
 			keyframes: {
 				"slide-in-right": {

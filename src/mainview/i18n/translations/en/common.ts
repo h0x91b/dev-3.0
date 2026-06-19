@@ -8,6 +8,9 @@ const common = {
 	"app.agentCompletionConfirm": "Complete task",
 	"app.agentCompletionCancel": "Keep session",
 
+	// Vimium-style task hint navigation
+	"hint.legend": "Type a hint to jump to a task · Backspace to undo · Esc to cancel",
+
 	// Quit dialog
 	"quit.dialogTitle": "Sessions keep running",
 	"quit.dialogMessage": "Your terminal sessions will continue running in tmux after quitting. You can reattach to them when you reopen the app.",

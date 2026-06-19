@@ -1,0 +1,1 @@
+Added Vimium-style task hint navigation to the board. Press F (when not typing in a field) to overlay a short letter hint on every visible task card; type the hint to jump straight to that task, exactly as if you had clicked the card. Backspace edits the typed prefix and Esc cancels.
