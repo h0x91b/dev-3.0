@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!-- Source template for the 1200x630 Open Graph / Twitter share image.
+     Render: agent-browser set viewport 1200 630 ; open file://.../og-card.html ; screenshot docs/og-image.jpg
+     Not linked from the site; kept in-repo so the share image is reproducible. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background:
+      radial-gradient(1100px 600px at 78% 18%, rgba(68,150,255,0.20), transparent 60%),
+      radial-gradient(900px 700px at 8% 95%, rgba(139,92,246,0.16), transparent 55%),
+      linear-gradient(135deg, #0a0e1a 0%, #0d1326 100%);
+    color: #e7ecf5;
+    display: flex;
+    align-items: center;
+    padding: 64px;
+    gap: 48px;
+  }
+  .left { width: 600px; flex: none; }
+  .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 34px; }
+  .brand img { width: 46px; height: 46px; border-radius: 11px; }
+  .brand .name { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; }
+  h1 {
+    font-size: 56px; font-weight: 800; line-height: 1.05; letter-spacing: -1.5px;
+    margin-bottom: 24px;
+  }
+  h1 .grad {
+    background: linear-gradient(90deg, #4496ff, #8b5cf6);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .tagline { font-size: 25px; line-height: 1.4; color: #9aa6bd; font-weight: 500; margin-bottom: 38px; }
+  .chips { display: flex; gap: 12px; flex-wrap: wrap; }
+  .chip {
+    font-size: 18px; font-weight: 600; padding: 10px 18px; border-radius: 999px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #cdd6e6;
+  }
+  .chip.star { background: rgba(68,150,255,0.15); border-color: rgba(68,150,255,0.4); color: #8fc0ff; }
+  .right { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .shot {
+    width: 100%; border-radius: 14px; display: block;
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 6px rgba(68,150,255,0.06);
+  }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand">
+      <img src="icon.png" alt="">
+      <span class="name">dev-3.0</span>
+    </div>
+    <h1>Run <span class="grad">N&nbsp;AI&nbsp;agents</span><br>without losing your mind</h1>
+    <div class="tagline">Terminal-centric project manager for AI coding agents.<br>Kanban &times; terminal &times; tmux.</div>
+    <div class="chips">
+      <span class="chip star">&#9733; 200+ on GitHub</span>
+      <span class="chip">Claude &middot; Codex &middot; Gemini</span>
+      <span class="chip">macOS &amp; Linux</span>
+    </div>
+  </div>
+  <div class="right">
+    <img class="shot" src="screenshots/kanban-board.jpg" alt="">
+  </div>
+</body>
+</html>
