@@ -242,6 +242,8 @@ const tips = {
 	"tip.diffSyntaxHighlight.body": "The diff viewer colors code by language and follows your light/dark theme, so changes are easier to scan.",
 	"tip.sidebarAttentionMode.title": "Bell = needs your eyes",
 	"tip.sidebarAttentionMode.body": "Click the bell icon in the sidebar to see every task waiting for your input across all projects, sorted oldest-first.",
+	"tip.gitRefreshForceMergeCheck.title": "Refresh re-checks the merge",
+	"tip.gitRefreshForceMergeCheck.body": "Click the git refresh icon to re-check the merge — if your branch is fully merged, the completion prompt comes back even if you dismissed it before.",
 } as const;
 
 export default tips;

@@ -242,6 +242,8 @@ const tips = {
 	"tip.diffSyntaxHighlight.body": "Просмотрщик диффов подсвечивает код по языку и следует светлой/тёмной теме — изменения легче читать.",
 	"tip.sidebarAttentionMode.title": "Колокол = ждёт твоих глаз",
 	"tip.sidebarAttentionMode.body": "Кликни иконку колокола в панели, чтобы увидеть все задачи, ожидающие твоего ответа по всем проектам, начиная с самых старых.",
+	"tip.gitRefreshForceMergeCheck.title": "Refresh заново проверяет merge",
+	"tip.gitRefreshForceMergeCheck.body": "Нажми иконку git refresh, чтобы заново проверить merge — если ветка полностью влита, окно завершения вернётся, даже если ты его раньше закрыл.",
 };
 
 export default tips;

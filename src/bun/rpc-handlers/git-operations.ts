@@ -94,14 +94,19 @@ async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "worktreePa
 	};
 }
 
-async function reserveMergeCompletionPrompt(project: Project, task: Task, fingerprint: MergeCompletionFingerprint, now = new Date()): Promise<boolean> {
+async function reserveMergeCompletionPrompt(project: Project, task: Task, fingerprint: MergeCompletionFingerprint, now = new Date(), force = false): Promise<boolean> {
 	const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
 	const nowMs = now.getTime();
-	if (isPromptKeyReserved(promptKey, nowMs)) return false;
+	// A forced re-check (user clicked the git refresh button) deliberately
+	// ignores the in-memory reservation and any prior dismissal: an explicit
+	// click means "ask me again, regardless of what I answered before".
+	if (!force) {
+		if (isPromptKeyReserved(promptKey, nowMs)) return false;
 
-	if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) {
-		mergeNotifiedPromptKeys.set(promptKey, nowMs);
-		return false;
+		if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) {
+			mergeNotifiedPromptKeys.set(promptKey, nowMs);
+			return false;
+		}
 	}
 
 	// Reserve the slot before awaiting so concurrent callers see the key immediately
@@ -118,13 +123,13 @@ async function reserveMergeCompletionPrompt(project: Project, task: Task, finger
 	return true;
 }
 
-async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null }): Promise<{ shouldPrompt: boolean; fingerprint: string | null }> {
+async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null }> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	const fingerprint = params.fingerprint
 		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
 		: await getMergeCompletionFingerprint(task, task.branchName);
-	const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint);
+	const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint, new Date(), params.force === true);
 	return { shouldPrompt, fingerprint: fingerprint.fingerprint };
 }
 

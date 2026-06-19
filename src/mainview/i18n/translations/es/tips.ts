@@ -242,6 +242,8 @@ const tips = {
 	"tip.diffSyntaxHighlight.body": "El visor de diffs colorea el código según el lenguaje y sigue tu tema claro/oscuro, así los cambios son más fáciles de leer.",
 	"tip.sidebarAttentionMode.title": "Campana = necesita tu atención",
 	"tip.sidebarAttentionMode.body": "Pulsa el icono de campana en el panel para ver todas las tareas esperando tu respuesta en todos los proyectos, ordenadas de más antigua a más reciente.",
+	"tip.gitRefreshForceMergeCheck.title": "Refresh revisa la fusión de nuevo",
+	"tip.gitRefreshForceMergeCheck.body": "Pulsa el icono de git refresh para revisar la fusión de nuevo — si tu rama está totalmente fusionada, el aviso de finalización vuelve a aparecer aunque lo hayas descartado antes.",
 };
 
 export default tips;

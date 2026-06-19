@@ -1,0 +1,1 @@
+The git refresh button in a task now force-checks whether the branch is fully merged into its base. If it is, the "Branch Merged — complete the task?" prompt reappears even after you dismissed it earlier (bypassing the usual suppression), and you get a toast when nothing is mergeable yet.

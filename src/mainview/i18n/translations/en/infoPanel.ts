@@ -59,6 +59,8 @@ const infoPanel = {
 	"infoPanel.fileBrowserFailed": "Failed to open file browser: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Refresh branch status",
+	"infoPanel.refreshStatusFailed": "Failed to refresh branch status: {error}",
+	"infoPanel.mergeCheckNotMerged": "Branch isn't fully merged into {branch} yet",
 	"infoPanel.movedAt": "Moved",
 	"infoPanel.baseBranch": "Base Branch",
 	"infoPanel.copyPath": "Copy path to this git worktree",
