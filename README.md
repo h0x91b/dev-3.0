@@ -51,6 +51,7 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Git worktree per task** — full repo isolation, no merge conflicts between parallel tasks
 - **Multiple agents per task** — run several agents side by side in the same worktree via tmux split panes
 - **Multi-agent launch** — pick any combination of Claude, Cursor, Codex, Gemini, Aider, or any CLI agent — each with its own config
+- **Remote / browser mode** — run headless on a server and drive the full UI from any browser (even your phone) with `dev3 remote` — QR login plus an optional Cloudflare tunnel
 - **Multi-project dashboard** — manage multiple projects from a single Activity view with live agent status
 - **Live terminal preview** — hover any card to see what the agent is doing right now
 - **Terminal bell alerts** — red badges on cards when an agent needs your attention
@@ -61,6 +62,9 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Automated setup** — configure a setup script per project that runs for every new task
 - **Copy-on-Write clone paths** — clone `node_modules`, `.venv`, `build`, and other heavy directories into worktrees instantly with near-zero disk overhead
 - **PR review mode** — check out any remote branch and toggle "PR review" to pre-fill a structured code-review prompt for the agent
+- **Built-in code review** — inline diff viewer with syntax highlighting, line-range comments, and one-click export of your review back to the agent
+- **Bug hunters** — launch a pack of read-only agents that hunt bugs across your branch diff in parallel
+- **Command palette & quick switch** — ⌘⇧P to run any action, ⌘K to jump between projects, Option+Tab to flip between tasks with live previews
 
 <p align="center">
   <img src="docs/screenshots/activity-dashboard.jpg" width="800" alt="Multi-project activity dashboard with live agent status">
