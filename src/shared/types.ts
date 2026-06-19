@@ -1269,7 +1269,7 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			prepareMergeCompletionPrompt: {
-				params: { taskId: string; projectId: string; fingerprint?: string | null };
+				params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean };
 				response: { shouldPrompt: boolean; fingerprint: string | null };
 			};
 			dismissMergeCompletionPrompt: {

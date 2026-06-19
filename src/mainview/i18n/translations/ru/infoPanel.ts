@@ -59,6 +59,8 @@ const infoPanel = {
 	"infoPanel.fileBrowserFailed": "Не удалось открыть файловый браузер: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Обновить статус ветки",
+	"infoPanel.refreshStatusFailed": "Не удалось обновить статус ветки: {error}",
+	"infoPanel.mergeCheckNotMerged": "Ветка ещё не полностью влита в {branch}",
 	"infoPanel.movedAt": "Перемещено",
 	"infoPanel.baseBranch": "Базовая ветка",
 	"infoPanel.copyPath": "Скопировать путь к этому git worktree",

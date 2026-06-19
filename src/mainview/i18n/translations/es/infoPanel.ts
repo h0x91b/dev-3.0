@@ -59,6 +59,8 @@ const infoPanel = {
 	"infoPanel.fileBrowserFailed": "Error al abrir el explorador de archivos: {error}",
 	"infoPanel.uncommittedChanges": "+{ins} / −{del}",
 	"infoPanel.refreshStatus": "Actualizar estado de la rama",
+	"infoPanel.refreshStatusFailed": "Error al actualizar el estado de la rama: {error}",
+	"infoPanel.mergeCheckNotMerged": "La rama aún no está completamente fusionada en {branch}",
 	"infoPanel.movedAt": "Movido",
 	"infoPanel.baseBranch": "Rama base",
 	"infoPanel.copyPath": "Copiar la ruta de este git worktree",

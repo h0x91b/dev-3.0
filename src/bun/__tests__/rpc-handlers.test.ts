@@ -6925,6 +6925,95 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 	});
 });
 
+describe("prepareMergeCompletionPrompt (force re-check)", () => {
+	const FINGERPRINT = "v1:dev3/task-test:abc123";
+	let project: Project;
+
+	function dismissedTask(): Task {
+		return makeTask({
+			status: "review-by-user",
+			mergeCompletionPrompt: {
+				fingerprint: FINGERPRINT,
+				promptedAt: "2026-06-01T08:00:00.000Z",
+				dismissedAt: "2026-06-01T08:01:00.000Z",
+				precise: true,
+			},
+		});
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMergePollerState();
+		project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockImplementation(async (_p: Project, _id: string, patch: Partial<Task>) => makeTask(patch));
+	});
+
+	afterEach(() => {
+		_resetMergePollerState();
+	});
+
+	it("suppresses a dismissed precise head on a normal (non-forced) check", async () => {
+		vi.mocked(data.getTask).mockResolvedValue(dismissedTask());
+		const res = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+		});
+		expect(res.shouldPrompt).toBe(false);
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("re-offers a dismissed precise head when force is set (user clicked git refresh)", async () => {
+		vi.mocked(data.getTask).mockResolvedValue(dismissedTask());
+		const res = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+			force: true,
+		});
+		expect(res.shouldPrompt).toBe(true);
+		// The forced reservation clears the prior dismissal so the popup can show.
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			mergeCompletionPrompt: {
+				fingerprint: FINGERPRINT,
+				promptedAt: expect.any(String),
+				dismissedAt: null,
+				precise: true,
+			},
+		});
+	});
+
+	it("force bypasses the in-memory reservation that mutes back-to-back non-forced checks", async () => {
+		// A fresh, never-dismissed merged head.
+		vi.mocked(data.getTask).mockResolvedValue(makeTask({ status: "review-by-user" }));
+
+		const first = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+		});
+		expect(first.shouldPrompt).toBe(true);
+
+		// A second non-forced check is throttled by the in-memory reservation.
+		const second = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+		});
+		expect(second.shouldPrompt).toBe(false);
+
+		// Forcing it re-offers despite the reservation.
+		const forced = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+			force: true,
+		});
+		expect(forced.shouldPrompt).toBe(true);
+	});
+});
+
 describe("startPRDetectionPoller / stopPRDetectionPoller", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();

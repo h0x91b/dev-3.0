@@ -769,6 +769,12 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.sidebarAttentionMode.body",
 		icon: "\u{F0A2}", // nf-fa-bell
 	},
+	{
+		id: "git-refresh-force-merge-check",
+		titleKey: "tip.gitRefreshForceMergeCheck.title",
+		bodyKey: "tip.gitRefreshForceMergeCheck.body",
+		icon: "\u{F0450}", // nf-md-refresh
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

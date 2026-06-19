@@ -51,7 +51,6 @@ export function useTaskBranchStatus({
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const mergeDialogShownRef = useRef(false);
-	const fetchStatusRef = useRef<(() => Promise<void>) | null>(null);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const defaultCompareRef = getDefaultTaskCompareRef(baseBranch, project);
@@ -74,22 +73,94 @@ export function useTaskBranchStatus({
 		});
 	}, [dispatch, navigate, project, task, t]);
 
+	// Offers the "Branch Merged → complete the task?" popup when the branch is
+	// fully merged into its base. `force` is set when the user explicitly clicks
+	// the git refresh button: it re-asks even after a prior dismissal or within
+	// the same session (bypassing both the in-memory once-guard and the backend
+	// suppression), and gives an explicit toast when nothing is mergeable yet.
+	const offerMergeCompletionIfMerged = useCallback(
+		async (status: BranchStatus, { force }: { force: boolean }) => {
+			// mergedByContent is computed against whatever ref the user selected in
+			// the compare dropdown. The completion prompt is only meaningful against
+			// the task's real base branch.
+			const isDefaultBaseCompare =
+				!compareRef || compareRef === baseBranch || compareRef === `origin/${baseBranch}`;
+			const eligible =
+				status.mergedByContent &&
+				isDefaultBaseCompare &&
+				// The popup claims "no changes left" — uncommitted changes mean that's
+				// false, and completing would destroy them.
+				status.insertions === 0 &&
+				status.deletions === 0 &&
+				MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status);
+
+			if (!eligible) {
+				if (force) {
+					toast.info(t("infoPanel.mergeCheckNotMerged", { branch: baseBranch }));
+				}
+				return;
+			}
+
+			if (!force && mergeDialogShownRef.current) {
+				return;
+			}
+
+			const promptState = await api.request.prepareMergeCompletionPrompt({
+				taskId: task.id,
+				projectId: project.id,
+				fingerprint: status.mergeCompletionFingerprint,
+				force,
+			});
+			if (!force) {
+				mergeDialogShownRef.current = true;
+			}
+			if (!promptState.shouldPrompt) {
+				return;
+			}
+
+			const runPrompt = () =>
+				confirm({
+					title: t("app.branchMergedTitle"),
+					message: t("app.branchMergedMessage", {
+						taskTitle: task.customTitle || task.title,
+						branchName: task.branchName || "",
+					}),
+				});
+			const shouldComplete = force
+				? await runPrompt()
+				: await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, runPrompt);
+			if (shouldComplete) {
+				completeTask();
+			} else if (shouldComplete === false) {
+				await api.request.dismissMergeCompletionPrompt({
+					taskId: task.id,
+					projectId: project.id,
+					fingerprint: promptState.fingerprint,
+				});
+			}
+		},
+		[
+			baseBranch,
+			compareRef,
+			completeTask,
+			project.id,
+			task.branchName,
+			task.customTitle,
+			task.id,
+			task.status,
+			task.title,
+			t,
+		],
+	);
+
 	useEffect(() => {
 		if (!isTaskActive || !task.worktreePath) {
 			setBranchStatus(null);
-			fetchStatusRef.current = null;
 			return;
 		}
 
 		mergeDialogShownRef.current = false;
 		let cancelled = false;
-
-		// mergedByContent is computed against whatever ref the user selected in
-		// the compare dropdown. The completion prompt is only meaningful against
-		// the task's real base branch — comparing against another ref must never
-		// trigger a "Branch Merged" popup.
-		const isDefaultBaseCompare =
-			!compareRef || compareRef === baseBranch || compareRef === `origin/${baseBranch}`;
 
 		const fetchStatus = async () => {
 			try {
@@ -101,51 +172,13 @@ export function useTaskBranchStatus({
 
 				if (!cancelled) {
 					setBranchStatus(status);
-
-					if (
-						status.mergedByContent &&
-						isDefaultBaseCompare &&
-						// The popup claims "no changes left" — uncommitted changes
-						// mean that's false, and completing would destroy them.
-						status.insertions === 0 &&
-						status.deletions === 0 &&
-						MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) &&
-						!mergeDialogShownRef.current
-					) {
-						const promptState = await api.request.prepareMergeCompletionPrompt({
-							taskId: task.id,
-							projectId: project.id,
-							fingerprint: status.mergeCompletionFingerprint,
-						});
-						mergeDialogShownRef.current = true;
-						if (promptState.shouldPrompt) {
-							const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-								confirm({
-									title: t("app.branchMergedTitle"),
-									message: t("app.branchMergedMessage", {
-										taskTitle: task.customTitle || task.title,
-										branchName: task.branchName || "",
-									}),
-								}),
-							);
-							if (shouldComplete) {
-								completeTask();
-							} else if (shouldComplete === false) {
-								await api.request.dismissMergeCompletionPrompt({
-									taskId: task.id,
-									projectId: project.id,
-									fingerprint: promptState.fingerprint,
-								});
-							}
-						}
-					}
+					await offerMergeCompletionIfMerged(status, { force: false });
 				}
 			} catch {
 				// Polling retries on the next tick.
 			}
 		};
 
-		fetchStatusRef.current = fetchStatus;
 		const stop = startVisibilityAwarePoll({ fn: fetchStatus, intervalMs: 15_000 });
 
 		return () => {
@@ -153,18 +186,12 @@ export function useTaskBranchStatus({
 			stop();
 		};
 	}, [
-		baseBranch,
 		compareRef,
-		completeTask,
 		isTaskActive,
+		offerMergeCompletionIfMerged,
 		project.id,
-		task.branchName,
-		task.customTitle,
 		task.id,
-		task.status,
-		task.title,
 		task.worktreePath,
-		t,
 	]);
 
 	const handleCreatePR = useCallback(async (autoMerge = false) => {
@@ -247,14 +274,26 @@ export function useTaskBranchStatus({
 	}, [compareRef, completeTask, handleCreatePR, project.id, task.id, task.status, t]);
 
 	const handleRefreshStatus = useCallback(async () => {
-		if (refreshingStatus || !fetchStatusRef.current) {
+		if (refreshingStatus || !isTaskActive || !task.worktreePath) {
 			return;
 		}
 
 		setRefreshingStatus(true);
-		await fetchStatusRef.current();
+		try {
+			const status = await api.request.getBranchStatus({
+				taskId: task.id,
+				projectId: project.id,
+				compareRef: compareRef || undefined,
+			});
+			setBranchStatus(status);
+			// A manual click is a force re-check: re-offer completion even if the
+			// user dismissed the popup earlier for this same merged head.
+			await offerMergeCompletionIfMerged(status, { force: true });
+		} catch (err) {
+			toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }));
+		}
 		setRefreshingStatus(false);
-	}, [refreshingStatus]);
+	}, [compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.worktreePath, t]);
 
 	const handleRebase = useCallback(async () => {
 		if (rebasing) {
