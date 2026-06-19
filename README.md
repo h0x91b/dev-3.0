@@ -25,7 +25,7 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/kanban-hover-preview.jpg" width="800" alt="Kanban board with live terminal preview">
+  <img src="docs/screenshots/kanban-board.jpg" width="800" alt="Kanban board — tasks across To Do, Working, Review and Done columns">
 </p>
 
 ## The problem
