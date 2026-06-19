@@ -1,5 +1,15 @@
 # UX Manifest Changelog
 
+## 2026-06-19 — Keyboard-shortcut registry + unified reference overlay
+
+Added a `keyboard_shortcuts_reference` surface to `ux-architecture.yaml` and bible §5.2: a single
+source of truth (`src/mainview/keymap.ts`, data — documents, does not dispatch) feeding one
+`KeyboardShortcutsModal` with App + Terminal(tmux) tabs, reached via Help → Keyboard Shortcuts
+(wiring the currently-dead `help-keyboard-shortcuts` menu action), the ⌘/ chord, and the ⇧⌘P palette;
+same data renders the README table + website. Added a UX decision, a surface-table row, resolved the
+open question, and created `feature-plans/keyboard-shortcuts-registry.md`. No new nav destination,
+toolbar button, or token. Implementation deferred (design-only this pass).
+
 ## 2026-06-16 — Back/forward history nav in the global header
 
 Added `history_nav` to the `global_header` surface's allowed actions in `ux-architecture.yaml` (back/forward arrows at the far-left of the breadcrumb row, also bound to ⌘[/⌘] and mouse side buttons, driven by the pre-existing `state.ts` route-history stack). Appended a UX decision. No new surface, nav item, token, or budget change — the empty left edge of the header absorbs it.
