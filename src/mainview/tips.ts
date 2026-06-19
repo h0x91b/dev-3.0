@@ -354,6 +354,14 @@ const ALL_TIPS: Tip[] = [
 		score: 5,
 	},
 	{
+		id: "keyboard-shortcuts-panel",
+		titleKey: "tip.keyboardShortcutsPanel.title",
+		bodyKey: "tip.keyboardShortcutsPanel.body",
+		icon: "\u{F030D}", // nf-md-keyboard
+		score: 3,
+	},
+	// Batch 8: tmux manager, CLI, snapshots, sound, siblings
+	{
 		id: "tmux-session-manager",
 		titleKey: "tip.tmuxSessionManager.title",
 		bodyKey: "tip.tmuxSessionManager.body",

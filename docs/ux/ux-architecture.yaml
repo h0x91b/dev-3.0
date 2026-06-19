@@ -231,6 +231,15 @@ ux_architecture:
       allowed: ["status_message", "error"]
       forbidden: ["persistent_action", "primary_action"]
       evidence: ["src/mainview/components/ErrorToast.tsx"]
+    keyboard_shortcuts_reference:
+      purpose: "Read-only keymap reference overlay (Modal). ONE component with two tabs — App (renders from the keymap.ts registry) and Terminal (tmux) (folds in the tmux cheat sheet). onboarding/help + expert_shortcut content, same shell as TmuxCheatSheetModal."
+      allowed: ["shortcut_reference", "tab_switch"]
+      forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation", "toolbar_button"]
+      source_of_truth: "src/mainview/keymap.ts — every app-level shortcut declared as data (id, per-platform keys, descKey, category). DOCUMENTS the keymap; does NOT drive dispatch (App.tsx if-else stays the executor; a vitest test guards drift). Same data renders the README table + website (docs/index.html)."
+      entry_points: ["application_menu.Help (Keyboard Shortcuts — wires the currently-dead help-keyboard-shortcuts action; Tmux Cheat Sheet opens the Terminal tab)", "keyboard: Cmd+/ (Ctrl+/ on Linux), App.tsx capture-phase handler, label shows (⌘/)", "command_palette ⇧⌘P via commands.ts entry"]
+      rationale: "No toolbar/header button (toolbar-button-creep is the #1 anti-pattern); not a nav destination (ephemeral reference ≠ a place; nav budget ≤7). One modal with tabs per the user's 'единый вид'; tab split keeps ~40 tmux bindings from drowning ~25 app shortcuts. Cmd+/ over bare ? because the live terminal must receive a bare ?."
+      observed: ["KeyboardShortcutsModal (planned)", "keymap.ts (planned)", "TmuxCheatSheetModal"]
+      evidence: ["docs/ux/feature-plans/keyboard-shortcuts-registry.md", "UX_DECISIONS 2026-06-19", "src/bun/application-menu.ts (helpKeyboardShortcuts)", "src/mainview/components/TmuxCheatSheetModal.tsx"]
     task_switcher:
       purpose: "Transient keyboard-summoned HUD overlay for hold-cycle jumping between active tasks (Option+Tab project / Option+Shift+Tab global). A presentation of the sidebar's task_jump action, not a command palette."
       allowed: ["task_jump", "terminal_preview"]
@@ -435,4 +444,5 @@ ux_architecture:
     - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"
 
   resolved_questions:
+    - "[2026-06-19] Where do keyboard shortcuts live / how are they shown? RESOLVED: single source of truth = src/mainview/keymap.ts (data; documents, does not dispatch — guarded by a test). One KeyboardShortcutsModal with App + Terminal(tmux) tabs, reached via Help menu + Cmd+/ + ⇧⌘P palette; same data feeds README + website. See surfaces.keyboard_shortcuts_reference + UX_DECISIONS 2026-06-19."
     - "[2026-06-18] command_palette navigation-vs-action split: RESOLVED as two-surfaces-one-shell. Cmd+K = navigation, Cmd+Shift+P = actions; both render on the shared PaletteShell. Action mode runs commands via handleMenuAction (DOM mirror of the native menu), destructive/modal flows excluded by policy. See UX_DECISIONS 2026-06-18 + surfaces.command_palette.modes."

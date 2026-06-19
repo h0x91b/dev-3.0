@@ -1,0 +1,38 @@
+const keymap = {
+	"keymap.title": "Горячие клавиши",
+	"keymap.subtitle": "Все клавиатурные сокращения приложения и терминала в одном месте",
+	"keymap.tab.app": "Приложение",
+	"keymap.tab.terminal": "Терминал (tmux)",
+	"keymap.footerEscape": "Esc — закрыть",
+
+	"keymap.category.navigation": "Навигация",
+	"keymap.category.create": "Создание",
+	"keymap.category.view": "Вид и масштаб",
+	"keymap.category.terminal": "Терминал",
+	"keymap.category.app": "Приложение",
+
+	"keymap.shortcut.goToProject": "Перейти к проекту (быстрый поиск)",
+	"keymap.shortcut.commandPalette": "Палитра команд",
+	"keymap.shortcut.back": "Назад",
+	"keymap.shortcut.forward": "Вперёд",
+	"keymap.shortcut.switchProject": "Переключить на проект 1–9 (сохранить вид)",
+	"keymap.shortcut.switchProjectFlip": "Переключить на проект 1–9 (сменить вид доска/задача)",
+	"keymap.shortcut.taskSwitcher": "Циклический выбор активных задач (этот проект)",
+	"keymap.shortcut.taskSwitcherGlobal": "Циклический выбор активных задач (все проекты)",
+	"keymap.shortcut.escape": "Закрыть диалог / шаг назад",
+	"keymap.shortcut.newTask": "Новая задача",
+	"keymap.shortcut.addProject": "Добавить проект",
+	"keymap.shortcut.newWindow": "Новое окно",
+	"keymap.shortcut.settings": "Настройки",
+	"keymap.shortcut.zoomIn": "Увеличить масштаб",
+	"keymap.shortcut.zoomOut": "Уменьшить масштаб",
+	"keymap.shortcut.zoomReset": "Сбросить масштаб",
+	"keymap.shortcut.hardRefresh": "Полная перезагрузка",
+	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
+	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
+	"keymap.shortcut.toggleHomeTerminal": "Переключить домашний терминал",
+	"keymap.shortcut.quit": "Выйти",
+	"keymap.shortcut.hide": "Скрыть приложение",
+};
+
+export default keymap;

@@ -170,6 +170,10 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 
 Default conservatively: when unsure between two tiers, pick the lower one. Add the new tip at the end of the `ALL_TIPS` array (order within a tier doesn't matter — selection is random within the tier).
 
+## Keyboard shortcuts
+
+**`src/mainview/keymap.ts` is the single source of truth for app-level keyboard shortcuts.** When you add or change an app-level shortcut (a renderer `useGlobalShortcut` binding, a task-switcher key, or a native-menu accelerator users rely on), add/update its `keymap.ts` entry in the same commit. That registry renders the in-app **Keyboard Shortcuts** overlay (`KeyboardShortcutsModal`, opened via Help → Keyboard Shortcuts / ⌘/ / ⇧⌘P), the README table, and the website — so an unregistered shortcut is invisible everywhere. A test (`__tests__/keymap.test.ts`) guards basic validity; keeping the registry in lockstep with the handlers is your discipline. The registry **documents**, it does not dispatch — do not refactor the `App.tsx` handler chain to read from it. Terminal/tmux `⌃B` prefix bindings are **not** app-level shortcuts; they live in `src/bun/tmux-config.ts` and render on the overlay's Terminal tab.
+
 ## Decision records
 
 Non-obvious architectural decisions, hacks, and workarounds are documented in `decisions/`. This helps future agents (and humans) understand **why** something was done a certain way — not just what.

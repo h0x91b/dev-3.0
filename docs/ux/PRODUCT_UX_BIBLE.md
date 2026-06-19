@@ -84,6 +84,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Settings | Durable configuration | configuration, preference, integration, scripts | daily operational action | `GlobalSettings.tsx`, `ProjectSettings.tsx` |
 | Sidebar | Active-task jump list | destination, task jump, terminal preview, search | durable config | `ActiveTasksSidebar.tsx` |
 | Command palette (Cmd+K nav / Cmd+Shift+P actions) | Type-to-find nav + type-to-run commands (two modes, one shell) | destination, fuzzy search, object jump, command runner (action mode, via handleMenuAction) | destructive action, modal/inline flow, durable config without friction, dense filters | `PaletteShell.tsx`, `ProjectQuickSwitchModal.tsx`, `CommandPaletteModal.tsx`, `commands.ts` |
+| Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
@@ -108,6 +109,24 @@ Rules:
 - A new control must be assigned to exactly one domain and placed in that bar. Do not drop it into whichever bar has room — that is how the pre-2026-06 "everything in row-1-right" dumpster happened.
 - **Label overflow:** the Context bar shows up to `MAX_INLINE_LABELS` (4) chips inline, then a `+k` chip (hover lists the rest). The full label list still renders in the expanded metadata grid, so the inline strip may truncate safely.
 - Per-bar visible-action budget stays at the toolbar default (≤ 4 visible, then overflow). If Runtime or Session/Agent overflows, promote it to its own dedicated row before widening past the budget.
+
+### 5.2 Keyboard-shortcut registry + reference overlay — `Proposed`
+
+Keyboard shortcuts are the app's primary interaction model, so they get a **single source of truth**:
+`src/mainview/keymap.ts` declares every **app-level** shortcut as data (`id`, per-platform `keys`,
+`descKey`, `category`). This registry **documents**; it does not drive dispatch — the `App.tsx`
+`useGlobalShortcut` if-else stays the executor (refactoring it was rejected as a risky rewrite of
+edge-case-heavy code), with a vitest test guarding drift.
+
+The user-facing reference is **one** `KeyboardShortcutsModal` (Modal surface, same shell as
+`TmuxCheatSheetModal`) with two tabs — **App** (renders from `keymap.ts`) and **Terminal (tmux)**
+(the folded-in tmux cheat sheet). It is `onboarding/help` + `expert_shortcut` content, reached only
+via **Help → Keyboard Shortcuts**, the **⌘/ (Ctrl+/)** chord, and the **⇧⌘P** palette — never a
+toolbar/header button (toolbar-button-creep) and never a navigation destination (ephemeral reference
+≠ a place). The same `keymap.ts` data renders the README table and the website
+(`docs/index.html`) section. Adding a new app-level shortcut **must** add a `keymap.ts` entry.
+
+See `UX_DECISIONS.md` (2026-06-19) and `feature-plans/keyboard-shortcuts-registry.md`.
 
 ## 6. Action taxonomy — `Observed`
 

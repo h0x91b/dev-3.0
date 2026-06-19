@@ -2,6 +2,38 @@
 
 Append-only log of UX architecture decisions. Each entry: date, decision, rationale, evidence/status.
 
+## 2026-06-19 — Keyboard-shortcut registry as single source of truth + a unified two-tab reference overlay
+
+- **Decision:** Establish `src/mainview/keymap.ts` as the **single source of truth** for every
+  app-level keyboard shortcut (declared as data: `id`, per-platform `keys`, `descKey`, `category`).
+  The in-app reference is **one** `KeyboardShortcutsModal` (Modal surface, mirroring
+  `TmuxCheatSheetModal`'s shell) with **two tabs — App | Terminal (tmux)**: the App tab renders from
+  `keymap.ts`; the Terminal tab folds in the existing tmux cheat-sheet content. Entry points:
+  (1) native **Help → Keyboard Shortcuts** — wires the currently **dead** `help-keyboard-shortcuts`
+  menu action through `menuRouter` (Help → Tmux Cheat Sheet opens the same modal on the Terminal tab);
+  (2) keyboard **⌘/ (Ctrl+/ on Linux)**, owned by the `App.tsx` keydown handler in capture phase
+  like the palettes, label shows `(⌘/)`; (3) the **⇧⌘P command palette** via a `commands.ts` entry.
+  **No** toolbar/header/breadcrumb button. The same registry data also drives the README table and
+  the website (`docs/index.html`) section — the legitimate standalone "page" form.
+- **Registry is documentation + test, NOT a dispatcher (chosen):** the giant `App.tsx`
+  `useGlobalShortcut` if-else stays the executor; refactoring it into a registry-driven dispatch was
+  rejected as a risky rewrite of central, edge-case-heavy code (capture phase, terminal focus, zoom,
+  `e.code` vs `e.key`). A vitest test guards drift (every spec valid + unique; best-effort flag of
+  App.tsx handlers missing from the registry).
+- **Placement rationale:** the overlay is `onboarding/help` + `expert_shortcut`, the same class as
+  the tmux cheat sheet — it belongs in the Help menu + a keyboard chord + the palette, never on a
+  toolbar (toolbar-button-creep is the #1 anti-pattern) and never as a navigation destination
+  (ephemeral reference ≠ a place; the nav budget is ≤7). One modal with tabs (vs two sibling modals)
+  per the user's "единый вид" requirement; the tab split keeps ~40 tmux bindings from drowning ~25
+  app shortcuts. `⌘/` over bare `?`: the live terminal must still receive a bare `?`.
+- **Scope:** Follow-up implementation — `keymap.ts`, `KeyboardShortcutsModal` (App + Terminal tabs),
+  ⌘/ handler, `menuRouter` `help-keyboard-shortcuts` case, `commands.ts` palette entry, menu label,
+  i18n en/ru/es, tests, plus `AGENTS.md`/README/website + the CLAUDE.md registry rule. The
+  `keyboard-shortcuts` tip already exists (`tips.ts`).
+- **Status:** `Proposed` (design locked via interview 2026-06-19; not yet implemented). `/ux-principal`
+  consulted (manifest read; placement/source-of-truth/entry points decided before coding). See
+  `feature-plans/keyboard-shortcuts-registry.md`.
+
 ## 2026-06-19 — Both palettes surfaced in the native View menu (discoverability)
 
 - **Decision:** Added `Go to Project… (⌘K)` and `Command Palette… (⇧⌘P)` to the **top of the View menu** (`src/bun/application-menu.ts`), grouped above Show Dashboard with a separator. Clicking routes through `handleMenuAction` → a `menu:open-*` CustomEvent → `App.tsx`, which **opens** (not toggles) the palette. The native menu is the canonical action surface (2026-05-29), so the keyboard-only palettes belong there even though they intentionally have no DOM/toolbar button.

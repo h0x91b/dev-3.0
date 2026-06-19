@@ -123,6 +123,7 @@ const common = {
 	"command.openProjectTerminal": "Open project terminal",
 	"command.openHomeTerminal": "Open home terminal",
 	"command.tmuxCheatSheet": "Show tmux cheat sheet",
+	"command.keyboardShortcuts": "Keyboard shortcuts",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",

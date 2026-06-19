@@ -122,6 +122,7 @@ const common = {
 	"command.openProjectTerminal": "Abrir terminal del proyecto",
 	"command.openHomeTerminal": "Abrir terminal principal",
 	"command.tmuxCheatSheet": "Mostrar referencia de tmux",
+	"command.keyboardShortcuts": "Atajos de teclado",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",

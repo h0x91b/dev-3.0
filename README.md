@@ -82,6 +82,33 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
   <img src="docs/screenshots/pr-review-mode.jpg" width="600" alt="PR review mode — pre-filled code review prompt">
 </p>
 
+## Keyboard shortcuts
+
+Press **⌘/** (**Ctrl+/** on Linux) inside the app — or open **Help → Keyboard Shortcuts** — to see
+every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined in one place,
+`src/mainview/keymap.ts`.
+
+| Action | macOS | Linux |
+|---|---|---|
+| Go to project (quick switch) | ⌘K | Ctrl+K |
+| Command palette | ⇧⌘P | Ctrl+Shift+P |
+| Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
+| Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
+| Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |
+| Switch to project 1–9 (flip view) | ⇧⌘1–9 | Ctrl+Shift+1–9 |
+| Cycle active tasks (this project / all) | ⌥Tab / ⌥⇧Tab | Ctrl+Tab / Ctrl+Shift+Tab |
+| New task | ⌘N | Ctrl+N |
+| Add project | ⌘P | Ctrl+P |
+| New window | ⇧⌘N | Ctrl+Shift+N |
+| Settings | ⌘, | Ctrl+, |
+| Zoom in / out / reset | ⌘= / ⌘- / ⌘0 | Ctrl+= / Ctrl+- / Ctrl+0 |
+| Hard refresh | ⌘R | Ctrl+R |
+| Toggle project / home terminal | ⌘` / ⇧⌘` | Ctrl+` / Ctrl+Shift+` |
+| Close dialog / step back | Esc | Esc |
+| Quit / Hide | ⌘Q / ⌘H | Ctrl+Q / Ctrl+H |
+
+Terminal multiplexing uses tmux's `⌃B` prefix bindings — see the **Terminal (tmux)** tab in the same panel.
+
 ## Install
 
 ### Desktop app — macOS

@@ -100,6 +100,8 @@ const tips = {
 	"tip.warnBeforeComplete.body": "Перед удалением worktree dev3 предупредит о незакоммиченных изменениях, непушнутых коммитах и неслитых ветках.",
 	"tip.cowClonePaths.title": "Быстрые зависимости в worktree",
 	"tip.cowClonePaths.body": "dev3 копирует node_modules или .venv в каждый worktree через APFS copy-on-write — настройка занимает секунды, а не минуты.",
+	"tip.keyboardShortcutsPanel.title": "Все горячие клавиши",
+	"tip.keyboardShortcutsPanel.body": "Нажмите ⌘/ (или Ctrl+/) — либо откройте Help → Keyboard Shortcuts — чтобы увидеть все клавиши приложения и терминала в одной панели.",
 	"tip.tmuxSessionManager.title": "Следите за tmux-сессиями",
 	"tip.tmuxSessionManager.body": "Значок в заголовке показывает активные dev3 tmux-сессии — нажмите, чтобы подключиться, скопировать команду или принудительно завершить.",
 	"tip.cliTool.title": "Управление задачами из терминала",

@@ -27,7 +27,7 @@ import ViewportLab from "./components/ViewportLab";
 import { ToastHost, toast } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
-import TmuxCheatSheetModal from "./components/TmuxCheatSheetModal";
+import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
@@ -60,12 +60,22 @@ function App() {
 		return () => window.removeEventListener("rpc:menuAction", onMenuAction);
 	}, [state, dispatch, setLocale]);
 
-	// Tmux cheat sheet modal (Terminal > Show Tmux Cheat Sheet / Help > Tmux Cheat Sheet).
-	const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
+	// Unified keyboard-shortcuts overlay (App + Terminal tabs).
+	//  - Help > Keyboard Shortcuts / ⌘/      → App tab
+	//  - Help/Terminal > Show Tmux Cheat Sheet → Terminal tab
+	const [shortcutsModal, setShortcutsModal] = useState<{ open: boolean; tab: ShortcutsTab }>({
+		open: false,
+		tab: "app",
+	});
 	useEffect(() => {
-		function onShow() { setCheatSheetOpen(true); }
-		window.addEventListener("menu:show-tmux-cheat-sheet", onShow);
-		return () => window.removeEventListener("menu:show-tmux-cheat-sheet", onShow);
+		function onShowTmux() { setShortcutsModal({ open: true, tab: "terminal" }); }
+		function onShowKeyboard() { setShortcutsModal({ open: true, tab: "app" }); }
+		window.addEventListener("menu:show-tmux-cheat-sheet", onShowTmux);
+		window.addEventListener("menu:show-keyboard-shortcuts", onShowKeyboard);
+		return () => {
+			window.removeEventListener("menu:show-tmux-cheat-sheet", onShowTmux);
+			window.removeEventListener("menu:show-keyboard-shortcuts", onShowKeyboard);
+		};
 	}, []);
 
 	// Push the current MenuContext to the bun side on every route change so the
@@ -365,6 +375,13 @@ function App() {
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
 				setShowCommandPalette((open) => !open);
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "/") {
+				// Cmd/Ctrl+/ — toggle the keyboard-shortcuts reference overlay (App tab).
+				// Capture phase so the live terminal underneath can't swallow it. Bare
+				// `?` is intentionally NOT used — the terminal must still receive it.
+				e.preventDefault();
+				e.stopPropagation();
+				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1357,7 +1374,12 @@ function App() {
 			<ToastHost />
 			<StuckPreparationPopover tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
-			<TmuxCheatSheetModal open={cheatSheetOpen} onClose={() => setCheatSheetOpen(false)} />
+			<KeyboardShortcutsModal
+				open={shortcutsModal.open}
+				tab={shortcutsModal.tab}
+				onTabChange={(tab) => setShortcutsModal((s) => ({ ...s, tab }))}
+				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
+			/>
 			<ConfirmHost />
 			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
 		</div>

@@ -631,6 +631,7 @@ function viewMenu(): ApplicationMenuItemConfig {
 			item({ label: "Show Kanban", action: MENU_ACTIONS.viewKanban }),
 			item({ label: "Show Changelog", action: MENU_ACTIONS.viewChangelog }),
 			item({ label: "Show Tips", action: MENU_ACTIONS.viewTips }),
+			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			SEP,
 			item({ label: "Zoom In", action: MENU_ACTIONS.zoomIn, accelerator: "=" }),
 			item({ label: "Zoom Out", action: MENU_ACTIONS.zoomOut, accelerator: "-" }),
@@ -825,7 +826,7 @@ function helpMenu(): ApplicationMenuItemConfig {
 		label: "Help",
 		submenu: [
 			item({ label: "dev-3.0 Documentation", action: MENU_ACTIONS.helpDocumentation }),
-			item({ label: "Keyboard Shortcuts", action: MENU_ACTIONS.helpKeyboardShortcuts }),
+			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			item({ label: "Tmux Cheat Sheet", action: MENU_ACTIONS.termCheatSheet }),
 			SEP,
 			item({ label: "View Changelog", action: MENU_ACTIONS.viewChangelog }),

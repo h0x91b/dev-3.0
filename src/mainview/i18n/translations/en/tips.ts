@@ -100,6 +100,8 @@ const tips = {
 	"tip.warnBeforeComplete.body": "Before destroying a worktree, dev3 warns you about uncommitted changes, unpushed commits, and unmerged branches.",
 	"tip.cowClonePaths.title": "Instant worktree dependencies",
 	"tip.cowClonePaths.body": "dev3 can clone node_modules or .venv into each worktree using APFS copy-on-write, so setup takes seconds instead of minutes.",
+	"tip.keyboardShortcutsPanel.title": "See every shortcut",
+	"tip.keyboardShortcutsPanel.body": "Press \u2318/ (or Ctrl+/) \u2014 or open Help \u2192 Keyboard Shortcuts \u2014 to view all app and terminal shortcuts in one panel.",
 	"tip.tmuxSessionManager.title": "Track your tmux sessions",
 	"tip.tmuxSessionManager.body": "The header badge shows active dev3 tmux sessions — click it to attach, copy commands, or force-kill stale sessions.",
 	"tip.cliTool.title": "Manage tasks from terminal",
