@@ -72,6 +72,8 @@ export const MENU_ACTIONS = {
 	projectCustomLabels: "project-custom-labels",
 
 	// ── View ──
+	openProjectSwitch: "open-project-switch",
+	openCommandPalette: "open-command-palette",
 	viewDashboard: "view-dashboard",
 	viewKanban: "view-kanban",
 	viewChangelog: "view-changelog",
@@ -617,6 +619,14 @@ function viewMenu(): ApplicationMenuItemConfig {
 	return {
 		label: "View",
 		submenu: [
+			// Keyboard-summoned palettes (App.tsx owns the real shortcuts: Cmd+K /
+			// Cmd+Shift+P toggle). Electrobun menu accelerators only support single
+			// characters, not chords like Shift+P (decision 044), and the palettes
+			// toggle — so we add no native accelerator and show the chord in the
+			// label instead. Clicking opens the palette via menuRouter.
+			item({ label: "Go to Project… (⌘K)", action: MENU_ACTIONS.openProjectSwitch }),
+			item({ label: "Command Palette… (⇧⌘P)", action: MENU_ACTIONS.openCommandPalette }),
+			SEP,
 			item({ label: "Show Dashboard", action: MENU_ACTIONS.viewDashboard }),
 			item({ label: "Show Kanban", action: MENU_ACTIONS.viewKanban }),
 			item({ label: "Show Changelog", action: MENU_ACTIONS.viewChangelog }),

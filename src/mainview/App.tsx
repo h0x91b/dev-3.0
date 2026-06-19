@@ -302,11 +302,19 @@ function App() {
 	useEffect(() => {
 		const onNewTask = () => openCreateTaskModal();
 		const onAddProject = () => openAddProject();
+		// The View-menu palette items open (not toggle) the palettes — the
+		// Cmd+K / Cmd+Shift+P keydown handlers below own the toggle behavior.
+		const onProjectSwitch = () => setShowProjectSwitch(true);
+		const onCommandPalette = () => setShowCommandPalette(true);
 		window.addEventListener("menu:open-new-task", onNewTask);
 		window.addEventListener("menu:open-add-project", onAddProject);
+		window.addEventListener("menu:open-project-switch", onProjectSwitch);
+		window.addEventListener("menu:open-command-palette", onCommandPalette);
 		return () => {
 			window.removeEventListener("menu:open-new-task", onNewTask);
 			window.removeEventListener("menu:open-add-project", onAddProject);
+			window.removeEventListener("menu:open-project-switch", onProjectSwitch);
+			window.removeEventListener("menu:open-command-palette", onCommandPalette);
 		};
 	}, [openCreateTaskModal, openAddProject]);
 

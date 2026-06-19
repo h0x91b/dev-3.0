@@ -1,0 +1,1 @@
+Added "Go to Project… (⌘K)" and "Command Palette… (⇧⌘P)" entries to the top of the native View menu so the keyboard palettes are discoverable and clickable. The Cmd+K / Cmd+Shift+P shortcuts themselves are unchanged.
