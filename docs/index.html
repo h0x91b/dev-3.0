@@ -831,6 +831,75 @@ nav.scrolled {
   line-height: 1.6;
 }
 
+/* Tips & Tricks */
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 56px;
+}
+.tip-card {
+  padding: 24px;
+  border-radius: 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tip-card:hover { border-color: var(--border-hover); transform: translateY(-3px); }
+.tip-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.tip-card h4 { font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 8px; }
+.tip-card p { font-size: 14px; color: var(--text-3); line-height: 1.55; }
+
+.tips-more { margin-top: 32px; text-align: center; }
+.tips-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 24px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.tips-more > summary::-webkit-details-marker { display: none; }
+.tips-more > summary:hover { border-color: var(--border-hover); color: var(--text-1); }
+.tips-more[open] > summary { margin-bottom: 28px; }
+.tips-more > summary .chev { transition: transform 0.2s; }
+.tips-more[open] > summary .chev { transform: rotate(180deg); }
+.tips-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 20px;
+  text-align: left;
+}
+.tip-row {
+  padding: 13px 16px;
+  border-radius: 10px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+.tip-row b { display: block; color: var(--text-1); font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.tip-row span { color: var(--text-3); font-size: 13px; line-height: 1.5; }
+@media (max-width: 900px) {
+  .tips-grid { grid-template-columns: 1fr; }
+  .tips-list { grid-template-columns: 1fr; }
+}
+
 /* Feature card with large screenshot */
 .feature-hero {
   grid-column: 1 / -1;
@@ -1683,6 +1752,185 @@ footer {
         <p>Working in a giant monorepo? Sparse-checkout just the directories each task needs &mdash; worktrees create faster and use a fraction of the disk.</p>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- TIPS & TRICKS -->
+<section class="tips" id="tips">
+  <div class="container">
+    <div class="section-eyebrow reveal">Did you know?</div>
+    <h2 class="section-title reveal reveal-delay-1">Tips &amp; tricks power users love</h2>
+    <p class="section-desc reveal reveal-delay-2">Dozens of small touches that add up. Here are a few favorites &mdash; the full list is one click away.</p>
+
+    <div class="tips-grid">
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+        <h4>Run any command</h4>
+        <p>Hit <code>&#8984;&#8679;P</code>, type a few letters (theme, dev server, pull main&hellip;), Enter. Every action, no menus.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg></div>
+        <h4>Explore solutions in parallel</h4>
+        <p>Launch one TODO as several variants &mdash; each gets its own agent, worktree and terminal. Compare, keep the best.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg></div>
+        <h4>Agents can create tasks</h4>
+        <p>Just say &ldquo;create a task in dev3 about&hellip;&rdquo; in your prompt and it lands on your board.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h4>Agents see your board</h4>
+        <p>Mention &ldquo;dev3&rdquo; and the agent can list tasks, check statuses, and dig up past work.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></div>
+        <h4>Agents leave notes</h4>
+        <p>Agents record key decisions and findings as task notes &mdash; context survives long after the worktree is gone.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 11 12 14 16 9"/></svg></div>
+        <h4>Drag to AI review</h4>
+        <p>Drop a task in the AI Review column and an agent reviews your branch, fixing the medium/high issues.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+        <h4>Paste a screenshot</h4>
+        <p><code>&#8984;V</code> or drag an image into a task or note &mdash; saved automatically and shown as a thumbnail.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></div>
+        <h4>Selections auto-copy</h4>
+        <p>Select text in any terminal pane and it&rsquo;s on your clipboard instantly &mdash; works over SSH too.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
+        <h4>Comment on the diff</h4>
+        <p>In Show Diff, click <code>+</code> next to any line to leave an inline note exactly where it matters.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.36 2.64L3 8"/><polyline points="3 3 3 8 8 8"/></svg></div>
+        <h4>Resume where you left off</h4>
+        <p>Reopen a finished task and the previous AI conversation picks up instead of starting cold.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg></div>
+        <h4>Option+Tab between tasks</h4>
+        <p>Hold Option, tap Tab to flip through active tasks with live previews; add Shift to span every project.</p>
+      </div>
+      <div class="tip-card reveal">
+        <div class="tip-card-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/></svg></div>
+        <h4>Share config via git</h4>
+        <p>Save scripts and paths to <code>.dev3/config.json</code> &mdash; teammates clone the repo and get the whole setup.</p>
+      </div>
+    </div>
+
+    <details class="tips-more reveal">
+      <summary>
+        <span class="tips-more-label">Show all 90+ tips</span>
+        <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </summary>
+      <div class="tips-list">
+        <!-- TIPS:FULL:START -->
+        <div class="tip-row"><b>Terminal preview</b><span>Hover over an active task card to see a live preview of what's happening in the terminal.</span></div>
+        <div class="tip-row"><b>Explore multiple solutions at once</b><span>Write one TODO like "build a beautiful page X" and launch it multiple times — each variant gets its own agent, worktree, and terminal. Compare the results and pick the best one.</span></div>
+        <div class="tip-row"><b>Instant worktree dependencies</b><span>dev3 can clone node_modules or .venv into each worktree using APFS copy-on-write, so setup takes seconds instead of minutes.</span></div>
+        <div class="tip-row"><b>Manual AI Review</b><span>Drag a task to the AI Review column to trigger an automated code review. The agent reviews your branch and fixes medium/high issues.</span></div>
+        <div class="tip-row"><b>Spawn a swarm of bug hunters</b><span>Click the red Find bugs button in the task header to open a lightbox — pick the count (default 3) and a swarm of read-only agents splits into the right pane, each running /dev3-bug-hunter with its own seeded strategy. They never edit code — after reporting, they ask before turning bugs into new tasks.</span></div>
+        <div class="tip-row"><b>Run any command</b><span>Press Cmd/Ctrl+Shift+P, type part of a command (theme, dev server, pull main…), and hit Enter to run it.</span></div>
+        <div class="tip-row"><b>Agents can create tasks</b><span>Just say "create a task in dev3 about..." in your prompt and the agent will add it to your board.</span></div>
+        <div class="tip-row"><b>Agents see your board</b><span>Mention "dev3" in a prompt and the agent can list tasks, check statuses, and find past work.</span></div>
+        <div class="tip-row"><b>Agents leave notes</b><span>Agents record key decisions and findings as task notes. Check the Notes section in the task panel.</span></div>
+        <div class="tip-row"><b>Let the agent open your PR</b><span>Click "Create PR" and the agent in your task pane pushes the branch and opens a pull request with gh — no extra window.</span></div>
+        <div class="tip-row"><b>Open a PR and auto-merge it</b><span>Click "PR + auto-merge" to push, open the PR, and enable auto-merge so it lands as soon as checks pass.</span></div>
+        <div class="tip-row"><b>Review your diff inline</b><span>Click "Show Diff" in the task panel to swap the terminal for an inline branch diff, then press Esc to jump back.</span></div>
+        <div class="tip-row"><b>Comment right on the diff</b><span>In Show Diff, click the + button next to a line to leave an inline note exactly where it matters.</span></div>
+        <div class="tip-row"><b>Copy your review as XML</b><span>The sidebar builds an XML review block from your inline comments so you can paste it straight back into the agent chat.</span></div>
+        <div class="tip-row"><b>Paste images into notes</b><span>Press Cmd+V or drag an image into a task description or note — it's saved automatically and shown as a thumbnail.</span></div>
+        <div class="tip-row"><b>Create custom board columns</b><span>Go to Project Settings to add columns with a name, color, and AI instruction so agents know when to move tasks there.</span></div>
+        <div class="tip-row"><b>Drop files into terminal</b><span>Drag any file onto the terminal and its full path will be typed into stdin automatically.</span></div>
+        <div class="tip-row"><b>Create a PR review task</b><span>In the Create Task modal, pick a branch and enable Review mode to pre-fill a structured code review prompt.</span></div>
+        <div class="tip-row"><b>Auto-complete on PR merge</b><span>Tasks in "Review by You" are checked every 60 s — when the branch is merged, a dialog offers to mark them complete.</span></div>
+        <div class="tip-row"><b>Live port badges per task</b><span>Running servers are detected automatically; click a port badge on any task card to open it in your browser.</span></div>
+        <div class="tip-row"><b>Resume agent after restart</b><span>When a terminal dies, "Resume Agent Session" restarts the agent with --continue so it picks up right where it left off.</span></div>
+        <div class="tip-row"><b>Bell moves tasks automatically</b><span>When the agent rings a terminal bell, the task moves to "User Questions" so you never miss a request for input. Click the bell in the sidebar to list every task waiting on you across all projects.</span></div>
+        <div class="tip-row"><b>Pick your coding agent</b><span>Choose Claude, Codex, Gemini, or a custom shell agent per project in Global Settings.</span></div>
+        <div class="tip-row"><b>Terminal selections auto-copy</b><span>Selecting text in any terminal pane copies it to your system clipboard instantly — no Cmd+C needed.</span></div>
+        <div class="tip-row"><b>Manage tasks from terminal</b><span>Run `dev3` in any worktree to list, create, or update tasks — agents can use it too to manage their own work.</span></div>
+        <div class="tip-row"><b>Your work is auto-snapshotted</b><span>Dev3 saves a git diff snapshot on every branch refresh so you can recover changes even if a worktree is wiped.</span></div>
+        <div class="tip-row"><b>See all task variants at once</b><span>Colored dots on a task card show where its sibling variants live — click a dot to jump to any of them in split view.</span></div>
+        <div class="tip-row"><b>Reopen picks up where you left off</b><span>Reopening a completed or cancelled task resumes the previous AI conversation instead of starting fresh.</span></div>
+        <div class="tip-row"><b>Run multiple agents on one task</b><span>Need more hands? Spawn another agent in the same worktree — it opens a new tmux pane with a fresh agent session, no extra setup needed.</span></div>
+        <div class="tip-row"><b>Share project config via git</b><span>Use "Save to Repo" in Project Settings to store scripts and paths in .dev3/config.json — teammates get the setup automatically.</span></div>
+        <div class="tip-row"><b>Column agents</b><span>Any custom column can auto-spawn an agent when a task enters it. Configure agent and prompt in Project Settings.</span></div>
+        <div class="tip-row"><b>Auto-allocate ports</b><span>Set portCount in Project Settings to auto-assign free ports per task. Use $DEV3_PORT0, $DEV3_PORT1 in scripts.</span></div>
+        <div class="tip-row"><b>See tasks from every project</b><span>Flip the toggle next to Active Tasks to switch between this project only and every active task in dev-3.0 — click any card to jump straight into its project.</span></div>
+        <div class="tip-row"><b>Just need a terminal?</b><span>Click Scratch Task in the New Task modal to spin up a worktree + agent with no prompt — the agent greets you and renames the task itself once you say what you need.</span></div>
+        <div class="tip-row"><b>Spread projects across screens</b><span>Press Cmd+Shift+N (or File → New Window) to open another dev-3.0 window. Put a different project on each monitor and close any window without quitting the app.</span></div>
+        <div class="tip-row"><b>Autocomplete agent skills with /</b><span>Type / in a new task's description to pick an installed agent skill from the suggestion list.</span></div>
+        <div class="tip-row"><b>Option+Tab between tasks</b><span>Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.) Add Shift (Option+Shift+Tab) to switch across all projects.</span></div>
+        <div class="tip-row"><b>Paste big logs as files</b><span>Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.</span></div>
+        <div class="tip-row"><b>How long since the move</b><span>Each Active Tasks card shows a live age badge (5m, 7h, 13d) — hover it for the exact status-change time.</span></div>
+        <div class="tip-row"><b>Switch projects, keep your view</b><span>Press Cmd/Ctrl+1..9 from a task view to jump to another project without leaving the task view — pick a task on the left to open its terminal. Add Shift to flip to the opposite view (board ⇄ task view).</span></div>
+        <div class="tip-row"><b>Jump to a project by name</b><span>Press Cmd/Ctrl+K, start typing a project name, and hit Enter to jump to the best match — no need to remember its number.</span></div>
+        <div class="tip-row"><b>Quick task creation</b><span>Double-click empty space in the To Do column to instantly open the new task form.</span></div>
+        <div class="tip-row"><b>Open in your editor</b><span>Right-click any active task card to open its worktree in Finder, VS Code, Cursor, or other apps.</span></div>
+        <div class="tip-row"><b>Task overview on hover</b><span>Hover any active task to see its overview above the terminal. Click the pencil to edit a one-paragraph summary inline — perfect for re-entering focus after a break.</span></div>
+        <div class="tip-row"><b>Write your own overview</b><span>Click the pencil on an overview and save your own version — it overrides whatever the agent writes. Hit the undo icon next to it to switch back to the agent's summary.</span></div>
+        <div class="tip-row"><b>Search tasks everywhere</b><span>Press Ctrl/Cmd+F to search on the board and sidebar by name, #ID, PR number, or description.</span></div>
+        <div class="tip-row"><b>PR number on every card</b><span>Task cards show a clickable PR badge when an open pull request exists — click it to jump to GitHub.</span></div>
+        <div class="tip-row"><b>Hide tests from the diff</b><span>Uncheck "Include tests" in the diff toolbar (or task top bar) to hide test files and see only production-code changes in the +/− totals.</span></div>
+        <div class="tip-row"><b>Comment on a range of lines</b><span>Click a line number in the diff gutter and drag to select a range, then comment on all of it at once.</span></div>
+        <div class="tip-row"><b>Inspect unpushed commits</b><span>Click "Unpushed" in the task panel to review committed work that is still only on your machine.</span></div>
+        <div class="tip-row"><b>Clone repos directly</b><span>Click "Add Project", choose "Clone from URL", and paste a git URL — the app clones and adds it for you.</span></div>
+        <div class="tip-row"><b>Full board in split view</b><span>When you open a task, a compact sidebar shows by default. Switch to the full scrollable Kanban board on the left for the complete picture.</span></div>
+        <div class="tip-row"><b>Browse files with yazi</b><span>Click the Files button in the task header to open a yazi pane for quick worktree navigation.</span></div>
+        <div class="tip-row"><b>Split terminal with one click</b><span>The horizontal split, vertical split, and zoom buttons in the task panel send tmux commands directly to your active session.</span></div>
+        <div class="tip-row"><b>Branch sync at a glance</b><span>The task info panel shows how many commits your branch is ahead or behind the base branch, so you know when it's time to rebase.</span></div>
+        <div class="tip-row"><b>Safe task completion checks</b><span>Before destroying a worktree, dev3 warns you about uncommitted changes, unpushed commits, and unmerged branches.</span></div>
+        <div class="tip-row"><b>See every shortcut</b><span>Press ⌘/ (or Ctrl+/) — or open Help → Keyboard Shortcuts — to view all app and terminal shortcuts in one panel.</span></div>
+        <div class="tip-row"><b>Track your tmux sessions</b><span>The header badge shows active dev3 tmux sessions — click it to attach, copy commands, or force-kill stale sessions.</span></div>
+        <div class="tip-row"><b>Run dev servers</b><span>Use `dev3 dev-server start` in a worktree to launch its dev server, then stop or restart it from the terminal.</span></div>
+        <div class="tip-row"><b>Start tasks from any branch</b><span>In the Create Task modal, pick an existing local or remote branch instead of always starting from scratch.</span></div>
+        <div class="tip-row"><b>Review fork PRs</b><span>Type user:branch in the branch field (e.g. yanive:feat/new-tab) and click Fetch to pull a branch from a GitHub fork.</span></div>
+        <div class="tip-row"><b>Restart a task from scratch</b><span>Move a task to Cancelled, then back to Todo — it gets a fresh worktree and a clean agent session.</span></div>
+        <div class="tip-row"><b>Shell stays after agent exits</b><span>When your agent exits (/exit), you stay in a live shell in the worktree. Run commands, switch agents, or type exit to finish.</span></div>
+        <div class="tip-row"><b>Filter worktree files</b><span>In Project Settings, toggle off "Include All Files" to check out only the directories you need — great for large monorepos.</span></div>
+        <div class="tip-row"><b>Customize AI Review</b><span>Change the review prompt or toggle automatic AI Review in Project Settings. Works per-project.</span></div>
+        <div class="tip-row"><b>Per-task settings</b><span>Each worktree can have its own .dev3/config.json. Click the gear icon in the task panel to edit it.</span></div>
+        <div class="tip-row"><b>Project Terminal</b><span>Need a quick shell at the repo root? Click the Terminal button in the header or press ⌘` to toggle it from any project screen. ⌘⇧` opens a separate home-directory shell.</span></div>
+        <div class="tip-row"><b>Resource usage per task</b><span>Each active task shows CPU and memory — hover the badge on the card for details.</span></div>
+        <div class="tip-row"><b>Watch tasks</b><span>Click the bell on a task card to get notified when its status changes. Click the notification to jump straight to that task.</span></div>
+        <div class="tip-row"><b>Keep the machine awake</b><span>The amber coffee toggle next to Home Terminal stops the computer sleeping while dev-3.0 is open. It's on by default and forced on whenever remote access is active.</span></div>
+        <div class="tip-row"><b>Pull main without the terminal</b><span>The Git Pull button next to Project Terminal in the top header runs git pull on the project's main worktree — enabled only when it's on main or master. A blue dot on it means origin has new commits to pull.</span></div>
+        <div class="tip-row"><b>Start a project from scratch</b><span>Add Project → New lets you pick an empty folder; dev-3.0 runs git init, writes .dev3/README.md, and makes the first commit for you.</span></div>
+        <div class="tip-row"><b>Your review notes are safe</b><span>If you press Esc, click Back, or follow a breadcrumb while you have inline diff comments, dev-3.0 asks before discarding them — and the Save button there copies the review XML to your clipboard so you can paste it into the agent chat.</span></div>
+        <div class="tip-row"><b>Add multiple repos at once</b><span>In Add Project → Local Folder, Cmd-click or Shift-click to pick multiple repos and add them all in one step.</span></div>
+        <div class="tip-row"><b>Project list is backed up daily</b><span>Lost your projects? Restore from ~/.dev3.0/projects-YYYY-MM-DD.json.bak — snapshots are kept for 7 days.</span></div>
+        <div class="tip-row"><b>Agents can request completion</b><span>When an agent runs `dev3 task move --status completed`, you get an approval dialog — approve to complete or keep the session alive.</span></div>
+        <div class="tip-row"><b>Create labels while adding a task</b><span>In the New Task dialog, hit "+ Add Label" to create and assign a brand-new label without leaving the form.</span></div>
+        <div class="tip-row"><b>Jump back and forward</b><span>Use the ‹ › arrows top-left, ⌘[ / ⌘], or your mouse side buttons to retrace where you've been.</span></div>
+        <div class="tip-row"><b>Keyboard shortcut</b><span>Press ⌘N anywhere to create a new task without touching the mouse.</span></div>
+        <div class="tip-row"><b>Label and filter tasks</b><span>Add colored labels to task cards and use the filter bar above the board to show only matching tasks.</span></div>
+        <div class="tip-row"><b>Pick gh per project</b><span>Open Project Settings and choose the gh account for that repo before creating PRs or checking PR status.</span></div>
+        <div class="tip-row"><b>Pick your diff layout</b><span>Show Diff now defaults to Auto — Unified on laptop screens, Side by side on big monitors. Override it in Global Settings if you want it pinned.</span></div>
+        <div class="tip-row"><b>Zoom the whole UI</b><span>Press ⌘= / ⌘- to zoom in and out; the terminal font scales independently and the level is saved across sessions.</span></div>
+        <div class="tip-row"><b>Expand task details inline</b><span>Click the arrow button to the right of the zoom controls to expand the task info bar with description, worktree path, and timestamps.</span></div>
+        <div class="tip-row"><b>Setup can block startup</b><span>In Project Config -&gt; Setup Script, choose whether the agent launches immediately or waits for setup to finish.</span></div>
+        <div class="tip-row"><b>Rename any task</b><span>Task titles are auto-generated from the first words of the description so you don't fill two fields. But you can always click the title to set a custom name.</span></div>
+        <div class="tip-row"><b>Double-check branch start</b><span>When the current branch is auto-filled in the task picker, Save warns before starting from it and also flags a dirty main repo.</span></div>
+        <div class="tip-row"><b>Full-screen terminal mode</b><span>Switch Task Open Mode to "Full screen" in Global Settings to open tasks in a distraction-free terminal instead of split view.</span></div>
+        <div class="tip-row"><b>Rename columns</b><span>Click the pencil icon on any column header to rename it. Match your workflow terminology — changes are per-project.</span></div>
+        <div class="tip-row"><b>Config hierarchy</b><span>Settings resolve in order: worktree local &gt; worktree repo &gt; project &gt; defaults. Override per-task via the gear icon.</span></div>
+        <div class="tip-row"><b>Pick your diff baseline</b><span>In Project Settings, choose whether branch status and Show Diff compare against origin/&lt;base&gt; or your local base branch.</span></div>
+        <div class="tip-row"><b>Copy worktree path</b><span>Click the folder+clipboard icon in the task header bar, or right-click a task card and choose Copy Path.</span></div>
+        <div class="tip-row"><b>Abort stuck prep</b><span>On a Preparing card, click Cancel to kill setup and send the task back to To Do.</span></div>
+        <div class="tip-row"><b>Paste a path in the picker</b><span>The folder picker has a path input at the top — paste an absolute path, hit Enter, and it jumps there instantly.</span></div>
+        <div class="tip-row"><b>Clone hangs on macOS? Grant Full Disk Access</b><span>If a task stays on "Fetching origin" for ~60 s, dev-3.0 now pops up a popover beside the card with a one-click shortcut to System Settings → Privacy &amp; Security → Full Disk Access — the usual fix when macOS quietly revokes the permission for git/tmux child processes.</span></div>
+        <div class="tip-row"><b>Hide the Active Tasks panel</b><span>Click the fullscreen icon in the sidebar header to collapse it and give the terminal the whole window.</span></div>
+        <!-- TIPS:FULL:END -->
+      </div>
+    </details>
   </div>
 </section>
 

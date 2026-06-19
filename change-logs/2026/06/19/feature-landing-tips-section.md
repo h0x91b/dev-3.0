@@ -1,0 +1,1 @@
+Added a "Tips & tricks" section to the marketing landing page: a curated grid of 12 hand-picked power-user tips, plus a collapsed "Show all" disclosure (closed by default) that reveals the full ~90-tip list. The full list is generated from the in-app tip registry by scripts/generate-landing-tips.ts, so it stays in sync as tips are added or edited.
