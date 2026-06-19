@@ -10,6 +10,7 @@ vi.mock("../data", () => ({
 	getTask: vi.fn(),
 	addTask: vi.fn(),
 	updateTask: vi.fn(),
+	updateTaskWith: vi.fn(),
 	updateProject: vi.fn(),
 }));
 
@@ -1500,7 +1501,7 @@ describe("label.delete", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
 		vi.mocked(data.loadTasks).mockResolvedValue([taskWithLabel, taskWithout]);
-		vi.mocked(data.updateTask).mockResolvedValue(taskWithLabel);
+		vi.mocked(data.updateTaskWith).mockResolvedValue({ task: taskWithLabel, result: undefined } as any);
 
 		const resp = await handleRequest(
 			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-full-uuid-1234" }),
@@ -1510,12 +1511,16 @@ describe("label.delete", () => {
 		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
 			labels: [labels[1]],
 		});
-		// Should update affected task
-		expect(data.updateTask).toHaveBeenCalledWith(project, "t1", {
-			labelIds: ["lbl-2"],
-		});
+		// Should update affected task via the locked mutator (no lost-update race)
+		expect(data.updateTaskWith).toHaveBeenCalledWith(project, "t1", expect.any(Function));
 		// Should NOT update task that didn't have the label
-		expect(data.updateTask).toHaveBeenCalledTimes(1);
+		expect(data.updateTaskWith).toHaveBeenCalledTimes(1);
+		// The mutator must recompute labelIds from the CURRENT task, not a stale snapshot
+		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2];
+		expect(await mutator({ ...taskWithLabel, labelIds: ["lbl-full-uuid-1234", "lbl-2", "lbl-3"] } as any)).toEqual({
+			updates: { labelIds: ["lbl-2", "lbl-3"] },
+			result: undefined,
+		});
 	});
 
 	it("matches label by prefix", async () => {
