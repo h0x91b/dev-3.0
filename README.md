@@ -42,7 +42,7 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 4. **See everything at a glance** — hover over any card for a live terminal preview
 
 <p align="center">
-  <img src="docs/screenshots/terminal-view.jpg" width="800" alt="Four AI agents running in parallel — Claude, Gemini, Codex in split panes">
+  <img src="docs/screenshots/terminal-view.jpg" width="800" alt="Three AI agents running in parallel — Claude Code, Codex and opencode in split panes">
 </p>
 
 ## Key features
