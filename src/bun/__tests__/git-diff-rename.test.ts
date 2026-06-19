@@ -67,13 +67,14 @@ describe("getTaskDiff rename detection", () => {
 		expect(entry.oldPath).toBe("module.ts");
 		expect(entry.newPath).toBe("renamed.ts");
 
-		// The patch must contain only the single changed line, not the whole file.
-		const patch = (entry.hunks ?? []).join("\n");
-		const addedLines = patch.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
-		const removedLines = patch.split("\n").filter((l) => l.startsWith("-") && !l.startsWith("---"));
-		expect(addedLines).toHaveLength(1);
-		expect(removedLines).toHaveLength(1);
-		expect(addedLines[0]).toContain("line 5 CHANGED");
+		// Hunks are no longer computed server-side (the renderer diffs old/new
+		// content). Both sides must carry the full file content, and numstat must
+		// report exactly the single changed line — not the whole file.
+		expect(entry.oldContent).toBe(TEN_LINES);
+		expect(entry.newContent).toBe(TEN_LINES_ONE_CHANGED);
+		expect(entry.hunks).toBeNull();
+		expect(entry.insertions).toBe(1);
+		expect(entry.deletions).toBe(1);
 	});
 
 	it("detects a rename with a moderate edit below the old 90% threshold", async () => {
