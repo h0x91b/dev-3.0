@@ -2150,6 +2150,57 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByText("Comment 1")).toBeInTheDocument();
 	});
 
+	it("drops a persisted review older than the 3-day TTL instead of restoring it", async () => {
+		const user = userEvent.setup();
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+
+		const first = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "stale note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toContain("stale note");
+		});
+
+		// Backdate the stored review past the 3-day retention window.
+		const stored = JSON.parse(localStorage.getItem(reviewKey) as string);
+		stored.savedAt = Date.now() - (3 * 24 * 60 * 60 * 1000 + 60_000);
+		localStorage.setItem(reviewKey, JSON.stringify(stored));
+
+		first.unmount();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		// Expired review must not come back, and the stale entry must be purged.
+		expect(screen.queryAllByText("stale note")).toHaveLength(0);
+		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toBeNull();
+		});
+	});
+
 	it("Reset review clears comments and storage after confirmation, and is hidden when empty", async () => {
 		const user = userEvent.setup();
 		const reviewKey = "dev3-inline-diff-review-v1:t1";

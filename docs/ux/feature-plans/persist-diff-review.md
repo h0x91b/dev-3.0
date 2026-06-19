@@ -9,8 +9,9 @@ Inline review comments live only in in-memory React state (`inlineComments` useS
 ## Decision (from UX review + user)
 
 1. **Persist** `inlineComments` to `localStorage`, keyed **per task** (`task.id`). Survives unmount, diff reload, and app restart.
-2. Clear **only** via an explicit **`Reset review`** button (and, optionally, after a successful copy — to confirm with user during impl).
-3. Clipboard is transport, not store.
+2. **Short-lived, not permanent:** a **3-day TTL** (from review creation) auto-expires the stored review on next read. Not a forever "until Reset" store — the need is just to re-copy after a clipboard mishap.
+3. Clear via the explicit **`Reset review`** button or by TTL expiry.
+4. Clipboard is transport, not store.
 
 ## Placement & hierarchy
 

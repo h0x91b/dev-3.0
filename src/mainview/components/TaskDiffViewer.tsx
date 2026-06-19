@@ -883,19 +883,32 @@ function reviewStorageKey(taskId: string): string {
 	return `${LS_DIFF_REVIEW}:${taskId}`;
 }
 
-// The inline review is durable: it persists per task so an accidental clipboard
-// clobber (e.g. a stray terminal selection after copying) never destroys the
-// comments. The clipboard is only a transport — the localStorage entry is the store.
+// A persisted review is a short-lived safety net, not a permanent store: it lets
+// the user come back and re-copy after an accidental clipboard clobber (e.g. a
+// stray terminal selection after copying). It is kept for at most this long since
+// the review was first created, then auto-expires so stale comments never linger.
+const REVIEW_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+interface StoredReview {
+	savedAt: number;
+	comments: InlineDiffCommentsState;
+}
+
 function readStoredReview(taskId: string): InlineDiffCommentsState {
 	try {
 		const raw = localStorage.getItem(reviewStorageKey(taskId));
 		if (!raw) {
 			return {};
 		}
-		const parsed = JSON.parse(raw);
-		if (parsed && typeof parsed === "object") {
-			return parsed as InlineDiffCommentsState;
+		const parsed = JSON.parse(raw) as Partial<StoredReview> | null;
+		const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
+		const comments = parsed?.comments && typeof parsed.comments === "object" ? parsed.comments : null;
+		// Unknown/legacy shape or past the TTL — drop it.
+		if (savedAt === null || comments === null || Date.now() - savedAt > REVIEW_TTL_MS) {
+			localStorage.removeItem(reviewStorageKey(taskId));
+			return {};
 		}
+		return comments;
 	} catch {}
 	return {};
 }
@@ -906,7 +919,18 @@ function writeStoredReview(taskId: string, state: InlineDiffCommentsState): void
 			localStorage.removeItem(reviewStorageKey(taskId));
 			return;
 		}
-		localStorage.setItem(reviewStorageKey(taskId), JSON.stringify(state));
+		// Preserve the original creation time across edits so the TTL counts from
+		// when the review was first started, not from the latest keystroke.
+		let savedAt = Date.now();
+		const existingRaw = localStorage.getItem(reviewStorageKey(taskId));
+		if (existingRaw) {
+			const existing = JSON.parse(existingRaw) as Partial<StoredReview> | null;
+			if (typeof existing?.savedAt === "number") {
+				savedAt = existing.savedAt;
+			}
+		}
+		const payload: StoredReview = { savedAt, comments: state };
+		localStorage.setItem(reviewStorageKey(taskId), JSON.stringify(payload));
 	} catch {}
 }
 

@@ -213,10 +213,11 @@ ux_architecture:
           comment_count: { role: "status",       token: "bg-raised mono badge" }
           comment_item:  { role: "link",         token: "bg-raised/65, accent on hover; scroll-to-comment" }
       persistence:
-        store: "localStorage, keyed per task"
+        store: "localStorage, keyed per task (dev3-inline-diff-review-v1:<taskId>)"
         survives: ["unmount", "diff reload", "app restart"]
-        cleared_by: ["reset_review button", "successful copy (optional)"]
-        rule: "Inline review is durable, not clipboard-only. Clipboard is transport, not store. Leaving the surface does NOT discard the review — no discard-on-close guard."
+        ttl: "3 days from review creation, then auto-expires on next read"
+        cleared_by: ["reset_review button", "TTL expiry"]
+        rule: "Inline review is a short-lived safety net, not clipboard-only and not permanent. Clipboard is transport, not store. Leaving the surface does NOT discard the review — no discard-on-close guard."
       evidence: ["src/mainview/components/TaskDiffViewer.tsx", "src/mainview/components/task-inline-diff.ts", "src/mainview/components/TaskDiffViewer.css"]
     modal:
       purpose: "Focused create/confirm flows."

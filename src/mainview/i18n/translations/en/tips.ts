@@ -7,7 +7,7 @@ const tips = {
 	"tip.snooze": "Hide tips for a while",
 	"tip.next": "Next tip",
 	"tip.diffReviewPersists.title": "Your diff review is saved",
-	"tip.diffReviewPersists.body": "Inline review comments persist per task and survive reloads — hit \"Reset review\" to clear them.",
+	"tip.diffReviewPersists.body": "Inline review comments are kept for a few days, so a clipboard mishap won't lose them — reopen the diff to copy again, or hit \"Reset review\" to clear.",
 	"tip.backForwardNav.title": "Jump back and forward",
 	"tip.backForwardNav.body": "Use the ‹ › arrows top-left, ⌘[ / ⌘], or your mouse side buttons to retrace where you've been.",
 	"tip.statusAgeBadge.title": "How long since the move",
