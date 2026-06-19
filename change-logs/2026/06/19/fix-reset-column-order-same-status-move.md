@@ -1,0 +1,1 @@
+Fixed task cards landing at a stale mid-column position after moving between a builtin column and a custom column that share the same status (e.g. In Progress <-> On hold). Such moves now reset columnOrder, refresh movedAt, and honor the taskDropPosition setting, so the card sits at the top/bottom as configured after an app reload.

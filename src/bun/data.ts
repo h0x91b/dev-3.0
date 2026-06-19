@@ -696,17 +696,24 @@ function applyTaskUpdate(
 		return currentTask;
 	}
 	const now = new Date().toISOString();
-	const statusChanged = updates.status && updates.status !== currentTask.status;
+	// A move to a different RENDERED column happens either when the builtin status
+	// changes, or when only customColumnId changes (builtin <-> custom column that
+	// share the same status). Both must reset columnOrder, refresh movedAt and honor
+	// dropPosition — otherwise a stale columnOrder pins the card mid-column on reload.
+	const statusChanged = updates.status !== undefined && updates.status !== currentTask.status;
+	const customColumnChanged =
+		updates.customColumnId !== undefined && (updates.customColumnId ?? null) !== (currentTask.customColumnId ?? null);
+	const renderedColumnChanged = statusChanged || customColumnChanged;
 	const prevTitle = getTaskTitle(currentTask);
 	const prevOverview = getTaskOverview(currentTask);
 
-	if (statusChanged) {
-		const newStatus = updates.status!;
+	if (renderedColumnChanged) {
 		const dropPosition = options?.dropPosition;
 
 		tasks[idx] = { ...tasks[idx], ...updates, movedAt: now, columnOrder: undefined, updatedAt: now };
 
 		if (dropPosition) {
+			const newStatus = tasks[idx].status;
 			const targetCustomColumnId = tasks[idx].customColumnId ?? null;
 			const columnTasks = tasks
 				.filter((t) => t.status === newStatus && (t.customColumnId ?? null) === targetCustomColumnId && t.id !== tasks[idx].id)

@@ -503,7 +503,13 @@ const handlers: Record<string, Handler> = {
 				}
 				return updated;
 			}
-			const updated = await data.updateTask(project, task.id, { customColumnId: customColumn.id }, guardOpts);
+			const settings = await loadSettings();
+			const updated = await data.updateTask(
+				project,
+				task.id,
+				{ customColumnId: customColumn.id },
+				{ dropPosition: settings.taskDropPosition, ...guardOpts },
+			);
 			if (updated.customColumnId === customColumn.id) {
 				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			}
