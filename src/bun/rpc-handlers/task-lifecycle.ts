@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, titleFromDescription } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -661,6 +661,12 @@ export async function moveTask(params: {
 	clearMergeNotification(task.id);
 
 	if (!isActive(oldStatus) && isActive(newStatus)) {
+		// Pre-check the move guard before activateTask so a blocked move does not
+		// leak a worktree/PTY. The authoritative check still runs inside the lock.
+		if (isStatusGuardBlocked(oldStatus, guardOpts)) {
+			log.info("Move guard blocked inactive → active; skipping activateTask", { taskId: task.id, oldStatus });
+			return task;
+		}
 		const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 		log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
 		const wt = await activateTask(project, task, { isReopen });

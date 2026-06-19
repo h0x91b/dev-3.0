@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskStatus, TipState } from "../shared/types";
-import { getTaskOverview, getTaskTitle, titleFromDescription } from "../shared/types";
+import { getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { detectClonePaths } from "./cow-clone";
@@ -681,18 +681,8 @@ function applyTaskUpdate(
 	},
 ): Task {
 	const currentTask = tasks[idx];
-	const allowedStatuses = options?.ifStatus
-		?.split(",")
-		.map((status) => status.trim())
-		.filter(Boolean);
-	if (allowedStatuses && !allowedStatuses.includes(currentTask.status)) {
-		return currentTask;
-	}
-	const blockedStatuses = options?.ifStatusNot
-		?.split(",")
-		.map((status) => status.trim())
-		.filter(Boolean);
-	if (blockedStatuses && blockedStatuses.includes(currentTask.status)) {
+	// Authoritative guard check (runs inside the file lock).
+	if (isStatusGuardBlocked(currentTask.status, options)) {
 		return currentTask;
 	}
 	const now = new Date().toISOString();

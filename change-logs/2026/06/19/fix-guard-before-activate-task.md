@@ -1,0 +1,1 @@
+Fixed a leaked git worktree and tmux/PTY session that occurred when a conditional task move (--if-status / --if-status-not) was blocked: the guard is now evaluated before activateTask, so no worktree is created when the move is rejected. The authoritative in-lock guard inside updateTask is unchanged.
