@@ -78,10 +78,6 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
   <img src="docs/screenshots/global-settings.jpg" width="600" alt="Global settings — agents, configs, languages">
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/pr-review-mode.jpg" width="600" alt="PR review mode — pre-filled code review prompt">
-</p>
-
 ## Keyboard shortcuts
 
 Press **⌘/** (**Ctrl+/** on Linux) inside the app — or open **Help → Keyboard Shortcuts** — to see
