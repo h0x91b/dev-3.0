@@ -1980,11 +1980,11 @@ describe("TaskDiffViewer", () => {
 		expect(onBack).toHaveBeenCalledTimes(1);
 	});
 
-	it("shows a confirm dialog before discarding unsaved review comments on Escape", async () => {
+	it("closes immediately on Escape even with review comments (review persists)", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
 		const showConfirm = vi.mocked(confirm);
-		showConfirm.mockResolvedValueOnce(false);
+		showConfirm.mockResolvedValue(true);
 
 		render(
 			<I18nProvider>
@@ -2005,24 +2005,13 @@ describe("TaskDiffViewer", () => {
 		await user.keyboard("{Escape}");
 
 		await waitFor(() => {
-			expect(showConfirm).toHaveBeenCalledTimes(1);
-		});
-		expect(onBack).not.toHaveBeenCalled();
-
-		showConfirm.mockResolvedValueOnce(true);
-		await user.keyboard("{Escape}");
-
-		await waitFor(() => {
 			expect(onBack).toHaveBeenCalledTimes(1);
 		});
-		expect(showConfirm).toHaveBeenCalledTimes(2);
+		expect(showConfirm).not.toHaveBeenCalled();
 	});
 
-	it("registers a navigation guard that blocks app-level navigation and copies XML on save", async () => {
+	it("never registers a navigation guard — the persisted review is never dirty", async () => {
 		const user = userEvent.setup();
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-
 		const guardRef: { current: NavigationGuard | null } = { current: null };
 
 		render(
@@ -2037,28 +2026,19 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await screen.findAllByTestId("mock-diff");
-		expect(guardRef.current).not.toBeNull();
-		expect(guardRef.current?.isDirty()).toBe(false);
-
 		const diffs = await screen.findAllByTestId("mock-diff");
+		expect(guardRef.current).toBeNull();
+
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
 		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "guard me");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
-		await waitFor(() => {
-			expect(guardRef.current?.isDirty()).toBe(true);
-		});
-
-		await act(async () => {
-			await guardRef.current?.onSave();
-		});
-
-		expect(writeText).toHaveBeenCalledTimes(1);
-		expect(writeText.mock.calls[0][0]).toContain("<comment>guard me</comment>");
+		// Adding comments must not arm the shared unsaved-changes modal: the review
+		// is durable, so leaving never risks data loss.
+		expect(guardRef.current).toBeNull();
 	});
 
-	it("confirms before closing via the back button when unsaved review exists", async () => {
+	it("closes via the back button immediately even with review comments", async () => {
 		const user = userEvent.setup();
 		const onBack = vi.fn();
 		const showConfirm = vi.mocked(confirm);
@@ -2083,9 +2063,9 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
 
 		await waitFor(() => {
-			expect(showConfirm).toHaveBeenCalledTimes(1);
 			expect(onBack).toHaveBeenCalledTimes(1);
 		});
+		expect(showConfirm).not.toHaveBeenCalled();
 	});
 
 	it("closes without prompting after the review XML has been copied to the clipboard", async () => {
@@ -2124,13 +2104,33 @@ describe("TaskDiffViewer", () => {
 		expect(showConfirm).not.toHaveBeenCalled();
 	});
 
-	it("re-arms the unsaved-review prompt when comments change after a clipboard copy", async () => {
+	it("persists the review to localStorage and restores it after a remount", async () => {
 		const user = userEvent.setup();
-		const onBack = vi.fn();
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-		const showConfirm = vi.mocked(confirm);
-		showConfirm.mockResolvedValue(false);
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+
+		const first = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "persist me");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toContain("persist me");
+		});
+
+		// Unmount and remount — the review must come back from localStorage rather
+		// than being wiped, the way it used to be on every diff (re)load.
+		first.unmount();
 
 		render(
 			<I18nProvider>
@@ -2138,31 +2138,229 @@ describe("TaskDiffViewer", () => {
 					task={task}
 					project={project}
 					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
-					onBack={onBack}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		await waitFor(() => {
+			expect(screen.getAllByText("persist me").length).toBeGreaterThan(0);
+		});
+		expect(screen.getByText("Comment 1")).toBeInTheDocument();
+	});
+
+	it("sweeps expired and corrupt review entries for other tasks on mount", async () => {
+		const dayMs = 24 * 60 * 60 * 1000;
+		const expiredKey = "dev3-inline-diff-review-v1:other-old";
+		const freshKey = "dev3-inline-diff-review-v1:other-fresh";
+		const corruptKey = "dev3-inline-diff-review-v1:other-broken";
+		const unrelatedKey = "some-other-app-key";
+
+		localStorage.setItem(expiredKey, JSON.stringify({ savedAt: Date.now() - (3 * dayMs + 60_000), comments: { f: 1 } }));
+		localStorage.setItem(freshKey, JSON.stringify({ savedAt: Date.now() - dayMs, comments: { f: 1 } }));
+		localStorage.setItem(corruptKey, "{not json");
+		localStorage.setItem(unrelatedKey, "keep me");
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+
+		await waitFor(() => {
+			expect(localStorage.getItem(expiredKey)).toBeNull();
+		});
+		expect(localStorage.getItem(corruptKey)).toBeNull();
+		// A still-fresh review for another task and unrelated keys are left alone.
+		expect(localStorage.getItem(freshKey)).not.toBeNull();
+		expect(localStorage.getItem(unrelatedKey)).toBe("keep me");
+	});
+
+	it("drops a persisted review older than the 3-day TTL instead of restoring it", async () => {
+		const user = userEvent.setup();
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+
+		const first = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
 
 		const diffs = await screen.findAllByTestId("mock-diff");
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "first note");
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "stale note");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
-		await user.click(screen.getByRole("button", { name: /Copy to Clipboard/i }));
 		await waitFor(() => {
-			expect(writeText).toHaveBeenCalledTimes(1);
+			expect(localStorage.getItem(reviewKey)).toContain("stale note");
 		});
 
-		await user.click(within(diffs[1] ?? diffs[0]).getAllByRole("button", { name: "Open inline comment composer" })[0]);
-		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "second note");
+		// Backdate the stored review past the 3-day retention window.
+		const stored = JSON.parse(localStorage.getItem(reviewKey) as string);
+		stored.savedAt = Date.now() - (3 * 24 * 60 * 60 * 1000 + 60_000);
+		localStorage.setItem(reviewKey, JSON.stringify(stored));
+
+		first.unmount();
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		// Expired review must not come back, and the stale entry must be purged.
+		expect(screen.queryAllByText("stale note")).toHaveLength(0);
+		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toBeNull();
+		});
+	});
+
+	it("Reset review clears comments and storage after confirmation, and is hidden when empty", async () => {
+		const user = userEvent.setup();
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+		const showConfirm = vi.mocked(confirm);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		// No comments yet → the Reset control must not be rendered.
+		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
+
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "kill me");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
-		await user.click(screen.getByRole("button", { name: /Back to Terminal/i }));
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toContain("kill me");
+		});
+		const resetButton = screen.getByTestId("review-reset-button");
 
+		// Declining the confirm keeps the review intact.
+		showConfirm.mockResolvedValueOnce(false);
+		await user.click(resetButton);
 		await waitFor(() => {
 			expect(showConfirm).toHaveBeenCalledTimes(1);
 		});
-		expect(onBack).not.toHaveBeenCalled();
+		expect(screen.getAllByText("kill me").length).toBeGreaterThan(0);
+		expect(localStorage.getItem(reviewKey)).toContain("kill me");
+
+		// Confirming wipes the comments and removes the persisted entry.
+		showConfirm.mockResolvedValueOnce(true);
+		await user.click(resetButton);
+
+		await waitFor(() => {
+			expect(screen.queryAllByText("kill me")).toHaveLength(0);
+		});
+		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
+		expect(localStorage.getItem(reviewKey)).toBeNull();
+	});
+
+	it("still saves new comments when the existing localStorage entry is corrupt JSON", async () => {
+		const user = userEvent.setup();
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+
+		// Seed a corrupt entry for this task so JSON.parse throws on the first write attempt.
+		localStorage.setItem(reviewKey, "{not valid json");
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "after corrupt");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		// The write must succeed despite the corrupt existing entry — not be silently
+		// swallowed by the outer catch that would have wrapped the inner JSON.parse.
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toContain("after corrupt");
+		});
+	});
+
+	it("does not write task A review to task B storage when task.id changes mid-render", async () => {
+		const user = userEvent.setup();
+		const reviewKeyA = "dev3-inline-diff-review-v1:t1";
+		const reviewKeyB = "dev3-inline-diff-review-v1:t2";
+		const taskB: Task = { ...task, id: "t2", worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" };
+
+		const { rerender } = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "task A note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKeyA)).toContain("task A note");
+		});
+
+		// Simulate the user clicking a different task in the kanban while the diff viewer
+		// is still mounted — useTaskInlineDiffState resets inlineDiffRequest to null one
+		// render later, but during that intermediate render task.id has already advanced.
+		// The persist effect must not cross-write task A's review under task B's key.
+		rerender(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={taskB}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Give React a moment to flush all effects from the re-render.
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKeyA)).toContain("task A note");
+		});
+		// Task B's storage must NOT have been seeded with task A's review data.
+		expect(localStorage.getItem(reviewKeyB)).toBeNull();
 	});
 
 	it("opens the diff viewer in uncommitted mode by default even when the caller requested branch mode", async () => {

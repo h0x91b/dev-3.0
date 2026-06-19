@@ -150,8 +150,9 @@ const infoPanel = {
 	"infoPanel.diffReviewSave": "Save comment",
 	"infoPanel.diffReviewBefore": "Before",
 	"infoPanel.diffReviewAfter": "After",
-	"infoPanel.diffDiscardReviewTitle": "Discard review notes?",
-	"infoPanel.diffDiscardReviewMessage": "You have unsaved review comments. If you leave now, they will be lost. Are you sure you want to exit?",
+	"infoPanel.diffReviewReset": "Reset review",
+	"infoPanel.diffReviewResetConfirmTitle": "Reset review?",
+	"infoPanel.diffReviewResetConfirmMessage": "This permanently deletes all inline review comments for this task. This cannot be undone.",
 } as const;
 
 export default infoPanel;

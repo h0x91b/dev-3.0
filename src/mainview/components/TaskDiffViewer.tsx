@@ -24,6 +24,7 @@ import "./TaskDiffViewer.css";
 const LS_DIFF_READ_STATE = "dev3-inline-diff-read-state-v1";
 const LS_DIFF_MODE_PREFERENCE = "dev3-inline-diff-mode-v1";
 const LS_DIFF_FILES_COLLAPSED = "dev3-inline-diff-files-collapsed-v1";
+const LS_DIFF_REVIEW = "dev3-inline-diff-review-v1";
 const DEFAULT_DIFF_MODE: TaskDiffMode = "uncommitted";
 const EAGER_FILE_COUNT = 2;
 // @git-diff-view skips syntax highlighting for files longer than this many lines
@@ -878,6 +879,97 @@ function writeStoredReadState(state: Record<string, boolean>): void {
 	} catch {}
 }
 
+function reviewStorageKey(taskId: string): string {
+	return `${LS_DIFF_REVIEW}:${taskId}`;
+}
+
+// A persisted review is a short-lived safety net, not a permanent store: it lets
+// the user come back and re-copy after an accidental clipboard clobber (e.g. a
+// stray terminal selection after copying). It is kept for at most this long since
+// the review was first created, then auto-expires so stale comments never linger.
+const REVIEW_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+interface StoredReview {
+	savedAt: number;
+	comments: InlineDiffCommentsState;
+}
+
+function readStoredReview(taskId: string): InlineDiffCommentsState {
+	try {
+		const raw = localStorage.getItem(reviewStorageKey(taskId));
+		if (!raw) {
+			return {};
+		}
+		const parsed = JSON.parse(raw) as Partial<StoredReview> | null;
+		const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
+		const comments = parsed?.comments && typeof parsed.comments === "object" ? parsed.comments : null;
+		// Unknown/legacy shape or past the TTL — drop it.
+		if (savedAt === null || comments === null || Date.now() - savedAt > REVIEW_TTL_MS) {
+			localStorage.removeItem(reviewStorageKey(taskId));
+			return {};
+		}
+		return comments;
+	} catch {}
+	return {};
+}
+
+function writeStoredReview(taskId: string, state: InlineDiffCommentsState): void {
+	try {
+		if (!hasAnyInlineComments(state)) {
+			localStorage.removeItem(reviewStorageKey(taskId));
+			return;
+		}
+		// Preserve the original creation time across edits so the TTL counts from
+		// when the review was first started, not from the latest keystroke.
+		let savedAt = Date.now();
+		const existingRaw = localStorage.getItem(reviewStorageKey(taskId));
+		if (existingRaw) {
+			try {
+				const existing = JSON.parse(existingRaw) as Partial<StoredReview> | null;
+				if (typeof existing?.savedAt === "number") {
+					savedAt = existing.savedAt;
+				}
+			} catch {
+				// Corrupt existing entry — proceed with fresh savedAt so the write
+				// still completes instead of being silently swallowed by the outer catch.
+			}
+		}
+		const payload: StoredReview = { savedAt, comments: state };
+		localStorage.setItem(reviewStorageKey(taskId), JSON.stringify(payload));
+	} catch {}
+}
+
+// Global garbage-collection for persisted reviews. The per-key TTL in
+// readStoredReview only fires when *that* task's diff is reopened, so a review
+// for a task that is never revisited (or has been deleted) would linger forever.
+// This sweep walks every review key and drops expired or corrupt entries; it runs
+// whenever any diff viewer mounts, keeping the working set to "reviews touched in
+// the last few days" regardless of which tasks are reopened.
+function pruneExpiredReviews(now: number = Date.now()): void {
+	try {
+		const prefix = `${LS_DIFF_REVIEW}:`;
+		const staleKeys: string[] = [];
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (!key || !key.startsWith(prefix)) {
+				continue;
+			}
+			try {
+				const parsed = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<StoredReview> | null;
+				const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
+				if (savedAt === null || now - savedAt > REVIEW_TTL_MS) {
+					staleKeys.push(key);
+				}
+			} catch {
+				staleKeys.push(key);
+			}
+		}
+		for (const key of staleKeys) {
+			localStorage.removeItem(key);
+		}
+	} catch {}
+}
+
 function normalizeDiffPath(value: string | null | undefined): string {
 	return (value ?? "")
 		.replace(/^\.?\//, "")
@@ -1543,7 +1635,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
-	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>({});
+	// Lazy-initialize from localStorage so the first persist-effect fire (when
+	// payload arrives) sees the stored review rather than `{}` — otherwise the
+	// persist effect would delete the localStorage entry before the restore effect's
+	// setInlineComments causes a second render that writes it back.
+	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>(() => readStoredReview(task.id));
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 	const [editingCommentDraft, setEditingCommentDraft] = useState("");
@@ -1591,63 +1687,33 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	);
 	const currentSearchMatch = searchMatches[activeSearchIndex] ?? null;
 
-	const hasUnsavedReviewRef = useRef(false);
-	// Tracks the XML that the user explicitly copied to clipboard. Once they hit "Copy",
-	// the review is no longer "unsaved" — exporting via clipboard *is* the save action
-	// for inline reviews. Becomes dirty again only if comments change after the copy.
-	const lastCopiedReviewXmlRef = useRef<string | null>(null);
-	useEffect(() => {
-		const hasComments = hasAnyInlineComments(inlineComments);
-		const copiedAlready = lastCopiedReviewXmlRef.current !== null
-			&& lastCopiedReviewXmlRef.current === reviewExportXml;
-		hasUnsavedReviewRef.current = hasComments && !copiedAlready;
-	}, [inlineComments, reviewExportXml]);
-
+	// The inline review is persisted per task (readStoredReview/writeStoredReview),
+	// so leaving the viewer never discards anything — close immediately without a
+	// "discard review?" prompt.
 	const requestClose = useCallback(() => {
-		if (!hasUnsavedReviewRef.current) {
-			onBack();
-			return;
-		}
-		confirm({
-			title: t("infoPanel.diffDiscardReviewTitle"),
-			message: t("infoPanel.diffDiscardReviewMessage"),
-			danger: true,
-		})
-			.then((confirmed) => {
-				if (confirmed) {
-					onBack();
-				}
-			})
-			.catch(() => {});
-	}, [onBack, t]);
+		onBack();
+	}, [onBack]);
 
-	const reviewExportXmlRef = useRef("");
-	useEffect(() => {
-		reviewExportXmlRef.current = reviewExportXml;
-	}, [reviewExportXml]);
-
+	// The review used to be treated as "unsaved until copied", gating navigation
+	// behind the shared unsaved-changes modal. Persistence makes the clipboard a
+	// transport rather than the store, so the diff viewer is never dirty: clear any
+	// guard a previous surface left on the shared ref.
 	useEffect(() => {
 		if (!navigationGuardRef) {
 			return;
 		}
-		navigationGuardRef.current = {
-			isDirty: () => hasUnsavedReviewRef.current,
-			onSave: async () => {
-				const xml = reviewExportXmlRef.current;
-				if (!xml) return;
-				try {
-					await navigator.clipboard.writeText(xml);
-					lastCopiedReviewXmlRef.current = xml;
-					hasUnsavedReviewRef.current = false;
-				} catch {
-					/* clipboard not available — leaving navigation flow intact */
-				}
-			},
-		};
+		navigationGuardRef.current = null;
 		return () => {
 			navigationGuardRef.current = null;
 		};
 	}, [navigationGuardRef]);
+
+	// Garbage-collect expired/orphaned persisted reviews across all tasks whenever a
+	// diff viewer opens, so localStorage never accumulates stale review entries for
+	// tasks that are never reopened (or have been deleted).
+	useEffect(() => {
+		pruneExpiredReviews();
+	}, []);
 
 	const isInitialRequestSyncRef = useRef(true);
 
@@ -1844,10 +1910,34 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setExpandedFiles(nextExpandedFiles);
 		setReadFiles(nextReadFiles);
 		setActiveFileId(initialActiveFileId);
-		setInlineComments({});
+		// Restore the persisted review for this task instead of wiping it — comments
+		// must survive diff reloads (e.g. a refresh after the agent edits files).
+		setInlineComments(readStoredReview(task.id));
 		setEditingCommentId(null);
 		setEditingCommentDraft("");
 	}, [currentRequest.focusFile, payload, task.id]);
+
+	// Tracks the task.id that inlineComments currently belongs to.
+	// Updated in the persist effect whenever task.id changes, so we can detect
+	// the intermediate render where task.id has advanced but inlineComments still
+	// holds the previous task's data (e.g. the user clicked a different task card
+	// in the kanban while the diff viewer was open — useTaskInlineDiffState resets
+	// inlineDiffRequest to null one render later, but the persist effect fires in
+	// that intermediate render and must not cross-contaminate storage).
+	const inlineCommentsOwnerRef = useRef(task.id);
+
+	// Persist the review on every change. Gated on `payload` so the transient
+	// in-memory clear during a diff (re)load does not erase the stored review.
+	// Also gated on the task.id matching the owner ref: if they diverge, task.id
+	// has just changed and inlineComments still contains the previous task's data,
+	// so we must skip the write.
+	useEffect(() => {
+		if (!payload || inlineCommentsOwnerRef.current !== task.id) {
+			inlineCommentsOwnerRef.current = task.id;
+			return;
+		}
+		writeStoredReview(task.id, inlineComments);
+	}, [inlineComments, payload, task.id]);
 
 	function addInlineComment({
 		fileId,
@@ -1904,11 +1994,26 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	function handleCopyReviewXml() {
 		const snapshot = reviewExportXml;
 		navigator.clipboard.writeText(snapshot).then(() => {
-			lastCopiedReviewXmlRef.current = snapshot;
-			hasUnsavedReviewRef.current = false;
 			setCopiedReviewXml(true);
 			window.setTimeout(() => setCopiedReviewXml(false), 1500);
 		}).catch(() => {});
+	}
+
+	function handleResetReview() {
+		confirm({
+			title: t("infoPanel.diffReviewResetConfirmTitle"),
+			message: t("infoPanel.diffReviewResetConfirmMessage"),
+			danger: true,
+		})
+			.then((confirmed) => {
+				if (!confirmed) {
+					return;
+				}
+				setInlineComments({});
+				setEditingCommentId(null);
+				setEditingCommentDraft("");
+			})
+			.catch(() => {});
 	}
 
 	function registerCommentRef(commentId: string, element: HTMLDivElement | null) {
@@ -2889,6 +2994,23 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 											</span>
 											<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
 										</button>
+										{reviewExportEntries.length > 0 && (
+											<button
+												type="button"
+												onClick={handleResetReview}
+												data-testid="review-reset-button"
+												className="inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border border-danger/30 bg-transparent px-3 text-xs font-semibold text-danger transition-colors hover:bg-danger/10"
+											>
+												<span
+													aria-hidden="true"
+													className="text-[0.95rem] leading-none"
+													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+												>
+													{""}
+												</span>
+												<span>{t("infoPanel.diffReviewReset")}</span>
+											</button>
+										)}
 									</div>
 
 									<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-1.5">

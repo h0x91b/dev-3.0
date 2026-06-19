@@ -1,0 +1,1 @@
+Inline diff-review comments are now kept per task for up to 3 days, so they survive diff reloads, leaving the viewer, and app restarts — if an accidental clipboard clobber wipes your copied review, just reopen the diff and copy it again. A new "Reset review" button (with confirmation) clears them early when you're done.

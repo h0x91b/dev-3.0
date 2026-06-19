@@ -150,8 +150,9 @@ const infoPanel = {
 	"infoPanel.diffReviewSave": "Guardar comentario",
 	"infoPanel.diffReviewBefore": "Antes",
 	"infoPanel.diffReviewAfter": "Después",
-	"infoPanel.diffDiscardReviewTitle": "¿Descartar notas de revisión?",
-	"infoPanel.diffDiscardReviewMessage": "Tienes comentarios de revisión sin guardar. Si sales ahora, se perderán. ¿Seguro que quieres salir?",
+	"infoPanel.diffReviewReset": "Restablecer revisión",
+	"infoPanel.diffReviewResetConfirmTitle": "¿Restablecer revisión?",
+	"infoPanel.diffReviewResetConfirmMessage": "Esto elimina permanentemente todos los comentarios de revisión en línea de esta tarea. No se puede deshacer.",
 };
 
 export default infoPanel;

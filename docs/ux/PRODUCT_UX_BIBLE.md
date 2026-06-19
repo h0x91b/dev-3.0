@@ -78,6 +78,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, label filter | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots, open, context menu, git badge | full settings, global destination | `TaskCard.tsx` (large — watch density) |
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, notes | global destination, cross-project action | `TaskInfoPanel.tsx` (densest surface) |
+| Diff review viewer | Full-screen read + inline-review of a task's diff | view-mode toggle, file-tree nav, search, mark-read, per-file copy-path, inline comments, review export/copy/reset | task lifecycle action, git mutation, global destination | `TaskDiffViewer.tsx` (see 5.3) |
 | Modal | Focused create/confirm | create flow, confirm, focused config | navigation, persistent dashboard | `*Modal.tsx` |
 | Popover | Contextual preview/hint | preview, hint, quick action, remediation | multi-step flow, primary destination | `*Popover.tsx` |
 | Context menu | Right-click object actions | object action, open-in, destructive | global destination | `OpenInMenu.tsx` |
@@ -127,6 +128,31 @@ toolbar/header button (toolbar-button-creep) and never a navigation destination 
 (`docs/index.html`) section. Adding a new app-level shortcut **must** add a `keymap.ts` entry.
 
 See `UX_DECISIONS.md` (2026-06-19) and `feature-plans/keyboard-shortcuts-registry.md`.
+
+### 5.3 Diff review viewer — `Observed`
+
+Full-screen surface (`TaskDiffViewer.tsx`) reached from the inspector `show_diff` action / `diff_summary_badge`. It is a **read + review** surface: it renders a task's diff and lets the user attach inline comments, then export them as an XML review prompt for the agent. It performs **no git mutation and no task-lifecycle action** — those stay in the inspector and native menu.
+
+Layout = left **Files aside** (collapsible, `22rem`) + right **diff stream**.
+
+- **Top toolbar (right of file tree):** diff-mode segmented control (`uncommitted | branch | unpushed`, persisted), view-mode toggle (`split | unified`), include-tests toggle, search (`Cmd+F`, in-diff find with next/prev + highlight), close/back (`Esc`).
+- **Files aside** contains two cards: the **Review export card** (top) and the **Files card** (read-progress + expand/collapse-all + the file tree).
+- **Per-file header (diff stream):** status chip (A/M/D/R/C/T/?), path (click = expand/collapse), **copy-file-path** icon button (role `neutral`/icon), `+N/−N` stat pill, **mark-read** checkbox (success-tinted when read), expand/collapse caret.
+- **Inline comments:** drag across the gutter to select a line range (or use the hover `+` widget for a single line) → composer opens → comment is added to a per-file/per-side/per-line thread. Threads render inline and are editable/deletable in place.
+
+**Review export card — action hierarchy (the one budgeted cluster):**
+
+| Control | Role | Token | Visibility |
+|---|---|---|---|
+| Copy review | `primary` (the single primary here) | `bg-accent` solid, success-tint on copied | always (disabled when 0 comments) |
+| Reset review | `destructive`, low-emphasis | ghost-danger: `text-danger` + `border-danger/30` + `hover:bg-danger/10` | only when ≥ 1 comment; confirmation required |
+| Comment count | `status` | `bg-raised` mono badge | always |
+| Comment item | `link`-like (scroll-to) | `bg-raised/65`, accent on hover | per comment |
+
+Rules specific to this surface:
+- **One primary only** — `Copy review` owns it. `Reset review` is destructive and must never carry primary/accent fill (would compete and risk an accidental data-loss click). It sits below Copy, lower-emphasis, gated behind a `confirm()` dialog.
+- **The inline review is a short-lived safety net, not clipboard-only or permanent.** Comments persist per task (`localStorage`) and survive unmount / diff reload / app restart, but only for a **3-day TTL** measured from when the review was first created — after that they auto-expire on next read. The clipboard is a *transport*, not the store: if a stray terminal selection clobbers the copied review, reopen the diff and copy again. The review is cleared by the **Reset review** button or by TTL expiry. A **global sweep** on every diff-viewer mount prunes expired/corrupt review keys across all tasks, so entries for never-reopened or deleted tasks cannot accumulate in `localStorage`. Leaving the surface does **not** discard it — so no "discard review?" guard on close.
+- No new top-level destination, no toolbar-creep into the inspector: the whole review lifecycle lives inside this surface.
 
 ## 6. Action taxonomy — `Observed`
 

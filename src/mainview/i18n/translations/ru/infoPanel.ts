@@ -158,8 +158,9 @@ const infoPanel = {
 	"infoPanel.diffReviewSave": "Сохранить комментарий",
 	"infoPanel.diffReviewBefore": "Было",
 	"infoPanel.diffReviewAfter": "Стало",
-	"infoPanel.diffDiscardReviewTitle": "Сбросить заметки ревью?",
-	"infoPanel.diffDiscardReviewMessage": "Есть несохранённые комментарии ревью. Если выйти сейчас, они будут потеряны. Точно хотите выйти?",
+	"infoPanel.diffReviewReset": "Сбросить ревью",
+	"infoPanel.diffReviewResetConfirmTitle": "Сбросить ревью?",
+	"infoPanel.diffReviewResetConfirmMessage": "Это безвозвратно удалит все inline-комментарии ревью для этой задачи. Отменить нельзя.",
 };
 
 export default infoPanel;
