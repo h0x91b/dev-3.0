@@ -101,6 +101,32 @@ export function getAllowedTransitions(current: TaskStatus): TaskStatus[] {
 	return ALL_STATUSES.filter((s) => s !== current);
 }
 
+// Conditional-move guards (--if-status / --if-status-not). Returns true when a
+// move should be blocked given the task's current status. This is the single
+// source of truth, used both by the authoritative in-lock check in data.ts and
+// by pre-checks at call sites that must avoid side effects (worktree/PTY) when a
+// guarded move is blocked.
+export function isStatusGuardBlocked(
+	status: string,
+	options?: { ifStatus?: string; ifStatusNot?: string },
+): boolean {
+	const allowedStatuses = options?.ifStatus
+		?.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
+	if (allowedStatuses && !allowedStatuses.includes(status)) {
+		return true;
+	}
+	const blockedStatuses = options?.ifStatusNot
+		?.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
+	if (blockedStatuses && blockedStatuses.includes(status)) {
+		return true;
+	}
+	return false;
+}
+
 // ---- Column Agents ----
 
 export interface ColumnAgentConfig {

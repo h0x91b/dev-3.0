@@ -1717,6 +1717,50 @@ describe("handlers.moveTask", () => {
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
+	it("blocked guard (todo, --if-status-not todo): does NOT create worktree, returns unchanged task", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		// Authoritative in-lock guard would return the unchanged task; the pre-check
+		// must short-circuit before activateTask so no worktree is created.
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		const result = await handlers.moveTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			newStatus: "in-progress",
+			ifStatusNot: "todo",
+		});
+
+		expect(result.status).toBe("todo");
+		expect(git.createWorktree).not.toHaveBeenCalled();
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("passing guard (todo, --if-status-not completed): still creates worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+
+		const result = await handlers.moveTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			newStatus: "in-progress",
+			ifStatusNot: "completed",
+		});
+
+		expect(result.status).toBe("in-progress");
+		expect(git.createWorktree).toHaveBeenCalled();
+	});
+
 	it("todo → in-progress defaults agent stop target to review-by-user when automatic review is off", async () => {
 		const project = makeProject({ autoReviewEnabled: false });
 		const task = makeTask({ status: "todo", worktreePath: null });

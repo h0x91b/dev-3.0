@@ -114,4 +114,34 @@ describe("data race-safe mutators", () => {
 		const mergedNotes = results.find(({ task: updatedTask }) => (updatedTask.notes?.length ?? 0) === 3)?.task.notes;
 		expect(mergedNotes?.map((note) => note.content).sort()).toEqual(["Base", "One", "Two"]);
 	});
+
+	it("authoritative guard: blocked updateTask returns the unchanged task without throwing", async () => {
+		const data = await import("../data");
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));
+		mkdirSync(join(dev3Home, "data", "tmp-race-test-project"), { recursive: true });
+		writeFileSync(join(dev3Home, "data", "tmp-race-test-project", "tasks.json"), JSON.stringify([task], null, 2));
+
+		const result = await data.updateTask(project, task.id, { status: "in-progress" }, { ifStatusNot: "todo" });
+
+		expect(result.status).toBe("todo");
+		const persisted = await data.loadTasks(project);
+		expect(persisted[0].status).toBe("todo");
+	});
+
+	it("authoritative guard: passing updateTask applies the change", async () => {
+		const data = await import("../data");
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));
+		mkdirSync(join(dev3Home, "data", "tmp-race-test-project"), { recursive: true });
+		writeFileSync(join(dev3Home, "data", "tmp-race-test-project", "tasks.json"), JSON.stringify([task], null, 2));
+
+		const result = await data.updateTask(project, task.id, { status: "in-progress" }, { ifStatusNot: "completed" });
+
+		expect(result.status).toBe("in-progress");
+		const persisted = await data.loadTasks(project);
+		expect(persisted[0].status).toBe("in-progress");
+	});
 });

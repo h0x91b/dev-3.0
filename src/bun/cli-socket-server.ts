@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, getTaskTitle, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
@@ -491,6 +491,11 @@ const handlers: Record<string, Handler> = {
 		if (customColumn) {
 			// Moving from completed/cancelled into a custom column resumes the task
 			if (task.status === "completed" || task.status === "cancelled") {
+				// Pre-check the guard before activateTask so a blocked move does not
+				// leak a worktree/PTY. The authoritative check still runs inside the lock.
+				if (isStatusGuardBlocked(task.status, guardOpts)) {
+					return task;
+				}
 				const settings = await loadSettings();
 				const wt = await activateTask(project, task, { isReopen: true });
 				const updated = await data.updateTask(project, task.id, {
@@ -553,6 +558,11 @@ const handlers: Record<string, Handler> = {
 
 		// inactive → active: create worktree + PTY
 		if (!isActive(oldStatus) && isActive(builtinStatus)) {
+			// Pre-check the guard before activateTask so a blocked move does not
+			// leak a worktree/PTY. The authoritative check still runs inside the lock.
+			if (isStatusGuardBlocked(oldStatus, guardOpts)) {
+				return task;
+			}
 			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 			const wt = await activateTask(project, task, { isReopen });
 

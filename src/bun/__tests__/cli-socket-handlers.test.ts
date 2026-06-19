@@ -1230,6 +1230,91 @@ describe("task.move", () => {
 		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: true });
 	});
 
+	it("blocked guard (todo, --if-status-not todo): does NOT activate worktree, returns unchanged task", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		// updateTask is the authoritative guard; if reached with a blocking guard
+		// it would return the unchanged task. The pre-check must prevent activateTask.
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.move", {
+				taskId: task.id,
+				projectId: "proj-1",
+				newStatus: "in-progress",
+				ifStatusNot: "todo",
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual(task);
+		expect(activateTask).not.toHaveBeenCalled();
+	});
+
+	it("passing guard (todo, --if-status-not completed): still activates worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null, branchName: null });
+		const wtResult = { worktreePath: "/tmp/new-wt", branchName: "dev3/task-new" };
+		const updated = { ...task, status: "in-progress" as const, ...wtResult };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(activateTask).mockResolvedValue(wtResult);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.move", {
+				taskId: task.id,
+				projectId: "proj-1",
+				newStatus: "in-progress",
+				ifStatusNot: "completed",
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: false });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			status: "in-progress",
+			worktreePath: "/tmp/new-wt",
+			branchName: "dev3/task-new",
+			customColumnId: null,
+		}, { dropPosition: "top", ifStatusNot: "completed" });
+	});
+
+	it("blocked guard (completed → custom column, --if-status-not completed): does NOT reactivate worktree", async () => {
+		const customColumn = {
+			id: "col-1234abcd-0000-0000-0000-000000000000",
+			name: "Review",
+			color: "#3b82f6",
+			llmInstruction: "",
+		};
+		const project = makeProject({ customColumns: [customColumn] });
+		const task = makeTask({ status: "completed", worktreePath: null, branchName: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.move", {
+				taskId: task.id,
+				projectId: "proj-1",
+				newStatus: customColumn.id,
+				ifStatusNot: "completed",
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual(task);
+		expect(activateTask).not.toHaveBeenCalled();
+	});
+
 	it("active → completed: destroys PTY, runs cleanup, removes worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
