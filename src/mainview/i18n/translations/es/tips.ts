@@ -6,6 +6,8 @@ const tips = {
 	"tip.dismiss": "No mostrar este consejo",
 	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
+	"tip.diffReviewPersists.title": "Tu revisión se guarda",
+	"tip.diffReviewPersists.body": "Los comentarios de revisión en línea se guardan por tarea y sobreviven a las recargas — usa «Restablecer revisión» para borrarlos.",
 	"tip.backForwardNav.title": "Salta atrás y adelante",
 	"tip.backForwardNav.body": "Usa las flechas ‹ › arriba a la izquierda, ⌘[ / ⌘] o los botones laterales del ratón para volver por donde estuviste.",
 	"tip.statusAgeBadge.title": "Cuánto desde el cambio",

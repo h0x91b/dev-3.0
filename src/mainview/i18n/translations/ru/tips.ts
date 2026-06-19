@@ -6,6 +6,8 @@ const tips = {
 	"tip.dismiss": "Больше не показывать",
 	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
+	"tip.diffReviewPersists.title": "Твоё ревью сохраняется",
+	"tip.diffReviewPersists.body": "Inline-комментарии ревью хранятся для задачи и переживают перезагрузки — кнопка «Сбросить ревью» очищает их.",
 	"tip.backForwardNav.title": "Прыгай назад и вперёд",
 	"tip.backForwardNav.body": "Стрелки ‹ › слева вверху, ⌘[ / ⌘] или боковые кнопки мыши вернут тебя туда, где ты уже был.",
 	"tip.statusAgeBadge.title": "Сколько прошло с момента перехода",

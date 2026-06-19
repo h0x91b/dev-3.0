@@ -1,0 +1,1 @@
+Inline diff-review comments now persist per task in local storage, so they survive diff reloads, leaving the viewer, and app restarts — an accidental clipboard clobber no longer loses your review. A new "Reset review" button (with confirmation) clears them when you're done.

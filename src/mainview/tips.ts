@@ -18,6 +18,12 @@ export interface Tip {
 
 const ALL_TIPS: Tip[] = [
 	{
+		id: "diff-review-persists",
+		titleKey: "tip.diffReviewPersists.title",
+		bodyKey: "tip.diffReviewPersists.body",
+		icon: "\u{F0193}", // nf-md-content_save
+	},
+	{
 		id: "create-task-inline-label",
 		titleKey: "tip.createTaskInlineLabel.title",
 		bodyKey: "tip.createTaskInlineLabel.body",
