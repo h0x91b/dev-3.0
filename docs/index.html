@@ -8,7 +8,18 @@
 <meta property="og:title" content="dev-3.0 — Terminal-Centric Project Manager for AI Agents">
 <meta property="og:description" content="Manage dozens of AI coding agents in parallel. Kanban board meets terminal.">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="dev-3.0">
+<meta property="og:url" content="https://dev3.h0x91b.com/">
+<meta property="og:image" content="https://dev3.h0x91b.com/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="dev-3.0 — terminal-centric project manager for AI coding agents">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="dev-3.0 — Terminal-Centric Project Manager for AI Agents">
+<meta name="twitter:description" content="Manage dozens of AI coding agents in parallel. Kanban board meets terminal.">
+<meta name="twitter:image" content="https://dev3.h0x91b.com/og-image.jpg">
 <meta name="theme-color" content="#060915">
+<link rel="canonical" href="https://dev3.h0x91b.com/">
 <link rel="icon" type="image/png" href="icon.png">
 <!-- Google Analytics (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-L1NSQH6FGY"></script>
@@ -1243,14 +1254,18 @@ footer {
         <div class="window-title" id="windowTitle">dev-3.0</div>
       </div>
       <div class="carousel-track" id="heroCarousel">
-        <img src="screenshots/kanban-hover-preview.jpg" alt="Kanban board with live terminal preview popup" class="active" data-duration="5000" data-caption="Hover any task to peek at its terminal — live, real-time">
+        <img src="screenshots/kanban-board.jpg" alt="Kanban board — tasks across To Do, Working, Review and Done columns" class="active" data-duration="5000" data-caption="One board for every task and every agent — drag to move, glance to track">
         <img src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000" data-caption="All your projects and agents — one dashboard">
-        <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel — Claude, Gemini, Codex in one window" data-duration="4000" data-caption="Every task is an isolated worktree. Run multiple agents inside each.">
-        <img src="screenshots/completed-column.jpg" alt="286 completed tasks with pipeline progress indicators" data-duration="3000" data-caption="286 tasks done by AI — and counting">
+        <img src="screenshots/terminal-view.jpg" alt="Three AI agents running in parallel — Claude Code, Codex and opencode in one task window" data-duration="4000" data-caption="Every task is an isolated worktree. Run multiple agents inside each.">
+        <img src="screenshots/remote-access.jpg" alt="Remote Access modal with a QR code to open the UI on a phone" data-duration="4500" data-caption="Run it on a server, drive it from your browser — even your phone">
+        <img src="screenshots/code-review.jpg" alt="Built-in diff viewer with syntax highlighting and an inline review comment" data-duration="4500" data-caption="Review every diff in-app — syntax highlight, inline comments, export to the agent">
+        <img src="screenshots/bug-hunters.jpg" alt="Spawn bug hunters dialog — launch several read-only bug-hunting agents" data-duration="4000" data-caption="Unleash a pack of read-only bug hunters — one click">
+        <img src="screenshots/command-palette.jpg" alt="Command palette listing runnable actions" data-duration="3500" data-caption="Run any command from the keyboard — ⌘⇧P">
+        <img src="screenshots/project-quick-switch.jpg" alt="Project quick-switch palette with fuzzy search" data-duration="3500" data-caption="Jump to any project instantly — ⌘K">
+        <img src="screenshots/task-switcher.jpg" alt="Task switcher overlay with live terminal previews" data-duration="4000" data-caption="Flip between tasks with live previews — Option+Tab">
         <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000" data-caption="Dark or light — your workspace, your rules">
         <img src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts by different agents" data-duration="4000" data-caption="One task. Multiple attempts. Pick the best result.">
         <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000" data-caption="Pick any agent. Hit Run. That's it.">
-        <img src="screenshots/file-browser.jpg" alt="Built-in file browser with tree view and diff preview" data-duration="3500" data-caption="Browse files, review diffs, manage tasks — all without leaving the app">
         <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000" data-caption="One config for all your agents and projects">
       </div>
       <div class="carousel-progress" id="carouselProgress"></div>
@@ -1286,7 +1301,7 @@ footer {
       </div>
       <div class="tech-bar-item">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
-        Aider
+        opencode
       </div>
       <div class="tech-bar-item">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
@@ -1422,7 +1437,7 @@ footer {
             <div class="window-title">Terminal &mdash; multiple agents in one task</div>
           </div>
           <!-- Multiple agents running in parallel in split panes -->
-          <img src="screenshots/terminal-view.jpg" alt="Four AI agents running in parallel in split panes" class="step-screenshot"
+          <img src="screenshots/terminal-view.jpg" alt="Three AI agents running in parallel in split panes" class="step-screenshot"
                onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.jpg</span></div>'">
         </div>
       </div>
@@ -1458,9 +1473,8 @@ footer {
           </p>
         </div>
         <div class="feature-hero-visual">
-          <!-- Replace with: screenshots/hover-preview.png -->
-          <img src="screenshots/hover-preview.png" alt="Live terminal preview on hover" style="width:100%;display:block;border-radius:8px;"
-               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\' style=\'aspect-ratio:4/3\'><svg width=\'36\' height=\'36\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'14\' rx=\'2\'/><line x1=\'8\' y1=\'21\' x2=\'16\' y2=\'21\'/><line x1=\'12\' y1=\'17\' x2=\'12\' y2=\'21\'/></svg><span>screenshots/hover-preview.png</span></div>'">
+          <img src="screenshots/hover-preview.gif" alt="Live per-second progress on kanban cards across columns" style="width:100%;display:block;border-radius:8px;"
+               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\' style=\'aspect-ratio:4/3\'><svg width=\'36\' height=\'36\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'14\' rx=\'2\'/><line x1=\'8\' y1=\'21\' x2=\'16\' y2=\'21\'/><line x1=\'12\' y1=\'17\' x2=\'12\' y2=\'21\'/></svg><span>screenshots/hover-preview.gif</span></div>'">
         </div>
       </div>
 
@@ -1576,6 +1590,27 @@ footer {
         </div>
       </div>
 
+      <!-- Feature: Keyboard Shortcuts (hero with screenshot) -->
+      <div class="feature-card feature-hero reveal reveal-delay-2" style="--card-accent: var(--accent);">
+        <div>
+          <div class="feature-icon fi-blue">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
+          </div>
+          <h3>Every shortcut in one panel</h3>
+          <p>
+            Hit <code>&#8984;/</code> to open a single reference for
+            <strong style="color:var(--text-1)">every</strong> keybinding &mdash; app navigation,
+            quick-switch and zoom on the <strong style="color:var(--text-1)">App</strong> tab, and the
+            <strong style="color:var(--text-1)">complete tmux keymap</strong> (panes, layouts, windows,
+            sessions, copy mode) on the <strong style="color:var(--text-1)">Terminal</strong> tab.
+            Stop memorizing &mdash; just look it up.
+          </p>
+        </div>
+        <div class="feature-hero-visual">
+          <img src="screenshots/keyboard-shortcuts.jpg" alt="Keyboard Shortcuts panel showing the tmux keymap — panes, layout, windows, sessions" style="width:100%;display:block;border-radius:8px;">
+        </div>
+      </div>
+
       <!-- Feature: Custom Workflow -->
       <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
         <div class="feature-icon fi-purple">
@@ -1601,6 +1636,51 @@ footer {
         </div>
         <h3>Copy-on-Write cloning</h3>
         <p>Clone <code>node_modules</code>, <code>.venv</code>, and other heavy directories into worktrees instantly with near-zero disk usage. Auto-detect finds well-known paths across 12+ ecosystems.</p>
+      </div>
+
+      <!-- Feature: Auto-allocated Ports -->
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--green);">
+        <div class="feature-icon fi-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </div>
+        <h3>Auto-allocated ports</h3>
+        <p>Set a port count per project and every task gets its own free ports, injected as <code>$DEV3_PORT0</code>, <code>$DEV3_PORT1</code>&hellip; into your scripts. No more port clashes between parallel dev servers.</p>
+      </div>
+
+      <!-- Feature: Window per Monitor -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="18" height="13" rx="2"/><path d="M22 7v11a2 2 0 01-2 2H6"/></svg>
+        </div>
+        <h3>A window per monitor</h3>
+        <p>Press <code>&#8984;&#8679;N</code> to open another dev-3.0 window and put a different project on each screen. Close any window without quitting the app.</p>
+      </div>
+
+      <!-- Feature: Column Agents -->
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--purple);">
+        <div class="feature-icon fi-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
+        </div>
+        <h3>Column agents</h3>
+        <p>Give any column an agent that <strong style="color:var(--text-1)">auto-spawns</strong> the moment a task lands in it &mdash; plus a per-column instruction telling the AI exactly when to move work there. Your board runs itself.</p>
+      </div>
+
+      <!-- Feature: Automatic AI Review -->
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 11 12 14 16 9"/></svg>
+        </div>
+        <h3>Automatic AI review</h3>
+        <p>Completed tasks pass through a configurable AI reviewer before they reach you. Pick the review agent, model, and prompt &mdash; it catches bugs and fixes the small stuff first.</p>
+      </div>
+
+      <!-- Feature: Monorepo File Filter -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--green);">
+        <div class="feature-icon fi-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        </div>
+        <h3>Monorepo file filter</h3>
+        <p>Working in a giant monorepo? Sparse-checkout just the directories each task needs &mdash; worktrees create faster and use a fraction of the disk.</p>
       </div>
     </div>
   </div>
@@ -1790,7 +1870,7 @@ footer {
         <div class="agent-badge-icon" style="background: var(--orange-glow); color: var(--orange);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
         </div>
-        Aider
+        opencode
       </div>
       <div class="agent-badge">
         <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
