@@ -50,7 +50,7 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 - **Kanban workflow** — drag tasks between columns (To Do → In Progress → Review → Completed)
 - **Git worktree per task** — full repo isolation, no merge conflicts between parallel tasks
 - **Multiple agents per task** — run several agents side by side in the same worktree via tmux split panes
-- **Multi-agent launch** — pick any combination of Claude, Cursor, Codex, Gemini, Aider, or any CLI agent — each with its own config
+- **Multi-agent launch** — pick any combination of Claude, Cursor, Codex, Gemini, opencode, or any CLI agent — each with its own config
 - **Remote / browser mode** — run headless on a server and drive the full UI from any browser (even your phone) with `dev3 remote` — QR login plus an optional Cloudflare tunnel
 - **Multi-project dashboard** — manage multiple projects from a single Activity view with live agent status
 - **Live terminal preview** — hover any card to see what the agent is doing right now
