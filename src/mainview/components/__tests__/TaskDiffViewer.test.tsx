@@ -2284,6 +2284,36 @@ describe("TaskDiffViewer", () => {
 		expect(localStorage.getItem(reviewKey)).toBeNull();
 	});
 
+	it("still saves new comments when the existing localStorage entry is corrupt JSON", async () => {
+		const user = userEvent.setup();
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+
+		// Seed a corrupt entry for this task so JSON.parse throws on the first write attempt.
+		localStorage.setItem(reviewKey, "{not valid json");
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "after corrupt");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		// The write must succeed despite the corrupt existing entry — not be silently
+		// swallowed by the outer catch that would have wrapped the inner JSON.parse.
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toContain("after corrupt");
+		});
+	});
+
 	it("opens the diff viewer in uncommitted mode by default even when the caller requested branch mode", async () => {
 		render(
 			<I18nProvider>

@@ -924,9 +924,14 @@ function writeStoredReview(taskId: string, state: InlineDiffCommentsState): void
 		let savedAt = Date.now();
 		const existingRaw = localStorage.getItem(reviewStorageKey(taskId));
 		if (existingRaw) {
-			const existing = JSON.parse(existingRaw) as Partial<StoredReview> | null;
-			if (typeof existing?.savedAt === "number") {
-				savedAt = existing.savedAt;
+			try {
+				const existing = JSON.parse(existingRaw) as Partial<StoredReview> | null;
+				if (typeof existing?.savedAt === "number") {
+					savedAt = existing.savedAt;
+				}
+			} catch {
+				// Corrupt existing entry — proceed with fresh savedAt so the write
+				// still completes instead of being silently swallowed by the outer catch.
 			}
 		}
 		const payload: StoredReview = { savedAt, comments: state };
