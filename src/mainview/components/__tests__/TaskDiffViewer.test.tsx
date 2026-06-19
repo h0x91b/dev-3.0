@@ -2314,6 +2314,55 @@ describe("TaskDiffViewer", () => {
 		});
 	});
 
+	it("does not write task A review to task B storage when task.id changes mid-render", async () => {
+		const user = userEvent.setup();
+		const reviewKeyA = "dev3-inline-diff-review-v1:t1";
+		const reviewKeyB = "dev3-inline-diff-review-v1:t2";
+		const taskB: Task = { ...task, id: "t2", worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" };
+
+		const { rerender } = render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "task A note");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKeyA)).toContain("task A note");
+		});
+
+		// Simulate the user clicking a different task in the kanban while the diff viewer
+		// is still mounted — useTaskInlineDiffState resets inlineDiffRequest to null one
+		// render later, but during that intermediate render task.id has already advanced.
+		// The persist effect must not cross-write task A's review under task B's key.
+		rerender(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={taskB}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Give React a moment to flush all effects from the re-render.
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKeyA)).toContain("task A note");
+		});
+		// Task B's storage must NOT have been seeded with task A's review data.
+		expect(localStorage.getItem(reviewKeyB)).toBeNull();
+	});
+
 	it("opens the diff viewer in uncommitted mode by default even when the caller requested branch mode", async () => {
 		render(
 			<I18nProvider>

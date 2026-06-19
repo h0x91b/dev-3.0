@@ -1917,10 +1917,23 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setEditingCommentDraft("");
 	}, [currentRequest.focusFile, payload, task.id]);
 
+	// Tracks the task.id that inlineComments currently belongs to.
+	// Updated in the persist effect whenever task.id changes, so we can detect
+	// the intermediate render where task.id has advanced but inlineComments still
+	// holds the previous task's data (e.g. the user clicked a different task card
+	// in the kanban while the diff viewer was open — useTaskInlineDiffState resets
+	// inlineDiffRequest to null one render later, but the persist effect fires in
+	// that intermediate render and must not cross-contaminate storage).
+	const inlineCommentsOwnerRef = useRef(task.id);
+
 	// Persist the review on every change. Gated on `payload` so the transient
 	// in-memory clear during a diff (re)load does not erase the stored review.
+	// Also gated on the task.id matching the owner ref: if they diverge, task.id
+	// has just changed and inlineComments still contains the previous task's data,
+	// so we must skip the write.
 	useEffect(() => {
-		if (!payload) {
+		if (!payload || inlineCommentsOwnerRef.current !== task.id) {
+			inlineCommentsOwnerRef.current = task.id;
 			return;
 		}
 		writeStoredReview(task.id, inlineComments);
