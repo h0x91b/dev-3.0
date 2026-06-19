@@ -2,6 +2,12 @@
 
 Append-only log of UX architecture decisions. Each entry: date, decision, rationale, evidence/status.
 
+## 2026-06-19 — Both palettes surfaced in the native View menu (discoverability)
+
+- **Decision:** Added `Go to Project… (⌘K)` and `Command Palette… (⇧⌘P)` to the **top of the View menu** (`src/bun/application-menu.ts`), grouped above Show Dashboard with a separator. Clicking routes through `handleMenuAction` → a `menu:open-*` CustomEvent → `App.tsx`, which **opens** (not toggles) the palette. The native menu is the canonical action surface (2026-05-29), so the keyboard-only palettes belong there even though they intentionally have no DOM/toolbar button.
+- **No native accelerator:** Electrobun menu accelerators are single-character only — chords like `Shift+P` can't be bound (decision 044). The palettes also *toggle* via their `App.tsx` keydown handlers, so a native Cmd+K accelerator would double-fire or block close-toggle. The keydown handlers stay the sole shortcut owners; the chord is shown in the label text instead (the menu renders on macOS only).
+- **Status:** `Observed` (implemented: `application-menu.ts` View items, `menuRouter.ts` `open-project-switch`/`open-command-palette` cases, `App.tsx` listeners, decision record 074). `/ux-principal` consulted (manifest read; placement/accelerator decided before coding).
+
 ## 2026-06-18 — Action palette (Cmd+Shift+P) added; navigation-vs-action split resolved as two-surfaces-one-shell
 
 - **Decision:** Added the **action palette** (`Cmd/Ctrl+Shift+P`), the action counterpart to the Cmd+K navigation palette promised in the entry below. Resolves the open question (one-palette-with-modes vs. two-surfaces) as **two surfaces on one shared shell**: extracted `PaletteShell` (portal, fuzzy input, keyboard nav, highlight) from `ProjectQuickSwitchModal`; both palettes now render on it. The action palette fuzzy-matches command **labels** and on Enter runs the command via the existing `handleMenuAction` router — so it is a **DOM mirror of the native application menu, not a second command runner**. Commands live in `src/mainview/commands.ts` (id = `handleMenuAction` action string, labelKey, category, scope). Only commands runnable in the current route are listed (`scope: always | project | task`).

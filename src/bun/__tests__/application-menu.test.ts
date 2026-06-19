@@ -58,6 +58,28 @@ describe("buildApplicationMenu", () => {
 		});
 	});
 
+	it("exposes the palettes at the top of View, always enabled, with no native accelerator", () => {
+		const menu = buildApplicationMenu({ hasTask: false, hasProject: false, hasTerminal: false }) as AnyMenuItem[];
+		const viewMenu = findLabeledMenu(menu, "View");
+		const submenu = viewMenu?.submenu ?? [];
+
+		// First two actionable items are the palettes, ahead of Show Dashboard.
+		const actionable = submenu.filter((item) => item.action);
+		expect(actionable[0]).toMatchObject({
+			label: "Go to Project… (⌘K)",
+			action: MENU_ACTIONS.openProjectSwitch,
+			enabled: true,
+		});
+		expect(actionable[1]).toMatchObject({
+			label: "Command Palette… (⇧⌘P)",
+			action: MENU_ACTIONS.openCommandPalette,
+			enabled: true,
+		});
+		// Chords / toggles are owned by the renderer — no native accelerator.
+		expect(actionable[0].accelerator).toBeUndefined();
+		expect(actionable[1].accelerator).toBeUndefined();
+	});
+
 	it("keeps Add Local Project on Command+P", () => {
 		const menu = buildApplicationMenu() as AnyMenuItem[];
 		const fileMenu = findLabeledMenu(menu, "File");

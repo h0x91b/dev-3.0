@@ -109,6 +109,15 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			window.dispatchEvent(new CustomEvent("menu:open-add-project"));
 			return;
 
+		// ── Keyboard palettes — App.tsx owns the toggle shortcuts; the menu just
+		// opens them (idempotent) via CustomEvent. ──
+		case "open-project-switch":
+			window.dispatchEvent(new CustomEvent("menu:open-project-switch"));
+			return;
+		case "open-command-palette":
+			window.dispatchEvent(new CustomEvent("menu:open-command-palette"));
+			return;
+
 		// ── Project: navigation ──
 		case "project-settings": {
 			const projectId = currentProjectId(state);
