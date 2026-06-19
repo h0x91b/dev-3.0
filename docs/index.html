@@ -1614,6 +1614,24 @@ footer {
         <h3>Copy-on-Write cloning</h3>
         <p>Clone <code>node_modules</code>, <code>.venv</code>, and other heavy directories into worktrees instantly with near-zero disk usage. Auto-detect finds well-known paths across 12+ ecosystems.</p>
       </div>
+
+      <!-- Feature: Auto-allocated Ports -->
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--green);">
+        <div class="feature-icon fi-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </div>
+        <h3>Auto-allocated ports</h3>
+        <p>Set a port count per project and every task gets its own free ports, injected as <code>$DEV3_PORT0</code>, <code>$DEV3_PORT1</code>&hellip; into your scripts. No more port clashes between parallel dev servers.</p>
+      </div>
+
+      <!-- Feature: Window per Monitor -->
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="18" height="13" rx="2"/><path d="M22 7v11a2 2 0 01-2 2H6"/></svg>
+        </div>
+        <h3>A window per monitor</h3>
+        <p>Press <code>&#8984;&#8679;N</code> to open another dev-3.0 window and put a different project on each screen. Close any window without quitting the app.</p>
+      </div>
     </div>
   </div>
 </section>
