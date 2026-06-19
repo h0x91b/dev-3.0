@@ -11,6 +11,7 @@ import gaugeDemo from "./en/gaugeDemo";
 import overview from "./en/overview";
 import scripts from "./en/scripts";
 import tunnels from "./en/tunnels";
+import keymap from "./en/keymap";
 
 const en = {
 	...common,
@@ -26,6 +27,7 @@ const en = {
 	...overview,
 	...scripts,
 	...tunnels,
+	...keymap,
 } as const;
 
 export type TranslationKey = keyof typeof en;

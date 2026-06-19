@@ -289,9 +289,12 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			navigate(ctx, { screen: "home-terminal" });
 			return;
 
-		// ── Cheat sheet modal: open via CustomEvent — App.tsx wires the modal. ──
+		// ── Shortcut reference overlay: open via CustomEvent — App.tsx wires the modal. ──
 		case "term-cheat-sheet":
 			window.dispatchEvent(new CustomEvent("menu:show-tmux-cheat-sheet"));
+			return;
+		case "help-keyboard-shortcuts":
+			window.dispatchEvent(new CustomEvent("menu:show-keyboard-shortcuts"));
 			return;
 
 		default:

@@ -1,0 +1,41 @@
+const keymap = {
+	// Keyboard shortcuts reference overlay (KeyboardShortcutsModal)
+	"keymap.title": "Keyboard Shortcuts",
+	"keymap.subtitle": "All app and terminal shortcuts in one place",
+	"keymap.tab.app": "App",
+	"keymap.tab.terminal": "Terminal (tmux)",
+	"keymap.footerEscape": "Esc to close",
+
+	// Categories (App tab)
+	"keymap.category.navigation": "Navigation",
+	"keymap.category.create": "Create",
+	"keymap.category.view": "View & Zoom",
+	"keymap.category.terminal": "Terminal",
+	"keymap.category.app": "Application",
+
+	// Shortcut descriptions (App tab)
+	"keymap.shortcut.goToProject": "Go to project (quick switch)",
+	"keymap.shortcut.commandPalette": "Command palette",
+	"keymap.shortcut.back": "Back",
+	"keymap.shortcut.forward": "Forward",
+	"keymap.shortcut.switchProject": "Switch to project 1–9 (keep current view)",
+	"keymap.shortcut.switchProjectFlip": "Switch to project 1–9 (flip board/task view)",
+	"keymap.shortcut.taskSwitcher": "Cycle active tasks (this project)",
+	"keymap.shortcut.taskSwitcherGlobal": "Cycle active tasks (all projects)",
+	"keymap.shortcut.escape": "Close dialog / step back",
+	"keymap.shortcut.newTask": "New task",
+	"keymap.shortcut.addProject": "Add project",
+	"keymap.shortcut.newWindow": "New window",
+	"keymap.shortcut.settings": "Settings",
+	"keymap.shortcut.zoomIn": "Zoom in",
+	"keymap.shortcut.zoomOut": "Zoom out",
+	"keymap.shortcut.zoomReset": "Reset zoom",
+	"keymap.shortcut.hardRefresh": "Hard refresh",
+	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
+	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
+	"keymap.shortcut.toggleHomeTerminal": "Toggle home terminal",
+	"keymap.shortcut.quit": "Quit",
+	"keymap.shortcut.hide": "Hide app",
+} as const;
+
+export default keymap;

@@ -12,6 +12,7 @@ import gaugeDemo from "./es/gaugeDemo";
 import overview from "./es/overview";
 import scripts from "./es/scripts";
 import tunnels from "./es/tunnels";
+import keymap from "./es/keymap";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -27,6 +28,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...overview,
 	...scripts,
 	...tunnels,
+	...keymap,
 };
 
 export default es;

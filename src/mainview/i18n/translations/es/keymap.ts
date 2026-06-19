@@ -1,0 +1,38 @@
+const keymap = {
+	"keymap.title": "Atajos de teclado",
+	"keymap.subtitle": "Todos los atajos de la app y del terminal en un solo lugar",
+	"keymap.tab.app": "App",
+	"keymap.tab.terminal": "Terminal (tmux)",
+	"keymap.footerEscape": "Esc para cerrar",
+
+	"keymap.category.navigation": "Navegación",
+	"keymap.category.create": "Crear",
+	"keymap.category.view": "Vista y zoom",
+	"keymap.category.terminal": "Terminal",
+	"keymap.category.app": "Aplicación",
+
+	"keymap.shortcut.goToProject": "Ir al proyecto (cambio rápido)",
+	"keymap.shortcut.commandPalette": "Paleta de comandos",
+	"keymap.shortcut.back": "Atrás",
+	"keymap.shortcut.forward": "Adelante",
+	"keymap.shortcut.switchProject": "Cambiar al proyecto 1–9 (mantener vista)",
+	"keymap.shortcut.switchProjectFlip": "Cambiar al proyecto 1–9 (alternar vista tablero/tarea)",
+	"keymap.shortcut.taskSwitcher": "Cambiar entre tareas activas (este proyecto)",
+	"keymap.shortcut.taskSwitcherGlobal": "Cambiar entre tareas activas (todos los proyectos)",
+	"keymap.shortcut.escape": "Cerrar diálogo / volver atrás",
+	"keymap.shortcut.newTask": "Nueva tarea",
+	"keymap.shortcut.addProject": "Añadir proyecto",
+	"keymap.shortcut.newWindow": "Nueva ventana",
+	"keymap.shortcut.settings": "Ajustes",
+	"keymap.shortcut.zoomIn": "Acercar",
+	"keymap.shortcut.zoomOut": "Alejar",
+	"keymap.shortcut.zoomReset": "Restablecer zoom",
+	"keymap.shortcut.hardRefresh": "Recarga completa",
+	"keymap.shortcut.keyboardShortcuts": "Mostrar este panel de atajos de teclado",
+	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",
+	"keymap.shortcut.toggleHomeTerminal": "Alternar terminal de inicio",
+	"keymap.shortcut.quit": "Salir",
+	"keymap.shortcut.hide": "Ocultar app",
+};
+
+export default keymap;
