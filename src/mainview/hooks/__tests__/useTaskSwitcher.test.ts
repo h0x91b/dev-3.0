@@ -93,6 +93,12 @@ describe("useTaskSwitcher", () => {
 		expect(result.current.session!.index).toBe(1);
 	});
 
+	it("does not open a session while disabled", () => {
+		const { result } = mount({ disabled: true });
+		keydown({ key: "Tab", ...MOD });
+		expect(result.current.session).toBeNull();
+	});
+
 	it("opens in global scope across projects when Shift is held", async () => {
 		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
 			{ projectId: "p1", tasks: [task("a", 1), task("x", 5)] },

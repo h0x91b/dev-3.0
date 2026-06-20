@@ -14,11 +14,27 @@ interface TaskHintOverlayProps {
 	onExit: () => void;
 }
 
-/** Is the element rendered and at least partially inside the viewport? */
-function isVisibleInViewport(el: HTMLElement): boolean {
+/**
+ * A card is hintable only if it's on screen AND actually the top-most element at
+ * its badge anchor. The occlusion test does double duty:
+ *   - cards hidden behind a modal/palette backdrop are skipped, so pressing `f`
+ *     while a dialog is open yields no hints and the overlay closes itself;
+ *   - cards scrolled under a column's own scroll-clip or the page header are
+ *     skipped, so no phantom badge floats in the header over an off-screen card.
+ */
+function isHintable(el: HTMLElement): boolean {
 	const r = el.getBoundingClientRect();
 	if (r.width === 0 || r.height === 0) return false;
-	return r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
+	if (r.bottom <= 0 || r.right <= 0 || r.top >= window.innerHeight || r.left >= window.innerWidth) {
+		return false;
+	}
+	// Probe just inside the top-left, where the badge sits.
+	const x = Math.max(0, Math.min(window.innerWidth - 1, r.left + 8));
+	const y = Math.max(0, Math.min(window.innerHeight - 1, r.top + 8));
+	const topEl = typeof document.elementFromPoint === "function" ? document.elementFromPoint(x, y) : null;
+	// No layout engine (e.g. jsdom) → can't test occlusion; trust the viewport check.
+	if (!topEl) return true;
+	return el.contains(topEl);
 }
 
 /**
@@ -38,7 +54,7 @@ function scanTargets(): Array<{ id: string; element: HTMLElement }> {
 		const id = el.getAttribute("data-task-id");
 		if (!id) continue;
 		if (el.closest('[role="dialog"]')) continue;
-		if (!isVisibleInViewport(el)) continue;
+		if (!isHintable(el)) continue;
 		// Not the innermost element (it wraps another node with the same id).
 		if (el.querySelector(`[data-task-id="${CSS.escape(id)}"]`)) continue;
 		if (!byId.has(id)) byId.set(id, el);

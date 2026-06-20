@@ -280,6 +280,7 @@ function App() {
 		currentTaskId: routeTaskId(state.route),
 		mru: state.taskMru,
 		navigate,
+		disabled: hintMode,
 	});
 	const switcherProjectById = useMemo(() => {
 		const map = new Map<string, Project>();
@@ -498,18 +499,19 @@ function App() {
 					navigateToProject(available[idx].id);
 				}
 			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
-				// `f` — Vimium-style task hints. Only on a project board, only when
-				// nothing else is grabbing the keyboard (a focused field, the
-				// terminal, or an open modal/palette).
+				// `f` — Vimium-style task hints. Only on a project board, and only
+				// when no field/terminal has focus. We intentionally don't enumerate
+				// open modals here: every dialog/palette covers the board with a
+				// full-screen backdrop, so the overlay's occlusion check finds no
+				// cards beneath it and closes itself immediately.
 				if (state.route.screen !== "project") return;
-				if (createTaskProjectId || showAddProjectModal || showQuitDialog || showCommandPalette || showProjectSwitch || shortcutsModal.open || switcher.session) return;
 				if (isTypingContext()) return;
 				e.preventDefault();
 				e.stopPropagation();
 				setHintMode(true);
 			}
 		},
-		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, shortcutsModal.open, showAddProjectModal, showCommandPalette, showProjectSwitch, showQuitDialog, state.projects, state.route, switcher.session],
+		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 

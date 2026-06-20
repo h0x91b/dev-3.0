@@ -314,7 +314,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					activeTaskId: task.id,
 				});
 			}
-		} else if ((isCompleted || isCancelled) && !menuOpen) {
+		} else if ((isCompleted || isCancelled || isTodo) && !menuOpen) {
+			// Non-active cards (todo/completed/cancelled) have no terminal to open,
+			// so a body click surfaces the task's detail. Todo previously only did
+			// this from the title; matching it here keeps clicks consistent and lets
+			// the keyboard hint ("jump to task") land somewhere for todo cards too.
 			setDetailOpen(true);
 		}
 	}

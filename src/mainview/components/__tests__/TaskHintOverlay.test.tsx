@@ -134,6 +134,24 @@ describe("TaskHintOverlay", () => {
 		expect(labels[0].getAttribute("data-hint")).toBe("fa");
 	});
 
+	it("skips cards occluded at their badge anchor (e.g. behind a modal/header)", () => {
+		const t1 = makeCard("t1", 0);
+		makeCard("t2", 60);
+		const cover = document.createElement("div"); // stands in for a modal backdrop / header
+		document.body.appendChild(cover);
+		const orig = document.elementFromPoint;
+		// t1's anchor resolves to itself (visible); t2's resolves to the cover (occluded).
+		document.elementFromPoint = ((_x: number, y: number) => (y >= 60 ? cover : t1)) as typeof document.elementFromPoint;
+		try {
+			renderOverlay();
+			const labels = screen.getAllByTestId("task-hint-label");
+			expect(labels).toHaveLength(1);
+			expect(labels[0].getAttribute("data-hint")).toBe("fa");
+		} finally {
+			document.elementFromPoint = orig;
+		}
+	});
+
 	it("does not click a target that detached before commit", () => {
 		const t1 = makeCard("t1", 0);
 		const click1 = vi.fn();
