@@ -1,0 +1,1 @@
+The "Unsaved Changes" confirmation shown when completing or cancelling a task with uncommitted changes now displays the task's title and overview in an info card, so you can tell which task's worktree and branch are about to be deleted.
