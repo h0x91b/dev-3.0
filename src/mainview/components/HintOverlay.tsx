@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
-import { DEFAULT_HINT_CHARS, generateHintStrings } from "../utils/hintLabels";
+import { codeToHintChar, DEFAULT_HINT_CHARS, generateHintStrings } from "../utils/hintLabels";
 
 interface HintTarget {
 	id: string;
@@ -13,7 +13,7 @@ interface HintTarget {
 const KBD =
 	"inline-flex items-center rounded border border-edge-active bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold leading-none text-fg-2 shadow-sm";
 
-interface TaskHintOverlayProps {
+interface HintOverlayProps {
 	/** Called when the overlay should close (committed, cancelled, or empty). */
 	onExit: () => void;
 }
@@ -42,29 +42,29 @@ function isHintable(el: HTMLElement): boolean {
 }
 
 /**
- * Collect one clickable element per task currently on screen.
+ * Collect one clickable element per on-screen hint target.
  *
- * A single task can carry `data-task-id` on more than one element — the column
- * wraps each card in a `<div data-task-id>` for drag-and-drop AND the card root
- * itself has it. Only the innermost element owns the navigation `onClick`, so
- * for each id we keep the element that has no descendant sharing the same id.
- * Clones living inside dialogs/popovers (e.g. the stuck-preparation popover)
- * are skipped — they have no navigation handler.
+ * Any element carrying `data-hint-id` and a working `onClick` is a target:
+ * task cards, dashboard project rows, sidebar task rows, … The attribute lives
+ * only on the innermost clickable element (never on a drag-and-drop wrapper),
+ * so a plain "first element per id wins" dedup is enough; the `querySelector`
+ * guard below is a cheap safety net against any accidental nesting. Clones
+ * living inside dialogs/popovers are skipped — they have no navigation handler.
  */
 function scanTargets(): Array<{ id: string; element: HTMLElement }> {
-	const all = Array.from(document.querySelectorAll<HTMLElement>("[data-task-id]"));
+	const all = Array.from(document.querySelectorAll<HTMLElement>("[data-hint-id]"));
 	const byId = new Map<string, HTMLElement>();
 	for (const el of all) {
-		const id = el.getAttribute("data-task-id");
+		const id = el.getAttribute("data-hint-id");
 		if (!id) continue;
 		if (el.closest('[role="dialog"]')) continue;
 		if (!isHintable(el)) continue;
 		// Not the innermost element (it wraps another node with the same id).
-		if (el.querySelector(`[data-task-id="${CSS.escape(id)}"]`)) continue;
+		if (el.querySelector(`[data-hint-id="${CSS.escape(id)}"]`)) continue;
 		if (!byId.has(id)) byId.set(id, el);
 	}
-	// Order spatially: down each column (left→right), top→bottom within a column,
-	// so the shortest/earliest hints land on the top-left cards.
+	// Order spatially: left→right, then top→bottom, so the shortest/earliest
+	// hints land on the top-left targets.
 	return Array.from(byId, ([id, element]) => ({ id, element })).sort((a, b) => {
 		const ra = a.element.getBoundingClientRect();
 		const rb = b.element.getBoundingClientRect();
@@ -72,7 +72,7 @@ function scanTargets(): Array<{ id: string; element: HTMLElement }> {
 	});
 }
 
-function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
+function HintOverlay({ onExit }: HintOverlayProps) {
 	const t = useT();
 	const [typed, setTyped] = useState("");
 	// Mirror of `typed` for the keydown handler so it stays pure (no reading
@@ -143,11 +143,13 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 			// Let real chords (Cmd/Ctrl/Alt+key) fall through untouched.
 			if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-			const key = e.key.toLowerCase();
-			if (key.length === 1 && DEFAULT_HINT_CHARS.includes(key)) {
+			// Match on the physical key position (`e.code`), not `e.key`, so hints
+			// can be typed on any keyboard layout (Cyrillic, Hebrew, …).
+			const ch = codeToHintChar(e.code);
+			if (ch && DEFAULT_HINT_CHARS.includes(ch)) {
 				e.preventDefault();
 				e.stopImmediatePropagation();
-				const next = typedRef.current + key;
+				const next = typedRef.current + ch;
 				const matches = targetsRef.current.filter((tg) => tg.hint.startsWith(next));
 				if (matches.length === 0) return; // dead key — ignore
 				if (matches.length === 1 && matches[0].hint === next) {
@@ -157,9 +159,9 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 				setTypedBoth(next);
 				return;
 			}
-			// Any other single key: swallow it so it can't leak to the board, but
+			// Any other single key: swallow it so it can't leak through, but
 			// don't exit — only Esc exits.
-			if (key.length === 1) {
+			if (e.key.length === 1) {
 				e.preventDefault();
 				e.stopImmediatePropagation();
 			}
@@ -191,7 +193,7 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 	return createPortal(
 		<div
 			className="fixed inset-0 z-[70] pointer-events-none"
-			data-testid="task-hint-overlay"
+			data-testid="hint-overlay"
 			data-hint-typed={typed}
 		>
 			{visible.map(({ target, rect }) => (
@@ -201,7 +203,7 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 						if (el) badgeRefs.current.set(target.id, el);
 						else badgeRefs.current.delete(target.id);
 					}}
-					data-testid="task-hint-label"
+					data-testid="hint-label"
 					data-hint={target.hint}
 					className="absolute flex items-center rounded-md border border-hint-border bg-hint px-1.5 py-0.5 font-mono text-[0.6875rem] font-bold uppercase leading-none tracking-wide text-hint-fg shadow-lg shadow-black/40"
 					style={{ top: rect.top + 4, left: rect.left + 4 }}
@@ -237,4 +239,4 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 	);
 }
 
-export default TaskHintOverlay;
+export default HintOverlay;

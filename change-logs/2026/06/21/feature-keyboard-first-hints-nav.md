@@ -1,0 +1,3 @@
+Generalized the Vimium-style hint overlay into a cross-surface navigation primitive: pressing F (or the new ⌘G alias) now labels every task, project row, and sidebar task on screen — dashboard and task view included — and hint typing plus activation are matched on physical key codes, so they finally work on Cyrillic, Hebrew, and other non-Latin layouts. Also added a Linear/GitHub-style "go to" layer (G then D/P/T/S → dashboard/project/tasks/settings, plus G then a digit = project N and G P/T + digit = that project's board/tasks), "/" to focus the search box, and "C" as a bare-key alias for new task. Builds directly on Ittai Zeidman's original Vimium hint concept.
+
+Suggested by @ittaiz (h0x91b/dev-3.0#704)

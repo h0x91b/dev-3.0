@@ -704,6 +704,13 @@ const ALL_TIPS: Tip[] = [
 		icon: "\uF05B", // nf-fa-crosshairs
 		score: 4,
 	},
+	{
+		id: "keyboard-go-to",
+		titleKey: "tip.keyboardGoTo.title",
+		bodyKey: "tip.keyboardGoTo.body",
+		icon: "\uF11C", // nf-fa-keyboard_o
+		score: 3,
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

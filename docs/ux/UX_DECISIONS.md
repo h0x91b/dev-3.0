@@ -2,6 +2,12 @@
 
 Append-only log of UX architecture decisions. Each entry: date, decision, rationale, evidence/status.
 
+## 2026-06-21 — Hint navigation is a cross-surface primitive; keyboard-first expert layer
+
+- **Decision:** Promote the board-only Vimium hint (PR #704) to a **surface-agnostic** `HintOverlay` that scans `[data-hint-id]` (placed only on the innermost clickable element) and commits via `element.click()`. Targets: task cards, dashboard project rows + attention tasks, sidebar task rows. **Policy: a hint maps to a navigation/open destination only — never a mutation or destructive action** (settings/remove/reorder are not hinted), mirroring the palette's destructive-exclusion rule. Activation is **data-driven** (`querySelector("[data-hint-id]")`) rather than gated to one screen. Hotkey: keep bare **`F`** (Vimium standard) + add a Mac-friendly **`⌘G`** alias. Added a Linear/GitHub **`g`-prefix go-to** layer (`g` then `d`/`p`/`t`/`s` → dashboard/project/tasks/settings), **`/`** to focus search, and **`c`** as a bare-key alias for new task. All bare/sequence keys are matched on **`e.code`** (physical key) so they work on Cyrillic/Hebrew/any layout, and are gated by `isTypingContext()`.
+- **Rationale:** Generalizing the existing overlay (not a per-surface clone) avoids the "new component for old pattern" anti-pattern; the navigation-only policy avoids "row action explosion"/"dashboard junk drawer". The layout bug was the real defect — both activation and hint typing read `e.key`, so the whole feature was Latin-layout-only; `e.code` fixes it. `f` is kept because it is the world-standard hint key and `⌘G` gives a clean published chord; bare `g` is reserved for the go-to prefix (so hints must not consume it).
+- **Evidence/status:** `Observed` — `HintOverlay.tsx`, `utils/hintLabels.ts` (`codeToHintChar`), `App.tsx` (`useGlobalShortcut` chain, `GO_TO_TARGETS`, `findVisibleSearchInput`), `ActivityOverview.tsx`, `ActiveTasksSidebar.tsx`, `TaskCard.tsx`, `LabelFilterBar.tsx`, `keymap.ts`, i18n en/ru/es, tips (`task-hint-nav`, `keyboard-go-to`). Plan: `feature-plans/hint-navigation-generalization.md`. Decision record 076.
+
 ## 2026-06-19 — Keyboard-shortcut registry as single source of truth + a unified two-tab reference overlay
 
 - **Decision:** Establish `src/mainview/keymap.ts` as the **single source of truth** for every

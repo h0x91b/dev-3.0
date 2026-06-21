@@ -60,6 +60,7 @@ function LabelFilterBar({
 				<input
 					ref={inputRef}
 					type="text"
+					data-search-input="true"
 					value={searchQuery}
 					onChange={(e) => onSearchChange(e.target.value)}
 					onKeyDown={(e) => {

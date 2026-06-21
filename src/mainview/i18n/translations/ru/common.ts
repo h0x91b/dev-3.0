@@ -8,8 +8,8 @@ const common = {
 	"app.agentCompletionConfirm": "Завершить задачу",
 	"app.agentCompletionCancel": "Оставить сессию",
 
-	// Навигация по задачам в стиле Vimium
-	"hint.legend.jump": "перейти к задаче",
+	// Навигация в стиле Vimium
+	"hint.legend.jump": "перейти",
 	"hint.legend.undo": "стереть",
 	"hint.legend.cancel": "отмена",
 

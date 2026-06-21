@@ -8,8 +8,8 @@ const common = {
 	"app.agentCompletionConfirm": "Completar tarea",
 	"app.agentCompletionCancel": "Mantener sesión",
 
-	// Navegación de tareas estilo Vimium
-	"hint.legend.jump": "ir a una tarea",
+	// Navegación estilo Vimium
+	"hint.legend.jump": "ir",
 	"hint.legend.undo": "borrar",
 	"hint.legend.cancel": "cancelar",
 

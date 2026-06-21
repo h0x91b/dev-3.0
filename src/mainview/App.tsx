@@ -38,7 +38,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
-import TaskHintOverlay from "./components/TaskHintOverlay";
+import HintOverlay from "./components/HintOverlay";
 
 /**
  * True when keystrokes should go to a focused field or the terminal rather than
@@ -52,6 +52,21 @@ function isTypingContext(): boolean {
 	if (el.isContentEditable) return true;
 	if (el.closest('[data-terminal="true"]')) return true;
 	return false;
+}
+
+/** Parse a 1–9 project index from a physical digit code (`"Digit3"` → 3), layout-independent. */
+function digitFromCode(code: string): number | null {
+	const m = /^Digit([1-9])$/.exec(code);
+	return m ? Number(m[1]) : null;
+}
+
+/** First on-screen search input (board label filter, sidebar search), for the bare `/` shortcut. */
+function findVisibleSearchInput(): HTMLElement | null {
+	for (const el of document.querySelectorAll<HTMLElement>('[data-search-input="true"]')) {
+		const r = el.getBoundingClientRect();
+		if (r.width > 0 && r.height > 0) return el;
+	}
+	return null;
 }
 
 function App() {
@@ -271,6 +286,62 @@ function App() {
 			);
 		},
 		[navigate, state.route],
+	);
+
+	// `g`-prefix "go to" sequence (Linear/GitHub style), kept in refs so the
+	// global keydown handler stays pure. Tiny state machine:
+	//   g          → arm "verb": expect d/p/t/s, or a 1–9 digit (= project N, keep view)
+	//   g p / g t  → arm "index": expect an optional 1–9 digit (= project N board/tasks);
+	//                on timeout or a non-digit, fall back to the CURRENT project
+	//   g d / g s  → dashboard / settings (immediate)
+	const goToModeRef = useRef<null | { stage: "verb" } | { stage: "index"; view: "project" | "task" }>(null);
+	const goToTimerRef = useRef<number | null>(null);
+	const clearGoTo = useCallback(() => {
+		goToModeRef.current = null;
+		if (goToTimerRef.current !== null) {
+			window.clearTimeout(goToTimerRef.current);
+			goToTimerRef.current = null;
+		}
+	}, []);
+	const goToProjectView = useCallback(
+		(projectId: string, view: "project" | "task") =>
+			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId }),
+		[navigate],
+	);
+	const goToCurrentProject = useCallback(
+		(view: "project" | "task") => {
+			const projectId = "projectId" in state.route ? state.route.projectId : state.projects.find((p) => !p.deleted)?.id;
+			if (!projectId) return navigate({ screen: "dashboard" });
+			goToProjectView(projectId, view);
+		},
+		[navigate, state.route, state.projects, goToProjectView],
+	);
+	const goToProjectIndex = useCallback(
+		(n: number, view: "project" | "task" | "preserve") => {
+			const project = state.projects.filter((p) => !p.deleted)[n - 1];
+			if (!project) return; // out of range — no-op
+			if (view === "preserve") navigateToProject(project.id);
+			else goToProjectView(project.id, view);
+		},
+		[state.projects, navigateToProject, goToProjectView],
+	);
+	const armGoToVerb = useCallback(() => {
+		goToModeRef.current = { stage: "verb" };
+		if (goToTimerRef.current !== null) window.clearTimeout(goToTimerRef.current);
+		goToTimerRef.current = window.setTimeout(clearGoTo, 1500);
+	}, [clearGoTo]);
+	const armGoToIndex = useCallback(
+		(view: "project" | "task") => {
+			goToModeRef.current = { stage: "index", view };
+			if (goToTimerRef.current !== null) window.clearTimeout(goToTimerRef.current);
+			// No digit within the window → land on the current project in that view.
+			goToTimerRef.current = window.setTimeout(() => {
+				goToModeRef.current = null;
+				goToTimerRef.current = null;
+				goToCurrentProject(view);
+			}, 1000);
+		},
+		[goToCurrentProject],
 	);
 
 	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
@@ -498,20 +569,89 @@ function App() {
 					e.stopPropagation();
 					navigateToProject(available[idx].id);
 				}
-			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
-				// `f` — Vimium-style task hints. Only on a project board, and only
-				// when no field/terminal has focus. We intentionally don't enumerate
-				// open modals here: every dialog/palette covers the board with a
-				// full-screen backdrop, so the overlay's occlusion check finds no
-				// cards beneath it and closes itself immediately.
-				if (state.route.screen !== "project") return;
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === "KeyG") {
+				// Cmd/Ctrl+G — Mac-friendly chord alias for the bare-`f` hint mode.
 				if (isTypingContext()) return;
+				if (!document.querySelector("[data-hint-id]")) return;
 				e.preventDefault();
 				e.stopPropagation();
 				setHintMode(true);
+			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+				// ── Bare-key shortcuts. Matched on `e.code` (physical key) so they
+				// work on every keyboard layout (Cyrillic, Hebrew, …), and only when
+				// no field/terminal has focus. ──
+				if (isTypingContext()) return;
+
+				// Advance / resolve a `g …` go-to sequence.
+				if (goToModeRef.current) {
+					const mode = goToModeRef.current;
+					clearGoTo();
+					if (mode.stage === "verb") {
+						if (e.code === "KeyD") {
+							e.preventDefault();
+							e.stopPropagation();
+							return navigate({ screen: "dashboard" });
+						}
+						if (e.code === "KeyS") {
+							e.preventDefault();
+							e.stopPropagation();
+							return navigate({ screen: "settings" });
+						}
+						if (e.code === "KeyP" || e.code === "KeyT") {
+							e.preventDefault();
+							e.stopPropagation();
+							return armGoToIndex(e.code === "KeyT" ? "task" : "project");
+						}
+						const n = digitFromCode(e.code);
+						if (n !== null) {
+							// `g <digit>` — jump to project N keeping the current view (like Cmd+N).
+							e.preventDefault();
+							e.stopPropagation();
+							return goToProjectIndex(n, "preserve");
+						}
+						return; // anything else cancels
+					}
+					// stage === "index": an optional digit picks project N in this view;
+					// otherwise fall back to the current project.
+					e.preventDefault();
+					e.stopPropagation();
+					const n = digitFromCode(e.code);
+					if (n !== null) goToProjectIndex(n, mode.view);
+					else goToCurrentProject(mode.view);
+					return;
+				}
+
+				if (e.code === "KeyF") {
+					// `f` — Vimium-style hint navigation. Works on any screen that has
+					// hint targets ([data-hint-id]); the overlay self-closes if nothing
+					// is actually visible (e.g. a modal covers the board).
+					if (!document.querySelector("[data-hint-id]")) return;
+					e.preventDefault();
+					e.stopPropagation();
+					setHintMode(true);
+				} else if (e.code === "KeyG") {
+					// `g` — arm a "go to" sequence; the next key picks d/p/t/s or a project digit.
+					e.preventDefault();
+					e.stopPropagation();
+					armGoToVerb();
+				} else if (e.code === "KeyC") {
+					// `c` — new task (Linear `C` = create); bare-key alias of Cmd/Ctrl+N.
+					// No-op off a project route (openCreateTaskModal returns false).
+					if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
+					if (!openCreateTaskModal()) return;
+					e.preventDefault();
+					e.stopPropagation();
+				} else if (e.code === "Slash") {
+					// `/` — focus the visible search input (Linear/Gmail convention).
+					const input = findVisibleSearchInput();
+					if (!input) return;
+					e.preventDefault();
+					e.stopPropagation();
+					input.focus();
+				}
 			}
 		},
-		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -1148,7 +1288,7 @@ function App() {
 					onCancel={switcher.cancel}
 				/>
 			)}
-			{hintMode && <TaskHintOverlay onExit={() => setHintMode(false)} />}
+			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
 					projects={state.projects.filter((p) => !p.deleted)}
