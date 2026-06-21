@@ -201,7 +201,7 @@ const tips = {
 	"tip.taskHintNav.title": "Salta con F",
 	"tip.taskHintNav.body": "Pulsa F (o ⌘G) para etiquetar cada tarea o proyecto en pantalla y escribe sus letras para saltar directamente allí.",
 	"tip.keyboardGoTo.title": "Ve a cualquier sitio con G",
-	"tip.keyboardGoTo.body": "Pulsa G y luego D, P, T o S para ir al panel, proyecto, tareas o ajustes.",
+	"tip.keyboardGoTo.body": "Pulsa G y luego D, P, T o S — o un número para ir a ese proyecto (P/T + número = su tablero o tareas).",
 };
 
 export default tips;

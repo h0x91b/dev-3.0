@@ -54,18 +54,11 @@ function isTypingContext(): boolean {
 	return false;
 }
 
-/**
- * `g`-prefix "go to" destinations (Linear/GitHub convention): press `g`, then a
- * second physical key picks the destination. Keyed by `e.code` so it is
- * layout-independent. `project`/`task` resolve against the current (or first)
- * project; `dashboard`/`settings` are global.
- */
-const GO_TO_TARGETS: Record<string, "dashboard" | "project" | "task" | "settings"> = {
-	KeyD: "dashboard",
-	KeyP: "project",
-	KeyT: "task",
-	KeyS: "settings",
-};
+/** Parse a 1–9 project index from a physical digit code (`"Digit3"` → 3), layout-independent. */
+function digitFromCode(code: string): number | null {
+	const m = /^Digit([1-9])$/.exec(code);
+	return m ? Number(m[1]) : null;
+}
 
 /** First on-screen search input (board label filter, sidebar search), for the bare `/` shortcut. */
 function findVisibleSearchInput(): HTMLElement | null {
@@ -295,36 +288,60 @@ function App() {
 		[navigate, state.route],
 	);
 
-	// `g`-prefix "go to" sequence state. Bare `g` arms it; the next key (within
-	// the timeout) picks a destination. A ref (not state) keeps the global
-	// keydown handler pure and avoids re-subscribing.
-	const pendingGoToRef = useRef(false);
+	// `g`-prefix "go to" sequence (Linear/GitHub style), kept in refs so the
+	// global keydown handler stays pure. Tiny state machine:
+	//   g          → arm "verb": expect d/p/t/s, or a 1–9 digit (= project N, keep view)
+	//   g p / g t  → arm "index": expect an optional 1–9 digit (= project N board/tasks);
+	//                on timeout or a non-digit, fall back to the CURRENT project
+	//   g d / g s  → dashboard / settings (immediate)
+	const goToModeRef = useRef<null | { stage: "verb" } | { stage: "index"; view: "project" | "task" }>(null);
 	const goToTimerRef = useRef<number | null>(null);
-	const clearPendingGoTo = useCallback(() => {
-		pendingGoToRef.current = false;
+	const clearGoTo = useCallback(() => {
+		goToModeRef.current = null;
 		if (goToTimerRef.current !== null) {
 			window.clearTimeout(goToTimerRef.current);
 			goToTimerRef.current = null;
 		}
 	}, []);
-	const startPendingGoTo = useCallback(() => {
-		pendingGoToRef.current = true;
-		if (goToTimerRef.current !== null) window.clearTimeout(goToTimerRef.current);
-		goToTimerRef.current = window.setTimeout(() => {
-			pendingGoToRef.current = false;
-			goToTimerRef.current = null;
-		}, 1500);
-	}, []);
-	const goTo = useCallback(
-		(dest: "dashboard" | "project" | "task" | "settings") => {
-			if (dest === "dashboard") return navigate({ screen: "dashboard" });
-			if (dest === "settings") return navigate({ screen: "settings" });
-			const projectId =
-				"projectId" in state.route ? state.route.projectId : state.projects.find((p) => !p.deleted)?.id;
+	const goToProjectView = useCallback(
+		(projectId: string, view: "project" | "task") =>
+			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId }),
+		[navigate],
+	);
+	const goToCurrentProject = useCallback(
+		(view: "project" | "task") => {
+			const projectId = "projectId" in state.route ? state.route.projectId : state.projects.find((p) => !p.deleted)?.id;
 			if (!projectId) return navigate({ screen: "dashboard" });
-			navigate(dest === "project" ? { screen: "project", projectId } : { screen: "project", projectId, taskView: true });
+			goToProjectView(projectId, view);
 		},
-		[navigate, state.route, state.projects],
+		[navigate, state.route, state.projects, goToProjectView],
+	);
+	const goToProjectIndex = useCallback(
+		(n: number, view: "project" | "task" | "preserve") => {
+			const project = state.projects.filter((p) => !p.deleted)[n - 1];
+			if (!project) return; // out of range — no-op
+			if (view === "preserve") navigateToProject(project.id);
+			else goToProjectView(project.id, view);
+		},
+		[state.projects, navigateToProject, goToProjectView],
+	);
+	const armGoToVerb = useCallback(() => {
+		goToModeRef.current = { stage: "verb" };
+		if (goToTimerRef.current !== null) window.clearTimeout(goToTimerRef.current);
+		goToTimerRef.current = window.setTimeout(clearGoTo, 1500);
+	}, [clearGoTo]);
+	const armGoToIndex = useCallback(
+		(view: "project" | "task") => {
+			goToModeRef.current = { stage: "index", view };
+			if (goToTimerRef.current !== null) window.clearTimeout(goToTimerRef.current);
+			// No digit within the window → land on the current project in that view.
+			goToTimerRef.current = window.setTimeout(() => {
+				goToModeRef.current = null;
+				goToTimerRef.current = null;
+				goToCurrentProject(view);
+			}, 1000);
+		},
+		[goToCurrentProject],
 	);
 
 	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
@@ -565,16 +582,42 @@ function App() {
 				// no field/terminal has focus. ──
 				if (isTypingContext()) return;
 
-				// Resolve a pending `g …` go-to sequence armed by a prior bare `g`.
-				if (pendingGoToRef.current) {
-					clearPendingGoTo();
-					const dest = GO_TO_TARGETS[e.code];
-					if (dest) {
-						e.preventDefault();
-						e.stopPropagation();
-						goTo(dest);
+				// Advance / resolve a `g …` go-to sequence.
+				if (goToModeRef.current) {
+					const mode = goToModeRef.current;
+					clearGoTo();
+					if (mode.stage === "verb") {
+						if (e.code === "KeyD") {
+							e.preventDefault();
+							e.stopPropagation();
+							return navigate({ screen: "dashboard" });
+						}
+						if (e.code === "KeyS") {
+							e.preventDefault();
+							e.stopPropagation();
+							return navigate({ screen: "settings" });
+						}
+						if (e.code === "KeyP" || e.code === "KeyT") {
+							e.preventDefault();
+							e.stopPropagation();
+							return armGoToIndex(e.code === "KeyT" ? "task" : "project");
+						}
+						const n = digitFromCode(e.code);
+						if (n !== null) {
+							// `g <digit>` — jump to project N keeping the current view (like Cmd+N).
+							e.preventDefault();
+							e.stopPropagation();
+							return goToProjectIndex(n, "preserve");
+						}
+						return; // anything else cancels
 					}
-					// Any other key (incl. Esc) simply cancels the sequence.
+					// stage === "index": an optional digit picks project N in this view;
+					// otherwise fall back to the current project.
+					e.preventDefault();
+					e.stopPropagation();
+					const n = digitFromCode(e.code);
+					if (n !== null) goToProjectIndex(n, mode.view);
+					else goToCurrentProject(mode.view);
 					return;
 				}
 
@@ -587,10 +630,10 @@ function App() {
 					e.stopPropagation();
 					setHintMode(true);
 				} else if (e.code === "KeyG") {
-					// `g` — arm a "go to" sequence; the next key picks d/p/t/s.
+					// `g` — arm a "go to" sequence; the next key picks d/p/t/s or a project digit.
 					e.preventDefault();
 					e.stopPropagation();
-					startPendingGoTo();
+					armGoToVerb();
 				} else if (e.code === "KeyC") {
 					// `c` — new task (Linear `C` = create); bare-key alias of Cmd/Ctrl+N.
 					// No-op off a project route (openCreateTaskModal returns false).
@@ -608,7 +651,7 @@ function App() {
 				}
 			}
 		},
-		[clearPendingGoTo, createTaskProjectId, dispatch, goTo, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, startPendingGoTo, state.projects, state.route],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 

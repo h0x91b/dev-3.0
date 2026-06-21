@@ -56,7 +56,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "task-switcher", keys: { mac: "⌥Tab", other: "Ctrl+Tab" }, descKey: "keymap.shortcut.taskSwitcher", category: "navigation" },
 	{ id: "task-switcher-global", keys: { mac: "⌥⇧Tab", other: "Ctrl+Shift+Tab" }, descKey: "keymap.shortcut.taskSwitcherGlobal", category: "navigation" },
 	{ id: "task-hints", keys: { mac: "F / ⌘G", other: "F / Ctrl+G" }, descKey: "keymap.shortcut.taskHints", category: "navigation" },
-	{ id: "go-to", keys: { mac: "G then D/P/T/S", other: "G then D/P/T/S" }, descKey: "keymap.shortcut.goTo", category: "navigation" },
+	{ id: "go-to", keys: { mac: "G then D/P/T/S/1–9", other: "G then D/P/T/S/1–9" }, descKey: "keymap.shortcut.goTo", category: "navigation" },
 	{ id: "focus-search", keys: { mac: "/", other: "/" }, descKey: "keymap.shortcut.focusSearch", category: "navigation" },
 	{ id: "escape", keys: { mac: "Esc", other: "Esc" }, descKey: "keymap.shortcut.escape", category: "navigation" },
 

@@ -201,7 +201,7 @@ const tips = {
 	"tip.taskHintNav.title": "Jump with F",
 	"tip.taskHintNav.body": "Press F (or ⌘G) to label every task or project on screen, then type its letters to jump straight there.",
 	"tip.keyboardGoTo.title": "Go anywhere with G",
-	"tip.keyboardGoTo.body": "Press G then D, P, T or S to jump to the dashboard, project, tasks or settings.",
+	"tip.keyboardGoTo.body": "Press G then D, P, T or S — or a number to jump to that project (P/T + number = its board or tasks).",
 } as const;
 
 export default tips;

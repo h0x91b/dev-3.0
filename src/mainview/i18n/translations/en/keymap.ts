@@ -23,7 +23,7 @@ const keymap = {
 	"keymap.shortcut.taskSwitcher": "Cycle active tasks (this project)",
 	"keymap.shortcut.taskSwitcherGlobal": "Cycle active tasks (all projects)",
 	"keymap.shortcut.taskHints": "Jump to a task or project by hint",
-	"keymap.shortcut.goTo": "Go to… (then D dashboard · P project · T tasks · S settings)",
+	"keymap.shortcut.goTo": "Go to… (D dashboard · P project · T tasks · S settings · digit = project N; P/T + digit = project N board/tasks)",
 	"keymap.shortcut.focusSearch": "Focus search",
 	"keymap.shortcut.escape": "Close dialog / step back",
 	"keymap.shortcut.newTask": "New task",
