@@ -38,6 +38,21 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import TaskHintOverlay from "./components/TaskHintOverlay";
+
+/**
+ * True when keystrokes should go to a focused field or the terminal rather than
+ * trigger a bare-key shortcut (used to gate the Vimium-style hint hotkey).
+ */
+function isTypingContext(): boolean {
+	const el = document.activeElement as HTMLElement | null;
+	if (!el) return false;
+	const tag = el.tagName;
+	if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+	if (el.isContentEditable) return true;
+	if (el.closest('[data-terminal="true"]')) return true;
+	return false;
+}
 
 function App() {
 	const [state, dispatch] = useAppState();
@@ -150,6 +165,8 @@ function App() {
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
+	// Vimium-style task hint navigation overlay (toggled with `f` on the board).
+	const [hintMode, setHintMode] = useState(false);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -219,6 +236,12 @@ function App() {
 		routeRef.current = state.route;
 	}, [state.route]);
 
+	// Close the task-hint overlay on any navigation so it never lingers with
+	// detached card references (e.g. after a hint commits or an async route change).
+	useEffect(() => {
+		setHintMode(false);
+	}, [state.route]);
+
 	const navigate = useCallback(
 		(route: Route) => {
 			if (navigationGuardRef.current?.isDirty()) {
@@ -257,6 +280,7 @@ function App() {
 		currentTaskId: routeTaskId(state.route),
 		mru: state.taskMru,
 		navigate,
+		disabled: hintMode,
 	});
 	const switcherProjectById = useMemo(() => {
 		const map = new Map<string, Project>();
@@ -331,6 +355,8 @@ function App() {
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
+			// While hint mode is active the overlay owns every keystroke.
+			if (hintMode) return;
 			if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
 				// WKWebView swallows the native menu Cmd+Q accelerator while a
 				// terminal has focus, so we catch it here (capture phase) and ask
@@ -472,9 +498,20 @@ function App() {
 					e.stopPropagation();
 					navigateToProject(available[idx].id);
 				}
+			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+				// `f` — Vimium-style task hints. Only on a project board, and only
+				// when no field/terminal has focus. We intentionally don't enumerate
+				// open modals here: every dialog/palette covers the board with a
+				// full-screen backdrop, so the overlay's occlusion check finds no
+				// cards beneath it and closes itself immediately.
+				if (state.route.screen !== "project") return;
+				if (isTypingContext()) return;
+				e.preventDefault();
+				e.stopPropagation();
+				setHintMode(true);
 			}
 		},
-		[createTaskProjectId, dispatch, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -1111,6 +1148,7 @@ function App() {
 					onCancel={switcher.cancel}
 				/>
 			)}
+			{hintMode && <TaskHintOverlay onExit={() => setHintMode(false)} />}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
 					projects={state.projects.filter((p) => !p.deleted)}

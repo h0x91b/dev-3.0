@@ -8,6 +8,11 @@ const common = {
 	"app.agentCompletionConfirm": "Completar tarea",
 	"app.agentCompletionCancel": "Mantener sesión",
 
+	// Navegación de tareas estilo Vimium
+	"hint.legend.jump": "ir a una tarea",
+	"hint.legend.undo": "borrar",
+	"hint.legend.cancel": "cancelar",
+
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",
 	"quit.dialogMessage": "Tus sesiones de terminal seguirán ejecutándose en tmux después de salir. Podrás reconectarte al volver a abrir la aplicación.",

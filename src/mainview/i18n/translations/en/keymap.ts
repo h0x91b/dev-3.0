@@ -22,6 +22,7 @@ const keymap = {
 	"keymap.shortcut.switchProjectFlip": "Switch to project 1–9 (flip board/task view)",
 	"keymap.shortcut.taskSwitcher": "Cycle active tasks (this project)",
 	"keymap.shortcut.taskSwitcherGlobal": "Cycle active tasks (all projects)",
+	"keymap.shortcut.taskHints": "Jump to a task by hint (board)",
 	"keymap.shortcut.escape": "Close dialog / step back",
 	"keymap.shortcut.newTask": "New task",
 	"keymap.shortcut.addProject": "Add project",

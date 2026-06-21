@@ -38,8 +38,10 @@ vi.mock("../../utils/ansi-to-html", () => ({
 }));
 
 vi.mock("../TaskDetailModal", () => ({
+	// Mirror the real modal's root onClick stopPropagation (TaskDetailModal.tsx)
+	// so clicks inside it don't bubble (via the React portal) back to the card.
 	default: ({ onClose }: { onClose: () => void }) => (
-		<div data-testid="task-detail-modal">
+		<div data-testid="task-detail-modal" onClick={(e) => e.stopPropagation()}>
 			<button onClick={onClose}>Close modal</button>
 		</div>
 	),
@@ -478,7 +480,7 @@ describe("TaskCard", () => {
 			});
 		});
 
-		it("clicking todo task does not navigate", async () => {
+		it("clicking todo task opens detail modal and does not navigate", async () => {
 			const user = userEvent.setup();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "todo" });
@@ -489,6 +491,7 @@ describe("TaskCard", () => {
 			await user.click(card);
 
 			expect(navigate).not.toHaveBeenCalled();
+			expect(screen.getByTestId("task-detail-modal")).toBeInTheDocument();
 		});
 
 		it("clicking completed task opens detail modal", async () => {

@@ -23,6 +23,8 @@ interface UseTaskSwitcherArgs {
 	/** MRU task ids, newest first (from app state). */
 	mru: string[];
 	navigate: (route: Route) => void;
+	/** When true, a new switcher session can't be opened (e.g. hint mode owns the keyboard). */
+	disabled?: boolean;
 }
 
 /**
@@ -65,6 +67,7 @@ export function useTaskSwitcher({
 	currentTaskId,
 	mru,
 	navigate,
+	disabled = false,
 }: UseTaskSwitcherArgs) {
 	const [session, setSession] = useState<SwitcherSession | null>(null);
 	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
@@ -72,6 +75,8 @@ export function useTaskSwitcher({
 	// Live mirrors read by the window-level listeners (avoid stale closures).
 	const sessionRef = useRef<SwitcherSession | null>(null);
 	sessionRef.current = session;
+	const disabledRef = useRef(disabled);
+	disabledRef.current = disabled;
 	const projectTasksRef = useRef(projectTasks);
 	projectTasksRef.current = projectTasks;
 	const globalTasksRef = useRef(globalTasks);
@@ -265,6 +270,10 @@ export function useTaskSwitcher({
 				}
 				return;
 			}
+			// No session yet → opening a new one. Suppressed while disabled (hint
+			// mode owns the keyboard), so Option/Ctrl+Tab can't stack the switcher
+			// on top of the hint overlay.
+			if (disabledRef.current) return;
 			if (e.key !== "Tab") return;
 			const modDown = modIsAlt ? e.altKey : e.ctrlKey;
 			const otherMeta = e.metaKey || (modIsAlt ? e.ctrlKey : e.altKey);

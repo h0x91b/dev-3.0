@@ -8,6 +8,11 @@ const common = {
 	"app.agentCompletionConfirm": "Завершить задачу",
 	"app.agentCompletionCancel": "Оставить сессию",
 
+	// Навигация по задачам в стиле Vimium
+	"hint.legend.jump": "перейти к задаче",
+	"hint.legend.undo": "стереть",
+	"hint.legend.cancel": "отмена",
+
 	// Quit dialog
 	"quit.dialogTitle": "Сессии продолжают работать",
 	"quit.dialogMessage": "Ваши терминальные сессии продолжат работать в tmux после выхода. Вы сможете подключиться к ним при следующем запуске приложения.",

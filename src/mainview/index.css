@@ -62,6 +62,12 @@ html {
 	--diff-search-highlight-from: 255 227 138;
 	--diff-search-highlight-to: 255 166 196;
 
+	/* ---- Vimium-style task hint badges ---- */
+	--hint-bg: 253 224 71;     /* amber-300 */
+	--hint-fg: 28 25 23;       /* near-black ink on the badge */
+	--hint-border: 202 138 4;  /* amber-600 */
+	--hint-typed: 185 28 28;   /* red-700 — the already-typed prefix */
+
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 115deg;
 	--bg-grad-from: #060915;
@@ -127,6 +133,12 @@ html {
 	--awake-hover: 180 83 9;
 	--diff-search-highlight-from: 250 204 21;
 	--diff-search-highlight-to: 236 72 153;
+
+	/* ---- Vimium-style task hint badges ---- */
+	--hint-bg: 252 211 77;     /* amber-300/400 — pops on a light canvas */
+	--hint-fg: 28 25 23;
+	--hint-border: 180 83 9;   /* amber-700 */
+	--hint-typed: 185 28 28;
 
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 135deg;
