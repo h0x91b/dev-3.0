@@ -8,6 +8,7 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
+import TaskPreparingView from "./TaskPreparingView";
 import ExtraKeyBar from "./ExtraKeyBar";
 import { isElectrobun } from "../rpc";
 
@@ -40,6 +41,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	const task = tasks.find((t) => t.id === taskId);
 	const project = projects.find((p) => p.id === projectId);
+	const isPreparing = task?.preparing === true;
 
 	async function classifyAndSetError() {
 		const worktreePath = task?.worktreePath;
@@ -56,6 +58,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	useEffect(() => {
+		// While the worktree is still being created there is no PTY to connect
+		// to. Skip the request entirely and let the preparing view render; once
+		// `preparing` flips false this effect re-runs and connects normally.
+		if (isPreparing) return;
 		let cancelled = false;
 		(async () => {
 			console.log("[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
@@ -82,7 +88,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [taskId]);
+	}, [taskId, isPreparing]);
 
 	// For getPtyUrl success + broken session: listen for ptyDied.
 	useEffect(() => {
@@ -174,6 +180,24 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		} finally {
 			setRestarting(false);
 		}
+	}
+
+	if (isPreparing && task && project) {
+		return (
+			<div className="h-full w-full flex flex-col overflow-hidden">
+				{!hideInfoPanel && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				<div className="flex-1 min-h-0 overflow-hidden">
+					<TaskPreparingView
+						task={task}
+						project={project}
+						onCancelled={(updated) => {
+							dispatch({ type: "updateTask", task: updated });
+							navigate({ screen: "project", projectId });
+						}}
+					/>
+				</div>
+			</div>
+		);
 	}
 
 	if (recoverable) {

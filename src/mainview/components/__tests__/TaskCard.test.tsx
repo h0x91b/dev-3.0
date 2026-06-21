@@ -718,6 +718,27 @@ describe("TaskCard", () => {
 			);
 		});
 
+		it("opens a still-preparing active task so the main view can show its loading state", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			renderCard(makeTask({
+				id: "prep-1",
+				status: "in-progress",
+				preparing: true,
+				preparingStage: "fetching-origin",
+				worktreePath: null,
+				branchName: null,
+			}), { navigate });
+
+			await user.click(screen.getByText("Fetching origin"));
+
+			expect(navigate).toHaveBeenCalledWith({
+				screen: "project",
+				projectId: project.id,
+				activeTaskId: "prep-1",
+			});
+		});
+
 		it("shows cancel action while preparing and reverts task to todo", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();

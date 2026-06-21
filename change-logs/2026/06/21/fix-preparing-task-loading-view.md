@@ -1,0 +1,1 @@
+Opening a task that is still cloning/setting up now shows a loading state (stage progress + Cancel) in the main task view instead of leaving the previously-active task's terminal on screen. Still-preparing cards are now clickable so the loading view can surface.
