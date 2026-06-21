@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			resumeTask: vi.fn(),
 			restartTask: vi.fn(),
 			moveTask: vi.fn(),
+			cancelTaskPreparation: vi.fn(),
 			checkWorktreeExists: vi.fn(),
 			getResolvedProject: vi.fn().mockResolvedValue({}),
 			getBranchStatus: vi.fn().mockResolvedValue({}),
@@ -385,6 +386,96 @@ describe("TaskTerminal", () => {
 			});
 
 			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("Preparing state", () => {
+		it("shows preparing loading view and skips getPtyUrl while task is preparing", async () => {
+			const preparingTask = makeTask({
+				preparing: true,
+				preparingStage: "fetching-origin",
+				preparingProgress: 24,
+			});
+
+			await act(async () => {
+				renderTerminal({ tasks: [preparingTask] });
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Preparing…")).toBeInTheDocument();
+			});
+			expect(screen.getByText("Fetching origin")).toBeInTheDocument();
+			expect(screen.queryByTestId("terminal-view")).not.toBeInTheDocument();
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+		});
+
+		it("cancels preparation, dispatches the reverted task, and navigates back", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const preparingTask = makeTask({ preparing: true, preparingStage: "creating-worktree" });
+			const revertedTask = makeTask({ status: "todo", preparing: false, worktreePath: null });
+			mockedApi.request.cancelTaskPreparation.mockResolvedValue(revertedTask);
+
+			await act(async () => {
+				renderTerminal({ tasks: [preparingTask], dispatch, navigate });
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Preparing…")).toBeInTheDocument();
+			});
+
+			await act(async () => {
+				await user.click(screen.getByText("Cancel"));
+			});
+
+			expect(mockedApi.request.cancelTaskPreparation).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: revertedTask });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+		});
+
+		it("connects to the PTY once preparing flips to false", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234?session=t1" });
+			const navigate = vi.fn();
+			const dispatch = vi.fn();
+
+			const { rerender } = render(
+				<I18nProvider>
+					<TaskTerminal
+						projectId="p1"
+						taskId="t1"
+						tasks={[makeTask({ preparing: true })]}
+						projects={[project]}
+						navigate={navigate}
+						dispatch={dispatch}
+					/>
+				</I18nProvider>,
+			);
+
+			await waitFor(() => {
+				expect(screen.getByText("Preparing…")).toBeInTheDocument();
+			});
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+
+			await act(async () => {
+				rerender(
+					<I18nProvider>
+						<TaskTerminal
+							projectId="p1"
+							taskId="t1"
+							tasks={[makeTask({ preparing: false })]}
+							projects={[project]}
+							navigate={navigate}
+							dispatch={dispatch}
+						/>
+					</I18nProvider>,
+				);
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.getPtyUrl).toHaveBeenCalledWith({ taskId: "t1" });
+				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+			});
 		});
 	});
 

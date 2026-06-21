@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { CodingAgent, PortInfo, PreparingStage, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -22,6 +22,7 @@ import TaskDetailModal from "./TaskDetailModal";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
 import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
+import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 
 interface TaskCardProps {
 	task: Task;
@@ -42,15 +43,6 @@ interface TaskCardProps {
 	siblingMap?: Map<string, Task[]>;
 	prInfo?: { number: number; url: string };
 }
-
-const PREPARING_STAGE_LABELS = {
-	"resolving-config": "task.preparingStage.resolvingConfig",
-	"fetching-origin": "task.preparingStage.fetchingOrigin",
-	"creating-worktree": "task.preparingStage.creatingWorktree",
-	"applying-sparse-checkout": "task.preparingStage.applyingSparseCheckout",
-	"cloning-shared-paths": "task.preparingStage.cloningSharedPaths",
-	"launching-pty": "task.preparingStage.launchingPty",
-} as const satisfies Record<PreparingStage, string>;
 
 function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
 	const t = useT();
@@ -298,7 +290,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const preparingStageLabel = t(PREPARING_STAGE_LABELS[preparingStage]);
 
 	function handleClick() {
-		if (isDisabled) return;
+		// A still-preparing task is `isDisabled` (no drag, dimmed) but must remain
+		// openable so the main view can show its loading state instead of leaving
+		// the previously-active task's terminal on screen.
+		if (isDisabled && !isPreparing) return;
+		if (cancellingPreparation) return;
 		if (isActive && !menuOpen) {
 			preview.close();
 			const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
