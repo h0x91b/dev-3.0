@@ -9,6 +9,10 @@ interface HintTarget {
 	element: HTMLElement;
 }
 
+/** Themed key-cap badge used in the legend. */
+const KBD =
+	"inline-flex items-center rounded border border-edge-active bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold leading-none text-fg-2 shadow-sm";
+
 interface TaskHintOverlayProps {
 	/** Called when the overlay should close (committed, cancelled, or empty). */
 	onExit: () => void;
@@ -210,8 +214,23 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 				</span>
 			))}
 
-			<div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full border border-edge bg-overlay/95 px-3.5 py-1.5 text-xs text-fg-3 shadow-xl shadow-black/30">
-				{t("hint.legend")}
+			<div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full border border-edge-active bg-overlay px-4 py-2 text-sm text-fg-2 shadow-2xl shadow-black/50">
+				<span className="flex items-center gap-1.5">
+					<kbd className={KBD}>a–z</kbd>
+					{t("hint.legend.jump")}
+				</span>
+				<span className="text-fg-muted">·</span>
+				<span className="flex items-center gap-1.5">
+					<kbd className={KBD}>{"⌫"}</kbd>
+					{t("hint.legend.undo")}
+				</span>
+				<span className="text-fg-muted">·</span>
+				<span className="flex items-center gap-1.5">
+					<kbd className="inline-flex items-center rounded border border-accent/60 bg-accent/15 px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold uppercase leading-none tracking-wide text-accent shadow-sm">
+						Esc
+					</kbd>
+					<span className="font-medium text-fg">{t("hint.legend.cancel")}</span>
+				</span>
 			</div>
 		</div>,
 		document.body,

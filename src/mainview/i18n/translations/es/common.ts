@@ -9,7 +9,9 @@ const common = {
 	"app.agentCompletionCancel": "Mantener sesión",
 
 	// Navegación de tareas estilo Vimium
-	"hint.legend": "Escribe una pista para saltar a una tarea · Retroceso para borrar · Esc para cancelar",
+	"hint.legend.jump": "ir a una tarea",
+	"hint.legend.undo": "borrar",
+	"hint.legend.cancel": "cancelar",
 
 	// Quit dialog
 	"quit.dialogTitle": "Las sesiones siguen activas",

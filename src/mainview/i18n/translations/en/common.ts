@@ -9,7 +9,9 @@ const common = {
 	"app.agentCompletionCancel": "Keep session",
 
 	// Vimium-style task hint navigation
-	"hint.legend": "Type a hint to jump to a task · Backspace to undo · Esc to cancel",
+	"hint.legend.jump": "jump to a task",
+	"hint.legend.undo": "undo",
+	"hint.legend.cancel": "cancel",
 
 	// Quit dialog
 	"quit.dialogTitle": "Sessions keep running",

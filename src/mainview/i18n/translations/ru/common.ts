@@ -9,7 +9,9 @@ const common = {
 	"app.agentCompletionCancel": "Оставить сессию",
 
 	// Навигация по задачам в стиле Vimium
-	"hint.legend": "Введите подсказку, чтобы перейти к задаче · Backspace — стереть · Esc — отмена",
+	"hint.legend.jump": "перейти к задаче",
+	"hint.legend.undo": "стереть",
+	"hint.legend.cancel": "отмена",
 
 	// Quit dialog
 	"quit.dialogTitle": "Сессии продолжают работать",
