@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { DEFAULT_HINT_CHARS, generateHintStrings } from "../utils/hintLabels";
@@ -74,8 +74,9 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 	// Mirror of `typed` for the keydown handler so it stays pure (no reading
 	// state inside a state updater).
 	const typedRef = useRef("");
-	// Re-render trigger to re-read live rects after scroll/resize.
-	const [, bumpReposition] = useState(0);
+	// Live badge DOM nodes, keyed by task id, so scroll repositioning can write
+	// straight to the DOM without a React re-render.
+	const badgeRefs = useRef(new Map<string, HTMLSpanElement>());
 
 	const onExitRef = useRef(onExit);
 	onExitRef.current = onExit;
@@ -87,6 +88,19 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 	});
 	const targetsRef = useRef(targets);
 	targetsRef.current = targets;
+
+	// Write live positions straight to the DOM. Driven by the scroll/resize
+	// listeners below, this keeps each badge glued to its card without the frame
+	// of lag a state-driven re-render would add.
+	const reposition = useCallback(() => {
+		for (const tg of targetsRef.current) {
+			const badge = badgeRefs.current.get(tg.id);
+			if (!badge) continue;
+			const r = tg.element.getBoundingClientRect();
+			badge.style.top = `${r.top + 4}px`;
+			badge.style.left = `${r.left + 4}px`;
+		}
+	}, []);
 
 	// Nothing to navigate to — close immediately rather than trap the keyboard.
 	useEffect(() => {
@@ -150,21 +164,22 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 		return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
 	}, []);
 
-	// Recompute positions when the board scrolls or the window resizes.
+	// Keep positions fresh when the board scrolls or the window resizes —
+	// imperatively, so badges track their cards instead of lagging behind a
+	// React render.
 	useEffect(() => {
-		const bump = () => bumpReposition((x) => x + 1);
-		window.addEventListener("scroll", bump, { capture: true, passive: true });
-		window.addEventListener("resize", bump);
+		window.addEventListener("scroll", reposition, { capture: true, passive: true });
+		window.addEventListener("resize", reposition);
 		return () => {
-			window.removeEventListener("scroll", bump, { capture: true });
-			window.removeEventListener("resize", bump);
+			window.removeEventListener("scroll", reposition, { capture: true });
+			window.removeEventListener("resize", reposition);
 		};
-	}, []);
+	}, [reposition]);
 
 	if (targets.length === 0) return null;
 
-	// Recomputed every render (cheap for a handful of cards); the reposition
-	// re-render above keeps the live rects fresh during scroll/resize.
+	// Computed at render time (initial mount + typed-prefix changes). Live
+	// scroll/resize tracking is handled imperatively by `reposition`.
 	const visible = targets
 		.filter((tg) => tg.hint.startsWith(typed))
 		.map((tg) => ({ target: tg, rect: tg.element.getBoundingClientRect() }));
@@ -178,6 +193,10 @@ function TaskHintOverlay({ onExit }: TaskHintOverlayProps) {
 			{visible.map(({ target, rect }) => (
 				<span
 					key={target.id}
+					ref={(el) => {
+						if (el) badgeRefs.current.set(target.id, el);
+						else badgeRefs.current.delete(target.id);
+					}}
 					data-testid="task-hint-label"
 					data-hint={target.hint}
 					className="absolute flex items-center rounded-md border border-hint-border bg-hint px-1.5 py-0.5 font-mono text-[0.6875rem] font-bold uppercase leading-none tracking-wide text-hint-fg shadow-lg shadow-black/40"

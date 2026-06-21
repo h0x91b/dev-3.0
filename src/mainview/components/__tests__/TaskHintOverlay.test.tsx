@@ -164,6 +164,20 @@ describe("TaskHintOverlay", () => {
 		expect(onExit).toHaveBeenCalledTimes(1);
 	});
 
+	it("repositions badges synchronously on scroll (no React re-render needed)", () => {
+		const t1 = makeCard("t1", 0); // hint "fa", badge anchored at top 0 + 4
+		renderOverlay();
+		const label = screen.getByTestId("task-hint-label");
+		expect(label.style.top).toBe("4px");
+
+		// The card scrolls upward; the badge must follow on the scroll event alone,
+		// without any state change driving a re-render.
+		t1.getBoundingClientRect = () =>
+			({ x: 0, y: -50, top: -50, left: 0, right: 120, bottom: -10, width: 120, height: 40, toJSON() {} }) as DOMRect;
+		fireEvent.scroll(window);
+		expect(label.style.top).toBe("-46px");
+	});
+
 	it("targets the innermost element when a task id is nested", () => {
 		// Mirrors the board: a wrapper <div data-task-id> around the card root,
 		// which also has data-task-id and owns the real click handler.
