@@ -378,6 +378,7 @@ function ActiveTasksSidebar({
 					<input
 						ref={searchRef}
 						type="text"
+						data-search-input="true"
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 						onKeyDown={(e) => {
@@ -483,6 +484,7 @@ function ActiveTasksSidebar({
 											<div className="mx-3 border-t border-dashed border-edge" />
 										)}
 										<button
+											data-hint-id={`task:${task.id}`}
 											onClick={() => handleTaskClick(task)}
 											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}

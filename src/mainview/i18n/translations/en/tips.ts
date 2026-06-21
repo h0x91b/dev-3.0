@@ -198,8 +198,10 @@ const tips = {
 	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.) Add Shift (Option+Shift+Tab) to switch across all projects.",
 	"tip.pasteLargeText.title": "Paste big logs as files",
 	"tip.pasteLargeText.body": "Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.",
-	"tip.taskHintNav.title": "Jump to tasks with F",
-	"tip.taskHintNav.body": "On the board, press F to label every task, then type its letters to jump straight there.",
+	"tip.taskHintNav.title": "Jump with F",
+	"tip.taskHintNav.body": "Press F (or ⌘G) to label every task or project on screen, then type its letters to jump straight there.",
+	"tip.keyboardGoTo.title": "Go anywhere with G",
+	"tip.keyboardGoTo.body": "Press G then D, P, T or S to jump to the dashboard, project, tasks or settings.",
 } as const;
 
 export default tips;

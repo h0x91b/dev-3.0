@@ -8,8 +8,8 @@ const common = {
 	"app.agentCompletionConfirm": "Complete task",
 	"app.agentCompletionCancel": "Keep session",
 
-	// Vimium-style task hint navigation
-	"hint.legend.jump": "jump to a task",
+	// Vimium-style hint navigation
+	"hint.legend.jump": "jump",
 	"hint.legend.undo": "undo",
 	"hint.legend.cancel": "cancel",
 

@@ -1,18 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "../../i18n";
-import TaskHintOverlay from "../TaskHintOverlay";
+import HintOverlay from "../HintOverlay";
 
 // Deterministic hints so we can drive multi-character typing without needing
 // 27+ cards on screen. The real generator is covered by hintLabels.test.ts.
 vi.mock("../../utils/hintLabels", () => ({
 	DEFAULT_HINT_CHARS: "asdfghjklqwertyuiopzxcvbnm",
 	generateHintStrings: (count: number) => ["fa", "fs", "fd"].slice(0, count),
+	codeToHintChar: (code: string) => {
+		const m = /^Key([A-Z])$/.exec(code);
+		return m ? m[1].toLowerCase() : null;
+	},
 }));
 
 function makeCard(id: string, top: number, parent: HTMLElement = document.body): HTMLElement {
 	const el = document.createElement("div");
-	el.setAttribute("data-task-id", id);
+	el.setAttribute("data-hint-id", id);
 	// happy-dom returns an all-zero rect by default, which our visibility filter
 	// would reject — stub a real on-screen rect.
 	el.getBoundingClientRect = () =>
@@ -25,17 +29,19 @@ function renderOverlay() {
 	const onExit = vi.fn();
 	render(
 		<I18nProvider>
-			<TaskHintOverlay onExit={onExit} />
+			<HintOverlay onExit={onExit} />
 		</I18nProvider>,
 	);
 	return { onExit };
 }
 
-function press(key: string) {
-	fireEvent.keyDown(document.body, { key });
+// Hint chars are matched on `e.code` (layout-independent), so a single letter
+// must be sent as its physical key code (e.g. "f" → "KeyF").
+function press(ch: string) {
+	fireEvent.keyDown(document.body, { key: ch, code: `Key${ch.toUpperCase()}` });
 }
 
-describe("TaskHintOverlay", () => {
+describe("HintOverlay", () => {
 	beforeEach(() => {
 		window.innerWidth = 1200;
 		window.innerHeight = 800;
@@ -51,7 +57,7 @@ describe("TaskHintOverlay", () => {
 		makeCard("t2", 60);
 		makeCard("t3", 120);
 		renderOverlay();
-		const labels = screen.getAllByTestId("task-hint-label");
+		const labels = screen.getAllByTestId("hint-label");
 		expect(labels).toHaveLength(3);
 		expect(labels.map((l) => l.getAttribute("data-hint")).sort()).toEqual(["fa", "fd", "fs"]);
 	});
@@ -59,7 +65,7 @@ describe("TaskHintOverlay", () => {
 	it("exits immediately and renders nothing when there are no cards", () => {
 		const { onExit } = renderOverlay();
 		expect(onExit).toHaveBeenCalledTimes(1);
-		expect(screen.queryByTestId("task-hint-overlay")).toBeNull();
+		expect(screen.queryByTestId("hint-overlay")).toBeNull();
 	});
 
 	it("filters to matching hints as the user types a shared prefix", () => {
@@ -68,8 +74,8 @@ describe("TaskHintOverlay", () => {
 		makeCard("t3", 120);
 		renderOverlay();
 		press("f"); // prefix of all three
-		expect(screen.getByTestId("task-hint-overlay").getAttribute("data-hint-typed")).toBe("f");
-		expect(screen.getAllByTestId("task-hint-label")).toHaveLength(3);
+		expect(screen.getByTestId("hint-overlay").getAttribute("data-hint-typed")).toBe("f");
+		expect(screen.getAllByTestId("hint-label")).toHaveLength(3);
 	});
 
 	it("commits when the typed string uniquely identifies a hint", () => {
@@ -95,10 +101,10 @@ describe("TaskHintOverlay", () => {
 		makeCard("t3", 120);
 		renderOverlay();
 		press("f");
-		expect(screen.getByTestId("task-hint-overlay").getAttribute("data-hint-typed")).toBe("f");
+		expect(screen.getByTestId("hint-overlay").getAttribute("data-hint-typed")).toBe("f");
 		fireEvent.keyDown(document.body, { key: "Backspace" });
-		expect(screen.getByTestId("task-hint-overlay").getAttribute("data-hint-typed")).toBe("");
-		expect(screen.getAllByTestId("task-hint-label")).toHaveLength(3);
+		expect(screen.getByTestId("hint-overlay").getAttribute("data-hint-typed")).toBe("");
+		expect(screen.getAllByTestId("hint-label")).toHaveLength(3);
 	});
 
 	it("ignores keys that match no hint", () => {
@@ -106,8 +112,8 @@ describe("TaskHintOverlay", () => {
 		makeCard("t2", 60);
 		renderOverlay();
 		press("z"); // valid hint char, but no hint starts with it
-		expect(screen.getByTestId("task-hint-overlay").getAttribute("data-hint-typed")).toBe("");
-		expect(screen.getAllByTestId("task-hint-label")).toHaveLength(2);
+		expect(screen.getByTestId("hint-overlay").getAttribute("data-hint-typed")).toBe("");
+		expect(screen.getAllByTestId("hint-label")).toHaveLength(2);
 	});
 
 	it("Escape exits without committing", () => {
@@ -129,7 +135,7 @@ describe("TaskHintOverlay", () => {
 		document.body.appendChild(dialog);
 		makeCard("t2", 0, dialog);
 		renderOverlay();
-		const labels = screen.getAllByTestId("task-hint-label");
+		const labels = screen.getAllByTestId("hint-label");
 		expect(labels).toHaveLength(1);
 		expect(labels[0].getAttribute("data-hint")).toBe("fa");
 	});
@@ -144,7 +150,7 @@ describe("TaskHintOverlay", () => {
 		document.elementFromPoint = ((_x: number, y: number) => (y >= 60 ? cover : t1)) as typeof document.elementFromPoint;
 		try {
 			renderOverlay();
-			const labels = screen.getAllByTestId("task-hint-label");
+			const labels = screen.getAllByTestId("hint-label");
 			expect(labels).toHaveLength(1);
 			expect(labels[0].getAttribute("data-hint")).toBe("fa");
 		} finally {
@@ -167,7 +173,7 @@ describe("TaskHintOverlay", () => {
 	it("repositions badges synchronously on scroll (no React re-render needed)", () => {
 		const t1 = makeCard("t1", 0); // hint "fa", badge anchored at top 0 + 4
 		renderOverlay();
-		const label = screen.getByTestId("task-hint-label");
+		const label = screen.getByTestId("hint-label");
 		expect(label.style.top).toBe("4px");
 
 		// The card scrolls upward; the badge must follow on the scroll event alone,
@@ -178,9 +184,20 @@ describe("TaskHintOverlay", () => {
 		expect(label.style.top).toBe("-46px");
 	});
 
-	it("targets the innermost element when a task id is nested", () => {
-		// Mirrors the board: a wrapper <div data-task-id> around the card root,
-		// which also has data-task-id and owns the real click handler.
+	it("hints heterogeneous targets (project rows + task rows) and ignores elements without data-hint-id", () => {
+		makeCard("project:p1", 0);
+		makeCard("task:t1", 60);
+		// A plain action button (settings/remove) carries no data-hint-id → no hint.
+		const action = document.createElement("button");
+		document.body.appendChild(action);
+		renderOverlay();
+		const labels = screen.getAllByTestId("hint-label");
+		expect(labels).toHaveLength(2);
+	});
+
+	it("targets the innermost element when a hint id is nested", () => {
+		// A wrapper element around the clickable root, both carrying data-hint-id;
+		// only the inner one owns the real click handler.
 		const outer = makeCard("t1", 0);
 		const inner = makeCard("t1", 0, outer);
 		const outerClick = vi.fn();
@@ -190,7 +207,7 @@ describe("TaskHintOverlay", () => {
 		renderOverlay();
 
 		// Only one label for the single (de-duped) task.
-		expect(screen.getAllByTestId("task-hint-label")).toHaveLength(1);
+		expect(screen.getAllByTestId("hint-label")).toHaveLength(1);
 		press("f");
 		press("a"); // "fa" → t1
 		expect(innerClick).toHaveBeenCalledTimes(1);

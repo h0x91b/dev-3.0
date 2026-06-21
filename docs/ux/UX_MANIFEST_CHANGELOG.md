@@ -1,5 +1,15 @@
 # UX Manifest Changelog
 
+## 2026-06-21 — Hint navigation as a cross-surface primitive + keyboard-first expert layer
+
+Added a `Hint navigation overlay` surface row to bible §5 and two placement rules to §10 (hint =
+navigation destination only, never a mutation; keyboard expert nav matched on `e.code`). Recorded the
+decision to generalize the board-only Vimium hint into a `[data-hint-id]`-driven `HintOverlay` (now
+covering dashboard project rows + attention tasks and sidebar tasks), fix layout-independence via
+`e.code`, keep bare `F` + add a `⌘G` alias, and introduce a `g`-prefix go-to layer plus `/`-focus-search
+and `c`-new-task bare keys. See UX decision 2026-06-21, decision record 076, and
+`feature-plans/hint-navigation-generalization.md`. No new nav destination, toolbar button, or token.
+
 ## 2026-06-19 — Keyboard-shortcut registry + unified reference overlay
 
 Added a `keyboard_shortcuts_reference` surface to `ux-architecture.yaml` and bible §5.2: a single

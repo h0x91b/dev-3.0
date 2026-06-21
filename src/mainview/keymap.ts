@@ -55,11 +55,13 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "switch-project-flip", keys: { mac: "⇧⌘1–9", other: "Ctrl+Shift+1–9" }, descKey: "keymap.shortcut.switchProjectFlip", category: "navigation" },
 	{ id: "task-switcher", keys: { mac: "⌥Tab", other: "Ctrl+Tab" }, descKey: "keymap.shortcut.taskSwitcher", category: "navigation" },
 	{ id: "task-switcher-global", keys: { mac: "⌥⇧Tab", other: "Ctrl+Shift+Tab" }, descKey: "keymap.shortcut.taskSwitcherGlobal", category: "navigation" },
-	{ id: "task-hints", keys: { mac: "F", other: "F" }, descKey: "keymap.shortcut.taskHints", category: "navigation" },
+	{ id: "task-hints", keys: { mac: "F / ⌘G", other: "F / Ctrl+G" }, descKey: "keymap.shortcut.taskHints", category: "navigation" },
+	{ id: "go-to", keys: { mac: "G then D/P/T/S", other: "G then D/P/T/S" }, descKey: "keymap.shortcut.goTo", category: "navigation" },
+	{ id: "focus-search", keys: { mac: "/", other: "/" }, descKey: "keymap.shortcut.focusSearch", category: "navigation" },
 	{ id: "escape", keys: { mac: "Esc", other: "Esc" }, descKey: "keymap.shortcut.escape", category: "navigation" },
 
 	// ── Create ──
-	{ id: "new-task", keys: { mac: "⌘N", other: "Ctrl+N" }, descKey: "keymap.shortcut.newTask", category: "create" },
+	{ id: "new-task", keys: { mac: "⌘N / C", other: "Ctrl+N / C" }, descKey: "keymap.shortcut.newTask", category: "create" },
 	{ id: "add-project", keys: { mac: "⌘P", other: "Ctrl+P" }, descKey: "keymap.shortcut.addProject", category: "create" },
 	{ id: "new-window", keys: { mac: "⇧⌘N", other: "Ctrl+Shift+N" }, descKey: "keymap.shortcut.newWindow", category: "create" },
 

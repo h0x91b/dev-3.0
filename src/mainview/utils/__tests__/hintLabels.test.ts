@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_HINT_CHARS, generateHintStrings } from "../hintLabels";
+import { codeToHintChar, DEFAULT_HINT_CHARS, generateHintStrings } from "../hintLabels";
 
 function isPrefixFree(hints: string[]): boolean {
 	for (const a of hints) {
@@ -57,5 +57,20 @@ describe("generateHintStrings", () => {
 
 	it("throws when given fewer than two characters", () => {
 		expect(() => generateHintStrings(5, "a")).toThrow();
+	});
+});
+
+describe("codeToHintChar", () => {
+	it("maps physical letter codes to their lowercase char, regardless of layout", () => {
+		expect(codeToHintChar("KeyF")).toBe("f");
+		expect(codeToHintChar("KeyA")).toBe("a");
+		expect(codeToHintChar("KeyZ")).toBe("z");
+	});
+
+	it("returns null for non-letter codes", () => {
+		expect(codeToHintChar("Digit1")).toBeNull();
+		expect(codeToHintChar("Slash")).toBeNull();
+		expect(codeToHintChar("Escape")).toBeNull();
+		expect(codeToHintChar("")).toBeNull();
 	});
 });

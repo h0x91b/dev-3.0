@@ -18,6 +18,18 @@
  */
 export const DEFAULT_HINT_CHARS = "asdfghjklqwertyuiopzxcvbnm";
 
+/**
+ * Map a physical key `code` (`KeyboardEvent.code`) to its hint character,
+ * independent of the active keyboard layout. Hint chars are all a–z, whose
+ * physical positions are `"KeyA"`–`"KeyZ"` on every layout (Cyrillic, Hebrew, …) —
+ * so matching on `code` instead of `key` makes both hint activation and hint
+ * typing work regardless of the selected input language.
+ */
+export function codeToHintChar(code: string): string | null {
+	const m = /^Key([A-Z])$/.exec(code);
+	return m ? m[1].toLowerCase() : null;
+}
+
 export function generateHintStrings(count: number, chars: string = DEFAULT_HINT_CHARS): string[] {
 	if (count <= 0) return [];
 	const charList = [...chars];

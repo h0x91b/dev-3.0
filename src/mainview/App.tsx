@@ -38,7 +38,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
-import TaskHintOverlay from "./components/TaskHintOverlay";
+import HintOverlay from "./components/HintOverlay";
 
 /**
  * True when keystrokes should go to a focused field or the terminal rather than
@@ -52,6 +52,28 @@ function isTypingContext(): boolean {
 	if (el.isContentEditable) return true;
 	if (el.closest('[data-terminal="true"]')) return true;
 	return false;
+}
+
+/**
+ * `g`-prefix "go to" destinations (Linear/GitHub convention): press `g`, then a
+ * second physical key picks the destination. Keyed by `e.code` so it is
+ * layout-independent. `project`/`task` resolve against the current (or first)
+ * project; `dashboard`/`settings` are global.
+ */
+const GO_TO_TARGETS: Record<string, "dashboard" | "project" | "task" | "settings"> = {
+	KeyD: "dashboard",
+	KeyP: "project",
+	KeyT: "task",
+	KeyS: "settings",
+};
+
+/** First on-screen search input (board label filter, sidebar search), for the bare `/` shortcut. */
+function findVisibleSearchInput(): HTMLElement | null {
+	for (const el of document.querySelectorAll<HTMLElement>('[data-search-input="true"]')) {
+		const r = el.getBoundingClientRect();
+		if (r.width > 0 && r.height > 0) return el;
+	}
+	return null;
 }
 
 function App() {
@@ -271,6 +293,38 @@ function App() {
 			);
 		},
 		[navigate, state.route],
+	);
+
+	// `g`-prefix "go to" sequence state. Bare `g` arms it; the next key (within
+	// the timeout) picks a destination. A ref (not state) keeps the global
+	// keydown handler pure and avoids re-subscribing.
+	const pendingGoToRef = useRef(false);
+	const goToTimerRef = useRef<number | null>(null);
+	const clearPendingGoTo = useCallback(() => {
+		pendingGoToRef.current = false;
+		if (goToTimerRef.current !== null) {
+			window.clearTimeout(goToTimerRef.current);
+			goToTimerRef.current = null;
+		}
+	}, []);
+	const startPendingGoTo = useCallback(() => {
+		pendingGoToRef.current = true;
+		if (goToTimerRef.current !== null) window.clearTimeout(goToTimerRef.current);
+		goToTimerRef.current = window.setTimeout(() => {
+			pendingGoToRef.current = false;
+			goToTimerRef.current = null;
+		}, 1500);
+	}, []);
+	const goTo = useCallback(
+		(dest: "dashboard" | "project" | "task" | "settings") => {
+			if (dest === "dashboard") return navigate({ screen: "dashboard" });
+			if (dest === "settings") return navigate({ screen: "settings" });
+			const projectId =
+				"projectId" in state.route ? state.route.projectId : state.projects.find((p) => !p.deleted)?.id;
+			if (!projectId) return navigate({ screen: "dashboard" });
+			navigate(dest === "project" ? { screen: "project", projectId } : { screen: "project", projectId, taskView: true });
+		},
+		[navigate, state.route, state.projects],
 	);
 
 	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
@@ -498,20 +552,63 @@ function App() {
 					e.stopPropagation();
 					navigateToProject(available[idx].id);
 				}
-			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
-				// `f` — Vimium-style task hints. Only on a project board, and only
-				// when no field/terminal has focus. We intentionally don't enumerate
-				// open modals here: every dialog/palette covers the board with a
-				// full-screen backdrop, so the overlay's occlusion check finds no
-				// cards beneath it and closes itself immediately.
-				if (state.route.screen !== "project") return;
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === "KeyG") {
+				// Cmd/Ctrl+G — Mac-friendly chord alias for the bare-`f` hint mode.
 				if (isTypingContext()) return;
+				if (!document.querySelector("[data-hint-id]")) return;
 				e.preventDefault();
 				e.stopPropagation();
 				setHintMode(true);
+			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+				// ── Bare-key shortcuts. Matched on `e.code` (physical key) so they
+				// work on every keyboard layout (Cyrillic, Hebrew, …), and only when
+				// no field/terminal has focus. ──
+				if (isTypingContext()) return;
+
+				// Resolve a pending `g …` go-to sequence armed by a prior bare `g`.
+				if (pendingGoToRef.current) {
+					clearPendingGoTo();
+					const dest = GO_TO_TARGETS[e.code];
+					if (dest) {
+						e.preventDefault();
+						e.stopPropagation();
+						goTo(dest);
+					}
+					// Any other key (incl. Esc) simply cancels the sequence.
+					return;
+				}
+
+				if (e.code === "KeyF") {
+					// `f` — Vimium-style hint navigation. Works on any screen that has
+					// hint targets ([data-hint-id]); the overlay self-closes if nothing
+					// is actually visible (e.g. a modal covers the board).
+					if (!document.querySelector("[data-hint-id]")) return;
+					e.preventDefault();
+					e.stopPropagation();
+					setHintMode(true);
+				} else if (e.code === "KeyG") {
+					// `g` — arm a "go to" sequence; the next key picks d/p/t/s.
+					e.preventDefault();
+					e.stopPropagation();
+					startPendingGoTo();
+				} else if (e.code === "KeyC") {
+					// `c` — new task (Linear `C` = create); bare-key alias of Cmd/Ctrl+N.
+					// No-op off a project route (openCreateTaskModal returns false).
+					if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
+					if (!openCreateTaskModal()) return;
+					e.preventDefault();
+					e.stopPropagation();
+				} else if (e.code === "Slash") {
+					// `/` — focus the visible search input (Linear/Gmail convention).
+					const input = findVisibleSearchInput();
+					if (!input) return;
+					e.preventDefault();
+					e.stopPropagation();
+					input.focus();
+				}
 			}
 		},
-		[createTaskProjectId, dispatch, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[clearPendingGoTo, createTaskProjectId, dispatch, goTo, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, startPendingGoTo, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -1148,7 +1245,7 @@ function App() {
 					onCancel={switcher.cancel}
 				/>
 			)}
-			{hintMode && <TaskHintOverlay onExit={() => setHintMode(false)} />}
+			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
 					projects={state.projects.filter((p) => !p.deleted)}

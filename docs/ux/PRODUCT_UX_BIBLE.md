@@ -86,6 +86,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Sidebar | Active-task jump list | destination, task jump, terminal preview, search | durable config | `ActiveTasksSidebar.tsx` |
 | Command palette (Cmd+K nav / Cmd+Shift+P actions) | Type-to-find nav + type-to-run commands (two modes, one shell) | destination, fuzzy search, object jump, command runner (action mode, via handleMenuAction) | destructive action, modal/inline flow, durable config without friction, dense filters | `PaletteShell.tsx`, `ProjectQuickSwitchModal.tsx`, `CommandPaletteModal.tsx`, `commands.ts` |
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
+| Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
@@ -225,6 +226,8 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 | configuration | global/project settings | board, inspector, toolbar | durable behavior lives in settings |
 | destructive | context menu, confirm, danger zone, overflow | primary button, header | needs friction + destructive styling |
 | debug surface | menu `Debug` | header, dashboard, sidebar | dev surfaces must not leak to users |
+| hint navigation (jump) | `HintOverlay` over any `[data-hint-id]` target; activate with bare `f` / `⌘G` | mutation or destructive targets, visible button | hints are destinations, not actions; keyboard-only avoids button-creep |
+| keyboard expert nav | bare-key + `g`-prefix sequences (`g d/p/t/s`), `/` focus search, `c` new task — declared in `keymap.ts`, matched on `e.code` | native menu accelerators (Electrobun can't bind chords/sequences) | layout-independent; reserve `g` for the go-to prefix |
 
 ## 11. Known anti-patterns in this project
 

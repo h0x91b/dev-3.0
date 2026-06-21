@@ -198,8 +198,10 @@ const tips = {
 	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.) Con Shift (Option+Shift+Tab) cambias entre todos los proyectos.",
 	"tip.pasteLargeText.title": "Pega registros grandes como archivos",
 	"tip.pasteLargeText.body": "Pega un bloque de texto grande y se guarda como adjunto .txt, manteniendo la tarea ligera en vez de sobrecargada.",
-	"tip.taskHintNav.title": "Salta a tareas con F",
-	"tip.taskHintNav.body": "En el tablero, pulsa F para etiquetar cada tarea y escribe sus letras para saltar directamente allí.",
+	"tip.taskHintNav.title": "Salta con F",
+	"tip.taskHintNav.body": "Pulsa F (o ⌘G) para etiquetar cada tarea o proyecto en pantalla y escribe sus letras para saltar directamente allí.",
+	"tip.keyboardGoTo.title": "Ve a cualquier sitio con G",
+	"tip.keyboardGoTo.body": "Pulsa G y luego D, P, T o S para ir al panel, proyecto, tareas o ajustes.",
 };
 
 export default tips;
