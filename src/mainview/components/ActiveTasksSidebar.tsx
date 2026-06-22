@@ -66,6 +66,20 @@ const STATUS_ORDER: TaskStatus[] = [
 	"review-by-ai",
 ];
 
+/**
+ * Within-group order for the sidebar: oldest-first by `movedAt` (longest-waiting
+ * task on top). The sidebar is a work queue, not a feed — the oldest task is the
+ * most at risk of being forgotten, and for review/questions groups it is the one
+ * the agent has been blocked on longest. Tasks without `movedAt` sink to the
+ * bottom; `seq` is a stable tiebreak. See UX_DECISIONS 2026-06-22.
+ */
+function byMovedAtOldestFirst(a: Task, b: Task): number {
+	const aTime = a.movedAt ? new Date(a.movedAt).getTime() : Infinity;
+	const bTime = b.movedAt ? new Date(b.movedAt).getTime() : Infinity;
+	if (aTime !== bTime) return aTime - bTime;
+	return a.seq - b.seq;
+}
+
 /** Maps the single most-significant age unit to its verbose i18n key. */
 const AGE_UNIT_KEY: Record<AgeUnit, string> = {
 	s: "activity.secondsAgo",
@@ -271,7 +285,9 @@ function ActiveTasksSidebar({
 				label: getStatusLabel(status, t, project),
 				color: statusColors[status],
 				busy: status === "in-progress" || status === "review-by-ai",
-				tasks: activeTasks.filter((task) => task.status === status && !task.customColumnId),
+				tasks: activeTasks
+					.filter((task) => task.status === status && !task.customColumnId)
+					.sort(byMovedAtOldestFirst),
 			}))
 			.filter((g) => g.tasks.length > 0);
 
@@ -294,7 +310,7 @@ function ActiveTasksSidebar({
 		for (const { projId, col } of orderedCols) {
 			const colTasks = customTasksByCol.get(`${projId}|${col.id}`);
 			if (colTasks && colTasks.length > 0) {
-				customGroups.push({ key: `custom:${projId}:${col.id}`, label: col.name, color: col.color, busy: false, tasks: colTasks });
+				customGroups.push({ key: `custom:${projId}:${col.id}`, label: col.name, color: col.color, busy: false, tasks: colTasks.sort(byMovedAtOldestFirst) });
 			}
 		}
 

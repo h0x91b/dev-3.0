@@ -645,4 +645,77 @@ describe("ActiveTasksSidebar", () => {
 		const parkedRail = screen.getByTestId("sidebar-status-rail-parked");
 		expect((parkedRail.querySelector("span")?.getAttribute("style") ?? "").toLowerCase()).toContain("#abcdef");
 	});
+
+	it("orders tasks within a group oldest-first by movedAt (longest-waiting on top)", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						// Intentionally provided newest-first to prove the sidebar sorts,
+						// not just preserves array order.
+						makeTask({
+							id: "fresh", status: "review-by-user",
+							title: "Fresh task", description: "Fresh task",
+							groupId: null as unknown as string, variantIndex: null,
+							movedAt: "2026-06-22T14:00:00Z",
+						}),
+						makeTask({
+							id: "stale", status: "review-by-user",
+							title: "Stale task", description: "Stale task",
+							groupId: null as unknown as string, variantIndex: null,
+							movedAt: "2026-06-22T13:13:00Z",
+						}),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const stale = screen.getByText("Stale task");
+		const fresh = screen.getByText("Fresh task");
+		// Oldest (stale, 13:13) sits ABOVE the newer (fresh, 14:00).
+		expect(stale.compareDocumentPosition(fresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it("sinks tasks without movedAt to the bottom of their group", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({
+							id: "no-moved", status: "review-by-user",
+							title: "No timestamp", description: "No timestamp",
+							groupId: null as unknown as string, variantIndex: null,
+							movedAt: undefined,
+						}),
+						makeTask({
+							id: "has-moved", status: "review-by-user",
+							title: "Has timestamp", description: "Has timestamp",
+							groupId: null as unknown as string, variantIndex: null,
+							movedAt: "2026-06-22T13:00:00Z",
+						}),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const hasMoved = screen.getByText("Has timestamp");
+		const noMoved = screen.getByText("No timestamp");
+		expect(hasMoved.compareDocumentPosition(noMoved) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
 });
