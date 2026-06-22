@@ -9,6 +9,10 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTerminalPreview: vi.fn(),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
+			// Feature-discovery tip rotation (useTipRotation).
+			getGlobalSettings: vi.fn(() => Promise.resolve({ tipsDisabled: true })),
+			getTipState: vi.fn(() => Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0 })),
+			updateTipState: vi.fn((s) => Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...s })),
 		},
 	},
 }));

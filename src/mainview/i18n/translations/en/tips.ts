@@ -202,6 +202,8 @@ const tips = {
 	"tip.taskHintNav.body": "Press F (or ⌘G) to label every task or project on screen, then type its letters to jump straight there.",
 	"tip.keyboardGoTo.title": "Go anywhere with G",
 	"tip.keyboardGoTo.body": "Press G then D, P, T or S — or a number to jump to that project (P/T + number = its board or tasks).",
+	"tip.terminalSelectCopies.title": "Select to copy",
+	"tip.terminalSelectCopies.body": "Just select text in any terminal pane — it's copied to your clipboard automatically, no ⌘C needed.",
 } as const;
 
 export default tips;

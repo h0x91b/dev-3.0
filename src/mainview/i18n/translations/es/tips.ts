@@ -202,6 +202,8 @@ const tips = {
 	"tip.taskHintNav.body": "Pulsa F (o ⌘G) para etiquetar cada tarea o proyecto en pantalla y escribe sus letras para saltar directamente allí.",
 	"tip.keyboardGoTo.title": "Ve a cualquier sitio con G",
 	"tip.keyboardGoTo.body": "Pulsa G y luego D, P, T o S — o un número para ir a ese proyecto (P/T + número = su tablero o tareas).",
+	"tip.terminalSelectCopies.title": "Selecciona para copiar",
+	"tip.terminalSelectCopies.body": "Solo selecciona texto en cualquier panel de terminal — se copia al portapapeles automáticamente, sin ⌘C.",
 };
 
 export default tips;

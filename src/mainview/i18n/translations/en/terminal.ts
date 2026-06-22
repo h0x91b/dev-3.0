@@ -9,6 +9,7 @@ const terminal = {
 	"terminal.sessionEnded": "Terminal session ended",
 	"terminal.sessionEndedDesc": "The terminal process has exited. The worktree and all files are still intact.",
 	"terminal.resumeAgentSession": "Resume Session",
+	"terminal.copyHint": "Copied! Just select text in any terminal pane — it's on your clipboard automatically, no ⌘C needed.",
 	"terminal.recoveryTitle": "Previous agent session found",
 	"terminal.recoveryDesc": "The terminal was disconnected but the agent session can be recovered.",
 	"terminal.resumeSession": "Resume Session",

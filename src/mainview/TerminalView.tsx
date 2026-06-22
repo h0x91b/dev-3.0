@@ -148,6 +148,9 @@ export interface TerminalHandle {
 	focus: () => void;
 }
 
+/** Set once the user has seen the one-time "select text to copy" hint toast. */
+const TERMINAL_COPY_HINT_SEEN_KEY = "dev3-terminal-copy-hint-seen";
+
 interface TerminalViewProps {
 	ptyUrl: string;
 	taskId: string;
@@ -157,6 +160,10 @@ interface TerminalViewProps {
 
 function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps) {
 	const t = useT();
+	// Mirror t in a ref so the long-lived terminal-setup effect's closures
+	// (e.g. the select-to-copy hint) always read the latest translator.
+	const tRef = useRef(t);
+	tRef.current = t;
 	const containerRef = useRef<HTMLDivElement>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -701,6 +708,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 							taskId,
 							text,
 							mouseTracking,
+						}).then(() => {
+							// One-time discovery hint: selecting text auto-copies it.
+							try {
+								if (!localStorage.getItem(TERMINAL_COPY_HINT_SEEN_KEY)) {
+									localStorage.setItem(TERMINAL_COPY_HINT_SEEN_KEY, "1");
+									toast.info(tRef.current("terminal.copyHint"), { durationMs: 8000 });
+								}
+							} catch {
+								// localStorage unavailable — skip the hint, copy still worked.
+							}
 						}).catch((err) => {
 							logCopyEvent("warn", "backend terminal selection copy failed", {
 								len: text.length,

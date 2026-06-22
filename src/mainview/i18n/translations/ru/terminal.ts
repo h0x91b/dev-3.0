@@ -9,6 +9,7 @@ const terminal = {
 	"terminal.sessionEnded": "Терминальная сессия завершена",
 	"terminal.sessionEndedDesc": "Процесс терминала завершился. Worktree и все файлы на месте.",
 	"terminal.resumeAgentSession": "Возобновить сессию",
+	"terminal.copyHint": "Скопировано! Просто выделите текст в любой панели терминала — он автоматически попадает в буфер обмена, ⌘C не нужен.",
 	"terminal.recoveryTitle": "Найдена предыдущая сессия агента",
 	"terminal.recoveryDesc": "Терминал был отключён, но сессию агента можно восстановить.",
 	"terminal.resumeSession": "Возобновить сессию",
