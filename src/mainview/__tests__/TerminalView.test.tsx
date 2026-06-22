@@ -91,6 +91,10 @@ vi.mock("../rpc", () => ({
 	},
 }));
 
+vi.mock("../toast", () => ({
+	toast: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
+
 vi.mock("../zoom", () => ({
 	getZoom: () => 1,
 	ZOOM_CHANGED_EVENT: "dev3-zoom-changed",
@@ -524,6 +528,35 @@ describe("TerminalView – selection clipboard bridge", () => {
 			taskId: "t1",
 			mouseTracking: false,
 		});
+	});
+
+	it("shows the select-to-copy hint toast only on the first auto-copy", async () => {
+		const { toast } = await import("../toast");
+		const infoToast = vi.mocked(toast.info);
+		localStorage.removeItem("dev3-terminal-copy-hint-seen");
+		infoToast.mockClear();
+		mockTermInstance.hasSelection.mockReturnValue(true);
+		mockTermInstance.getSelection.mockReturnValue("hello");
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+
+		await renderAndSetup();
+		const terminal = document.querySelector("[data-terminal='true']")!;
+
+		// First selection → hint fires once.
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+		});
+		await act(async () => { await Promise.resolve(); });
+		expect(infoToast).toHaveBeenCalledTimes(1);
+
+		// Second selection → no repeat (localStorage flag set).
+		await act(async () => {
+			terminal.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+			document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+		});
+		await act(async () => { await Promise.resolve(); });
+		expect(infoToast).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not use the backend bridge when tmux mouse tracking owns the drag", async () => {
