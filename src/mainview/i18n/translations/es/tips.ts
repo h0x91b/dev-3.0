@@ -204,6 +204,8 @@ const tips = {
 	"tip.keyboardGoTo.body": "Pulsa G y luego D, P, T o S — o un número para ir a ese proyecto (P/T + número = su tablero o tareas).",
 	"tip.terminalSelectCopies.title": "Selecciona para copiar",
 	"tip.terminalSelectCopies.body": "Solo selecciona texto en cualquier panel de terminal — se copia al portapapeles automáticamente, sin ⌘C.",
+	"tip.quickSwitchRecentFirst.title": "Proyectos recientes primero",
+	"tip.quickSwitchRecentFirst.body": "Abre Cmd/Ctrl+K y los proyectos a los que saltaste más recientemente aparecen primero.",
 };
 
 export default tips;

@@ -204,6 +204,8 @@ const tips = {
 	"tip.keyboardGoTo.body": "Нажмите G, затем D, P, T или S — либо цифру, чтобы перейти к проекту N (P/T + цифра = его доска или задачи).",
 	"tip.terminalSelectCopies.title": "Выделил — скопировал",
 	"tip.terminalSelectCopies.body": "Просто выделите текст в любой панели терминала — он автоматически попадает в буфер обмена, ⌘C не нужен.",
+	"tip.quickSwitchRecentFirst.title": "Недавние проекты сверху",
+	"tip.quickSwitchRecentFirst.body": "Откройте Cmd/Ctrl+K — проекты, к которым вы переходили последними, будут вверху списка.",
 };
 
 export default tips;

@@ -94,4 +94,23 @@ describe("ProjectQuickSwitchModal", () => {
 		await user.click(screen.getByText("billing"));
 		expect(onSelect).toHaveBeenCalledWith("p3");
 	});
+
+	it("renders the ⌘N badge from the board index, not the display row", async () => {
+		// p3 (billing) sits at board index 2 but is shown first (recency); its
+		// badge must read ⌘3, following the board-order Cmd+1..9 shortcut.
+		render(
+			<I18nProvider>
+				<ProjectQuickSwitchModal
+					projects={[PROJECTS[2], PROJECTS[0], PROJECTS[1]]}
+					shortcutIndexById={{ p1: 0, p2: 1, p3: 2 }}
+					onSelect={vi.fn()}
+					onClose={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		const options = screen.getAllByRole("option");
+		expect(options[0].textContent).toContain("billing");
+		expect(options[0].textContent).toContain("⌘3");
+		expect(options[1].textContent).toContain("⌘1");
+	});
 });

@@ -1,0 +1,1 @@
+The Cmd/Ctrl+K project quick-switch palette now lists the projects you jumped to most recently first, then the rest in board order. Recency is tracked in a small localStorage LRU cache; the ⌘1-9 badges still follow the stable board order.

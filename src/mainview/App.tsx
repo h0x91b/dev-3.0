@@ -33,6 +33,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
@@ -274,6 +275,7 @@ function App() {
 	// Cmd+1..9 index shortcuts and the Cmd+K quick-switch palette.
 	const navigateToProject = useCallback(
 		(projectId: string) => {
+			recordProjectJump(projectId);
 			const route = state.route;
 			const taskOpenMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
 			const inTaskView =
@@ -304,8 +306,10 @@ function App() {
 		}
 	}, []);
 	const goToProjectView = useCallback(
-		(projectId: string, view: "project" | "task") =>
-			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId }),
+		(projectId: string, view: "project" | "task") => {
+			recordProjectJump(projectId);
+			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId });
+		},
 		[navigate],
 	);
 	const goToCurrentProject = useCallback(
@@ -358,6 +362,19 @@ function App() {
 		for (const p of state.projects) map.set(p.id, p);
 		return map;
 	}, [state.projects]);
+
+	// Quick-switch (Cmd+K) data, recomputed each time the palette opens so the
+	// recency ordering reflects the latest jumps. Rows are MRU-first (then board
+	// order); the ⌘N badge stays keyed to the stable board index.
+	const quickSwitch = useMemo(() => {
+		const boardProjects = state.projects.filter((p) => !p.deleted);
+		const shortcutIndexById: Record<string, number> = {};
+		boardProjects.forEach((p, i) => {
+			shortcutIndexById[p.id] = i;
+		});
+		const ordered = showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects;
+		return { projects: ordered, shortcutIndexById };
+	}, [state.projects, showProjectSwitch]);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => {
 		switch (route.screen) {
@@ -1291,7 +1308,8 @@ function App() {
 			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
-					projects={state.projects.filter((p) => !p.deleted)}
+					projects={quickSwitch.projects}
+					shortcutIndexById={quickSwitch.shortcutIndexById}
 					onSelect={(projectId) => {
 						setShowProjectSwitch(false);
 						navigateToProject(projectId);
