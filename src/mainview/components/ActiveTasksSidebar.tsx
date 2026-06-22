@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
-import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, CustomColumn, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
@@ -65,6 +65,20 @@ const STATUS_ORDER: TaskStatus[] = [
 	"in-progress",
 	"review-by-ai",
 ];
+
+/**
+ * Within-group order for the sidebar: oldest-first by `movedAt` (longest-waiting
+ * task on top). The sidebar is a work queue, not a feed — the oldest task is the
+ * most at risk of being forgotten, and for review/questions groups it is the one
+ * the agent has been blocked on longest. Tasks without `movedAt` sink to the
+ * bottom; `seq` is a stable tiebreak. See UX_DECISIONS 2026-06-22.
+ */
+function byMovedAtOldestFirst(a: Task, b: Task): number {
+	const aTime = a.movedAt ? new Date(a.movedAt).getTime() : Infinity;
+	const bTime = b.movedAt ? new Date(b.movedAt).getTime() : Infinity;
+	if (aTime !== bTime) return aTime - bTime;
+	return a.seq - b.seq;
+}
 
 /** Maps the single most-significant age unit to its verbose i18n key. */
 const AGE_UNIT_KEY: Record<AgeUnit, string> = {
@@ -228,16 +242,80 @@ function ActiveTasksSidebar({
 		return map;
 	}, [sourceTasks]);
 
+	// Resolves a task's display color: its custom-column color when the task is
+	// parked in a custom column, otherwise its built-in status hue. Mirrors the
+	// kanban, where a custom-column task carries the column's color, not its
+	// underlying status color.
+	const taskColor = useCallback(
+		(task: Task): string => {
+			if (task.customColumnId) {
+				const col = projectById
+					.get(task.projectId)
+					?.customColumns?.find((c) => c.id === task.customColumnId);
+				if (col) return col.color;
+			}
+			return statusColors[task.status];
+		},
+		[projectById, statusColors],
+	);
+
+	// A rendered group: either a built-in status column or a custom column.
+	// `busy` drives the header spinner (agent actively working).
+	interface SidebarGroup {
+		key: string;
+		label: string;
+		color: string;
+		busy: boolean;
+		tasks: Task[];
+	}
+
 	// In attention mode, render a single flat list sorted oldest-first by movedAt;
-	// grouping by STATUS_ORDER would reorder tasks by status, defeating age ordering.
-	const grouped = scope === "attention"
-		? (activeTasks.length > 0 ? [{ status: "user-questions" as TaskStatus, tasks: activeTasks }] : [])
-		: STATUS_ORDER
+	// grouping would reorder tasks by status, defeating age ordering.
+	// Otherwise mirror the kanban: built-in status columns exclude tasks parked
+	// in a custom column, and each custom column becomes its own group.
+	let grouped: SidebarGroup[];
+	if (scope === "attention") {
+		grouped = activeTasks.length > 0
+			? [{ key: "attention", label: "", color: statusColors["user-questions"], busy: false, tasks: activeTasks }]
+			: [];
+	} else {
+		const builtinGroups: SidebarGroup[] = STATUS_ORDER
 			.map((status) => ({
-				status,
-				tasks: activeTasks.filter((task) => task.status === status),
+				key: status,
+				label: getStatusLabel(status, t, project),
+				color: statusColors[status],
+				busy: status === "in-progress" || status === "review-by-ai",
+				tasks: activeTasks
+					.filter((task) => task.status === status && !task.customColumnId)
+					.sort(byMovedAtOldestFirst),
 			}))
 			.filter((g) => g.tasks.length > 0);
+
+		// Custom-column groups, ordered by each owning project's customColumns
+		// order. Scan all projects in global scope, just the current one otherwise.
+		const customTasksByCol = new Map<string, Task[]>();
+		for (const task of activeTasks) {
+			if (!task.customColumnId) continue;
+			const key = `${task.projectId}|${task.customColumnId}`;
+			const existing = customTasksByCol.get(key);
+			if (existing) existing.push(task);
+			else customTasksByCol.set(key, [task]);
+		}
+		const orderedCols: { projId: string; col: CustomColumn }[] = [];
+		const projectsToScan = scope === "global" ? Array.from(projectById.values()) : [project];
+		for (const p of projectsToScan) {
+			for (const col of p.customColumns ?? []) orderedCols.push({ projId: p.id, col });
+		}
+		const customGroups: SidebarGroup[] = [];
+		for (const { projId, col } of orderedCols) {
+			const colTasks = customTasksByCol.get(`${projId}|${col.id}`);
+			if (colTasks && colTasks.length > 0) {
+				customGroups.push({ key: `custom:${projId}:${col.id}`, label: col.name, color: col.color, busy: false, tasks: colTasks.sort(byMovedAtOldestFirst) });
+			}
+		}
+
+		grouped = [...builtinGroups, ...customGroups];
+	}
 
 	function handleTaskClick(task: Task) {
 		preview.close();
@@ -418,42 +496,42 @@ function ActiveTasksSidebar({
 								: t("sidebar.noActiveTasks")}
 					</div>
 				) : (
-					grouped.map(({ status, tasks: groupTasks }, groupIdx) => (
-						<div key={status}>
+					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, busy: groupBusy, tasks: groupTasks }, groupIdx) => (
+						<div key={groupKey}>
 							{/* Solid separator between status groups */}
 							{groupIdx > 0 && scope !== "attention" && (
 								<div className="mx-3 border-t border-edge" />
 							)}
 
-							{/* Status group header (hidden in attention mode — flat list, no status grouping) */}
+							{/* Group header (hidden in attention mode — flat list, no grouping) */}
 							{scope !== "attention" && <div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								{/* Faint status wash + left bar so the group reads as one color zone */}
 								<span
 									className="absolute inset-0 pointer-events-none"
-									style={{ background: statusTint(statusColors[status], 0.1) }}
+									style={{ background: statusTint(groupColor, 0.1) }}
 								/>
 								<span
 									className="absolute left-0 top-0 bottom-0 w-[3px]"
-									style={{ background: statusColors[status] }}
+									style={{ background: groupColor }}
 								/>
-								{status === "in-progress" || status === "review-by-ai" ? (
+								{groupBusy ? (
 									<div
 										className="w-3 h-3 flex-shrink-0 rounded-full animate-spin"
 										style={{
-											border: `1.5px solid ${statusColors[status]}33`,
-											borderTopColor: statusColors[status],
+											border: `1.5px solid ${groupColor}33`,
+											borderTopColor: groupColor,
 										}}
-										data-testid={`sidebar-status-spinner-${status}`}
-										aria-label={getStatusLabel(status, t, project)}
+										data-testid={`sidebar-status-spinner-${groupKey}`}
+										aria-label={groupLabel}
 									/>
 								) : (
 									<div
 										className="w-2 h-2 rounded-full flex-shrink-0 relative"
-										style={{ background: statusColors[status] }}
+										style={{ background: groupColor }}
 									/>
 								)}
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
-									{getStatusLabel(status, t, project)}
+									{groupLabel}
 								</span>
 								<span className="text-[0.625rem] text-fg-muted">
 									{groupTasks.length}
@@ -499,7 +577,7 @@ function ActiveTasksSidebar({
 											{!isActive && (
 												<span
 													className="absolute inset-0 pointer-events-none"
-													style={{ background: statusTint(statusColors[task.status], 0.06) }}
+													style={{ background: statusTint(taskColor(task), 0.06) }}
 												/>
 											)}
 
@@ -508,7 +586,7 @@ function ActiveTasksSidebar({
 											    busy statuses a bright highlight flows down the rail. */}
 											{(() => {
 												const isBusy = task.status === "in-progress" || task.status === "review-by-ai";
-												const railColor = isActive ? "rgb(var(--accent))" : statusColors[task.status];
+												const railColor = isActive ? "rgb(var(--accent))" : taskColor(task);
 												return (
 													<span
 														className={`absolute left-0 top-0 bottom-0 overflow-hidden ${isActive ? "w-[4px]" : "w-[3px]"}`}
