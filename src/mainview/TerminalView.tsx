@@ -117,6 +117,32 @@ export function buildResizeDance(cols: number, rows: number): [string, string] {
 	];
 }
 
+// ghostty-web 0.4.0 never invalidates the selection when the terminal content
+// changes. On the primary screen that's fine — the selection is anchored to an
+// absolute buffer row and scrolls away with its text. But on the ALTERNATE
+// screen (full-screen TUIs like Claude Code, vim, htop) there is no scrollback:
+// the app repaints the same cells in place. The selection overlay stays glued
+// to those screen cells while fresh text is drawn under it — a stale highlight
+// floating over the wrong characters. Clear the selection on any alt-screen
+// write so the overlay never outlives the content it was made over. Primary
+// screen / scrollback selections are intentionally left untouched.
+export function clearStaleSelectionOnWrite(term: {
+	isAlternateScreen?: () => boolean;
+	hasSelection?: () => boolean;
+	clearSelection?: () => void;
+}): void {
+	try {
+		if (
+			term.isAlternateScreen?.() &&
+			term.hasSelection?.()
+		) {
+			term.clearSelection?.();
+		}
+	} catch {
+		// Selection bridge is best effort; ghostty may be disposed.
+	}
+}
+
 export interface TerminalHandle {
 	sendInput: (data: string) => void;
 	focus: () => void;
@@ -723,6 +749,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					if (!batch) return;
 					try {
 						batchTerm.write(batch);
+						// Drop any stale alt-screen selection left floating over
+						// the just-repainted cells (ghostty-web won't do it).
+						clearStaleSelectionOnWrite(batchTerm);
 					} catch {
 						// Swallow ghostty-web rendering errors
 					}
