@@ -1,0 +1,1 @@
+Active Tasks sidebar now mirrors the kanban board: tasks parked in a custom column (e.g. "On hold") show under their own column group with the column's color instead of leaking into their underlying built-in status group. Built-in status groups now exclude custom-column tasks, matching the board.

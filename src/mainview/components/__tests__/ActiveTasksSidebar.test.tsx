@@ -582,4 +582,67 @@ describe("ActiveTasksSidebar", () => {
 
 		expect(screen.queryByTestId("sidebar-status-age-t1")).not.toBeInTheDocument();
 	});
+
+	it("groups custom-column tasks under their own column, not their underlying status", () => {
+		const projectWithCol: Project = {
+			...project,
+			customColumns: [
+				{ id: "col-hold", name: "On hold", color: "#abcdef", llmInstruction: "" },
+			],
+		};
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={projectWithCol}
+					tasks={[
+						// Active task in a built-in status column.
+						makeTask({
+							id: "plain", status: "review-by-user",
+							title: "Plain review task", description: "Plain review task",
+							groupId: null as unknown as string, variantIndex: null,
+						}),
+						// Task parked in the custom "On hold" column. Its underlying
+						// status is still review-by-user, but it must NOT show under
+						// "Your Review" — it belongs to the custom column group.
+						makeTask({
+							id: "parked", status: "review-by-user", customColumnId: "col-hold",
+							title: "Parked task", description: "Parked task",
+							groupId: null as unknown as string, variantIndex: null,
+						}),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Both tasks are visible.
+		expect(screen.getByText("Plain review task")).toBeInTheDocument();
+		expect(screen.getByText("Parked task")).toBeInTheDocument();
+
+		// A custom-column group header with the column name is rendered.
+		const holdHeader = screen.getByText("On hold");
+		expect(holdHeader).toBeInTheDocument();
+
+		// The custom-column group sits AFTER the built-in "Your Review" group,
+		// and the parked task lives below the "On hold" header — not under the
+		// built-in review group with the plain task.
+		const yourReview = screen.getByText("Your Review");
+		const plain = screen.getByText("Plain review task");
+		const parked = screen.getByText("Parked task");
+		// Order in the DOM: Your Review → Plain task → On hold → Parked task.
+		expect(yourReview.compareDocumentPosition(holdHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(plain.compareDocumentPosition(holdHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(holdHeader.compareDocumentPosition(parked) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+		// The parked card's rail carries the custom column color, not the
+		// review-by-user status hue.
+		const parkedRail = screen.getByTestId("sidebar-status-rail-parked");
+		expect((parkedRail.querySelector("span")?.getAttribute("style") ?? "").toLowerCase()).toContain("#abcdef");
+	});
 });
