@@ -18,7 +18,7 @@ import { handleGui } from "./commands/gui";
 import { handleConversations } from "./commands/conversations";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
-import { hasCommandHelp, renderHelp } from "./help";
+import { resolveHelp } from "./help";
 
 const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
@@ -77,28 +77,16 @@ or "dev3 <command> <subcommand> --help" (e.g. "dev3 task create --help") for a s
 async function main(): Promise<void> {
 	const rawArgs = process.argv.slice(2);
 
-	// `remote` and `gui` render their own (richer) --help inside their handlers,
-	// so we let --help fall through to them. Every other command-with-subcommands
-	// gets focused help from the declarative registry (src/cli/help.ts); anything
-	// else falls back to the generic top-level help.
-	const ownsHelp = new Set(["remote", "gui"]);
-	const wantsHelp = rawArgs.includes("--help") || rawArgs.includes("-h");
-	const positionals = rawArgs.filter((a) => !a.startsWith("-"));
-	const helpCommand = positionals[0];
-	const helpSubcommand = positionals[1];
-
-	// `dev3 <command> [<subcommand>] --help` → command/subcommand-specific help.
-	if (wantsHelp && helpCommand && !ownsHelp.has(helpCommand) && hasCommandHelp(helpCommand)) {
-		const text = renderHelp(helpCommand, helpSubcommand);
-		if (text) {
-			process.stdout.write(text);
-			process.exit(CLI_EXIT_CODE_SUCCESS);
-		}
+	// `--help` routing (pure decision in help.ts so it stays unit-testable):
+	// a known command/subcommand gets focused help from the declarative registry,
+	// `remote`/`gui --help` fall through to their own handlers, and everything
+	// else (incl. no args) prints the generic top-level help.
+	const help = resolveHelp(rawArgs);
+	if (help.action === "command") {
+		process.stdout.write(help.text);
+		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}
-
-	// No args, or a top-level / unknown-command --help that nobody else owns.
-	const routeToOwnHelp = wantsHelp && Boolean(helpCommand) && ownsHelp.has(helpCommand);
-	if (rawArgs.length === 0 || (wantsHelp && !routeToOwnHelp)) {
+	if (help.action === "top") {
 		process.stdout.write(HELP);
 		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}

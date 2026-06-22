@@ -355,3 +355,41 @@ export function renderHelp(command: string, subcommand?: string): string | null 
 
 	return renderGroup(cmd);
 }
+
+/** Commands that render their own (richer) --help inside their handlers. */
+const OWNS_HELP = new Set(["remote", "gui"]);
+
+/**
+ * What `main()` should do about `--help` for a given argv (minus the leading
+ * "dev3"). Pure so the routing decision is unit-testable without process.exit:
+ *
+ * - `command` → print `text` (command/subcommand-specific help) and exit.
+ * - `top`     → print the generic top-level help and exit.
+ * - `none`    → not a help request we handle here; continue normal routing
+ *               (also covers `remote`/`gui --help`, which own their help).
+ */
+export type HelpResolution =
+	| { action: "command"; text: string }
+	| { action: "top" }
+	| { action: "none" };
+
+export function resolveHelp(rawArgs: string[]): HelpResolution {
+	const wantsHelp = rawArgs.includes("--help") || rawArgs.includes("-h");
+	const positionals = rawArgs.filter((a) => !a.startsWith("-"));
+	const command = positionals[0];
+	const subcommand = positionals[1];
+
+	// `dev3 <command> [<subcommand>] --help` → command/subcommand-specific help.
+	if (wantsHelp && command && !OWNS_HELP.has(command) && hasCommandHelp(command)) {
+		const text = renderHelp(command, subcommand);
+		if (text) return { action: "command", text };
+	}
+
+	// remote/gui own their --help; let those fall through to their handlers.
+	const routeToOwnHelp = wantsHelp && Boolean(command) && OWNS_HELP.has(command);
+	if (rawArgs.length === 0 || (wantsHelp && !routeToOwnHelp)) {
+		return { action: "top" };
+	}
+
+	return { action: "none" };
+}

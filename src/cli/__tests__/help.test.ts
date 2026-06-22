@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasCommandHelp, getCommandHelp, renderHelp } from "../help";
+import { hasCommandHelp, getCommandHelp, renderHelp, resolveHelp } from "../help";
 
 describe("hasCommandHelp", () => {
 	it("knows registered commands", () => {
@@ -72,6 +72,46 @@ describe("renderHelp — leaf command", () => {
 
 	it("ignores a stray subcommand arg for a leaf command", () => {
 		expect(renderHelp("vents", "whatever")).toEqual(renderHelp("vents"));
+	});
+});
+
+describe("resolveHelp — routing decision", () => {
+	it("no args → top-level help", () => {
+		expect(resolveHelp([])).toEqual({ action: "top" });
+	});
+
+	it("bare --help → top-level help", () => {
+		expect(resolveHelp(["--help"])).toEqual({ action: "top" });
+		expect(resolveHelp(["-h"])).toEqual({ action: "top" });
+	});
+
+	it("'<command> --help' → command-specific help text", () => {
+		const res = resolveHelp(["task", "--help"]);
+		expect(res.action).toBe("command");
+		if (res.action === "command") {
+			expect(res.text).toBe(renderHelp("task"));
+		}
+	});
+
+	it("'<command> <subcommand> --help' → subcommand-specific help text", () => {
+		const res = resolveHelp(["task", "create", "--help"]);
+		expect(res.action).toBe("command");
+		if (res.action === "command") {
+			expect(res.text).toBe(renderHelp("task", "create"));
+		}
+	});
+
+	it("remote/gui --help fall through to their own handlers (none)", () => {
+		expect(resolveHelp(["remote", "--help"])).toEqual({ action: "none" });
+		expect(resolveHelp(["gui", "--help"])).toEqual({ action: "none" });
+	});
+
+	it("unknown '<command> --help' → top-level help", () => {
+		expect(resolveHelp(["bogus", "--help"])).toEqual({ action: "top" });
+	});
+
+	it("a real invocation without --help is not a help request (none)", () => {
+		expect(resolveHelp(["task", "create", "--title", "x"])).toEqual({ action: "none" });
 	});
 });
 
