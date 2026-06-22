@@ -1,0 +1,1 @@
+The dev3 CLI now prints command- and subcommand-specific help. `dev3 task create --help`, `dev3 note add --help`, `dev3 label set --help`, etc. show focused usage and flags for that exact command instead of dumping the generic top-level help. A new declarative help registry (src/cli/help.ts) is the single source of truth; `remote`/`gui` keep their own richer help.
