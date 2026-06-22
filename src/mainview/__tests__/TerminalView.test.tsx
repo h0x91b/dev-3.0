@@ -1,5 +1,5 @@
 import { render, act, waitFor } from "@testing-library/react";
-import TerminalView, { buildResizeDance } from "../TerminalView";
+import TerminalView, { buildResizeDance, clearStaleSelectionOnWrite } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
@@ -698,5 +698,52 @@ describe("buildResizeDance", () => {
 		const nudgeRows = Number(nudge.match(/resize;\d+;(\d+)/)![1]);
 		const correctRows = Number(correct.match(/resize;\d+;(\d+)/)![1]);
 		expect(nudgeRows - correctRows).toBe(1);
+	});
+});
+
+describe("clearStaleSelectionOnWrite", () => {
+	function makeTerm(over: {
+		alt: boolean;
+		hasSelection: boolean;
+	}) {
+		const clearSelection = vi.fn();
+		return {
+			term: {
+				isAlternateScreen: vi.fn(() => over.alt),
+				hasSelection: vi.fn(() => over.hasSelection),
+				clearSelection,
+			},
+			clearSelection,
+		};
+	}
+
+	// Repro: the floating-selection bug. On the alternate screen a TUI repaints
+	// the same cells, so a selection made over them must be dropped on write.
+	it("clears the selection on alt-screen when one exists", () => {
+		const { term, clearSelection } = makeTerm({ alt: true, hasSelection: true });
+		clearStaleSelectionOnWrite(term);
+		expect(clearSelection).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT clear selection on the primary screen (scrollback stays anchored)", () => {
+		const { term, clearSelection } = makeTerm({ alt: false, hasSelection: true });
+		clearStaleSelectionOnWrite(term);
+		expect(clearSelection).not.toHaveBeenCalled();
+	});
+
+	it("does nothing on alt-screen when there is no selection", () => {
+		const { term, clearSelection } = makeTerm({ alt: true, hasSelection: false });
+		clearStaleSelectionOnWrite(term);
+		expect(clearSelection).not.toHaveBeenCalled();
+	});
+
+	it("never throws if the terminal is disposed / lacks the APIs", () => {
+		expect(() => clearStaleSelectionOnWrite({})).not.toThrow();
+		const throwing = {
+			isAlternateScreen: () => {
+				throw new Error("disposed");
+			},
+		};
+		expect(() => clearStaleSelectionOnWrite(throwing)).not.toThrow();
 	});
 });
