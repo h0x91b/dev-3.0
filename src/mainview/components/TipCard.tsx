@@ -1,19 +1,31 @@
+import { useState } from "react";
 import type { Tip } from "../tips";
 import type { TipState } from "../../shared/types";
-import { SNOOZE_MS } from "../tips";
+import { SNOOZE_MS, ROTATION_INTERVAL_MS } from "../tips";
 import { useT } from "../i18n";
 import { api } from "../rpc";
 
 interface TipCardProps {
 	tip: Tip;
 	tipState: TipState;
-	onChanged: () => void;
+	/** Apply the TipState returned by the rotate/snooze write. */
+	onChanged: (next: TipState) => void;
 	/** Tighter padding for narrow carriers (e.g. the Active Tasks sidebar). */
 	compact?: boolean;
 }
 
 function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 	const t = useT();
+	// Hovering the card pauses the rotation timer (and its progress bar).
+	const [paused, setPaused] = useState(false);
+
+	/** Mark the current tip seen and advance to the next one. */
+	function rotate() {
+		api.request.updateTipState({
+			seen: { [tip.id]: Date.now() },
+			rotationIndex: tipState.rotationIndex + 1,
+		}).then(onChanged).catch(() => {});
+	}
 
 	function handleSnooze(e: React.MouseEvent) {
 		e.stopPropagation();
@@ -24,14 +36,15 @@ function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 
 	function handleNext(e: React.MouseEvent) {
 		e.stopPropagation();
-		api.request.updateTipState({
-			seen: { [tip.id]: Date.now() },
-			rotationIndex: tipState.rotationIndex + 1,
-		}).then(onChanged).catch(() => {});
+		rotate();
 	}
 
 	return (
-		<div className={`relative ${compact ? "p-2.5" : "p-3.5"} rounded-xl border border-dashed border-accent/25 bg-accent/[0.04] transition-all hover:border-accent/40 hover:bg-accent/[0.07]`}>
+		<div
+			onMouseEnter={() => setPaused(true)}
+			onMouseLeave={() => setPaused(false)}
+			className={`relative overflow-hidden select-none ${compact ? "p-2.5" : "p-3.5"} rounded-xl border border-dashed border-accent/25 bg-accent/[0.04] transition-all hover:border-accent/40 hover:bg-accent/[0.07]`}
+		>
 			{/* Snooze button (hide all tips for 4h) */}
 			<button
 				onClick={handleSnooze}
@@ -73,6 +86,26 @@ function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 			>
 				{t("tip.next")} →
 			</button>
+
+			{/* Rotation progress bar — the animation IS the timer: when it ends we
+			    rotate. Pauses on hover; restarts (key) on every tip change. */}
+			<div className="mt-2.5 h-[3px] rounded-full bg-accent/10 overflow-hidden">
+				<div
+					key={`${tip.id}-${tipState.rotationIndex}`}
+					data-testid="tip-progress"
+					className="h-full bg-accent/40 origin-left"
+					onAnimationEnd={(e) => {
+						if (e.animationName === "tip-progress") rotate();
+					}}
+					style={{
+						animationName: "tip-progress",
+						animationDuration: `${ROTATION_INTERVAL_MS}ms`,
+						animationTimingFunction: "linear",
+						animationFillMode: "forwards",
+						animationPlayState: paused ? "paused" : "running",
+					}}
+				/>
+			</div>
 		</div>
 	);
 }

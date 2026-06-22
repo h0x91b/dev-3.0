@@ -61,7 +61,7 @@ interface KanbanColumnProps {
 	// Feature discovery tip
 	tip?: Tip | null;
 	tipState?: TipState;
-	onTipChanged?: () => void;
+	onTipChanged?: (next: TipState) => void;
 	// Collapse support
 	collapsed?: boolean;
 	onCollapseToggle?: () => void;

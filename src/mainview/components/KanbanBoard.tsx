@@ -69,7 +69,7 @@ function KanbanBoard({
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
 	// Feature-discovery tip rotation (board context). Shared logic lives in the hook.
-	const { tip: currentTip, tipState, reloadTipState } = useTipRotation("board", globalSettings.tipsDisabled);
+	const { tip: currentTip, tipState, applyTipState } = useTipRotation("board", globalSettings.tipsDisabled);
 	const collapseState = useColumnCollapse(project.id);
 
 	// PR numbers for task cards: taskId → { number, url }
@@ -433,7 +433,7 @@ function KanbanBoard({
 			/>
 			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
 				{getOrderedColumns().map((slot) => {
-					const handleTipChanged = () => reloadTipState();
+					const handleTipChanged = applyTipState;
 					const commonProps = {
 						project,
 						dispatch,

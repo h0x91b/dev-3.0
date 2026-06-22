@@ -309,3 +309,10 @@ button {
 	from { width: 100%; }
 	to { width: 0%; }
 }
+
+/* ---- Tip card rotation progress bar (drives auto-rotate via animationend) ---- */
+
+@keyframes tip-progress {
+	from { transform: scaleX(0); }
+	to { transform: scaleX(1); }
+}

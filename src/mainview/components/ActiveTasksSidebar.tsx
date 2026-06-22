@@ -109,7 +109,7 @@ function ActiveTasksSidebar({
 	const statusColors = useStatusColors();
 	const preview = useTerminalPreview();
 	// Feature-discovery tips in the task view (terminal context leads the rotation).
-	const { tip: currentTip, tipState, reloadTipState } = useTipRotation("terminal");
+	const { tip: currentTip, tipState, applyTipState } = useTipRotation("terminal");
 	const [searchQuery, setSearchQuery] = useState("");
 	// Re-render once per second so the status-age badges stay live.
 	const [now, setNow] = useState(() => Date.now());
@@ -488,7 +488,7 @@ function ActiveTasksSidebar({
 			{/* Feature-discovery tip — terminal-context tips lead here (see useTipRotation) */}
 			{currentTip && tipState && (
 				<div className="px-3 py-2 border-b border-edge flex-shrink-0">
-					<TipCard tip={currentTip} tipState={tipState} onChanged={reloadTipState} compact />
+					<TipCard tip={currentTip} tipState={tipState} onChanged={applyTipState} compact />
 				</div>
 			)}
 

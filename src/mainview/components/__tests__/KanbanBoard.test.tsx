@@ -1,8 +1,7 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import KanbanBoard from "../KanbanBoard";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
-import { ROTATION_INTERVAL_MS } from "../../tips";
 import type { CustomColumn, Project, TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -291,10 +290,6 @@ describe("tip rotation", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
-		vi.useFakeTimers();
-	});
-	afterEach(() => {
-		vi.useRealTimers();
 	});
 
 	async function renderForRotation() {
@@ -312,29 +307,30 @@ describe("tip rotation", () => {
 				</I18nProvider>,
 			);
 		});
-		// Flush async getTipState / getGlobalSettings before the first timer fires.
-		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		// The progress bar drives rotation; return it so tests can fire its animationend.
+		return await screen.findByTestId("tip-progress");
 	}
 
-	it("rotates tips every ROTATION_INTERVAL_MS with an advancing rotationIndex", async () => {
+	it("rotates the tip when the progress-bar animation ends, advancing rotationIndex", async () => {
 		const getTipState = vi.mocked(api.request.getTipState);
 		const updateTipState = vi.mocked(api.request.updateTipState);
 		getTipState.mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 });
-		// Echo params back so setTipState advances the persisted rotationIndex.
+		// Echo params back so the applied TipState advances the persisted rotationIndex.
 		updateTipState.mockImplementation((params: Partial<TipState>) =>
 			Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...params } as TipState),
 		);
 
-		await renderForRotation();
+		const bar = await renderForRotation();
 
-		// First rotation tick.
-		await act(async () => { await vi.advanceTimersByTimeAsync(ROTATION_INTERVAL_MS); });
-		expect(updateTipState).toHaveBeenCalledTimes(1);
+		// First rotation: the progress animation completes.
+		await act(async () => { fireEvent.animationEnd(bar, { animationName: "tip-progress" }); });
+		await waitFor(() => expect(updateTipState).toHaveBeenCalledTimes(1));
 		expect(updateTipState.mock.calls[0][0].rotationIndex).toBe(1);
 
-		// Second rotation tick — index must keep advancing, not stick.
-		await act(async () => { await vi.advanceTimersByTimeAsync(ROTATION_INTERVAL_MS); });
-		expect(updateTipState).toHaveBeenCalledTimes(2);
+		// Second rotation: the bar remounts (new key) and its animation ends again.
+		const bar2 = await screen.findByTestId("tip-progress");
+		await act(async () => { fireEvent.animationEnd(bar2, { animationName: "tip-progress" }); });
+		await waitFor(() => expect(updateTipState).toHaveBeenCalledTimes(2));
 		expect(updateTipState.mock.calls[1][0].rotationIndex).toBe(2);
 	});
 
@@ -346,10 +342,10 @@ describe("tip rotation", () => {
 			Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...params } as TipState),
 		);
 
-		await renderForRotation();
-		await act(async () => { await vi.advanceTimersByTimeAsync(ROTATION_INTERVAL_MS); });
+		const bar = await renderForRotation();
+		await act(async () => { fireEvent.animationEnd(bar, { animationName: "tip-progress" }); });
+		await waitFor(() => expect(updateTipState).toHaveBeenCalledTimes(1));
 
-		expect(updateTipState).toHaveBeenCalledTimes(1);
 		const payload = updateTipState.mock.calls[0][0];
 		// Only the two writable keys are sent — no new/renamed fields that an older version can't read.
 		expect(Object.keys(payload).sort()).toEqual(["rotationIndex", "seen"]);
