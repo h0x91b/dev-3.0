@@ -1,6 +1,14 @@
 import type { TranslationKey } from "./i18n/translations/en";
 import type { TipState } from "../shared/types";
 
+/**
+ * Surface where a tip is most relevant. Used by selectTip() as a SORT BOOST,
+ * never as a filter: tips matching the current surface are shown first (by
+ * score tier); once they are exhausted (all seen / on cooldown) the rest of
+ * the pool surfaces. Every tip MUST declare at least one context.
+ */
+export type TipContext = "board" | "terminal" | "diff" | "settings" | "preparing";
+
 export interface Tip {
 	id: string;
 	titleKey: TranslationKey;
@@ -14,6 +22,14 @@ export interface Tip {
 	 * ("Feature discovery tips").
 	 */
 	score: number;
+	/**
+	 * Surfaces where this tip is most relevant (required, non-empty). The tip
+	 * carrier for a given surface passes its context to selectTip(), which
+	 * shows context-matching tips first. A tip still appears on other surfaces
+	 * once the matching pool drains — context boosts ordering, it never hides.
+	 * Global/cross-surface tips (palette, shortcuts, sleep toggle) list several.
+	 */
+	contexts: TipContext[];
 }
 
 const ALL_TIPS: Tip[] = [
@@ -23,6 +39,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffReviewPersists.body",
 		icon: "\u{F0193}", // nf-md-content_save
 		score: 3,
+		contexts: ["diff"],
 	},
 	{
 		id: "create-task-inline-label",
@@ -30,6 +47,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.createTaskInlineLabel.body",
 		icon: "\u{F0403}", // nf-md-label_outline
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "back-forward-nav",
@@ -37,6 +55,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.backForwardNav.body",
 		icon: "\u{F0141}", // nf-md-chevron_left
 		score: 2,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "status-age-badge",
@@ -44,6 +63,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.statusAgeBadge.body",
 		icon: "\u{F0954}", // nf-md-clock_outline
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "cmd-switch-keeps-view",
@@ -51,6 +71,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cmdSwitchKeepsView.body",
 		icon: "\u{F0600}", // nf-md-keyboard
 		score: 3,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "project-quick-switch",
@@ -58,6 +79,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.projectQuickSwitch.body",
 		icon: "\u{F0969}", // nf-md-magnify
 		score: 3,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "command-palette",
@@ -65,6 +87,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.commandPalette.body",
 		icon: "\u{F0E7}", // nf-fa-bolt
 		score: 4,
+		contexts: ["board", "terminal", "diff"],
 	},
 	{
 		id: "agent-create-tasks",
@@ -72,6 +95,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.agentCreateTasks.body",
 		icon: "\u{F0219}", // nf-md-robot
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "agent-sees-tasks",
@@ -79,6 +103,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.agentSeesTasks.body",
 		icon: "\u{F0EA0}", // nf-md-eye_outline
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "agent-notes",
@@ -86,6 +111,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.agentNotes.body",
 		icon: "\u{F09ED}", // nf-md-note_text_outline
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "double-click-todo",
@@ -93,6 +119,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.doubleClickTodo.body",
 		icon: "\u{F0A79}", // nf-md-lightning_bolt
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "right-click-open",
@@ -100,6 +127,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.rightClickOpen.body",
 		icon: "\u{F0379}", // nf-md-open_in_new
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "cmd-n-shortcut",
@@ -107,6 +135,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cmdN.body",
 		icon: "\u{F030C}", // nf-md-keyboard
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "terminal-preview",
@@ -114,6 +143,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.terminalPreview.body",
 		icon: "\u{F0489}", // nf-md-monitor
 		score: 5,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "task-overview-hover",
@@ -121,6 +151,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskOverviewHover.body",
 		icon: "\u{F02FC}", // nf-md-information_outline
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "user-overview-override",
@@ -128,6 +159,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.userOverviewOverride.body",
 		icon: "\u{F040}", // nf-md-pencil
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "multi-variant-tasks",
@@ -135,6 +167,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiVariantTasks.body",
 		icon: "\u{F0219}", // nf-md-robot
 		score: 5,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "task-labels",
@@ -142,6 +175,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskLabels.body",
 		icon: "\u{F0B05}", // nf-md-label
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "task-search",
@@ -149,6 +183,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskSearch.body",
 		icon: "\u{F0349}", // nf-md-magnify
 		score: 3,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "push-and-create-pr",
@@ -156,6 +191,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.pushAndCreatePr.body",
 		icon: "\u{F06A9}", // nf-md-robot
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "create-pr-auto-merge",
@@ -163,6 +199,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.createPrAutoMerge.body",
 		icon: "\u{F0623}", // nf-md-source_merge
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "project-github-account",
@@ -170,6 +207,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.projectGitHubAccount.body",
 		icon: "\u{F0370}", // nf-md-github
 		score: 2,
+		contexts: ["settings"],
 	},
 	{
 		id: "pr-badge-on-card",
@@ -177,6 +215,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.prBadgeOnCard.body",
 		icon: "\u{F0401}", // nf-md-source_branch
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "show-diff-button",
@@ -184,6 +223,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.showDiffButton.body",
 		icon: "\u{F044B}", // nf-md-source_diff
 		score: 4,
+		contexts: ["terminal", "diff"],
 	},
 	{
 		id: "diff-default-layout",
@@ -191,6 +231,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffDefaultLayout.body",
 		icon: "\u{F0156}", // nf-md-view_split_vertical
 		score: 2,
+		contexts: ["diff"],
 	},
 	{
 		id: "diff-exclude-tests",
@@ -198,6 +239,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffExcludeTests.body",
 		icon: "\u{F0668}", // nf-md-flask_outline
 		score: 3,
+		contexts: ["diff"],
 	},
 	{
 		id: "inline-diff-comments",
@@ -205,6 +247,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.inlineDiffComments.body",
 		icon: "\u{F027B}", // nf-md-comment_plus_outline
 		score: 4,
+		contexts: ["diff"],
 	},
 	{
 		id: "inline-diff-multiline-comments",
@@ -212,6 +255,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.inlineDiffMultilineComments.body",
 		icon: "\u{F0453}", // nf-md-cursor_move
 		score: 3,
+		contexts: ["diff"],
 	},
 	{
 		id: "inline-diff-review-export",
@@ -219,6 +263,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.inlineDiffReviewExport.body",
 		icon: "\u{F0198}", // nf-md-content_copy
 		score: 4,
+		contexts: ["diff"],
 	},
 	{
 		id: "unpushed-diff",
@@ -226,6 +271,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.unpushedDiff.body",
 		icon: "\u{F07E7}", // nf-md-cloud_upload_outline
 		score: 3,
+		contexts: ["diff"],
 	},
 	{
 		id: "image-paste-attach",
@@ -233,6 +279,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.imagePasteAttach.body",
 		icon: "\u{F021F}", // nf-md-image_plus
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "custom-columns",
@@ -240,6 +287,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.customColumns.body",
 		icon: "\u{F0349}", // nf-md-view_column
 		score: 4,
+		contexts: ["board"],
 	},
 	{
 		id: "clone-from-url",
@@ -247,6 +295,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cloneFromUrl.body",
 		icon: "\u{F02A2}", // nf-md-source_repository
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "active-tasks-sidebar",
@@ -254,6 +303,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.activeTasksSidebar.body",
 		icon: "\u{F0CB1}", // nf-md-view_list
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "terminal-drag-drop-file-path",
@@ -261,13 +311,15 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.terminalDragDropFilePath.body",
 		icon: "\u{F0525}", // nf-md-drag
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "yazi-file-browser",
 		titleKey: "tip.yaziFileBrowser.title",
 		bodyKey: "tip.yaziFileBrowser.body",
-		icon: "", // nf-fa-folder_open
+		icon: "", // nf-fa-folder_open
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "review-mode-branch",
@@ -275,6 +327,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.reviewModeBranch.body",
 		icon: "\u{F0804}", // nf-md-code_review
 		score: 4,
+		contexts: ["diff"],
 	},
 	{
 		id: "auto-complete-on-pr-merge",
@@ -282,6 +335,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.autoCompleteOnPrMerge.body",
 		icon: "\u{F0382}", // nf-md-source_merge
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "expose-task-ports",
@@ -289,6 +343,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.exposeTaskPorts.body",
 		icon: "\u{F0168}", // nf-md-lan_connect
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "resume-agent-session",
@@ -296,6 +351,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.resumeAgentSession.body",
 		icon: "\u{F040A}", // nf-md-play_circle_outline
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "tmux-action-buttons",
@@ -303,20 +359,23 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.tmuxActionButtons.body",
 		icon: "\u{F0156}", // nf-md-view_split_vertical
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "bell-auto-move",
 		titleKey: "tip.bellAutoMove.title",
 		bodyKey: "tip.bellAutoMove.body",
-		icon: "", // nf-fa-bell
+		icon: "", // nf-fa-bell
 		score: 4,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "zoom-support",
 		titleKey: "tip.zoomSupport.title",
 		bodyKey: "tip.zoomSupport.body",
-		icon: "", // nf-fa-search_plus
+		icon: "", // nf-fa-search_plus
 		score: 2,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "configurable-agents",
@@ -324,13 +383,15 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.configurableAgents.body",
 		icon: "\u{F0219}", // nf-md-robot
 		score: 4,
+		contexts: ["settings"],
 	},
 	{
 		id: "osc52-clipboard",
 		titleKey: "tip.osc52Clipboard.title",
 		bodyKey: "tip.osc52Clipboard.body",
-		icon: "", // nf-fa-copy
+		icon: "", // nf-fa-copy
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "task-info-panel",
@@ -338,6 +399,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskInfoPanel.body",
 		icon: "\u{F05A}", // nf-fa-info_circle
 		score: 2,
+		contexts: ["terminal"],
 	},
 	{
 		id: "git-branch-status",
@@ -345,6 +407,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.gitBranchStatus.body",
 		icon: "\u{F062C}", // nf-md-source_branch
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "warn-before-complete",
@@ -352,6 +415,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.warnBeforeComplete.body",
 		icon: "\u{F0F09}", // nf-md-alert_circle_outline
 		score: 3,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "cow-clone-paths",
@@ -359,6 +423,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cowClonePaths.body",
 		icon: "\u{F0198}", // nf-md-content_copy
 		score: 5,
+		contexts: ["settings"],
 	},
 	{
 		id: "keyboard-shortcuts-panel",
@@ -366,6 +431,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.keyboardShortcutsPanel.body",
 		icon: "\u{F030D}", // nf-md-keyboard
 		score: 3,
+		contexts: ["board", "terminal", "diff"],
 	},
 	// Batch 8: tmux manager, CLI, snapshots, sound, siblings
 	{
@@ -374,6 +440,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.tmuxSessionManager.body",
 		icon: "\u{F0313}", // nf-md-console
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "cli-tool",
@@ -381,6 +448,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cliTool.body",
 		icon: "\u{F0A9E}", // nf-md-terminal
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "cli-dev-server",
@@ -388,6 +456,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cliDevServer.body",
 		icon: "\u{F0A9E}", // nf-md-terminal
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "diff-snapshots",
@@ -395,6 +464,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffSnapshots.body",
 		icon: "\u{F0804}", // nf-md-history
 		score: 4,
+		contexts: ["diff"],
 	},
 	{
 		id: "sibling-variant-visibility",
@@ -402,6 +472,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.siblingVariantVisibility.body",
 		icon: "\u{F0CB8}", // nf-md-dots_horizontal
 		score: 4,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "branch-selector-task-creation",
@@ -409,6 +480,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.branchSelectorTaskCreation.body",
 		icon: "\u{F062C}", // nf-md-source_branch
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "resume-conversation-on-reopen",
@@ -416,6 +488,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.resumeConversationOnReopen.body",
 		icon: "\u{F040A}", // nf-md-restore
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "setup-script-panes",
@@ -423,6 +496,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.setupScriptPanes.body",
 		icon: "\u{F0259}", // nf-md-console
 		score: 2,
+		contexts: ["terminal", "settings"],
 	},
 	{
 		id: "custom-task-title",
@@ -430,6 +504,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.customTaskTitle.body",
 		icon: "\u{F0B5B}", // nf-md-pencil
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "spawn-extra-agent",
@@ -437,6 +512,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.spawnExtraAgent.body",
 		icon: "\u{F0219}", // nf-md-robot
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "branch-start-choice",
@@ -444,6 +520,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.autoFillBranch.body",
 		icon: "\u{F0F09}", // nf-md-alert_circle_outline
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "task-open-mode",
@@ -451,6 +528,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskOpenMode.body",
 		icon: "\u{F0124}", // nf-md-fullscreen
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "fork-branch-support",
@@ -458,6 +536,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.forkBranchSupport.body",
 		icon: "\u{F062C}", // nf-md-source_branch
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "restart-task-from-scratch",
@@ -465,6 +544,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.restartTaskFromScratch.body",
 		icon: "\u{F0450}", // nf-md-refresh
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "shell-after-agent-exit",
@@ -472,6 +552,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.shellAfterAgentExit.body",
 		icon: "\u{F0313}", // nf-md-console
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "worktree-file-filter",
@@ -479,6 +560,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.worktreeFileFilter.body",
 		icon: "\u{F024B}", // nf-md-filter
 		score: 3,
+		contexts: ["diff"],
 	},
 	{
 		id: "repo-local-config",
@@ -486,6 +568,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.repoLocalConfig.body",
 		icon: "\u{F0493}", // nf-md-share_variant
 		score: 4,
+		contexts: ["settings"],
 	},
 	{
 		id: "ai-review-drag",
@@ -493,6 +576,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.aiReviewDrag.body",
 		icon: "\u{F0804}", // nf-md-code_review
 		score: 5,
+		contexts: ["board"],
 	},
 	{
 		id: "ai-review-customize",
@@ -500,6 +584,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.aiReviewCustomize.body",
 		icon: "\u{F0493}", // nf-md-tune_variant
 		score: 3,
+		contexts: ["settings"],
 	},
 	{
 		id: "custom-column-agents",
@@ -507,6 +592,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.customColumnAgents.body",
 		icon: "\u{F0219}", // nf-md-robot
 		score: 4,
+		contexts: ["board"],
 	},
 	{
 		id: "rename-builtin-columns",
@@ -514,6 +600,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.renameBuiltinColumns.body",
 		icon: "\u{F0B5B}", // nf-md-pencil
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "config-hierarchy",
@@ -521,6 +608,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.configHierarchy.body",
 		icon: "\u{F0493}", // nf-md-tune
 		score: 2,
+		contexts: ["settings"],
 	},
 	{
 		id: "worktree-config",
@@ -528,6 +616,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.worktreeConfig.body",
 		icon: "\u{F0645}", // nf-md-file_tree
 		score: 3,
+		contexts: ["settings"],
 	},
 	{
 		id: "diff-compare-default",
@@ -535,6 +624,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.diffCompareDefault.body",
 		icon: "\u{F04CB}", // nf-md-source_compare
 		score: 2,
+		contexts: ["diff"],
 	},
 	{
 		id: "project-terminal",
@@ -542,6 +632,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.projectTerminal.body",
 		icon: "\u{F0489}", // nf-md-console
 		score: 3,
+		contexts: ["terminal", "board"],
 	},
 	{
 		id: "port-allocation",
@@ -549,6 +640,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.portAllocation.body",
 		icon: "\u{F0317}", // nf-md-ethernet
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "resource-usage-badge",
@@ -556,6 +648,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.resourceUsageBadge.body",
 		icon: "\u{F035B}",
 		score: 3,
+		contexts: ["terminal", "board"],
 	},
 	{
 		id: "task-watch-notifications",
@@ -563,6 +656,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskWatch.body",
 		icon: "\u{F009A}", // nf-md-bell
 		score: 3,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "prevent-sleep",
@@ -570,6 +664,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.preventSleep.body",
 		icon: String.fromCharCode(0xec15), // nf-cod-coffee
 		score: 3,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "copy-worktree-path",
@@ -577,6 +672,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.copyWorktreePath.body",
 		icon: "\u{F0198}", // nf-md-content_copy
 		score: 2,
+		contexts: ["terminal"],
 	},
 	{
 		id: "cancel-preparing",
@@ -584,6 +680,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.cancelPreparing.body",
 		icon: "\u{F0159}", // nf-md-cancel
 		score: 2,
+		contexts: ["preparing"],
 	},
 	{
 		id: "folder-picker-paste-path",
@@ -591,6 +688,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.folderPickerPastePath.body",
 		icon: "\u{F0770}", // nf-md-folder_open
 		score: 2,
+		contexts: ["board"],
 	},
 	{
 		id: "kanban-git-pull",
@@ -598,6 +696,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.kanbanGitPull.body",
 		icon: "\u{F0164}", // nf-md-cloud_download_outline
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "init-new-project",
@@ -605,13 +704,15 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.initNewProject.body",
 		icon: "\u{F0415}", // nf-md-plus_box
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "sidebar-global-scope",
 		titleKey: "tip.sidebarGlobalScope.title",
 		bodyKey: "tip.sidebarGlobalScope.body",
-		icon: "", // nf-cod-globe
+		icon: "", // nf-cod-globe
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "scratch-task",
@@ -619,6 +720,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.scratchTask.body",
 		icon: "\u{F018D}", // nf-md-console
 		score: 4,
+		contexts: ["board"],
 	},
 	{
 		id: "review-discard-guard",
@@ -626,6 +728,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.reviewDiscardGuard.body",
 		icon: "\u{F0156}", // nf-md-shield_check
 		score: 3,
+		contexts: ["diff"],
 	},
 	{
 		id: "fda-stuck-prep",
@@ -633,6 +736,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.fdaStuckPrep.body",
 		icon: "\u{F0156}", // nf-md-shield_check
 		score: 2,
+		contexts: ["preparing"],
 	},
 	{
 		id: "bug-hunters-lightbox",
@@ -640,6 +744,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.bugHunters.body",
 		icon: "", // nf-fa-bug
 		score: 5,
+		contexts: ["terminal"],
 	},
 	{
 		id: "multi-window",
@@ -647,6 +752,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiWindow.body",
 		icon: "\u{F05C2}", // nf-md-window_restore
 		score: 4,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "sidebar-hide",
@@ -654,6 +760,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.sidebarHide.body",
 		icon: "\u{F0294}", // nf-md-fullscreen
 		score: 2,
+		contexts: ["terminal"],
 	},
 	{
 		id: "multi-folder-add-project",
@@ -661,6 +768,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.multiFolderAddProject.body",
 		icon: "\u{F0770}", // nf-md-folder_open
 		score: 3,
+		contexts: ["board"],
 	},
 	{
 		id: "skill-autocomplete",
@@ -668,6 +776,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.skillAutocomplete.body",
 		icon: "\u{F0349}", // nf-md-magic_staff
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "projects-daily-backup",
@@ -675,6 +784,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.projectsDailyBackup.body",
 		icon: "\u{F006F}", // nf-md-backup_restore
 		score: 3,
+		contexts: ["board", "settings"],
 	},
 	{
 		id: "agent-completion-request",
@@ -682,6 +792,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.agentCompletionRequest.body",
 		icon: "\u{F06A9}", // nf-md-robot
 		score: 3,
+		contexts: ["terminal"],
 	},
 	{
 		id: "task-switcher-option-tab",
@@ -689,6 +800,7 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.taskSwitcher.body",
 		icon: "\u{F030C}", // nf-md-keyboard
 		score: 4,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "paste-large-text",
@@ -696,20 +808,31 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.pasteLargeText.body",
 		icon: "\u{F0192}", // nf-md-file_document_outline
 		score: 4,
+		contexts: ["terminal"],
 	},
 	{
 		id: "task-hint-nav",
 		titleKey: "tip.taskHintNav.title",
 		bodyKey: "tip.taskHintNav.body",
-		icon: "\uF05B", // nf-fa-crosshairs
+		icon: "", // nf-fa-crosshairs
 		score: 4,
+		contexts: ["board"],
 	},
 	{
 		id: "keyboard-go-to",
 		titleKey: "tip.keyboardGoTo.title",
 		bodyKey: "tip.keyboardGoTo.body",
-		icon: "\uF11C", // nf-fa-keyboard_o
+		icon: "", // nf-fa-keyboard_o
 		score: 3,
+		contexts: ["board", "terminal"],
+	},
+	{
+		id: "terminal-select-copies",
+		titleKey: "tip.terminalSelectCopies.title",
+		bodyKey: "tip.terminalSelectCopies.body",
+		icon: "\u{F0198}", // nf-md-content_copy
+		score: 5,
+		contexts: ["terminal", "preparing"],
 	},
 ];
 
@@ -738,8 +861,13 @@ function availableTips(state: TipState, now: number): Tip[] {
  * Highest-coolness tier first: all score-5 tips are shown (in pseudo-random
  * order) before any score-4 tip, and so on. As tips are seen they drop out of
  * the pool for COOLDOWN_MS, draining the top tier until it falls to the next.
+ *
+ * `context` is a SORT BOOST, not a filter: when supplied, tips whose `contexts`
+ * include it are preferred and exhausted first (still by score tier). Only once
+ * no context-matching tip is available do the remaining tips surface, so a
+ * surface never runs dry — it just leads with its own relevant tips.
  */
-export function selectTip(state: TipState): Tip | null {
+export function selectTip(state: TipState, context?: TipContext): Tip | null {
 	const now = Date.now();
 
 	if (state.snoozedUntil > now) return null;
@@ -747,8 +875,14 @@ export function selectTip(state: TipState): Tip | null {
 	const available = availableTips(state, now);
 	if (available.length === 0) return null;
 
-	const maxScore = Math.max(...available.map((t) => t.score));
-	const tier = available.filter((t) => t.score === maxScore);
+	let pool = available;
+	if (context) {
+		const matching = available.filter((t) => t.contexts.includes(context));
+		if (matching.length > 0) pool = matching;
+	}
+
+	const maxScore = Math.max(...pool.map((t) => t.score));
+	const tier = pool.filter((t) => t.score === maxScore);
 
 	const idx = Math.floor(seededUnit(state.rotationIndex) * tier.length);
 	return tier[idx];

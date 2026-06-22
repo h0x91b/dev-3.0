@@ -10,6 +10,8 @@ import { getStatusLabel } from "../utils/statusLabel";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
 import LabelChip from "./LabelChip";
+import TipCard from "./TipCard";
+import { useTipRotation } from "../hooks/useTipRotation";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
@@ -106,6 +108,8 @@ function ActiveTasksSidebar({
 	const [locale] = useLocale();
 	const statusColors = useStatusColors();
 	const preview = useTerminalPreview();
+	// Feature-discovery tips in the task view (terminal context leads the rotation).
+	const { tip: currentTip, tipState, reloadTipState } = useTipRotation("terminal");
 	const [searchQuery, setSearchQuery] = useState("");
 	// Re-render once per second so the status-age badges stay live.
 	const [now, setNow] = useState(() => Date.now());
@@ -480,6 +484,13 @@ function ActiveTasksSidebar({
 					)}
 				</div>
 			</div>
+
+			{/* Feature-discovery tip — terminal-context tips lead here (see useTipRotation) */}
+			{currentTip && tipState && (
+				<div className="px-3 py-2 border-b border-edge flex-shrink-0">
+					<TipCard tip={currentTip} tipState={tipState} onChanged={reloadTipState} compact />
+				</div>
+			)}
 
 			{/* Task list */}
 			<div className="flex-1 overflow-y-auto overflow-x-hidden">

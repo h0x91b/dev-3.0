@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskStatus, TipState } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
@@ -20,7 +20,7 @@ import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesSearchQuery } from "../utils/taskSearch";
 import { startVisibilityAwarePoll } from "../utils/poll";
-import { selectTip, ROTATION_INTERVAL_MS } from "../tips";
+import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 
@@ -68,58 +68,12 @@ function KanbanBoard({
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
-	const [tipState, setTipState] = useState<TipState | null>(null);
-	const currentTip = useMemo(() => tipState ? selectTip(tipState) : null, [tipState]);
-	// Mirror tipState/currentTip in refs so the rotation timer reads the latest
-	// values instead of the (null) closure captured when the effect first ran.
-	const tipStateRef = useRef<TipState | null>(null);
-	const currentTipRef = useRef(currentTip);
-	useEffect(() => { tipStateRef.current = tipState; }, [tipState]);
-	useEffect(() => { currentTipRef.current = currentTip; }, [currentTip]);
+	// Feature-discovery tip rotation (board context). Shared logic lives in the hook.
+	const { tip: currentTip, tipState, reloadTipState } = useTipRotation("board", globalSettings.tipsDisabled);
 	const collapseState = useColumnCollapse(project.id);
 
 	// PR numbers for task cards: taskId → { number, url }
 	const [taskPrMap, setTaskPrMap] = useState<Map<string, { number: number; url: string }>>(new Map());
-
-	const reloadTipState = useCallback(() => {
-		api.request.getTipState().then(setTipState).catch(() => {});
-	}, []);
-
-	// Load tip state on mount + auto-rotate every 60s
-	const tipMountedRef = useRef(true);
-	const tipTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	useEffect(() => {
-		tipMountedRef.current = true;
-		if (globalSettings.tipsDisabled) return;
-		reloadTipState();
-		function scheduleRotation() {
-			tipTimerRef.current = setTimeout(() => {
-				if (!tipMountedRef.current) return;
-				const state = tipStateRef.current;
-				if (!state) {
-					scheduleRotation();
-					return;
-				}
-				const tip = currentTipRef.current;
-				api.request.updateTipState({
-					seen: tip ? { [tip.id]: Date.now() } : {},
-					rotationIndex: state.rotationIndex + 1,
-				}).then((state) => {
-					if (!tipMountedRef.current) return;
-					setTipState(state);
-					scheduleRotation();
-				}).catch(() => {
-					if (!tipMountedRef.current) return;
-					scheduleRotation();
-				});
-			}, ROTATION_INTERVAL_MS);
-		}
-		scheduleRotation();
-		return () => {
-			tipMountedRef.current = false;
-			clearTimeout(tipTimerRef.current);
-		};
-	}, [globalSettings.tipsDisabled]);
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {

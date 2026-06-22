@@ -8,9 +8,11 @@ interface TipCardProps {
 	tip: Tip;
 	tipState: TipState;
 	onChanged: () => void;
+	/** Tighter padding for narrow carriers (e.g. the Active Tasks sidebar). */
+	compact?: boolean;
 }
 
-function TipCard({ tip, tipState, onChanged }: TipCardProps) {
+function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 	const t = useT();
 
 	function handleSnooze(e: React.MouseEvent) {
@@ -29,7 +31,7 @@ function TipCard({ tip, tipState, onChanged }: TipCardProps) {
 	}
 
 	return (
-		<div className="relative p-3.5 rounded-xl border border-dashed border-accent/25 bg-accent/[0.04] transition-all hover:border-accent/40 hover:bg-accent/[0.07]">
+		<div className={`relative ${compact ? "p-2.5" : "p-3.5"} rounded-xl border border-dashed border-accent/25 bg-accent/[0.04] transition-all hover:border-accent/40 hover:bg-accent/[0.07]`}>
 			{/* Snooze button (hide all tips for 4h) */}
 			<button
 				onClick={handleSnooze}
