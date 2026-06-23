@@ -1316,6 +1316,32 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("does not show the previous task's branch status while switching to another task", async () => {
+			const view = renderPanel(makeTask({ id: "t1" }));
+			await waitFor(() => {
+				expect(screen.getByText("3 commits ahead")).toBeInTheDocument();
+			});
+
+			// New task's status never resolves — the panel must clear the stale
+			// badge and show the loading state instead of the old task's data.
+			mockedApi.request.getBranchStatus.mockImplementation(() => new Promise(() => {}));
+
+			await act(async () => {
+				view.rerender(
+					<I18nProvider>
+						<TaskInfoPanel
+							task={makeTask({ id: "t2", branchName: "dev3/task-t2" })}
+							project={project}
+							dispatch={vi.fn()}
+							navigate={vi.fn()}
+						/>
+					</I18nProvider>,
+				);
+			});
+
+			expect(screen.queryByText("3 commits ahead")).not.toBeInTheDocument();
+		});
+
 			it("uses the project's default comparison ref when configured", async () => {
 				const localCompareProject = {
 					...project,

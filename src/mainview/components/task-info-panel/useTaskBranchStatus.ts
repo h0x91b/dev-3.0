@@ -60,6 +60,14 @@ export function useTaskBranchStatus({
 		setCompareRef(defaultCompareRef);
 	}, [defaultCompareRef, task.id]);
 
+	// Switching tasks reuses this component instance (no `key={task.id}`), so the
+	// previous task's branch status would otherwise linger on screen until the
+	// new fetch resolves. Clear it eagerly so the git line shows the loading
+	// state instead of stale data from the task we just left.
+	useEffect(() => {
+		setBranchStatus(null);
+	}, [task.id]);
+
 	const completeTask = useCallback(() => {
 		void moveTaskToStatus({
 			task,
