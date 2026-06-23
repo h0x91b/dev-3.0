@@ -695,3 +695,27 @@ describe("GlobalHeader — back/forward navigation", () => {
 		expect(goForward).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("GlobalHeader — virtual (Operations) board git affordances", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	const virtualProject: Project = {
+		...project1,
+		id: "vp1",
+		name: "Operations",
+		kind: "virtual",
+	};
+
+	it("shows the Pull button for a git project", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.getByText("Pull")).toBeInTheDocument();
+	});
+
+	it("hides the Pull button for a virtual project", () => {
+		renderHeader({ screen: "project", projectId: "vp1" }, [virtualProject]);
+		expect(screen.queryByText("Pull")).not.toBeInTheDocument();
+	});
+});

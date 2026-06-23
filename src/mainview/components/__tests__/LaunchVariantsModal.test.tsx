@@ -415,6 +415,15 @@ describe("LaunchVariantsModal", () => {
 
 			expect(getAgentButtons()).toHaveLength(1);
 		});
+
+		it("hides the Add Variant button for virtual (Operations) boards", () => {
+			// Operations run a single agent per operation — no parallel attempts.
+			const project = makeProject({ kind: "virtual" });
+			renderModal(project);
+
+			expect(screen.queryByText("+ Add Variant")).not.toBeInTheDocument();
+			expect(getAgentButtons()).toHaveLength(1);
+		});
 	});
 
 	describe("launch action", () => {

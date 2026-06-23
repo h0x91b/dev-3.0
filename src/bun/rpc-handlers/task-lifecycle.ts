@@ -213,6 +213,55 @@ async function prepareTaskInBackground(
 ): Promise<void> {
 	await withTaskPreparation(task.id, options.label, async (runId) => {
 		try {
+			// Virtual ("Operations") projects have no git repo: skip the entire
+			// worktree / sparse / CoW pipeline and launch the agent + split shell
+			// in a managed (or user-chosen) folder. Reuses the same preparation
+			// stage + cancellation machinery so the card progress bar and the
+			// revert-on-failure path keep working.
+			if (project.kind === "virtual") {
+				const workDir = task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
+				await measurePreparationStep(
+					task,
+					runId,
+					"createOpsWorkDir",
+					() => mkdir(workDir, { recursive: true }),
+					"creating-worktree",
+					{ opsWorkDir: task.opsWorkDir ?? null },
+				);
+				const taskForVirtualLaunch = task.scratch ? { ...task, description: "" } : task;
+				await measurePreparationStep(
+					task,
+					runId,
+					"launchTaskPty",
+					() => launchTaskPty(project, taskForVirtualLaunch, workDir, options.agentId, options.configId, true),
+					"launching-pty",
+				);
+
+				assertTaskPreparationActive(task.id, runId);
+				const updatedVirtual = await data.updateTask(project, task.id, {
+					worktreePath: workDir,
+					branchName: null,
+					...clearPreparingState(),
+				});
+
+				if (!isTaskPreparationActive(task.id, runId)) {
+					log.warn("Preparation completed after cancellation; reverting task", {
+						taskId: task.id.slice(0, 8),
+						runId,
+					});
+					await revertPreparingTaskToTodo(project, task);
+					return;
+				}
+
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updatedVirtual });
+				log.info("Virtual task preparation ready", {
+					taskId: task.id.slice(0, 8),
+					runId,
+					worktreePath: workDir,
+				});
+				return;
+			}
+
 			const resolvedProject = await measurePreparationStep(
 				task,
 				runId,
@@ -917,6 +966,10 @@ async function spawnVariants(params: {
 				// Carry the labels the user picked in the Create-Task modal — the
 				// source task is deleted below, so without this every label is lost.
 				labelIds: sourceTask.labelIds,
+				// Virtual ("Operations") tasks: carry the chosen working folder onto
+				// each variant so the worktree-less launch path targets it instead
+				// of falling back to a managed dir (the source task is deleted below).
+				...(sourceTask.opsWorkDir ? { opsWorkDir: sourceTask.opsWorkDir } : {}),
 			},
 		);
 

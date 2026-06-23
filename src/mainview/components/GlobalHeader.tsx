@@ -235,6 +235,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	}
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;
+	// Virtual ("Operations") boards have no git repo — the project-level git
+	// affordances (Pull) are meaningless and must be hidden.
+	const isVirtualProject = currentProjectId
+		? projects.find((p) => p.id === currentProjectId)?.kind === "virtual"
+		: false;
 	const availableProjects = projects.filter((p) => !p.deleted);
 
 	return (
@@ -495,8 +500,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</button>
 				)}
 
-				{/* Git Pull — quick pull of origin/{main|master} into project main worktree */}
-				{"projectId" in route && (
+				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
+				    Hidden for virtual ("Operations") boards, which have no git repo. */}
+				{"projectId" in route && !isVirtualProject && (
 					<GitPullButton projectId={route.projectId} compact={compact} />
 				)}
 

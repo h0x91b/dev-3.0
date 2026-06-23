@@ -2986,6 +2986,82 @@ describe("handlers.spawnVariants", () => {
 			expect.objectContaining({ labelIds: ["lbl-1", "lbl-2"] }),
 		);
 	});
+
+	// Virtual ("Operations") projects: Run / Create-and-Run funnels through
+	// spawnVariants with an active target. The background preparation must NOT
+	// touch git — it launches the agent + shell in a managed/chosen folder.
+	describe("virtual project", () => {
+		beforeEach(() => {
+			vi.clearAllMocks();
+			// A leaked createWorktree implementation from a prior test would make a
+			// regression silently pass — force it to reject so any accidental git
+			// call in the virtual path fails loudly.
+			vi.mocked(git.createWorktree).mockReset();
+			vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+			// has-session probe → 0 (exists) so launchTaskPty skips the split-shell loop.
+			mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
+		});
+
+		it("launches into active status WITHOUT git: managed work dir + PTY", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5 });
+			const variantTask = makeTask({ id: "v1", projectId: "vp1", status: "in-progress", preparing: true });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(data.addTask).mockResolvedValue(variantTask);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...variantTask, ...updates } as Task));
+
+			await handlers.spawnVariants({
+				taskId: "src",
+				projectId: "vp1",
+				targetStatus: "in-progress",
+				variants: [{ agentId: "agent-1", configId: null }],
+			});
+
+			// Wait for the background preparation to persist the worktreePath.
+			let updateArgs: Record<string, unknown> | undefined;
+			await vi.waitFor(() => {
+				updateArgs = vi.mocked(data.updateTask).mock.calls.find((c) => "worktreePath" in (c[2] as object))?.[2] as Record<string, unknown>;
+				expect(updateArgs).toBeDefined();
+			});
+			expect(git.createWorktree).not.toHaveBeenCalled();
+			expect(mkdir).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/v1/work", { recursive: true });
+			expect(pty.createSession).toHaveBeenCalledWith(
+				"v1", "vp1", "/tmp/test-dev3/ops/operations/v1/work",
+				expect.anything(), expect.anything(), expect.anything(),
+			);
+			expect(updateArgs!.worktreePath).toBe("/tmp/test-dev3/ops/operations/v1/work");
+			expect(updateArgs!.branchName).toBeNull();
+		});
+
+		it("carries the chosen opsWorkDir from the source task onto each variant", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5, opsWorkDir: "/Users/me/Downloads" });
+			const variantTask = makeTask({ id: "variant-1", projectId: "vp1", status: "in-progress", opsWorkDir: "/Users/me/Downloads", preparing: true });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(data.addTask).mockResolvedValue(variantTask);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...variantTask, ...updates } as Task));
+
+			await handlers.spawnVariants({
+				taskId: "src",
+				projectId: "vp1",
+				targetStatus: "in-progress",
+				variants: [{ agentId: "agent-1", configId: null }],
+			});
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(
+				expect.objectContaining({ opsWorkDir: "/Users/me/Downloads" }),
+			);
+			await vi.waitFor(() => {
+				expect(pty.createSession).toHaveBeenCalledWith(
+					"variant-1", "vp1", "/Users/me/Downloads",
+					expect.anything(), expect.anything(), expect.anything(),
+				);
+			});
+			expect(git.createWorktree).not.toHaveBeenCalled();
+		});
+	});
 });
 
 describe("handlers.addAttempts", () => {
