@@ -470,7 +470,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{bellCount > 0 && (
 				<div
 					className="absolute -top-1.5 -right-1.5 z-10 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 rounded-full bg-red-500 shadow-lg shadow-red-500/40"
-					title={bellReason?.trim() || t("task.bellTooltip")}
+					title={t("task.bellTooltip")}
 				>
 					<span className="text-[0.6875rem] font-bold text-white leading-none">
 						{bellCount > 9 ? "9+" : bellCount}
