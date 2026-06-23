@@ -482,6 +482,48 @@ describe("getTaskDiff", () => {
 		}));
 	});
 
+	it("diffs unpushed mode against the merge-base, not the upstream tip (three-dot)", async () => {
+		// Regression: when the upstream has diverged from HEAD (rebase / force-push /
+		// upstream tracks an advancing base), a two-dot `upstream..HEAD` diff leaks
+		// the upstream's independent commits in reverse. Comparing against the
+		// merge-base shows only what HEAD added.
+		const MERGE_BASE = "abcabcabcabcabcabcabcabcabcabcabcabcabca";
+		queueResponse(0, "origin/dev3/feature\n");   // getUpstreamRef (@{upstream})
+		queueResponse(0, `${MERGE_BASE}\n`);          // git merge-base origin/dev3/feature HEAD
+		queueResponse(0, "M\0src/app.ts\0");          // listDiffEntries (name-status)
+		queueResponse(0, "1\t1\tsrc/app.ts\n");       // getDiffShortStat
+		queueResponse(0, "1\t1\tsrc/app.ts\0");       // getNumstat
+		queueResponse(0, catCheck(13));               // old ref (merge-base) batch-check
+		queueResponse(0, catBlob("const a = 1;\n"));  // old ref batch
+		queueResponse(0, catCheck(13));               // new ref (HEAD) batch-check
+		queueResponse(0, catBlob("const a = 2;\n"));  // new ref batch
+
+		const result = await getTaskDiff("/repo", "unpushed", {
+			baseBranch: "main",
+			compareRef: "origin/main",
+			compareLabel: "origin/main",
+		});
+
+		// Upstream is resolved via merge-base before diffing.
+		const cmds = spawnMock.mock.calls.map((c) => (c[0] as string[]).join(" "));
+		expect(cmds.some((c) => c.includes("merge-base origin/dev3/feature HEAD"))).toBe(true);
+		// Every diff endpoint is the merge-base SHA, never the bare upstream tip.
+		const diffCmds = cmds.filter((c) => c.includes(" diff "));
+		expect(diffCmds.length).toBeGreaterThan(0);
+		for (const c of diffCmds) {
+			expect(c).toContain(MERGE_BASE);
+			expect(c).not.toContain("origin/dev3/feature");
+		}
+		// Label still reports the upstream the user is comparing against.
+		expect(result.fallbackReason).toBeNull();
+		expect(result.compareRef).toBe("origin/dev3/feature");
+		expect(result.files[0]).toEqual(expect.objectContaining({
+			displayPath: "src/app.ts",
+			oldContent: "const a = 1;\n",
+			newContent: "const a = 2;\n",
+		}));
+	});
+
 	it("reports binary files in skippedFiles with both sides' sizes", async () => {
 		queueResponse(0, "M\0image.png\0");      // name-status
 		queueResponse(0, "-\t-\timage.png\n");   // getBranchDiffStats
