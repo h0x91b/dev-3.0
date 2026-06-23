@@ -850,6 +850,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "focus-mode-mutes-pings",
+		titleKey: "tip.focusModeMutesPings.title",
+		bodyKey: "tip.focusModeMutesPings.body",
+		icon: "\u{F0BB0}", // nf-md-bell_off
+		score: 4,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

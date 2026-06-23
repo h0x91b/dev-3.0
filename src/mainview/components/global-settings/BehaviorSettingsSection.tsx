@@ -15,6 +15,7 @@ interface BehaviorSettingsSectionProps {
 	onKeymapChange: (preset: TerminalKeymapPreset) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onSoundToggle: (enabled: boolean) => void;
+	onFocusModeToggle: (enabled: boolean) => void;
 	onTaskDropPositionChange: (position: "top" | "bottom") => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
 	onTipsDisabledToggle: (disabled: boolean) => void;
@@ -31,6 +32,7 @@ export default function BehaviorSettingsSection({
 	onKeymapChange,
 	onPreventSleepToggle,
 	onSoundToggle,
+	onFocusModeToggle,
 	onTaskDropPositionChange,
 	onTaskOpenModeChange,
 	onTipsDisabledToggle,
@@ -122,6 +124,19 @@ export default function BehaviorSettingsSection({
 					onToggle={() =>
 						onSoundToggle(globalSettings.playSoundOnTaskComplete === false)
 					}
+				/>
+			</div>
+
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.focusMode")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.focusModeDesc")}
+				</p>
+				<ToggleSwitch
+					checked={globalSettings.focusMode === true}
+					onToggle={() => onFocusModeToggle(globalSettings.focusMode !== true)}
 				/>
 			</div>
 

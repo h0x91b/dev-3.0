@@ -50,7 +50,11 @@ export async function handleNotify(
 	const resp = await sendRequest(socketPath, "ui.notify", params);
 	if (!resp.ok) exitError(resp.error || "Failed to send notification");
 
-	const data = resp.data as { delivered: boolean; mode: string };
+	const data = resp.data as { delivered: boolean; mode: string; suppressed?: boolean };
+	if (data.suppressed) {
+		process.stdout.write("Focus mode is on — notification suppressed.\n");
+		return;
+	}
 	if (!data.delivered) {
 		process.stdout.write("App is running but has no open window — nothing was shown.\n");
 		return;
@@ -86,7 +90,11 @@ export async function handleAttention(
 	const resp = await sendRequest(socketPath, "ui.attention", params);
 	if (!resp.ok) exitError(resp.error || "Failed to raise attention");
 
-	const data = resp.data as { delivered: boolean; taskId: string };
+	const data = resp.data as { delivered: boolean; taskId: string; suppressed?: boolean };
+	if (data.suppressed) {
+		process.stdout.write("Focus mode is on — attention badge suppressed.\n");
+		return;
+	}
 	if (!data.delivered) {
 		process.stdout.write("App is running but has no open window — badge not shown.\n");
 		return;

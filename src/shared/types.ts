@@ -431,6 +431,7 @@ export interface GlobalSettings {
 	defaultDiffViewMode?: "split" | "unified" | "auto"; // default inline diff layout; "auto" picks based on screen size
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
 	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
+	focusMode?: boolean; // when true, suppress agent-initiated attention UI (dev3 notify/attention)
 }
 
 export interface TipState {

@@ -235,6 +235,8 @@ Choosing the channel (run \`dev3 ui state\` first):
 - User **idle / away** (\`userActivity\` shows minutes/hours idle, or app backgrounded): use \`dev3 notify --desktop\` so it surfaces outside the app, and/or leave an \`attention\` badge they'll see when back. A plain toast will likely go unseen.
 
 Frequency: one ping per logical event (blocker / question / completion / failure), not per step. The badge accumulates reasons, so multiple questions stack without spamming toasts.
+
+Focus mode: the user can disable all of this in Settings → Behavior → Focus Mode. When it's on, \`dev3 notify\`/\`dev3 attention\` reply with "Focus mode is on — … suppressed" and show nothing. That's expected — keep using your normal status transitions (user-questions, review) so the work is still visible on the board; just don't expect a ping to land.
 `;
 
 const SKILL_PROJECT_CONFIG_REDIRECT = `

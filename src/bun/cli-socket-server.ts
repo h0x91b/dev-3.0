@@ -649,6 +649,11 @@ const handlers: Record<string, Handler> = {
 		const level = rawLevel as "info" | "success" | "error";
 		const desktop = params.desktop === true;
 
+		// Focus mode: user opted out of agent-initiated attention UI.
+		if ((await loadSettings()).focusMode) {
+			return { delivered: false, mode: desktop ? "desktop" : "toast", suppressed: true };
+		}
+
 		// Resolve the originating task when one is in context, so the toast/notification
 		// is clickable and lands the user on it.
 		let taskId: string | null = null;
@@ -693,6 +698,10 @@ const handlers: Record<string, Handler> = {
 	"ui.attention": async (params) => {
 		const reason = ((params.reason as string) ?? "").trim();
 		const { project, task } = await resolveTaskFromParams(params);
+		// Focus mode: user opted out of agent-initiated attention UI.
+		if ((await loadSettings()).focusMode) {
+			return { delivered: false, suppressed: true, taskId: task.id };
+		}
 		const push = getPushMessage();
 		if (!push) return { delivered: false, taskId: task.id };
 		push("cliAttention", { taskId: task.id, reason });

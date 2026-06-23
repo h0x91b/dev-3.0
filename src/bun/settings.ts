@@ -32,6 +32,12 @@ export interface GlobalSettings {
 	 * vars (PATH/LANG/...) for an isolated environment.
 	 */
 	importShellEnv?: boolean;
+	/**
+	 * Focus mode: when true, agent-initiated attention UI (`dev3 notify` toasts /
+	 * native notifications and `dev3 attention` badges) is suppressed. For users
+	 * who find the pings distracting.
+	 */
+	focusMode?: boolean;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -73,6 +79,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 			importShellEnv: data.importShellEnv === false ? false : undefined,
+			focusMode: data.focusMode === true ? true : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -122,6 +129,7 @@ export function loadSettingsSync(): GlobalSettings {
 			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 			importShellEnv: data.importShellEnv === false ? false : undefined,
+			focusMode: data.focusMode === true ? true : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

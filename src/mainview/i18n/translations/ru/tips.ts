@@ -208,6 +208,8 @@ const tips = {
 	"tip.quickSwitchRecentFirst.body": "Откройте Cmd/Ctrl+K — проекты, к которым вы переходили последними, будут вверху списка.",
 	"tip.agentCanPingYou.title": "Агенты могут позвать вас",
 	"tip.agentCanPingYou.body": "Агент вызывает `dev3 notify` или `dev3 attention` — появляется кликабельный тост или бейдж, переносящий вас на его задачу.",
+	"tip.focusModeMutesPings.title": "Пинги отвлекают?",
+	"tip.focusModeMutesPings.body": "Включите «Режим фокуса» в Настройки → Поведение, чтобы заглушить все тосты, бейджи и уведомления от агентов.",
 };
 
 export default tips;

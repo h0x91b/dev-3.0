@@ -101,6 +101,8 @@ const settings = {
 	"settings.externalAppName": "Nombre para mostrar",
 	"settings.externalAppMacName": "Nombre de app macOS (para open -a)",
 	"settings.addExternalApp": "Agregar",
+	"settings.focusMode": "Modo concentración",
+	"settings.focusModeDesc": "Silencia los avisos de atención de los agentes: oculta los toasts en la app, la insignia roja de atención y las notificaciones nativas que disparan los agentes (dev3 notify / dev3 attention).",
 	"settings.preventSleep": "Evitar suspensión",
 	"settings.preventSleepDesc": "Mantiene el sistema despierto mientras dev-3.0 está abierto (forzado cuando el acceso remoto está activo). También se alterna desde la cabecera.",
 	"settings.preventSleepNotAvailable": "No se encontró herramienta para inhibir suspensión (caffeinate en macOS, systemd-inhibit en Linux).",

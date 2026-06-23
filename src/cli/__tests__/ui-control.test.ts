@@ -114,6 +114,14 @@ describe("notify", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
+	it("reports focus-mode suppression", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: false, mode: "toast", suppressed: true }));
+
+		await handleNotify(args(["x"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Focus mode is on");
+	});
+
 	it("works without a task (plain non-clickable toast)", async () => {
 		const ctxNoTask: CliContext = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: null }));
@@ -146,6 +154,14 @@ describe("attention", () => {
 		const ctxNoTask: CliContext = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
 		await expect(handleAttention(args(["x"]), SOCKET, ctxNoTask)).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("reports focus-mode suppression", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: false, suppressed: true, taskId: CTX.taskId }));
+
+		await handleAttention(args(["x"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Focus mode is on");
 	});
 
 	it("surfaces a backend error", async () => {

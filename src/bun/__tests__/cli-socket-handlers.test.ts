@@ -91,6 +91,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
 import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext } from "../rpc-handlers";
+import { loadSettings } from "../settings";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
@@ -554,6 +555,32 @@ describe("ui control (notify / attention / state)", () => {
 		const resp = await handleRequest(makeRequest("ui.notify", { message: "   " }));
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("message is required");
+	});
+
+	it("ui.notify: focus mode suppresses the toast (no push)", async () => {
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "hi" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: false, suppressed: true });
+		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("ui.attention: focus mode suppresses the badge (no push)", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+
+		const resp = await handleRequest(makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "x" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: false, suppressed: true });
+		expect(pushFn).not.toHaveBeenCalled();
 	});
 
 	it("ui.attention: pushes cliAttention for the resolved task", async () => {

@@ -101,6 +101,8 @@ const settings = {
 	"settings.externalAppName": "Display name",
 	"settings.externalAppMacName": "macOS app name (used with open -a)",
 	"settings.addExternalApp": "Add App",
+	"settings.focusMode": "Focus Mode",
+	"settings.focusModeDesc": "Silence agent attention pings — suppresses in-app toasts, the red attention badge, and native notifications triggered by agents (dev3 notify / dev3 attention).",
 	"settings.preventSleep": "Prevent Sleep",
 	"settings.preventSleepDesc": "Keep your system awake while dev-3.0 is open (forced on while remote access is active). Also toggleable from the header.",
 	"settings.preventSleepNotAvailable": "No sleep inhibitor found (caffeinate on macOS, systemd-inhibit on Linux).",

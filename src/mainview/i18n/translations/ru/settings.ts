@@ -101,6 +101,8 @@ const settings = {
 	"settings.externalAppName": "Отображаемое имя",
 	"settings.externalAppMacName": "Имя macOS-приложения (для open -a)",
 	"settings.addExternalApp": "Добавить",
+	"settings.focusMode": "Режим фокуса",
+	"settings.focusModeDesc": "Заглушить пинги внимания от агентов — отключает всплывающие тосты, красный бейдж внимания и нативные уведомления, которые вызывают агенты (dev3 notify / dev3 attention).",
 	"settings.preventSleep": "Не давать уснуть",
 	"settings.preventSleepDesc": "Не даёт системе уснуть, пока открыт dev-3.0 (форсится при активном удалённом доступе). Также переключается из шапки.",
 	"settings.preventSleepNotAvailable": "Инструмент для блокировки сна не найден (caffeinate на macOS, systemd-inhibit на Linux).",
