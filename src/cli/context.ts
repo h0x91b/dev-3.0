@@ -219,6 +219,72 @@ export function resolveSocketPath(cwd?: string): string | null {
 }
 
 /**
+ * Like resolveSocketPath, but retries a few times with short backoff before
+ * giving up. Discovery normally succeeds immediately (the app's socket file is
+ * stable for its lifetime), but a tight race — the app momentarily recreating
+ * its socket, or a filesystem hiccup right as a burst of CLI calls fires — can
+ * make a single readdir/`kill(pid,0)` probe come up empty. Retrying turns that
+ * transient miss into a successful resolve instead of a false "app not running"
+ * (mirrors the connect-level retry in socket-client; see issue #714).
+ */
+export async function resolveSocketPathWithRetry(
+	cwd?: string,
+	opts: { attempts?: number; retryDelayMs?: number } = {},
+): Promise<string | null> {
+	const attempts = Math.max(1, opts.attempts ?? 4);
+	for (let attempt = 0; attempt < attempts; attempt++) {
+		const found = resolveSocketPath(cwd);
+		if (found) return found;
+		if (attempt === attempts - 1) break;
+		await new Promise((resolve) => setTimeout(resolve, opts.retryDelayMs ?? 75 * (attempt + 1)));
+	}
+	return null;
+}
+
+/**
+ * Human-readable diagnostics for why socket resolution failed. Printed by the
+ * CLI's "app not running" path when DEV3_DEBUG is set, so a future bug report
+ * can distinguish a real-offline app from a wrong HOME / sandboxed-signal /
+ * stale-socket situation instead of guessing. Never throws.
+ */
+export function socketDiagnostics(cwd: string = process.cwd()): string {
+	const lines: string[] = [];
+	lines.push(`  HOME: ${HOME}`);
+	lines.push(`  cwd: ${cwd}`);
+	lines.push(`  sockets dir: ${SOCKETS_DIR}`);
+
+	if (!existsSync(SOCKETS_DIR)) {
+		lines.push(`  sockets dir status: NOT FOUND (app never started, or HOME differs from the app's)`);
+	} else {
+		let files: string[] = [];
+		try {
+			files = readdirSync(SOCKETS_DIR).filter((f) => f.endsWith(".sock"));
+		} catch (e) {
+			lines.push(`  readdir error: ${e}`);
+		}
+		if (files.length === 0) {
+			lines.push(`  sockets: none present`);
+		}
+		for (const f of files) {
+			const pid = parseInt(f.replace(".sock", ""), 10);
+			let state = "unknown";
+			try {
+				process.kill(pid, 0);
+				state = "process alive";
+			} catch (e) {
+				const code = (e as NodeJS.ErrnoException).code;
+				state = code === "EPERM" ? "EPERM (sandboxed — cannot probe, may be alive)" : "process dead (stale socket)";
+			}
+			lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}`);
+		}
+	}
+
+	const pathInfo = detectFromWorktreePath(cwd);
+	lines.push(`  worktree context: ${pathInfo ? `slug=${pathInfo.projectSlug} task=${pathInfo.taskShortId}` : "not detected from cwd"}`);
+	return lines.join("\n");
+}
+
+/**
  * Expand a short task ID (e.g. 8-char prefix from `tasks list`) to full UUID.
  * First checks the current context, then falls back to reading data files.
  */

@@ -91,4 +91,54 @@ describe("detectContext socket selection", () => {
 		expect(killSpy).toHaveBeenCalledWith(67566, 0);
 		expect(killSpy).toHaveBeenCalledWith(44818, 0);
 	});
+
+	it("resolveSocketPathWithRetry returns a socket on the first successful probe", async () => {
+		mockReaddirSync.mockReturnValue(["999.sock"]);
+		mockStatSync.mockReturnValue({ mtimeMs: 100 });
+
+		const { resolveSocketPathWithRetry } = await import("../context");
+		const result = await resolveSocketPathWithRetry(TEST_CWD, { attempts: 3, retryDelayMs: 5 });
+
+		expect(result).toBe(`${SOCKETS_DIR}/999.sock`);
+	});
+
+	it("resolveSocketPathWithRetry gives up (null) after attempts when no socket appears", async () => {
+		mockExistsSync.mockImplementation(() => false);
+		mockReaddirSync.mockReturnValue([]);
+
+		const { resolveSocketPathWithRetry } = await import("../context");
+		const start = Date.now();
+		const result = await resolveSocketPathWithRetry(TEST_CWD, { attempts: 3, retryDelayMs: 5 });
+
+		expect(result).toBeNull();
+		expect(Date.now() - start).toBeLessThan(2000);
+	});
+
+	it("socketDiagnostics distinguishes live from stale sockets", async () => {
+		mockReaddirSync.mockReturnValue(["123.sock", "456.sock"]);
+		killSpy.mockImplementation((pid: number) => {
+			if (pid === 456) {
+				const error = new Error("gone") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			return true;
+		});
+
+		const { socketDiagnostics } = await import("../context");
+		const out = socketDiagnostics(TEST_CWD);
+
+		expect(out).toContain(`HOME: ${TEST_HOME}`);
+		expect(out).toContain("socket 123.sock: pid=123 → process alive");
+		expect(out).toContain("socket 456.sock: pid=456 → process dead (stale socket)");
+	});
+
+	it("socketDiagnostics flags a missing sockets dir (likely wrong HOME)", async () => {
+		mockExistsSync.mockImplementation(() => false);
+
+		const { socketDiagnostics } = await import("../context");
+		const out = socketDiagnostics(TEST_CWD);
+
+		expect(out).toContain("sockets dir status: NOT FOUND");
+	});
 });
