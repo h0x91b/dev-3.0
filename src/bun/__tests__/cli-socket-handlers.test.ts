@@ -24,6 +24,10 @@ vi.mock("../pty-server", () => ({
 	getTmuxLayout: vi.fn(async () => ({ sessionName: "dev3-task1234", exists: false, windows: [], panes: [] })),
 }));
 
+vi.mock("../user-activity", () => ({
+	getUserIdleSeconds: vi.fn(async () => 7),
+}));
+
 vi.mock("../rpc-handlers/tmux-pty", () => ({
 	runDevServer: vi.fn(),
 	stopDevServer: vi.fn(),
@@ -579,6 +583,7 @@ describe("ui control (notify / attention / state)", () => {
 			foreground: true,
 			activeProjectId: "proj-1",
 			activeTaskId: "task-9",
+			userIdleSeconds: 7,
 			tmux: null,
 		});
 	});

@@ -160,7 +160,7 @@ describe("attention", () => {
 describe("ui state", () => {
 	it("prints the reported UI state and passes the context task id", async () => {
 		mockSend.mockResolvedValue(
-			okResp({ appRunning: true, foreground: true, activeProjectId: "proj-001", activeTaskId: "task-9", tmux: null }),
+			okResp({ appRunning: true, foreground: true, activeProjectId: "proj-001", activeTaskId: "task-9", userIdleSeconds: 4, tmux: null }),
 		);
 
 		await handleUi("state", args(), SOCKET, CTX);
@@ -168,6 +168,29 @@ describe("ui state", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.state", { taskId: CTX.taskId });
 		expect(stdoutOutput).toContain("foreground");
 		expect(stdoutOutput).toContain("yes");
+		expect(stdoutOutput).toContain("userActivity");
+		expect(stdoutOutput).toContain("active (4s idle)");
+	});
+
+	it("warns when the user has been idle a while", async () => {
+		mockSend.mockResolvedValue(
+			okResp({ appRunning: true, foreground: false, activeProjectId: "p", activeTaskId: "t", userIdleSeconds: 900, tmux: null }),
+		);
+
+		await handleUi("state", args(), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("idle 15m");
+		expect(stdoutOutput).toContain("may not see an in-app toast");
+	});
+
+	it("shows 'unknown' activity when idle is null", async () => {
+		mockSend.mockResolvedValue(
+			okResp({ appRunning: true, foreground: true, activeProjectId: "p", activeTaskId: "t", userIdleSeconds: null, tmux: null }),
+		);
+
+		await handleUi("state", args(), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("unknown");
 	});
 
 	it("notes when the current task is the focused one", async () => {

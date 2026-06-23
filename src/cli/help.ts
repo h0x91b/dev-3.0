@@ -299,8 +299,9 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "state",
 				usage: "dev3 ui state [--json]",
-				summary: "Show the focused task/project, foreground, and the worktree's tmux layout.",
+				summary: "Show the focused task/project, foreground, user idle time, and the worktree's tmux layout.",
 				details: [
+					"Reports how long the user has been idle (userActivity) so you can pick the right channel.",
 					"Includes an ASCII map of the active tmux window's panes plus a pane/window list.",
 					"--json    Emit the raw state object (for machine consumption).",
 					"Lets an agent decide whether a ping is needed (e.g. skip if the user is already on this task).",

@@ -53,7 +53,7 @@ Commands:
   dev3 dev-server status [task-id]      Show task dev server status
   dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
-  dev3 ui state [--json]                 Show focused task/project, foreground + the worktree's tmux layout (ASCII pane map)
+  dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
   dev3 install-hooks                     Install agent hooks in current worktree

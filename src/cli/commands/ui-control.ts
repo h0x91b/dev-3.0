@@ -99,7 +99,16 @@ interface UiStateResponse {
 	foreground: boolean;
 	activeProjectId: string | null;
 	activeTaskId: string | null;
+	userIdleSeconds: number | null;
 	tmux: TmuxLayout | null;
+}
+
+/** Human-friendly idle time, e.g. "active (3s idle)", "idle 12m", "unknown". */
+function formatIdle(seconds: number | null): string {
+	if (seconds == null) return "unknown";
+	if (seconds < 60) return `active (${seconds}s idle)`;
+	if (seconds < 3600) return `idle ${Math.round(seconds / 60)}m`;
+	return `idle ${Math.round(seconds / 3600)}h`;
 }
 
 /**
@@ -218,6 +227,7 @@ export async function handleUi(
 	printDetail([
 		["app", d.appRunning ? "running" : "not running"],
 		["foreground", d.foreground ? "yes" : "no"],
+		["userActivity", formatIdle(d.userIdleSeconds)],
 		["activeProject", d.activeProjectId ? d.activeProjectId.slice(0, 8) : "(none)"],
 		["activeTask", d.activeTaskId ? d.activeTaskId.slice(0, 8) : "(none)"],
 	]);
@@ -225,6 +235,13 @@ export async function handleUi(
 	if (context?.taskId && d.activeTaskId === context.taskId) {
 		process.stdout.write(
 			`\nThis task is currently focused${d.foreground ? " and the app is in the foreground." : " (app in background)."}\n`,
+		);
+	}
+
+	// Nudge the agent toward the right channel when the user is away.
+	if (d.userIdleSeconds != null && d.userIdleSeconds >= 300) {
+		process.stdout.write(
+			`\nUser has been idle ${formatIdle(d.userIdleSeconds).replace(/^idle /, "")} — they may not see an in-app toast; prefer --desktop or hold.\n`,
 		);
 	}
 

@@ -209,14 +209,32 @@ If you started the dev server only for verification, stop it afterwards unless t
 const SKILL_GET_ATTENTION = `
 ## Getting the user's attention
 
-You can pull the user back to this task through the app UI — useful when you are blocked, finished a long run, or hit something that needs eyes. These auto-target the current worktree's task.
+You can pull the user back to this task through the app UI. Use it deliberately — enough that the user never misses something that needs them, but never as per-step noise. These commands auto-target the current worktree's task.
 
-- \`dev3 notify "message" [--level info|success|error]\` — show a clickable in-app toast. Clicking it opens this task. Use \`--level error\` for failures, \`success\` for "done".
-- \`dev3 notify "message" --desktop\` — fire a native OS notification instead (shows even when the app is in the background); clicking it focuses this task.
-- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows on hover (and in the card's hover preview). The badge clears when the user opens the task.
-- \`dev3 ui state\` — check what the app is showing (focused task/project, foreground) plus this worktree's tmux layout (windows, panes, an ASCII pane map; \`--json\` for raw data). Use it to avoid pinging when the user is already looking at this task, or to inspect your own pane setup.
+Commands:
+- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows in the card's hover preview (reasons accumulate, newest kept, up to 5). The badge persists until the user opens the task. This is the default for anything that needs the user.
+- \`dev3 notify "message" [--level info|success|error]\` — a clickable in-app toast; clicking opens this task. Ephemeral. Use \`--level error\` for failures, \`success\` for "done".
+- \`dev3 notify "message" --desktop\` — a native OS notification (shows even when the app is backgrounded/hidden); clicking focuses this task.
+- \`dev3 ui state\` — reports focused task/project, app foreground, **how long the user has been idle** (\`userActivity\`), and this worktree's tmux layout (\`--json\` for raw data). Check this BEFORE pinging to choose the right channel and avoid redundant pings.
 
-Use these sparingly — a ping per real blocker or completion, not per step. Prefer a toast for in-app nudges and \`--desktop\` only when the user likely switched away.
+When to ping (MUST — always do one):
+- You are **blocked** / need a decision or input to proceed → \`dev3 attention "the question"\`.
+- You **asked a question** and are waiting → \`dev3 attention "..."\`.
+- You **finished** something important / it's ready for review → \`dev3 notify "..." --level success\`.
+- Something **broke** the user must know about → \`dev3 notify "..." --level error\`.
+
+When to ping (SHOULD — judgment, only if the run is long and the user likely stepped away):
+- A major milestone mid-task (a big phase/migration completed).
+- Right before a risky or irreversible action that needs a go/no-go.
+
+Do NOT ping for: per-step progress, routine tool calls, intermediate reasoning, or anything already visible in the terminal the user is watching.
+
+Choosing the channel (run \`dev3 ui state\` first):
+- User **focused on this task** (\`foreground: yes\`, \`activeTask\` = this task): they see the terminal live — skip the ping or use only \`attention\` (no toast/desktop).
+- User **active but elsewhere** (small \`userActivity\` idle, app foreground or another task): an in-app \`notify\` toast is enough; \`attention\` for blockers.
+- User **idle / away** (\`userActivity\` shows minutes/hours idle, or app backgrounded): use \`dev3 notify --desktop\` so it surfaces outside the app, and/or leave an \`attention\` badge they'll see when back. A plain toast will likely go unseen.
+
+Frequency: one ping per logical event (blocker / question / completion / failure), not per step. The badge accumulates reasons, so multiple questions stack without spamming toasts.
 `;
 
 const SKILL_PROJECT_CONFIG_REDIRECT = `

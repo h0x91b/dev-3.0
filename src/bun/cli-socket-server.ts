@@ -6,6 +6,7 @@ import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
+import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { addVent } from "./vents";
@@ -708,6 +709,9 @@ const handlers: Record<string, Handler> = {
 			foreground: isAppForeground(),
 			activeProjectId: ctx.projectId,
 			activeTaskId: ctx.taskId,
+			// Seconds since the user last touched keyboard/mouse (null = unknown).
+			// Lets an agent tell whether the user is even at the machine.
+			userIdleSeconds: await getUserIdleSeconds(),
 			// tmux layout for the requested task (CLI passes the worktree's task id).
 			tmux: taskId ? await getTmuxLayout(taskId) : null,
 		};
