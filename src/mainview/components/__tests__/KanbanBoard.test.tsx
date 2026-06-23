@@ -24,7 +24,7 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn() }));
+vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
 
 const project: Project = {
 	id: "p1",

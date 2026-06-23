@@ -9,7 +9,7 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
-import { trackEvent } from "../analytics";
+import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import LabelChip from "./LabelChip";
@@ -215,7 +215,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			});
 			dispatch({ type: "updateTask", task: updated });
 			onTaskMoved(task.id);
-			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
+			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
 		} catch (err) {
 			toast.error(t("task.failedMove", { error: String(err) }));
 		}

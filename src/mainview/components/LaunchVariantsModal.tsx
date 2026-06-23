@@ -4,7 +4,7 @@ import { getTaskTitle } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
-import { trackEvent } from "../analytics";
+import { trackAgentLaunched, trackEvent } from "../analytics";
 import Select, { useAgentRenderOption } from "./Select";
 
 interface VariantRow {
@@ -119,6 +119,9 @@ function LaunchVariantsModal({
 				const [updatedSource, ...newAttempts] = result;
 				dispatch({ type: "addAttempts", sourceTaskId: task.id, newAttempts, updatedSource });
 				trackEvent("task_add_attempts", { project_id: project.id, attempt_count: newAttempts.length });
+				for (const variant of variants) {
+					trackAgentLaunched(agents, variant.agentId, variant.configId);
+				}
 			} else {
 				const resultTasks = await api.request.spawnVariants({
 					taskId: task.id,
@@ -128,6 +131,9 @@ function LaunchVariantsModal({
 				});
 				dispatch({ type: "spawnVariants", sourceTaskId: task.id, variants: resultTasks });
 				trackEvent("task_spawned", { project_id: project.id, variant_count: resultTasks.length });
+				for (const variant of variants) {
+					trackAgentLaunched(agents, variant.agentId, variant.configId);
+				}
 			}
 			onClose();
 		} catch (err) {

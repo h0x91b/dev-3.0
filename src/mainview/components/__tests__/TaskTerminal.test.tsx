@@ -25,6 +25,7 @@ vi.mock("../../rpc", () => ({
 
 vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
+	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
 vi.mock("../../TerminalView", () => ({
@@ -182,6 +183,7 @@ describe("TaskTerminal", () => {
 			expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
 				from_status: "in-progress",
 				to_status: "completed",
+				agent_name: "unknown",
 			});
 		});
 

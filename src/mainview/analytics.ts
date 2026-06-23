@@ -2,6 +2,7 @@
 // Uses fetch() instead of gtag.js because WKWebView blocks external
 // script loading from the views:// custom protocol.
 
+import type { CodingAgent } from "../shared/types";
 import { api } from "./rpc";
 import { randomUUID } from "./uuid";
 
@@ -18,6 +19,57 @@ let currentScreen = "dashboard";
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let errorTrackingSetup = false;
 let sessionStartTime = 0;
+// Public IP used for `ip_override`. GA4 Measurement Protocol does NOT geolocate
+// web-stream hits from the request's source IP — without ip_override the
+// Country/City dimensions stay "(not set)". Resolved best-effort (see
+// resolvePublicIp); empty string until/unless a lookup succeeds.
+let ipOverride = "";
+
+const IP_CACHE_KEY = "dev3-ga-ip";
+const IP_CACHE_TS_KEY = "dev3-ga-ip-ts";
+const IP_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // refresh at most once a day
+
+// Agents registered by the app (App.tsx) so events like `task_moved` can carry
+// a human-readable agent name without threading the agents list everywhere.
+let knownAgents: CodingAgent[] = [];
+
+/** Register the current agent list so analytics can resolve agent names by id. */
+export function registerAgents(agents: CodingAgent[]): void {
+	knownAgents = agents;
+}
+
+/** Resolve an agent's display name from its id, "unknown" if not found/null. */
+export function agentNameFromId(agentId: string | null | undefined): string {
+	if (!agentId) return "unknown";
+	return knownAgents.find((a) => a.id === agentId)?.name ?? "unknown";
+}
+
+/**
+ * Resolve the user's public IP (best-effort) for `ip_override`, so GA4 can
+ * geolocate events. Uses a cached value immediately if present, then refreshes
+ * from api.ipify.org at most once a day. One request per app launch at most —
+ * silent on any failure (analytics still works, just without geo this session).
+ */
+function resolvePublicIp(): void {
+	const cached = localStorage.getItem(IP_CACHE_KEY) || "";
+	if (cached) ipOverride = cached;
+
+	const cachedTs = Number(localStorage.getItem(IP_CACHE_TS_KEY) || "0");
+	if (cached && Date.now() - cachedTs < IP_CACHE_TTL_MS) return; // still fresh
+
+	fetch("https://api.ipify.org?format=json")
+		.then((res) => res.json())
+		.then((data: { ip?: unknown }) => {
+			if (data && typeof data.ip === "string" && data.ip) {
+				ipOverride = data.ip;
+				localStorage.setItem(IP_CACHE_KEY, data.ip);
+				localStorage.setItem(IP_CACHE_TS_KEY, String(Date.now()));
+			}
+		})
+		.catch(() => {
+			// Best-effort — keep any cached IP, otherwise no geo this session.
+		});
+}
 
 function getOrCreateClientId(): string {
 	const key = "dev3-ga-client-id";
@@ -80,6 +132,8 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
 	const body = {
 		client_id: clientId,
 		user_agent: navigator.userAgent,
+		// Lets GA4 derive Country/City — MP web hits are NOT geolocated otherwise.
+		...(ipOverride ? { ip_override: ipOverride } : {}),
 		user_properties: userProperties,
 		events: events.map((e) => ({
 			name: e.name,
@@ -104,6 +158,10 @@ export function initAnalytics(appVersion: string): void {
 	clientId = getOrCreateClientId();
 	sessionId = getOrCreateSessionId();
 	sessionStartTime = Date.now();
+
+	// Load cached IP synchronously (so session_start can carry it) and kick off
+	// a best-effort refresh for the geo dimensions.
+	resolvePublicIp();
 
 	userProperties = {
 		operating_system: { value: getOS() },
@@ -157,6 +215,8 @@ export function destroyAnalytics(): void {
 		clearInterval(heartbeatInterval);
 		heartbeatInterval = null;
 	}
+	// Drop the in-memory geo IP; the next init re-reads it from the localStorage cache.
+	ipOverride = "";
 }
 
 /** Track a virtual page view (for SPA navigation). */
@@ -169,6 +229,40 @@ export function trackPageView(screenName: string): void {
 			page_location: `app://dev3/${screenName}`,
 		},
 	}]);
+}
+
+/**
+ * Track a single agent launch ("which agents are people using right now").
+ *
+ * Fires one `agent_launched` event per agent instance started, carrying just
+ * the agent name and the permission mode so GA4 can break usage down by those.
+ *
+ * `agentId`/`configId` may be null — the caller's default-resolution mirrors
+ * the launch path, so we resolve the same fallbacks here (default agent →
+ * first agent; default config → first config).
+ */
+export function trackAgentLaunched(
+	agents: CodingAgent[],
+	agentId: string | null,
+	configId: string | null,
+): void {
+	const agent =
+		(agentId ? agents.find((a) => a.id === agentId) : null) ??
+		agents.find((a) => a.isDefault) ??
+		agents[0] ??
+		null;
+
+	const config = agent
+		? (configId ? agent.configurations.find((c) => c.id === configId) : null) ??
+			agent.configurations.find((c) => c.id === agent.defaultConfigId) ??
+			agent.configurations[0] ??
+			null
+		: null;
+
+	trackEvent("agent_launched", {
+		agent_name: agent?.name ?? "unknown",
+		permission_mode: config?.permissionMode ?? "default",
+	});
 }
 
 /** Track a custom event. */

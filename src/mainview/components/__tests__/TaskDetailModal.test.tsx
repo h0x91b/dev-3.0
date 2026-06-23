@@ -21,6 +21,7 @@ vi.mock("../../rpc", () => ({
 
 vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
+	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
 import { api } from "../../rpc";
