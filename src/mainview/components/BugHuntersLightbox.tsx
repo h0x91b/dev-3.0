@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
-import { trackEvent } from "../analytics";
+import { trackAgentLaunched, trackEvent } from "../analytics";
 import Select, { useAgentRenderOption } from "./Select";
 
 interface BugHuntersLightboxProps {
@@ -91,6 +91,10 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 				agent_id: agentId ?? "default",
 				count: result.spawned,
 			});
+			// One launch event per hunter actually spawned (all share the same agent/config).
+			for (let i = 0; i < result.spawned; i++) {
+				trackAgentLaunched(agents, agentId, configId);
+			}
 			onClose();
 		} catch (err) {
 			setError(String(err));

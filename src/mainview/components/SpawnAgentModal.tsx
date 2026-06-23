@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
-import { trackEvent } from "../analytics";
+import { trackAgentLaunched, trackEvent } from "../analytics";
 import Select, { useAgentRenderOption } from "./Select";
 
 interface SpawnAgentModalProps {
@@ -83,6 +83,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				configId,
 			});
 			trackEvent("spawn_extra_agent", { project_id: project.id, agent_id: agentId ?? "default" });
+			trackAgentLaunched(agents, agentId, configId);
 			onClose();
 		} catch (err) {
 			setError(String(err));

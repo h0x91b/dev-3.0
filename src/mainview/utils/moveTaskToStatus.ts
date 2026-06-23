@@ -1,7 +1,7 @@
 import type { Dispatch } from "react";
 import { api } from "../rpc";
 import { toast } from "../toast";
-import { trackEvent } from "../analytics";
+import { trackEvent, agentNameFromId } from "../analytics";
 import { confirmTaskCompletion } from "./confirmTaskCompletion";
 import { playTaskCompletionSound } from "../task-sounds";
 import type { Task, Project, TaskStatus } from "../../shared/types";
@@ -100,7 +100,7 @@ export async function moveTaskToStatus({
 		playTaskCompletionSound(newStatus as "completed" | "cancelled", task.id);
 	}
 	onMoved?.();
-	trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus });
+	trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus, agent_name: agentNameFromId(task.agentId) });
 	afterOptimistic?.();
 
 	onMovingChange?.(true);

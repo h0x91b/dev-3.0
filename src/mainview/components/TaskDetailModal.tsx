@@ -10,7 +10,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
-import { trackEvent } from "../analytics";
+import { trackEvent, agentNameFromId } from "../analytics";
 
 interface TaskDetailModalProps {
 	task: Task;
@@ -160,7 +160,7 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 				customColumnId,
 			});
 			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}` });
+			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
 			onClose();
 		} catch (err) {
 			toast.error(t("task.failedMove", { error: String(err) }));

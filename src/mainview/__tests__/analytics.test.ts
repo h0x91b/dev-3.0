@@ -53,7 +53,10 @@ Object.defineProperty(globalThis, "crypto", {
 // Stub fetch
 globalThis.fetch = vi.fn().mockResolvedValue(undefined) as unknown as typeof fetch;
 
-import { initAnalytics, destroyAnalytics } from "../analytics";
+import { initAnalytics, destroyAnalytics, trackAgentLaunched, registerAgents, agentNameFromId, trackEvent } from "../analytics";
+import type { CodingAgent } from "../../shared/types";
+
+const flushMicrotasks = () => new Promise((r) => setTimeout(r, 0));
 
 describe("initAnalytics", () => {
 	beforeEach(() => {
@@ -95,6 +98,156 @@ describe("initAnalytics", () => {
 		vi.advanceTimersByTime(10 * 60 * 1000 + 100);
 		const heartbeatCalls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length - fetchCalls;
 		expect(heartbeatCalls).toBe(0);
+	});
+});
+
+describe("trackAgentLaunched", () => {
+	const AGENTS: CodingAgent[] = [
+		{
+			id: "builtin-claude",
+			name: "Claude",
+			baseCommand: "claude",
+			isDefault: true,
+			configurations: [
+				{ id: "claude-auto", name: "Auto (Opus)", model: "claude-opus", permissionMode: "auto" },
+				{ id: "claude-bypass", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions" },
+			],
+			defaultConfigId: "claude-auto",
+		},
+		{
+			id: "user-custom-1",
+			name: "My Custom CLI",
+			baseCommand: "mycli",
+			configurations: [{ id: "custom-cfg", name: "Default" }],
+			defaultConfigId: "custom-cfg",
+		},
+	];
+
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.useRealTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		initAnalytics("1.0.0");
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockClear();
+	});
+
+	afterEach(() => {
+		destroyAnalytics();
+	});
+
+	function lastEventParams() {
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.events[0].name).toBe("agent_launched");
+		return body.events[0].params;
+	}
+
+	it("emits agent name + permission mode for an explicit selection", () => {
+		trackAgentLaunched(AGENTS, "builtin-claude", "claude-bypass");
+		const p = lastEventParams();
+		expect(p).toMatchObject({
+			agent_name: "Claude",
+			permission_mode: "bypassPermissions",
+		});
+	});
+
+	it("resolves the default agent + config when agentId/configId are null", () => {
+		trackAgentLaunched(AGENTS, null, null);
+		const p = lastEventParams();
+		expect(p.agent_name).toBe("Claude");
+		expect(p.permission_mode).toBe("auto");
+	});
+
+	it("defaults the permission mode when the config has none", () => {
+		trackAgentLaunched(AGENTS, "user-custom-1", "custom-cfg");
+		const p = lastEventParams();
+		expect(p.agent_name).toBe("My Custom CLI");
+		expect(p.permission_mode).toBe("default");
+	});
+
+	it("falls back to unknown when the agent list is empty", () => {
+		trackAgentLaunched([], "builtin-claude", "claude-auto");
+		const p = lastEventParams();
+		expect(p.agent_name).toBe("unknown");
+		expect(p.permission_mode).toBe("default");
+	});
+});
+
+describe("registerAgents / agentNameFromId", () => {
+	it("resolves a registered agent's display name by id", () => {
+		registerAgents([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", configurations: [] },
+			{ id: "builtin-codex", name: "Codex", baseCommand: "codex", configurations: [] },
+		]);
+		expect(agentNameFromId("builtin-codex")).toBe("Codex");
+	});
+
+	it("returns 'unknown' for null / undefined / unregistered ids", () => {
+		registerAgents([]);
+		expect(agentNameFromId(null)).toBe("unknown");
+		expect(agentNameFromId(undefined)).toBe("unknown");
+		expect(agentNameFromId("nope")).toBe("unknown");
+	});
+});
+
+describe("ip_override (geolocation)", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.useRealTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockReset();
+		fetchMock.mockImplementation((url: string) =>
+			typeof url === "string" && url.includes("ipify")
+				? Promise.resolve({ json: () => Promise.resolve({ ip: "203.0.113.7" }) })
+				: Promise.resolve(undefined),
+		);
+	});
+
+	afterEach(() => {
+		destroyAnalytics();
+		fetchMock.mockReset();
+		fetchMock.mockResolvedValue(undefined);
+	});
+
+	it("adds ip_override to the GA payload once the public IP resolves", async () => {
+		initAnalytics("1.0.0");
+		await flushMicrotasks();
+		fetchMock.mockClear();
+
+		trackEvent("ping");
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.ip_override).toBe("203.0.113.7");
+	});
+
+	it("caches the resolved IP and skips the lookup on the next launch", async () => {
+		initAnalytics("1.0.0");
+		await flushMicrotasks();
+
+		const ipifyCalls = () =>
+			fetchMock.mock.calls.filter((c) => typeof c[0] === "string" && c[0].includes("ipify")).length;
+		expect(ipifyCalls()).toBe(1);
+
+		destroyAnalytics();
+		initAnalytics("1.0.0"); // cache is fresh → no second ipify request
+		await flushMicrotasks();
+		expect(ipifyCalls()).toBe(1);
+	});
+
+	it("omits ip_override when the lookup fails (best-effort)", async () => {
+		fetchMock.mockReset();
+		fetchMock.mockResolvedValue(undefined); // ipify resolves to undefined → json() throws
+		initAnalytics("1.0.0");
+		await flushMicrotasks();
+		fetchMock.mockClear();
+
+		trackEvent("ping");
+		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+		expect(body.ip_override).toBeUndefined();
 	});
 });
 

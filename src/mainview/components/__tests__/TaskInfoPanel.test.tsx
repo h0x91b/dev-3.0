@@ -40,6 +40,7 @@ vi.mock("../../rpc", () => ({
 
 vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
+	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
 vi.mock("../../utils/confirmTaskCompletion", () => ({
@@ -582,6 +583,7 @@ describe("TaskInfoPanel", () => {
 			expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
 				from_status: "in-progress",
 				to_status: "user-questions",
+				agent_name: "unknown",
 			});
 		});
 

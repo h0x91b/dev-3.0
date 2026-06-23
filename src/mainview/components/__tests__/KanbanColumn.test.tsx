@@ -23,7 +23,7 @@ import type { Project, Task } from "../../../shared/types";
 vi.mock("../../rpc", () => ({
 	api: { request: { moveTask: vi.fn(), deleteTask: vi.fn() } },
 }));
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn() }));
+vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
 vi.mock("../../utils/confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn().mockResolvedValue(true),
 }));

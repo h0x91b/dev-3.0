@@ -9,6 +9,7 @@ vi.mock("../../toast", () => ({
 }));
 vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
+	agentNameFromId: vi.fn(() => "unknown"),
 }));
 vi.mock("../confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn().mockResolvedValue(true),

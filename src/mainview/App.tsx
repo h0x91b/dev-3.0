@@ -3,7 +3,7 @@ import { useAppState, routeTaskId, projectIdForRoute, type Route } from "./state
 import { api } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
-import { trackPageView, trackEvent } from "./analytics";
+import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
@@ -1119,6 +1119,12 @@ function App() {
 		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
 	}, [createTaskProjectId]);
+
+	// Register agents with analytics on mount so events like `task_moved` can
+	// carry a human-readable agent name (the modal load above is lazy).
+	useEffect(() => {
+		api.request.getAgents().then(registerAgents).catch(() => {});
+	}, []);
 
 	useEffect(() => {
 		function onOpenAddProjectModal() {

@@ -27,6 +27,7 @@ vi.mock("../../rpc", () => ({
 
 vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
+	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
 vi.mock("../../utils/confirmTaskCompletion", () => ({
@@ -862,6 +863,7 @@ describe("TaskCard", () => {
 				expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
 					from_status: "in-progress",
 					to_status: "completed",
+					agent_name: "unknown",
 				});
 			});
 		});
@@ -953,6 +955,7 @@ describe("TaskCard", () => {
 				expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
 					from_status: "todo",
 					to_status: "cancelled",
+					agent_name: "unknown",
 				});
 			});
 		});
