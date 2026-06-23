@@ -36,6 +36,9 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
 	loadProjects: vi.fn(),
+	loadVirtualProjects: vi.fn(() => Promise.resolve([])),
+	ensureBuiltinOperationsBoard: vi.fn(() => Promise.resolve(undefined)),
+	addVirtualProject: vi.fn(),
 	loadTasks: vi.fn(),
 	updateTask: vi.fn(),
 	addTask: vi.fn(),
@@ -1045,6 +1048,44 @@ describe("handlers.addProject", () => {
 		vi.mocked(data.addProject).mockRejectedValue(new Error("disk full"));
 
 		const result = await handlers.addProject({ path: "/tmp/test", name: "Test" });
+		expect(result).toEqual({ ok: false, error: "Error: disk full" });
+	});
+
+	it("rejects a git project inside the dev-3.0 data directory", async () => {
+		const result = await handlers.addProject({ path: "/tmp/test-dev3/ops/operations", name: "X" });
+		expect(result).toEqual({ ok: false, error: "Cannot add a project inside the dev-3.0 data directory" });
+		expect(git.isGitRepo).not.toHaveBeenCalled();
+		expect(data.addProject).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// handlers.addVirtualProject
+// ================================================================
+
+describe("handlers.addVirtualProject", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("creates a virtual project on success", async () => {
+		const project = makeProject({ id: "v1", name: "Operations", kind: "virtual" });
+		vi.mocked(data.addVirtualProject).mockResolvedValue(project);
+
+		const result = await handlers.addVirtualProject({ name: "Operations" });
+		expect(result).toEqual({ ok: true, project });
+		expect(data.addVirtualProject).toHaveBeenCalledWith("Operations");
+	});
+
+	it("falls back to 'Operations' for a blank name", async () => {
+		const project = makeProject({ id: "v1", name: "Operations", kind: "virtual" });
+		vi.mocked(data.addVirtualProject).mockResolvedValue(project);
+
+		await handlers.addVirtualProject({ name: "   " });
+		expect(data.addVirtualProject).toHaveBeenCalledWith("Operations");
+	});
+
+	it("returns error when data.addVirtualProject throws", async () => {
+		vi.mocked(data.addVirtualProject).mockRejectedValue(new Error("disk full"));
+		const result = await handlers.addVirtualProject({ name: "Ops" });
 		expect(result).toEqual({ ok: false, error: "Error: disk full" });
 	});
 });

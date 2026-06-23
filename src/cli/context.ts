@@ -18,6 +18,9 @@ export interface CliContext {
 /** Marker that appears in every dev3 worktree path. */
 const WORKTREE_MARKER = "/.dev3.0/worktrees/";
 
+/** Marker that appears in every virtual ("Operations") task working dir. */
+const OPS_MARKER = "/.dev3.0/ops/";
+
 /**
  * Parse worktree path to extract project slug and task short ID.
  * Path pattern: {any-home}/.dev3.0/worktrees/{projectSlug}/{taskShortId}/worktree
@@ -112,10 +115,71 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 }
 
 /**
- * Detect context from worktree path structure.
+ * Parse a virtual ("Operations") task working dir to extract the readable slug
+ * and task short ID. Path pattern:
+ *   {any-home}/.dev3.0/ops/{readableSlug}/{taskShortId}/work[/...]
+ * The readable slug is the basename of the virtual project's synthetic path —
+ * NOT the munged projectSlug used for the data dir.
+ */
+function detectFromVirtualPath(cwd: string): { readableSlug: string; taskShortId: string; realDev3Home: string } | null {
+	const markerIdx = cwd.indexOf(OPS_MARKER);
+	if (markerIdx === -1) return null;
+	const after = cwd.slice(markerIdx + OPS_MARKER.length);
+	const parts = after.split("/");
+	if (parts.length >= 3 && parts[2] === "work") {
+		const realDev3Home = cwd.slice(0, markerIdx) + "/.dev3.0";
+		return { readableSlug: parts[0], taskShortId: parts[1], realDev3Home };
+	}
+	return null;
+}
+
+/**
+ * Resolve project and task IDs from a virtual task working dir. Reads
+ * virtual-projects.json (NOT projects.json), matches the project by the
+ * readable slug, then resolves tasks from the SAME data/<projectSlug(path)>
+ * location used by git projects (the task data layer is not special-cased).
+ */
+function resolveFromVirtualPath(cwd: string): CliContext | null {
+	const pathInfo = detectFromVirtualPath(cwd);
+	if (!pathInfo) return null;
+
+	const effectiveHome = pathInfo.realDev3Home;
+	const virtualFile = `${effectiveHome}/virtual-projects.json`;
+	const socketsDir = `${effectiveHome}/sockets`;
+
+	try {
+		const projects = JSON.parse(readFileSync(virtualFile, "utf-8")) as Array<{ id: string; path: string }>;
+		const project = projects.find((p) => (p.path.split("/").pop() || "") === pathInfo.readableSlug);
+		if (!project) return null;
+
+		// Tasks live at data/<projectSlug(path)>/tasks.json — same formula as git.
+		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+		const tasksFile = `${effectiveHome}/data/${slug}/tasks.json`;
+		if (!existsSync(tasksFile)) return null;
+
+		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
+		const task = tasks.find((t) => t.id.startsWith(pathInfo.taskShortId));
+		if (!task) return null;
+
+		const socketPath = discoverSocketIn(socketsDir) || discoverSocket() || "";
+		const workDir = `${effectiveHome}/ops/${pathInfo.readableSlug}/${pathInfo.taskShortId}/work`;
+
+		return {
+			projectId: project.id,
+			taskId: task.id,
+			socketPath,
+			worktreePath: existsSync(workDir) ? workDir : undefined,
+		};
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Detect context from worktree path structure (git) or virtual ops working dir.
  */
 export function detectContext(cwd: string = process.cwd()): CliContext | null {
-	return resolveFromWorktreePath(cwd);
+	return resolveFromWorktreePath(cwd) || resolveFromVirtualPath(cwd);
 }
 
 /**

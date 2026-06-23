@@ -589,6 +589,20 @@ export interface Project {
 	customStatusLabels?: Record<string, string>;
 	// Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N)
 	portCount?: number;
+	/**
+	 * Project kind. `"git"` (default when absent) is a normal repo-backed project
+	 * with worktrees. `"virtual"` is an "Operations" board: tasks run in a managed
+	 * temp dir (or a chosen folder) with NO git worktree, branch, diff, PR, or
+	 * review columns. Virtual projects are stored in a separate
+	 * `~/.dev3.0/virtual-projects.json` so older app versions stay forward-compatible.
+	 */
+	kind?: "git" | "virtual";
+	/**
+	 * Marks the single built-in "Operations" board. Its display name is rendered
+	 * from a localized `t()` key until the user renames it (which clears this flag
+	 * for naming purposes). Only ever set on virtual projects.
+	 */
+	builtin?: boolean;
 }
 
 export interface Task {
@@ -675,6 +689,14 @@ export interface Task {
 	 * source todo task into every variant spawned from it.
 	 */
 	scratch?: boolean;
+	/**
+	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
+	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
+	 * operation uses a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.
+	 * On activation this resolves into `worktreePath`; on delete a managed dir is
+	 * removed but a fixed folder is never auto-removed. Ignored for git projects.
+	 */
+	opsWorkDir?: string | null;
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script — pre-selects it in the placement picker. */
@@ -1186,6 +1208,11 @@ export type AppRPCSchema = {
 			};
 			initAndAddProject: {
 				params: { path: string; name: string };
+				response: { ok: true; project: Project } | { ok: false; error: string };
+			};
+			/** Create a virtual "Operations" board (no git repo). Stored in virtual-projects.json. */
+			addVirtualProject: {
+				params: { name: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
 			removeProject: {

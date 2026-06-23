@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskStatus, TipState } from "../shared/types";
 import { getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
-import { DEV3_HOME } from "./paths";
+import { DEV3_HOME, OPS_DIR } from "./paths";
 import { detectClonePaths } from "./cow-clone";
 import { withFileLock } from "./file-lock";
 import { projectSlug } from "./git";
@@ -10,6 +10,10 @@ import { projectSlug } from "./git";
 const log = createLogger("data");
 
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
+// Virtual ("Operations") boards live in a SEPARATE file (rule-5 parallel-path
+// pattern from AGENTS.md) so older app versions never read it and stay blind to
+// the feature — `projects.json` remains 100% valid for them.
+const VIRTUAL_PROJECTS_FILE = `${DEV3_HOME}/virtual-projects.json`;
 const PROJECTS_BACKUP_RETENTION_DAYS = 7;
 const PROJECTS_BACKUP_FILE_PATTERN = /^projects-\d{4}-\d{2}-\d{2}\.json\.bak$/;
 const TASK_BACKUPS_DIR = "tasks-backups";
@@ -91,6 +95,7 @@ interface FileCacheEntry<T> {
 }
 
 const projectsCache = new Map<string, FileCacheEntry<Project>>();
+const virtualProjectsCache = new Map<string, FileCacheEntry<Project>>();
 const tasksCache = new Map<string, FileCacheEntry<Task>>();
 
 async function cacheLookup<T>(
@@ -114,6 +119,7 @@ async function cacheLookup<T>(
 /** Test-only: clear in-memory read caches. */
 export function _resetDataCaches(): void {
 	projectsCache.clear();
+	virtualProjectsCache.clear();
 	tasksCache.clear();
 }
 
@@ -252,6 +258,138 @@ export async function saveProjects(projects: Project[]): Promise<void> {
 	await withFileLock(PROJECTS_FILE, () => rawSaveProjects(projects));
 }
 
+// ---- Virtual ("Operations") projects ----
+//
+// Stored in a SEPARATE virtual-projects.json so older app versions never see
+// them (forward-compat). Tasks are NOT special-cased: they live at
+// data/<projectSlug(path)>/tasks.json exactly like git projects, so the entire
+// task data layer (loadTasks/saveTasks) works unchanged.
+
+async function rawLoadAllVirtualProjects(options?: { strict?: boolean }): Promise<Project[]> {
+	const useCache = !options?.strict;
+	let preReadStat: { mtimeMs: number; size: number } | null = null;
+	if (useCache) {
+		const { hit, stat: st } = await cacheLookup(virtualProjectsCache, VIRTUAL_PROJECTS_FILE);
+		if (hit) return hit;
+		preReadStat = st;
+	}
+	try {
+		const projects = JSON.parse(await readFile(VIRTUAL_PROJECTS_FILE, "utf8")) as Project[];
+		for (const project of projects) {
+			project.kind = "virtual";
+			if ((project as any).labels === undefined) project.labels = [];
+			if ((project as any).customColumns === undefined) project.customColumns = [];
+		}
+		if (useCache && preReadStat) {
+			virtualProjectsCache.set(VIRTUAL_PROJECTS_FILE, { ...preReadStat, value: projects.map((p) => ({ ...p })) });
+		}
+		return projects;
+	} catch (err: any) {
+		if (err.code === "ENOENT") return [];
+		log.error("Failed to load virtual projects", { error: String(err) });
+		if (options?.strict) throw toDataFileReadError(VIRTUAL_PROJECTS_FILE, "projects", err);
+		return [];
+	}
+}
+
+async function rawSaveVirtualProjects(projects: Project[]): Promise<void> {
+	await ensureDir(VIRTUAL_PROJECTS_FILE);
+	await atomicWriteFile(VIRTUAL_PROJECTS_FILE, JSON.stringify(projects, null, 2));
+	virtualProjectsCache.delete(VIRTUAL_PROJECTS_FILE);
+	log.info(`Saved ${projects.length} virtual project(s)`);
+}
+
+/** Load active (non-deleted) virtual projects. */
+export async function loadVirtualProjects(): Promise<Project[]> {
+	const all = await rawLoadAllVirtualProjects();
+	return all.filter((p) => !p.deleted);
+}
+
+export async function saveVirtualProjects(projects: Project[]): Promise<void> {
+	await withFileLock(VIRTUAL_PROJECTS_FILE, () => rawSaveVirtualProjects(projects));
+}
+
+/** Convert a board name to a filesystem-safe readable slug (`Mail triage` → `mail-triage`). */
+function slugifyVirtualName(name: string): string {
+	const s = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+	return s || "operations";
+}
+
+/**
+ * Allocate a human-readable, globally-unique, never-reused slug for a virtual
+ * project's synthetic path `${OPS_DIR}/<slug>`. Uniqueness is checked against:
+ * git project data-dir names, existing virtual slugs, AND surviving data/ dir
+ * names — so a deleted-then-recreated board cannot inherit stale task data.
+ */
+async function findUniqueVirtualProjectSlug(base: string): Promise<string> {
+	const gitProjects = await rawLoadAllProjects({ strict: false });
+	const gitDataDirs = new Set(gitProjects.map((p) => projectSlug(p.path)));
+	const virtuals = await rawLoadAllVirtualProjects({ strict: false });
+	const virtualSlugs = new Set(virtuals.map((p) => p.path.split("/").pop() || ""));
+	let survivingDataDirs = new Set<string>();
+	try {
+		survivingDataDirs = new Set(await readdir(`${DEV3_HOME}/data`));
+	} catch {
+		// data/ may not exist yet — nothing survives
+	}
+	for (let suffix = 0; ; suffix++) {
+		const candidate = suffix === 0 ? base : `${base}-${suffix + 1}`;
+		const dataDirName = projectSlug(`${OPS_DIR}/${candidate}`);
+		if (!virtualSlugs.has(candidate) && !gitDataDirs.has(dataDirName) && !survivingDataDirs.has(dataDirName)) {
+			return candidate;
+		}
+	}
+}
+
+async function createVirtualProjectUnlocked(projects: Project[], name: string, builtin: boolean): Promise<Project> {
+	const slug = await findUniqueVirtualProjectSlug(slugifyVirtualName(name));
+	const project: Project = {
+		id: crypto.randomUUID(),
+		name,
+		path: `${OPS_DIR}/${slug}`,
+		kind: "virtual",
+		builtin: builtin || undefined,
+		setupScript: "",
+		setupScriptLaunchMode: "parallel",
+		devScript: "",
+		cleanupScript: "",
+		defaultBaseBranch: "",
+		createdAt: new Date().toISOString(),
+		labels: [],
+		customColumns: [],
+	};
+	projects.push(project);
+	await rawSaveVirtualProjects(projects);
+	log.info("Virtual project added", { id: project.id, name, slug, builtin });
+	return project;
+}
+
+export async function addVirtualProject(name: string): Promise<Project> {
+	return withFileLock(VIRTUAL_PROJECTS_FILE, async () => {
+		const projects = await rawLoadAllVirtualProjects({ strict: true });
+		return createVirtualProjectUnlocked(projects, name, false);
+	});
+}
+
+/**
+ * Idempotently ensure the single built-in "Operations" board exists. Additive,
+ * invariant-safe: only ever creates a new file/entry, never renames or moves.
+ */
+export async function ensureBuiltinOperationsBoard(name: string): Promise<Project> {
+	return withFileLock(VIRTUAL_PROJECTS_FILE, async () => {
+		const projects = await rawLoadAllVirtualProjects({ strict: true });
+		const existing = projects.find((p) => p.builtin && !p.deleted);
+		if (existing) return existing;
+		return createVirtualProjectUnlocked(projects, name, true);
+	});
+}
+
+/** True when the given id belongs to a virtual project (lives in virtual-projects.json). */
+async function isVirtualProjectId(projectId: string): Promise<boolean> {
+	const virtuals = await rawLoadAllVirtualProjects();
+	return virtuals.some((p) => p.id === projectId);
+}
+
 export async function reorderProjects(projectIds: string[]): Promise<Project[]> {
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Reordering projects", { projectIds });
@@ -335,6 +473,19 @@ export async function addProject(
 }
 
 export async function removeProject(projectId: string): Promise<void> {
+	if (await isVirtualProjectId(projectId)) {
+		return withFileLock(VIRTUAL_PROJECTS_FILE, async () => {
+			log.info("Soft-deleting virtual project", { projectId });
+			const projects = await rawLoadAllVirtualProjects({ strict: true });
+			const idx = projects.findIndex((p) => p.id === projectId);
+			if (idx === -1) {
+				log.warn("Virtual project not found for soft-delete", { projectId });
+				return;
+			}
+			projects[idx] = { ...projects[idx], deleted: true };
+			await rawSaveVirtualProjects(projects);
+		});
+	}
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Soft-deleting project", { projectId });
 		const projects = await rawLoadAllProjects({ strict: true, persistMigrations: true });
@@ -352,6 +503,17 @@ export async function updateProject(
 	projectId: string,
 	updates: ProjectUpdates,
 ): Promise<Project> {
+	if (await isVirtualProjectId(projectId)) {
+		return withFileLock(VIRTUAL_PROJECTS_FILE, async () => {
+			log.info("Updating virtual project", { projectId, updates });
+			const projects = await rawLoadAllVirtualProjects({ strict: true });
+			const idx = projects.findIndex((p) => p.id === projectId);
+			if (idx === -1) throw new Error(`Project not found: ${projectId}`);
+			projects[idx] = { ...projects[idx], ...updates };
+			await rawSaveVirtualProjects(projects);
+			return projects[idx];
+		});
+	}
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project", { projectId, updates });
 		const projects = await rawLoadAllProjects({ strict: true, persistMigrations: true });
@@ -381,7 +543,11 @@ export async function updateProjectWith<T>(
 
 export async function getProject(projectId: string): Promise<Project> {
 	const projects = await rawLoadAllProjects();
-	const project = projects.find((p) => p.id === projectId);
+	let project = projects.find((p) => p.id === projectId);
+	if (!project) {
+		const virtuals = await rawLoadAllVirtualProjects();
+		project = virtuals.find((p) => p.id === projectId);
+	}
 	if (!project) throw new Error(`Project not found: ${projectId}`);
 	return project;
 }
