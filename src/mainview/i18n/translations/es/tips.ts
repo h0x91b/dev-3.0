@@ -206,6 +206,10 @@ const tips = {
 	"tip.terminalSelectCopies.body": "Solo selecciona texto en cualquier panel de terminal — se copia al portapapeles automáticamente, sin ⌘C.",
 	"tip.quickSwitchRecentFirst.title": "Proyectos recientes primero",
 	"tip.quickSwitchRecentFirst.body": "Abre Cmd/Ctrl+K y los proyectos a los que saltaste más recientemente aparecen primero.",
+	"tip.agentCanPingYou.title": "Los agentes pueden avisarte",
+	"tip.agentCanPingYou.body": "Un agente ejecuta `dev3 notify` o `dev3 attention` para mostrar un toast o insignia que te lleva a su tarea.",
+	"tip.focusModeMutesPings.title": "¿Te distraen los avisos?",
+	"tip.focusModeMutesPings.body": "Activa el Modo concentración en Ajustes → Comportamiento para silenciar todos los toasts, insignias y notificaciones de agentes.",
 };
 
 export default tips;

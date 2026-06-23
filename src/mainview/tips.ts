@@ -842,6 +842,22 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "agent-can-ping-you",
+		titleKey: "tip.agentCanPingYou.title",
+		bodyKey: "tip.agentCanPingYou.body",
+		icon: "\u{F009A}", // nf-md-bell_ring
+		score: 4,
+		contexts: ["board", "terminal"],
+	},
+	{
+		id: "focus-mode-mutes-pings",
+		titleKey: "tip.focusModeMutesPings.title",
+		bodyKey: "tip.focusModeMutesPings.body",
+		icon: "\u{F0BB0}", // nf-md-bell_off
+		score: 4,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -431,6 +431,7 @@ export interface GlobalSettings {
 	defaultDiffViewMode?: "split" | "unified" | "auto"; // default inline diff layout; "auto" picks based on screen size
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
 	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
+	focusMode?: boolean; // when true, suppress agent-initiated attention UI (dev3 notify/attention)
 }
 
 export interface TipState {
@@ -959,6 +960,35 @@ export interface ExposedPort {
 export interface ResourceUsage {
 	cpu: number;
 	rss: number;
+}
+
+// ---- tmux layout (dev3 ui state) ----
+
+export interface TmuxWindowInfo {
+	index: number;
+	name: string;
+	active: boolean;
+	panes: number;
+}
+
+export interface TmuxPaneInfo {
+	windowIndex: number;
+	paneId: string;
+	active: boolean;
+	/** Geometry in character cells, relative to the window. */
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+	command: string;
+	title: string;
+}
+
+export interface TmuxLayout {
+	sessionName: string;
+	exists: boolean;
+	windows: TmuxWindowInfo[];
+	panes: TmuxPaneInfo[];
 }
 
 // ---- Task dev server ----
@@ -1754,6 +1784,26 @@ export type AppRPCSchema = {
 			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
 			 */
 			openTaskFromNotification: { taskId: string; projectId: string };
+			/**
+			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
+			 * are present the toast is clickable and navigates to that task.
+			 */
+			cliToast: {
+				taskId: string | null;
+				projectId: string | null;
+				message: string;
+				level: "info" | "success" | "error";
+				/** Source-task context for the toast header (present when a task was resolved). */
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			/**
+			 * CLI-initiated attention signal (`dev3 attention`). Lights the red bell
+			 * badge on the task card with a hoverable `reason`, same surface the
+			 * terminal bell uses.
+			 */
+			cliAttention: { taskId: string; reason: string };
 		};
 	}>;
 	webview: RPCSchema<{

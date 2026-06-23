@@ -41,6 +41,7 @@ describe("initialState", () => {
 			currentProjectTasks: [],
 			loading: true,
 			bellCounts: new Map(),
+			bellReasons: new Map(),
 			taskPorts: new Map(),
 			taskResourceUsage: new Map(),
 			taskMru: [],
@@ -712,6 +713,75 @@ describe("reducer", () => {
 		const next = reducer(state, { type: "clearBell", taskId: "t1" });
 		expect(next.bellCounts.has("t1")).toBe(false);
 		expect(next.bellCounts.get("t2")).toBe(3);
+	});
+
+	// ---- addBell with reason (dev3 attention) ----
+
+	it("addBell: stores reason as a list and bumps count", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "PR is ready" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons.get("t1")).toEqual(["PR is ready"]);
+	});
+
+	it("addBell: accumulates multiple reasons in order", () => {
+		let state = reducer(initialState, { type: "addBell", taskId: "t1", reason: "one" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "two" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "three" });
+		expect(state.bellCounts.get("t1")).toBe(3);
+		expect(state.bellReasons.get("t1")).toEqual(["one", "two", "three"]);
+	});
+
+	it("addBell: caps reasons at 5, dropping the oldest", () => {
+		let state: AppState = initialState;
+		for (const r of ["r1", "r2", "r3", "r4", "r5", "r6", "r7"]) {
+			state = reducer(state, { type: "addBell", taskId: "t1", reason: r });
+		}
+		expect(state.bellCounts.get("t1")).toBe(7);
+		expect(state.bellReasons.get("t1")).toEqual(["r3", "r4", "r5", "r6", "r7"]);
+	});
+
+	it("addBell: without reason leaves bellReasons untouched", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons).toBe(initialState.bellReasons);
+		expect(next.bellReasons.size).toBe(0);
+	});
+
+	it("addBell: empty/whitespace reason bumps count but adds no list entry", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "   " });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons.has("t1")).toBe(false);
+	});
+
+	it("clearBell: clears reasons alongside the count", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 1]]),
+			bellReasons: new Map([["t1", ["needs input"]]]),
+		};
+		const next = reducer(state, { type: "clearBell", taskId: "t1" });
+		expect(next.bellCounts.has("t1")).toBe(false);
+		expect(next.bellReasons.has("t1")).toBe(false);
+	});
+
+	it("clearBell: clears a reason-only badge even with no count", () => {
+		const state: AppState = {
+			...initialState,
+			bellReasons: new Map([["t1", ["ping"]]]),
+		};
+		const next = reducer(state, { type: "clearBell", taskId: "t1" });
+		expect(next.bellReasons.has("t1")).toBe(false);
+	});
+
+	it("navigate: clears the focused task's reasons along with its bell", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 2]]),
+			bellReasons: new Map([["t1", ["look here", "and here"]]]),
+		};
+		const next = reducer(state, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "t1" } });
+		expect(next.bellCounts.has("t1")).toBe(false);
+		expect(next.bellReasons.has("t1")).toBe(false);
 	});
 
 	// ---- setPorts ----

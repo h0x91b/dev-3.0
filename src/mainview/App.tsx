@@ -783,6 +783,50 @@ function App() {
 		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
 	}, [dispatch]);
 
+	// CLI-initiated attention badge (`dev3 attention "reason"`). Same red badge as
+	// the terminal bell, but carries a hoverable reason.
+	useEffect(() => {
+		function onCliAttention(e: Event) {
+			const { taskId, reason } = (e as CustomEvent).detail as { taskId: string; reason: string };
+			if (!taskId) return;
+			dispatch({ type: "addBell", taskId, reason: reason ?? "" });
+		}
+		window.addEventListener("rpc:cliAttention", onCliAttention);
+		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);
+	}, [dispatch]);
+
+	// CLI-initiated in-app toast (`dev3 notify`). When a task is attached the toast
+	// is clickable and opens that task, honoring the user's task-open-mode.
+	useEffect(() => {
+		function onCliToast(e: Event) {
+			const { taskId, projectId, message, level, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+				taskId: string | null;
+				projectId: string | null;
+				message: string;
+				level: "info" | "success" | "error";
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			if (!message) return;
+			const onClick =
+				taskId && projectId
+					? () => {
+							const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+							if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
+							else navigate({ screen: "project", projectId, activeTaskId: taskId });
+						}
+					: undefined;
+			// Compact source line, e.g. "#804 · dev-3.0 · Task title".
+			const context = taskSeq !== undefined
+				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
+				: undefined;
+			toast[level](message, { onClick, context });
+		}
+		window.addEventListener("rpc:cliToast", onCliToast);
+		return () => window.removeEventListener("rpc:cliToast", onCliToast);
+	}, [navigate]);
+
 	// Listen for port scan updates
 	useEffect(() => {
 		function onPortsUpdated(e: Event) {
@@ -1605,6 +1649,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						bellReasons={state.bellReasons}
 						taskPorts={state.taskPorts}
 						taskResourceUsage={state.taskResourceUsage}
 						activeTaskId={route.activeTaskId}

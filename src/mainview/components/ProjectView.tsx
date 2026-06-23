@@ -31,6 +31,7 @@ interface ProjectViewProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
@@ -45,6 +46,7 @@ function ProjectView({
 	dispatch,
 	navigate,
 	bellCounts,
+	bellReasons,
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
@@ -150,6 +152,7 @@ function ProjectView({
 				navigate={navigate}
 				agents={agents}
 				bellCounts={bellCounts}
+				bellReasons={bellReasons}
 				taskPorts={taskPorts}
 				onSwitchToBoard={() => toggleSidebarMode("board")}
 				disableGlobalFindShortcut={inlineDiff.isOpen}
@@ -161,6 +164,7 @@ function ProjectView({
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
+				bellReasons={bellReasons}
 				taskPorts={taskPorts}
 				taskResourceUsage={taskResourceUsage}
 				activeTaskId={activeTaskId}
@@ -199,6 +203,7 @@ function ProjectView({
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
+				bellReasons={bellReasons}
 				taskPorts={taskPorts}
 				taskResourceUsage={taskResourceUsage}
 			/>

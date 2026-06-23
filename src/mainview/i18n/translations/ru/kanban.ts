@@ -86,6 +86,7 @@ const kanban = {
 	"task.reopenTo": "Переоткрыть как",
 	"task.openPR": "Открыть PR #{number}",
 	"task.bellTooltip": "Требует внимания",
+	"task.attentionLabel": "Внимание",
 	"task.siblings": "Варианты",
 	"task.siblingsCount_one": "{count} вариант-сиблинг",
 	"task.siblingsCount_few": "{count} варианта-сиблинга",

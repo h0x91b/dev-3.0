@@ -272,6 +272,13 @@ function GlobalSettings() {
 		[persistSettingChange],
 	);
 
+	const handleFocusModeToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ focusMode: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
 			api.request.saveGlobalSettings({
@@ -424,6 +431,7 @@ function GlobalSettings() {
 						onKeymapChange={handleKeymapChange}
 						onPreventSleepToggle={handlePreventSleepToggle}
 						onSoundToggle={handleSoundToggle}
+						onFocusModeToggle={handleFocusModeToggle}
 						onTaskDropPositionChange={handleTaskDropPositionChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}

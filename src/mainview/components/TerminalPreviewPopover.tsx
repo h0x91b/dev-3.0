@@ -21,6 +21,8 @@ interface TerminalPreviewPopoverProps extends TerminalPreviewState {
 	/** User-edited override. When present, takes precedence over `overview`. */
 	userOverview?: string | null;
 	description?: string | null;
+	/** Accumulated attention reasons from `dev3 attention` — shown as a banner atop the popover. */
+	attentionReasons?: string[];
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -41,8 +43,11 @@ function TerminalPreviewPopover({
 	overview,
 	userOverview,
 	description,
+	attentionReasons,
 }: TerminalPreviewPopoverProps) {
 	const t = useT();
+	const reasons = (attentionReasons ?? []).map((r) => r.trim()).filter(Boolean);
+	const hasReason = reasons.length > 0;
 	const [editing, setEditing] = useState(false);
 	const [value, setValue] = useState("");
 	const [saving, setSaving] = useState(false);
@@ -146,12 +151,35 @@ function TerminalPreviewPopover({
 				left: pos.left,
 				width: 420,
 				maxHeight: editing ? 520 : 420,
-				opacity: html || loading || showOverviewBlock ? 1 : 0,
+				opacity: html || loading || showOverviewBlock || hasReason ? 1 : 0,
 			}}
 			onMouseEnter={cancelClose}
 			onMouseLeave={() => { if (!editing) scheduleClose(); }}
 			onClick={(e) => e.stopPropagation()}
 		>
+			{hasReason && (
+				<div className="flex items-start gap-2 border-b border-danger/30 bg-danger/10 px-2.5 py-2">
+					<span
+						className="text-danger text-sm leading-none mt-0.5 flex-shrink-0"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{"\u{F009A}"}
+					</span>
+					<div className="min-w-0 flex-1">
+						<div className="text-[0.5625rem] font-semibold uppercase tracking-wider text-danger/80">
+							{reasons.length > 1 ? `${t("task.attentionLabel")} (${reasons.length})` : t("task.attentionLabel")}
+						</div>
+						<div className="flex flex-col gap-0.5 mt-0.5">
+							{reasons.map((reason, i) => (
+								<div key={i} className="text-xs text-fg leading-snug break-words flex gap-1.5">
+									{reasons.length > 1 && <span className="text-danger/60 flex-shrink-0">{i + 1}.</span>}
+									<span className="min-w-0">{reason}</span>
+								</div>
+							))}
+						</div>
+					</div>
+				</div>
+			)}
 			{showOverviewBlock && (
 				<div className="flex flex-col border-b border-edge p-2 gap-1">
 					<div className="flex items-center justify-between gap-2">

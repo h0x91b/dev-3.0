@@ -20,6 +20,9 @@ export type Route =
 /** Maximum number of entries kept in the navigation history stack. */
 export const HISTORY_LIMIT = 15;
 
+/** Max attention reasons kept per task in the hover preview; oldest drop off. */
+export const MAX_ATTENTION_REASONS = 5;
+
 export interface AppState {
 	route: Route;
 	routeHistory: Route[];
@@ -28,6 +31,14 @@ export interface AppState {
 	currentProjectTasks: Task[];
 	loading: boolean;
 	bellCounts: Map<string, number>;
+	/**
+	 * Accumulated human-readable reasons per attention badge, set by repeated
+	 * `dev3 attention "reason"` calls. Keyed by task id, mirrors `bellCounts`
+	 * lifecycle (cleared when the badge is cleared). Each call appends one entry;
+	 * the hover preview shows them all. Terminal-bell badges / empty reasons add
+	 * nothing here.
+	 */
+	bellReasons: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage: Map<string, ResourceUsage>;
 	/**
@@ -47,6 +58,7 @@ export const initialState: AppState = {
 	currentProjectTasks: [],
 	loading: true,
 	bellCounts: new Map(),
+	bellReasons: new Map(),
 	taskPorts: new Map(),
 	taskResourceUsage: new Map(),
 	taskMru: [],
@@ -122,25 +134,36 @@ export type AppAction =
 	| { type: "removeProject"; projectId: string }
 	| { type: "updateProject"; project: Project }
 	| { type: "setLoading"; loading: boolean }
-	| { type: "addBell"; taskId: string }
+	| { type: "addBell"; taskId: string; reason?: string }
 	| { type: "clearBell"; taskId: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
 	| { type: "clearPorts"; taskId: string }
 	| { type: "setResourceUsage"; taskId: string; usage: ResourceUsage }
 	| { type: "clearResourceUsage"; taskId: string };
 
-function clearBellForRoute(bellCounts: Map<string, number>, route: Route): Map<string, number> {
-	if (route.screen === "task" && bellCounts.has(route.taskId)) {
-		const next = new Map(bellCounts);
-		next.delete(route.taskId);
-		return next;
-	}
-	if (route.screen === "project" && route.activeTaskId && bellCounts.has(route.activeTaskId)) {
-		const next = new Map(bellCounts);
-		next.delete(route.activeTaskId);
-		return next;
-	}
-	return bellCounts;
+/**
+ * Clear the attention badge (count + reason) for whichever task the given route
+ * is now focused on. Returns the same map references untouched when there is
+ * nothing to clear, so callers can spread them without forcing a re-render.
+ */
+function clearBellForRoute(
+	bellCounts: Map<string, number>,
+	bellReasons: Map<string, string[]>,
+	route: Route,
+): { bellCounts: Map<string, number>; bellReasons: Map<string, string[]> } {
+	let focusedTaskId: string | null = null;
+	if (route.screen === "task") focusedTaskId = route.taskId;
+	else if (route.screen === "project" && route.activeTaskId) focusedTaskId = route.activeTaskId;
+
+	if (!focusedTaskId) return { bellCounts, bellReasons };
+
+	const nextCounts = bellCounts.has(focusedTaskId) ? new Map(bellCounts) : bellCounts;
+	if (nextCounts !== bellCounts) nextCounts.delete(focusedTaskId);
+
+	const nextReasons = bellReasons.has(focusedTaskId) ? new Map(bellReasons) : bellReasons;
+	if (nextReasons !== bellReasons) nextReasons.delete(focusedTaskId);
+
+	return { bellCounts: nextCounts, bellReasons: nextReasons };
 }
 
 function normalizeProjectPath(path: string): string {
@@ -150,7 +173,7 @@ function normalizeProjectPath(path: string): string {
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate": {
-			const bellCounts = clearBellForRoute(state.bellCounts, action.route);
+			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, action.route);
 			// Truncate any forward history beyond the current index, then push
 			const base = state.routeHistory.slice(0, state.historyIndex + 1);
 			base.push(action.route);
@@ -158,23 +181,23 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
 			const historyIndex = routeHistory.length - 1;
 			const taskMru = bumpMru(state.taskMru, action.route);
-			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts, taskMru };
+			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts, bellReasons, taskMru };
 		}
 		case "goBack": {
 			if (state.historyIndex <= 0) return state;
 			const newIndex = state.historyIndex - 1;
 			const route = state.routeHistory[newIndex];
-			const bellCounts = clearBellForRoute(state.bellCounts, route);
+			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
 			const taskMru = bumpMru(state.taskMru, route);
-			return { ...state, route, historyIndex: newIndex, bellCounts, taskMru };
+			return { ...state, route, historyIndex: newIndex, bellCounts, bellReasons, taskMru };
 		}
 		case "goForward": {
 			if (state.historyIndex >= state.routeHistory.length - 1) return state;
 			const newIndex = state.historyIndex + 1;
 			const route = state.routeHistory[newIndex];
-			const bellCounts = clearBellForRoute(state.bellCounts, route);
+			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
 			const taskMru = bumpMru(state.taskMru, route);
-			return { ...state, route, historyIndex: newIndex, bellCounts, taskMru };
+			return { ...state, route, historyIndex: newIndex, bellCounts, bellReasons, taskMru };
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };
@@ -305,13 +328,24 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			}
 			const bellCounts = new Map(state.bellCounts);
 			bellCounts.set(action.taskId, (bellCounts.get(action.taskId) ?? 0) + 1);
-			return { ...state, bellCounts };
+			// Only attention calls carry a reason; bare terminal bells don't.
+			const trimmed = action.reason?.trim();
+			if (!trimmed) {
+				return { ...state, bellCounts };
+			}
+			const bellReasons = new Map(state.bellReasons);
+			// Keep only the most recent MAX_ATTENTION_REASONS; oldest drop off.
+			const nextList = [...(bellReasons.get(action.taskId) ?? []), trimmed].slice(-MAX_ATTENTION_REASONS);
+			bellReasons.set(action.taskId, nextList);
+			return { ...state, bellCounts, bellReasons };
 		}
 		case "clearBell": {
-			if (!state.bellCounts.has(action.taskId)) return state;
+			if (!state.bellCounts.has(action.taskId) && !state.bellReasons.has(action.taskId)) return state;
 			const bellCounts = new Map(state.bellCounts);
 			bellCounts.delete(action.taskId);
-			return { ...state, bellCounts };
+			const bellReasons = new Map(state.bellReasons);
+			bellReasons.delete(action.taskId);
+			return { ...state, bellCounts, bellReasons };
 		}
 		case "setPorts": {
 			const taskPorts = new Map(state.taskPorts);

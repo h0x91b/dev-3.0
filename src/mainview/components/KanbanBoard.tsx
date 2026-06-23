@@ -30,6 +30,7 @@ interface KanbanBoardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
@@ -43,6 +44,7 @@ function KanbanBoard({
 	dispatch,
 	navigate,
 	bellCounts,
+	bellReasons,
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
@@ -451,6 +453,7 @@ function KanbanBoard({
 						onDragStart: handleDragStart,
 						onTaskMoved: recordMove,
 						bellCounts,
+						bellReasons,
 						taskPorts,
 						taskResourceUsage,
 						activeTaskId,

@@ -206,6 +206,10 @@ const tips = {
 	"tip.terminalSelectCopies.body": "Just select text in any terminal pane — it's copied to your clipboard automatically, no ⌘C needed.",
 	"tip.quickSwitchRecentFirst.title": "Recent projects float up",
 	"tip.quickSwitchRecentFirst.body": "Open Cmd/Ctrl+K and the projects you jumped to most recently are listed first.",
+	"tip.agentCanPingYou.title": "Agents can ping you",
+	"tip.agentCanPingYou.body": "Agents run `dev3 notify` or `dev3 attention` to raise a clickable toast or badge that jumps you to their task.",
+	"tip.focusModeMutesPings.title": "Pings distracting you?",
+	"tip.focusModeMutesPings.body": "Turn on Focus Mode in Settings → Behavior to silence all agent toasts, badges, and notifications.",
 } as const;
 
 export default tips;

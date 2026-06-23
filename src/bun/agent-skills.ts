@@ -206,6 +206,39 @@ Prefer \`status\` before \`start\` to avoid unnecessary restarts.
 If you started the dev server only for verification, stop it afterwards unless the user asked to keep it running.
 `;
 
+const SKILL_GET_ATTENTION = `
+## Getting the user's attention
+
+You can pull the user back to this task through the app UI. Use it deliberately — enough that the user never misses something that needs them, but never as per-step noise. These commands auto-target the current worktree's task.
+
+Commands:
+- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows in the card's hover preview (reasons accumulate, newest kept, up to 5). The badge persists until the user opens the task. This is the default for anything that needs the user.
+- \`dev3 notify "message" [--level info|success|error]\` — a clickable in-app toast; clicking opens this task. Ephemeral. Use \`--level error\` for failures, \`success\` for "done".
+- \`dev3 notify "message" --desktop\` — a native OS notification (shows even when the app is backgrounded/hidden); clicking focuses this task.
+- \`dev3 ui state\` — reports focused task/project, app foreground, **how long the user has been idle** (\`userActivity\`), and this worktree's tmux layout (\`--json\` for raw data). Check this BEFORE pinging to choose the right channel and avoid redundant pings.
+
+When to ping (MUST — always do one):
+- You are **blocked** / need a decision or input to proceed → \`dev3 attention "the question"\`.
+- You **asked a question** and are waiting → \`dev3 attention "..."\`.
+- You **finished** something important / it's ready for review → \`dev3 notify "..." --level success\`.
+- Something **broke** the user must know about → \`dev3 notify "..." --level error\`.
+
+When to ping (SHOULD — judgment, only if the run is long and the user likely stepped away):
+- A major milestone mid-task (a big phase/migration completed).
+- Right before a risky or irreversible action that needs a go/no-go.
+
+Do NOT ping for: per-step progress, routine tool calls, intermediate reasoning, or anything already visible in the terminal the user is watching.
+
+Choosing the channel (run \`dev3 ui state\` first):
+- User **focused on this task** (\`foreground: yes\`, \`activeTask\` = this task): they see the terminal live — skip the ping or use only \`attention\` (no toast/desktop).
+- User **active but elsewhere** (small \`userActivity\` idle, app foreground or another task): an in-app \`notify\` toast is enough; \`attention\` for blockers.
+- User **idle / away** (\`userActivity\` shows minutes/hours idle, or app backgrounded): use \`dev3 notify --desktop\` so it surfaces outside the app, and/or leave an \`attention\` badge they'll see when back. A plain toast will likely go unseen.
+
+Frequency: one ping per logical event (blocker / question / completion / failure), not per step. The badge accumulates reasons, so multiple questions stack without spamming toasts.
+
+Focus mode: the user can disable all of this in Settings → Behavior → Focus Mode. When it's on, \`dev3 notify\`/\`dev3 attention\` reply with "Focus mode is on — … suppressed" and show nothing. That's expected — keep using your normal status transitions (user-questions, review) so the work is still visible on the board; just don't expect a ping to land.
+`;
+
 const SKILL_PROJECT_CONFIG_REDIRECT = `
 ## Project configuration (.dev3/config.json)
 
@@ -328,9 +361,9 @@ Call it **silently, at most once per user message**: do not announce it, do not 
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
