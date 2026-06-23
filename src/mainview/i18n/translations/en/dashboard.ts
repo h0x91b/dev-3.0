@@ -38,6 +38,11 @@ const dashboard = {
 	"ops.create.namePlaceholder": "Operations",
 	"ops.create.hint": "A board for ad-hoc, code-driven tasks not tied to any repo. Each task runs in a managed folder (or one you pick per task) — no git worktree.",
 	"ops.create.submit": "Create board",
+	"ops.create.workDirLabel": "Working folder",
+	"ops.create.workDirAuto": "Managed temp folder (automatic)",
+	"ops.create.workDirPick": "Choose folder…",
+	"ops.create.workDirReset": "Use managed",
+	"ops.create.workDirConflict": "Another active operation already uses this folder — agents may conflict.",
 
 	// GlobalHeader
 	"header.task": "Task",

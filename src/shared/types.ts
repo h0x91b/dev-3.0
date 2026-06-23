@@ -1301,7 +1301,7 @@ export type AppRPCSchema = {
 				response: ConversationMatch[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean };
+				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string };
 				response: Task;
 			};
 			moveTask: {

@@ -724,6 +724,7 @@ export async function addTask(
 		customTitle?: string | null;
 		titleEditedByUser?: boolean;
 		labelIds?: string[];
+		opsWorkDir?: string | null;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -759,6 +760,7 @@ export async function addTask(
 			...(extras?.scratch ? { scratch: true } : {}),
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
+			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),
 		};
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
 		tasks.push(task);

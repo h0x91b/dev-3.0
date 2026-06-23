@@ -14,6 +14,7 @@ import { useSkillAutocomplete } from "../hooks/useSkillAutocomplete";
 import { removeImagePath } from "../utils/imageAttachments";
 import BranchSelector from "./BranchSelector";
 import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
+import { openFolderPicker } from "../folder-picker";
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -45,6 +46,10 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
 	const [pendingSubmitMode, setPendingSubmitMode] = useState<"save" | "run" | "scratch" | null>(null);
 	const [reviewMode, setReviewMode] = useState(false);
+	const isVirtual = project.kind === "virtual";
+	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
+	const [opsFolder, setOpsFolder] = useState<string | null>(null);
+	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -132,8 +137,31 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 
 	useEffect(() => {
 		textareaRef.current?.focus();
-		void loadProjectCurrentBranch();
-	}, [loadProjectCurrentBranch]);
+		// Virtual ops have no git branch — skip the branch lookup entirely.
+		if (!isVirtual) void loadProjectCurrentBranch();
+	}, [loadProjectCurrentBranch, isVirtual]);
+
+	async function handlePickOpsFolder() {
+		let folder: string | null;
+		try {
+			folder = await openFolderPicker({ initialPath: opsFolder });
+		} catch {
+			return;
+		}
+		if (!folder) return;
+		setOpsFolder(folder);
+		// Non-blocking warning: another ACTIVE op already using this folder.
+		try {
+			const all = await api.request.getAllProjectTasks();
+			const mine = all.find((p) => p.projectId === project.id);
+			const conflict = (mine?.tasks ?? []).some(
+				(tk) => tk.worktreePath === folder && tk.status !== "completed" && tk.status !== "cancelled",
+			);
+			setOpsFolderConflict(conflict);
+		} catch {
+			setOpsFolderConflict(false);
+		}
+	}
 
 	function handleRequestClose() {
 		if (pendingBranchChoice) {
@@ -191,6 +219,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				description: mode === "scratch" ? "" : trimmed,
 				...(mode === "scratch" ? { scratch: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
+				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
 			});
 			if (customTitle) {
 				task = await api.request.renameTask({
@@ -229,6 +258,12 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		if (mode !== "scratch" && !trimmed) return;
 		if (mode === "run" && !onCreateAndRun) return;
 		if (mode === "scratch" && !onCreateAndRun) return;
+
+		// Virtual ops have no git branch — create directly with no branch choice.
+		if (isVirtual) {
+			await createTaskWithBranch(null, mode);
+			return;
+		}
 
 		// Race guard: if the initial getProjectCurrentBranch() lookup is still
 		// in-flight when the user clicks Save, the user has not yet had a
@@ -514,20 +549,55 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 					</div>
 				</div>
 
-				{/* Branch selector — collapsible */}
-				<BranchSelector
-					projectId={project.id}
-					selectedBranch={selectedBranch}
-					onSelectBranch={(branch) => {
-						setSelectedBranch(branch);
-						// Turn off review mode when branch is deselected
-						if (!branch && reviewMode) {
-							handleReviewModeChange(false);
-						}
-					}}
-					reviewMode={reviewMode}
-					onReviewModeChange={handleReviewModeChange}
-				/>
+				{/* Virtual ops: working-folder selector (managed temp dir by default). */}
+				{isVirtual ? (
+					<div className="space-y-1.5">
+						<label className="text-fg-2 text-sm font-medium">{t("ops.create.workDirLabel")}</label>
+						<div className="flex gap-2">
+							<div className="flex-1 px-3 py-2 bg-raised border border-edge rounded-xl text-sm truncate">
+								{opsFolder ? (
+									<span className="text-fg font-mono">{opsFolder}</span>
+								) : (
+									<span className="text-fg-3">{t("ops.create.workDirAuto")}</span>
+								)}
+							</div>
+							{opsFolder && (
+								<button
+									type="button"
+									onClick={() => { setOpsFolder(null); setOpsFolderConflict(false); }}
+									className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
+								>
+									{t("ops.create.workDirReset")}
+								</button>
+							)}
+							<button
+								type="button"
+								onClick={handlePickOpsFolder}
+								className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
+							>
+								{t("ops.create.workDirPick")}
+							</button>
+						</div>
+						{opsFolderConflict && (
+							<p className="text-xs text-amber-500">{t("ops.create.workDirConflict")}</p>
+						)}
+					</div>
+				) : (
+					/* Branch selector — collapsible */
+					<BranchSelector
+						projectId={project.id}
+						selectedBranch={selectedBranch}
+						onSelectBranch={(branch) => {
+							setSelectedBranch(branch);
+							// Turn off review mode when branch is deselected
+							if (!branch && reviewMode) {
+								handleReviewModeChange(false);
+							}
+						}}
+						reviewMode={reviewMode}
+						onReviewModeChange={handleReviewModeChange}
+					/>
+				)}
 
 			{/* Actions */}
 				<div className="space-y-2.5 pt-1">

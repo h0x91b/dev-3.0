@@ -618,7 +618,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string }): Promise<Task> {
 	log.info("→ createTask", params);
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
@@ -632,6 +632,7 @@ async function createTask(params: { projectId: string; description: string; stat
 	const extras: Parameters<typeof data.addTask>[3] = {
 		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
 		...(isScratch ? { scratch: true } : {}),
+		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 	};
 	const task = await data.addTask(project, description, status, Object.keys(extras).length ? extras : undefined);
 

@@ -1101,3 +1101,27 @@ describe("CreateTaskModal skill autocomplete", () => {
 		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 	});
 });
+
+describe("CreateTaskModal — virtual (Operations) project", () => {
+	const vproject: Project = { ...mockProject, kind: "virtual", path: "/home/user/.dev3.0/ops/operations" };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+	});
+
+	it("shows the working-folder selector, not the branch selector", () => {
+		renderModal({ project: vproject });
+		expect(screen.getByText("Managed temp folder (automatic)")).toBeInTheDocument();
+		expect(screen.queryByText("Use existing branch")).not.toBeInTheDocument();
+	});
+
+	it("creates a virtual task with the managed folder (no opsWorkDir)", async () => {
+		renderModal({ project: vproject });
+		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Backup prod");
+		await userEvent.click(screen.getByText("Save"));
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Backup prod" });
+		});
+	});
+});

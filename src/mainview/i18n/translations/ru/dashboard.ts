@@ -42,6 +42,11 @@ const dashboard = {
 	"ops.create.namePlaceholder": "Операции",
 	"ops.create.hint": "Доска для разовых задач с кодом, не привязанных к репозиторию. Каждая задача выполняется в управляемой папке (или выбранной вами) — без git worktree.",
 	"ops.create.submit": "Создать доску",
+	"ops.create.workDirLabel": "Рабочая папка",
+	"ops.create.workDirAuto": "Управляемая временная папка (автоматически)",
+	"ops.create.workDirPick": "Выбрать папку…",
+	"ops.create.workDirReset": "Управляемая",
+	"ops.create.workDirConflict": "Эту папку уже использует другая активная операция — агенты могут конфликтовать.",
 
 	// GlobalHeader
 	"header.task": "Задача",

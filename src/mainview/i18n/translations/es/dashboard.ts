@@ -38,6 +38,11 @@ const dashboard = {
 	"ops.create.namePlaceholder": "Operaciones",
 	"ops.create.hint": "Un tablero para tareas puntuales con código no ligadas a un repo. Cada tarea se ejecuta en una carpeta gestionada (o una que elijas) — sin git worktree.",
 	"ops.create.submit": "Crear tablero",
+	"ops.create.workDirLabel": "Carpeta de trabajo",
+	"ops.create.workDirAuto": "Carpeta temporal gestionada (automática)",
+	"ops.create.workDirPick": "Elegir carpeta…",
+	"ops.create.workDirReset": "Usar gestionada",
+	"ops.create.workDirConflict": "Otra operación activa ya usa esta carpeta — los agentes pueden entrar en conflicto.",
 
 	// GlobalHeader
 	"header.task": "Tarea",
