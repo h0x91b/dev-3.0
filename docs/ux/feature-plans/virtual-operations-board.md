@@ -24,6 +24,7 @@ The user flagged that "virtual directory" is hard to explain. **Resolution: the 
 | Dimension | Decision |
 |---|---|
 | Name / mental model | **"Operations"** — a place for everyday, code-driven, repo-less tasks that persist in history. (User leaned between "scratch" and "operations"; "operations" won because tasks must persist, not be throwaway.) |
+| Terminology | Built-in board's default name is **localized "Operations"** (en/ru/es, via a `t()` key; user-created boards use literal names). Items stay **"task"** everywhere (model, `dev3 task` CLI, UI) — "Operations" is the board theme, not a new noun. |
 | Data model | `Project.kind: "git" \| "virtual"`. Virtual reuses dashboard, board, cards, sidebar, labels, notes. No new navigation, no second board stack. |
 | Entry point | In the **common project list** on the dashboard, marked with a badge/icon. Created via the existing **Add project** flow with a type toggle (`Git repository` \| `Operations / no git`). |
 | Worktree | **Excluded entirely.** No `git worktree add`, no branch, no base branch. The whole git domain (diff, PR, branch status, rebase/push, AI/colleague review) is **hidden** for virtual tasks. |
@@ -72,6 +73,8 @@ No new always-visible buttons. The Operations board reuses existing task afforda
 - **Add project type toggle** — segmented control, role `neutral`; the create CTA stays the single `primary` (`bg-accent`).
 - **Operation working-dir selector** — `auto ▾` dropdown with a "choose folder…" entry that opens the existing React `FolderPickerModal` (no native dialog). Role `neutral`.
 - **Operations / virtual badge** — `status`-style chip on the project tile and board header, semantic tokens only (no hardcoded color; reuse a neutral/`bg-raised` chip, distinct glyph).
+- **Scratch (no-prompt) operation badge** — reuse the existing `Scratch — HH:MM` auto-title plus a terminal/shell Nerd-Font glyph on the card, so a live prompt-less session is distinct from an unstarted task. `status`-style, semantic tokens only.
+- **Fixed-folder conflict warning** — when the chosen folder is already used by another **active** operation, show a non-blocking inline warning at folder-pick time (the operation is still allowed; completed operations don't count).
 
 All copy must go through `t()` in en/ru/es; any new glyph uses the Nerd Font convention.
 
@@ -141,8 +144,9 @@ Rejected: one `projects.json` with a `kind` field (old versions show a broken/er
 - Remove `HomeTerminal.tsx` / `home-terminal` route; map its hotkey to Quick-shell operation.
 - i18n (en/ru/es), `tips.ts`, a decision record, a changelog entry.
 
-## 11. Open questions for the user (next planning pass)
+## 11. Product decisions (resolved 2026-06-23, with the user)
 
-- Exact user-facing label: **"Operations"** vs localized variants; and whether each item is called an "operation" or stays "task".
-- How a **scratch (no-prompt) operation** presents on the card (badge? distinct glyph?).
-- Whether the **fixed-folder** option allows several operations to share one folder (warn) or is one-folder-per-operation.
+- **Board name — localized "Operations".** The built-in board's default name is `Operations` / `Операции` / `Operaciones`, rendered via a `t()` key (small special-case: only the built-in board's name is a key; user-created virtual boards store literal names like any project). The user can rename it. Rejected: fixed English label (violates the i18n policy) and a different default word like "General"/"Workspace" (less faithful to the "operations" concept the user chose).
+- **Item noun — stays "task" everywhere.** "Operations" is the board's theme/name; the items inside remain **tasks** across the data model, the `dev3 task` CLI, and the UI. No vocabulary fork, no extra i18n, CLI contract unchanged. Rejected: relabel to "operation" in the renderer only (UI↔CLI split) or a full model+CLI+UI rename (breaks the CLI contract for no real gain).
+- **Scratch (no-prompt) operation — reuse "Scratch — HH:MM" + shell glyph.** A prompt-less live session reuses the existing `Scratch — HH:MM` auto-title convention plus a terminal/shell Nerd-Font glyph badge on the card, so it reads as a live session rather than an unstarted task. `status`-style, semantic tokens only. Rejected: no marker (indistinguishable from an empty task) and a bespoke "ghost" card style (new card variant = drift risk vs `DESIGN.md`).
+- **Fixed-folder sharing — allowed, warn on active conflict.** Two operations may target the same chosen folder, but if the folder is already used by another **active** operation, show a non-blocking inline warning at folder-pick time ("agents may conflict"). Completed operations don't count (they aren't running). Rejected: hard one-folder-per-operation (blocks legitimate sequential reuse) and silent allow (easy footgun).
