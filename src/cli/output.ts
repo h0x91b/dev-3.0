@@ -44,12 +44,24 @@ export function exitError(message: string, detail?: string, code = CLI_EXIT_CODE
 	process.exit(code);
 }
 
-export function exitAppNotRunning(): never {
-	exitError(
-		"app not running",
-		"The dev3.0 desktop app must be running to use the CLI.\nStart the app and try again.",
-		CLI_EXIT_CODE_APP_NOT_RUNNING,
-	);
+export function exitAppNotRunning(opts: { stage?: "discovery" | "connect"; diagnostics?: string } = {}): never {
+	let detail = "The dev3.0 desktop app must be running to use the CLI.\nStart the app and try again.";
+
+	// Under DEV3_DEBUG, append why resolution failed so bug reports are
+	// actionable: "no live socket" (discovery — often a wrong HOME) vs "socket
+	// found but connection refused" (connect — busy app / transient backlog).
+	if (opts.diagnostics || opts.stage) {
+		detail += "\n\n[DEV3_DEBUG] app-not-running diagnostics:";
+		if (opts.stage) {
+			detail +=
+				opts.stage === "discovery"
+					? "\n  stage: discovery — no live socket found in the sockets dir"
+					: "\n  stage: connect — a socket was found but the connection was refused";
+		}
+		if (opts.diagnostics) detail += `\n${opts.diagnostics}`;
+	}
+
+	exitError("app not running", detail, CLI_EXIT_CODE_APP_NOT_RUNNING);
 }
 
 export function exitUsage(message: string): never {

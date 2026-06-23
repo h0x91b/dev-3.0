@@ -126,6 +126,59 @@ describe("sendRequest", () => {
 		}
 	});
 
+	it("recovers from a transient connect failure once the app socket accepts (issue #714)", async () => {
+		// Reproduces the false "app not running" verdict: the socket is briefly
+		// unavailable (no listener yet, like a busy app that can't accept()), then
+		// the app starts accepting. Without retry, sendRequest gives up on the very
+		// first ECONNREFUSED/ENOENT; with retry it must eventually connect.
+		cleanSocket();
+		const serverPromise = new Promise<Server>((resolve) => {
+			setTimeout(() => {
+				const srv = createServer((conn) => {
+					conn.on("data", (chunk) => {
+						const req = JSON.parse(chunk.toString().trim());
+						conn.write(JSON.stringify({ id: req.id, ok: true, data: { recovered: true } }) + "\n");
+						conn.end();
+					});
+				});
+				srv.listen(TEST_SOCKET, () => resolve(srv));
+			}, 120);
+		});
+
+		try {
+			const resp = await sendRequest(TEST_SOCKET, "test", {}, { connectAttempts: 10, retryDelayMs: 40 });
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toEqual({ recovered: true });
+		} finally {
+			(await serverPromise).close();
+		}
+	});
+
+	it("gives up with APP_NOT_RUNNING after exhausting connect retries", async () => {
+		const start = Date.now();
+		await expect(
+			sendRequest("/tmp/dev3-nonexistent-socket.sock", "test", {}, { connectAttempts: 3, retryDelayMs: 20 }),
+		).rejects.toThrow("APP_NOT_RUNNING");
+		expect(Date.now() - start).toBeLessThan(5000);
+	});
+
+	it("does not retry a real error response from the server", async () => {
+		let calls = 0;
+		const server = await createMockServer((data) => {
+			calls++;
+			const req = JSON.parse(data);
+			return JSON.stringify({ id: req.id, ok: false, error: "Task not found" });
+		});
+
+		try {
+			const resp = await sendRequest(TEST_SOCKET, "task.show", { taskId: "bad" }, { connectAttempts: 5 });
+			expect(resp.ok).toBe(false);
+			expect(calls).toBe(1);
+		} finally {
+			server.close();
+		}
+	});
+
 	it("handles large responses without truncation", async () => {
 		// Generate a large payload (~50KB) similar to tasks.list with many tasks
 		const largeTasks = Array.from({ length: 100 }, (_, i) => ({

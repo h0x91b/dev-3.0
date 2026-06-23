@@ -146,6 +146,22 @@ describe("exitAppNotRunning", () => {
 		expect(stderrOutput).toContain("app not running");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_APP_NOT_RUNNING);
 	});
+
+	it("stays terse when no diagnostics are provided", () => {
+		expect(() => exitAppNotRunning()).toThrow();
+		expect(stderrOutput).not.toContain("DEV3_DEBUG");
+		expect(stderrOutput).not.toContain("stage:");
+	});
+
+	it("appends stage and diagnostics when provided", () => {
+		expect(() =>
+			exitAppNotRunning({ stage: "discovery", diagnostics: "  HOME: /tmp\n  sockets: none present" }),
+		).toThrow(`EXIT_${CLI_EXIT_CODE_APP_NOT_RUNNING}`);
+		expect(stderrOutput).toContain("DEV3_DEBUG");
+		expect(stderrOutput).toContain("stage: discovery");
+		expect(stderrOutput).toContain("HOME: /tmp");
+		expect(stderrOutput).toContain("sockets: none present");
+	});
 });
 
 describe("exitUsage", () => {

@@ -1,5 +1,5 @@
 import { parseArgs, resolveFileArgs } from "./args";
-import { detectContext, resolveSocketPath } from "./context";
+import { detectContext, resolveSocketPath, resolveSocketPathWithRetry, socketDiagnostics } from "./context";
 import { exitAppNotRunning, exitInternalError, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
 import { handleTasks } from "./commands/tasks";
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
 	const args = resolveFileArgs(parseArgs(restArgs));
 
 	const context = detectContext();
-	const socketPath = resolveSocketPath();
+	let socketPath = resolveSocketPath();
 
 	// Commands that work without the app running
 	if (command === "current") {
@@ -130,9 +130,14 @@ async function main(): Promise<void> {
 		return await handleGui(subcommand, args);
 	}
 
-	// All other commands require the socket
+	// All other commands require the socket. A single discovery probe can miss
+	// transiently (filesystem hiccup, app momentarily recreating its socket),
+	// so retry briefly before declaring the app offline (see issue #714).
 	if (!socketPath) {
-		exitAppNotRunning();
+		socketPath = await resolveSocketPathWithRetry();
+	}
+	if (!socketPath) {
+		exitAppNotRunning(debugAppNotRunning("discovery"));
 	}
 
 	try {
@@ -162,10 +167,26 @@ async function main(): Promise<void> {
 		}
 	} catch (err) {
 		if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
-			exitAppNotRunning();
+			const connectCode = (err as Error & { connectCode?: string }).connectCode;
+			exitAppNotRunning(debugAppNotRunning("connect", connectCode));
 		}
 		throw err;
 	}
+}
+
+/**
+ * Build the diagnostics payload for exitAppNotRunning. Returns the stage + full
+ * socket diagnostics only when DEV3_DEBUG is set, so normal output stays terse
+ * while bug reporters can rerun with DEV3_DEBUG=1 to capture the actual cause.
+ */
+function debugAppNotRunning(
+	stage: "discovery" | "connect",
+	connectCode?: string,
+): { stage?: "discovery" | "connect"; diagnostics?: string } {
+	if (process.env.DEV3_DEBUG !== "1" && process.env.DEV3_DEBUG !== "true") return {};
+	const parts = [socketDiagnostics()];
+	if (connectCode) parts.push(`  last connect errno: ${connectCode}`);
+	return { stage, diagnostics: parts.join("\n") };
 }
 
 main().catch((err) => {
