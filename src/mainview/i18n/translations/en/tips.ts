@@ -210,6 +210,8 @@ const tips = {
 	"tip.agentCanPingYou.body": "Agents run `dev3 notify` or `dev3 attention` to raise a clickable toast or badge that jumps you to their task.",
 	"tip.focusModeMutesPings.title": "Pings distracting you?",
 	"tip.focusModeMutesPings.body": "Turn on Focus Mode in Settings → Behavior to silence all agent toasts, badges, and notifications.",
+	"tip.prCiReviewBadges.title": "CI & review on the card",
+	"tip.prCiReviewBadges.body": "PR-review tasks show CI and review badges; click one to pull the task back to your review.",
 } as const;
 
 export default tips;

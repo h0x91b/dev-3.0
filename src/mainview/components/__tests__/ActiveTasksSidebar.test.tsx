@@ -291,6 +291,53 @@ describe("ActiveTasksSidebar", () => {
 		expect(localStorage.getItem("dev3-sidebar-scope")).toBe("attention");
 	});
 
+	it("attention scope includes a review-by-colleague (PR Review) task only when it has a live bell", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		const signalled = makeTask({
+			id: "pr-signal", seq: 200, projectId: "p1",
+			title: "PR signalled", description: "PR signalled",
+			status: "review-by-colleague",
+			groupId: null as unknown as string, variantIndex: null,
+			movedAt: "2025-02-01T00:00:00Z",
+		});
+		const quiet = makeTask({
+			id: "pr-quiet", seq: 201, projectId: "p1",
+			title: "PR quiet", description: "PR quiet",
+			status: "review-by-colleague",
+			groupId: null as unknown as string, variantIndex: null,
+			movedAt: "2025-02-02T00:00:00Z",
+		});
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockResolvedValue([
+			{ projectId: "p1", tasks: [signalled, quiet] },
+		]);
+
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[]}
+					allProjects={[project]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map([["pr-signal", 1]])}
+					taskPorts={new Map()}
+					onSwitchToBoard={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("sidebar-scope-attention"));
+
+		await waitFor(() => {
+			expect(screen.getByText("PR signalled")).toBeInTheDocument();
+		});
+		// The PR-review task without a bell stays out of the attention pane.
+		expect(screen.queryByText("PR quiet")).not.toBeInTheDocument();
+	});
+
 	it("shows a count badge on the bell when tasks await input and attention scope is inactive", () => {
 		render(
 			<I18nProvider>

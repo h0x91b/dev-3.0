@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
 
 // Default built-in column order (custom columns can be freely interspersed)
@@ -75,7 +75,7 @@ function KanbanBoard({
 	const collapseState = useColumnCollapse(project.id);
 
 	// PR numbers for task cards: taskId → { number, url }
-	const [taskPrMap, setTaskPrMap] = useState<Map<string, { number: number; url: string }>>(new Map());
+	const [taskPrMap, setTaskPrMap] = useState<Map<string, TaskPRBadgeInfo>>(new Map());
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
@@ -96,27 +96,66 @@ function KanbanBoard({
 		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
 	}, []);
 
-	// Fetch open PRs for the project and map branch names to task IDs
+	// Fetch open PRs for the project and map branch names to task IDs. CI/review
+	// state is supplied separately by the background poller's `taskPrStatus`
+	// push, so preserve any already-known ci/review fields when rebuilding here.
 	const fetchPRs = useCallback(() => {
 		api.request.getProjectPRs({ projectId: project.id }).then((prs: PRInfo[]) => {
 			const branchToPR = new Map<string, { number: number; url: string }>();
 			for (const pr of prs) {
 				branchToPR.set(pr.headRefName, { number: pr.number, url: pr.url });
 			}
-			const map = new Map<string, { number: number; url: string }>();
-			for (const task of tasks) {
-				if (task.branchName) {
-					const pr = branchToPR.get(task.branchName);
-					if (pr) map.set(task.id, pr);
+			setTaskPrMap((prev) => {
+				const map = new Map<string, TaskPRBadgeInfo>();
+				for (const task of tasks) {
+					if (task.branchName) {
+						const pr = branchToPR.get(task.branchName);
+						if (pr) {
+							const existing = prev.get(task.id);
+							map.set(task.id, {
+								number: pr.number,
+								url: pr.url,
+								ciStatus: existing?.ciStatus ?? null,
+								reviewState: existing?.reviewState ?? null,
+							});
+						}
+					}
 				}
-			}
-			setTaskPrMap(map);
+				return map;
+			});
 		}).catch(() => {});
 	}, [project.id, tasks]);
 
 	useEffect(() => {
 		return startVisibilityAwarePoll({ fn: fetchPRs, intervalMs: 60_000 });
 	}, [fetchPRs]);
+
+	// CI/review status pushed by the background PR poller — merge onto the
+	// existing PR badge entry (carrying number/url forward if already known).
+	useEffect(() => {
+		function onPrStatus(e: Event) {
+			const detail = (e as CustomEvent).detail as {
+				projectId: string;
+				taskId: string;
+				prNumber: number | null;
+				prUrl: string | null;
+				ciStatus: TaskPRBadgeInfo["ciStatus"];
+				reviewState: TaskPRBadgeInfo["reviewState"];
+			};
+			if (detail.projectId !== project.id) return;
+			setTaskPrMap((prev) => {
+				const existing = prev.get(detail.taskId);
+				const number = detail.prNumber ?? existing?.number;
+				const url = detail.prUrl ?? existing?.url;
+				if (number === undefined || url === undefined) return prev;
+				const next = new Map(prev);
+				next.set(detail.taskId, { number, url, ciStatus: detail.ciStatus, reviewState: detail.reviewState });
+				return next;
+			});
+		}
+		window.addEventListener("rpc:taskPrStatus", onPrStatus);
+		return () => window.removeEventListener("rpc:taskPrStatus", onPrStatus);
+	}, [project.id]);
 
 	// Global dragend listener to clear drag state
 	useEffect(() => {

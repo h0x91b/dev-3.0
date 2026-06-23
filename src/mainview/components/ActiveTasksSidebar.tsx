@@ -204,15 +204,26 @@ function ActiveTasksSidebar({
 
 	const sourceTasks = (scope === "global" || scope === "attention") ? globalTasks : tasks;
 
+	// A task needs attention if it is in an attention status, OR it is a
+	// `review-by-colleague` (PR Review) task that currently has a live bell — the
+	// background PR poller raises the bell on a CI/review signal, and opening the
+	// task clears it, so a signalled PR surfaces here until it is read.
+	const isAttentionTask = useCallback(
+		(task: Task) =>
+			ATTENTION_STATUSES.includes(task.status) ||
+			(task.status === "review-by-colleague" && (bellCounts.get(task.id) ?? 0) > 0),
+		[bellCounts],
+	);
+
 	// Count of attention tasks across all available data (global when loaded, else project).
 	const attentionCount = useMemo(() => {
 		const pool = globalTasks.length > 0 ? globalTasks : tasks;
-		return pool.filter((t) => ATTENTION_STATUSES.includes(t.status)).length;
-	}, [globalTasks, tasks]);
+		return pool.filter(isAttentionTask).length;
+	}, [globalTasks, tasks, isAttentionTask]);
 
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 	if (scope === "attention") {
-		activeTasks = activeTasks.filter((task) => ATTENTION_STATUSES.includes(task.status));
+		activeTasks = activeTasks.filter(isAttentionTask);
 		// Sort oldest-first by movedAt (status-change timestamp) so the
 		// longest-waiting task is always at the top.
 		activeTasks = activeTasks.slice().sort((a, b) => {

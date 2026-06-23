@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, Label, Project, Task, TaskStatus } from "../../../shared/types";
+import type { CodingAgent, Label, Project, Task, TaskPRBadgeInfo, TaskStatus } from "../../../shared/types";
 import { getPreparingStageProgress } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 
@@ -154,7 +154,7 @@ function renderCard(
 		isActiveInSplit?: boolean;
 		isMoving?: boolean;
 		projectOverride?: Project;
-		prInfo?: { number: number; url: string };
+		prInfo?: TaskPRBadgeInfo;
 	},
 ) {
 	return render(
@@ -1350,6 +1350,45 @@ describe("TaskCard", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test", watched: true }));
 			const btn = screen.getByTitle("Unwatch — stop notifications");
 			expect(btn.className).toContain("text-accent");
+		});
+	});
+
+	describe("CI / review badges", () => {
+		const reviewTask = () =>
+			makeTask({ status: "review-by-colleague", worktreePath: "/tmp/wt", branchName: "feat/test" });
+
+		it("shows no CI/review badge when prInfo carries no status", () => {
+			renderCard(reviewTask(), { prInfo: { number: 12, url: "https://example/pr/12" } });
+			expect(screen.queryByTitle(/CI failed/)).not.toBeInTheDocument();
+			expect(screen.queryByTitle(/PR approved/)).not.toBeInTheDocument();
+		});
+
+		it("renders a CI-failed badge with tooltip", () => {
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
+			});
+			expect(screen.getByTitle(/CI failed/)).toBeInTheDocument();
+		});
+
+		it("renders a review-approved badge with tooltip", () => {
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: null, reviewState: "approved" },
+			});
+			expect(screen.getByTitle(/PR approved/)).toBeInTheDocument();
+		});
+
+		it("clicking a badge moves the task to review-by-user", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockResolvedValue(makeTask({ status: "review-by-user" }));
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
+			});
+			await user.click(screen.getByTitle(/CI failed/));
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+					expect.objectContaining({ taskId: "t1", newStatus: "review-by-user" }),
+				);
+			});
 		});
 	});
 });

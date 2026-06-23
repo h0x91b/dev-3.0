@@ -178,6 +178,28 @@ export function notifyFromCliDesktop(opts: { taskId: string; projectId: string; 
 }
 
 /**
+ * Fire a native OS notification for a watched task on a non-status event
+ * (e.g. CI passed/failed, PR approved/changes-requested). No-op for unwatched
+ * tasks. Reuses the same focus-proxy click-to-open mechanism as
+ * `notifyWatchedTaskStatusChange`.
+ */
+export function notifyWatchedTaskEvent(task: Task, body: string, projectName: string): void {
+	if (!task.watched) return;
+	Utils.showNotification({
+		title: `#${task.seq} ${getTaskTitle(task)}`,
+		body,
+		subtitle: projectName,
+		silent: true,
+	});
+	if (appForeground) return;
+	lastWatchedNotification = {
+		taskId: task.id,
+		projectId: task.projectId,
+		timestamp: Date.now(),
+	};
+}
+
+/**
  * If a watched-task notification fired within the last `NOTIFICATION_CLICK_TTL_MS`,
  * return its target (taskId + projectId) and clear the slot. Otherwise return null.
  *
