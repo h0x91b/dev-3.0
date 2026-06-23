@@ -228,6 +228,15 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 	});
 }
 
+// Exclude the worktrees root from OS backups (Time Machine) once at startup.
+// Best-effort; no-op on Linux and when disabled in settings.
+{
+	const { ensureWorktreesBackupExclusion } = await import("./backup-exclusion");
+	ensureWorktreesBackupExclusion().catch((err) => {
+		log.warn("Startup backup exclusion failed (non-fatal)", { err });
+	});
+}
+
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");

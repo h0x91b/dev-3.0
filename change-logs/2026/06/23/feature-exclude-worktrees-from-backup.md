@@ -1,0 +1,1 @@
+On macOS, the whole worktrees root (~/.dev3.0/worktrees) is now automatically excluded from Time Machine backups once at app startup, sparing backups from gigabytes of CoW-cloned dependencies that already live in git. A new Settings → Workspace toggle lets you opt out.
