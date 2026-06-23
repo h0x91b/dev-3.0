@@ -270,12 +270,20 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										</svg>
 									</div>
 									<div className="min-w-0 flex-1">
-										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate`}>
-											{project.name}
+										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate flex items-center gap-2`}>
+											<span className="truncate">{project.kind === "virtual" && project.builtin ? t("ops.boardName") : project.name}</span>
+											{project.kind === "virtual" && (
+												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-[0.625rem] font-medium flex items-center gap-1 flex-shrink-0">
+													<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+													{t("ops.badge")}
+												</span>
+											)}
 										</div>
-										<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">
-											{project.path}
-										</div>
+										{project.kind === "virtual" ? (
+											<div className="text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
+										) : (
+											<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
+										)}
 									</div>
 								</button>
 								<ProjectActionButtons

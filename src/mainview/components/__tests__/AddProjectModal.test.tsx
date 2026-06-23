@@ -8,6 +8,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			addProject: vi.fn(),
+			addVirtualProject: vi.fn(),
 			cloneAndAddProject: vi.fn(),
 			initAndAddProject: vi.fn(),
 			getGlobalSettings: vi.fn(() =>
@@ -344,5 +345,32 @@ describe("AddProjectModal", () => {
 		await vi.waitFor(() => {
 			expect(mockedApi.request.cloneAndAddProject).toHaveBeenCalled();
 		});
+	});
+
+	it("Operations toggle: creates a virtual board via addVirtualProject", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		mockedApi.request.addVirtualProject.mockResolvedValue({ ok: true, project: { ...mockProject, kind: "virtual" } } as any);
+
+		renderModal(dispatch, onClose);
+		await user.click(screen.getByText("Operations"));
+		await user.type(screen.getByPlaceholderText("Operations"), "Mail triage");
+		await user.click(screen.getByText("Create board"));
+
+		expect(mockedApi.request.addVirtualProject).toHaveBeenCalledWith({ name: "Mail triage" });
+		expect(dispatch).toHaveBeenCalledWith({ type: "addProject", project: expect.objectContaining({ kind: "virtual" }) });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("Operations toggle: blank name defaults to 'Operations'", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.addVirtualProject.mockResolvedValue({ ok: true, project: mockProject } as any);
+
+		renderModal();
+		await user.click(screen.getByText("Operations"));
+		await user.click(screen.getByText("Create board"));
+
+		expect(mockedApi.request.addVirtualProject).toHaveBeenCalledWith({ name: "Operations" });
 	});
 });

@@ -14,6 +14,9 @@ interface AddProjectModalProps {
 
 function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	const t = useT();
+	const [kind, setKind] = useState<"git" | "operations">("git");
+	const [opsName, setOpsName] = useState("");
+	const [creatingOps, setCreatingOps] = useState(false);
 	const [activeTab, setActiveTab] = useState<"local" | "clone" | "init">("local");
 	const [gitUrl, setGitUrl] = useState("");
 	const [repoName, setRepoName] = useState("");
@@ -167,6 +170,26 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		setCloning(false);
 	}
 
+	async function handleCreateOps() {
+		if (creatingOps) return;
+		setCreatingOps(true);
+		setError(null);
+		try {
+			const result = await api.request.addVirtualProject({ name: opsName.trim() || "Operations" });
+			if (result.ok) {
+				dispatch({ type: "addProject", project: result.project });
+				trackEvent("project_added", { source: "operations" });
+				onClose();
+			} else {
+				setError(result.error);
+			}
+		} catch (err) {
+			setError(String(err));
+		} finally {
+			setCreatingOps(false);
+		}
+	}
+
 	const canClone = gitUrl.trim() && cloneBaseDir && !cloning;
 
 	return (
@@ -181,6 +204,44 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					{t("addProject.title")}
 				</h2>
 
+				{/* Kind toggle: Git repository | Operations */}
+				<div className="flex gap-1 p-1 bg-raised rounded-xl">
+					<button
+						onClick={() => { setKind("git"); setError(null); }}
+						className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+							kind === "git" ? "bg-elevated text-fg shadow-sm" : "text-fg-3 hover:text-fg-2"
+						}`}
+					>
+						{t("ops.create.typeGit")}
+					</button>
+					<button
+						onClick={() => { setKind("operations"); setError(null); }}
+						className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+							kind === "operations" ? "bg-elevated text-fg shadow-sm" : "text-fg-3 hover:text-fg-2"
+						}`}
+					>
+						{t("ops.create.typeOps")}
+					</button>
+				</div>
+
+				{kind === "operations" ? (
+					<div className="space-y-3">
+						<p className="text-fg-3 text-sm">{t("ops.create.hint")}</p>
+						<div className="space-y-1.5">
+							<label className="text-fg-2 text-sm font-medium">{t("ops.create.nameLabel")}</label>
+							<input
+								type="text"
+								autoFocus
+								value={opsName}
+								onChange={(e) => setOpsName(e.target.value)}
+								onKeyDown={(e) => { if (e.key === "Enter" && !creatingOps) handleCreateOps(); }}
+								placeholder={t("ops.create.namePlaceholder")}
+								className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
+							/>
+						</div>
+					</div>
+				) : (
+				<>
 				{/* Tabs */}
 				<div className="flex gap-1 p-1 bg-raised rounded-xl">
 					<button
@@ -308,6 +369,8 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						)}
 					</div>
 				)}
+				</>
+				)}
 
 				{/* Error */}
 				{error && (
@@ -324,13 +387,22 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					>
 						{t("addProject.cancel")}
 					</button>
-					{activeTab === "clone" && (
+					{kind === "git" && activeTab === "clone" && (
 						<button
 							onClick={handleClone}
 							disabled={!canClone}
 							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{cloning ? t("addProject.cloning") : t("addProject.cloneBtn")}
+						</button>
+					)}
+					{kind === "operations" && (
+						<button
+							onClick={handleCreateOps}
+							disabled={creatingOps}
+							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							{creatingOps ? t("addProject.adding") : t("ops.create.submit")}
 						</button>
 					)}
 				</div>

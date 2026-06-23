@@ -321,7 +321,11 @@ function KanbanBoard({
 		// Show AI Review column by default (on when builtinColumnAgents is unset or has review-by-ai config)
 		const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
 		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !t.customColumnId);
+		// Virtual ("Operations") boards have no diff/PR, so all review columns are
+		// hidden — the flow is todo → in-progress → user-questions → done.
+		const isVirtual = project.kind === "virtual";
 		const shouldHide = (s: TaskStatus) =>
+			(isVirtual && (s === "review-by-ai" || s === "review-by-colleague" || s === "review-by-user")) ||
 			(s === "review-by-colleague" && !peerReviewEnabled) ||
 			(s === "review-by-ai" && !aiReviewEnabled && !aiReviewHasItems);
 		const filterBuiltin = (statuses: TaskStatus[]) =>

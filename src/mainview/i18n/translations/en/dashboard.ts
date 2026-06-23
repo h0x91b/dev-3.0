@@ -28,6 +28,17 @@ const dashboard = {
 	"activity.monthsAgo": "{count}mo ago",
 	"activity.yearsAgo": "{count}y ago",
 
+	// Virtual "Operations" boards
+	"ops.boardName": "Operations",
+	"ops.badge": "Operations",
+	"ops.tileSubtitle": "Code-driven tasks · no git",
+	"ops.create.typeGit": "Git repository",
+	"ops.create.typeOps": "Operations",
+	"ops.create.nameLabel": "Board name",
+	"ops.create.namePlaceholder": "Operations",
+	"ops.create.hint": "A board for ad-hoc, code-driven tasks not tied to any repo. Each task runs in a managed folder (or one you pick per task) — no git worktree.",
+	"ops.create.submit": "Create board",
+
 	// GlobalHeader
 	"header.task": "Task",
 	"header.settings": "Settings",

@@ -32,6 +32,17 @@ const dashboard = {
 	"activity.monthsAgo": "{count}мес назад",
 	"activity.yearsAgo": "{count}г назад",
 
+	// Virtual "Operations" boards
+	"ops.boardName": "Операции",
+	"ops.badge": "Операции",
+	"ops.tileSubtitle": "Задачи с кодом · без git",
+	"ops.create.typeGit": "Git-репозиторий",
+	"ops.create.typeOps": "Операции",
+	"ops.create.nameLabel": "Название доски",
+	"ops.create.namePlaceholder": "Операции",
+	"ops.create.hint": "Доска для разовых задач с кодом, не привязанных к репозиторию. Каждая задача выполняется в управляемой папке (или выбранной вами) — без git worktree.",
+	"ops.create.submit": "Создать доску",
+
 	// GlobalHeader
 	"header.task": "Задача",
 	"header.settings": "Настройки",

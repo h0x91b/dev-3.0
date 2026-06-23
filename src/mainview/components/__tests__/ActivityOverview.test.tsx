@@ -155,6 +155,31 @@ describe("ActivityOverview", () => {
 		expect(screen.getByText("no active tasks")).toBeInTheDocument();
 	});
 
+	it("shows localized name + Operations badge for a built-in virtual board and hides the synthetic path", async () => {
+		const virtual: Project = {
+			...mockProject,
+			id: "vp1",
+			name: "Operations",
+			kind: "virtual",
+			builtin: true,
+			path: "/home/user/.dev3.0/ops/operations",
+		};
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "vp1", tasks: [] }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[virtual]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		// Both the localized board name and the badge render "Operations".
+		const names = await screen.findAllByText("Operations");
+		expect(names.length).toBeGreaterThanOrEqual(2);
+		expect(screen.getByText("Code-driven tasks · no git")).toBeInTheDocument();
+		// The synthetic on-disk path must never be shown to the user.
+		expect(screen.queryByText("/home/user/.dev3.0/ops/operations")).not.toBeInTheDocument();
+	});
+
 	it("opens the add project flow from the activity header", async () => {
 		const user = userEvent.setup();
 		const onOpenAddProject = vi.fn();
