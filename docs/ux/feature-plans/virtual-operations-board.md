@@ -150,3 +150,79 @@ Rejected: one `projects.json` with a `kind` field (old versions show a broken/er
 - **Item noun — stays "task" everywhere.** "Operations" is the board's theme/name; the items inside remain **tasks** across the data model, the `dev3 task` CLI, and the UI. No vocabulary fork, no extra i18n, CLI contract unchanged. Rejected: relabel to "operation" in the renderer only (UI↔CLI split) or a full model+CLI+UI rename (breaks the CLI contract for no real gain).
 - **Scratch (no-prompt) operation — reuse "Scratch — HH:MM" + shell glyph.** A prompt-less live session reuses the existing `Scratch — HH:MM` auto-title convention plus a terminal/shell Nerd-Font glyph badge on the card, so it reads as a live session rather than an unstarted task. `status`-style, semantic tokens only. Rejected: no marker (indistinguishable from an empty task) and a bespoke "ghost" card style (new card variant = drift risk vs `DESIGN.md`).
 - **Fixed-folder sharing — allowed, warn on active conflict.** Two operations may target the same chosen folder, but if the folder is already used by another **active** operation, show a non-blocking inline warning at folder-pick time ("agents may conflict"). Completed operations don't count (they aren't running). Rejected: hard one-folder-per-operation (blocks legitimate sequential reuse) and silent allow (easy footgun).
+
+## 12. Implementation plan (staged, 2026-06-23)
+
+Grounded in a full code investigation (file:line refs below are current as of this date). The work is split into **6 PR-sized stages (0→5)**, each independently green (`bun run lint` + `bun run test`) and shippable. Stages 0–1 are backend-only and invisible; the feature becomes user-visible at stage 2.
+
+### Cross-cutting decisions (apply to every stage)
+
+These resolve conflicts surfaced by cross-checking the subsystem investigations. They override any single-subsystem suggestion.
+
+1. **Reuse `Task.worktreePath` for the operation's working dir — do NOT add a parallel `workDir` field.** Almost every non-git affordance (Runtime bar: open-in / scripts / dev-server / ports; spawn-agent; tmux launch cwd; `deleteTask` cleanup) already keys off `task.worktreePath`. A virtual task therefore **must** have `worktreePath` set to its work dir so those keep working for free. The git domain is hidden by **explicit `project.kind !== "virtual"` guards** (§ stage 3), not by leaving `worktreePath` empty. The field name is a minor semantic wart (it's not a worktree) — documented in the decision record, not renamed.
+2. **Work-dir path = `${project.path}/${shortId(task.id)}/work`.** Since a virtual project's `path` is already the synthetic `~/.dev3.0/ops/<readable-slug>`, the managed work dir nests directly under it. Do **not** re-apply `projectSlug()` to build it (that would double-munge). `projectSlug()` stays frozen and untouched.
+3. **Task metadata is unchanged: `data/${projectSlug(project.path)}/tasks.json`.** The existing `tasksFile()` / `loadTasks` / `saveTasks` work as-is for virtual projects because `projectSlug()` munges the synthetic path like any other. **Zero changes to the task-data layer.** (The CLI must therefore resolve virtual tasks from `data/<projectSlug(path)>/tasks.json` too — NOT from `ops/<slug>/tasks.json`.)
+4. **Deletion safety invariant: only ever `rm` a work dir that is under `${DEV3_HOME}/ops/`.** Managed dirs live there; user-chosen fixed folders (`~`, `~/Downloads`, a prod-data dir) never do and must never be auto-removed. `deleteTask` checks the prefix before `rmSync`. This is safety-critical (never delete user data).
+5. **Chosen-folder is remembered on the task before activation** via a new optional `Task.opsWorkDir?: string`. On activation: `resolvedDir = task.opsWorkDir ?? managedWorkDir`; `mkdir -p` only when managed; then `worktreePath = resolvedDir`. Quick-shell sets `opsWorkDir = homedir()`.
+6. **`kind` is `"git" | "virtual"`, optional, `undefined ⇒ "git"`.** Everywhere that branches reads `project.kind === "virtual"`; everywhere git-only reads `project.kind !== "virtual"` (so legacy projects with no field stay git).
+
+### Stage 0 — Data model + identity foundation (backend, invisible)
+
+**Goal:** virtual projects can exist on disk, load/merge into the dashboard list, and the CLI resolves their tasks. No UI, no lifecycle yet.
+
+- `src/shared/types.ts` — `Project`: add `kind?: "git" | "virtual"` and `builtin?: boolean` (marks the localized built-in board). `Task`: add `opsWorkDir?: string`. Add the new RPC `addVirtualProject: { params: { name: string }; response: Project }` to `AppRPCSchema`.
+- `src/bun/data.ts` — add `VIRTUAL_PROJECTS_FILE = ${DEV3_HOME}/virtual-projects.json`; mirror the projects.json functions: `rawLoadAllVirtualProjects` / `rawSaveVirtualProjects` / `loadVirtualProjects` / `saveVirtualProjects` (own cache key, own file lock). Add `findUniqueVirtualProjectSlug(base="operations")` scanning **git slugs** (`projectSlug(p.path)` over `rawLoadAllProjects`), **virtual slugs** (basename of each virtual `path`), and **surviving `data/` dir names** (never reuse while task data survives). Add `addVirtualProject(name)` → allocate slug → `path = ${DEV3_HOME}/ops/${slug}` → push to virtual file. Guard `addProjectImpl` (`app-handlers.ts:230`) to reject any git project path under `${DEV3_HOME}` (prevents collision with the synthetic namespace).
+- `src/bun/rpc-handlers/app-handlers.ts` — `getProjects` becomes the **single merge point**: `[...await data.loadProjects(), ...await data.loadVirtualProjects()]`. Add the `addVirtualProject` handler (calls `data.addVirtualProject`, pushes a `projectAdded`/list-refresh as the existing add flow does).
+- **Built-in board provisioning** (idempotent, additive — invariant-safe): on startup, if no `builtin` virtual project exists, create one via `addVirtualProject` semantics with `builtin: true`, `path = ${DEV3_HOME}/ops/operations`. Never rename/move; if it exists, leave it. This *replaces* `home-terminal` (removal in stage 4).
+- `src/cli/context.ts` — additive: new `detectFromVirtualPath(cwd)` recognizing the `/.dev3.0/ops/` marker → `{ readableSlug, taskShortId, realDev3Home }`. In `resolveFromWorktreePath` (line 70): try git detection first, then virtual; for the virtual branch read `virtual-projects.json`, match the project by `basename(p.path) === readableSlug`, then resolve tasks from **`data/${projectSlug(p.path)}/tasks.json`** (same formula as git — correcting the investigation's `ops/<slug>/tasks.json`). **No change to the frozen slug algorithm.**
+- **Tests:** virtual project CRUD + corrupt-file handling; slug allocation (uniqueness across git+virtual, no-reuse while `data/` survives); guard rejects git project under `~/.dev3.0`; CLI cwd→task resolution for a virtual work dir; dashboard merge includes both files.
+- **Docs:** `decisions/NNN-virtual-project-identity-and-storage.md` (synthetic path, separate file, frozen slug, worktreePath reuse rationale).
+
+### Stage 1 — Worktree-less lifecycle + cleanup (backend, invisible)
+
+**Goal:** moving a virtual task to active creates a managed (or chosen) work dir, launches the agent + a split-right shell, and never touches git. Completion keeps the dir as history; delete removes it (managed only).
+
+- `src/bun/rpc-handlers/task-lifecycle.ts`
+  - `moveTask` inactive→active branch (≈663–684): if `project.kind === "virtual"`, resolve `dir = task.opsWorkDir ?? ${project.path}/${shortId(task.id)}/work`; `mkdir -p` when managed; `launchTaskPty(project, task, dir, agentId, configId, true)`; `updateTask({ worktreePath: dir, branchName: null })`. Else existing `activateTask` path.
+  - `activateTask` (≈356–383): guard `git.createWorktree` (363), sparse-checkout (365–370), `runCowClones` (371) behind `project.kind === "git"`. `resolveOperationalProjectConfig` + `launchTaskPty` stay shared.
+  - `moveTask` completed/cancelled cleanup (≈686–745): `runCleanupScript` stays; guard `git.removeWorktree` (726) behind `kind === "git"` — virtual keeps its dir on completion (history).
+  - `deleteTask` (≈798–817): replace the unconditional `git.removeWorktree` with: git → `removeWorktree`; virtual → `rmSync(task.worktreePath)` **only if `worktreePath.startsWith(${DEV3_HOME}/ops/)`** (decision #4; protects fixed folders).
+- `src/bun/git.ts` — guard `saveDiffSnapshot` (≈1851) to no-op for virtual (no diff). Guard any periodic branch-status/diff polling on `kind === "git"` (or `task.branchName != null`) so we never run `git` against a non-repo dir.
+- `src/bun/rpc-handlers/tmux-pty.ts` — `launchTaskPty` after `pty.createSession` (≈387): for `kind === "virtual"`, always create a split-right shell pane (`tmux split-window -h -l 40% -c <worktreePath> … bash -i`), reusing the existing `pty.tmuxArgs` pattern from `runDevServer`/`launchColumnAgent`. Non-fatal on error (log + continue).
+- **Scratch (no-prompt):** no code change — existing `task.scratch ⇒ description:""` blanking (≈276/380) already idles the agent; the split shell is the usable pane.
+- **Tests (reproduce-first style):** virtual activation creates the managed dir and calls no git; `opsWorkDir` is honored (no mkdir for fixed); completion keeps the dir, delete removes a managed dir but **not** a fixed folder; split-shell tmux call issued for virtual only; scratch path blanks prompt.
+
+### Stage 2 — Board, dashboard tile, create flow (renderer, feature goes visible)
+
+- `src/mainview/components/KanbanBoard.tsx` (`shouldHide`, ≈283–285): add a leading clause so virtual hides the diff-based review columns. **Per locked §2 the virtual column set is `todo → in-progress → user-questions → completed/cancelled`** — i.e. hide `review-by-ai`, `review-by-colleague`, **and** `review-by-user`. (Only `review-by-user` is debatable; defaulting to the locked §2 list. Flag for user confirmation.)
+- `src/mainview/components/ActivityOverview.tsx` (≈279–281): render an **Operations badge** (semantic `bg-raised` chip, Nerd-Font glyph, `t()` label) when `project.kind === "virtual"`.
+- `src/mainview/components/AddProjectModal.tsx`: add a top-level segmented control **`Git repository | Operations`** (role `neutral`). `Operations` hides the Local/Clone/Init tabs, shows a single **name** field (+ a one-line "managed temp folder; pick a folder per-operation later" hint), and the primary CTA calls the new `addVirtualProject({ name })` RPC. No git path/branch validation on that branch.
+- **Built-in board name localization:** the renderer maps `project.builtin === true` → `t("ops.boardName")`; user rename clears the localized display (store literal name, drop `builtin` name-substitution). Add `ops.boardName` to en/ru/es.
+- **Tests:** virtual board renders exactly the 4 columns; badge shows for virtual / absent for git; modal's Operations branch creates a virtual project via the RPC (mocked).
+
+### Stage 3 — Inspector git-domain hiding + working-dir selector
+
+- `src/mainview/components/TaskInfoPanel.tsx`: guard on `project.kind !== "virtual"` (project arrives as a direct prop — no lookup): the `TaskGitActions` git bar in both rows (≈639–650, ≈702–712), the diff-summary badge (≈375–400), the diff-include-tests toggle (≈401–423), and the bug-hunters button (diff-based, ≈566). **Keep** Context, Session/Agent, spawn-agent, and the Runtime bar (open-in/scripts/dev-server/ports) — they already gate on `worktreePath`, which virtual now has.
+- **Working-dir selector** (creation surface): an `auto ▾` dropdown with "Choose folder…" opening the existing React `FolderPickerModal` (no native dialog). Selecting a folder sets `task.opsWorkDir`; default (auto) leaves it unset → managed dir. On pick, if the folder is the `worktreePath` of another **active** virtual task, show a non-blocking inline warning (locked §11). Role `neutral`.
+- **Scratch card badge:** shell/terminal Nerd-Font glyph on cards whose `task.scratch` is set (mostly already rendered via the `Scratch — HH:MM` convention; verify in `TaskCard*.tsx`).
+- **Tests:** all git affordances hidden for virtual, Runtime bar still present; folder pick writes `opsWorkDir`; active-conflict warning appears only against active tasks.
+
+### Stage 4 — Remove home-terminal, repurpose the hotkey to Quick-shell
+
+- **Remove** (per the full audit): `HomeTerminal.tsx`, `HomeTerminalIcon.tsx`; the `{ screen: "home-terminal" }` route (`state.ts`) and all `App.tsx` references (import, render case ≈1627, `hasTerminal`/title-bar conditions); the `term-toggle-home-terminal` command + menuRouter case; `getHomePtyUrl`/`destroyHomeTerminal` (RPC schema + `tmux-pty.ts` ≈1027–1053 + exports); `PtySessionType "home"`, `HOME_TERMINAL_SESSION_KEY`/`_TMUX_NAME`, the `"home"` branch in `computeTmuxSessionName`, and the `sessionKey === "home"` special-cases in the PTY died/bell/idle handlers (`index.ts`, `headless-entry.ts`); related i18n keys; the `getHomePtyUrl`/`destroyHomeTerminal` tests and the `home-terminal` route test.
+- **Quick-shell hotkey** (`App.tsx` ≈525–533, currently `⇧⌘\``): instead of navigating to home-terminal, **create-or-focus** a Quick-shell operation in the built-in Operations board — a `scratch: true` task with `opsWorkDir = homedir()`, moved straight to `in-progress`, then navigate to its task screen. Reuses the existing task-PTY machinery (`getPtyUrl`, recovery, ports). Update the `keymap.ts:78` entry's `descKey`/action (it's the single source of truth for the shortcuts overlay).
+- **Tests:** hotkey creates the Quick-shell op (or focuses the existing one) with cwd = home; removed RPCs/route no longer referenced.
+
+### Stage 5 — Discovery, manifest, docs, final green
+
+- `src/mainview/tips.ts` + i18n: 1–2 tips (Operations board; "operations keep their history in Done"), self-scored ~3–4.
+- Manifest: update `docs/ux/PRODUCT_UX_BIBLE.md` §3 and `docs/ux/ux-architecture.yaml` (mark `Project.kind` from `planned` → `Observed`); append `UX_DECISIONS.md`; `UX_MANIFEST_CHANGELOG.md` entry.
+- `concept.md` status-tracker checkboxes flipped as stages land.
+- One `change-logs/2026/MM/DD/feature-virtual-operations-board.md` (this worktree = one entry; update, don't multiply).
+- Finalize the decision record(s); confirm `bun run lint` **and** the full `bun run test` are green end-to-end before any push/PR.
+
+### Sequencing & risk
+
+- **Order:** 0 → 1 → 2 → 3 → 4 → 5. 0+1 can land before any UI (safe, invisible). 4 (home-terminal removal) depends on the built-in board from 0 and the lifecycle from 1, so it comes after 2–3 prove the path.
+- **Highest-risk areas:** the on-disk identity (stage 0 — covered by the frozen-invariant analysis in §8) and the `deleteTask` fixed-folder guard (stage 1, decision #4). Both have dedicated tests.
+- **Forward-compat:** old app versions never read `virtual-projects.json` and never visit the virtual `data/` slug → they stay blind to the feature (no breakage), exactly as designed in §8.3.
