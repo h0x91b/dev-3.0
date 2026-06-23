@@ -204,6 +204,8 @@ const tips = {
 	"tip.keyboardGoTo.body": "Press G then D, P, T or S — or a number to jump to that project (P/T + number = its board or tasks).",
 	"tip.terminalSelectCopies.title": "Select to copy",
 	"tip.terminalSelectCopies.body": "Just select text in any terminal pane — it's copied to your clipboard automatically, no ⌘C needed.",
+	"tip.quickSwitchRecentFirst.title": "Recent projects float up",
+	"tip.quickSwitchRecentFirst.body": "Open Cmd/Ctrl+K and the projects you jumped to most recently are listed first.",
 } as const;
 
 export default tips;

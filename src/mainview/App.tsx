@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, type Route } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, type Route } from "./state";
 import { api } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -33,6 +33,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
@@ -257,15 +258,28 @@ function App() {
 		setHintMode(false);
 	}, [state.route]);
 
+	// Single chokepoint for committing a navigation. Records a project "jump"
+	// for the Cmd+K recency list whenever the destination route lands on a
+	// project, so every entry point (Dashboard click, Cmd+1..9, Cmd+Shift+1..9,
+	// the palette, the `g`-prefix go-to, terminal toggles, future ones…) is
+	// covered automatically — they all funnel through here.
+	const commitNavigation = useCallback(
+		(route: Route) => {
+			const projectId = projectIdForRoute(route);
+			if (projectId) recordProjectJump(projectId);
+			dispatch({ type: "navigate", route });
+		},
+		[dispatch],
+	);
 	const navigate = useCallback(
 		(route: Route) => {
 			if (navigationGuardRef.current?.isDirty()) {
 				setPendingNavigation(route);
 				return;
 			}
-			dispatch({ type: "navigate", route });
+			commitNavigation(route);
 		},
-		[dispatch],
+		[commitNavigation],
 	);
 
 	// Switch to a project, preserving the current view shape the same way Cmd+1..9
@@ -359,17 +373,20 @@ function App() {
 		return map;
 	}, [state.projects]);
 
-	const getProjectIdForRoute = useCallback((route: Route): string | null => {
-		switch (route.screen) {
-			case "project":
-			case "project-terminal":
-			case "task":
-			case "project-settings":
-				return route.projectId;
-			default:
-				return null;
-		}
-	}, []);
+	// Quick-switch (Cmd+K) data, recomputed each time the palette opens so the
+	// recency ordering reflects the latest jumps. Rows are MRU-first (then board
+	// order); the ⌘N badge stays keyed to the stable board index.
+	const quickSwitch = useMemo(() => {
+		const boardProjects = state.projects.filter((p) => !p.deleted);
+		const shortcutIndexById: Record<string, number> = {};
+		boardProjects.forEach((p, i) => {
+			shortcutIndexById[p.id] = i;
+		});
+		const ordered = showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects;
+		return { projects: ordered, shortcutIndexById };
+	}, [state.projects, showProjectSwitch]);
+
+	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
 	const openCreateTaskModal = useCallback(() => {
 		const projectId = getProjectIdForRoute(state.route);
@@ -1291,7 +1308,8 @@ function App() {
 			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
-					projects={state.projects.filter((p) => !p.deleted)}
+					projects={quickSwitch.projects}
+					shortcutIndexById={quickSwitch.shortcutIndexById}
 					onSelect={(projectId) => {
 						setShowProjectSwitch(false);
 						navigateToProject(projectId);
@@ -1359,7 +1377,7 @@ function App() {
 									const route = pendingNavigation;
 									navigationGuardRef.current = null;
 									setPendingNavigation(null);
-									dispatch({ type: "navigate", route });
+									commitNavigation(route);
 								}}
 								className="px-4 py-2 text-sm rounded-lg text-danger hover:bg-danger/10 transition-colors"
 							>
@@ -1373,7 +1391,7 @@ function App() {
 									}
 									navigationGuardRef.current = null;
 									setPendingNavigation(null);
-									dispatch({ type: "navigate", route });
+									commitNavigation(route);
 								}}
 								className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
 							>

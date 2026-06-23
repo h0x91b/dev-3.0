@@ -834,6 +834,14 @@ const ALL_TIPS: Tip[] = [
 		score: 5,
 		contexts: ["terminal", "preparing"],
 	},
+	{
+		id: "quick-switch-recent-first",
+		titleKey: "tip.quickSwitchRecentFirst.title",
+		bodyKey: "tip.quickSwitchRecentFirst.body",
+		icon: "\u{F0954}", // nf-md-clock_outline
+		score: 3,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -3,8 +3,17 @@ import { useT } from "../i18n";
 import { PaletteShell } from "./PaletteShell";
 
 interface ProjectQuickSwitchModalProps {
-	/** Non-deleted projects, in board order. */
+	/**
+	 * Non-deleted projects in display order — most-recently jumped-to first,
+	 * then the rest in board order (see `orderByRecency`).
+	 */
 	projects: Project[];
+	/**
+	 * Project id → its 0-based BOARD index, for the ⌘N badge. Kept separate from
+	 * display order so the badge keeps matching the Cmd+1..9 shortcut (which is
+	 * board-order based) even after recency reorders the rows.
+	 */
+	shortcutIndexById?: Record<string, number>;
 	onSelect: (projectId: string) => void;
 	onClose: () => void;
 }
@@ -12,10 +21,11 @@ interface ProjectQuickSwitchModalProps {
 /**
  * Cmd/Ctrl+K project quick-switch palette (navigation). Type to fuzzy-filter
  * projects by name; Enter jumps to the highlighted match (the top one by
- * default). The Cmd+1..9 badge mirrors the index shortcuts when the query is
- * empty (results are in board order, so position N === Cmd+N).
+ * default). With an empty query, rows are ordered most-recently-jumped first
+ * (then board order). The ⌘N badge mirrors the Cmd+1..9 index shortcuts, which
+ * stay board-order based regardless of the recency ordering.
  */
-function ProjectQuickSwitchModal({ projects, onSelect, onClose }: ProjectQuickSwitchModalProps) {
+function ProjectQuickSwitchModal({ projects, shortcutIndexById, onSelect, onClose }: ProjectQuickSwitchModalProps) {
 	const t = useT();
 	return (
 		<PaletteShell
@@ -29,9 +39,12 @@ function ProjectQuickSwitchModal({ projects, onSelect, onClose }: ProjectQuickSw
 			hint={t("projectSwitch.hint")}
 			noResults={t("projectSwitch.noResults")}
 			testId="project-quick-switch"
-			renderItemRight={(_p, i, query) =>
-				i < 9 && query.length === 0 ? <span className="text-fg-3 text-xs flex-shrink-0">⌘{i + 1}</span> : null
-			}
+			renderItemRight={(p, _i, query) => {
+				const idx = shortcutIndexById?.[p.id];
+				return idx !== undefined && idx < 9 && query.length === 0 ? (
+					<span className="text-fg-3 text-xs flex-shrink-0">⌘{idx + 1}</span>
+				) : null;
+			}}
 		/>
 	);
 }

@@ -1,4 +1,4 @@
-import { reducer, initialState, routeTaskId, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
 import type { AppState, AppAction } from "../state";
 import type { Project, Task } from "../../shared/types";
 
@@ -811,6 +811,22 @@ describe("routeTaskId", () => {
 	it("returns null for a project route with no active task", () => {
 		expect(routeTaskId({ screen: "project", projectId: "p1" })).toBeNull();
 		expect(routeTaskId({ screen: "dashboard" })).toBeNull();
+	});
+});
+
+describe("projectIdForRoute", () => {
+	it("returns the projectId for every project-bearing screen", () => {
+		expect(projectIdForRoute({ screen: "project", projectId: "p1" })).toBe("p1");
+		expect(projectIdForRoute({ screen: "project", projectId: "p1", taskView: true })).toBe("p1");
+		expect(projectIdForRoute({ screen: "project", projectId: "p1", activeTaskId: "t1" })).toBe("p1");
+		expect(projectIdForRoute({ screen: "project-terminal", projectId: "p2" })).toBe("p2");
+		expect(projectIdForRoute({ screen: "task", projectId: "p3", taskId: "t9" })).toBe("p3");
+		expect(projectIdForRoute({ screen: "project-settings", projectId: "p4" })).toBe("p4");
+	});
+
+	it("returns null for project-less screens", () => {
+		expect(projectIdForRoute({ screen: "dashboard" })).toBeNull();
+		expect(projectIdForRoute({ screen: "home-terminal" })).toBeNull();
 	});
 });
 

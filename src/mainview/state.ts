@@ -59,6 +59,19 @@ export function routeTaskId(route: Route): string | null {
 	return null;
 }
 
+/** The project id a route lands on, or null for project-less screens (dashboard, settings…). */
+export function projectIdForRoute(route: Route): string | null {
+	switch (route.screen) {
+		case "project":
+		case "project-terminal":
+		case "task":
+		case "project-settings":
+			return route.projectId;
+		default:
+			return null;
+	}
+}
+
 /** Move `taskId` to the front of the MRU list (newest first); no-op if null. */
 function bumpMru(mru: string[], route: Route): string[] {
 	const taskId = routeTaskId(route);
