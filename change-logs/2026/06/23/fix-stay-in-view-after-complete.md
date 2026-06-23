@@ -1,0 +1,1 @@
+Completing or cancelling a task no longer kicks you back to the bare Kanban board. If you were in a task view it now stays in task view with nothing selected; if you were on the Kanban board it stays there.

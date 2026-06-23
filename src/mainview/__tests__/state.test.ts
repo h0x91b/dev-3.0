@@ -1,4 +1,4 @@
-import { reducer, initialState, routeTaskId, projectIdForRoute, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
 import type { AppState, AppAction } from "../state";
 import type { Project, Task } from "../../shared/types";
 
@@ -811,6 +811,37 @@ describe("routeTaskId", () => {
 	it("returns null for a project route with no active task", () => {
 		expect(routeTaskId({ screen: "project", projectId: "p1" })).toBeNull();
 		expect(routeTaskId({ screen: "dashboard" })).toBeNull();
+	});
+});
+
+describe("routeAfterTaskClosed", () => {
+	it("collapses a full-page task view to task-view with no task selected", () => {
+		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "t9" }, "t9")).toEqual({
+			screen: "project",
+			projectId: "p1",
+			taskView: true,
+		});
+	});
+
+	it("deselects the task in a split task view", () => {
+		expect(
+			routeAfterTaskClosed({ screen: "project", projectId: "p1", taskView: true, activeTaskId: "t5" }, "t5"),
+		).toEqual({ screen: "project", projectId: "p1", taskView: true });
+	});
+
+	it("returns null on the bare Kanban board (no navigation)", () => {
+		expect(routeAfterTaskClosed({ screen: "project", projectId: "p1" }, "t9")).toBeNull();
+	});
+
+	it("returns null when viewing a different task", () => {
+		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "other" }, "t9")).toBeNull();
+		expect(
+			routeAfterTaskClosed({ screen: "project", projectId: "p1", activeTaskId: "other" }, "t9"),
+		).toBeNull();
+	});
+
+	it("returns null for non-project screens", () => {
+		expect(routeAfterTaskClosed({ screen: "dashboard" }, "t9")).toBeNull();
 	});
 });
 

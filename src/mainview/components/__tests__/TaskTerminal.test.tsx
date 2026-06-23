@@ -178,7 +178,7 @@ describe("TaskTerminal", () => {
 			const movedAtMs = new Date(dispatchedTask.movedAt!).getTime();
 			expect(movedAtMs).toBeGreaterThan(Date.now() - 5000);
 
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 			expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
 				from_status: "in-progress",
 				to_status: "completed",
@@ -215,7 +215,7 @@ describe("TaskTerminal", () => {
 			expect(dispatchedTask.worktreePath).toBeNull();
 			expect(dispatchedTask.branchName).toBeNull();
 
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 		});
 
 		it("fires moveTask API call in background", async () => {
@@ -431,7 +431,7 @@ describe("TaskTerminal", () => {
 
 			expect(mockedApi.request.cancelTaskPreparation).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: revertedTask });
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 		});
 
 		it("connects to the PTY once preparing flips to false", async () => {

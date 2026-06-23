@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, projectIdForRoute, type Route } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, type Route } from "./state";
 import { api } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -827,14 +827,13 @@ function App() {
 			});
 			if (shouldComplete === null) return;
 			if (shouldComplete) {
-				// If the user is currently inside this task's full screen, navigate them
-				// back to the Kanban view BEFORE the worktree is destroyed. Otherwise
-				// TaskTerminal reacts to ptyDied / missing worktree and shows the
-				// "session ended / restart session" screen.
-				const currentRoute = routeRef.current;
-				if (currentRoute.screen === "task" && currentRoute.taskId === taskId) {
-					navigate({ screen: "project", projectId });
-				}
+				// If the user is currently inside this task's view, leave it BEFORE the
+				// worktree is destroyed (otherwise TaskTerminal reacts to ptyDied /
+				// missing worktree and shows the "session ended / restart session"
+				// screen). Stay on the same surface: a task view collapses to "no task
+				// selected", a Kanban board is left untouched.
+				const dest = routeAfterTaskClosed(routeRef.current, taskId);
+				if (dest) navigate(dest);
 				dispatch({
 					type: "updateTask",
 					task: {
@@ -877,10 +876,9 @@ function App() {
 	// socket waiting for the user's decision, so always respond, even on cancel.
 	useEffect(() => {
 		async function onAgentCompletionRequested(e: Event) {
-			const { requestId, taskId, projectId, taskTitle, taskOverview } = (e as CustomEvent).detail as {
+			const { requestId, taskId, taskTitle, taskOverview } = (e as CustomEvent).detail as {
 				requestId: string;
 				taskId: string;
-				projectId: string;
 				taskTitle: string;
 				taskOverview?: string;
 			};
@@ -899,12 +897,11 @@ function App() {
 				console.error("[App] confirm (agent-completion) failed:", err);
 			}
 			if (approved) {
-				// Leave the task's full-screen terminal BEFORE the worktree is
-				// destroyed (same reasoning as the branch-merged flow above).
-				const currentRoute = routeRef.current;
-				if (currentRoute.screen === "task" && currentRoute.taskId === taskId) {
-					navigate({ screen: "project", projectId });
-				}
+				// Leave the task's view BEFORE the worktree is destroyed (same
+				// reasoning as the branch-merged flow above). Stay on the same
+				// surface: a task view collapses to "no task selected".
+				const dest = routeAfterTaskClosed(routeRef.current, taskId);
+				if (dest) navigate(dest);
 				dispatch({ type: "clearBell", taskId });
 				trackEvent("task_moved", { to_status: "completed", agent_requested: true });
 			}

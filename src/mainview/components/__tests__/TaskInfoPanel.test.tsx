@@ -649,7 +649,7 @@ describe("TaskInfoPanel", () => {
 			await user.click(screen.getByText("Agent is Working"));
 			await user.click(screen.getByText("Completed"));
 
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
 				type: "updateTask",
 				task: expect.objectContaining({ status: "completed", worktreePath: null, branchName: null }),
@@ -1987,7 +1987,7 @@ describe("TaskInfoPanel", () => {
 				expect(dispatchedTask.branchName).toBeNull();
 			});
 
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 		});
 
 		it("optimistically completes after merge even while the move RPC is still pending", async () => {
@@ -2020,7 +2020,7 @@ describe("TaskInfoPanel", () => {
 				);
 				expect(completedUpdate).toBeDefined();
 			});
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 		});
 
 		it("keeps the optimistic completion when both background completion RPC attempts fail", async () => {
@@ -2060,7 +2060,7 @@ describe("TaskInfoPanel", () => {
 			);
 
 			expect(completedUpdate).toBeDefined();
-			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 			expect(alertSpy).not.toHaveBeenCalled();
 			expect(consoleErrorSpy).toHaveBeenCalled();
 			consoleErrorSpy.mockRestore();
