@@ -8,7 +8,6 @@ import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
-import HomeTerminalIcon from "./HomeTerminalIcon";
 import PreventSleepToggle from "./PreventSleepToggle";
 
 interface GlobalHeaderProps {
@@ -205,11 +204,6 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	// Project terminal breadcrumb segment
 	if (route.screen === "project-terminal") {
 		segments.push({ label: t("projectTerminal.label") });
-	}
-
-	// Home terminal breadcrumb segment
-	if (route.screen === "home-terminal") {
-		segments.push({ label: t("homeTerminal.label") });
 	}
 
 	// Task segment for split view
@@ -464,24 +458,14 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs */}
 				<PreventSleepToggle compact={compact} />
 
-				{/* Home Terminal — always visible (rootless tmux in $HOME) */}
+				{/* Quick Shell — always visible (opens the built-in Operations shell in $HOME) */}
 				<button
-					onClick={() => {
-						if (route.screen === "home-terminal") {
-							navigate({ screen: "dashboard" });
-						} else {
-							navigate({ screen: "home-terminal" });
-						}
-					}}
-					className={`flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
-						route.screen === "home-terminal"
-							? "text-accent bg-accent/15 hover:bg-accent/25"
-							: "text-fg-3 hover:text-fg hover:bg-elevated"
-					}`}
-					title={t("homeTerminal.tooltipWithShortcut")}
+					onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
+					className="flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
+					title={t("quickShell.tooltipWithShortcut")}
 				>
-					<HomeTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
-					{!compact && <span className="text-[0.6875rem] font-medium">{t("homeTerminal.open")}</span>}
+					<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+					{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
 				</button>
 
 				{/* Project Terminal — visible when inside a project */}

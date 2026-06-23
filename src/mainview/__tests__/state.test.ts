@@ -927,7 +927,7 @@ describe("projectIdForRoute", () => {
 
 	it("returns null for project-less screens", () => {
 		expect(projectIdForRoute({ screen: "dashboard" })).toBeNull();
-		expect(projectIdForRoute({ screen: "home-terminal" })).toBeNull();
+		expect(projectIdForRoute({ screen: "changelog" })).toBeNull();
 	});
 });
 

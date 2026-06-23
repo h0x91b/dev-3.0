@@ -149,15 +149,9 @@ const terminal = {
 	"projectTerminal.shortcutHint": "⌘`",
 	"projectTerminal.tooltipWithShortcut": "Терминал проекта (⌘`)",
 
-	// Home Terminal
-	"homeTerminal.open": "Домашний терминал",
-	"homeTerminal.label": "Домашний терминал",
-	"homeTerminal.tooltipWithShortcut": "Домашний терминал (⌘⇧`)",
-	"homeTerminal.shortcutHint": "⌘⇧`",
-	"homeTerminal.back": "Назад",
-	"homeTerminal.sessionEnded": "Сессия домашнего терминала завершена",
-	"homeTerminal.sessionEndedDesc": "Процесс терминала завершился. Нажмите «Перезапустить» для новой сессии.",
-	"homeTerminal.restart": "Перезапустить",
+	// Quick Shell (встроенная Operations-консоль в $HOME)
+	"quickShell.open": "Быстрая консоль",
+	"quickShell.tooltipWithShortcut": "Быстрая консоль в домашней папке (⌘⇧`)",
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
 };
 

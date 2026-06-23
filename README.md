@@ -141,7 +141,7 @@ every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined
 | Settings | ⌘, | Ctrl+, |
 | Zoom in / out / reset | ⌘= / ⌘- / ⌘0 | Ctrl+= / Ctrl+- / Ctrl+0 |
 | Hard refresh | ⌘R | Ctrl+R |
-| Toggle project / home terminal | ⌘` / ⇧⌘` | Ctrl+` / Ctrl+Shift+` |
+| Toggle project terminal / open Quick Shell | ⌘` / ⇧⌘` | Ctrl+` / Ctrl+Shift+` |
 | Close dialog / step back | Esc | Esc |
 | Quit / Hide | ⌘Q / ⌘H | Ctrl+Q / Ctrl+H |
 

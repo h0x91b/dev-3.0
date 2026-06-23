@@ -36,7 +36,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Hard refresh",
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
-	"keymap.shortcut.toggleHomeTerminal": "Toggle home terminal",
+	"keymap.shortcut.openQuickShell": "Open Quick Shell",
 	"keymap.shortcut.quit": "Quit",
 	"keymap.shortcut.hide": "Hide app",
 } as const;

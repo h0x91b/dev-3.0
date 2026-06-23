@@ -108,8 +108,6 @@ vi.mock("../pty-server", () => ({
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
-	HOME_TERMINAL_SESSION_KEY: "home",
-	HOME_TERMINAL_TMUX_NAME: "dev3-home",
 }));
 
 vi.mock("../system-clipboard", () => ({
@@ -5729,58 +5727,42 @@ describe("handlers.destroyProjectTerminal", () => {
 });
 
 // ================================================================
-// handlers.getHomePtyUrl / destroyHomeTerminal
+// handlers.openQuickShell (replaces the removed home terminal)
 // ================================================================
 
-describe("handlers.getHomePtyUrl", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("creates a home PTY session in the user's home directory", async () => {
-		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
-		vi.mocked(existsSync).mockReturnValue(true);
-
-		const url = await handlers.getHomePtyUrl({});
-
-		expect(pty.createSession).toHaveBeenCalledWith(
-			"home",
-			"",
-			expect.any(String),
-			process.env.SHELL || "/bin/zsh",
-			{},
-			"dev3",
-			"home",
-		);
-		expect(url).toBe("ws://localhost:9999?session=home");
+describe("handlers.openQuickShell", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
 	});
 
-	it("reuses existing home session without creating a new one", async () => {
-		vi.mocked(pty.hasSession).mockReturnValue(true);
-		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+	it("creates a Quick shell op in the built-in board when none exists", async () => {
+		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
+		const created = makeTask({ id: "qs1", projectId: "ops1", status: "todo", worktreePath: null, customTitle: "Quick shell", scratch: true });
+		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		vi.mocked(data.addTask).mockResolvedValue(created);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, u) => ({ ...created, ...u } as Task));
 
-		await handlers.getHomePtyUrl({});
+		const result = await handlers.openQuickShell({});
 
-		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(data.addTask).toHaveBeenCalled();
+		expect(result.status).toBe("in-progress");
+		expect(result.projectId).toBe("ops1");
+		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
-	it("destroys dead home session before creating a new one", async () => {
-		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
-		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(existsSync).mockReturnValue(true);
+	it("focuses an existing active Quick shell op instead of creating a new one", async () => {
+		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
+		const existing = makeTask({ id: "qs1", projectId: "ops1", status: "in-progress", customTitle: "Quick shell" });
+		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([existing]);
 
-		await handlers.getHomePtyUrl({});
+		const result = await handlers.openQuickShell({});
 
-		expect(pty.destroySession).toHaveBeenCalledWith("home");
-		expect(pty.createSession).toHaveBeenCalled();
-	});
-});
-
-describe("handlers.destroyHomeTerminal", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("destroys the home terminal session", async () => {
-		await handlers.destroyHomeTerminal({});
-		expect(pty.destroySession).toHaveBeenCalledWith("home");
+		expect(data.addTask).not.toHaveBeenCalled();
+		expect(result.id).toBe("qs1");
 	});
 });
 

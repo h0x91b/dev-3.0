@@ -165,7 +165,7 @@ export const MENU_ACTIONS = {
 
 	// ── Terminal — misc ──
 	termToggleProjectTerminal: "term-toggle-project-terminal",
-	termToggleHomeTerminal: "term-toggle-home-terminal",
+	termOpenQuickShell: "term-open-quick-shell",
 	termKeymapDefault: "term-keymap-default",
 	termKeymapIterm2: "term-keymap-iterm2",
 	termCheatSheet: "term-cheat-sheet",
@@ -321,7 +321,7 @@ export interface MenuContext {
 	hasTask: boolean;
 	/** A current project is selected (any project-scoped view). */
 	hasProject: boolean;
-	/** A terminal is visible on screen (task / project-terminal / home-terminal). */
+	/** A terminal is visible on screen (task / project-terminal). */
 	hasTerminal: boolean;
 }
 
@@ -786,7 +786,7 @@ function terminalMenu(): ApplicationMenuItemConfig {
 			},
 			SEP,
 			item({ label: "Toggle Project Terminal", action: MENU_ACTIONS.termToggleProjectTerminal, accelerator: "`" }),
-			item({ label: "Toggle Home Terminal", action: MENU_ACTIONS.termToggleHomeTerminal }),
+			item({ label: "Quick Shell", action: MENU_ACTIONS.termOpenQuickShell }),
 			SEP,
 			{
 				label: "Keyboard Mode",

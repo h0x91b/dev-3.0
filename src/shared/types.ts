@@ -1066,7 +1066,6 @@ export interface TmuxSessionInfo {
 	windowCount: number;
 	isCleanup: boolean;
 	isProjectTerminal?: boolean;
-	isHomeTerminal?: boolean;
 	projectName?: string;
 	taskTitle?: string;
 	taskId?: string;
@@ -1381,13 +1380,10 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
-			getHomePtyUrl: {
+			/** Open or focus the built-in "Quick shell" operation (replaces the old home terminal). */
+			openQuickShell: {
 				params: {};
-				response: string;
-			};
-			destroyHomeTerminal: {
-				params: {};
-				response: void;
+				response: Task;
 			};
 			runDevServer: {
 				params: { taskId: string; projectId: string };
@@ -1808,7 +1804,6 @@ export type AppRPCSchema = {
 			taskSound: { status: "completed" | "cancelled"; taskId: string };
 			ptyDied: { taskId: string };
 			projectPtyDied: { projectId: string };
-			homePtyDied: {};
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };

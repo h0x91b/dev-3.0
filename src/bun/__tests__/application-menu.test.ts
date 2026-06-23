@@ -127,8 +127,8 @@ describe("buildApplicationMenu", () => {
 		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutCycle)?.enabled).toBe(false);
 		// Toggling the project terminal still works in a project-only context.
 		expect(findItemByAction(menu, MENU_ACTIONS.termToggleProjectTerminal)?.enabled).toBe(true);
-		// Toggle home terminal and cheat sheet are always available.
-		expect(findItemByAction(menu, MENU_ACTIONS.termToggleHomeTerminal)?.enabled).toBe(true);
+		// Quick shell and cheat sheet are always available.
+		expect(findItemByAction(menu, MENU_ACTIONS.termOpenQuickShell)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termCheatSheet)?.enabled).toBe(true);
 	});
 

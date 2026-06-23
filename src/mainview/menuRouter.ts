@@ -285,8 +285,8 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			if (projectId) navigate(ctx, { screen: "project-terminal", projectId });
 			return;
 		}
-		case "term-toggle-home-terminal":
-			navigate(ctx, { screen: "home-terminal" });
+		case "term-open-quick-shell":
+			window.dispatchEvent(new CustomEvent("menu:open-quick-shell"));
 			return;
 
 		// ── Shortcut reference overlay: open via CustomEvent — App.tsx wires the modal. ──

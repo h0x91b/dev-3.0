@@ -17,7 +17,6 @@ import LaunchVariantsModal from "./components/LaunchVariantsModal";
 import ProjectView from "./components/ProjectView";
 import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
-import HomeTerminal from "./components/HomeTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
@@ -115,7 +114,7 @@ function App() {
 		const r = state.route;
 		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
 		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
-		const hasTerminal = r.screen === "task" || r.screen === "project-terminal" || r.screen === "home-terminal";
+		const hasTerminal = r.screen === "task" || r.screen === "project-terminal";
 		try {
 			void api.request.updateMenuContext?.({ hasTask, hasProject, hasTerminal })?.catch(() => {});
 		} catch {
@@ -301,6 +300,23 @@ function App() {
 		},
 		[navigate, state.route],
 	);
+
+	// Quick shell: open (or focus) the built-in "Quick shell" operation in ~.
+	// Replaces the former single home terminal; bound to ⇧⌘`.
+	const openQuickShell = useCallback(async () => {
+		try {
+			const task = await api.request.openQuickShell({});
+			navigate({ screen: "task", projectId: task.projectId, taskId: task.id });
+		} catch (err) {
+			toast.error(String(err));
+		}
+	}, [navigate]);
+
+	useEffect(() => {
+		function onOpenQuickShell() { void openQuickShell(); }
+		window.addEventListener("menu:open-quick-shell", onOpenQuickShell);
+		return () => window.removeEventListener("menu:open-quick-shell", onOpenQuickShell);
+	}, [openQuickShell]);
 
 	// `g`-prefix "go to" sequence (Linear/GitHub style), kept in refs so the
 	// global keydown handler stays pure. Tiny state machine:
@@ -523,14 +539,10 @@ function App() {
 				e.stopPropagation();
 				dispatch({ type: "goForward" });
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "~") {
-				// Cmd+Shift+` — toggle home terminal (key="~" because Shift+` produces ~)
+				// Cmd+Shift+` — open/focus the Quick shell operation (key="~" because Shift+` produces ~)
 				e.preventDefault();
 				e.stopPropagation();
-				if (state.route.screen === "home-terminal") {
-					navigate({ screen: "dashboard" });
-				} else {
-					navigate({ screen: "home-terminal" });
-				}
+				void openQuickShell();
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "`") {
 				// Cmd+` — toggle project terminal
 				const { route } = state;
@@ -668,7 +680,7 @@ function App() {
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -1261,8 +1273,6 @@ function App() {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project-terminal") {
 				navigate({ screen: "project", projectId: route.projectId });
-			} else if (route.screen === "home-terminal") {
-				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project" && (route.activeTaskId || route.taskView)) {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project") {
@@ -1669,12 +1679,6 @@ function App() {
 					</div>
 				) : null;
 			}
-			case "home-terminal":
-				return (
-					<div className="flex-1 min-h-0 flex flex-col">
-						<HomeTerminal onBack={() => navigate({ screen: "dashboard" })} />
-					</div>
-				);
 			case "task":
 				return (
 					<TaskWorkspaceView

@@ -33,7 +33,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Полная перезагрузка",
 	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
-	"keymap.shortcut.toggleHomeTerminal": "Переключить домашний терминал",
+	"keymap.shortcut.openQuickShell": "Открыть быструю консоль",
 	"keymap.shortcut.quit": "Выйти",
 	"keymap.shortcut.hide": "Скрыть приложение",
 };

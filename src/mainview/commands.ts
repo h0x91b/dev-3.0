@@ -82,7 +82,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 
 	// ── Terminal ──
 	{ id: "term-toggle-project-terminal", labelKey: "command.openProjectTerminal", category: "terminal", scope: "project" },
-	{ id: "term-toggle-home-terminal", labelKey: "command.openHomeTerminal", category: "terminal", scope: "always" },
+	{ id: "term-open-quick-shell", labelKey: "command.openQuickShell", category: "terminal", scope: "always" },
 	{ id: "term-cheat-sheet", labelKey: "command.tmuxCheatSheet", category: "terminal", scope: "always" },
 	{ id: "help-keyboard-shortcuts", labelKey: "command.keyboardShortcuts", category: "app", scope: "always" },
 ];

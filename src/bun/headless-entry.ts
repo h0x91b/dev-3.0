@@ -295,10 +295,7 @@ startResourceMonitor((name, payload) => {
 // ── PTY event wiring (no mainWindow.webview.rpc — just push to browser) ──
 setOnPtyDied((sessionKey) => {
 	try {
-		if (sessionKey === "home") {
-			log.info("Home terminal died");
-			pushToBrowserClients("homePtyDied", {});
-		} else if (sessionKey.startsWith("project-")) {
+		if (sessionKey.startsWith("project-")) {
 			const projectId = sessionKey.slice(8);
 			log.info("Project terminal died", { projectId: projectId.slice(0, 8) });
 			pushToBrowserClients("projectPtyDied", { projectId });
@@ -313,7 +310,6 @@ setOnPtyDied((sessionKey) => {
 
 setOnBell((sessionKey) => {
 	try {
-		if (sessionKey === "home") return;
 		if (sessionKey.startsWith("project-")) return;
 		log.debug("Terminal bell", { taskId: sessionKey.slice(0, 8) });
 		pushToBrowserClients("terminalBell", { taskId: sessionKey });
@@ -326,7 +322,6 @@ setOnBell((sessionKey) => {
 });
 
 setOnIdle((sessionKey) => {
-	if (sessionKey === "home") return;
 	if (sessionKey.startsWith("project-")) return;
 	isTaskInProgress(sessionKey).then((inProgress) => {
 		if (!inProgress) return;

@@ -143,15 +143,9 @@ const terminal = {
 	"projectTerminal.shortcutHint": "\u2318`",
 	"projectTerminal.tooltipWithShortcut": "Project Terminal (\u2318`)",
 
-	// Home Terminal
-	"homeTerminal.open": "Home Terminal",
-	"homeTerminal.label": "Home Terminal",
-	"homeTerminal.tooltipWithShortcut": "Home Terminal (\u2318\u21e7`)",
-	"homeTerminal.shortcutHint": "\u2318\u21e7`",
-	"homeTerminal.back": "Back",
-	"homeTerminal.sessionEnded": "Home terminal session ended",
-	"homeTerminal.sessionEndedDesc": "The terminal process has exited. Click restart to open a new session.",
-	"homeTerminal.restart": "Restart",
+	// Quick Shell (built-in Operations shell in $HOME)
+	"quickShell.open": "Quick Shell",
+	"quickShell.tooltipWithShortcut": "Quick Shell in home (\u2318\u21e7`)",
 	"fileDrop.uploadFailed": "File upload failed: {error}",
 } as const;
 

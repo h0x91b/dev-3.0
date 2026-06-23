@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -419,7 +420,7 @@ function scratchPlaceholder(now: Date = new Date()): string {
 
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	try {
-		const projects = await data.loadProjects();
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 		for (const project of projects) {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
@@ -439,7 +440,7 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 
 export async function isTaskInProgress(taskId: string): Promise<boolean> {
 	try {
-		const projects = await data.loadProjects();
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 		for (const project of projects) {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
@@ -1129,9 +1130,41 @@ async function respondToAgentCompletionRequest(params: { requestId: string; appr
 	}
 }
 
+/**
+ * Quick shell: the replacement for the removed single home-terminal. Opens (or
+ * focuses) a prompt-less "Quick shell" operation in the built-in Operations
+ * board, running in the user's home dir. The ⇧⌘` hotkey maps to this.
+ */
+async function openQuickShell(_params: {}): Promise<Task> {
+	log.info("→ openQuickShell");
+	const project = await data.ensureBuiltinOperationsBoard("Operations");
+	const tasks = await data.loadTasks(project);
+	const existing = tasks.find((tk) => tk.customTitle === "Quick shell" && isActive(tk.status));
+	if (existing) {
+		log.info("← openQuickShell (focus existing)", { taskId: existing.id.slice(0, 8) });
+		return existing;
+	}
+	const task = await data.addTask(project, "", "todo", {
+		scratch: true,
+		customTitle: "Quick shell",
+		titleEditedByUser: true,
+		opsWorkDir: homedir(),
+	});
+	const wt = await activateTask(project, task);
+	const updated = await data.updateTask(project, task.id, {
+		status: "in-progress",
+		worktreePath: wt.worktreePath,
+		branchName: wt.branchName,
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← openQuickShell (created)", { taskId: task.id.slice(0, 8) });
+	return updated;
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
+	openQuickShell,
 	createTask,
 	moveTask,
 	cancelTaskPreparation,

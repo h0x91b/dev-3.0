@@ -213,10 +213,7 @@ let ptyWsPort = 0;
 // by 10-100x while maintaining perceptual smoothness.
 const PTY_BATCH_INTERVAL_MS = 16;
 
-export type PtySessionType = "task" | "project" | "home";
-
-export const HOME_TERMINAL_SESSION_KEY = "home";
-export const HOME_TERMINAL_TMUX_NAME = "dev3-home";
+export type PtySessionType = "task" | "project";
 
 interface PtySession {
 	taskId: string;
@@ -280,9 +277,6 @@ function computeTmuxSessionName(key: string, type: PtySessionType): string {
 	if (type === "project") {
 		const projectId = key.startsWith("project-") ? key.slice(8) : key;
 		return `dev3-pt-${projectId.slice(0, 8)}`;
-	}
-	if (type === "home") {
-		return HOME_TERMINAL_TMUX_NAME;
 	}
 	return `dev3-${shortId(key)}`;
 }
@@ -1000,7 +994,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				if (envKeys.length > 0) {
 					log.info("tmux session env vars set (post-spawn safety net)", { tmuxSession: tmuxSessionName, keys: envKeys });
 				}
-				if (session.sessionType === "project" || session.sessionType === "home") {
+				if (session.sessionType === "project") {
 					await setupTiledLayout(session);
 				}
 			} catch (err) {

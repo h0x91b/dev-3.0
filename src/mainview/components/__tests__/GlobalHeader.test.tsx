@@ -573,14 +573,14 @@ describe("GlobalHeader — project terminal button", () => {
 		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
 	});
 
-	it("shows home terminal before project terminal", () => {
+	it("shows quick shell before project terminal", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		const homeButton = screen.getByTitle("Home Terminal (\u2318\u21e7`)");
+		const quickShellButton = screen.getByTitle("Quick Shell in home (\u2318\u21e7`)");
 		const projectButton = screen.getByTitle("Project Terminal (\u2318`)");
 
 		expect(
-			homeButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+			quickShellButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBeTruthy();
 	});
 
