@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, type Route } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, type Route } from "./state";
 import { api } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -258,15 +258,28 @@ function App() {
 		setHintMode(false);
 	}, [state.route]);
 
+	// Single chokepoint for committing a navigation. Records a project "jump"
+	// for the Cmd+K recency list whenever the destination route lands on a
+	// project, so every entry point (Dashboard click, Cmd+1..9, Cmd+Shift+1..9,
+	// the palette, the `g`-prefix go-to, terminal toggles, future ones…) is
+	// covered automatically — they all funnel through here.
+	const commitNavigation = useCallback(
+		(route: Route) => {
+			const projectId = projectIdForRoute(route);
+			if (projectId) recordProjectJump(projectId);
+			dispatch({ type: "navigate", route });
+		},
+		[dispatch],
+	);
 	const navigate = useCallback(
 		(route: Route) => {
 			if (navigationGuardRef.current?.isDirty()) {
 				setPendingNavigation(route);
 				return;
 			}
-			dispatch({ type: "navigate", route });
+			commitNavigation(route);
 		},
-		[dispatch],
+		[commitNavigation],
 	);
 
 	// Switch to a project, preserving the current view shape the same way Cmd+1..9
@@ -275,7 +288,6 @@ function App() {
 	// Cmd+1..9 index shortcuts and the Cmd+K quick-switch palette.
 	const navigateToProject = useCallback(
 		(projectId: string) => {
-			recordProjectJump(projectId);
 			const route = state.route;
 			const taskOpenMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
 			const inTaskView =
@@ -306,10 +318,8 @@ function App() {
 		}
 	}, []);
 	const goToProjectView = useCallback(
-		(projectId: string, view: "project" | "task") => {
-			recordProjectJump(projectId);
-			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId });
-		},
+		(projectId: string, view: "project" | "task") =>
+			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId }),
 		[navigate],
 	);
 	const goToCurrentProject = useCallback(
@@ -376,17 +386,7 @@ function App() {
 		return { projects: ordered, shortcutIndexById };
 	}, [state.projects, showProjectSwitch]);
 
-	const getProjectIdForRoute = useCallback((route: Route): string | null => {
-		switch (route.screen) {
-			case "project":
-			case "project-terminal":
-			case "task":
-			case "project-settings":
-				return route.projectId;
-			default:
-				return null;
-		}
-	}, []);
+	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
 	const openCreateTaskModal = useCallback(() => {
 		const projectId = getProjectIdForRoute(state.route);
@@ -1377,7 +1377,7 @@ function App() {
 									const route = pendingNavigation;
 									navigationGuardRef.current = null;
 									setPendingNavigation(null);
-									dispatch({ type: "navigate", route });
+									commitNavigation(route);
 								}}
 								className="px-4 py-2 text-sm rounded-lg text-danger hover:bg-danger/10 transition-colors"
 							>
@@ -1391,7 +1391,7 @@ function App() {
 									}
 									navigationGuardRef.current = null;
 									setPendingNavigation(null);
-									dispatch({ type: "navigate", route });
+									commitNavigation(route);
 								}}
 								className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
 							>

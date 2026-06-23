@@ -1,6 +1,8 @@
 // MRU (most-recently-used) cache of project jumps, backing the Cmd/Ctrl+K
-// quick-switch palette's "recent first" ordering. A jump = navigating to a
-// project via the palette, Cmd+1..9, or the `g`-prefix go-to sequence. The list
+// quick-switch palette's "recent first" ordering. A jump = any navigation that
+// lands on a project, recorded centrally at App's `commitNavigation` — so the
+// palette, Cmd+1..9 / Cmd+Shift+1..9, the `g`-prefix go-to, a Dashboard card
+// click, terminal toggles, and any future entry point are all covered. The list
 // is an ordered array of project IDs, most-recent first, persisted in
 // localStorage and capped so it never grows unbounded.
 
