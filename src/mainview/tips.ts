@@ -866,6 +866,22 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["board"],
 	},
+	{
+		id: "operations-board",
+		titleKey: "tip.operationsBoard.title",
+		bodyKey: "tip.operationsBoard.body",
+		icon: "", // nf-fa-terminal
+		score: 4,
+		contexts: ["board", "terminal"],
+	},
+	{
+		id: "operations-history",
+		titleKey: "tip.operationsHistory.title",
+		bodyKey: "tip.operationsHistory.body",
+		icon: "\u{F0297}", // nf-md-history
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

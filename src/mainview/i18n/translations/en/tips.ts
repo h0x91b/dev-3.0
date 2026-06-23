@@ -212,6 +212,10 @@ const tips = {
 	"tip.focusModeMutesPings.body": "Turn on Focus Mode in Settings → Behavior to silence all agent toasts, badges, and notifications.",
 	"tip.prCiReviewBadges.title": "CI & review on the card",
 	"tip.prCiReviewBadges.body": "PR-review tasks show CI and review badges; click one to pull the task back to your review.",
+	"tip.operationsBoard.title": "Operations board",
+	"tip.operationsBoard.body": "Add an Operations board from “Add Project” for code-driven tasks with no git repo — each runs an agent + shell in a managed folder.",
+	"tip.operationsHistory.title": "Operations keep their history",
+	"tip.operationsHistory.body": "Completed operations stay in Done with their notes and folder, so you can see what you ran and why later.",
 } as const;
 
 export default tips;

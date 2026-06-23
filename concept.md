@@ -70,14 +70,14 @@ history. Modeled as `Project.kind: "virtual"` — reuses the dashboard, board, c
 labels, and notes; the git worktree is excluded entirely (no branch/diff/PR/review columns).
 Replaces the single `home-terminal`. Full spec: `docs/ux/feature-plans/virtual-operations-board.md`.
 
-- [ ] `Project.kind: "git" | "virtual"` discriminator; virtual projects stored in a separate `~/.dev3.0/virtual-projects.json` (forward-compat: old versions stay blind to them)
-- [ ] Virtual identity = synthetic `path = ~/.dev3.0/ops/<readable-slug>` so `projectSlug()`/CLI stay unchanged
-- [ ] One built-in "Operations" board + ability to create more virtual boards
-- [ ] Operation = task with a managed temp dir (default) or a chosen folder (no worktree)
-- [ ] Simplified columns (todo → in-progress → user-questions → done); git/review domain hidden
-- [ ] Each operation launches the agent + a split-right tmux shell; "scratch" (no-prompt) allowed
-- [ ] Quick-shell hotkey (former home-terminal) creates/opens a shell operation in `~`
-- [ ] Remove `home-terminal` route/component
+- [x] `Project.kind: "git" | "virtual"` discriminator; virtual projects stored in a separate `~/.dev3.0/virtual-projects.json` (forward-compat: old versions stay blind to them)
+- [x] Virtual identity = synthetic `path = ~/.dev3.0/ops/<readable-slug>` so `projectSlug()`/CLI stay unchanged
+- [x] One built-in "Operations" board + ability to create more virtual boards
+- [x] Operation = task with a managed temp dir (default) or a chosen folder (no worktree)
+- [x] Simplified columns (todo → in-progress → user-questions → done); git/review domain hidden
+- [x] Each operation launches the agent + a split-right tmux shell; "scratch" (no-prompt) allowed
+- [x] Quick-shell hotkey (former home-terminal) creates/opens a shell operation in `~`
+- [x] Remove `home-terminal` route/component
 - [ ] Forward-compatible model for future recurring/loop operations (not built now)
 
 ---

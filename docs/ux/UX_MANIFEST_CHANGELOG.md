@@ -1,5 +1,14 @@
 # UX Manifest Changelog
 
+## 2026-06-23 — Virtual "Operations" board (Project.kind) shipped; home terminal removed
+
+Marked `Project.kind` (`git` | `virtual`) as `Observed` in `ux-architecture.yaml`: virtual "Operations"
+boards are a new *kind* of the existing Project object (not a new object or nav destination) — repo-less
+Kanban whose tasks run an agent + split-right shell in a managed/chosen folder with the whole git domain
+(worktree, branch, diff, PR, review columns) hidden. Removed the `home-terminal` global destination; its
+single-PTY role is now the built-in Operations board's "Quick shell" operation (⇧⌘`). UX decision moved to
+`Implemented`; see feature plan §12 and decision record 079.
+
 ## 2026-06-21 — Hint navigation as a cross-surface primitive + keyboard-first expert layer
 
 Added a `Hint navigation overlay` surface row to bible §5 and two placement rules to §10 (hint =

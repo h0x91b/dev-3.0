@@ -212,6 +212,10 @@ const tips = {
 	"tip.focusModeMutesPings.body": "Activa el Modo concentración en Ajustes → Comportamiento para silenciar todos los toasts, insignias y notificaciones de agentes.",
 	"tip.prCiReviewBadges.title": "CI y revisión en la tarjeta",
 	"tip.prCiReviewBadges.body": "Las tareas en revisión de PR muestran insignias de CI y revisión; haz clic en una para devolver la tarea a tu revisión.",
+	"tip.operationsBoard.title": "Tablero de Operaciones",
+	"tip.operationsBoard.body": "Añade un tablero de Operaciones desde “Añadir proyecto” para tareas con código sin repo git — cada una ejecuta un agente y un shell en una carpeta gestionada.",
+	"tip.operationsHistory.title": "Las operaciones guardan su historial",
+	"tip.operationsHistory.body": "Las operaciones completadas permanecen en Hecho con sus notas y carpeta, así ves qué ejecutaste y por qué más tarde.",
 };
 
 export default tips;

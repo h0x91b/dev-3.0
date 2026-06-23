@@ -34,12 +34,15 @@ Evidence: `concept.md`, `AGENTS.md`, `src/mainview/state.ts`, `src/shared/types.
 | Object | Route (screen) | Detail | Owner | Common actions | Evidence |
 |---|---|---|---|---|---|
 | Project | `dashboard` | `project` | workspace | add, clone, open settings, reorder, remove, pull main | `types.ts (Project)`, `Dashboard.tsx`, `ProjectSettings.tsx` |
+| Project (kind: virtual) | `dashboard` (badged) | `project` | workspace | add (Operations), open, rename, remove | `types.ts (Project.kind)`, `AddProjectModal.tsx`, `data.ts (addVirtualProject)` |
 | Task | `project` (card) | `task` (full terminal) / split in `project` | project | create, move status, rename, set overview, note, spawn variants, add attempts, duplicate, delete, watch, open-in, git, dev-server | `types.ts (Task)`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `application-menu.ts` |
 | Label | — (overlay on tasks) | — | project | create, rename, recolor, assign, filter | `types.ts (Label)`, `LabelPicker.tsx`, `LabelFilterBar.tsx` |
 | Custom Column | — (board column) | — | project | create, rename, recolor, set LLM instruction, attach agent | `types.ts (CustomColumn)`, `KanbanBoard.tsx` |
 | Note | — (in inspector) | — | task | add, edit, delete | `types.ts (TaskNote)`, `NoteItem.tsx`, `task-info-panel/TaskNotes.tsx` |
 
 Task lifecycle states (`ALL_STATUSES`): `todo`, `in-progress`, `user-questions`, `review-by-ai`, `review-by-user`, `review-by-colleague`, `completed`, `cancelled`. Most transitions are hook-driven, not manual.
+
+**Project kind (`Observed`, 2026-06-23):** `Project.kind` is `git` (default) or `virtual`. A **virtual "Operations" board** is the same Project object class — it reuses the dashboard, board, cards, sidebar, labels, and notes — but its tasks run an agent + a split-right shell in a managed temp folder (or a chosen one) with **no git worktree**; the entire git domain (branch/diff/PR/push/merge/rebase, the inspector Git bar, and all three review columns) is hidden, leaving `todo → in-progress → user-questions → completed/cancelled`. One built-in board ships by default and hosts the **Quick-shell** operation (⇧⌘`), which replaced the former single home terminal. See decision 079 + feature plan.
 
 ## 4. Navigation model — `Observed`
 
