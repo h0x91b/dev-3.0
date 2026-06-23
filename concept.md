@@ -62,6 +62,23 @@ Legend: `[x]` done, `[-]` in progress, `[ ]` not started
 - [ ] Tear down terminal on Completed / Cancelled
 - [ ] No terminal for tasks in To Do — create on first activation
 
+### Virtual "Operations" board (planned)
+
+A non-git, cross-project Kanban for ad-hoc, code-driven tasks that are not tied to any repo
+(back up prod, stop a server, mail/Slack triage, throwaway experiments) and that persist in
+history. Modeled as `Project.kind: "virtual"` — reuses the dashboard, board, cards, sidebar,
+labels, and notes; the git worktree is excluded entirely (no branch/diff/PR/review columns).
+Replaces the single `home-terminal`. Full spec: `docs/ux/feature-plans/virtual-operations-board.md`.
+
+- [ ] `Project.kind: "git" | "virtual"` discriminator (additive, forward-compat decision required)
+- [ ] One built-in "Operations" board + ability to create more virtual boards
+- [ ] Operation = task with a managed temp dir (default) or a chosen folder (no worktree)
+- [ ] Simplified columns (todo → in-progress → user-questions → done); git/review domain hidden
+- [ ] Each operation launches the agent + a split-right tmux shell; "scratch" (no-prompt) allowed
+- [ ] Quick-shell hotkey (former home-terminal) creates/opens a shell operation in `~`
+- [ ] Remove `home-terminal` route/component
+- [ ] Forward-compatible model for future recurring/loop operations (not built now)
+
 ---
 
 ## Detailed design notes
