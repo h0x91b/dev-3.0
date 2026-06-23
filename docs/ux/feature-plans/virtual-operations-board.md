@@ -85,13 +85,40 @@ All copy must go through `t()` in en/ru/es; any new glyph uses the Nerd Font con
 
 Bnaya's original framing was loops. The user is **not** designing loops yet (timers are unreliable — closing the GUI kills them). Decision: **Operations is the intended home for future recurring/loop operations**, but the MVP ships **manual one-shot** operations only. Keep the operation model free of one-shot-only assumptions so a future `recurring`/`schedule` field can attach without a redesign. Do **not** build timers/scheduling now.
 
-## 8. Deferred technical landmines (NOT solved in this plan)
+## 8. On-disk decisions (resolved 2026-06-23, with the user)
 
-These touch the **frozen `~/.dev3.0/` on-disk invariants** (see `AGENTS.md` → "On-disk data layout" and decision 039) and must be designed at implementation time, with the user, before any code:
+These touch the **frozen `~/.dev3.0/` on-disk invariants** (see `AGENTS.md` → "On-disk data layout" and decision 039). All three are now resolved at the planning level; a formal `decisions/NNN-*.md` record is still required when implementation lands.
 
-1. **Slug for a path-less virtual project.** `projectSlug()` derives from `Project.path` and is **frozen**. A virtual project has no real repo path → it needs a synthetic, collision-free identity for `~/.dev3.0/data/<slug>/` without changing the slug algorithm for git projects.
-2. **Where managed operation folders live.** A **new** path (e.g. `~/.dev3.0/ops/…`) is additive and acceptable, but must **never** be renamed/moved (invariant rule 2). Cleanup of a managed temp dir happens on operation delete, not on completion (history is preserved).
-3. **Forward/backward compatibility of `Project.kind`.** `kind` is an additive field, but an older app version (N-2) opening `projects.json` would treat a virtual project as a git repo and break/show empty. This is the most uncomfortable cross-version angle and needs an explicit decision record before shipping.
+### 8.1 Identity / slug for a path-less virtual project — RESOLVED
+
+A virtual project is given a **synthetic but real `path` rooted under `DEV3_HOME`**: `path = ~/.dev3.0/ops/<slug>`, where `<slug>` is a **human-readable, allocated-once** id derived from the project name (`operations`, `operations-2`, `operations-3`, … — dedup suffix on collision). Consequences:
+
+- `projectSlug(path)` stays **completely unchanged** (frozen algorithm) — it just munges the synthetic path string like any other (`~/.dev3.0/ops/operations-2` → `Users-<user>-.dev3.0-ops-operations-2`).
+- `src/cli/context.ts` cwd→task detection stays **unchanged** — it recomputes the same slug from `path`, so it keeps working with zero drift risk.
+- Task metadata lives at `data/<projectSlug(path)>/tasks.json`, exactly like git projects.
+- **Uniqueness rule:** the `<slug>` is unique across *all* projects (git + virtual) and is **never reused** while its `data/` dir survives — so a deleted-then-recreated board cannot inherit stale task data.
+- "Add git project" is guarded against paths under `~/.dev3.0/` so a real repo can never collide with the synthetic namespace.
+
+Rejected: a separate `dataKey`/`slug` field branching `taskDir` on `kind` (two code paths + must patch the independent `context.ts` recompute → exactly the drift the invariants warn against).
+
+### 8.2 Where managed operation folders live — RESOLVED
+
+Managed (auto) working dirs live in a **new additive tree**: `~/.dev3.0/ops/<slug>/<taskId>/work` (the working dir nests right under the project's synthetic `path`). This is additive (invariant-safe) and keeps the git-specific `worktrees/` tree semantically clean (no plain dirs masquerading as worktrees).
+
+- **Cleanup:** the managed temp dir is removed **on operation (task) delete**, NOT on completion — a completed operation keeps its task record (title/overview/notes) as history.
+- **Fixed (chosen) folder:** the user's own folder (e.g. `~/Downloads`) is **never** auto-created or auto-removed; only the task record is deleted.
+- No `renameSync`/`mv` ever applied to anything under `~/.dev3.0/` (invariant rule 2).
+
+### 8.3 Forward/backward compatibility of virtual projects — RESOLVED
+
+Virtual projects are stored in a **separate `~/.dev3.0/virtual-projects.json`**, NOT in `projects.json`. This is the invariant doc's rule-5 "parallel path" pattern:
+
+- Older app versions (N-2, side-by-side prod/dev builds) **never read** the new file → they are simply blind to the feature; `projects.json` stays 100% valid for them. No broken tiles, no git ops on a non-git project, no data loss.
+- New versions build the dashboard from `merge(projects.json, virtual-projects.json)`.
+- Tasks are **already isolated** (`data/<slug>/tasks.json` per project) — an old version never visits a slug it doesn't know, so virtual-project tasks are invisible to it for free.
+- `src/cli/context.ts` must read **both** files when mapping cwd→task (additive change, no algorithm change). Old CLI versions simply won't detect virtual-project tasks (acceptable — they predate the feature).
+
+Rejected: one `projects.json` with a `kind` field (old versions show a broken/erroring virtual tile on downgrade/side-by-side) and a `schemaVersion` bump (old versions' behavior is already fixed and can't react to the marker — weak protection).
 
 ## 9. What NOT to implement (now)
 
@@ -104,7 +131,9 @@ These touch the **frozen `~/.dev3.0/` on-disk invariants** (see `AGENTS.md` → 
 ## 10. Likely files to change (implementation preview, for later)
 
 - `src/shared/types.ts` — `Project.kind`, operation working-dir fields.
-- `src/bun/data.ts`, `src/bun/git.ts`, `src/bun/paths.ts` — virtual-project identity + managed dir path (respecting invariants).
+- `src/bun/data.ts` — load/save virtual projects from `~/.dev3.0/virtual-projects.json`, merge with `projects.json` for the dashboard; readable-slug allocation.
+- `src/bun/git.ts`, `src/bun/paths.ts` — virtual-project synthetic path + managed `ops/<slug>/<taskId>/work` dir (no change to `projectSlug()`).
+- `src/cli/context.ts` — read both `projects.json` and `virtual-projects.json` when mapping cwd→task (additive; no slug-algorithm change).
 - Task creation / worktree path (`rpc-handlers/task-lifecycle.ts`) — skip worktree for virtual.
 - `AddProjectModal.tsx` — type toggle.
 - `KanbanBoard.tsx` / column config — simplified columns for virtual.

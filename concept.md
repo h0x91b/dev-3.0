@@ -70,7 +70,8 @@ history. Modeled as `Project.kind: "virtual"` — reuses the dashboard, board, c
 labels, and notes; the git worktree is excluded entirely (no branch/diff/PR/review columns).
 Replaces the single `home-terminal`. Full spec: `docs/ux/feature-plans/virtual-operations-board.md`.
 
-- [ ] `Project.kind: "git" | "virtual"` discriminator (additive, forward-compat decision required)
+- [ ] `Project.kind: "git" | "virtual"` discriminator; virtual projects stored in a separate `~/.dev3.0/virtual-projects.json` (forward-compat: old versions stay blind to them)
+- [ ] Virtual identity = synthetic `path = ~/.dev3.0/ops/<readable-slug>` so `projectSlug()`/CLI stay unchanged
 - [ ] One built-in "Operations" board + ability to create more virtual boards
 - [ ] Operation = task with a managed temp dir (default) or a chosen folder (no worktree)
 - [ ] Simplified columns (todo → in-progress → user-questions → done); git/review domain hidden
