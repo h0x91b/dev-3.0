@@ -29,11 +29,13 @@ export interface AppState {
 	loading: boolean;
 	bellCounts: Map<string, number>;
 	/**
-	 * Optional human-readable reason per attention badge, set by `dev3 attention
-	 * "reason"`. Keyed by task id, mirrors `bellCounts` lifecycle (cleared when
-	 * the badge is cleared). Terminal-bell badges have no reason → absent here.
+	 * Accumulated human-readable reasons per attention badge, set by repeated
+	 * `dev3 attention "reason"` calls. Keyed by task id, mirrors `bellCounts`
+	 * lifecycle (cleared when the badge is cleared). Each call appends one entry;
+	 * the hover preview shows them all. Terminal-bell badges / empty reasons add
+	 * nothing here.
 	 */
-	bellReasons: Map<string, string>;
+	bellReasons: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage: Map<string, ResourceUsage>;
 	/**
@@ -143,9 +145,9 @@ export type AppAction =
  */
 function clearBellForRoute(
 	bellCounts: Map<string, number>,
-	bellReasons: Map<string, string>,
+	bellReasons: Map<string, string[]>,
 	route: Route,
-): { bellCounts: Map<string, number>; bellReasons: Map<string, string> } {
+): { bellCounts: Map<string, number>; bellReasons: Map<string, string[]> } {
 	let focusedTaskId: string | null = null;
 	if (route.screen === "task") focusedTaskId = route.taskId;
 	else if (route.screen === "project" && route.activeTaskId) focusedTaskId = route.activeTaskId;
@@ -323,11 +325,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			}
 			const bellCounts = new Map(state.bellCounts);
 			bellCounts.set(action.taskId, (bellCounts.get(action.taskId) ?? 0) + 1);
-			if (action.reason === undefined) {
+			// Only attention calls carry a reason; bare terminal bells don't.
+			const trimmed = action.reason?.trim();
+			if (!trimmed) {
 				return { ...state, bellCounts };
 			}
 			const bellReasons = new Map(state.bellReasons);
-			bellReasons.set(action.taskId, action.reason);
+			bellReasons.set(action.taskId, [...(bellReasons.get(action.taskId) ?? []), trimmed]);
 			return { ...state, bellCounts, bellReasons };
 		}
 		case "clearBell": {

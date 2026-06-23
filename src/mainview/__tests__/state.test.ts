@@ -717,10 +717,18 @@ describe("reducer", () => {
 
 	// ---- addBell with reason (dev3 attention) ----
 
-	it("addBell: stores reason and bumps count", () => {
+	it("addBell: stores reason as a list and bumps count", () => {
 		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "PR is ready" });
 		expect(next.bellCounts.get("t1")).toBe(1);
-		expect(next.bellReasons.get("t1")).toBe("PR is ready");
+		expect(next.bellReasons.get("t1")).toEqual(["PR is ready"]);
+	});
+
+	it("addBell: accumulates multiple reasons in order", () => {
+		let state = reducer(initialState, { type: "addBell", taskId: "t1", reason: "one" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "two" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "three" });
+		expect(state.bellCounts.get("t1")).toBe(3);
+		expect(state.bellReasons.get("t1")).toEqual(["one", "two", "three"]);
 	});
 
 	it("addBell: without reason leaves bellReasons untouched", () => {
@@ -730,16 +738,17 @@ describe("reducer", () => {
 		expect(next.bellReasons.size).toBe(0);
 	});
 
-	it("addBell: empty-string reason is stored (badge with no hover text)", () => {
-		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "" });
-		expect(next.bellReasons.get("t1")).toBe("");
+	it("addBell: empty/whitespace reason bumps count but adds no list entry", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "   " });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons.has("t1")).toBe(false);
 	});
 
-	it("clearBell: clears reason alongside the count", () => {
+	it("clearBell: clears reasons alongside the count", () => {
 		const state: AppState = {
 			...initialState,
 			bellCounts: new Map([["t1", 1]]),
-			bellReasons: new Map([["t1", "needs input"]]),
+			bellReasons: new Map([["t1", ["needs input"]]]),
 		};
 		const next = reducer(state, { type: "clearBell", taskId: "t1" });
 		expect(next.bellCounts.has("t1")).toBe(false);
@@ -749,17 +758,17 @@ describe("reducer", () => {
 	it("clearBell: clears a reason-only badge even with no count", () => {
 		const state: AppState = {
 			...initialState,
-			bellReasons: new Map([["t1", "ping"]]),
+			bellReasons: new Map([["t1", ["ping"]]]),
 		};
 		const next = reducer(state, { type: "clearBell", taskId: "t1" });
 		expect(next.bellReasons.has("t1")).toBe(false);
 	});
 
-	it("navigate: clears the focused task's reason along with its bell", () => {
+	it("navigate: clears the focused task's reasons along with its bell", () => {
 		const state: AppState = {
 			...initialState,
 			bellCounts: new Map([["t1", 2]]),
-			bellReasons: new Map([["t1", "look here"]]),
+			bellReasons: new Map([["t1", ["look here", "and here"]]]),
 		};
 		const next = reducer(state, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "t1" } });
 		expect(next.bellCounts.has("t1")).toBe(false);

@@ -54,7 +54,7 @@ interface ActiveTasksSidebarProps {
 	navigate: (route: Route) => void;
 	agents: CodingAgent[];
 	bellCounts: Map<string, number>;
-	bellReasons?: Map<string, string>;
+	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
 	onSwitchToBoard: () => void;
 	disableGlobalFindShortcut?: boolean;
@@ -624,7 +624,6 @@ function ActiveTasksSidebar({
 											{bellCount > 0 && (
 												<div
 													className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 shadow-sm shadow-red-500/40"
-													title={t("task.bellTooltip")}
 												>
 													<span className="text-[0.5625rem] font-bold text-white leading-none">
 														{bellCount > 9 ? "9+" : bellCount}
@@ -785,7 +784,7 @@ function ActiveTasksSidebar({
 						overview={hoveredTask?.overview ?? null}
 						userOverview={hoveredTask?.userOverview ?? null}
 						description={hoveredTask?.description ?? null}
-						bellReason={hoveredTask ? bellReasons?.get(hoveredTask.id) : undefined}
+						attentionReasons={hoveredTask ? bellReasons?.get(hoveredTask.id) : undefined}
 					/>
 				);
 			})()}

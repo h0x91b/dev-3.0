@@ -21,8 +21,8 @@ interface TerminalPreviewPopoverProps extends TerminalPreviewState {
 	/** User-edited override. When present, takes precedence over `overview`. */
 	userOverview?: string | null;
 	description?: string | null;
-	/** Attention reason from `dev3 attention` — shown as a banner atop the popover. */
-	bellReason?: string;
+	/** Accumulated attention reasons from `dev3 attention` — shown as a banner atop the popover. */
+	attentionReasons?: string[];
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -43,11 +43,11 @@ function TerminalPreviewPopover({
 	overview,
 	userOverview,
 	description,
-	bellReason,
+	attentionReasons,
 }: TerminalPreviewPopoverProps) {
 	const t = useT();
-	const reasonText = bellReason?.trim() || "";
-	const hasReason = reasonText.length > 0;
+	const reasons = (attentionReasons ?? []).map((r) => r.trim()).filter(Boolean);
+	const hasReason = reasons.length > 0;
 	const [editing, setEditing] = useState(false);
 	const [value, setValue] = useState("");
 	const [saving, setSaving] = useState(false);
@@ -165,11 +165,18 @@ function TerminalPreviewPopover({
 					>
 						{"\u{F009A}"}
 					</span>
-					<div className="min-w-0">
+					<div className="min-w-0 flex-1">
 						<div className="text-[0.5625rem] font-semibold uppercase tracking-wider text-danger/80">
-							{t("task.attentionLabel")}
+							{reasons.length > 1 ? `${t("task.attentionLabel")} (${reasons.length})` : t("task.attentionLabel")}
 						</div>
-						<div className="text-xs text-fg leading-snug break-words">{reasonText}</div>
+						<div className="flex flex-col gap-0.5 mt-0.5">
+							{reasons.map((reason, i) => (
+								<div key={i} className="text-xs text-fg leading-snug break-words flex gap-1.5">
+									{reasons.length > 1 && <span className="text-danger/60 flex-shrink-0">{i + 1}.</span>}
+									<span className="min-w-0">{reason}</span>
+								</div>
+							))}
+						</div>
 					</div>
 				</div>
 			)}
