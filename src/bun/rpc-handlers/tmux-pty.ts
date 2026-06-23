@@ -384,9 +384,19 @@ export async function launchTaskPty(
 	});
 	try {
 		const sessionSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		// For virtual ops, only add the split-right shell on a FRESH session — not
+		// when reconnecting to an existing one (recovery) — to avoid duplicate panes.
+		let sessionPreexisted = false;
+		if (project.kind === "virtual") {
+			const probe = spawn(pty.tmuxArgs(sessionSocket, "has-session", "-t", `dev3-${task.id.slice(0, 8)}`), { stdout: "ignore", stderr: "ignore" });
+			sessionPreexisted = (await probe.exited) === 0;
+		}
 		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
+		if (project.kind === "virtual" && !sessionPreexisted) {
+			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);
+		}
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
 			taskId: task.id.slice(0, 8),
@@ -394,6 +404,51 @@ export async function launchTaskPty(
 			stack: (err as Error)?.stack ?? "no stack",
 		});
 		throw err;
+	}
+}
+
+/**
+ * For a virtual ("Operations") task: after the main agent PTY session is up, add
+ * a split-right interactive shell pane in the same working dir, so every
+ * operation has both the agent (left) and a ready shell (right). Non-fatal: any
+ * failure just leaves the agent pane alone. Waits for the freshly-created tmux
+ * session to come up before splitting.
+ */
+async function addVirtualShellPane(task: Task, worktreePath: string, socket: string, userShell: string): Promise<void> {
+	const session = `dev3-${task.id.slice(0, 8)}`;
+	try {
+		let ready = false;
+		for (let i = 0; i < 40; i++) {
+			const probe = spawn(pty.tmuxArgs(socket, "has-session", "-t", session), { stdout: "ignore", stderr: "ignore" });
+			if ((await probe.exited) === 0) { ready = true; break; }
+			await new Promise((r) => setTimeout(r, 100));
+		}
+		if (!ready) {
+			log.warn("Virtual shell pane: session never came up, skipping split", { taskId: task.id.slice(0, 8) });
+			return;
+		}
+		const proc = spawn(pty.tmuxArgs(socket,
+			"split-window", "-h",
+			"-l", "40%",
+			"-P", "-F", "#{pane_id}",
+			"-e", `DEV3_TASK_ID=${task.id}`,
+			"-e", `DEV3_WORKTREE_ROOT=${worktreePath}`,
+			"-t", session,
+			"-c", worktreePath,
+			userShell,
+		), { stdout: "pipe", stderr: "pipe" });
+		const paneId = (await new Response(proc.stdout).text()).trim();
+		const exitCode = await proc.exited;
+		if (exitCode === 0 && paneId) {
+			spawn(pty.tmuxArgs(socket, "set-option", "-t", session, "pane-border-status", "top")).exited.catch(() => {});
+			spawn(pty.tmuxArgs(socket, "select-pane", "-t", `${session}.0`, "-T", "Agent")).exited.catch(() => {});
+			spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", "Shell")).exited.catch(() => {});
+			log.info("Virtual shell pane created", { taskId: task.id.slice(0, 8), paneId });
+		} else {
+			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode });
+		}
+	} catch (err) {
+		log.warn("Virtual shell pane creation failed (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 	}
 }
 

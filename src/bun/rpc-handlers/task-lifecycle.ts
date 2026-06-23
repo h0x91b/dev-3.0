@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -8,7 +9,7 @@ import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
 import { resolveCompletionRequest } from "../completion-requests";
-import { DEV3_HOME } from "../paths";
+import { DEV3_HOME, OPS_DIR } from "../paths";
 import {
 	assertTaskPreparationActive,
 	forgetTaskPreparation,
@@ -357,8 +358,11 @@ export async function activateTask(
 	project: Project,
 	task: Task,
 	opts?: { isReopen?: boolean },
-): Promise<{ worktreePath: string; branchName: string }> {
+): Promise<{ worktreePath: string; branchName: string | null }> {
 	const isReopen = opts?.isReopen ?? false;
+	if (project.kind === "virtual") {
+		return activateVirtualTask(project, task, isReopen);
+	}
 	const preResolved = await repoConfig.resolveProjectConfig(project);
 	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
 	const resolved = await resolveOperationalProjectConfig(project, wt.worktreePath);
@@ -380,6 +384,31 @@ export async function activateTask(
 	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
 	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen);
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
+}
+
+/**
+ * Activate a virtual ("Operations") task: create/resolve the working dir, then
+ * launch the agent + a split-right shell (handled in launchTaskPty). No git
+ * worktree, branch, sparse-checkout, cow-clones, or config merge.
+ *
+ * Working dir is the user-chosen fixed folder (`task.opsWorkDir`) if set,
+ * otherwise a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.
+ * `worktreePath` is reused to hold it (Runtime affordances key off it); the git
+ * domain is hidden in the UI by `kind` guards.
+ */
+async function activateVirtualTask(
+	project: Project,
+	task: Task,
+	isReopen: boolean,
+): Promise<{ worktreePath: string; branchName: null }> {
+	const fixed = task.opsWorkDir?.trim();
+	const workDir = fixed || git.virtualWorkDir(project, task);
+	await mkdir(workDir, { recursive: true });
+	log.info("Activating virtual task", { taskId: task.id.slice(0, 8), workDir, fixed: !!fixed });
+	// Scratch/reopen → blank prompt so the agent idles (the shell pane is usable).
+	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
+	await launchTaskPty(project, taskForLaunch, workDir, task.agentId, task.configId, true, isReopen);
+	return { worktreePath: workDir, branchName: null };
 }
 
 function scratchPlaceholder(now: Date = new Date()): string {
@@ -722,20 +751,25 @@ export async function moveTask(params: {
 				});
 			}
 
-			try {
-				await git.removeWorktree(project, task);
-			} catch (err) {
-				log.error("removeWorktree failed, continuing with task move", {
-					taskId: task.id,
-					error: String(err),
-				});
+			// Virtual ops keep their working dir as history — removed only on task
+			// delete. Git tasks tear down the worktree here.
+			if (project.kind !== "virtual") {
+				try {
+					await git.removeWorktree(project, task);
+				} catch (err) {
+					log.error("removeWorktree failed, continuing with task move", {
+						taskId: task.id,
+						error: String(err),
+					});
+				}
 			}
 		}
 
 		const updated = await data.updateTask(project, task.id, {
 			status: newStatus,
-			worktreePath: null,
-			branchName: null,
+			// Keep worktreePath for virtual ops so the history dir stays referenced
+			// (and deleteTask can clean it up). Git tasks clear it (worktree gone).
+			...(project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
 			customColumnId: null,
 		}, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
@@ -808,8 +842,22 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	if (isActive(task.status) || task.worktreePath) {
-		log.info("Task has worktree, cleaning up", { status: task.status, worktreePath: task.worktreePath });
-		await git.removeWorktree(project, task);
+		if (project.kind === "virtual") {
+			// SAFETY: only ever remove a MANAGED dir (under ~/.dev3.0/ops/). A
+			// user-chosen fixed folder (e.g. ~ or ~/Downloads) is NEVER auto-removed.
+			const dir = task.worktreePath;
+			if (dir && dir.startsWith(`${OPS_DIR}/`)) {
+				log.info("Removing managed virtual work dir on delete", { dir });
+				await rm(dir, { recursive: true, force: true }).catch((err) => {
+					log.warn("Failed to remove virtual work dir (best-effort)", { dir, error: String(err) });
+				});
+			} else {
+				log.info("Virtual task uses a fixed folder; not removing on delete", { dir });
+			}
+		} else {
+			log.info("Task has worktree, cleaning up", { status: task.status, worktreePath: task.worktreePath });
+			await git.removeWorktree(project, task);
+		}
 	}
 
 	await data.deleteTask(project, task.id);

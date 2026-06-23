@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task } from "../../shared/types";
 import { getPreparingStageProgress } from "../../shared/types";
 
@@ -78,6 +79,7 @@ vi.mock("../git", () => ({
 	pullOrigin: vi.fn(),
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
+	virtualWorkDir: vi.fn((p: any, t: any) => `${p.path}/${String(t.id).slice(0, 8)}/work`),
 	run: vi.fn(),
 	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
 }));
@@ -172,7 +174,13 @@ vi.mock("../logger", () => ({
 
 vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/test-dev3",
+	OPS_DIR: "/tmp/test-dev3/ops",
 }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return { ...actual, mkdir: vi.fn(() => Promise.resolve(undefined)), rm: vi.fn(() => Promise.resolve(undefined)) };
+});
 
 const mockSpawn = vi.fn();
 const mockSpawnSync = vi.fn();
@@ -2135,6 +2143,96 @@ describe("handlers.deleteTask", () => {
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+});
+
+// ================================================================
+// Virtual ("Operations") task lifecycle
+// ================================================================
+
+describe("virtual task lifecycle", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		// has-session probe → 0 (exists) so launchTaskPty treats the session as
+		// pre-existing and skips the split-shell loop (keeps the test fast).
+		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
+	});
+
+	const vproject = (overrides?: Partial<Project>) =>
+		makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", ...overrides });
+
+	it("todo → in-progress: NO git worktree, creates managed work dir + PTY", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates } as Task));
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		expect(git.createWorktree).not.toHaveBeenCalled();
+		expect(mkdir).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true });
+		expect(pty.createSession).toHaveBeenCalledWith("task-1", "vp1", "/tmp/test-dev3/ops/operations/task-1/work", expect.anything(), expect.anything(), expect.anything());
+		expect(result.worktreePath).toBe("/tmp/test-dev3/ops/operations/task-1/work");
+		expect(result.branchName).toBeNull();
+	});
+
+	it("uses a chosen fixed folder (opsWorkDir) instead of a managed dir", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, opsWorkDir: "/Users/me/Downloads" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates } as Task));
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		expect(pty.createSession).toHaveBeenCalledWith("task-1", "vp1", "/Users/me/Downloads", expect.anything(), expect.anything(), expect.anything());
+		expect(result.worktreePath).toBe("/Users/me/Downloads");
+	});
+
+	it("in-progress → completed: keeps work dir (no removeWorktree, worktreePath preserved)", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "in-progress", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "completed" });
+
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		const updateArgs = vi.mocked(data.updateTask).mock.calls[0]?.[2] as Record<string, unknown>;
+		expect(updateArgs.status).toBe("completed");
+		expect("worktreePath" in updateArgs).toBe(false);
+	});
+
+	it("delete: removes a MANAGED work dir under ops/", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		expect(rm).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true, force: true });
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+
+	it("delete: NEVER removes a fixed folder outside ops/", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: "/Users/me/Downloads", opsWorkDir: "/Users/me/Downloads" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(rm).not.toHaveBeenCalled();
+		expect(git.removeWorktree).not.toHaveBeenCalled();
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
 	});
 });
