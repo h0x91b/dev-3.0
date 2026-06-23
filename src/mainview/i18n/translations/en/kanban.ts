@@ -70,6 +70,7 @@ const kanban = {
 	"task.confirmCancel": "Cancel task \"{title}\"?",
 	"task.variant": "#{n}",
 	"task.attempt": "Variant {n}",
+	"task.scratchSession": "Live shell session",
 	"task.editSave": "Save",
 	"task.editCancel": "Cancel",
 	"task.failedEdit": "Failed to update task: {error}",

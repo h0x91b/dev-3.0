@@ -2248,3 +2248,30 @@ describe("TaskInfoPanel", () => {
 		});
 	});
 });
+
+describe("TaskInfoPanel — virtual (Operations) tasks", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
+		mockedApi.request.getResolvedProject.mockResolvedValue(project);
+	});
+
+	const vproject: Project = { ...project, kind: "virtual", path: "/tmp/.dev3.0/ops/operations" };
+
+	it("hides the git bar (branch name) for a virtual task", async () => {
+		await act(async () => {
+			renderPanel(
+				makeTask({ branchName: "dev3/should-not-show", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
+				{ project: vproject },
+			);
+		});
+		expect(screen.queryByText("dev3/should-not-show")).not.toBeInTheDocument();
+	});
+
+	it("still shows the git bar (branch name) for a git task", async () => {
+		await act(async () => {
+			renderPanel(makeTask({ branchName: "dev3/task-shown", worktreePath: "/tmp/wt/t1" }));
+		});
+		expect(await screen.findByText("dev3/task-shown")).toBeInTheDocument();
+	});
+});
