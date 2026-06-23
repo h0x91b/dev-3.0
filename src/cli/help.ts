@@ -298,9 +298,11 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "state",
-				usage: "dev3 ui state",
-				summary: "Show the focused task/project and whether the app is in the foreground.",
+				usage: "dev3 ui state [--json]",
+				summary: "Show the focused task/project, foreground, and the worktree's tmux layout.",
 				details: [
+					"Includes an ASCII map of the active tmux window's panes plus a pane/window list.",
+					"--json    Emit the raw state object (for machine consumption).",
 					"Lets an agent decide whether a ping is needed (e.g. skip if the user is already on this task).",
 				],
 			},

@@ -158,26 +158,64 @@ describe("attention", () => {
 // ─── ui state ────────────────────────────────────────────────────────────────
 
 describe("ui state", () => {
-	it("prints the reported UI state", async () => {
+	it("prints the reported UI state and passes the context task id", async () => {
 		mockSend.mockResolvedValue(
-			okResp({ appRunning: true, foreground: true, activeProjectId: "proj-001", activeTaskId: "task-9" }),
+			okResp({ appRunning: true, foreground: true, activeProjectId: "proj-001", activeTaskId: "task-9", tmux: null }),
 		);
 
 		await handleUi("state", args(), SOCKET, CTX);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.state", {});
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.state", { taskId: CTX.taskId });
 		expect(stdoutOutput).toContain("foreground");
 		expect(stdoutOutput).toContain("yes");
 	});
 
 	it("notes when the current task is the focused one", async () => {
 		mockSend.mockResolvedValue(
-			okResp({ appRunning: true, foreground: true, activeProjectId: CTX.projectId, activeTaskId: CTX.taskId }),
+			okResp({ appRunning: true, foreground: true, activeProjectId: CTX.projectId, activeTaskId: CTX.taskId, tmux: null }),
 		);
 
 		await handleUi("state", args(), SOCKET, CTX);
 
 		expect(stdoutOutput).toContain("This task is currently focused");
+	});
+
+	it("renders the tmux layout (ASCII map + pane list) when present", async () => {
+		mockSend.mockResolvedValue(
+			okResp({
+				appRunning: true,
+				foreground: false,
+				activeProjectId: CTX.projectId,
+				activeTaskId: CTX.taskId,
+				tmux: {
+					sessionName: "dev3-aaaaaaaa",
+					exists: true,
+					windows: [{ index: 0, name: "agent", active: true, panes: 2 }],
+					panes: [
+						{ windowIndex: 0, paneId: "%0", active: true, left: 0, top: 0, width: 80, height: 24, command: "claude", title: "" },
+						{ windowIndex: 0, paneId: "%1", active: false, left: 0, top: 25, width: 80, height: 24, command: "zsh", title: "" },
+					],
+				},
+			}),
+		);
+
+		await handleUi("state", args(), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("dev3-aaaaaaaa");
+		expect(stdoutOutput).toContain("claude");
+		expect(stdoutOutput).toContain("%0");
+		expect(stdoutOutput).toContain("┌"); // ASCII box drawn
+	});
+
+	it("emits raw JSON with --json", async () => {
+		mockSend.mockResolvedValue(
+			okResp({ appRunning: true, foreground: true, activeProjectId: "p", activeTaskId: "t", tmux: null }),
+		);
+
+		await handleUi("state", args([], { json: "true" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain('"appRunning": true');
+		expect(stdoutOutput).not.toContain("foreground     yes");
 	});
 
 	it("rejects an unknown subcommand", async () => {

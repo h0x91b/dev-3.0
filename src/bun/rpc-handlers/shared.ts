@@ -160,10 +160,11 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
  * exposes no click callback, so we treat "app became foreground shortly after"
  * as the click.
  */
-export function notifyFromCliDesktop(opts: { taskId: string; projectId: string; title: string; body: string }): void {
+export function notifyFromCliDesktop(opts: { taskId: string; projectId: string; title: string; body: string; subtitle?: string }): void {
 	Utils.showNotification({
 		title: opts.title,
 		body: opts.body,
+		...(opts.subtitle ? { subtitle: opts.subtitle } : {}),
 		silent: true,
 	});
 	// Don't arm click-to-open while the app is already focused — see the rationale

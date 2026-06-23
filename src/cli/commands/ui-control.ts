@@ -3,6 +3,7 @@ import { exitError, exitUsage, printDetail } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import type { TmuxLayout, TmuxPaneInfo } from "../../shared/types";
 
 const NOTIFY_MAX_LEN = 500;
 
@@ -93,9 +94,101 @@ export async function handleAttention(
 	process.stdout.write(`Attention badge raised on task ${data.taskId.slice(0, 8)}.\n`);
 }
 
+interface UiStateResponse {
+	appRunning: boolean;
+	foreground: boolean;
+	activeProjectId: string | null;
+	activeTaskId: string | null;
+	tmux: TmuxLayout | null;
+}
+
+/**
+ * Render the active window's panes as a small ASCII box map, scaled to fit a
+ * fixed canvas. Geometry comes from tmux pane_left/top/width/height (char cells).
+ */
+function renderPaneMap(panes: TmuxPaneInfo[]): string[] {
+	if (panes.length === 0) return [];
+	const winW = Math.max(...panes.map((p) => p.left + p.width));
+	const winH = Math.max(...panes.map((p) => p.top + p.height));
+	if (winW <= 0 || winH <= 0) return [];
+
+	const COLS = Math.min(winW, 54);
+	const ROWS = Math.min(Math.max(Math.round(winH * (COLS / winW) * 0.5), 6), 18);
+	const sx = COLS / winW;
+	const sy = ROWS / winH;
+	const grid: string[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(" "));
+
+	const put = (x: number, y: number, ch: string) => {
+		if (y >= 0 && y < ROWS && x >= 0 && x < COLS) grid[y][x] = ch;
+	};
+
+	for (const p of panes) {
+		const x0 = Math.min(Math.round(p.left * sx), COLS - 1);
+		const y0 = Math.min(Math.round(p.top * sy), ROWS - 1);
+		const x1 = Math.min(Math.round((p.left + p.width) * sx) - 1, COLS - 1);
+		const y1 = Math.min(Math.round((p.top + p.height) * sy) - 1, ROWS - 1);
+		if (x1 <= x0 || y1 <= y0) continue;
+
+		for (let x = x0; x <= x1; x++) {
+			put(x, y0, "─");
+			put(x, y1, "─");
+		}
+		for (let y = y0; y <= y1; y++) {
+			put(x0, y, "│");
+			put(x1, y, "│");
+		}
+		put(x0, y0, "┌");
+		put(x1, y0, "┐");
+		put(x0, y1, "└");
+		put(x1, y1, "┘");
+
+		const label = `${p.active ? "*" : ""}${p.command || p.paneId}`;
+		const maxLen = x1 - x0 - 1;
+		if (maxLen > 0) {
+			const text = label.slice(0, maxLen);
+			for (let i = 0; i < text.length; i++) put(x0 + 1 + i, y0 + 1, text[i]);
+		}
+	}
+
+	return grid.map((row) => row.join("").replace(/\s+$/, ""));
+}
+
+function printTmuxSection(layout: TmuxLayout): void {
+	process.stdout.write(`\ntmux  ${layout.sessionName}`);
+	if (!layout.exists) {
+		process.stdout.write("  (no session)\n");
+		return;
+	}
+	process.stdout.write(`  (${layout.windows.length} window(s), ${layout.panes.length} pane(s))\n`);
+
+	const activeWindow = layout.windows.find((w) => w.active) ?? layout.windows[0];
+	if (activeWindow) {
+		const activePanes = layout.panes.filter((p) => p.windowIndex === activeWindow.index);
+		process.stdout.write(`\nwindow ${activeWindow.index} "${activeWindow.name}" — layout:\n`);
+		for (const line of renderPaneMap(activePanes)) {
+			process.stdout.write(`  ${line}\n`);
+		}
+		process.stdout.write("\npanes (active window):\n");
+		for (const p of activePanes) {
+			const marker = p.active ? "*" : " ";
+			process.stdout.write(
+				`  ${marker} ${p.paneId.padEnd(5)} ${`${p.width}x${p.height}`.padEnd(8)} ${p.command}\n`,
+			);
+		}
+	}
+
+	if (layout.windows.length > 1) {
+		process.stdout.write("\nwindows:\n");
+		for (const w of layout.windows) {
+			process.stdout.write(`  ${w.active ? "*" : " "} ${String(w.index).padEnd(3)} ${w.name} (${w.panes} pane(s))\n`);
+		}
+	}
+}
+
 /**
  * `dev3 ui state` — report what the app is currently showing (focused task /
- * project, foreground) so an agent can decide whether a ping is even needed.
+ * project, foreground) plus the worktree's tmux layout (windows, panes, an ASCII
+ * map) so an agent can decide whether a ping is even needed. `--json` for machines.
  */
 export async function handleUi(
 	subcommand: string | undefined,
@@ -106,17 +199,21 @@ export async function handleUi(
 	if (subcommand !== "state") {
 		exitUsage(`Unknown subcommand: ui ${subcommand || "(none)"}\nAvailable: ui state`);
 	}
-	rejectUnknownFlags(args, []);
+	rejectUnknownFlags(args, ["task", "task-id", "project", "json"]);
 
-	const resp = await sendRequest(socketPath, "ui.state", {});
+	const rawTaskId = args.flags.task || args.flags["task-id"] || context?.taskId;
+	const params: Record<string, unknown> = {};
+	if (rawTaskId) params.taskId = expandShortId(rawTaskId, context);
+
+	const resp = await sendRequest(socketPath, "ui.state", params);
 	if (!resp.ok) exitError(resp.error || "Failed to read UI state");
 
-	const d = resp.data as {
-		appRunning: boolean;
-		foreground: boolean;
-		activeProjectId: string | null;
-		activeTaskId: string | null;
-	};
+	const d = resp.data as UiStateResponse;
+
+	if ("json" in args.flags) {
+		process.stdout.write(`${JSON.stringify(d, null, 2)}\n`);
+		return;
+	}
 
 	printDetail([
 		["app", d.appRunning ? "running" : "not running"],
@@ -130,4 +227,6 @@ export async function handleUi(
 			`\nThis task is currently focused${d.foreground ? " and the app is in the foreground." : " (app in background)."}\n`,
 		);
 	}
+
+	if (d.tmux) printTmuxSection(d.tmux);
 }

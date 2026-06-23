@@ -900,6 +900,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				overview={task.overview ?? null}
 				userOverview={task.userOverview ?? null}
 				description={task.description}
+				bellReason={bellReason}
 			/>
 		</div>
 	);

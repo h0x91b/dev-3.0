@@ -9,6 +9,8 @@ interface ToastEntry {
 	durationMs: number;
 	/** Optional click handler — makes the whole toast a button (e.g. navigate to a task). */
 	onClick?: () => void;
+	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
+	context?: string;
 }
 
 type Listener = (entry: ToastEntry) => void;
@@ -26,6 +28,7 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts) {
 		variant,
 		durationMs: opts?.durationMs ?? DEFAULT_DURATION_MS,
 		onClick: opts?.onClick,
+		context: opts?.context,
 	};
 	// No host mounted (e.g. in unit tests) → silently drop.
 	listeners.forEach((l) => l(entry));
@@ -35,6 +38,8 @@ interface ToastOpts {
 	durationMs?: number;
 	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
 	onClick?: () => void;
+	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
+	context?: string;
 }
 
 /**
@@ -101,13 +106,27 @@ export function ToastHost() {
 										toastEntry.onClick?.();
 										dismiss(toastEntry.id);
 									}}
-									className="flex-1 min-w-0 text-left text-fg text-sm leading-relaxed break-words pr-1 hover:underline cursor-pointer"
+									className="flex-1 min-w-0 text-left pr-1 cursor-pointer group"
 								>
-									{toastEntry.message}
+									{toastEntry.context && (
+										<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
+											{toastEntry.context}
+										</div>
+									)}
+									<div className="text-fg text-sm leading-relaxed break-words group-hover:underline">
+										{toastEntry.message}
+									</div>
 								</button>
 							) : (
-								<div className="flex-1 min-w-0 text-fg text-sm leading-relaxed break-words pr-1">
-									{toastEntry.message}
+								<div className="flex-1 min-w-0 pr-1">
+									{toastEntry.context && (
+										<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
+											{toastEntry.context}
+										</div>
+									)}
+									<div className="text-fg text-sm leading-relaxed break-words">
+										{toastEntry.message}
+									</div>
 								</div>
 							)}
 							<button

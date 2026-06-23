@@ -799,11 +799,14 @@ function App() {
 	// is clickable and opens that task, honoring the user's task-open-mode.
 	useEffect(() => {
 		function onCliToast(e: Event) {
-			const { taskId, projectId, message, level } = (e as CustomEvent).detail as {
+			const { taskId, projectId, message, level, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
 				level: "info" | "success" | "error";
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
 			};
 			if (!message) return;
 			const onClick =
@@ -814,7 +817,11 @@ function App() {
 							else navigate({ screen: "project", projectId, activeTaskId: taskId });
 						}
 					: undefined;
-			toast[level](message, { onClick });
+			// Compact source line, e.g. "#804 · dev-3.0 · Task title".
+			const context = taskSeq !== undefined
+				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
+				: undefined;
+			toast[level](message, { onClick, context });
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);

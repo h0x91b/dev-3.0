@@ -5,6 +5,7 @@ import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
+import { getTmuxLayout } from "./pty-server";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { addVent } from "./vents";
@@ -652,11 +653,13 @@ const handlers: Record<string, Handler> = {
 		let taskId: string | null = null;
 		let projectId: string | null = null;
 		let task: Task | null = null;
+		let projectName: string | null = null;
 		if (params.taskId) {
 			const resolved = await resolveTaskFromParams(params);
 			task = resolved.task;
 			taskId = resolved.task.id;
 			projectId = resolved.project.id;
+			projectName = resolved.project.name;
 		}
 
 		if (desktop) {
@@ -668,13 +671,20 @@ const handlers: Record<string, Handler> = {
 				projectId,
 				title: `#${task.seq} ${getTaskTitle(task)}`,
 				body: message,
+				subtitle: projectName ?? undefined,
 			});
 			return { delivered: true, mode: "desktop", taskId: task.id };
 		}
 
 		const push = getPushMessage();
 		if (!push) return { delivered: false, mode: "toast" };
-		push("cliToast", { taskId, projectId, message, level });
+		push("cliToast", {
+			taskId,
+			projectId,
+			message,
+			level,
+			...(task ? { taskSeq: task.seq, taskTitle: getTaskTitle(task), projectName: projectName ?? undefined } : {}),
+		});
 		return { delivered: true, mode: "toast", taskId };
 	},
 
@@ -690,13 +700,16 @@ const handlers: Record<string, Handler> = {
 
 	// UI control: report what the app is currently showing, so the agent can decide
 	// whether a ping is even needed (e.g. skip if the user is already on this task).
-	"ui.state": async () => {
+	"ui.state": async (params) => {
 		const ctx = getActiveContext();
+		const taskId = params.taskId as string | undefined;
 		return {
 			appRunning: true,
 			foreground: isAppForeground(),
 			activeProjectId: ctx.projectId,
 			activeTaskId: ctx.taskId,
+			// tmux layout for the requested task (CLI passes the worktree's task id).
+			tmux: taskId ? await getTmuxLayout(taskId) : null,
 		};
 	},
 

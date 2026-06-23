@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
@@ -506,6 +507,81 @@ export async function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Snapshot the tmux layout for a task's session: its windows and every pane's
+ * geometry/command. Used by `dev3 ui state` to render an ASCII map for agents.
+ * Returns `exists: false` (empty windows/panes) when the session is gone.
+ */
+export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): Promise<TmuxLayout> {
+	const sessionName = computeTmuxSessionName(taskId, "task");
+	const empty: TmuxLayout = { sessionName, exists: false, windows: [], panes: [] };
+
+	const run = async (...args: string[]): Promise<string | null> => {
+		try {
+			const proc = spawn(tmuxArgs(socket, ...args), { stdout: "pipe", stderr: "pipe" });
+			const stdout = await new Response(proc.stdout).text();
+			const exitCode = await proc.exited;
+			if (exitCode !== 0) return null;
+			return stdout;
+		} catch {
+			return null;
+		}
+	};
+
+	const windowsOut = await run(
+		"list-windows",
+		"-t",
+		sessionName,
+		"-F",
+		"#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
+	);
+	if (windowsOut === null) return empty;
+
+	const windows: TmuxWindowInfo[] = windowsOut
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const [index, name, active, panes] = line.split("\t");
+			return {
+				index: Number(index),
+				name: name ?? "",
+				active: active === "1",
+				panes: Number(panes) || 0,
+			};
+		});
+
+	const panesOut = await run(
+		"list-panes",
+		"-s",
+		"-t",
+		sessionName,
+		"-F",
+		"#{window_index}\t#{pane_id}\t#{pane_active}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}\t#{pane_title}",
+	);
+
+	const panes: TmuxPaneInfo[] = (panesOut ?? "")
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const [windowIndex, paneId, active, left, top, width, height, command, ...titleParts] = line.split("\t");
+			return {
+				windowIndex: Number(windowIndex),
+				paneId: paneId ?? "",
+				active: active === "1",
+				left: Number(left) || 0,
+				top: Number(top) || 0,
+				width: Number(width) || 0,
+				height: Number(height) || 0,
+				command: command ?? "",
+				title: titleParts.join("\t"),
+			};
+		});
+
+	return { sessionName, exists: windows.length > 0, windows, panes };
 }
 
 /**

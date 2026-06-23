@@ -21,6 +21,7 @@ vi.mock("../git", () => ({
 
 vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
+	getTmuxLayout: vi.fn(async () => ({ sessionName: "dev3-task1234", exists: false, windows: [], panes: [] })),
 }));
 
 vi.mock("../rpc-handlers/tmux-pty", () => ({
@@ -504,12 +505,17 @@ describe("ui control (notify / attention / state)", () => {
 			makeRequest("ui.notify", { message: "done", level: "success", taskId: task.id, projectId: project.id }),
 		);
 		expect(resp.ok).toBe(true);
-		expect(pushFn).toHaveBeenCalledWith("cliToast", {
-			taskId: task.id,
-			projectId: project.id,
-			message: "done",
-			level: "success",
-		});
+		expect(pushFn).toHaveBeenCalledWith(
+			"cliToast",
+			expect.objectContaining({
+				taskId: task.id,
+				projectId: project.id,
+				message: "done",
+				level: "success",
+				taskSeq: task.seq,
+				projectName: project.name,
+			}),
+		);
 	});
 
 	it("ui.notify: --desktop fires a native notification via notifyFromCliDesktop", async () => {
@@ -573,7 +579,17 @@ describe("ui control (notify / attention / state)", () => {
 			foreground: true,
 			activeProjectId: "proj-1",
 			activeTaskId: "task-9",
+			tmux: null,
 		});
+	});
+
+	it("ui.state: includes the tmux layout when a taskId is given", async () => {
+		vi.mocked(isAppForeground).mockReturnValue(false);
+		vi.mocked(getActiveContext).mockReturnValue({ projectId: null, taskId: null });
+
+		const resp = await handleRequest(makeRequest("ui.state", { taskId: "task-abc" }));
+		expect(resp.ok).toBe(true);
+		expect((resp.data as { tmux: unknown }).tmux).toMatchObject({ sessionName: "dev3-task1234", exists: false });
 	});
 });
 

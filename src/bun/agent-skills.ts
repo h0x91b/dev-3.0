@@ -213,8 +213,8 @@ You can pull the user back to this task through the app UI — useful when you a
 
 - \`dev3 notify "message" [--level info|success|error]\` — show a clickable in-app toast. Clicking it opens this task. Use \`--level error\` for failures, \`success\` for "done".
 - \`dev3 notify "message" --desktop\` — fire a native OS notification instead (shows even when the app is in the background); clicking it focuses this task.
-- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows on hover. The badge clears when the user opens the task.
-- \`dev3 ui state\` — check what the app is showing (focused task/project, foreground). Use it to avoid pinging when the user is already looking at this task.
+- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows on hover (and in the card's hover preview). The badge clears when the user opens the task.
+- \`dev3 ui state\` — check what the app is showing (focused task/project, foreground) plus this worktree's tmux layout (windows, panes, an ASCII pane map; \`--json\` for raw data). Use it to avoid pinging when the user is already looking at this task, or to inspect your own pane setup.
 
 Use these sparingly — a ping per real blocker or completion, not per step. Prefer a toast for in-app nudges and \`--desktop\` only when the user likely switched away.
 `;

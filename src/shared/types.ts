@@ -961,6 +961,35 @@ export interface ResourceUsage {
 	rss: number;
 }
 
+// ---- tmux layout (dev3 ui state) ----
+
+export interface TmuxWindowInfo {
+	index: number;
+	name: string;
+	active: boolean;
+	panes: number;
+}
+
+export interface TmuxPaneInfo {
+	windowIndex: number;
+	paneId: string;
+	active: boolean;
+	/** Geometry in character cells, relative to the window. */
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+	command: string;
+	title: string;
+}
+
+export interface TmuxLayout {
+	sessionName: string;
+	exists: boolean;
+	windows: TmuxWindowInfo[];
+	panes: TmuxPaneInfo[];
+}
+
 // ---- Task dev server ----
 
 export interface DevServerStatus {
@@ -1758,7 +1787,16 @@ export type AppRPCSchema = {
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.
 			 */
-			cliToast: { taskId: string | null; projectId: string | null; message: string; level: "info" | "success" | "error" };
+			cliToast: {
+				taskId: string | null;
+				projectId: string | null;
+				message: string;
+				level: "info" | "success" | "error";
+				/** Source-task context for the toast header (present when a task was resolved). */
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
 			/**
 			 * CLI-initiated attention signal (`dev3 attention`). Lights the red bell
 			 * badge on the task card with a hoverable `reason`, same surface the
