@@ -20,6 +20,9 @@ export type Route =
 /** Maximum number of entries kept in the navigation history stack. */
 export const HISTORY_LIMIT = 15;
 
+/** Max attention reasons kept per task in the hover preview; oldest drop off. */
+export const MAX_ATTENTION_REASONS = 5;
+
 export interface AppState {
 	route: Route;
 	routeHistory: Route[];
@@ -331,7 +334,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				return { ...state, bellCounts };
 			}
 			const bellReasons = new Map(state.bellReasons);
-			bellReasons.set(action.taskId, [...(bellReasons.get(action.taskId) ?? []), trimmed]);
+			// Keep only the most recent MAX_ATTENTION_REASONS; oldest drop off.
+			const nextList = [...(bellReasons.get(action.taskId) ?? []), trimmed].slice(-MAX_ATTENTION_REASONS);
+			bellReasons.set(action.taskId, nextList);
 			return { ...state, bellCounts, bellReasons };
 		}
 		case "clearBell": {

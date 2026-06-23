@@ -731,6 +731,15 @@ describe("reducer", () => {
 		expect(state.bellReasons.get("t1")).toEqual(["one", "two", "three"]);
 	});
 
+	it("addBell: caps reasons at 5, dropping the oldest", () => {
+		let state: AppState = initialState;
+		for (const r of ["r1", "r2", "r3", "r4", "r5", "r6", "r7"]) {
+			state = reducer(state, { type: "addBell", taskId: "t1", reason: r });
+		}
+		expect(state.bellCounts.get("t1")).toBe(7);
+		expect(state.bellReasons.get("t1")).toEqual(["r3", "r4", "r5", "r6", "r7"]);
+	});
+
 	it("addBell: without reason leaves bellReasons untouched", () => {
 		const next = reducer(initialState, { type: "addBell", taskId: "t1" });
 		expect(next.bellCounts.get("t1")).toBe(1);
