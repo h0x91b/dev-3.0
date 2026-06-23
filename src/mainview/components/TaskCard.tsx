@@ -36,6 +36,8 @@ interface TaskCardProps {
 	onTaskMoved: (taskId: string) => void;
 	resourceUsage?: ResourceUsage;
 	bellCount?: number;
+	/** Optional reason for the attention badge (from `dev3 attention "reason"`), shown on hover. */
+	bellReason?: string;
 	ports?: PortInfo[];
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
@@ -44,7 +46,7 @@ interface TaskCardProps {
 	prInfo?: { number: number; url: string };
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReason, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -468,7 +470,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{bellCount > 0 && (
 				<div
 					className="absolute -top-1.5 -right-1.5 z-10 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 rounded-full bg-red-500 shadow-lg shadow-red-500/40"
-					title={t("task.bellTooltip")}
+					title={bellReason?.trim() || t("task.bellTooltip")}
 				>
 					<span className="text-[0.6875rem] font-bold text-white leading-none">
 						{bellCount > 9 ? "9+" : bellCount}

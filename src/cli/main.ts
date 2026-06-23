@@ -16,6 +16,7 @@ import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
 import { handleGui } from "./commands/gui";
 import { handleConversations } from "./commands/conversations";
+import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 import { resolveHelp } from "./help";
@@ -50,6 +51,9 @@ Commands:
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
   dev3 dev-server status [task-id]      Show task dev server status
+  dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
+  dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
+  dev3 ui state                          Show what the app is showing (focused task/project, foreground)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
   dev3 install-hooks                     Install agent hooks in current worktree
@@ -162,6 +166,15 @@ async function main(): Promise<void> {
 				return await handleConfig(subcommand, args, socketPath, context);
 			case "dev-server":
 				return await handleDevServer(subcommand, args, socketPath, context);
+			case "notify":
+				// `notify` takes no subcommand — its first positional is the message,
+				// so re-parse from the raw args without the subcommand split.
+				return await handleNotify(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
+			case "attention":
+				// Same shape as `notify`: first positional is the reason.
+				return await handleAttention(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
+			case "ui":
+				return await handleUi(subcommand, args, socketPath, context);
 			default:
 				exitUsage(`Unknown command: ${command}\nRun "dev3 --help" for usage.`);
 		}

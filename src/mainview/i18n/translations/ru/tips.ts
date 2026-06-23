@@ -206,6 +206,8 @@ const tips = {
 	"tip.terminalSelectCopies.body": "Просто выделите текст в любой панели терминала — он автоматически попадает в буфер обмена, ⌘C не нужен.",
 	"tip.quickSwitchRecentFirst.title": "Недавние проекты сверху",
 	"tip.quickSwitchRecentFirst.body": "Откройте Cmd/Ctrl+K — проекты, к которым вы переходили последними, будут вверху списка.",
+	"tip.agentCanPingYou.title": "Агенты могут позвать вас",
+	"tip.agentCanPingYou.body": "Агент вызывает `dev3 notify` или `dev3 attention` — появляется кликабельный тост или бейдж, переносящий вас на его задачу.",
 };
 
 export default tips;

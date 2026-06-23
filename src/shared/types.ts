@@ -1754,6 +1754,17 @@ export type AppRPCSchema = {
 			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
 			 */
 			openTaskFromNotification: { taskId: string; projectId: string };
+			/**
+			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
+			 * are present the toast is clickable and navigates to that task.
+			 */
+			cliToast: { taskId: string | null; projectId: string | null; message: string; level: "info" | "success" | "error" };
+			/**
+			 * CLI-initiated attention signal (`dev3 attention`). Lights the red bell
+			 * badge on the task card with a hoverable `reason`, same surface the
+			 * terminal bell uses.
+			 */
+			cliAttention: { taskId: string; reason: string };
 		};
 	}>;
 	webview: RPCSchema<{

@@ -206,6 +206,19 @@ Prefer \`status\` before \`start\` to avoid unnecessary restarts.
 If you started the dev server only for verification, stop it afterwards unless the user asked to keep it running.
 `;
 
+const SKILL_GET_ATTENTION = `
+## Getting the user's attention
+
+You can pull the user back to this task through the app UI — useful when you are blocked, finished a long run, or hit something that needs eyes. These auto-target the current worktree's task.
+
+- \`dev3 notify "message" [--level info|success|error]\` — show a clickable in-app toast. Clicking it opens this task. Use \`--level error\` for failures, \`success\` for "done".
+- \`dev3 notify "message" --desktop\` — fire a native OS notification instead (shows even when the app is in the background); clicking it focuses this task.
+- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows on hover. The badge clears when the user opens the task.
+- \`dev3 ui state\` — check what the app is showing (focused task/project, foreground). Use it to avoid pinging when the user is already looking at this task.
+
+Use these sparingly — a ping per real blocker or completion, not per step. Prefer a toast for in-app nudges and \`--desktop\` only when the user likely switched away.
+`;
+
 const SKILL_PROJECT_CONFIG_REDIRECT = `
 ## Project configuration (.dev3/config.json)
 
@@ -328,9 +341,9 @@ Call it **silently, at most once per user message**: do not announce it, do not 
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 

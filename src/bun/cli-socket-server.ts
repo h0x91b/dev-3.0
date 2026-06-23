@@ -3,7 +3,7 @@ import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskS
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
-import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange } from "./rpc-handlers";
+import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
@@ -634,6 +634,70 @@ const handlers: Record<string, Handler> = {
 		}
 		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "completed" });
 		return { approved: true, task: updated };
+	},
+
+	// UI control: surface an in-app toast (or native OS notification) from the CLI.
+	"ui.notify": async (params) => {
+		const message = ((params.message as string) ?? "").trim();
+		if (!message) throw new Error("message is required");
+		const rawLevel = (params.level as string) ?? "info";
+		if (rawLevel !== "info" && rawLevel !== "success" && rawLevel !== "error") {
+			throw new Error(`Invalid level "${rawLevel}". Use info, success, or error.`);
+		}
+		const level = rawLevel as "info" | "success" | "error";
+		const desktop = params.desktop === true;
+
+		// Resolve the originating task when one is in context, so the toast/notification
+		// is clickable and lands the user on it.
+		let taskId: string | null = null;
+		let projectId: string | null = null;
+		let task: Task | null = null;
+		if (params.taskId) {
+			const resolved = await resolveTaskFromParams(params);
+			task = resolved.task;
+			taskId = resolved.task.id;
+			projectId = resolved.project.id;
+		}
+
+		if (desktop) {
+			if (!task || !projectId) {
+				throw new Error("desktop notification requires a task — run inside a worktree or pass --task <id>");
+			}
+			notifyFromCliDesktop({
+				taskId: task.id,
+				projectId,
+				title: `#${task.seq} ${getTaskTitle(task)}`,
+				body: message,
+			});
+			return { delivered: true, mode: "desktop", taskId: task.id };
+		}
+
+		const push = getPushMessage();
+		if (!push) return { delivered: false, mode: "toast" };
+		push("cliToast", { taskId, projectId, message, level });
+		return { delivered: true, mode: "toast", taskId };
+	},
+
+	// UI control: light the red attention badge on a task card with a reason.
+	"ui.attention": async (params) => {
+		const reason = ((params.reason as string) ?? "").trim();
+		const { project, task } = await resolveTaskFromParams(params);
+		const push = getPushMessage();
+		if (!push) return { delivered: false, taskId: task.id };
+		push("cliAttention", { taskId: task.id, reason });
+		return { delivered: true, taskId: task.id, projectId: project.id };
+	},
+
+	// UI control: report what the app is currently showing, so the agent can decide
+	// whether a ping is even needed (e.g. skip if the user is already on this task).
+	"ui.state": async () => {
+		const ctx = getActiveContext();
+		return {
+			appRunning: true,
+			foreground: isAppForeground(),
+			activeProjectId: ctx.projectId,
+			activeTaskId: ctx.taskId,
+		};
 	},
 
 	"devServer.start": async (params) => {

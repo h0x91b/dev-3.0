@@ -7,6 +7,8 @@ interface ToastEntry {
 	message: string;
 	variant: ToastVariant;
 	durationMs: number;
+	/** Optional click handler — makes the whole toast a button (e.g. navigate to a task). */
+	onClick?: () => void;
 }
 
 type Listener = (entry: ToastEntry) => void;
@@ -17,12 +19,13 @@ let counter = 0;
 /** Default auto-dismiss delay. Long on purpose so error messages aren't missed. */
 const DEFAULT_DURATION_MS = 30_000;
 
-function emit(message: string, variant: ToastVariant, durationMs?: number) {
+function emit(message: string, variant: ToastVariant, opts?: ToastOpts) {
 	const entry: ToastEntry = {
 		id: ++counter,
 		message,
 		variant,
-		durationMs: durationMs ?? DEFAULT_DURATION_MS,
+		durationMs: opts?.durationMs ?? DEFAULT_DURATION_MS,
+		onClick: opts?.onClick,
 	};
 	// No host mounted (e.g. in unit tests) → silently drop.
 	listeners.forEach((l) => l(entry));
@@ -30,6 +33,8 @@ function emit(message: string, variant: ToastVariant, durationMs?: number) {
 
 interface ToastOpts {
 	durationMs?: number;
+	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
+	onClick?: () => void;
 }
 
 /**
@@ -41,10 +46,10 @@ interface ToastOpts {
  * (browser) mode.
  */
 export const toast = {
-	error: (message: string, opts?: ToastOpts) => emit(message, "error", opts?.durationMs),
-	success: (message: string, opts?: ToastOpts) => emit(message, "success", opts?.durationMs),
-	info: (message: string, opts?: ToastOpts) => emit(message, "info", opts?.durationMs),
-	warning: (message: string, opts?: ToastOpts) => emit(message, "warning", opts?.durationMs),
+	error: (message: string, opts?: ToastOpts) => emit(message, "error", opts),
+	success: (message: string, opts?: ToastOpts) => emit(message, "success", opts),
+	info: (message: string, opts?: ToastOpts) => emit(message, "info", opts),
+	warning: (message: string, opts?: ToastOpts) => emit(message, "warning", opts),
 };
 
 const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string; bar: string }> = {
@@ -89,9 +94,22 @@ export function ToastHost() {
 							>
 								{v.icon}
 							</span>
-							<div className="flex-1 min-w-0 text-fg text-sm leading-relaxed break-words pr-1">
-								{toastEntry.message}
-							</div>
+							{toastEntry.onClick ? (
+								<button
+									type="button"
+									onClick={() => {
+										toastEntry.onClick?.();
+										dismiss(toastEntry.id);
+									}}
+									className="flex-1 min-w-0 text-left text-fg text-sm leading-relaxed break-words pr-1 hover:underline cursor-pointer"
+								>
+									{toastEntry.message}
+								</button>
+							) : (
+								<div className="flex-1 min-w-0 text-fg text-sm leading-relaxed break-words pr-1">
+									{toastEntry.message}
+								</div>
+							)}
 							<button
 								type="button"
 								onClick={() => dismiss(toastEntry.id)}

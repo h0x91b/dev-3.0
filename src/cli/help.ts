@@ -270,6 +270,43 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "notify",
+		summary: "Surface an in-app toast (or native OS notification) in the running app.",
+		subcommands: [],
+		usage: 'dev3 notify "message" [--level info|success|error] [--desktop]',
+		details: [
+			"--level <l>   Toast style: info (default), success, or error.",
+			"--desktop     Fire a native OS notification instead of an in-app toast (requires a task).",
+			"When a task is in context the toast/notification is clickable and opens that task.",
+			"Targets the current worktree's task; override with --task <id>.",
+		],
+	},
+	{
+		name: "attention",
+		summary: "Light the red attention badge on a task card, with an optional reason.",
+		subcommands: [],
+		usage: 'dev3 attention "reason" [--task <id>]',
+		details: [
+			"Same visual surface as the terminal bell; the reason shows on hover.",
+			"The badge clears when the user opens the task.",
+			"Targets the current worktree's task; override with --task <id>.",
+		],
+	},
+	{
+		name: "ui",
+		summary: "Inspect the app's current UI state.",
+		subcommands: [
+			{
+				name: "state",
+				usage: "dev3 ui state",
+				summary: "Show the focused task/project and whether the app is in the foreground.",
+				details: [
+					"Lets an agent decide whether a ping is needed (e.g. skip if the user is already on this task).",
+				],
+			},
+		],
+	},
+	{
 		name: "install-hooks",
 		summary: "Install agent status-sync hooks in the current worktree.",
 		subcommands: [],

@@ -40,6 +40,7 @@ interface KanbanColumnProps {
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
+	bellReasons?: Map<string, string>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
@@ -90,6 +91,7 @@ function KanbanColumn({
 	onDragStart,
 	onTaskMoved,
 	bellCounts,
+	bellReasons,
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
@@ -592,6 +594,7 @@ function KanbanColumn({
 							onDragStart={onDragStart}
 							onTaskMoved={onTaskMoved}
 							bellCount={bellCounts.get(task.id) ?? 0}
+							bellReason={bellReasons?.get(task.id)}
 							resourceUsage={taskResourceUsage?.get(task.id.slice(0, 8))}
 							ports={taskPorts.get(task.id)}
 							isActiveInSplit={task.id === activeTaskId}

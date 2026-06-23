@@ -153,6 +153,30 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 }
 
 /**
+ * Fire a native OS notification on behalf of `dev3 notify --desktop`, and arm
+ * click-to-open so a subsequent app activation navigates to the task. Reuses the
+ * exact same focus-proxy mechanism as watched-task notifications
+ * (`notifyWatchedTaskStatusChange`) — Electrobun's `Utils.showNotification`
+ * exposes no click callback, so we treat "app became foreground shortly after"
+ * as the click.
+ */
+export function notifyFromCliDesktop(opts: { taskId: string; projectId: string; title: string; body: string }): void {
+	Utils.showNotification({
+		title: opts.title,
+		body: opts.body,
+		silent: true,
+	});
+	// Don't arm click-to-open while the app is already focused — see the rationale
+	// in notifyWatchedTaskStatusChange.
+	if (appForeground) return;
+	lastWatchedNotification = {
+		taskId: opts.taskId,
+		projectId: opts.projectId,
+		timestamp: Date.now(),
+	};
+}
+
+/**
  * If a watched-task notification fired within the last `NOTIFICATION_CLICK_TTL_MS`,
  * return its target (taskId + projectId) and clear the slot. Otherwise return null.
  *

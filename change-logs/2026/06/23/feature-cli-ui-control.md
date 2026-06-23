@@ -1,0 +1,1 @@
+Added CLI commands that let agents drive the app UI: `dev3 notify` shows a clickable in-app toast (or a native OS notification with `--desktop`) that jumps you to the originating task, `dev3 attention "reason"` lights the red task-card badge with a hoverable reason, and `dev3 ui state` reports the focused task/project and foreground so an agent can decide whether to ping.

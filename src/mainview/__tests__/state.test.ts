@@ -41,6 +41,7 @@ describe("initialState", () => {
 			currentProjectTasks: [],
 			loading: true,
 			bellCounts: new Map(),
+			bellReasons: new Map(),
 			taskPorts: new Map(),
 			taskResourceUsage: new Map(),
 			taskMru: [],
@@ -712,6 +713,57 @@ describe("reducer", () => {
 		const next = reducer(state, { type: "clearBell", taskId: "t1" });
 		expect(next.bellCounts.has("t1")).toBe(false);
 		expect(next.bellCounts.get("t2")).toBe(3);
+	});
+
+	// ---- addBell with reason (dev3 attention) ----
+
+	it("addBell: stores reason and bumps count", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "PR is ready" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons.get("t1")).toBe("PR is ready");
+	});
+
+	it("addBell: without reason leaves bellReasons untouched", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons).toBe(initialState.bellReasons);
+		expect(next.bellReasons.size).toBe(0);
+	});
+
+	it("addBell: empty-string reason is stored (badge with no hover text)", () => {
+		const next = reducer(initialState, { type: "addBell", taskId: "t1", reason: "" });
+		expect(next.bellReasons.get("t1")).toBe("");
+	});
+
+	it("clearBell: clears reason alongside the count", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 1]]),
+			bellReasons: new Map([["t1", "needs input"]]),
+		};
+		const next = reducer(state, { type: "clearBell", taskId: "t1" });
+		expect(next.bellCounts.has("t1")).toBe(false);
+		expect(next.bellReasons.has("t1")).toBe(false);
+	});
+
+	it("clearBell: clears a reason-only badge even with no count", () => {
+		const state: AppState = {
+			...initialState,
+			bellReasons: new Map([["t1", "ping"]]),
+		};
+		const next = reducer(state, { type: "clearBell", taskId: "t1" });
+		expect(next.bellReasons.has("t1")).toBe(false);
+	});
+
+	it("navigate: clears the focused task's reason along with its bell", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 2]]),
+			bellReasons: new Map([["t1", "look here"]]),
+		};
+		const next = reducer(state, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "t1" } });
+		expect(next.bellCounts.has("t1")).toBe(false);
+		expect(next.bellReasons.has("t1")).toBe(false);
 	});
 
 	// ---- setPorts ----

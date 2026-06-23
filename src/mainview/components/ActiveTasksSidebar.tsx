@@ -54,6 +54,7 @@ interface ActiveTasksSidebarProps {
 	navigate: (route: Route) => void;
 	agents: CodingAgent[];
 	bellCounts: Map<string, number>;
+	bellReasons?: Map<string, string>;
 	taskPorts: Map<string, PortInfo[]>;
 	onSwitchToBoard: () => void;
 	disableGlobalFindShortcut?: boolean;
@@ -100,6 +101,7 @@ function ActiveTasksSidebar({
 	navigate,
 	agents,
 	bellCounts,
+	bellReasons,
 	taskPorts,
 	onSwitchToBoard,
 	disableGlobalFindShortcut = false,
@@ -553,6 +555,7 @@ function ActiveTasksSidebar({
 							{groupTasks.map((task, idx) => {
 								const isActive = task.id === activeTaskId && task.projectId === project.id;
 								const bellCount = bellCounts.get(task.id) ?? 0;
+								const bellReason = bellReasons?.get(task.id);
 								const displayTitle = getTaskTitle(task);
 								const { agent, configLabel } = getTaskAgentMeta(task, agents);
 								const taskLabelIds = task.labelIds ?? [];
@@ -622,7 +625,7 @@ function ActiveTasksSidebar({
 											{bellCount > 0 && (
 												<div
 													className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 shadow-sm shadow-red-500/40"
-													title={t("task.bellTooltip")}
+													title={bellReason?.trim() || t("task.bellTooltip")}
 												>
 													<span className="text-[0.5625rem] font-bold text-white leading-none">
 														{bellCount > 9 ? "9+" : bellCount}

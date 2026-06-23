@@ -9,6 +9,7 @@ export {
 	isActive,
 	resolveBinaryPath,
 	notifyWatchedTaskStatusChange,
+	notifyFromCliDesktop,
 	consumeRecentWatchedNotification,
 	_resetWatchedNotificationState,
 	NOTIFICATION_CLICK_TTL_MS,

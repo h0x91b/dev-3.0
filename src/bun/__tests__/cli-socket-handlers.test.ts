@@ -41,6 +41,9 @@ vi.mock("../rpc-handlers", () => {
 		getPushMessage: vi.fn(() => null),
 		triggerColumnAgentIfNeeded: vi.fn(),
 		notifyWatchedTaskStatusChange: vi.fn(),
+		notifyFromCliDesktop: vi.fn(),
+		isAppForeground: vi.fn(() => false),
+		getActiveContext: vi.fn(() => ({ projectId: null, taskId: null })),
 	};
 });
 
@@ -82,7 +85,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext } from "../rpc-handlers";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
@@ -470,6 +473,107 @@ describe("task.create", () => {
 			makeRequest("task.create", { projectId: "proj-1", title: "New task" }),
 		);
 		expect(resp.ok).toBe(true);
+	});
+});
+
+describe("ui control (notify / attention / state)", () => {
+	it("ui.notify: pushes a cliToast without a task", async () => {
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "hello", level: "info" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, mode: "toast", taskId: null });
+		expect(pushFn).toHaveBeenCalledWith("cliToast", {
+			taskId: null,
+			projectId: null,
+			message: "hello",
+			level: "info",
+		});
+	});
+
+	it("ui.notify: resolves the task so the toast is clickable", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(
+			makeRequest("ui.notify", { message: "done", level: "success", taskId: task.id, projectId: project.id }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(pushFn).toHaveBeenCalledWith("cliToast", {
+			taskId: task.id,
+			projectId: project.id,
+			message: "done",
+			level: "success",
+		});
+	});
+
+	it("ui.notify: --desktop fires a native notification via notifyFromCliDesktop", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 7 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(
+			makeRequest("ui.notify", { message: "needs you", desktop: true, taskId: task.id, projectId: project.id }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, mode: "desktop", taskId: task.id });
+		expect(notifyFromCliDesktop).toHaveBeenCalledWith(
+			expect.objectContaining({ taskId: task.id, projectId: project.id, body: "needs you" }),
+		);
+	});
+
+	it("ui.notify: --desktop without a task errors", async () => {
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "x", desktop: true }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("requires a task");
+	});
+
+	it("ui.notify: rejects an invalid level", async () => {
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "x", level: "warning" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Invalid level");
+	});
+
+	it("ui.notify: rejects an empty message", async () => {
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "   " }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("message is required");
+	});
+
+	it("ui.attention: pushes cliAttention for the resolved task", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(
+			makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "PR ready" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, taskId: task.id });
+		expect(pushFn).toHaveBeenCalledWith("cliAttention", { taskId: task.id, reason: "PR ready" });
+	});
+
+	it("ui.state: reports foreground and active context", async () => {
+		vi.mocked(isAppForeground).mockReturnValue(true);
+		vi.mocked(getActiveContext).mockReturnValue({ projectId: "proj-1", taskId: "task-9" });
+
+		const resp = await handleRequest(makeRequest("ui.state"));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual({
+			appRunning: true,
+			foreground: true,
+			activeProjectId: "proj-1",
+			activeTaskId: "task-9",
+		});
 	});
 });
 
