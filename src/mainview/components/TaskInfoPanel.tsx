@@ -204,11 +204,14 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			// Terminal moves leave the screen immediately (fire-and-forget); other
 			// screen-leaving moves wait for the server to confirm so a failed +
 			// reverted move doesn't kick the user off the task screen.
+			// Stay in task view with nothing selected instead of dropping to the bare
+			// Kanban board — the panel only renders on a task surface (full-page or
+			// split), so taskView keeps the user where they were.
 			afterOptimistic: terminal && leaveScreen
-				? () => navigate({ screen: "project", projectId: project.id })
+				? () => navigate({ screen: "project", projectId: project.id, taskView: true })
 				: undefined,
 			onSuccess: !terminal && leaveScreen
-				? () => navigate({ screen: "project", projectId: project.id })
+				? () => navigate({ screen: "project", projectId: project.id, taskView: true })
 				: undefined,
 		});
 	}

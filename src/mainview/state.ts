@@ -59,6 +59,30 @@ export function routeTaskId(route: Route): string | null {
 	return null;
 }
 
+/**
+ * Where to land after `taskId` is completed/cancelled and its worktree is
+ * destroyed. The point is to preserve the surface the user is on instead of
+ * always dropping them onto the Kanban board:
+ *
+ *  - full-page task view of this task        → task split view, no task selected
+ *  - split task view showing this task        → same split view, task deselected
+ *  - anything else (Kanban, a different task) → no navigation (returns null)
+ *
+ * Both task surfaces collapse to `{ screen: "project", taskView: true }` with
+ * no `activeTaskId`, which renders the "select a task" placeholder pane — i.e.
+ * "stay in task view, nothing selected". Returning null means the caller should
+ * not navigate at all (the completed card simply leaves the board).
+ */
+export function routeAfterTaskClosed(route: Route, taskId: string): Route | null {
+	if (route.screen === "task" && route.taskId === taskId) {
+		return { screen: "project", projectId: route.projectId, taskView: true };
+	}
+	if (route.screen === "project" && route.activeTaskId === taskId) {
+		return { screen: "project", projectId: route.projectId, taskView: true };
+	}
+	return null;
+}
+
 /** The project id a route lands on, or null for project-less screens (dashboard, settings…). */
 export function projectIdForRoute(route: Route): string | null {
 	switch (route.screen) {

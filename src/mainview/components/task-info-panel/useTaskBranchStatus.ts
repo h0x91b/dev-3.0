@@ -77,7 +77,8 @@ export function useTaskBranchStatus({
 			t,
 			confirm: false,
 			revertOnFailure: false,
-			afterOptimistic: () => navigate({ screen: "project", projectId: project.id }),
+			// Keep the user in task view (no task selected) rather than the bare board.
+			afterOptimistic: () => navigate({ screen: "project", projectId: project.id, taskView: true }),
 		});
 	}, [dispatch, navigate, project, task, t]);
 

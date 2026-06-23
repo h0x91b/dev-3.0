@@ -129,7 +129,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			t,
 			confirm: false,
 			revertOnFailure: false,
-			afterOptimistic: () => navigate({ screen: "project", projectId }),
+			// Stay in task view with nothing selected, rather than dropping to the
+			// bare Kanban board (works for both full-page and split task surfaces).
+			afterOptimistic: () => navigate({ screen: "project", projectId, taskView: true }),
 		});
 	}
 
@@ -192,7 +194,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						project={project}
 						onCancelled={(updated) => {
 							dispatch({ type: "updateTask", task: updated });
-							navigate({ screen: "project", projectId });
+							navigate({ screen: "project", projectId, taskView: true });
 						}}
 					/>
 				</div>
