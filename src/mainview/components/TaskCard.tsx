@@ -809,6 +809,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 			</div>
 
+			{/* PR / CI / review status badges — their own row so they don't crowd the
+			    action row's Watch / + Variant controls (which previously squeezed them
+			    onto one overflowing line). */}
+			{isActive && (prBadge || ciBadge || reviewBadge) && (
+				<div data-testid="task-card-status-badges" className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+					{prBadge}
+					{ciBadge}
+					{reviewBadge}
+				</div>
+			)}
+
 			{/* Action row for active tasks — Open in... | Watch | + Variant */}
 			{isActive && (
 				<div data-testid="task-card-action-row" className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
@@ -855,11 +866,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
 						</button>
 					</div>
-					<div className="flex min-w-0 items-center justify-center gap-1">
-						{prBadge}
-						{ciBadge}
-						{reviewBadge}
-					</div>
+					<div className="min-w-0" />
 					<button
 						onClick={(e) => {
 							e.stopPropagation();

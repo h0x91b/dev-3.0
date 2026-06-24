@@ -1258,13 +1258,16 @@ describe("TaskCard", () => {
 	});
 
 	describe("PR badge", () => {
-		it("renders the PR badge in the lower action row for active tasks", () => {
+		it("renders the PR badge in its own status-badge row for active tasks", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
 			});
 
 			const badge = screen.getByText("#42").closest("button");
-			expect(screen.getByTestId("task-card-action-row")).toContainElement(badge);
+			// Badge lives in the dedicated status-badge row, not crammed into the
+			// action row (Watch / + Variant) or the footer.
+			expect(screen.getByTestId("task-card-status-badges")).toContainElement(badge);
+			expect(screen.getByTestId("task-card-action-row")).not.toContainElement(badge);
 			expect(screen.getByTestId("task-card-footer")).not.toContainElement(badge);
 		});
 
@@ -1275,12 +1278,12 @@ describe("TaskCard", () => {
 			expect(screen.getByText("#42")).toBeInTheDocument();
 		});
 
-		it("keeps the PR badge centered inside the lower action row", () => {
+		it("lays the status-badge row out as a wrapping flex row", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
 			});
 
-			expect(screen.getByTestId("task-card-action-row")).toHaveClass("grid", "grid-cols-[auto_minmax(0,1fr)_auto]");
+			expect(screen.getByTestId("task-card-status-badges")).toHaveClass("flex", "flex-wrap", "items-center");
 			const badge = screen.getByText("#42").closest("button");
 			expect(badge).toHaveClass("h-5", "items-center", "leading-none");
 			expect(screen.getByText("#42")).toHaveClass("leading-none");
