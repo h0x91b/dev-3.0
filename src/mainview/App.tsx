@@ -524,10 +524,22 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(-ZOOM_STEP);
-			} else if ((e.metaKey || e.ctrlKey) && e.key === "0") {
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "Digit0") {
+				// Cmd+Shift+0 — reset zoom to 100%. Relocated from Cmd+0, which now
+				// jumps to the built-in Operations board (see below). `e.code` because
+				// Shift+0 yields ")" in `e.key`.
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "0") {
+				// Cmd+0 — jump to the built-in Operations board (the special "slot 0"
+				// of the Cmd+digit project family; Cmd+1..9 address ordinary projects).
+				const ops = state.projects.find((p) => p.builtin && p.kind === "virtual" && !p.deleted);
+				if (ops) {
+					e.preventDefault();
+					e.stopPropagation();
+					navigateToProject(ops.id);
+				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "[") {
 				// Cmd+[ — navigate back through route history
 				e.preventDefault();
@@ -568,7 +580,9 @@ function App() {
 				// `dev3-task-open-mode` preference. Note: macOS reserves Cmd+Shift+3/4/5
 				// for screenshots, so those may be swallowed by the OS before reaching us.
 				const idx = parseInt(e.code.slice(5), 10) - 1;
-				const available = state.projects.filter((p) => !p.deleted);
+				// The built-in Operations board owns Cmd+0, so it is excluded here —
+				// Cmd+1..9 address ordinary projects only.
+				const available = state.projects.filter((p) => !p.deleted && !(p.builtin && p.kind === "virtual"));
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();
@@ -592,7 +606,8 @@ function App() {
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
 				const idx = parseInt(e.key, 10) - 1;
-				const available = state.projects.filter((p) => !p.deleted);
+				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
+				const available = state.projects.filter((p) => !p.deleted && !(p.builtin && p.kind === "virtual"));
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();

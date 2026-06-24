@@ -637,6 +637,26 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("{Meta>}1{/Meta}");
 			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
 		});
+
+		it("Cmd+0 jumps to the built-in Operations board", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+				{ id: "ops", name: "Operations", path: "/home/u/.dev3.0/ops/operations", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", kind: "virtual", builtin: true },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}0{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+		});
+
+		it("Cmd+0 does nothing when there is no built-in Operations board", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}0{/Meta}");
+			// No built-in board → stays on the dashboard (zoom-reset relocated to ⇧⌘0).
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
 	});
 
 	describe("project terminal toggle (Cmd+`)", () => {
@@ -698,16 +718,23 @@ describe("App keyboard shortcuts", () => {
 			expect(mockedAdjustZoom).toHaveBeenCalledWith(-ZOOM_STEP);
 		});
 
-		it("Cmd+0 calls applyZoom with DEFAULT_ZOOM", async () => {
+		it("Cmd+Shift+0 calls applyZoom with DEFAULT_ZOOM", async () => {
+			// Reset-zoom relocated from ⌘0 (now Jump to Operations) to ⇧⌘0.
 			await renderApp();
-			await userEvent.keyboard("{Meta>}0{/Meta}");
+			await userEvent.keyboard("{Meta>}{Shift>}0{/Shift}{/Meta}");
 			expect(mockedApplyZoom).toHaveBeenCalledWith(DEFAULT_ZOOM);
 		});
 
-		it("Ctrl+0 calls applyZoom with DEFAULT_ZOOM", async () => {
+		it("Ctrl+Shift+0 calls applyZoom with DEFAULT_ZOOM", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Control>}0{/Control}");
+			await userEvent.keyboard("{Control>}{Shift>}0{/Shift}{/Control}");
 			expect(mockedApplyZoom).toHaveBeenCalledWith(DEFAULT_ZOOM);
+		});
+
+		it("Cmd+0 (no shift) does NOT reset zoom (it jumps to Operations instead)", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Meta>}0{/Meta}");
+			expect(mockedApplyZoom).not.toHaveBeenCalled();
 		});
 	});
 

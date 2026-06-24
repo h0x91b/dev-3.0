@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import type { Project, Task } from "../../shared/types";
-import { getTaskTitle, ACTIVE_STATUSES } from "../../shared/types";
+import { getTaskTitle, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
@@ -194,7 +194,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			const isOnKanban = route.screen === "project" && !route.activeTaskId && !route.taskView;
 			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
 			segments.push({
-				label: project.name,
+				label: isBuiltinOpsProject(project) ? t("ops.boardName") : project.name,
 				isProjectDropdown: true,
 				onClick: projectNameOnClick,
 			});
@@ -240,7 +240,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const isVirtualProject = currentProjectId
 		? projects.find((p) => p.id === currentProjectId)?.kind === "virtual"
 		: false;
-	const availableProjects = projects.filter((p) => !p.deleted);
+	// Built-in Operations board pinned first; ⌘0 jumps to it, ⌘1-9 to the rest.
+	const availableProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
+	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
 
 	return (
 		<>
@@ -339,7 +341,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 										{availableProjects.map((p, idx) => {
 											const isCurrent = currentProjectId === p.id;
 											const count = projectTaskCounts[p.id];
-											const shortcutNum = idx < 9 ? idx + 1 : null;
+											const isBuiltin = isBuiltinOpsProject(p);
+											// \u23180 for the pinned built-in board; \u23181-9 for the rest.
+											const nonBuiltinIdx = switcherHasPinnedBuiltin ? idx - 1 : idx;
+											const shortcutLabel = isBuiltin ? "0" : (nonBuiltinIdx < 9 ? String(nonBuiltinIdx + 1) : null);
 											return (
 												<button
 													key={p.id}
@@ -353,7 +358,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 															: "text-fg-2 hover:bg-elevated hover:text-fg"
 													}`}
 												>
-													<span className="truncate text-sm flex-1">{p.name}</span>
+													{isBuiltin && (
+														<span className="text-accent flex-shrink-0 text-[0.8125rem]" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+													)}
+													<span className="truncate text-sm flex-1">{isBuiltin ? t("ops.boardName") : p.name}</span>
+													{isBuiltin && (
+														<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-muted text-[0.5625rem] font-medium tracking-wide">{t("ops.badgeSystem")}</span>
+													)}
 													<span className="text-[0.6875rem] text-fg-muted flex-shrink-0">
 														{count != null
 															? count > 0
@@ -361,9 +372,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 																: t("header.noActiveTasks")
 															: ""}
 													</span>
-													{shortcutNum && (
+													{shortcutLabel && (
 														<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-[0.625rem] text-fg-muted/60 font-mono">
-															<span className="text-[0.6875rem]">{"\u2318"}</span>{shortcutNum}
+															<span className="text-[0.6875rem]">{"\u2318"}</span>{shortcutLabel}
 														</kbd>
 													)}
 												</button>

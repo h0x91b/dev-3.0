@@ -29,8 +29,10 @@ const dashboard = {
 	"activity.yearsAgo": "hace {count}a",
 
 	// Virtual "Operations" boards
-	"ops.boardName": "Operaciones",
+	"ops.boardName": "[ Operaciones ]",
 	"ops.badge": "Operaciones",
+	"ops.badgeSystem": "SISTEMA",
+	"ops.gitUnavailable": "Git no está disponible en las tareas de operaciones",
 	"ops.tileSubtitle": "Tareas con código · sin git",
 	"ops.create.typeGit": "Repositorio Git",
 	"ops.create.typeOps": "Operaciones",

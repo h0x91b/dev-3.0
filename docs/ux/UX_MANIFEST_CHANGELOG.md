@@ -1,5 +1,17 @@
 # UX Manifest Changelog
 
+## 2026-06-24 — Built-in Operations board pinned-first + ⌘0 + "system object" identity
+
+Recorded the decision to elevate the single hardcoded Operations board (`builtin` + `virtual`)
+into a pinned, visibly-special system object: a pure `orderProjectsForDisplay()` helper pins it
+first on the dashboard and switcher (non-draggable, move-locked); it owns `⌘0` (the "slot 0" of the
+`⌘1-9` project-jump family, which now skips it), with zoom-reset relocated to `⇧⌘0`; its localized
+name renders bracketed (`[ Operations ]`) with a ⚡ glyph + neutral `SYSTEM` badge + `⌘0` hint, while
+user-created virtual boards keep their literal name + plain badge. Also finished stripping git-only
+inspector controls from virtual tasks: the empty Git quickbar slot now shows a muted
+`ops.gitUnavailable` note, and Dev-Server + Scripts are removed (Open-in + ports stay). No new object,
+nav destination, surface, or color token. See UX decision 2026-06-24.
+
 ## 2026-06-23 — Virtual "Operations" board (Project.kind) shipped; home terminal removed
 
 Marked `Project.kind` (`git` | `virtual`) as `Observed` in `ux-architecture.yaml`: virtual "Operations"

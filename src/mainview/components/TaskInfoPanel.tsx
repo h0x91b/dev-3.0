@@ -636,7 +636,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
-						{project.kind !== "virtual" && (
+						{project.kind === "virtual" ? (
+							<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+						) : (
 							<TaskGitActions
 								task={task}
 								project={project}
@@ -653,8 +655,12 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						<div className="flex-1" />
 						<div className="flex items-center gap-2 flex-shrink-0">
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
-							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							{project.kind !== "virtual" && (
+								<>
+									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								</>
+							)}
 							<TaskExposedPorts task={task} />
 						</div>
 					</div>
@@ -701,7 +707,9 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
-							{project.kind !== "virtual" && (
+							{project.kind === "virtual" ? (
+								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+							) : (
 								<TaskGitActions
 									task={task}
 									project={project}
@@ -717,8 +725,12 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							<div className="flex-1" />
 							<div className="flex items-center gap-2 flex-shrink-0">
 								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
-								<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-								<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								{project.kind !== "virtual" && (
+									<>
+										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+									</>
+								)}
 								<TaskExposedPorts task={task} />
 							</div>
 						</div>

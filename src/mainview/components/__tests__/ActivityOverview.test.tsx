@@ -155,7 +155,7 @@ describe("ActivityOverview", () => {
 		expect(screen.getByText("no active tasks")).toBeInTheDocument();
 	});
 
-	it("shows localized name + Operations badge for a built-in virtual board and hides the synthetic path", async () => {
+	it("shows the special bracketed name + SYSTEM badge for the built-in board and hides the synthetic path", async () => {
 		const virtual: Project = {
 			...mockProject,
 			id: "vp1",
@@ -172,12 +172,38 @@ describe("ActivityOverview", () => {
 			</I18nProvider>,
 		);
 
-		// Both the localized board name and the badge render "Operations".
-		const names = await screen.findAllByText("Operations");
-		expect(names.length).toBeGreaterThanOrEqual(2);
+		// Special identity: bracketed name, SYSTEM badge, and the ⌘0 hint.
+		expect(await screen.findByText("[ Operations ]")).toBeInTheDocument();
+		expect(screen.getByText("SYSTEM")).toBeInTheDocument();
+		expect(screen.getByText("⌘0")).toBeInTheDocument();
 		expect(screen.getByText("Code-driven tasks · no git")).toBeInTheDocument();
 		// The synthetic on-disk path must never be shown to the user.
 		expect(screen.queryByText("/home/user/.dev3.0/ops/operations")).not.toBeInTheDocument();
+	});
+
+	it("pins the built-in Operations board first, above ordinary projects", async () => {
+		const gitProj: Project = { ...mockProject, id: "g1", name: "Alpha Repo", path: "/home/user/alpha" };
+		const builtin: Project = {
+			...mockProject,
+			id: "vp1",
+			name: "Operations",
+			kind: "virtual",
+			builtin: true,
+			path: "/home/user/.dev3.0/ops/operations",
+		};
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+
+		render(
+			<I18nProvider>
+				{/* Built-in passed LAST but must render FIRST. */}
+				<ActivityOverview projects={[gitProj, builtin]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		const ops = await screen.findByText("[ Operations ]");
+		const repo = screen.getByText("Alpha Repo");
+		// Document order: Operations tile appears before the git project tile.
+		expect(ops.compareDocumentPosition(repo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
 	it("opens the add project flow from the activity header", async () => {

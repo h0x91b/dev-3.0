@@ -605,6 +605,27 @@ export interface Project {
 	builtin?: boolean;
 }
 
+/**
+ * True for the single hardcoded "Operations" board — the special, pinned virtual
+ * project. Distinct from user-created virtual boards (which have `kind: "virtual"`
+ * but `builtin` unset). Used for pin-first ordering, the ⌘0 shortcut, and the
+ * special `[ Operations ]` / SYSTEM identity treatment.
+ */
+export function isBuiltinOpsProject(p: Pick<Project, "kind" | "builtin">): boolean {
+	return p.builtin === true && p.kind === "virtual";
+}
+
+/**
+ * Display order for any project list (dashboard tiles, switcher dropdown): the
+ * built-in Operations board is pinned first; all other projects keep their
+ * existing relative order. Pure + stable.
+ */
+export function orderProjectsForDisplay<T extends Pick<Project, "kind" | "builtin">>(projects: T[]): T[] {
+	const builtin = projects.filter(isBuiltinOpsProject);
+	if (builtin.length === 0) return projects;
+	return [...builtin, ...projects.filter((p) => !isBuiltinOpsProject(p))];
+}
+
 export interface Task {
 	id: string;
 	seq: number;

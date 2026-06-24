@@ -33,8 +33,10 @@ const dashboard = {
 	"activity.yearsAgo": "{count}г назад",
 
 	// Virtual "Operations" boards
-	"ops.boardName": "Операции",
+	"ops.boardName": "[ Операции ]",
 	"ops.badge": "Операции",
+	"ops.badgeSystem": "СИСТЕМА",
+	"ops.gitUnavailable": "Git недоступен в операциях",
 	"ops.tileSubtitle": "Задачи с кодом · без git",
 	"ops.create.typeGit": "Git-репозиторий",
 	"ops.create.typeOps": "Операции",

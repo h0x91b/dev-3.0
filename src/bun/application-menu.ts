@@ -635,7 +635,10 @@ function viewMenu(): ApplicationMenuItemConfig {
 			SEP,
 			item({ label: "Zoom In", action: MENU_ACTIONS.zoomIn, accelerator: "=" }),
 			item({ label: "Zoom Out", action: MENU_ACTIONS.zoomOut, accelerator: "-" }),
-			item({ label: "Reset Zoom", action: MENU_ACTIONS.zoomReset, accelerator: "0" }),
+			// Reset Zoom moved off ⌘0 (now "Jump to Operations") to ⇧⌘0. Electrobun
+			// menu accelerators are single-char only (decision 044), so the ⇧⌘0 chord
+			// is owned by the renderer (App.tsx) and only hinted in the label here.
+			item({ label: "Reset Zoom (⇧⌘0)", action: MENU_ACTIONS.zoomReset }),
 			SEP,
 			{ role: "toggleFullScreen" },
 			SEP,
