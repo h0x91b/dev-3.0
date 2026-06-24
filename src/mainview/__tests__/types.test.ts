@@ -12,8 +12,10 @@ import {
 	DEFAULT_EXTERNAL_APPS,
 	getPrimaryStopTarget,
 	LABEL_COLORS,
+	isBuiltinOpsProject,
+	orderProjectsForDisplay,
 } from "../../shared/types";
-import type { TaskStatus } from "../../shared/types";
+import type { Project, TaskStatus } from "../../shared/types";
 
 // ---- hexToRgb ----
 
@@ -372,5 +374,51 @@ describe("formatStatus", () => {
 		expect(formatStatus("todo")).toBe("Todo");
 		expect(formatStatus("completed")).toBe("Completed");
 		expect(formatStatus("cancelled")).toBe("Cancelled");
+	});
+});
+
+// ---- isBuiltinOpsProject / orderProjectsForDisplay ----
+
+const proj = (over: Partial<Project>): Project => ({
+	id: "p",
+	name: "P",
+	path: "/p",
+	setupScript: "",
+	devScript: "",
+	cleanupScript: "",
+	defaultBaseBranch: "main",
+	createdAt: "2025-01-01T00:00:00Z",
+	...over,
+});
+
+describe("isBuiltinOpsProject", () => {
+	it("is true only for a virtual project flagged builtin", () => {
+		expect(isBuiltinOpsProject(proj({ kind: "virtual", builtin: true }))).toBe(true);
+	});
+
+	it("is false for user-created virtual boards (builtin unset)", () => {
+		expect(isBuiltinOpsProject(proj({ kind: "virtual" }))).toBe(false);
+	});
+
+	it("is false for a git project even if builtin somehow set", () => {
+		expect(isBuiltinOpsProject(proj({ kind: "git", builtin: true }))).toBe(false);
+		expect(isBuiltinOpsProject(proj({}))).toBe(false);
+	});
+});
+
+describe("orderProjectsForDisplay", () => {
+	it("pins the built-in Operations board first, preserving the rest of the order", () => {
+		const a = proj({ id: "a" });
+		const b = proj({ id: "b" });
+		const ops = proj({ id: "ops", kind: "virtual", builtin: true });
+		expect(orderProjectsForDisplay([a, b, ops]).map((p) => p.id)).toEqual(["ops", "a", "b"]);
+		expect(orderProjectsForDisplay([a, ops, b]).map((p) => p.id)).toEqual(["ops", "a", "b"]);
+	});
+
+	it("returns the list unchanged when there is no built-in board", () => {
+		const a = proj({ id: "a" });
+		const v = proj({ id: "v", kind: "virtual" });
+		const input = [a, v];
+		expect(orderProjectsForDisplay(input)).toBe(input);
 	});
 });

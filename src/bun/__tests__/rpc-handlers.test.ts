@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task } from "../../shared/types";
 import { getPreparingStageProgress } from "../../shared/types";
 
@@ -36,6 +37,9 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
 	loadProjects: vi.fn(),
+	loadVirtualProjects: vi.fn(() => Promise.resolve([])),
+	ensureBuiltinOperationsBoard: vi.fn(() => Promise.resolve(undefined)),
+	addVirtualProject: vi.fn(),
 	loadTasks: vi.fn(),
 	updateTask: vi.fn(),
 	addTask: vi.fn(),
@@ -75,6 +79,7 @@ vi.mock("../git", () => ({
 	pullOrigin: vi.fn(),
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
+	virtualWorkDir: vi.fn((p: any, t: any) => `${p.path}/${String(t.id).slice(0, 8)}/work`),
 	run: vi.fn(),
 	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
 }));
@@ -103,8 +108,6 @@ vi.mock("../pty-server", () => ({
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
-	HOME_TERMINAL_SESSION_KEY: "home",
-	HOME_TERMINAL_TMUX_NAME: "dev3-home",
 }));
 
 vi.mock("../system-clipboard", () => ({
@@ -169,7 +172,13 @@ vi.mock("../logger", () => ({
 
 vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/test-dev3",
+	OPS_DIR: "/tmp/test-dev3/ops",
 }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return { ...actual, mkdir: vi.fn(() => Promise.resolve(undefined)), rm: vi.fn(() => Promise.resolve(undefined)) };
+});
 
 const mockSpawn = vi.fn();
 const mockSpawnSync = vi.fn();
@@ -205,6 +214,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
+import { findReusableQuickShell } from "../rpc-handlers/task-lifecycle";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
 import * as updater from "../updater";
@@ -1047,6 +1057,44 @@ describe("handlers.addProject", () => {
 		const result = await handlers.addProject({ path: "/tmp/test", name: "Test" });
 		expect(result).toEqual({ ok: false, error: "Error: disk full" });
 	});
+
+	it("rejects a git project inside the dev-3.0 data directory", async () => {
+		const result = await handlers.addProject({ path: "/tmp/test-dev3/ops/operations", name: "X" });
+		expect(result).toEqual({ ok: false, error: "Cannot add a project inside the dev-3.0 data directory" });
+		expect(git.isGitRepo).not.toHaveBeenCalled();
+		expect(data.addProject).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// handlers.addVirtualProject
+// ================================================================
+
+describe("handlers.addVirtualProject", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("creates a virtual project on success", async () => {
+		const project = makeProject({ id: "v1", name: "Operations", kind: "virtual" });
+		vi.mocked(data.addVirtualProject).mockResolvedValue(project);
+
+		const result = await handlers.addVirtualProject({ name: "Operations" });
+		expect(result).toEqual({ ok: true, project });
+		expect(data.addVirtualProject).toHaveBeenCalledWith("Operations");
+	});
+
+	it("falls back to 'Operations' for a blank name", async () => {
+		const project = makeProject({ id: "v1", name: "Operations", kind: "virtual" });
+		vi.mocked(data.addVirtualProject).mockResolvedValue(project);
+
+		await handlers.addVirtualProject({ name: "   " });
+		expect(data.addVirtualProject).toHaveBeenCalledWith("Operations");
+	});
+
+	it("returns error when data.addVirtualProject throws", async () => {
+		vi.mocked(data.addVirtualProject).mockRejectedValue(new Error("disk full"));
+		const result = await handlers.addVirtualProject({ name: "Ops" });
+		expect(result).toEqual({ ok: false, error: "Error: disk full" });
+	});
 });
 
 // ================================================================
@@ -1393,6 +1441,28 @@ describe("handlers.getTasks", () => {
 		expect(result).toEqual(tasks);
 		expect(data.getProject).toHaveBeenCalledWith("proj-1");
 		expect(data.loadTasks).toHaveBeenCalledWith(project);
+	});
+});
+
+describe("handlers.getAllProjectTasks", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("includes virtual (Operations) boards so active operations are surfaced", async () => {
+		// Feeds the dashboard's per-project active tasks AND the working-folder
+		// conflict check — both dead for operations if virtual boards are skipped.
+		const git = makeProject({ id: "g1" });
+		const ops = makeProject({ id: "vp1", kind: "virtual", builtin: true });
+		vi.mocked(data.loadProjects).mockResolvedValue([git]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([ops]);
+		vi.mocked(data.loadTasks).mockImplementation(async (project: Project) =>
+			project.id === "vp1" ? [makeTask({ id: "op1", projectId: "vp1", status: "in-progress" })] : [],
+		);
+
+		const result = await handlers.getAllProjectTasks();
+
+		const opsEntry = result.find((r) => r.projectId === "vp1");
+		expect(opsEntry).toBeDefined();
+		expect(opsEntry!.tasks.map((t) => t.id)).toEqual(["op1"]);
 	});
 });
 
@@ -2095,6 +2165,139 @@ describe("handlers.deleteTask", () => {
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+});
+
+// ================================================================
+// Virtual ("Operations") task lifecycle
+// ================================================================
+
+describe("virtual task lifecycle", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		// has-session probe → 0 (exists) so launchTaskPty treats the session as
+		// pre-existing and skips the split-shell loop (keeps the test fast).
+		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
+	});
+
+	const vproject = (overrides?: Partial<Project>) =>
+		makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", ...overrides });
+
+	it("todo → in-progress: NO git worktree, creates managed work dir + PTY", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates } as Task));
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		expect(git.createWorktree).not.toHaveBeenCalled();
+		expect(mkdir).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true });
+		expect(pty.createSession).toHaveBeenCalledWith("task-1", "vp1", "/tmp/test-dev3/ops/operations/task-1/work", expect.anything(), expect.anything(), expect.anything());
+		expect(result.worktreePath).toBe("/tmp/test-dev3/ops/operations/task-1/work");
+		expect(result.branchName).toBeNull();
+	});
+
+	it("uses a chosen fixed folder (opsWorkDir) instead of a managed dir", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, opsWorkDir: "/Users/me/Downloads" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates } as Task));
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		expect(pty.createSession).toHaveBeenCalledWith("task-1", "vp1", "/Users/me/Downloads", expect.anything(), expect.anything(), expect.anything());
+		expect(result.worktreePath).toBe("/Users/me/Downloads");
+	});
+
+	it("in-progress → completed: keeps work dir (no removeWorktree, worktreePath preserved)", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "in-progress", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "completed" });
+
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		const updateArgs = vi.mocked(data.updateTask).mock.calls[0]?.[2] as Record<string, unknown>;
+		expect(updateArgs.status).toBe("completed");
+		expect("worktreePath" in updateArgs).toBe(false);
+	});
+
+	it("delete: removes a MANAGED work dir under ops/", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		expect(rm).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true, force: true });
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+
+	it("delete: NEVER removes a fixed folder outside ops/", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: "/Users/me/Downloads", opsWorkDir: "/Users/me/Downloads" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(rm).not.toHaveBeenCalled();
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+});
+
+describe("git-operations guards — virtual (Operations) tasks", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	const vproject = (overrides?: Partial<Project>) =>
+		makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", ...overrides });
+	const vtask = () => makeTask({ projectId: "vp1", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+
+	it("getBranchStatus returns an inert status without spawning git for a virtual task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(vtask());
+
+		const status = await handlers.getBranchStatus({ taskId: "task-1", projectId: "vp1" });
+
+		expect(status.ahead).toBe(0);
+		expect(status.behind).toBe(0);
+		expect(status.canRebase).toBe(false);
+		// The 15s renderer poll must not fire a doomed git in a non-repo dir.
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(git.fetchOrigin).not.toHaveBeenCalled();
+	});
+
+	it("getTaskDiff throws a clear error (and skips git) for a virtual task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(vtask());
+
+		await expect(
+			handlers.getTaskDiff({ taskId: "task-1", projectId: "vp1", mode: "uncommitted" }),
+		).rejects.toThrow(/not available for Operations/i);
+		expect(git.getTaskDiff).not.toHaveBeenCalled();
+	});
+
+	it("pushTask throws a clear error for a virtual task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(vtask());
+
+		await expect(handlers.pushTask({ taskId: "task-1", projectId: "vp1" })).rejects.toThrow(
+			/not available for Operations/i,
+		);
 	});
 });
 
@@ -2848,6 +3051,82 @@ describe("handlers.spawnVariants", () => {
 			"in-progress",
 			expect.objectContaining({ labelIds: ["lbl-1", "lbl-2"] }),
 		);
+	});
+
+	// Virtual ("Operations") projects: Run / Create-and-Run funnels through
+	// spawnVariants with an active target. The background preparation must NOT
+	// touch git — it launches the agent + shell in a managed/chosen folder.
+	describe("virtual project", () => {
+		beforeEach(() => {
+			vi.clearAllMocks();
+			// A leaked createWorktree implementation from a prior test would make a
+			// regression silently pass — force it to reject so any accidental git
+			// call in the virtual path fails loudly.
+			vi.mocked(git.createWorktree).mockReset();
+			vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+			// has-session probe → 0 (exists) so launchTaskPty skips the split-shell loop.
+			mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
+		});
+
+		it("launches into active status WITHOUT git: managed work dir + PTY", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5 });
+			const variantTask = makeTask({ id: "v1", projectId: "vp1", status: "in-progress", preparing: true });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(data.addTask).mockResolvedValue(variantTask);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...variantTask, ...updates } as Task));
+
+			await handlers.spawnVariants({
+				taskId: "src",
+				projectId: "vp1",
+				targetStatus: "in-progress",
+				variants: [{ agentId: "agent-1", configId: null }],
+			});
+
+			// Wait for the background preparation to persist the worktreePath.
+			let updateArgs: Record<string, unknown> | undefined;
+			await vi.waitFor(() => {
+				updateArgs = vi.mocked(data.updateTask).mock.calls.find((c) => "worktreePath" in (c[2] as object))?.[2] as Record<string, unknown>;
+				expect(updateArgs).toBeDefined();
+			});
+			expect(git.createWorktree).not.toHaveBeenCalled();
+			expect(mkdir).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/v1/work", { recursive: true });
+			expect(pty.createSession).toHaveBeenCalledWith(
+				"v1", "vp1", "/tmp/test-dev3/ops/operations/v1/work",
+				expect.anything(), expect.anything(), expect.anything(),
+			);
+			expect(updateArgs!.worktreePath).toBe("/tmp/test-dev3/ops/operations/v1/work");
+			expect(updateArgs!.branchName).toBeNull();
+		});
+
+		it("carries the chosen opsWorkDir from the source task onto each variant", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5, opsWorkDir: "/Users/me/Downloads" });
+			const variantTask = makeTask({ id: "variant-1", projectId: "vp1", status: "in-progress", opsWorkDir: "/Users/me/Downloads", preparing: true });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(data.addTask).mockResolvedValue(variantTask);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...variantTask, ...updates } as Task));
+
+			await handlers.spawnVariants({
+				taskId: "src",
+				projectId: "vp1",
+				targetStatus: "in-progress",
+				variants: [{ agentId: "agent-1", configId: null }],
+			});
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(
+				expect.objectContaining({ opsWorkDir: "/Users/me/Downloads" }),
+			);
+			await vi.waitFor(() => {
+				expect(pty.createSession).toHaveBeenCalledWith(
+					"variant-1", "vp1", "/Users/me/Downloads",
+					expect.anything(), expect.anything(), expect.anything(),
+				);
+			});
+			expect(git.createWorktree).not.toHaveBeenCalled();
+		});
 	});
 });
 
@@ -3631,6 +3910,31 @@ describe("handlers.getPtyUrl", () => {
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("restores a VIRTUAL (Operations) task's dead session — scans virtual boards, skips git config", async () => {
+		// Regression: findTaskAcrossProjects scanned only git projects, so an active
+		// operation whose tmux session died could never be restored ("[session ended]").
+		const vproject = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
+		vi.mocked(data.loadProjects).mockResolvedValue([]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([vproject]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
+		expect(pty.createSession).toHaveBeenCalledWith(
+			"task-1", "vp1", "/tmp/test-dev3/ops/operations/task-1/work",
+			expect.anything(), expect.anything(), expect.anything(),
+		);
+		// Virtual boards have no git repo config — it must be skipped.
+		expect(repoConfig.resolveProjectConfig).not.toHaveBeenCalled();
 	});
 
 	it("returns recoverable when tmux is dead but sessionState exists", async () => {
@@ -5590,58 +5894,42 @@ describe("handlers.destroyProjectTerminal", () => {
 });
 
 // ================================================================
-// handlers.getHomePtyUrl / destroyHomeTerminal
+// handlers.openQuickShell (replaces the removed home terminal)
 // ================================================================
 
-describe("handlers.getHomePtyUrl", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("creates a home PTY session in the user's home directory", async () => {
-		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
-		vi.mocked(existsSync).mockReturnValue(true);
-
-		const url = await handlers.getHomePtyUrl({});
-
-		expect(pty.createSession).toHaveBeenCalledWith(
-			"home",
-			"",
-			expect.any(String),
-			process.env.SHELL || "/bin/zsh",
-			{},
-			"dev3",
-			"home",
-		);
-		expect(url).toBe("ws://localhost:9999?session=home");
+describe("handlers.openQuickShell", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
 	});
 
-	it("reuses existing home session without creating a new one", async () => {
-		vi.mocked(pty.hasSession).mockReturnValue(true);
-		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+	it("creates a Quick shell op in the built-in board when none exists", async () => {
+		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
+		const created = makeTask({ id: "qs1", projectId: "ops1", status: "todo", worktreePath: null, customTitle: "Quick shell", scratch: true });
+		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		vi.mocked(data.addTask).mockResolvedValue(created);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, u) => ({ ...created, ...u } as Task));
 
-		await handlers.getHomePtyUrl({});
+		const result = await handlers.openQuickShell({});
 
-		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(data.addTask).toHaveBeenCalled();
+		expect(result.status).toBe("in-progress");
+		expect(result.projectId).toBe("ops1");
+		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
-	it("destroys dead home session before creating a new one", async () => {
-		vi.mocked(pty.hasDeadSession).mockReturnValue(true);
-		vi.mocked(pty.hasSession).mockReturnValue(false);
-		vi.mocked(existsSync).mockReturnValue(true);
+	it("focuses an existing active Quick shell op instead of creating a new one", async () => {
+		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
+		const existing = makeTask({ id: "qs1", projectId: "ops1", status: "in-progress", customTitle: "Quick shell" });
+		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([existing]);
 
-		await handlers.getHomePtyUrl({});
+		const result = await handlers.openQuickShell({});
 
-		expect(pty.destroySession).toHaveBeenCalledWith("home");
-		expect(pty.createSession).toHaveBeenCalled();
-	});
-});
-
-describe("handlers.destroyHomeTerminal", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("destroys the home terminal session", async () => {
-		await handlers.destroyHomeTerminal({});
-		expect(pty.destroySession).toHaveBeenCalledWith("home");
+		expect(data.addTask).not.toHaveBeenCalled();
+		expect(result.id).toBe("qs1");
 	});
 });
 
@@ -7792,5 +8080,56 @@ describe("handlers.openInApp", () => {
 		await expect(
 			handlers.openInApp({ appName: "../evil", path: "/tmp/work" }),
 		).rejects.toThrow("Invalid app name");
+	});
+});
+
+describe("handlers.getProjectPtyUrl — virtual board guard", () => {
+	beforeEach(() => {
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+	});
+
+	it("rejects a virtual (Operations) board instead of opening a doomed terminal", async () => {
+		// A virtual board's synthetic path is created lazily per-task; without the
+		// guard getProjectPtyUrl threw "Project path does not exist" (or opened a
+		// shell in dev3's internal data dir). Now it rejects with a clear message.
+		vi.mocked(data.getProject).mockResolvedValue(
+			makeProject({ kind: "virtual", path: "/Users/x/.dev3.0/ops/operations" }),
+		);
+		await expect(handlers.getProjectPtyUrl({ projectId: "vproj-1" })).rejects.toThrow(/Operations boards/);
+	});
+
+	it("opens a project terminal for a normal git project (guard does not over-fire)", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ path: "/tmp/real-repo" }));
+		vi.mocked(existsSync).mockReturnValue(true);
+		const url = await handlers.getProjectPtyUrl({ projectId: "proj-1" });
+		expect(url).toContain("session=project-proj-1");
+	});
+});
+
+describe("findReusableQuickShell — Quick shell dedup", () => {
+	it("reuses an active Quick shell", () => {
+		const tasks = [makeTask({ id: "a", customTitle: "Quick shell", status: "in-progress" })];
+		expect(findReusableQuickShell(tasks)?.id).toBe("a");
+	});
+
+	it("reuses an INACTIVE (todo) Quick shell instead of spawning a duplicate", () => {
+		// The original bug: dedup matched only active shells, so one dragged to todo
+		// was missed and ⇧⌘` created a second.
+		const tasks = [makeTask({ id: "b", customTitle: "Quick shell", status: "todo" })];
+		expect(findReusableQuickShell(tasks)?.id).toBe("b");
+	});
+
+	it("ignores completed/cancelled Quick shells (history) so a fresh one is created", () => {
+		const tasks = [
+			makeTask({ id: "c", customTitle: "Quick shell", status: "completed" }),
+			makeTask({ id: "d", customTitle: "Quick shell", status: "cancelled" }),
+		];
+		expect(findReusableQuickShell(tasks)).toBeUndefined();
+	});
+
+	it("ignores tasks that are not Quick shells", () => {
+		const tasks = [makeTask({ id: "e", customTitle: "Something else", status: "in-progress" })];
+		expect(findReusableQuickShell(tasks)).toBeUndefined();
 	});
 });

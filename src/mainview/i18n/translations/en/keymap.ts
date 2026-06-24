@@ -20,6 +20,7 @@ const keymap = {
 	"keymap.shortcut.forward": "Forward",
 	"keymap.shortcut.switchProject": "Switch to project 1–9 (keep current view)",
 	"keymap.shortcut.switchProjectFlip": "Switch to project 1–9 (flip board/task view)",
+	"keymap.shortcut.jumpOperations": "Jump to the Operations board",
 	"keymap.shortcut.taskSwitcher": "Cycle active tasks (this project)",
 	"keymap.shortcut.taskSwitcherGlobal": "Cycle active tasks (all projects)",
 	"keymap.shortcut.taskHints": "Jump to a task or project by hint",
@@ -36,7 +37,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Hard refresh",
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
-	"keymap.shortcut.toggleHomeTerminal": "Toggle home terminal",
+	"keymap.shortcut.openQuickShell": "Open Quick Shell",
 	"keymap.shortcut.quit": "Quit",
 	"keymap.shortcut.hide": "Hide app",
 } as const;

@@ -127,8 +127,11 @@ function KanbanBoard({
 	}, [project.id, tasks]);
 
 	useEffect(() => {
+		// Virtual (Operations) boards have no git repo, branches, or PRs — skip the
+		// poll entirely instead of firing a doomed getProjectPRs RPC every 60s.
+		if (project.kind === "virtual") return;
 		return startVisibilityAwarePoll({ fn: fetchPRs, intervalMs: 60_000 });
-	}, [fetchPRs]);
+	}, [fetchPRs, project.kind]);
 
 	// CI/review status pushed by the background PR poller — merge onto the
 	// existing PR badge entry (carrying number/url forward if already known).
@@ -321,7 +324,11 @@ function KanbanBoard({
 		// Show AI Review column by default (on when builtinColumnAgents is unset or has review-by-ai config)
 		const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
 		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !t.customColumnId);
+		// Virtual ("Operations") boards have no diff/PR, so all review columns are
+		// hidden — the flow is todo → in-progress → user-questions → done.
+		const isVirtual = project.kind === "virtual";
 		const shouldHide = (s: TaskStatus) =>
+			(isVirtual && (s === "review-by-ai" || s === "review-by-colleague" || s === "review-by-user")) ||
 			(s === "review-by-colleague" && !peerReviewEnabled) ||
 			(s === "review-by-ai" && !aiReviewEnabled && !aiReviewHasItems);
 		const filterBuiltin = (statuses: TaskStatus[]) =>

@@ -53,6 +53,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "forward", keys: { mac: "⌘]", other: "Ctrl+]" }, descKey: "keymap.shortcut.forward", category: "navigation" },
 	{ id: "switch-project", keys: { mac: "⌘1–9", other: "Ctrl+1–9" }, descKey: "keymap.shortcut.switchProject", category: "navigation" },
 	{ id: "switch-project-flip", keys: { mac: "⇧⌘1–9", other: "Ctrl+Shift+1–9" }, descKey: "keymap.shortcut.switchProjectFlip", category: "navigation" },
+	{ id: "jump-operations", keys: { mac: "⌘0", other: "Ctrl+0" }, descKey: "keymap.shortcut.jumpOperations", category: "navigation" },
 	{ id: "task-switcher", keys: { mac: "⌥Tab", other: "Ctrl+Tab" }, descKey: "keymap.shortcut.taskSwitcher", category: "navigation" },
 	{ id: "task-switcher-global", keys: { mac: "⌥⇧Tab", other: "Ctrl+Shift+Tab" }, descKey: "keymap.shortcut.taskSwitcherGlobal", category: "navigation" },
 	{ id: "task-hints", keys: { mac: "F / ⌘G", other: "F / Ctrl+G" }, descKey: "keymap.shortcut.taskHints", category: "navigation" },
@@ -69,13 +70,13 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "settings", keys: { mac: "⌘,", other: "Ctrl+," }, descKey: "keymap.shortcut.settings", category: "view" },
 	{ id: "zoom-in", keys: { mac: "⌘=", other: "Ctrl+=" }, descKey: "keymap.shortcut.zoomIn", category: "view" },
 	{ id: "zoom-out", keys: { mac: "⌘-", other: "Ctrl+-" }, descKey: "keymap.shortcut.zoomOut", category: "view" },
-	{ id: "zoom-reset", keys: { mac: "⌘0", other: "Ctrl+0" }, descKey: "keymap.shortcut.zoomReset", category: "view" },
+	{ id: "zoom-reset", keys: { mac: "⇧⌘0", other: "Ctrl+Shift+0" }, descKey: "keymap.shortcut.zoomReset", category: "view" },
 	{ id: "hard-refresh", keys: { mac: "⌘R", other: "Ctrl+R" }, descKey: "keymap.shortcut.hardRefresh", category: "view" },
 	{ id: "keyboard-shortcuts", keys: { mac: "⌘/", other: "Ctrl+/" }, descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
 
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", keys: { mac: "⌘`", other: "Ctrl+`" }, descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },
-	{ id: "toggle-home-terminal", keys: { mac: "⇧⌘`", other: "Ctrl+Shift+`" }, descKey: "keymap.shortcut.toggleHomeTerminal", category: "terminal" },
+	{ id: "open-quick-shell", keys: { mac: "⇧⌘`", other: "Ctrl+Shift+`" }, descKey: "keymap.shortcut.openQuickShell", category: "terminal" },
 
 	// ── Application ──
 	{ id: "quit", keys: { mac: "⌘Q", other: "Ctrl+Q" }, descKey: "keymap.shortcut.quit", category: "app" },

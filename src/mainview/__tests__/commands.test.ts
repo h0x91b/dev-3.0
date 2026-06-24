@@ -35,4 +35,28 @@ describe("availableCommands", () => {
 		const ids = ALL_COMMANDS.map((c) => c.id);
 		expect(new Set(ids).size).toBe(ids.length);
 	});
+
+	it("hides git, dev-server, run-script, and project-terminal commands for a virtual (Operations) project", () => {
+		const cmds = availableCommands({ hasProject: true, hasTask: true, isVirtual: true });
+		const ids = cmds.map((c) => c.id);
+		expect(cmds.some((c) => c.category === "git")).toBe(false);
+		expect(cmds.some((c) => c.category === "devserver")).toBe(false);
+		expect(ids).not.toContain("task-run-script");
+		// Project terminal would throw "Project path does not exist" on a virtual
+		// board (its synthetic path is created lazily per-task) — hide it too.
+		expect(ids).not.toContain("term-toggle-project-terminal");
+		// Quick shell stays — it's the entry point INTO the Operations board.
+		expect(ids).toContain("term-open-quick-shell");
+		// Non-git task commands stay available.
+		expect(ids).toContain("task-open-in-finder");
+		expect(ids).toContain("task-move-in-progress");
+	});
+
+	it("keeps git/dev-server/run-script/project-terminal commands for a normal (git) project", () => {
+		const cmds = availableCommands({ hasProject: true, hasTask: true, isVirtual: false });
+		expect(cmds.some((c) => c.category === "git")).toBe(true);
+		expect(cmds.some((c) => c.category === "devserver")).toBe(true);
+		expect(cmds.map((c) => c.id)).toContain("task-run-script");
+		expect(cmds.map((c) => c.id)).toContain("term-toggle-project-terminal");
+	});
 });

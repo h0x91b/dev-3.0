@@ -143,15 +143,9 @@ const terminal = {
 	"projectTerminal.shortcutHint": "⌘`",
 	"projectTerminal.tooltipWithShortcut": "Terminal del proyecto (⌘`)",
 
-	// Home Terminal
-	"homeTerminal.open": "Terminal de inicio",
-	"homeTerminal.label": "Terminal de inicio",
-	"homeTerminal.tooltipWithShortcut": "Terminal de inicio (⌘⇧`)",
-	"homeTerminal.shortcutHint": "⌘⇧`",
-	"homeTerminal.back": "Volver",
-	"homeTerminal.sessionEnded": "Sesión del terminal de inicio finalizada",
-	"homeTerminal.sessionEndedDesc": "El proceso del terminal ha terminado. Haz clic en reiniciar para abrir una nueva sesión.",
-	"homeTerminal.restart": "Reiniciar",
+	// Quick Shell (consola Operations integrada en $HOME)
+	"quickShell.open": "Shell rápido",
+	"quickShell.tooltipWithShortcut": "Shell rápido en el inicio (⌘⇧`)",
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
 };
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { DragEvent } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -102,7 +102,9 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 		);
 	}
 
-	const visibleProjects = projects.filter((p) => !p.deleted);
+	// The built-in Operations board is pinned first; ordinary projects keep order.
+	const visibleProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
+	const hasPinnedBuiltin = visibleProjects.length > 0 && isBuiltinOpsProject(visibleProjects[0]);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
 	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
@@ -173,6 +175,13 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					const tasks = tasksByProject.get(project.id) ?? [];
 					const hasActiveTasks = tasks.length > 0;
 					const isDragged = draggedProjectId === project.id;
+					const isBuiltinOps = isBuiltinOpsProject(project);
+					// Virtual boards (builtin and user-created) cannot be reordered:
+					// reorderProjects only persists git project order; dragging a virtual
+					// board would silently snap back after the API call. The project right
+					// below the pinned builtin also cannot move above the pin.
+					const cannotReorder = project.kind === "virtual";
+					const cannotMoveUp = index === 0 || (hasPinnedBuiltin && index === 1) || cannotReorder;
 					const showDropBefore = dropTarget?.projectId === project.id && dropTarget.side === "before";
 					const showDropAfter = dropTarget?.projectId === project.id && dropTarget.side === "after";
 
@@ -204,9 +213,9 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 								<div className="pl-3 flex items-center gap-0.5">
 									<button
 										type="button"
-										draggable={!!onReorderProjects}
+										draggable={!!onReorderProjects && !cannotReorder}
 										onDragStart={(event) => {
-											if (!onReorderProjects) return;
+											if (!onReorderProjects || cannotReorder) return;
 											setDraggedProjectId(project.id);
 											event.dataTransfer.setData("text/plain", `project:${project.id}`);
 											event.dataTransfer.effectAllowed = "move";
@@ -218,7 +227,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
 										title={t("dashboard.reorderProject")}
 										aria-label={t("dashboard.reorderProject")}
-										disabled={!onReorderProjects}
+										disabled={!onReorderProjects || cannotReorder}
 									>
 										<span
 											className="text-[1rem] leading-none"
@@ -233,7 +242,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
 										title={t("dashboard.moveProjectUp")}
 										aria-label={t("dashboard.moveProjectUp")}
-										disabled={!onReorderProjects || index === 0}
+										disabled={!onReorderProjects || cannotMoveUp}
 									>
 										<span
 											className="text-[0.875rem] leading-none"
@@ -248,7 +257,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
 										title={t("dashboard.moveProjectDown")}
 										aria-label={t("dashboard.moveProjectDown")}
-										disabled={!onReorderProjects || index === visibleProjects.length - 1}
+										disabled={!onReorderProjects || index === visibleProjects.length - 1 || cannotReorder}
 									>
 										<span
 											className="text-[0.875rem] leading-none"
@@ -270,12 +279,26 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										</svg>
 									</div>
 									<div className="min-w-0 flex-1">
-										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate`}>
-											{project.name}
+										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate flex items-center gap-2`}>
+											{isBuiltinOps && (
+												<span className="text-accent flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+											)}
+											<span className="truncate">{isBuiltinOps ? t("ops.boardName") : project.name}</span>
+											{project.kind === "virtual" && (
+												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-[0.625rem] font-medium flex items-center gap-1 flex-shrink-0">
+													<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+													{isBuiltinOps ? t("ops.badgeSystem") : t("ops.badge")}
+												</span>
+											)}
+											{isBuiltinOps && (
+												<span className="text-fg-muted text-[0.5625rem] font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
+											)}
 										</div>
-										<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">
-											{project.path}
-										</div>
+										{project.kind === "virtual" ? (
+											<div className="text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
+										) : (
+											<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
+										)}
 									</div>
 								</button>
 								<ProjectActionButtons

@@ -5,6 +5,7 @@ import type { Project, Task, CliRequest, TaskNote } from "../../shared/types";
 
 vi.mock("../data", () => ({
 	loadProjects: vi.fn(),
+	loadVirtualProjects: vi.fn(() => Promise.resolve([])),
 	getProject: vi.fn(),
 	loadTasks: vi.fn(),
 	getTask: vi.fn(),
@@ -191,6 +192,17 @@ describe("projects.list", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(projects);
 	});
+
+	it("merges virtual (Operations) boards into the list", async () => {
+		const git = makeProject({ id: "p1" });
+		const ops = makeProject({ id: "ops", kind: "virtual", builtin: true });
+		vi.mocked(data.loadProjects).mockResolvedValue([git]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([ops]);
+
+		const resp = await handleRequest(makeRequest("projects.list"));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual([git, ops]);
+	});
 });
 
 describe("tasks.list", () => {
@@ -270,6 +282,19 @@ describe("task.show", () => {
 		const resp = await handleRequest(
 			makeRequest("task.show", { taskId: "task-abc12345" }),
 		);
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual(task);
+	});
+
+	it("resolves a task that lives on a virtual (Operations) board", async () => {
+		// No git projects — the task only exists on a virtual board, which must be scanned.
+		const ops = makeProject({ id: "ops", kind: "virtual", builtin: true });
+		const task = makeTask({ id: "task-abc12345" });
+		vi.mocked(data.loadProjects).mockResolvedValue([]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([ops]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(makeRequest("task.show", { taskId: "task-abc12345" }));
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
 	});

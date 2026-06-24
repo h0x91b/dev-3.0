@@ -184,6 +184,19 @@ describe("TaskCard", () => {
 		mockedConfirmTaskCompletion.mockResolvedValue(true);
 	});
 
+	describe("scratch session indicator", () => {
+		it("renders a non-empty glyph for scratch tasks (regression: was an empty placeholder)", () => {
+			renderCard(makeTask({ scratch: true, customTitle: "Quick shell", title: "Quick shell" }));
+			const icon = screen.getByTitle("Live shell session");
+			expect(icon.textContent).toBe("\u{F018D}");
+		});
+
+		it("shows no scratch indicator for a normal task", () => {
+			renderCard(makeTask({ scratch: false }));
+			expect(screen.queryByTitle("Live shell session")).not.toBeInTheDocument();
+		});
+	});
+
 	describe("variant badge", () => {
 		it("shows seq badge for non-variant tasks", () => {
 			renderCard(makeTask({ seq: 7 }));

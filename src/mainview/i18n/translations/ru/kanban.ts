@@ -70,6 +70,7 @@ const kanban = {
 	"task.confirmCancel": "Отменить задачу «{title}»?",
 	"task.variant": "#{n}",
 	"task.attempt": "Вариант {n}",
+	"task.scratchSession": "Живая shell-сессия",
 	"task.editSave": "Сохранить",
 	"task.editCancel": "Отмена",
 	"task.failedEdit": "Не удалось обновить задачу: {error}",

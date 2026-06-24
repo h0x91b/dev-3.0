@@ -6,6 +6,27 @@ const DEV3_HOME = `${HOME}/.dev3.0`;
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 const WORKTREES_DIR = `${DEV3_HOME}/worktrees`;
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
+// Virtual ("Operations") projects live in a SEPARATE file so older app versions
+// never see them. Offline ID resolution must read both or it goes blind to ops.
+const VIRTUAL_PROJECTS_FILE = `${DEV3_HOME}/virtual-projects.json`;
+
+/**
+ * Read all projects (git + virtual) for offline ID resolution, without a socket.
+ * Either file may be absent — an unreadable file contributes nothing rather than
+ * throwing, so a missing virtual-projects.json simply yields the git projects.
+ */
+function readAllProjectsRaw(): Array<{ id: string; name?: string; path: string }> {
+	const out: Array<{ id: string; name?: string; path: string }> = [];
+	for (const file of [PROJECTS_FILE, VIRTUAL_PROJECTS_FILE]) {
+		try {
+			const parsed = JSON.parse(readFileSync(file, "utf-8")) as Array<{ id: string; name?: string; path: string }>;
+			if (Array.isArray(parsed)) out.push(...parsed);
+		} catch {
+			// File missing or unreadable — skip it.
+		}
+	}
+	return out;
+}
 
 export interface CliContext {
 	projectId: string;
@@ -17,6 +38,9 @@ export interface CliContext {
 
 /** Marker that appears in every dev3 worktree path. */
 const WORKTREE_MARKER = "/.dev3.0/worktrees/";
+
+/** Marker that appears in every virtual ("Operations") task working dir. */
+const OPS_MARKER = "/.dev3.0/ops/";
 
 /**
  * Parse worktree path to extract project slug and task short ID.
@@ -112,10 +136,107 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 }
 
 /**
- * Detect context from worktree path structure.
+ * Parse a virtual ("Operations") task working dir to extract the readable slug
+ * and task short ID. Path pattern:
+ *   {any-home}/.dev3.0/ops/{readableSlug}/{taskShortId}/work[/...]
+ * The readable slug is the basename of the virtual project's synthetic path —
+ * NOT the munged projectSlug used for the data dir.
+ */
+function detectFromVirtualPath(cwd: string): { readableSlug: string; taskShortId: string; realDev3Home: string } | null {
+	const markerIdx = cwd.indexOf(OPS_MARKER);
+	if (markerIdx === -1) return null;
+	const after = cwd.slice(markerIdx + OPS_MARKER.length);
+	const parts = after.split("/");
+	if (parts.length >= 3 && parts[2] === "work") {
+		const realDev3Home = cwd.slice(0, markerIdx) + "/.dev3.0";
+		return { readableSlug: parts[0], taskShortId: parts[1], realDev3Home };
+	}
+	return null;
+}
+
+/**
+ * Resolve project and task IDs from a virtual task working dir. Reads
+ * virtual-projects.json (NOT projects.json), matches the project by the
+ * readable slug, then resolves tasks from the SAME data/<projectSlug(path)>
+ * location used by git projects (the task data layer is not special-cased).
+ */
+function resolveFromVirtualPath(cwd: string): CliContext | null {
+	const pathInfo = detectFromVirtualPath(cwd);
+	if (!pathInfo) return null;
+
+	const effectiveHome = pathInfo.realDev3Home;
+	const virtualFile = `${effectiveHome}/virtual-projects.json`;
+	const socketsDir = `${effectiveHome}/sockets`;
+
+	try {
+		const projects = JSON.parse(readFileSync(virtualFile, "utf-8")) as Array<{ id: string; path: string }>;
+		const project = projects.find((p) => (p.path.split("/").pop() || "") === pathInfo.readableSlug);
+		if (!project) return null;
+
+		// Tasks live at data/<projectSlug(path)>/tasks.json — same formula as git.
+		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+		const tasksFile = `${effectiveHome}/data/${slug}/tasks.json`;
+		if (!existsSync(tasksFile)) return null;
+
+		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
+		const task = tasks.find((t) => t.id.startsWith(pathInfo.taskShortId));
+		if (!task) return null;
+
+		const socketPath = discoverSocketIn(socketsDir) || discoverSocket() || "";
+		const workDir = `${effectiveHome}/ops/${pathInfo.readableSlug}/${pathInfo.taskShortId}/work`;
+
+		return {
+			projectId: project.id,
+			taskId: task.id,
+			socketPath,
+			worktreePath: existsSync(workDir) ? workDir : undefined,
+		};
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Resolve context from the DEV3_TASK_ID env var that the app injects into every
+ * task tmux pane (see buildAgentEnv / tmux-pty.ts). This is the fallback for
+ * operations whose working dir is NOT under ~/.dev3.0/ops/<slug>/<task>/work:
+ *  - a fixed-folder operation (user-picked opsWorkDir, e.g. ~/Downloads), and
+ *  - the built-in Quick shell (runs in homedir()).
+ * Path-based detection (worktree / managed-ops) can't see those, so without this
+ * the agent status hooks (`dev3 task move … --if-status-not …`) silently no-op.
+ * Scans all projects (git + virtual) for the task; the env var is the full UUID.
+ */
+function resolveFromEnv(): CliContext | null {
+	const taskId = process.env.DEV3_TASK_ID;
+	if (!taskId) return null;
+	try {
+		for (const project of readAllProjectsRaw()) {
+			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
+			if (!existsSync(tasksFile)) continue;
+			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
+			if (tasks.some((t) => t.id === taskId)) {
+				return {
+					projectId: project.id,
+					taskId,
+					socketPath: discoverSocket() || "",
+				};
+			}
+		}
+	} catch {
+		// Data files unavailable — fall through to "no context".
+	}
+	return null;
+}
+
+/**
+ * Detect context from worktree path structure (git), virtual ops working dir, or
+ * the injected DEV3_TASK_ID env var (covers fixed-folder ops and the Quick shell,
+ * whose working dirs live outside the ~/.dev3.0/ops/ tree). Path wins over env so
+ * a user who `cd`s between worktrees in one pane resolves the dir they're in.
  */
 export function detectContext(cwd: string = process.cwd()): CliContext | null {
-	return resolveFromWorktreePath(cwd);
+	return resolveFromWorktreePath(cwd) || resolveFromVirtualPath(cwd) || resolveFromEnv();
 }
 
 /**
@@ -293,10 +414,9 @@ export function expandShortId(id: string, context: CliContext | null): string {
 	if (id.length >= 36) return id;
 	// Check if context task matches the prefix
 	if (context?.taskId?.startsWith(id)) return context.taskId;
-	// Fall back to scanning data files across all projects
+	// Fall back to scanning data files across all projects (git + virtual)
 	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string; path: string }>;
-		for (const project of projects) {
+		for (const project of readAllProjectsRaw()) {
 			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
 			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
 			if (!existsSync(tasksFile)) continue;
@@ -320,10 +440,9 @@ export function expandShortProjectId(id: string, context: CliContext | null): st
 	if (id.length >= 36) return id;
 	// Check if context project matches the prefix
 	if (context?.projectId?.startsWith(id)) return context.projectId;
-	// Fall back to scanning projects.json
+	// Fall back to scanning projects (git + virtual)
 	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string }>;
-		const match = projects.find((p) => p.id.startsWith(id));
+		const match = readAllProjectsRaw().find((p) => p.id.startsWith(id));
 		if (match) return match.id;
 	} catch {
 		// Data files not available — return as-is
@@ -344,12 +463,8 @@ export function resolveProjectId(flagValue: string | undefined, context: CliCont
  * Read project info directly from data files (no socket needed).
  */
 export function readProjectDirect(projectId: string): { id: string; name: string; path: string } | null {
-	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string; name: string; path: string }>;
-		return projects.find((p) => p.id === projectId || p.id.startsWith(projectId)) || null;
-	} catch {
-		return null;
-	}
+	const match = readAllProjectsRaw().find((p) => p.id === projectId || p.id.startsWith(projectId));
+	return match ? { id: match.id, name: match.name ?? "", path: match.path } : null;
 }
 
 /**
@@ -357,8 +472,7 @@ export function readProjectDirect(projectId: string): { id: string; name: string
  */
 export function readTaskDirect(projectId: string, taskId: string): Record<string, unknown> | null {
 	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string; path: string }>;
-		const project = projects.find((p) => p.id === projectId);
+		const project = readAllProjectsRaw().find((p) => p.id === projectId);
 		if (!project) return null;
 
 		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");

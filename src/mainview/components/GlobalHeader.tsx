@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import type { Project, Task } from "../../shared/types";
-import { getTaskTitle, ACTIVE_STATUSES } from "../../shared/types";
+import { getTaskTitle, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
@@ -8,7 +8,6 @@ import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
-import HomeTerminalIcon from "./HomeTerminalIcon";
 import PreventSleepToggle from "./PreventSleepToggle";
 
 interface GlobalHeaderProps {
@@ -195,7 +194,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			const isOnKanban = route.screen === "project" && !route.activeTaskId && !route.taskView;
 			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
 			segments.push({
-				label: project.name,
+				label: isBuiltinOpsProject(project) ? t("ops.boardName") : project.name,
 				isProjectDropdown: true,
 				onClick: projectNameOnClick,
 			});
@@ -205,11 +204,6 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	// Project terminal breadcrumb segment
 	if (route.screen === "project-terminal") {
 		segments.push({ label: t("projectTerminal.label") });
-	}
-
-	// Home terminal breadcrumb segment
-	if (route.screen === "home-terminal") {
-		segments.push({ label: t("homeTerminal.label") });
 	}
 
 	// Task segment for split view
@@ -241,7 +235,14 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	}
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;
-	const availableProjects = projects.filter((p) => !p.deleted);
+	// Virtual ("Operations") boards have no git repo — the project-level git
+	// affordances (Pull) are meaningless and must be hidden.
+	const isVirtualProject = currentProjectId
+		? projects.find((p) => p.id === currentProjectId)?.kind === "virtual"
+		: false;
+	// Built-in Operations board pinned first; ⌘0 jumps to it, ⌘1-9 to the rest.
+	const availableProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
+	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
 
 	return (
 		<>
@@ -340,7 +341,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 										{availableProjects.map((p, idx) => {
 											const isCurrent = currentProjectId === p.id;
 											const count = projectTaskCounts[p.id];
-											const shortcutNum = idx < 9 ? idx + 1 : null;
+											const isBuiltin = isBuiltinOpsProject(p);
+											// \u23180 for the pinned built-in board; \u23181-9 for the rest.
+											const nonBuiltinIdx = switcherHasPinnedBuiltin ? idx - 1 : idx;
+											const shortcutLabel = isBuiltin ? "0" : (nonBuiltinIdx < 9 ? String(nonBuiltinIdx + 1) : null);
 											return (
 												<button
 													key={p.id}
@@ -354,7 +358,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 															: "text-fg-2 hover:bg-elevated hover:text-fg"
 													}`}
 												>
-													<span className="truncate text-sm flex-1">{p.name}</span>
+													{isBuiltin && (
+														<span className="text-accent flex-shrink-0 text-[0.8125rem]" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+													)}
+													<span className="truncate text-sm flex-1">{isBuiltin ? t("ops.boardName") : p.name}</span>
+													{isBuiltin && (
+														<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-muted text-[0.5625rem] font-medium tracking-wide">{t("ops.badgeSystem")}</span>
+													)}
 													<span className="text-[0.6875rem] text-fg-muted flex-shrink-0">
 														{count != null
 															? count > 0
@@ -362,9 +372,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 																: t("header.noActiveTasks")
 															: ""}
 													</span>
-													{shortcutNum && (
+													{shortcutLabel && (
 														<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-[0.625rem] text-fg-muted/60 font-mono">
-															<span className="text-[0.6875rem]">{"\u2318"}</span>{shortcutNum}
+															<span className="text-[0.6875rem]">{"\u2318"}</span>{shortcutLabel}
 														</kbd>
 													)}
 												</button>
@@ -464,28 +474,21 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs */}
 				<PreventSleepToggle compact={compact} />
 
-				{/* Home Terminal — always visible (rootless tmux in $HOME) */}
+				{/* Quick Shell — always visible (opens the built-in Operations shell in $HOME) */}
 				<button
-					onClick={() => {
-						if (route.screen === "home-terminal") {
-							navigate({ screen: "dashboard" });
-						} else {
-							navigate({ screen: "home-terminal" });
-						}
-					}}
-					className={`flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
-						route.screen === "home-terminal"
-							? "text-accent bg-accent/15 hover:bg-accent/25"
-							: "text-fg-3 hover:text-fg hover:bg-elevated"
-					}`}
-					title={t("homeTerminal.tooltipWithShortcut")}
+					onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
+					className="flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
+					title={t("quickShell.tooltipWithShortcut")}
 				>
-					<HomeTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
-					{!compact && <span className="text-[0.6875rem] font-medium">{t("homeTerminal.open")}</span>}
+					<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F018D}"}</span>
+					{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
 				</button>
 
-				{/* Project Terminal — visible when inside a project */}
-				{"projectId" in route && (
+				{/* Project Terminal — visible when inside a git project. Hidden for
+				    virtual ("Operations") boards: their synthetic path is created
+				    lazily per-task, so opening one throws "Project path does not
+				    exist" (same reason Git Pull below is hidden). */}
+				{"projectId" in route && !isVirtualProject && (
 					<button
 						onClick={() => {
 							if (route.screen === "project-terminal") {
@@ -511,8 +514,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</button>
 				)}
 
-				{/* Git Pull — quick pull of origin/{main|master} into project main worktree */}
-				{"projectId" in route && (
+				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
+				    Hidden for virtual ("Operations") boards, which have no git repo. */}
+				{"projectId" in route && !isVirtualProject && (
 					<GitPullButton projectId={route.projectId} compact={compact} />
 				)}
 

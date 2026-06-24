@@ -17,6 +17,7 @@ const keymap = {
 	"keymap.shortcut.forward": "Adelante",
 	"keymap.shortcut.switchProject": "Cambiar al proyecto 1–9 (mantener vista)",
 	"keymap.shortcut.switchProjectFlip": "Cambiar al proyecto 1–9 (alternar vista tablero/tarea)",
+	"keymap.shortcut.jumpOperations": "Ir al tablero de Operaciones",
 	"keymap.shortcut.taskSwitcher": "Cambiar entre tareas activas (este proyecto)",
 	"keymap.shortcut.taskSwitcherGlobal": "Cambiar entre tareas activas (todos los proyectos)",
 	"keymap.shortcut.taskHints": "Saltar a una tarea o proyecto por pista",
@@ -33,7 +34,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Recarga completa",
 	"keymap.shortcut.keyboardShortcuts": "Mostrar este panel de atajos de teclado",
 	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",
-	"keymap.shortcut.toggleHomeTerminal": "Alternar terminal de inicio",
+	"keymap.shortcut.openQuickShell": "Abrir Shell rápido",
 	"keymap.shortcut.quit": "Salir",
 	"keymap.shortcut.hide": "Ocultar app",
 };

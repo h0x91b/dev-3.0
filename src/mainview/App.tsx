@@ -5,6 +5,7 @@ import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
+import { orderProjectsForDisplay } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
@@ -17,7 +18,6 @@ import LaunchVariantsModal from "./components/LaunchVariantsModal";
 import ProjectView from "./components/ProjectView";
 import TaskWorkspaceView from "./components/TaskWorkspaceView";
 import ProjectTerminal from "./components/ProjectTerminal";
-import HomeTerminal from "./components/HomeTerminal";
 import ProjectSettings from "./components/ProjectSettings";
 import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
@@ -115,7 +115,7 @@ function App() {
 		const r = state.route;
 		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
 		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
-		const hasTerminal = r.screen === "task" || r.screen === "project-terminal" || r.screen === "home-terminal";
+		const hasTerminal = r.screen === "task" || r.screen === "project-terminal";
 		try {
 			void api.request.updateMenuContext?.({ hasTask, hasProject, hasTerminal })?.catch(() => {});
 		} catch {
@@ -302,6 +302,23 @@ function App() {
 		[navigate, state.route],
 	);
 
+	// Quick shell: open (or focus) the built-in "Quick shell" operation in ~.
+	// Replaces the former single home terminal; bound to ⇧⌘`.
+	const openQuickShell = useCallback(async () => {
+		try {
+			const task = await api.request.openQuickShell({});
+			navigate({ screen: "task", projectId: task.projectId, taskId: task.id });
+		} catch (err) {
+			toast.error(String(err));
+		}
+	}, [navigate]);
+
+	useEffect(() => {
+		function onOpenQuickShell() { void openQuickShell(); }
+		window.addEventListener("menu:open-quick-shell", onOpenQuickShell);
+		return () => window.removeEventListener("menu:open-quick-shell", onOpenQuickShell);
+	}, [openQuickShell]);
+
 	// `g`-prefix "go to" sequence (Linear/GitHub style), kept in refs so the
 	// global keydown handler stays pure. Tiny state machine:
 	//   g          → arm "verb": expect d/p/t/s, or a 1–9 digit (= project N, keep view)
@@ -378,11 +395,19 @@ function App() {
 	// order); the ⌘N badge stays keyed to the stable board index.
 	const quickSwitch = useMemo(() => {
 		const boardProjects = state.projects.filter((p) => !p.deleted);
+		// ⌘1..9 address ordinary projects only — the builtin Operations board owns
+		// ⌘0 (see the keydown handler). The ⌘N badge index must mirror that same
+		// builtin-excluded ordering, or the badge would disagree with the shortcut.
+		const ordinary = boardProjects.filter((p) => !(p.builtin && p.kind === "virtual"));
 		const shortcutIndexById: Record<string, number> = {};
-		boardProjects.forEach((p, i) => {
+		ordinary.forEach((p, i) => {
 			shortcutIndexById[p.id] = i;
 		});
-		const ordered = showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects;
+		// Pin the builtin Operations board first (consistent with the dashboard,
+		// header switcher, and sidebar), then recency, then board order.
+		const ordered = orderProjectsForDisplay(
+			showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects,
+		);
 		return { projects: ordered, shortcutIndexById };
 	}, [state.projects, showProjectSwitch]);
 
@@ -508,10 +533,22 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(-ZOOM_STEP);
-			} else if ((e.metaKey || e.ctrlKey) && e.key === "0") {
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "Digit0") {
+				// Cmd+Shift+0 — reset zoom to 100%. Relocated from Cmd+0, which now
+				// jumps to the built-in Operations board (see below). `e.code` because
+				// Shift+0 yields ")" in `e.key`.
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "0") {
+				// Cmd+0 — jump to the built-in Operations board (the special "slot 0"
+				// of the Cmd+digit project family; Cmd+1..9 address ordinary projects).
+				const ops = state.projects.find((p) => p.builtin && p.kind === "virtual" && !p.deleted);
+				if (ops) {
+					e.preventDefault();
+					e.stopPropagation();
+					navigateToProject(ops.id);
+				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "[") {
 				// Cmd+[ — navigate back through route history
 				e.preventDefault();
@@ -523,14 +560,10 @@ function App() {
 				e.stopPropagation();
 				dispatch({ type: "goForward" });
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "~") {
-				// Cmd+Shift+` — toggle home terminal (key="~" because Shift+` produces ~)
+				// Cmd+Shift+` — open/focus the Quick shell operation (key="~" because Shift+` produces ~)
 				e.preventDefault();
 				e.stopPropagation();
-				if (state.route.screen === "home-terminal") {
-					navigate({ screen: "dashboard" });
-				} else {
-					navigate({ screen: "home-terminal" });
-				}
+				void openQuickShell();
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "`") {
 				// Cmd+` — toggle project terminal
 				const { route } = state;
@@ -539,9 +572,15 @@ function App() {
 					e.stopPropagation();
 					navigate({ screen: "project", projectId: route.projectId });
 				} else if ("projectId" in route) {
-					e.preventDefault();
-					e.stopPropagation();
-					navigate({ screen: "project-terminal", projectId: route.projectId });
+					// Virtual ("Operations") boards have no project terminal — their
+					// synthetic path is created lazily per-task, so opening one throws
+					// "Project path does not exist". Ignore the hotkey there.
+					const isVirtual = state.projects.find((p) => p.id === route.projectId)?.kind === "virtual";
+					if (!isVirtual) {
+						e.preventDefault();
+						e.stopPropagation();
+						navigate({ screen: "project-terminal", projectId: route.projectId });
+					}
 				}
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
 				// Cmd+Shift+1..9 — switch to project by index landing on the
@@ -556,7 +595,9 @@ function App() {
 				// `dev3-task-open-mode` preference. Note: macOS reserves Cmd+Shift+3/4/5
 				// for screenshots, so those may be swallowed by the OS before reaching us.
 				const idx = parseInt(e.code.slice(5), 10) - 1;
-				const available = state.projects.filter((p) => !p.deleted);
+				// The built-in Operations board owns Cmd+0, so it is excluded here —
+				// Cmd+1..9 address ordinary projects only.
+				const available = state.projects.filter((p) => !p.deleted && !(p.builtin && p.kind === "virtual"));
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();
@@ -580,7 +621,8 @@ function App() {
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
 				const idx = parseInt(e.key, 10) - 1;
-				const available = state.projects.filter((p) => !p.deleted);
+				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
+				const available = state.projects.filter((p) => !p.deleted && !(p.builtin && p.kind === "virtual"));
 				if (idx < available.length) {
 					e.preventDefault();
 					e.stopPropagation();
@@ -668,7 +710,7 @@ function App() {
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 
@@ -1261,8 +1303,6 @@ function App() {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project-terminal") {
 				navigate({ screen: "project", projectId: route.projectId });
-			} else if (route.screen === "home-terminal") {
-				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project" && (route.activeTaskId || route.taskView)) {
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project") {
@@ -1369,6 +1409,7 @@ function App() {
 					context={{
 						hasProject: Boolean(getProjectIdForRoute(state.route)),
 						hasTask: Boolean(routeTaskId(state.route)),
+						isVirtual: state.projects.find((p) => p.id === getProjectIdForRoute(state.route))?.kind === "virtual",
 					}}
 					onRun={runCommand}
 					onClose={() => setShowCommandPalette(false)}
@@ -1669,12 +1710,6 @@ function App() {
 					</div>
 				) : null;
 			}
-			case "home-terminal":
-				return (
-					<div className="flex-1 min-h-0 flex flex-col">
-						<HomeTerminal onBack={() => navigate({ screen: "dashboard" })} />
-					</div>
-				);
 			case "task":
 				return (
 					<TaskWorkspaceView

@@ -7,7 +7,6 @@ export type Route =
 	| { screen: "dashboard" }
 	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean }
 	| { screen: "project-terminal"; projectId: string }
-	| { screen: "home-terminal" }
 	| { screen: "task"; projectId: string; taskId: string }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree"; worktreeTaskId?: string }
 	| { screen: "settings" }

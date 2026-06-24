@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import type { ColumnAgentConfig, DevServerStatus, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
@@ -384,9 +383,19 @@ export async function launchTaskPty(
 	});
 	try {
 		const sessionSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		// For virtual ops, only add the split-right shell on a FRESH session — not
+		// when reconnecting to an existing one (recovery) — to avoid duplicate panes.
+		let sessionPreexisted = false;
+		if (project.kind === "virtual") {
+			const probe = spawn(pty.tmuxArgs(sessionSocket, "has-session", "-t", `dev3-${task.id.slice(0, 8)}`), { stdout: "ignore", stderr: "ignore" });
+			sessionPreexisted = (await probe.exited) === 0;
+		}
 		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
+		if (project.kind === "virtual" && !sessionPreexisted) {
+			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);
+		}
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
 			taskId: task.id.slice(0, 8),
@@ -394,6 +403,51 @@ export async function launchTaskPty(
 			stack: (err as Error)?.stack ?? "no stack",
 		});
 		throw err;
+	}
+}
+
+/**
+ * For a virtual ("Operations") task: after the main agent PTY session is up, add
+ * a split-right interactive shell pane in the same working dir, so every
+ * operation has both the agent (left) and a ready shell (right). Non-fatal: any
+ * failure just leaves the agent pane alone. Waits for the freshly-created tmux
+ * session to come up before splitting.
+ */
+async function addVirtualShellPane(task: Task, worktreePath: string, socket: string, userShell: string): Promise<void> {
+	const session = `dev3-${task.id.slice(0, 8)}`;
+	try {
+		let ready = false;
+		for (let i = 0; i < 40; i++) {
+			const probe = spawn(pty.tmuxArgs(socket, "has-session", "-t", session), { stdout: "ignore", stderr: "ignore" });
+			if ((await probe.exited) === 0) { ready = true; break; }
+			await new Promise((r) => setTimeout(r, 100));
+		}
+		if (!ready) {
+			log.warn("Virtual shell pane: session never came up, skipping split", { taskId: task.id.slice(0, 8) });
+			return;
+		}
+		const proc = spawn(pty.tmuxArgs(socket,
+			"split-window", "-h",
+			"-l", "40%",
+			"-P", "-F", "#{pane_id}",
+			"-e", `DEV3_TASK_ID=${task.id}`,
+			"-e", `DEV3_WORKTREE_ROOT=${worktreePath}`,
+			"-t", session,
+			"-c", worktreePath,
+			userShell,
+		), { stdout: "pipe", stderr: "pipe" });
+		const paneId = (await new Response(proc.stdout).text()).trim();
+		const exitCode = await proc.exited;
+		if (exitCode === 0 && paneId) {
+			spawn(pty.tmuxArgs(socket, "set-option", "-t", session, "pane-border-status", "top")).exited.catch(() => {});
+			spawn(pty.tmuxArgs(socket, "select-pane", "-t", `${session}.0`, "-T", "Agent")).exited.catch(() => {});
+			spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", "Shell")).exited.catch(() => {});
+			log.info("Virtual shell pane created", { taskId: task.id.slice(0, 8), paneId });
+		} else {
+			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode });
+		}
+	} catch (err) {
+		log.warn("Virtual shell pane creation failed (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 	}
 }
 
@@ -797,7 +851,10 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 				// Tmux session exists — just reconnect (no resume needed).
 				// Skip session persist so we don't overwrite the real session ID.
 				try {
-					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					// Virtual boards have no git repo config to resolve — pass through.
+					const resolvedProject = foundProject.kind === "virtual"
+						? foundProject
+						: await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false, { skipSessionPersist: true });
 					log.info("Reconnected to existing tmux session", { taskId: params.taskId.slice(0, 8) });
 				} catch (err) {
@@ -813,7 +870,9 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 			} else {
 				// No tmux, no session state — launch fresh
 				try {
-					const resolvedProject = await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					const resolvedProject = foundProject.kind === "virtual"
+						? foundProject
+						: await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false);
 					log.info("Launched fresh PTY session", { taskId: params.taskId.slice(0, 8) });
 				} catch (err) {
@@ -836,10 +895,12 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	return { url };
 }
 
-/** Find a task by ID across all projects. */
+/** Find a task by ID across all projects (git AND virtual/Operations boards). */
 async function findTaskAcrossProjects(taskId: string): Promise<{ task: Task | null; project: Project | null }> {
 	try {
-		const projects = await data.loadProjects();
+		// Virtual boards live in a separate file — they MUST be scanned too, or an
+		// active operation's PTY can never be restored (the task "isn't found").
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 		for (const project of projects) {
 			try {
 				const task = await data.getTask(project, taskId);
@@ -875,7 +936,9 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 
 	// Launch main pane (panes[0]) with resume
 	const main = panes[0];
-	const resolvedProject = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	const resolvedProject = project.kind === "virtual"
+		? project
+		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
 	await launchTaskPty(
 		resolvedProject,
 		task,
@@ -974,7 +1037,9 @@ async function restartTask(params: { taskId: string }): Promise<string> {
 	// Clear old session state — a new one will be generated by launchTaskPty
 	await data.updateTask(project, task.id, { sessionState: null });
 
-	const resolvedProject = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+	const resolvedProject = project.kind === "virtual"
+		? project
+		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
 	await launchTaskPty(
 		resolvedProject,
 		task,
@@ -1006,6 +1071,14 @@ async function getProjectPtyUrl(params: { projectId: string }): Promise<string> 
 
 	if (!pty.hasSession(sessionKey)) {
 		const project = await data.getProject(params.projectId);
+		// Virtual ("Operations") boards have no repo and no stable project folder
+		// (the synthetic ~/.dev3.0/ops/<slug> path is created lazily per-task). A
+		// project terminal there is meaningless and would otherwise open a shell in
+		// dev3's internal data dir — reject it explicitly. The UI hides the
+		// affordance for virtual boards; this is the backend backstop.
+		if (project.kind === "virtual") {
+			throw new Error("Project terminal is not available for Operations boards");
+		}
 		if (!existsSync(project.path)) {
 			throw new Error(`Project path does not exist: ${project.path}`);
 		}
@@ -1022,34 +1095,6 @@ async function destroyProjectTerminal(params: { projectId: string }): Promise<vo
 	log.info("→ destroyProjectTerminal", { projectId: params.projectId.slice(0, 8) });
 	pty.destroySession(sessionKey);
 	log.info("← destroyProjectTerminal done");
-}
-
-async function getHomePtyUrl(_params: {}): Promise<string> {
-	const sessionKey = pty.HOME_TERMINAL_SESSION_KEY;
-	log.info("→ getHomePtyUrl", { hasExistingSession: pty.hasSession(sessionKey) });
-
-	if (pty.hasDeadSession(sessionKey)) {
-		log.info("Dead home terminal session — destroying to recreate");
-		pty.destroySession(sessionKey);
-	}
-
-	if (!pty.hasSession(sessionKey)) {
-		const home = homedir();
-		if (!existsSync(home)) {
-			throw new Error(`Home directory does not exist: ${home}`);
-		}
-		pty.createSession(sessionKey, "", home, getUserShell(), {}, pty.DEFAULT_TMUX_SOCKET, "home");
-	}
-
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
-	log.info("← getHomePtyUrl", { url });
-	return url;
-}
-
-async function destroyHomeTerminal(_params: {}): Promise<void> {
-	log.info("→ destroyHomeTerminal");
-	pty.destroySession(pty.HOME_TERMINAL_SESSION_KEY);
-	log.info("← destroyHomeTerminal done");
 }
 
 async function getTaskPorts(params: { taskId: string }): Promise<PortInfo[]> {
@@ -1085,7 +1130,6 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		windowCount: number;
 		isCleanup: boolean;
 		isProjectTerminal: boolean;
-		isHomeTerminal: boolean;
 		shortId: string;
 	}> = [];
 
@@ -1094,17 +1138,17 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		const [name, cwd, windowsStr, createdStr] = line.split("|");
 		if (!name.startsWith("dev3-")) continue;
 		if (name.startsWith("dev3-dev-")) continue;
+		// Ignore a stale single home terminal session from an older app version
+		// (the home terminal was replaced by the Quick-shell operation).
+		if (name === "dev3-home") continue;
 
 		const isCleanup = name.startsWith("dev3-cl-");
 		const isProjectTerminal = name.startsWith("dev3-pt-");
-		const isHomeTerminal = name === pty.HOME_TERMINAL_TMUX_NAME;
-		const shortId = isHomeTerminal
-			? "home"
-			: isProjectTerminal
+		const shortId = isProjectTerminal
+			? name.slice(8)
+			: isCleanup
 				? name.slice(8)
-				: isCleanup
-					? name.slice(8)
-					: name.slice(5);
+				: name.slice(5);
 		if (!shortId) continue;
 
 		rawSessions.push({
@@ -1114,13 +1158,12 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 			windowCount: parseInt(windowsStr, 10) || 1,
 			isCleanup,
 			isProjectTerminal,
-			isHomeTerminal,
 			shortId,
 		});
 
 		if (isProjectTerminal) {
 			projectShortIds.add(shortId);
-		} else if (!isHomeTerminal) {
+		} else {
 			taskShortIds.add(shortId);
 		}
 	}
@@ -1133,7 +1176,8 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 	const taskMap = new Map<string, { title: string; taskId: string; projectId: string }>();
 	const projectMap = new Map<string, { name: string; projectId: string }>();
 	try {
-		const projects = await data.loadProjects();
+		// Include virtual ("Operations") projects so their operation sessions resolve too.
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 		const pendingTaskIds = new Set(taskShortIds);
 
 		for (const project of projects) {
@@ -1165,18 +1209,7 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 
 	const sessions: TmuxSessionInfo[] = [];
 	for (const rawSession of rawSessions) {
-		const { name, cwd, windowCount, createdAt, isCleanup, isProjectTerminal, isHomeTerminal, shortId } = rawSession;
-		if (isHomeTerminal) {
-			sessions.push({
-				name,
-				cwd,
-				createdAt,
-				windowCount,
-				isCleanup: false,
-				isHomeTerminal: true,
-			});
-			continue;
-		}
+		const { name, cwd, windowCount, createdAt, isCleanup, isProjectTerminal, shortId } = rawSession;
 		if (isProjectTerminal) {
 			const projectInfo = projectMap.get(shortId);
 			sessions.push({
@@ -1781,8 +1814,6 @@ export const tmuxPtyHandlers = {
 	getPtyUrl,
 	getProjectPtyUrl,
 	destroyProjectTerminal,
-	getHomePtyUrl,
-	destroyHomeTerminal,
 	getTaskPorts,
 	getPortAllocations,
 	listTmuxSessions,

@@ -17,6 +17,7 @@ const keymap = {
 	"keymap.shortcut.forward": "Вперёд",
 	"keymap.shortcut.switchProject": "Переключить на проект 1–9 (сохранить вид)",
 	"keymap.shortcut.switchProjectFlip": "Переключить на проект 1–9 (сменить вид доска/задача)",
+	"keymap.shortcut.jumpOperations": "Перейти к борду «Операции»",
 	"keymap.shortcut.taskSwitcher": "Циклический выбор активных задач (этот проект)",
 	"keymap.shortcut.taskSwitcherGlobal": "Циклический выбор активных задач (все проекты)",
 	"keymap.shortcut.taskHints": "Переход к задаче или проекту по подсказке",
@@ -33,7 +34,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Полная перезагрузка",
 	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
-	"keymap.shortcut.toggleHomeTerminal": "Переключить домашний терминал",
+	"keymap.shortcut.openQuickShell": "Открыть быструю консоль",
 	"keymap.shortcut.quit": "Выйти",
 	"keymap.shortcut.hide": "Скрыть приложение",
 };

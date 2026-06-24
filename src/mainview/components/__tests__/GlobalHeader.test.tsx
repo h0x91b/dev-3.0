@@ -573,15 +573,22 @@ describe("GlobalHeader — project terminal button", () => {
 		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
 	});
 
-	it("shows home terminal before project terminal", () => {
+	it("shows quick shell before project terminal", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		const homeButton = screen.getByTitle("Home Terminal (\u2318\u21e7`)");
+		const quickShellButton = screen.getByTitle("Quick Shell in home (\u2318\u21e7`)");
 		const projectButton = screen.getByTitle("Project Terminal (\u2318`)");
 
 		expect(
-			homeButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+			quickShellButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBeTruthy();
+	});
+
+	it("renders a non-empty Quick Shell icon glyph (regression: was an empty placeholder)", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		const quickShellButton = screen.getByTitle("Quick Shell in home (⌘⇧`)");
+		const icon = quickShellButton.querySelector("span");
+		expect(icon?.textContent).toBe("\u{F018D}");
 	});
 
 	it("does not show terminal button on dashboard", () => {
@@ -693,5 +700,58 @@ describe("GlobalHeader — back/forward navigation", () => {
 		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { canGoForward: true, goForward });
 		await user.click(screen.getByLabelText("Forward (⌘])"));
 		expect(goForward).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("GlobalHeader — virtual (Operations) board git affordances", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	const virtualProject: Project = {
+		...project1,
+		id: "vp1",
+		name: "Operations",
+		kind: "virtual",
+	};
+
+	const builtinOps: Project = {
+		...project1,
+		id: "ops",
+		name: "Operations",
+		kind: "virtual",
+		builtin: true,
+	};
+
+	it("shows the Pull button for a git project", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.getByText("Pull")).toBeInTheDocument();
+	});
+
+	it("hides the Pull button for a virtual project", () => {
+		renderHeader({ screen: "project", projectId: "vp1" }, [virtualProject]);
+		expect(screen.queryByText("Pull")).not.toBeInTheDocument();
+	});
+
+	it("shows the bracketed board name in the breadcrumb for the built-in board", () => {
+		renderHeader({ screen: "project", projectId: "ops" }, [project1, builtinOps]);
+		expect(screen.getByText("[ Operations ]")).toBeInTheDocument();
+	});
+
+	it("pins the built-in board first in the switcher with a ⌘0 hint and SYSTEM badge", async () => {
+		const user = userEvent.setup();
+		// builtin passed LAST but must render FIRST in the dropdown.
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, builtinOps]);
+		await user.click(screen.getByLabelText("Switch project"));
+
+		const rows = screen.getAllByRole("button").filter((b) => /Operations|Project Alpha|Project Beta/.test(b.textContent ?? ""));
+		// First dropdown row is the pinned Operations board.
+		expect(rows[0].textContent).toContain("[ Operations ]");
+		expect(rows[0].textContent).toContain("⌘0");
+		expect(rows[0].textContent).toContain("SYSTEM");
+		// Ordinary projects keep ⌘1, ⌘2.
+		expect(rows[1].textContent).toContain("⌘1");
+		expect(rows[2].textContent).toContain("⌘2");
 	});
 });

@@ -28,6 +28,24 @@ const dashboard = {
 	"activity.monthsAgo": "hace {count}mes",
 	"activity.yearsAgo": "hace {count}a",
 
+	// Virtual "Operations" boards
+	"ops.boardName": "[ Operaciones ]",
+	"ops.badge": "Operaciones",
+	"ops.badgeSystem": "SISTEMA",
+	"ops.gitUnavailable": "Git no está disponible en las tareas de operaciones",
+	"ops.tileSubtitle": "Tareas con código · sin git",
+	"ops.create.typeGit": "Repositorio Git",
+	"ops.create.typeOps": "Operaciones",
+	"ops.create.nameLabel": "Nombre del tablero",
+	"ops.create.namePlaceholder": "Operaciones",
+	"ops.create.hint": "Un tablero para tareas puntuales con código no ligadas a un repo. Cada tarea se ejecuta en una carpeta gestionada (o una que elijas) — sin git worktree.",
+	"ops.create.submit": "Crear tablero",
+	"ops.create.workDirLabel": "Carpeta de trabajo",
+	"ops.create.workDirAuto": "Carpeta temporal gestionada (automática)",
+	"ops.create.workDirPick": "Elegir carpeta…",
+	"ops.create.workDirReset": "Usar gestionada",
+	"ops.create.workDirConflict": "Otra operación activa ya usa esta carpeta — los agentes pueden entrar en conflicto.",
+
 	// GlobalHeader
 	"header.task": "Tarea",
 	"header.settings": "Configuración",

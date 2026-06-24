@@ -728,6 +728,16 @@ export function taskDir(project: Project, task: Task): string {
 	return `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
 }
 
+/**
+ * Managed working dir for a task in a virtual ("Operations") project. Nests
+ * directly under the project's synthetic `path` (`~/.dev3.0/ops/<slug>`), so it
+ * does NOT re-apply projectSlug (that would double-munge). Used as the agent +
+ * shell cwd when the operation has no user-chosen fixed folder.
+ */
+export function virtualWorkDir(project: Project, task: Task): string {
+	return `${project.path}/${shortId(task.id)}/work`;
+}
+
 function worktreePath(project: Project, task: Task): string {
 	return `${taskDir(project, task)}/worktree`;
 }

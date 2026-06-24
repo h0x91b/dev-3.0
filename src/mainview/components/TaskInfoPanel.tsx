@@ -372,7 +372,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const diffBadgeTitle = !includeTests && excludedTestCount > 0
 		? t("infoPanel.diffTestsHidden", { count: String(excludedTestCount) })
 		: t("infoPanel.showDiff");
-	const diffSummaryBadge = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+	const diffSummaryBadge = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<button
 			type="button"
 			ref={diffFilesTriggerRef}
@@ -398,7 +398,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			)}
 		</button>
 	) : null;
-	const diffIncludeTestsToggle = metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+	const diffIncludeTestsToggle = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<button
 			type="button"
 			data-testid="diff-include-tests-toggle"
@@ -563,7 +563,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		</button>
 	) : null;
 
-	const bugHuntersButton = isTaskActive && task.worktreePath ? (
+	const bugHuntersButton = project.kind !== "virtual" && isTaskActive && task.worktreePath ? (
 		<button
 			onClick={() => setBugHuntersOpen(true)}
 			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-danger hover:text-danger hover:bg-danger/15 border border-danger/30"
@@ -636,23 +636,31 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
-						<TaskGitActions
-							task={task}
-							project={project}
-							dispatch={dispatch}
-							navigate={navigate}
-							isTaskActive={isTaskActive}
-							showWorktreeCopy
-							showLoading
-							compact={compact}
-							onBranchStatusChange={setMetadataBranchState}
-							onOpenInlineDiff={onOpenInlineDiff}
-						/>
+						{project.kind === "virtual" ? (
+							<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+						) : (
+							<TaskGitActions
+								task={task}
+								project={project}
+								dispatch={dispatch}
+								navigate={navigate}
+								isTaskActive={isTaskActive}
+								showWorktreeCopy
+								showLoading
+								compact={compact}
+								onBranchStatusChange={setMetadataBranchState}
+								onOpenInlineDiff={onOpenInlineDiff}
+							/>
+						)}
 						<div className="flex-1" />
 						<div className="flex items-center gap-2 flex-shrink-0">
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
-							<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-							<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+							{project.kind !== "virtual" && (
+								<>
+									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								</>
+							)}
 							<TaskExposedPorts task={task} />
 						</div>
 					</div>
@@ -699,22 +707,30 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
-							<TaskGitActions
-								task={task}
-								project={project}
-								dispatch={dispatch}
-								navigate={navigate}
-								isTaskActive={isTaskActive}
-								branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
-								compact={compact}
-								onBranchStatusChange={setMetadataBranchState}
-								onOpenInlineDiff={onOpenInlineDiff}
-							/>
+							{project.kind === "virtual" ? (
+								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+							) : (
+								<TaskGitActions
+									task={task}
+									project={project}
+									dispatch={dispatch}
+									navigate={navigate}
+									isTaskActive={isTaskActive}
+									branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
+									compact={compact}
+									onBranchStatusChange={setMetadataBranchState}
+									onOpenInlineDiff={onOpenInlineDiff}
+								/>
+							)}
 							<div className="flex-1" />
 							<div className="flex items-center gap-2 flex-shrink-0">
 								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
-								<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-								<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								{project.kind !== "virtual" && (
+									<>
+										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+									</>
+								)}
 								<TaskExposedPorts task={task} />
 							</div>
 						</div>

@@ -37,6 +37,12 @@ function LaunchVariantsModal({
 }: LaunchVariantsModalProps) {
 	const t = useT();
 
+	// Virtual ("Operations") boards run a single agent per operation — there is
+	// no git diff to compare parallel attempts against, and a shared fixed
+	// folder would have multiple agents clobbering each other. Hide the
+	// add-variant affordance so an operation is always one agent + one folder.
+	const isVirtual = project.kind === "virtual";
+
 	function makeDefaultVariant(): VariantRow {
 		// Try global default agent, fall back to first available
 		let agentId: string | null = globalSettings.defaultAgentId ?? null;
@@ -275,12 +281,16 @@ function LaunchVariantsModal({
 
 				{/* Footer */}
 				<div className="px-6 py-4 border-t border-edge flex items-center justify-between">
-					<button
-						onClick={addVariant}
-						className="text-accent hover:text-accent-hover text-sm font-medium transition-colors"
-					>
-						{t("launch.addVariant")}
-					</button>
+					{isVirtual ? (
+						<div />
+					) : (
+						<button
+							onClick={addVariant}
+							className="text-accent hover:text-accent-hover text-sm font-medium transition-colors"
+						>
+							{t("launch.addVariant")}
+						</button>
+					)}
 
 					<div className="flex items-center gap-3">
 						<button

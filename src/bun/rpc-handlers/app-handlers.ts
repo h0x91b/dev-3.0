@@ -96,12 +96,32 @@ async function ping(): Promise<{ ok: true; t: number }> {
 	return { ok: true, t: Date.now() };
 }
 
+// Provision the built-in "Operations" board once per process (idempotent at the
+// data layer). The stored name is a literal placeholder; the renderer shows the
+// localized label based on `project.builtin`.
+let builtinOpsEnsured = false;
+
 async function getProjects(): Promise<Project[]> {
 	log.info("→ getProjects");
-	const rawProjects = await data.loadProjects();
+	if (!builtinOpsEnsured) {
+		builtinOpsEnsured = true;
+		try {
+			await data.ensureBuiltinOperationsBoard("Operations");
+		} catch (err) {
+			builtinOpsEnsured = false;
+			log.warn("Failed to ensure built-in Operations board (non-fatal)", { error: String(err) });
+		}
+	}
+	// Single merge point: git projects (projects.json) + virtual Operations boards
+	// (virtual-projects.json). Old app versions only read the former and stay blind
+	// to virtual boards (forward-compat).
+	const [gitProjects, virtualProjects] = await Promise.all([data.loadProjects(), data.loadVirtualProjects()]);
+	const rawProjects = [...gitProjects, ...virtualProjects];
 	// Per-project isolation: one broken project (e.g. its folder was deleted from
 	// disk) must never reject the whole list — that left users with an empty board.
 	const projects = await Promise.all(rawProjects.map(async (project) => {
+		// Virtual boards have no repo on disk — skip the .dev3/ config resolution.
+		if (project.kind === "virtual") return project;
 		try {
 			await repoConfig.migrateProjectConfig(project);
 			return await repoConfig.resolveProjectConfig(project);
@@ -230,6 +250,12 @@ async function listAgentSkills(): Promise<AgentSkillInfo[]> {
 async function addProjectImpl(params: { path: string; name: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
 	log.info("→ addProject", params);
 	try {
+		// Protect the synthetic virtual-project namespace: a real git repo must
+		// never live under ~/.dev3.0/ (would collide with ops/<slug> paths).
+		if (params.path === DEV3_HOME || params.path.startsWith(`${DEV3_HOME}/`)) {
+			log.warn("Rejected git project inside dev-3.0 data dir", { path: params.path });
+			return { ok: false, error: "Cannot add a project inside the dev-3.0 data directory" };
+		}
 		const isRepo = await git.isGitRepo(params.path);
 		if (!isRepo) {
 			log.warn("Not a git repo", { path: params.path });
@@ -247,6 +273,19 @@ async function addProjectImpl(params: { path: string; name: string }): Promise<{
 		return { ok: true, project };
 	} catch (err) {
 		log.error("addProject failed", { error: String(err), params });
+		return { ok: false, error: String(err) };
+	}
+}
+
+async function addVirtualProject(params: { name: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+	log.info("→ addVirtualProject", params);
+	try {
+		const name = params.name?.trim() || "Operations";
+		const project = await data.addVirtualProject(name);
+		log.info("← addVirtualProject OK", { projectId: project.id, name: project.name });
+		return { ok: true, project };
+	} catch (err) {
+		log.error("addVirtualProject failed", { error: String(err), params });
 		return { ok: false, error: String(err) };
 	}
 }
@@ -819,6 +858,7 @@ export const appHandlers = {
 	listDirectory,
 	listAgentSkills,
 	addProject: addProjectImpl,
+	addVirtualProject,
 	cloneAndAddProject,
 	createDirectory,
 	initAndAddProject,

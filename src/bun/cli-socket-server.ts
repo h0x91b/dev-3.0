@@ -75,7 +75,9 @@ function cleanupStaleSockets(): void {
 }
 
 async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Project; task: Task } | null> {
-	const projects = await data.loadProjects();
+	// Scan virtual ("Operations") boards too, so `dev3` commands run from inside
+	// an operation worktree (no explicit --project) can resolve their task.
+	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	for (const project of projects) {
 		try {
 			const tasks = await data.loadTasks(project);
@@ -135,7 +137,9 @@ const handlers: Record<string, Handler> = {
 	},
 
 	"projects.list": async () => {
-		return data.loadProjects();
+		// Merge virtual ("Operations") boards so the CLI sees the same project set
+		// as the app (matches getProjects in app-handlers).
+		return [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	},
 
 	"tasks.list": async (params) => {

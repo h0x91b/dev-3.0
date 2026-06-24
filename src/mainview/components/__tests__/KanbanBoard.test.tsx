@@ -126,6 +126,28 @@ describe("column ordering", () => {
 		expect(labels).not.toContain("PR Review");
 	});
 
+	it("virtual board hides all review columns (todo → in-progress → user-questions → done)", async () => {
+		await renderBoardWith({ project: { ...project, kind: "virtual" } });
+		const labels = getColumnLabels();
+		expect(labels).not.toContain("AI Review");
+		expect(labels).not.toContain("Your Review");
+		expect(labels).not.toContain("PR Review");
+		expect(labels).toContain("To Do");
+		expect(labels).toContain("Agent is Working");
+		expect(labels).toContain("Completed");
+	});
+
+	it("does not poll getProjectPRs for a virtual board (no git, no PRs)", async () => {
+		await renderBoardWith({ project: { ...project, kind: "virtual" } });
+		await Promise.resolve();
+		expect(api.request.getProjectPRs).not.toHaveBeenCalled();
+	});
+
+	it("polls getProjectPRs for a git board", async () => {
+		await renderBoardWith();
+		await waitFor(() => expect(api.request.getProjectPRs).toHaveBeenCalled());
+	});
+
 	it("review-by-colleague is inserted before completed when missing from stored columnOrder", async () => {
 		await renderBoardWith({
 			project: {

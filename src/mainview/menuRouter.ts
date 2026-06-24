@@ -282,11 +282,15 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		// ── Terminal: open the project / home terminal screen directly ──
 		case "term-toggle-project-terminal": {
 			const projectId = currentProjectId(state);
-			if (projectId) navigate(ctx, { screen: "project-terminal", projectId });
+			// Virtual ("Operations") boards have no project terminal — their synthetic
+			// path is created lazily per-task, so opening one throws "Project path does
+			// not exist". Skip silently when the current project is virtual.
+			const isVirtual = state.projects.find((p) => p.id === projectId)?.kind === "virtual";
+			if (projectId && !isVirtual) navigate(ctx, { screen: "project-terminal", projectId });
 			return;
 		}
-		case "term-toggle-home-terminal":
-			navigate(ctx, { screen: "home-terminal" });
+		case "term-open-quick-shell":
+			window.dispatchEvent(new CustomEvent("menu:open-quick-shell"));
 			return;
 
 		// ── Shortcut reference overlay: open via CustomEvent — App.tsx wires the modal. ──

@@ -113,4 +113,24 @@ describe("ProjectQuickSwitchModal", () => {
 		expect(options[0].textContent).toContain("⌘3");
 		expect(options[1].textContent).toContain("⌘1");
 	});
+
+	it("renders the builtin Operations board with its bracketed name and ⌘0 badge", () => {
+		const ops: Project = { ...project("vp1", "Operations"), kind: "virtual", builtin: true };
+		render(
+			<I18nProvider>
+				<ProjectQuickSwitchModal
+					projects={[ops, PROJECTS[0]]}
+					shortcutIndexById={{ p1: 0 }}
+					onSelect={vi.fn()}
+					onClose={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		const options = screen.getAllByRole("option");
+		// Builtin board shows its special bracketed name and the ⌘0 badge (not ⌘1).
+		expect(options[0].textContent).toContain("[ Operations ]");
+		expect(options[0].textContent).toContain("⌘0");
+		// Ordinary project keeps its board-index badge.
+		expect(options[1].textContent).toContain("⌘1");
+	});
 });

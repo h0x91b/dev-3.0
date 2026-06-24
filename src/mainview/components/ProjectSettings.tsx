@@ -880,7 +880,11 @@ function ProjectSettings({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 
-	const [activeTab, setActiveTab] = useState<ConfigTab>(initialTab ?? "global");
+	// Operations boards only have the Board tab (no git → no Project/Worktree
+	// config); never let a deep-linked initialTab strand them on a hidden git tab.
+	const [activeTab, setActiveTab] = useState<ConfigTab>(
+		project?.kind === "virtual" ? "global" : (initialTab ?? "global"),
+	);
 
 	// ---- Project tab state (reads/writes projects.json) ----
 	const projectConfigFromProject = useCallback((p: Project): ProjectConfigValues => ({
@@ -1308,12 +1312,18 @@ function ProjectSettings({
 							<button type="button" onClick={() => setActiveTab("global")} className={tabButtonClass("global")}>
 								{t("projectSettings.tabGlobal")}
 							</button>
-							<button type="button" onClick={() => setActiveTab("project")} className={tabButtonClass("project")}>
-								{t("projectSettings.tabProject")}
-							</button>
-							<button type="button" onClick={() => setActiveTab("worktree")} className={tabButtonClass("worktree")}>
-								{t("projectSettings.tabWorktree")}
-							</button>
+							{/* Operations boards have no git repo — the Project/Worktree config
+							    tabs are git-only, so hide them and keep just the Board tab. */}
+							{project.kind !== "virtual" && (
+								<>
+									<button type="button" onClick={() => setActiveTab("project")} className={tabButtonClass("project")}>
+										{t("projectSettings.tabProject")}
+									</button>
+									<button type="button" onClick={() => setActiveTab("worktree")} className={tabButtonClass("worktree")}>
+										{t("projectSettings.tabWorktree")}
+									</button>
+								</>
+							)}
 						</div>
 						<p className="text-fg-muted text-xs px-1">
 							{activeTab === "global" && t("projectSettings.tabGlobalDesc")}
@@ -1395,7 +1405,9 @@ function ProjectSettings({
 					)}
 
 					{/* ======== Project tab ======== */}
-					{activeTab === "project" && (
+					{activeTab === "project" && (project.kind === "virtual" ? (
+						<p className="text-fg-muted text-sm italic">{t("projectSettings.virtualNoGitConfig")}</p>
+					) : (
 						<>
 							{configFileOverride && (
 								<div className="flex items-start gap-2.5 px-3 py-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
@@ -1528,10 +1540,10 @@ function ProjectSettings({
 								</div>
 							</div>
 						</>
-					)}
+					))}
 
 					{/* ======== Worktree tab ======== */}
-					{activeTab === "worktree" && (
+					{activeTab === "worktree" && project.kind !== "virtual" && (
 						<>
 							{worktreeTasks.length === 0 ? (
 								<div className="flex flex-col items-center gap-3 py-8 text-center">

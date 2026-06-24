@@ -2248,3 +2248,59 @@ describe("TaskInfoPanel", () => {
 		});
 	});
 });
+
+describe("TaskInfoPanel — virtual (Operations) tasks", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
+		mockedApi.request.getResolvedProject.mockResolvedValue(project);
+	});
+
+	const vproject: Project = { ...project, kind: "virtual", path: "/tmp/.dev3.0/ops/operations" };
+
+	it("hides the git bar (branch name) for a virtual task", async () => {
+		await act(async () => {
+			renderPanel(
+				makeTask({ branchName: "dev3/should-not-show", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
+				{ project: vproject },
+			);
+		});
+		expect(screen.queryByText("dev3/should-not-show")).not.toBeInTheDocument();
+	});
+
+	it("still shows the git bar (branch name) for a git task", async () => {
+		await act(async () => {
+			renderPanel(makeTask({ branchName: "dev3/task-shown", worktreePath: "/tmp/wt/t1" }));
+		});
+		expect(await screen.findByText("dev3/task-shown")).toBeInTheDocument();
+	});
+
+	it("fills the empty git slot with a muted 'Git is not available' note", async () => {
+		await act(async () => {
+			renderPanel(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
+				{ project: vproject },
+			);
+		});
+		expect(screen.getByText("Git is not available in operations tasks")).toBeInTheDocument();
+	});
+
+	it("removes the Dev Server and Scripts controls for a virtual task", async () => {
+		await act(async () => {
+			renderPanel(
+				makeTask({ status: "in-progress", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
+				{ project: vproject },
+			);
+		});
+		expect(screen.queryByText("Setup Dev Server")).not.toBeInTheDocument();
+		expect(screen.queryByText("Dev Server")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Scripts")).not.toBeInTheDocument();
+	});
+
+	it("keeps Dev Server and Scripts for a git task", async () => {
+		await act(async () => {
+			renderPanel(makeTask({ status: "in-progress", worktreePath: "/tmp/wt/t1" }));
+		});
+		expect(screen.getByLabelText("Scripts")).toBeInTheDocument();
+	});
+});

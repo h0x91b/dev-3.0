@@ -555,6 +555,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				onClick={handleTitleClick}
 				title={isTodo && hasLongDescription ? task.description : undefined}
 			>
+				{task.scratch && (
+					<span
+						className="text-fg-3 mr-1.5"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						title={t("task.scratchSession")}
+					>
+						{"\u{F018D}"}
+					</span>
+				)}
 				{displayTitle}
 			</div>
 			{hasLongDescription && !isTodo && (

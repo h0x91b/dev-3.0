@@ -165,7 +165,7 @@ export const MENU_ACTIONS = {
 
 	// ── Terminal — misc ──
 	termToggleProjectTerminal: "term-toggle-project-terminal",
-	termToggleHomeTerminal: "term-toggle-home-terminal",
+	termOpenQuickShell: "term-open-quick-shell",
 	termKeymapDefault: "term-keymap-default",
 	termKeymapIterm2: "term-keymap-iterm2",
 	termCheatSheet: "term-cheat-sheet",
@@ -321,7 +321,7 @@ export interface MenuContext {
 	hasTask: boolean;
 	/** A current project is selected (any project-scoped view). */
 	hasProject: boolean;
-	/** A terminal is visible on screen (task / project-terminal / home-terminal). */
+	/** A terminal is visible on screen (task / project-terminal). */
 	hasTerminal: boolean;
 }
 
@@ -635,7 +635,10 @@ function viewMenu(): ApplicationMenuItemConfig {
 			SEP,
 			item({ label: "Zoom In", action: MENU_ACTIONS.zoomIn, accelerator: "=" }),
 			item({ label: "Zoom Out", action: MENU_ACTIONS.zoomOut, accelerator: "-" }),
-			item({ label: "Reset Zoom", action: MENU_ACTIONS.zoomReset, accelerator: "0" }),
+			// Reset Zoom moved off ⌘0 (now "Jump to Operations") to ⇧⌘0. Electrobun
+			// menu accelerators are single-char only (decision 044), so the ⇧⌘0 chord
+			// is owned by the renderer (App.tsx) and only hinted in the label here.
+			item({ label: "Reset Zoom (⇧⌘0)", action: MENU_ACTIONS.zoomReset }),
 			SEP,
 			{ role: "toggleFullScreen" },
 			SEP,
@@ -786,7 +789,7 @@ function terminalMenu(): ApplicationMenuItemConfig {
 			},
 			SEP,
 			item({ label: "Toggle Project Terminal", action: MENU_ACTIONS.termToggleProjectTerminal, accelerator: "`" }),
-			item({ label: "Toggle Home Terminal", action: MENU_ACTIONS.termToggleHomeTerminal }),
+			item({ label: "Quick Shell", action: MENU_ACTIONS.termOpenQuickShell }),
 			SEP,
 			{
 				label: "Keyboard Mode",

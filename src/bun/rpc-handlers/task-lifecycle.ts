@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -8,7 +10,7 @@ import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
 import { resolveCompletionRequest } from "../completion-requests";
-import { DEV3_HOME } from "../paths";
+import { DEV3_HOME, OPS_DIR } from "../paths";
 import {
 	assertTaskPreparationActive,
 	forgetTaskPreparation,
@@ -132,19 +134,24 @@ async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<
 		});
 	});
 
-	const cleanupTask: Task = {
-		...task,
-		worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
-	};
+	// Virtual (Operations) tasks have no git worktree — the work dir is a managed
+	// temp folder (or a user-chosen one we must never force-remove). Skip the git
+	// worktree teardown entirely; only git projects own a removable worktree.
+	if (project.kind !== "virtual") {
+		const cleanupTask: Task = {
+			...task,
+			worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
+		};
 
-	try {
-		await git.removeWorktree(project, cleanupTask);
-	} catch (err) {
+		try {
+			await git.removeWorktree(project, cleanupTask);
+		} catch (err) {
 			log.warn("removeWorktree failed while cancelling preparation", {
 				taskId: task.id.slice(0, 8),
-			worktreePath: cleanupTask.worktreePath,
-			error: String(err),
-		});
+				worktreePath: cleanupTask.worktreePath,
+				error: String(err),
+			});
+		}
 	}
 
 	const updated = await data.updateTask(project, task.id, preparingResetUpdates());
@@ -211,6 +218,55 @@ async function prepareTaskInBackground(
 ): Promise<void> {
 	await withTaskPreparation(task.id, options.label, async (runId) => {
 		try {
+			// Virtual ("Operations") projects have no git repo: skip the entire
+			// worktree / sparse / CoW pipeline and launch the agent + split shell
+			// in a managed (or user-chosen) folder. Reuses the same preparation
+			// stage + cancellation machinery so the card progress bar and the
+			// revert-on-failure path keep working.
+			if (project.kind === "virtual") {
+				const workDir = task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
+				await measurePreparationStep(
+					task,
+					runId,
+					"createOpsWorkDir",
+					() => mkdir(workDir, { recursive: true }),
+					"creating-worktree",
+					{ opsWorkDir: task.opsWorkDir ?? null },
+				);
+				const taskForVirtualLaunch = task.scratch ? { ...task, description: "" } : task;
+				await measurePreparationStep(
+					task,
+					runId,
+					"launchTaskPty",
+					() => launchTaskPty(project, taskForVirtualLaunch, workDir, options.agentId, options.configId, true),
+					"launching-pty",
+				);
+
+				assertTaskPreparationActive(task.id, runId);
+				const updatedVirtual = await data.updateTask(project, task.id, {
+					worktreePath: workDir,
+					branchName: null,
+					...clearPreparingState(),
+				});
+
+				if (!isTaskPreparationActive(task.id, runId)) {
+					log.warn("Preparation completed after cancellation; reverting task", {
+						taskId: task.id.slice(0, 8),
+						runId,
+					});
+					await revertPreparingTaskToTodo(project, task);
+					return;
+				}
+
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updatedVirtual });
+				log.info("Virtual task preparation ready", {
+					taskId: task.id.slice(0, 8),
+					runId,
+					worktreePath: workDir,
+				});
+				return;
+			}
+
 			const resolvedProject = await measurePreparationStep(
 				task,
 				runId,
@@ -357,8 +413,11 @@ export async function activateTask(
 	project: Project,
 	task: Task,
 	opts?: { isReopen?: boolean },
-): Promise<{ worktreePath: string; branchName: string }> {
+): Promise<{ worktreePath: string; branchName: string | null }> {
 	const isReopen = opts?.isReopen ?? false;
+	if (project.kind === "virtual") {
+		return activateVirtualTask(project, task, isReopen);
+	}
 	const preResolved = await repoConfig.resolveProjectConfig(project);
 	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
 	const resolved = await resolveOperationalProjectConfig(project, wt.worktreePath);
@@ -382,6 +441,31 @@ export async function activateTask(
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
 
+/**
+ * Activate a virtual ("Operations") task: create/resolve the working dir, then
+ * launch the agent + a split-right shell (handled in launchTaskPty). No git
+ * worktree, branch, sparse-checkout, cow-clones, or config merge.
+ *
+ * Working dir is the user-chosen fixed folder (`task.opsWorkDir`) if set,
+ * otherwise a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.
+ * `worktreePath` is reused to hold it (Runtime affordances key off it); the git
+ * domain is hidden in the UI by `kind` guards.
+ */
+async function activateVirtualTask(
+	project: Project,
+	task: Task,
+	isReopen: boolean,
+): Promise<{ worktreePath: string; branchName: null }> {
+	const fixed = task.opsWorkDir?.trim();
+	const workDir = fixed || git.virtualWorkDir(project, task);
+	await mkdir(workDir, { recursive: true });
+	log.info("Activating virtual task", { taskId: task.id.slice(0, 8), workDir, fixed: !!fixed });
+	// Scratch/reopen → blank prompt so the agent idles (the shell pane is usable).
+	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
+	await launchTaskPty(project, taskForLaunch, workDir, task.agentId, task.configId, true, isReopen);
+	return { worktreePath: workDir, branchName: null };
+}
+
 function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
 	const mm = String(now.getMinutes()).padStart(2, "0");
@@ -390,7 +474,7 @@ function scratchPlaceholder(now: Date = new Date()): string {
 
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	try {
-		const projects = await data.loadProjects();
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 		for (const project of projects) {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
@@ -410,7 +494,7 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 
 export async function isTaskInProgress(taskId: string): Promise<boolean> {
 	try {
-		const projects = await data.loadProjects();
+		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 		for (const project of projects) {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
@@ -576,7 +660,10 @@ async function getTasks(params: { projectId: string }): Promise<Task[]> {
 
 async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] }[]> {
 	log.info("→ getAllProjectTasks");
-	const projects = await data.loadProjects();
+	// Include virtual ("Operations") boards — otherwise the dashboard shows no
+	// active operations and the working-folder conflict check (which compares
+	// against active operations) never fires.
+	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	const results = await Promise.all(
 		projects.map(async (project) => {
 			const tasks = await data.loadTasks(project);
@@ -589,7 +676,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string }): Promise<Task> {
 	log.info("→ createTask", params);
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
@@ -603,6 +690,7 @@ async function createTask(params: { projectId: string; description: string; stat
 	const extras: Parameters<typeof data.addTask>[3] = {
 		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
 		...(isScratch ? { scratch: true } : {}),
+		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 	};
 	const task = await data.addTask(project, description, status, Object.keys(extras).length ? extras : undefined);
 
@@ -722,20 +810,25 @@ export async function moveTask(params: {
 				});
 			}
 
-			try {
-				await git.removeWorktree(project, task);
-			} catch (err) {
-				log.error("removeWorktree failed, continuing with task move", {
-					taskId: task.id,
-					error: String(err),
-				});
+			// Virtual ops keep their working dir as history — removed only on task
+			// delete. Git tasks tear down the worktree here.
+			if (project.kind !== "virtual") {
+				try {
+					await git.removeWorktree(project, task);
+				} catch (err) {
+					log.error("removeWorktree failed, continuing with task move", {
+						taskId: task.id,
+						error: String(err),
+					});
+				}
 			}
 		}
 
 		const updated = await data.updateTask(project, task.id, {
 			status: newStatus,
-			worktreePath: null,
-			branchName: null,
+			// Keep worktreePath for virtual ops so the history dir stays referenced
+			// (and deleteTask can clean it up). Git tasks clear it (worktree gone).
+			...(project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
 			customColumnId: null,
 		}, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
@@ -808,8 +901,22 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	if (isActive(task.status) || task.worktreePath) {
-		log.info("Task has worktree, cleaning up", { status: task.status, worktreePath: task.worktreePath });
-		await git.removeWorktree(project, task);
+		if (project.kind === "virtual") {
+			// SAFETY: only ever remove a MANAGED dir (under ~/.dev3.0/ops/). A
+			// user-chosen fixed folder (e.g. ~ or ~/Downloads) is NEVER auto-removed.
+			const dir = task.worktreePath;
+			if (dir && dir.startsWith(`${OPS_DIR}/`)) {
+				log.info("Removing managed virtual work dir on delete", { dir });
+				await rm(dir, { recursive: true, force: true }).catch((err) => {
+					log.warn("Failed to remove virtual work dir (best-effort)", { dir, error: String(err) });
+				});
+			} else {
+				log.info("Virtual task uses a fixed folder; not removing on delete", { dir });
+			}
+		} else {
+			log.info("Task has worktree, cleaning up", { status: task.status, worktreePath: task.worktreePath });
+			await git.removeWorktree(project, task);
+		}
 	}
 
 	await data.deleteTask(project, task.id);
@@ -867,6 +974,10 @@ async function spawnVariants(params: {
 				// Carry the labels the user picked in the Create-Task modal — the
 				// source task is deleted below, so without this every label is lost.
 				labelIds: sourceTask.labelIds,
+				// Virtual ("Operations") tasks: carry the chosen working folder onto
+				// each variant so the worktree-less launch path targets it instead
+				// of falling back to a managed dir (the source task is deleted below).
+				...(sourceTask.opsWorkDir ? { opsWorkDir: sourceTask.opsWorkDir } : {}),
 			},
 		);
 
@@ -1080,9 +1191,80 @@ async function respondToAgentCompletionRequest(params: { requestId: string; appr
 	}
 }
 
+/**
+ * Quick shell: the replacement for the removed single home-terminal. Opens (or
+ * focuses) a prompt-less "Quick shell" operation in the built-in Operations
+ * board, running in the user's home dir. The ⇧⌘` hotkey maps to this.
+ */
+/**
+ * Find a Quick shell task worth reusing: any one that is NOT in a terminal state
+ * (completed/cancelled). An active shell is refocused; an inactive one (e.g.
+ * dragged to todo) is relaunched. Only when every Quick shell is terminal — or
+ * none exists — is a fresh one created. Matching ONLY active ones (the old bug)
+ * silently spawned duplicates whenever a shell went inactive.
+ */
+export function findReusableQuickShell(tasks: Task[]): Task | undefined {
+	return tasks.find(
+		(tk) => tk.customTitle === "Quick shell" && tk.status !== "completed" && tk.status !== "cancelled",
+	);
+}
+
+// In-flight guard: openQuickShell does find-then-create, which is not atomic.
+// Two rapid ⇧⌘` presses would both miss the existing shell and each create one.
+// Serializing concurrent calls onto a single promise makes the second press
+// return the same task the first one resolves to, instead of a duplicate.
+let quickShellInflight: Promise<Task> | null = null;
+
+async function openQuickShell(_params: {}): Promise<Task> {
+	log.info("→ openQuickShell");
+	if (quickShellInflight) {
+		log.info("openQuickShell: joining in-flight call");
+		return quickShellInflight;
+	}
+	quickShellInflight = openQuickShellInner();
+	try {
+		return await quickShellInflight;
+	} finally {
+		quickShellInflight = null;
+	}
+}
+
+async function openQuickShellInner(): Promise<Task> {
+	const project = await data.ensureBuiltinOperationsBoard("Operations");
+	const tasks = await data.loadTasks(project);
+	// Reuse any non-terminal Quick shell (NOT just active ones): one that was
+	// dragged to todo or otherwise went inactive must be refocused/relaunched, not
+	// duplicated. Completed/cancelled shells are history — a fresh one is created.
+	const existing = findReusableQuickShell(tasks);
+	if (existing && isActive(existing.status)) {
+		log.info("← openQuickShell (focus existing)", { taskId: existing.id.slice(0, 8) });
+		return existing;
+	}
+	// Either no shell exists, or the existing one is inactive (e.g. todo) and needs
+	// its PTY relaunched. Both paths run activate + set in-progress identically.
+	const target =
+		existing ??
+		(await data.addTask(project, "", "todo", {
+			scratch: true,
+			customTitle: "Quick shell",
+			titleEditedByUser: true,
+			opsWorkDir: homedir(),
+		}));
+	const wt = await activateTask(project, target, { isReopen: !!existing });
+	const updated = await data.updateTask(project, target.id, {
+		status: "in-progress",
+		worktreePath: wt.worktreePath,
+		branchName: wt.branchName,
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info(`← openQuickShell (${existing ? "reactivated" : "created"})`, { taskId: target.id.slice(0, 8) });
+	return updated;
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
+	openQuickShell,
 	createTask,
 	moveTask,
 	cancelTaskPreparation,

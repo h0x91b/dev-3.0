@@ -125,7 +125,7 @@ const common = {
 	"command.moveReviewAi": "Mover a «Review by AI»",
 	"command.moveReviewUser": "Mover a «Review by User»",
 	"command.openProjectTerminal": "Abrir terminal del proyecto",
-	"command.openHomeTerminal": "Abrir terminal principal",
+	"command.openQuickShell": "Abrir Shell rápido",
 	"command.tmuxCheatSheet": "Mostrar referencia de tmux",
 	"command.keyboardShortcuts": "Atajos de teclado",
 

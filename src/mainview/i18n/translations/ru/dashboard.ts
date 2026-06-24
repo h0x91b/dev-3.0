@@ -32,6 +32,24 @@ const dashboard = {
 	"activity.monthsAgo": "{count}мес назад",
 	"activity.yearsAgo": "{count}г назад",
 
+	// Virtual "Operations" boards
+	"ops.boardName": "[ Операции ]",
+	"ops.badge": "Операции",
+	"ops.badgeSystem": "СИСТЕМА",
+	"ops.gitUnavailable": "Git недоступен в операциях",
+	"ops.tileSubtitle": "Задачи с кодом · без git",
+	"ops.create.typeGit": "Git-репозиторий",
+	"ops.create.typeOps": "Операции",
+	"ops.create.nameLabel": "Название доски",
+	"ops.create.namePlaceholder": "Операции",
+	"ops.create.hint": "Доска для разовых задач с кодом, не привязанных к репозиторию. Каждая задача выполняется в управляемой папке (или выбранной вами) — без git worktree.",
+	"ops.create.submit": "Создать доску",
+	"ops.create.workDirLabel": "Рабочая папка",
+	"ops.create.workDirAuto": "Управляемая временная папка (автоматически)",
+	"ops.create.workDirPick": "Выбрать папку…",
+	"ops.create.workDirReset": "Управляемая",
+	"ops.create.workDirConflict": "Эту папку уже использует другая активная операция — агенты могут конфликтовать.",
+
 	// GlobalHeader
 	"header.task": "Задача",
 	"header.settings": "Настройки",

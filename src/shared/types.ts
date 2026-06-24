@@ -589,6 +589,41 @@ export interface Project {
 	customStatusLabels?: Record<string, string>;
 	// Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N)
 	portCount?: number;
+	/**
+	 * Project kind. `"git"` (default when absent) is a normal repo-backed project
+	 * with worktrees. `"virtual"` is an "Operations" board: tasks run in a managed
+	 * temp dir (or a chosen folder) with NO git worktree, branch, diff, PR, or
+	 * review columns. Virtual projects are stored in a separate
+	 * `~/.dev3.0/virtual-projects.json` so older app versions stay forward-compatible.
+	 */
+	kind?: "git" | "virtual";
+	/**
+	 * Marks the single built-in "Operations" board. Its display name is rendered
+	 * from a localized `t()` key until the user renames it (which clears this flag
+	 * for naming purposes). Only ever set on virtual projects.
+	 */
+	builtin?: boolean;
+}
+
+/**
+ * True for the single hardcoded "Operations" board — the special, pinned virtual
+ * project. Distinct from user-created virtual boards (which have `kind: "virtual"`
+ * but `builtin` unset). Used for pin-first ordering, the ⌘0 shortcut, and the
+ * special `[ Operations ]` / SYSTEM identity treatment.
+ */
+export function isBuiltinOpsProject(p: Pick<Project, "kind" | "builtin">): boolean {
+	return p.builtin === true && p.kind === "virtual";
+}
+
+/**
+ * Display order for any project list (dashboard tiles, switcher dropdown): the
+ * built-in Operations board is pinned first; all other projects keep their
+ * existing relative order. Pure + stable.
+ */
+export function orderProjectsForDisplay<T extends Pick<Project, "kind" | "builtin">>(projects: T[]): T[] {
+	const builtin = projects.filter(isBuiltinOpsProject);
+	if (builtin.length === 0) return projects;
+	return [...builtin, ...projects.filter((p) => !isBuiltinOpsProject(p))];
 }
 
 export interface Task {
@@ -675,6 +710,14 @@ export interface Task {
 	 * source todo task into every variant spawned from it.
 	 */
 	scratch?: boolean;
+	/**
+	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
+	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
+	 * operation uses a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.
+	 * On activation this resolves into `worktreePath`; on delete a managed dir is
+	 * removed but a fixed folder is never auto-removed. Ignored for git projects.
+	 */
+	opsWorkDir?: string | null;
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script — pre-selects it in the placement picker. */
@@ -1044,7 +1087,6 @@ export interface TmuxSessionInfo {
 	windowCount: number;
 	isCleanup: boolean;
 	isProjectTerminal?: boolean;
-	isHomeTerminal?: boolean;
 	projectName?: string;
 	taskTitle?: string;
 	taskId?: string;
@@ -1188,6 +1230,11 @@ export type AppRPCSchema = {
 				params: { path: string; name: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
+			/** Create a virtual "Operations" board (no git repo). Stored in virtual-projects.json. */
+			addVirtualProject: {
+				params: { name: string };
+				response: { ok: true; project: Project } | { ok: false; error: string };
+			};
 			removeProject: {
 				params: { projectId: string };
 				response: void;
@@ -1274,7 +1321,7 @@ export type AppRPCSchema = {
 				response: ConversationMatch[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean };
+				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string };
 				response: Task;
 			};
 			moveTask: {
@@ -1354,13 +1401,10 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
-			getHomePtyUrl: {
+			/** Open or focus the built-in "Quick shell" operation (replaces the old home terminal). */
+			openQuickShell: {
 				params: {};
-				response: string;
-			};
-			destroyHomeTerminal: {
-				params: {};
-				response: void;
+				response: Task;
 			};
 			runDevServer: {
 				params: { taskId: string; projectId: string };
@@ -1781,7 +1825,6 @@ export type AppRPCSchema = {
 			taskSound: { status: "completed" | "cancelled"; taskId: string };
 			ptyDied: { taskId: string };
 			projectPtyDied: { projectId: string };
-			homePtyDied: {};
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };

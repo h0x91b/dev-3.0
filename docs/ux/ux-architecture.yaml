@@ -1,6 +1,6 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-06-18"
+  updated_at: "2026-06-23"
   source: "derived_from_repository"
   confidence: "medium"
 
@@ -60,7 +60,10 @@ ux_architecture:
       owner: "workspace"
       owns: ["task", "custom_column", "label", "project_settings"]
       common_actions: ["add", "clone", "open_settings", "reorder", "remove", "pull_main"]
-      evidence: ["src/shared/types.ts (Project)", "src/mainview/components/Dashboard.tsx", "src/mainview/components/ProjectView.tsx", "src/mainview/components/ProjectSettings.tsx"]
+      kind:   # observed: Project.kind discriminator
+        git: "Repo-backed project; tasks get a git worktree + branch (default when kind absent)."
+        virtual: "An 'Operations' board: tasks run an agent + shell in a managed temp dir (or a chosen folder), NO git worktree/branch/diff/PR; review columns hidden. Stored in a separate ~/.dev3.0/virtual-projects.json. One built-in board ships by default and hosts the Quick-shell operation (⇧⌘`)."
+      evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/079-virtual-operations-board-identity.md"]
     task:
       label: "Task"
       plural: "Tasks"
@@ -103,7 +106,6 @@ ux_architecture:
         - "project"          # Kanban board (the home of daily work)
         - "task"             # full-screen task terminal
         - "project-terminal" # project-level terminal
-        - "home-terminal"    # global scratch terminal
         - "settings"         # global settings
         - "project-settings" # per-project config (tabs: global | project | worktree)
         - "changelog"        # what's new
