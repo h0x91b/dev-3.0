@@ -176,9 +176,12 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					const hasActiveTasks = tasks.length > 0;
 					const isDragged = draggedProjectId === project.id;
 					const isBuiltinOps = isBuiltinOpsProject(project);
-					// The pinned Operations board cannot be reordered; the project right
-					// below it cannot move up past the pin either.
-					const cannotMoveUp = index === 0 || (hasPinnedBuiltin && index === 1) || isBuiltinOps;
+					// Virtual boards (builtin and user-created) cannot be reordered:
+					// reorderProjects only persists git project order; dragging a virtual
+					// board would silently snap back after the API call. The project right
+					// below the pinned builtin also cannot move above the pin.
+					const cannotReorder = project.kind === "virtual";
+					const cannotMoveUp = index === 0 || (hasPinnedBuiltin && index === 1) || cannotReorder;
 					const showDropBefore = dropTarget?.projectId === project.id && dropTarget.side === "before";
 					const showDropAfter = dropTarget?.projectId === project.id && dropTarget.side === "after";
 
@@ -210,9 +213,9 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 								<div className="pl-3 flex items-center gap-0.5">
 									<button
 										type="button"
-										draggable={!!onReorderProjects && !isBuiltinOps}
+										draggable={!!onReorderProjects && !cannotReorder}
 										onDragStart={(event) => {
-											if (!onReorderProjects || isBuiltinOps) return;
+											if (!onReorderProjects || cannotReorder) return;
 											setDraggedProjectId(project.id);
 											event.dataTransfer.setData("text/plain", `project:${project.id}`);
 											event.dataTransfer.effectAllowed = "move";
@@ -224,7 +227,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
 										title={t("dashboard.reorderProject")}
 										aria-label={t("dashboard.reorderProject")}
-										disabled={!onReorderProjects || isBuiltinOps}
+										disabled={!onReorderProjects || cannotReorder}
 									>
 										<span
 											className="text-[1rem] leading-none"
@@ -254,7 +257,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
 										title={t("dashboard.moveProjectDown")}
 										aria-label={t("dashboard.moveProjectDown")}
-										disabled={!onReorderProjects || index === visibleProjects.length - 1 || isBuiltinOps}
+										disabled={!onReorderProjects || index === visibleProjects.length - 1 || cannotReorder}
 									>
 										<span
 											className="text-[0.875rem] leading-none"
